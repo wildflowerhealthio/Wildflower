@@ -4,16 +4,13 @@
 //! at the crate root (not under [`crate::http`]) deliberately: the scope-gated
 //! [`capabilities`](crate::domain::capabilities) in `domain/` are built from it,
 //! and `domain/` must not depend on `crate::http`. The struct itself is
-//! axum-free; the one axum-touching seam impl (`SessionCookies`, which takes a
-//! `HeaderMap`) stays in [`crate::http`].
+//! axum-free.
 //!
-//! The port trait impls that adapt this state to the domain seams live in sibling
-//! files ([`PendingConsentPublisher`](crate::adapters::pending_consent_publisher),
-//! [`Revocation`](crate::adapters::revocation_store)), and the per-resource
-//! `FixedScopeCapability`/`Capability` bindings that name the concrete
-//! `SqliteGatekeeperStore` live in [`grants`](super::grants),
-//! [`consents`](super::consents), and [`tokens`](super::tokens) — so the generic,
-//! store-agnostic capabilities in `domain/` never mention a concrete adapter.
+//! The port trait impls that adapt this state to the domain seams live in
+//! [`crate::adapters`], and the bindings that name the concrete
+//! `SqliteGatekeeperStore` live in the sibling [`crate::live_bindings`]
+//! modules — so the generic, store-agnostic capabilities in `domain/` never
+//! mention a concrete adapter.
 
 use std::sync::Arc;
 
@@ -35,8 +32,8 @@ pub struct GatekeeperState {
     /// capabilities are generic over it, so the router state and axum wiring stay
     /// monomorphic — per the collector/tunnel pattern.
     pub(crate) store: SqliteGatekeeperStore,
-    /// The shared token-revocation store. The auth gate
-    /// ([`verify_auth_token_claims`](crate::http::middleware::require_auth::verify_auth_token_claims))
+    /// The shared token-revocation store. The auth gate (through the
+    /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier))
     /// runs the full `is_revoked` check (denylist + subject epoch) through it,
     /// and the revoke control surface (logout, `/access/revocations`, grant
     /// revoke) writes to it through the [`Revocation`](crate::ports::Revocation)

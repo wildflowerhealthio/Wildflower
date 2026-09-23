@@ -98,7 +98,7 @@ mod tests {
     /// The create-or-union device-grant upsert transaction, inlined here so the db
     /// test drives the real adapter's grant primitives directly instead of
     /// reaching up into a domain capability. Mirrors
-    /// `domain::capabilities::consents::upsert_device_grant`.
+    /// `domain::capabilities::writers::GrantRecorder::record_device_grant`.
     fn upsert_device_grant(
         store: &SqliteGatekeeperStore,
         client_id: &str,

@@ -1,5 +1,7 @@
 //! The shared request extractor for the token-style endpoints (`/oauth/token`
-//! and `/oauth/device_authorization`).
+//! and `/oauth/device_authorization`). It ends by **authenticating the client**,
+//! so a handler receives an [`AuthenticatedClient`] proof rather than raw
+//! credentials — it cannot act for a client whose secret was never checked.
 
 use std::sync::Arc;
 
@@ -8,26 +10,29 @@ use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::HeaderMap;
 use serde::de::DeserializeOwned;
 
-use super::client_auth::{resolve_client_credentials, ClientCredentials};
-use super::internal::TokenError;
+use super::client_auth::resolve_client_credentials;
+use super::internal::{ClientAuthenticationFailure, TokenError};
+use crate::domain::authority::AuthenticatedClient;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::state::GatekeeperState;
+use crate::live_bindings::{FromState, LiveClientAuthenticator};
 
 /// The media type RFC 6749 §3.2 (and §4 device-flow extensions) require on a
 /// token-endpoint request body.
 const FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 
 /// An RFC 6749 token-style request, extracted once into its grant `payload`
-/// (the `grant_type`-tagged body, generic per endpoint) and the resolved client
-/// `credentials`.
+/// (the `grant_type`-tagged body, generic per endpoint) and the authenticated
+/// `client`.
 ///
-/// Centralizes the three things both token endpoints otherwise repeat inline:
-/// the RFC 6749 §3.2 `Content-Type` check (previously unenforced), reading the
-/// body, and the §2.3.1 credential dance ([`resolve_client_credentials`], which
-/// reconciles the `Authorization: Basic` header with body `client_id` /
-/// `client_secret`). On any failure the rejection is a [`TokenError`], so it
-/// renders the same cache-suppressed §5.2 error shape as the rest of the
-/// surface.
+/// Centralizes what both token endpoints otherwise repeat inline: the RFC 6749
+/// §3.2 `Content-Type` check, reading the body, the §2.3.1 credential dance
+/// ([`resolve_client_credentials`], which reconciles the `Authorization: Basic`
+/// header with body `client_id` / `client_secret`), and §2.3 client
+/// authentication through the [`LiveClientAuthenticator`]. On any failure the
+/// rejection is a [`TokenError`], so it renders the same cache-suppressed §5.2
+/// error shape as the rest of the surface; an authentication failure carries
+/// `presented_via` so a Basic attempt gets its `WWW-Authenticate` challenge.
 ///
 /// The body is read once; the grant payload and the credential fields are then
 /// each deserialized from it (two cheap `serde_urlencoded` passes over the same
@@ -35,7 +40,8 @@ const FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 /// pass would buy nothing but coupling).
 pub(crate) struct TokenRequest<P> {
     pub payload: P,
-    pub credentials: ClientCredentials,
+    /// The verified client — the proof every client-gated operation takes.
+    pub authenticated_client: AuthenticatedClient,
 }
 
 impl<P> FromRequest<Arc<GatekeeperState>> for TokenRequest<P>
@@ -64,10 +70,16 @@ where
         let payload: P = serde_urlencoded::from_str(&body).map_err(|_| {
             TokenError::bad_request(OAuthErrorCode::InvalidRequest, Some("Malformed payload"))
         })?;
-        let credentials = resolve_client_credentials(authorization.as_deref(), &body)?;
+        let presented = resolve_client_credentials(authorization.as_deref(), &body)?;
+        let authenticated_client = LiveClientAuthenticator::from_state(state)
+            .authenticate(&presented.credentials)
+            .map_err(|error| ClientAuthenticationFailure {
+                error,
+                presented_via: presented.presented_via,
+            })?;
         Ok(TokenRequest {
             payload,
-            credentials,
+            authenticated_client,
         })
     }
 }

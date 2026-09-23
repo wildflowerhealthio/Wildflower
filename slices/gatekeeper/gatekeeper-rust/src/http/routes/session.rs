@@ -20,10 +20,11 @@ use std::sync::Arc;
 
 use axum::routing::get;
 use axum::{Json, Router};
+use scope_capabilities_rust::Authenticated;
 use serde::Serialize;
 
 use crate::http::state::GatekeeperState;
-use crate::http::CallerSession;
+use crate::live_bindings::LiveSessionReader;
 
 pub fn router() -> Router<Arc<GatekeeperState>> {
     Router::new().route("/session", get(handle_get_session))
@@ -41,14 +42,8 @@ struct SessionResponse {
     scopes: Vec<String>,
 }
 
-async fn handle_get_session(CallerSession(claims): CallerSession) -> Json<SessionResponse> {
+async fn handle_get_session(session: Authenticated<LiveSessionReader>) -> Json<SessionResponse> {
     Json(SessionResponse {
-        scopes: claims
-            .scope
-            .as_deref()
-            .unwrap_or("")
-            .split_whitespace()
-            .map(str::to_owned)
-            .collect(),
+        scopes: session.scopes(),
     })
 }

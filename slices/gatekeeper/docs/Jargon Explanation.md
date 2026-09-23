@@ -74,16 +74,20 @@ redirects), and `allowedScopes: ['owner']`.
 
 ### Trust on first use
 
-`/oauth/authorize` compares an authorization-code request against the
-current [`clients`](#client) row and computes a **registration verdict**:
+An authorization-code request **presents** a client registration: its
+`client_id`, `redirect_uri`, and scopes (`PresentedClientRegistration` in
+Rust). `/oauth/authorize` judges whether to accept it as it stands against
+the current [`clients`](#client) row, and computes a **registration verdict**
+(`ClientRegistrationVerdict`):
 
 - **`registered`** — the row exists, the `redirect_uri` resolves to an
   allowlist entry, and every requested scope is covered by `allowedScopes`.
   Only this verdict may take the existing-[`Grant`](#grant) fast path.
 - **`new`** — no row exists. The consent prompt names the app by its
   `client_id` and shows the redirect origin.
-- **`changed`** — the row exists but the `redirect_uri` is not allowlisted
-  and/or some requested scopes (`newScopes`) fall outside `allowedScopes`.
+- **`changed`** (`WouldWiden` in Rust) — the row exists but the
+  `redirect_uri` is not allowlisted and/or some requested scopes (`newScopes`)
+  fall outside `allowedScopes`, so approving would widen the row.
 
 The verdict is computed at read time (both at `/authorize` and on
 `GET /access/oauth-consents/:id`, which returns it as `registration`), never
@@ -325,10 +329,26 @@ device did **not** request, up to the client's `allowedScopes`, as well as narro
 what was asked. This contrasts with the **clamped** authorization-code / app
 consent path, where the grant may only be narrowed within the requested set
 (`granted ⊆ requested`) — a third-party app can never widen its own grant. The
-distinction lives in the two approve handlers' clamp: the device path measures
-`grantable_scopes` against `client.allowedScopes`; the code path measures it
-against the request's `requestedScopes`. The shared scope-picker UI models the
+distinction lives in the two `ApprovableScopes` constructors: `for_device`
+measures the grantable subset against `client.allowedScopes`; `for_code`
+measures it against the request's `requestedScopes`. The shared scope-picker UI models the
 same split with its `expandable` vs `clamped` mode.
+
+### Scope sets
+
+A consent decision reads several scope lists at once, so the Rust names each
+one by **where it comes from**:
+
+| Name                            | Source                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `requested_scopes`              | The OAuth client's request (`?scope=`, or the device request).                                               |
+| `owner_approved_scopes`         | The scopes the Owner ticked on the consent prompt (`approvedScopes` on the wire).                            |
+| `registered_client_scopes`      | The client's stored registration (`Client.allowed_scopes`, `allowedScopes` on the wire).                     |
+| `registration_ceiling_scopes`   | The most a code approval may grant: the registration, plus the request for a client trusted on first use.    |
+| `unregistered_requested_scopes` | Requested scopes the registration does not cover (`newScopes` on the wire).                                  |
+| `approver_missing_scopes`       | Resource scopes an approval would grant that the approving Owner does not hold (`missingScopes` on the 403). |
+| `granted_scopes`                | What an approval delegated, recorded on the request, the code, and the refresh family.                       |
+| `host_owner_scopes`             | The host owner's configured authority (`local_granted_scopes` in `tauri-shared-config.json`).                |
 
 ### Bootstrap URL
 

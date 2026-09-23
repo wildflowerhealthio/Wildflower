@@ -1,5 +1,5 @@
 //! `authorization_codes` query bodies — issue, look up, and atomically redeem
-//! the single-use codes ([`AuthorizationCode`]) minted at `/authorize`. The
+//! the single-use codes ([`IssuedAuthorizationCode`]) minted at `/authorize`. The
 //! `pub(super)` free functions the
 //! [`SqliteGatekeeperStore`](super::SqliteGatekeeperStore) port impl delegates
 //! to, each running on a connection the store has already checked out of the
@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::gatekeeper_error::GatekeeperError;
 
 diesel::table! {
@@ -34,9 +34,9 @@ diesel::table! {
 pub(super) fn redeem_authorization_code(
     conn: &mut SqliteConnection,
     code: &str,
-) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
     diesel::delete(authorization_codes::table.find(code))
-        .returning(AuthorizationCode::as_returning())
+        .returning(IssuedAuthorizationCode::as_returning())
         .get_result(conn)
         .optional()
         .map_err(|e| GatekeeperError::infrastructure("redeem_authorization_code failed", e))
@@ -47,10 +47,10 @@ pub(super) fn redeem_authorization_code(
 pub(super) fn authorization_code_by_request_id(
     conn: &mut SqliteConnection,
     request_id: &str,
-) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
     authorization_codes::table
         .filter(authorization_codes::request_id.eq(request_id))
-        .select(AuthorizationCode::as_select())
+        .select(IssuedAuthorizationCode::as_select())
         .first(conn)
         .optional()
         .map_err(|e| GatekeeperError::infrastructure("authorization_code_by_request_id failed", e))
@@ -59,7 +59,7 @@ pub(super) fn authorization_code_by_request_id(
 /// Persist a freshly-minted authorization code.
 pub(super) fn issue_authorization_code(
     conn: &mut SqliteConnection,
-    code: &AuthorizationCode,
+    code: &IssuedAuthorizationCode,
 ) -> Result<(), GatekeeperError> {
     diesel::insert_into(authorization_codes::table)
         .values(code.clone())
@@ -93,7 +93,7 @@ mod tests {
     use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
     use proptest::prelude::*;
 
-    fn arb_authorization_code() -> impl Strategy<Value = AuthorizationCode> {
+    fn arb_authorization_code() -> impl Strategy<Value = IssuedAuthorizationCode> {
         (
             "[a-zA-Z0-9_-]{1,40}",
             "[a-zA-Z0-9_-]{1,32}",
@@ -116,7 +116,7 @@ mod tests {
                     patient,
                     issued_at,
                     expires_at,
-                )| AuthorizationCode {
+                )| IssuedAuthorizationCode {
                     code,
                     request_id,
                     client_id,
@@ -151,7 +151,7 @@ mod tests {
     fn redeem_returns_the_row_exactly_once() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
-        let code = AuthorizationCode {
+        let code = IssuedAuthorizationCode {
             code: "the-code".to_string(),
             request_id: "req-1".to_string(),
             client_id: "client-a".to_string(),
@@ -185,7 +185,7 @@ mod tests {
     fn delete_expired_codes_respects_the_cutoff() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
-        let sample = |name: &str, expires_at| AuthorizationCode {
+        let sample = |name: &str, expires_at| IssuedAuthorizationCode {
             code: name.to_string(),
             request_id: format!("req-{name}"),
             client_id: "client-a".to_string(),
@@ -232,7 +232,7 @@ mod tests {
     fn corrupt_redirect_uri_is_a_typed_read_error() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
-        let code = AuthorizationCode {
+        let code = IssuedAuthorizationCode {
             code: "the-code".to_string(),
             request_id: "req-1".to_string(),
             client_id: "client-a".to_string(),

@@ -6,13 +6,11 @@ use axum::http::{header, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
-use crate::domain::GatekeeperStore;
+use crate::domain::token::VerifiedClaims;
 use crate::http::errors;
 use crate::http::served_base_url_for;
 use crate::http::state::GatekeeperState;
-use crate::WILDFLOWER_WIDEST_SCOPES;
-use scopes_rust::Scope;
+use crate::live_bindings::{FromState, LiveTokenVerifier};
 
 /// The `/access` authN gate: verify the request carries a **valid, non-revoked**
 /// bearer (or `wf_auth` cookie) token and stash the resulting [`VerifiedClaims`]
@@ -53,8 +51,10 @@ pub async fn require_valid_session(
 
 /// The shared authN pipeline both claims-inserting gates run: extract the access
 /// token (bearer header or `wf_auth` cookie), resolve the request's served
-/// origin, verify the token against it (signature, issuer/audience, revocation),
-/// and map each failure to its response — a missing token is a `401`, an
+/// origin, verify the token against it through the
+/// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier)
+/// (signature, issuer/audience, revocation), and map each failure to its
+/// response — a missing token is a `401`, an
 /// unresolvable origin a `500`, a verify failure whatever
 /// [`errors::verify_error_response`] maps it to. Extracted so
 /// [`require_valid_session`] and
@@ -67,7 +67,7 @@ pub async fn require_valid_session(
 /// downstream). The error is the prepared failure `Response`, boxed so the
 /// happy-path `Ok` stays small (the `Response` is large — `clippy::result_large_err`).
 pub(crate) fn verify_request_claims<'h>(
-    state: &GatekeeperState,
+    state: &Arc<GatekeeperState>,
     headers: &'h HeaderMap,
     log_context: &'static str,
 ) -> Result<(VerifiedClaims, (&'h str, AccessTokenSource)), Box<Response>> {
@@ -84,7 +84,8 @@ pub(crate) fn verify_request_claims<'h>(
         )));
     };
     let origin = shared_structures_rust::origin_string(&base_url);
-    let claims = verify_auth_token_claims(state, &origin, token)
+    let claims = LiveTokenVerifier::from_state(state)
+        .verify(&origin, token)
         .map_err(|e| Box::new(errors::verify_error_response(log_context, e)))?;
     Ok((claims, (token, source)))
 }
@@ -136,88 +137,4 @@ pub fn try_bearer_token_from_headers(headers: &HeaderMap) -> Option<&str> {
         return None;
     }
     Some(value[prefix.len()..].trim())
-}
-
-pub fn verify_owner_token(
-    state: &GatekeeperState,
-    origin: &str,
-    token: &str,
-) -> Result<VerifiedClaims, VerifyError> {
-    let claims = verify_auth_token_claims(state, origin, token)?;
-    // Owner = the token covers *every* maximal-access scope (full FHIR + full
-    // Wildflower), which gates gatekeeper's `/access/*` admin surface — see
-    // [`WILDFLOWER_WIDEST_SCOPES`](crate::WILDFLOWER_WIDEST_SCOPES).
-    let token_claim_scopes: Vec<Scope> = claims
-        .scope
-        .as_deref()
-        .unwrap_or("")
-        .split_whitespace()
-        .map(Scope::from)
-        .collect();
-    // Guard: an empty owner-defining set makes `all()` vacuously true, admitting
-    // every token (even a scope-less one) to `/access/*`.
-    debug_assert!(
-        !WILDFLOWER_WIDEST_SCOPES.is_empty(),
-        "WILDFLOWER_WIDEST_SCOPES must be non-empty or the owner check fails open"
-    );
-    let grants_owner = WILDFLOWER_WIDEST_SCOPES.iter().all(|mandatory_scope| {
-        token_claim_scopes
-            .iter()
-            .any(|token_claim| token_claim.covers(mandatory_scope))
-    });
-    if !grants_owner {
-        return Err(VerifyError::TokenRejected);
-    }
-    Ok(claims)
-}
-
-/// Verify `token` for `origin`, accepting the per-request served-origin audiences
-/// (`{origin}` and `{origin}/fhir-r4`) plus the canonical audience — honoured
-/// only for the `wf_owner`-marked host owner token, which is presented at every
-/// served origin (#256). See `docs/Origins/Explanation.md`.
-pub fn verify_auth_token_claims(
-    state: &GatekeeperState,
-    origin: &str,
-    token: &str,
-) -> Result<VerifiedClaims, VerifyError> {
-    let keys = state
-        .store
-        .all_signing_keys()
-        .map_err(VerifyError::KeyStoreUnavailable)?;
-    let accepted = vec![
-        format!("{origin}/fhir-r4"),
-        origin.to_string(),
-        shared_structures_rust::CANONICAL_ISSUER.to_string(),
-    ];
-    let claims = verify_jwt(
-        token,
-        &keys,
-        &VerifyOptions {
-            expected_issuer: shared_structures_rust::CANONICAL_ISSUER,
-            accepted_audiences: &accepted,
-        },
-    )?;
-    // Reject any non-owner token that presents the canonical audience.
-    let via_canonical_audience = claims
-        .audience
-        .iter()
-        .any(|aud| aud == shared_structures_rust::CANONICAL_ISSUER);
-    if via_canonical_audience && claims.host_owner != Some(true) {
-        return Err(VerifyError::TokenRejected);
-    }
-    // Revocation is the last gate: the token is cryptographically valid, but a
-    // logout / owner revoke / grant revoke may have denylisted its `jti` or
-    // bumped the subject's epoch since it was minted. This is the single
-    // chokepoint both auth gates (`require_valid_session` and the FHIR
-    // `BearerGate`) funnel through, and it holds the full claims — so it runs
-    // the *complete* check (per-`jti` denylist **and** per-subject epoch). A
-    // store-read failure fails closed (500), never admitting the token.
-    let revoked = state
-        .revocation_store
-        .is_revoked(claims.jti.as_deref(), claims.issued_at, &claims.subject)
-        .map_err(VerifyError::RevocationStoreUnavailable)?;
-    if revoked {
-        return Err(VerifyError::Revoked);
-    }
-    Ok(claims)
 }

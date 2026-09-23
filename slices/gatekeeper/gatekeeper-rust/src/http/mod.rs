@@ -14,7 +14,6 @@ mod state;
 mod wire_representations;
 
 pub(crate) use extractors::served_origin::ServedOrigin;
-pub(crate) use extractors::session::CallerSession;
 // Re-export so call sites read `crate::http::served_base_url_for` without the
 // `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
@@ -34,6 +33,8 @@ use axum::Router;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
+
+use crate::domain::capabilities::oauth::ClientScopesReader;
 
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 #[derive(OpenApi)]
@@ -91,34 +92,13 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
     path.starts_with("/oauth") || path.starts_with("/.well-known")
 }
 
-/// Whether `headers` carry a valid **Owner** bearer for `served_origin` — the
-/// non-middleware form of the owner check
-/// ([`verify_owner_token`](middleware::require_auth::verify_owner_token)), for a
-/// slice that owner-gates a single in-handler action rather than wrapping a whole
-/// router. The `/access` router itself no longer owner-gates as a blanket layer:
-/// it authenticates via [`require_valid_session`](middleware::require_valid_session)
-/// and authorizes per-route through the scope-gated [`scoped`] extractors.
-/// (The apps slice previously wired this to gate its loopback launch popup; that
-/// gate is now the `wildflower/launch` scope gate, so this helper currently has no
-/// in-tree caller.) Returns `false` for a missing, invalid, or non-owner token.
-#[must_use]
-pub fn verify_owner_bearer(
-    state: &GatekeeperState,
-    headers: &axum::http::HeaderMap,
-    served_origin: &str,
-) -> bool {
-    let Some(token) = middleware::require_auth::try_bearer_token_from_headers(headers) else {
-        return false;
-    };
-    middleware::require_auth::verify_owner_token(state, served_origin, token).is_ok()
-}
-
 /// The scopes an OAuth client (`client_id`) is permitted to request — its stored
 /// `allowed_scopes`, parsed. The apps slice's per-app SMART launch check resolves a
 /// SMART app's `client_id` to this set through its `AppLaunchScopes` port (wired
 /// host-side to this fn), then requires the launching caller's grant to cover it.
-/// Reads inside the opaque [`GatekeeperState`] the same way [`verify_owner_bearer`]
-/// does, so the host never touches the store. An unknown `client_id` (a
+/// Reads through the
+/// [`ClientScopesReader`](crate::domain::capabilities::oauth::ClientScopesReader)
+/// so the host never touches the store. An unknown `client_id` (a
 /// misconfigured registration) yields an empty set — only the launch umbrella then
 /// gates the launch — and is logged as a warning so the fail-open scope downgrade
 /// is detectable rather than silent.
@@ -130,23 +110,8 @@ pub fn client_allowed_scopes(
     state: &GatekeeperState,
     client_id: &str,
 ) -> anyhow::Result<Vec<scopes_rust::Scope>> {
-    use crate::domain::GatekeeperStore as _;
-    let Some(client) = state.store.client_by_id(client_id)? else {
-        // A SMART app registration whose `client_id` has no gatekeeper client row
-        // (deleted or misconfigured): the per-app launch check then sees no required
-        // scopes and gates on the `wildflower/launch` umbrella alone. Log it so this
-        // fail-open scope downgrade is detectable rather than silent.
-        tracing::warn!(
-            "app launch scopes requested for unknown client_id `{client_id}`; per-app \
-             SMART scope check falls open to the `wildflower/launch` umbrella only",
-        );
-        return Ok(Vec::new());
-    };
-    Ok(client
-        .allowed_scopes
-        .iter()
-        .map(|scope| scopes_rust::Scope::from(scope.as_str()))
-        .collect())
+    let reader = ClientScopesReader::new(state.store.clone());
+    Ok(reader.registered_client_scopes(client_id)?)
 }
 
 /// The gatekeeper OAuth + discovery `OpenAPI` document, collected from the very

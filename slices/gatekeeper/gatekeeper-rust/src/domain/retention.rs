@@ -79,7 +79,7 @@ pub(crate) fn purge_expired(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::authorization_code::AuthorizationCode;
+    use crate::domain::authorization_code::IssuedAuthorizationCode;
     use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
     use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
     use crate::domain::test_fake::FakeGatekeeperStore;
@@ -137,8 +137,8 @@ mod tests {
         }
     }
 
-    fn code(code: &str, expires_at: DateTime<Utc>) -> AuthorizationCode {
-        AuthorizationCode {
+    fn code(code: &str, expires_at: DateTime<Utc>) -> IssuedAuthorizationCode {
+        IssuedAuthorizationCode {
             code: code.to_string(),
             request_id: format!("req-{code}"),
             client_id: "client-1".to_string(),

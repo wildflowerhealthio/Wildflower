@@ -59,7 +59,7 @@ async fn handle_approve_oauth_consent(
     let outcome = consents.approve_oauth(
         &id,
         ApproveOAuthConsentInput {
-            approved_scopes: body.approved_scopes,
+            owner_approved_scopes: body.approved_scopes,
             patient: body.patient,
             acknowledged_registration: body.acknowledged_registration,
         },

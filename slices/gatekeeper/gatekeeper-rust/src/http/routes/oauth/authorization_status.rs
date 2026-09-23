@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Utc;
@@ -9,12 +7,13 @@ use utoipa::ToSchema;
 
 use super::internal::OAuthErrorResponse;
 use super::openapi::AuthorizationRequestNotFound;
-use crate::domain::authorization_request::RequestStatus;
+use crate::domain::capabilities::oauth::{AuthorizationStatusError, AuthorizationStatusView};
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::GatekeeperStore;
-use crate::http::state::GatekeeperState;
+use crate::http::extractors::Live;
 use crate::http::wire_representations::OAuthError;
+use crate::live_bindings::LiveAuthorizationStatusReader;
 
 /// Polling response for the Owner UI watching an authorization request as it
 /// moves from `Pending` toward approval or denial.
@@ -64,61 +63,57 @@ impl IntoResponse for AuthorizationStatus {
     )
 )]
 pub(super) async fn handle_authorization_status_request(
-    State(state): State<Arc<GatekeeperState>>,
+    reader: Live<LiveAuthorizationStatusReader>,
     Path(id): Path<String>,
 ) -> axum::response::Result<AuthorizationStatus> {
-    let request = state
-        .store
-        .authorization_request_by_id(&id)?
-        .ok_or_else(|| {
-            crate::domain::gatekeeper_error::GatekeeperError::AuthorizationRequestNotFound {
-                id: id.clone(),
-            }
-        })?;
-    // Nothing actively transitions code-flow requests from Pending to Expired,
-    // so a Pending request past its TTL must be reported as expired here rather
-    // than left polling forever.
-    if request.status == RequestStatus::Pending && request.expires_at < Utc::now() {
-        return Ok(AuthorizationStatus::Error {
-            message: "Authorization request expired".to_string(),
-        });
-    }
-    Ok(match request.status {
-        RequestStatus::Pending => AuthorizationStatus::Pending,
-        RequestStatus::Denied => {
-            // Build the client callback so the user-agent waiting at the
-            // client's redirect_uri receives `error=access_denied&state=...`
-            // and stops hanging. Device-flow denials have no redirect_uri /
-            // client_state, so they fall back to a bare `denied`.
-            let redirect = match (&request.redirect_uri, &request.client_state) {
-                (Some(redirect_uri), Some(client_state)) => Some(build_client_error_redirect_url(
-                    redirect_uri,
-                    OAuthErrorCode::AccessDenied,
-                    client_state,
-                )),
-                _ => None,
-            };
-            AuthorizationStatus::Denied { redirect }
-        }
-        RequestStatus::Expired => AuthorizationStatus::Error {
+    let view =
+        reader
+            .status(&id, Utc::now())
+            .map_err(|error| -> axum::response::ErrorResponse {
+                match error {
+                    AuthorizationStatusError::NotFound { id } => {
+                        GatekeeperError::AuthorizationRequestNotFound { id }.into()
+                    }
+                    AuthorizationStatusError::ApprovedWithoutRedirect => {
+                        OAuthErrorResponse::server_error(
+                            "Authorization request is not a code-flow request",
+                        )
+                        .into()
+                    }
+                    AuthorizationStatusError::ApprovedWithoutCode => {
+                        OAuthErrorResponse::server_error("Authorization code missing").into()
+                    }
+                    AuthorizationStatusError::Store(error) => error.into(),
+                }
+            })?;
+    Ok(match view {
+        AuthorizationStatusView::Pending => AuthorizationStatus::Pending,
+        AuthorizationStatusView::Expired => AuthorizationStatus::Error {
             message: "Authorization request expired".to_string(),
         },
-        RequestStatus::Approved => {
-            let (Some(redirect_uri), Some(client_state)) =
-                (request.redirect_uri, request.client_state)
-            else {
-                return Err(OAuthErrorResponse::server_error(
-                    "Authorization request is not a code-flow request",
-                )
-                .into());
-            };
-            let code = state
-                .store
-                .authorization_code_by_request_id(&id)?
-                .ok_or_else(|| OAuthErrorResponse::server_error("Authorization code missing"))?;
-            AuthorizationStatus::Approved {
-                redirect: build_client_redirect_url(&redirect_uri, &code.code, &client_state),
-            }
-        }
+        // Build the client callback so the user-agent waiting at the client's
+        // redirect_uri receives `error=access_denied&state=...` and stops
+        // hanging. Device-flow denials have no redirect_uri / client_state, so
+        // they fall back to a bare `denied`.
+        AuthorizationStatusView::Denied {
+            redirect_uri,
+            client_state,
+        } => AuthorizationStatus::Denied {
+            redirect: match (redirect_uri, client_state) {
+                (Some(redirect_uri), Some(client_state)) => Some(build_client_error_redirect_url(
+                    &redirect_uri,
+                    OAuthErrorCode::AccessDenied,
+                    &client_state,
+                )),
+                _ => None,
+            },
+        },
+        AuthorizationStatusView::Approved {
+            redirect_uri,
+            code,
+            client_state,
+        } => AuthorizationStatus::Approved {
+            redirect: build_client_redirect_url(&redirect_uri, &code, &client_state),
+        },
     })
 }

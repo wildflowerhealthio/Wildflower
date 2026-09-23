@@ -19,7 +19,7 @@ use url::Url;
 use crate::db::{
     authorization_codes, authorization_requests, clients, grants, refresh_tokens, signing_keys,
 };
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -252,20 +252,20 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
     fn redeem_authorization_code(
         &mut self,
         code: &str,
-    ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+    ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
         authorization_codes::redeem_authorization_code(self.conn, code)
     }
 
     fn authorization_code_by_request_id(
         &mut self,
         request_id: &str,
-    ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+    ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
         authorization_codes::authorization_code_by_request_id(self.conn, request_id)
     }
 
     fn issue_authorization_code(
         &mut self,
-        code: &AuthorizationCode,
+        code: &IssuedAuthorizationCode,
     ) -> Result<(), GatekeeperError> {
         authorization_codes::issue_authorization_code(self.conn, code)
     }

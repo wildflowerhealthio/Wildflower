@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use url::Url;
 
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -205,11 +205,11 @@ pub trait GatekeeperTx {
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] if the delete-returning query fails or
-    /// a returned row cannot be mapped to an [`AuthorizationCode`].
+    /// a returned row cannot be mapped to an [`IssuedAuthorizationCode`].
     fn redeem_authorization_code(
         &mut self,
         code: &str,
-    ) -> Result<Option<AuthorizationCode>, GatekeeperError>;
+    ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError>;
 
     /// Look up the code issued for a given `request_id`, or `None` when absent —
     /// used by the Owner UI's polling endpoint to build the final redirect URL.
@@ -217,11 +217,11 @@ pub trait GatekeeperTx {
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] if the read fails or a returned row
-    /// cannot be mapped to an [`AuthorizationCode`].
+    /// cannot be mapped to an [`IssuedAuthorizationCode`].
     fn authorization_code_by_request_id(
         &mut self,
         request_id: &str,
-    ) -> Result<Option<AuthorizationCode>, GatekeeperError>;
+    ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError>;
 
     /// Persist a freshly-minted authorization code.
     ///
@@ -229,8 +229,10 @@ pub trait GatekeeperTx {
     ///
     /// [`GatekeeperError::Infrastructure`] if the insert fails (for example a
     /// unique-constraint violation on the code).
-    fn issue_authorization_code(&mut self, code: &AuthorizationCode)
-        -> Result<(), GatekeeperError>;
+    fn issue_authorization_code(
+        &mut self,
+        code: &IssuedAuthorizationCode,
+    ) -> Result<(), GatekeeperError>;
 
     // ----- retention ------------------------------------------------------
     //

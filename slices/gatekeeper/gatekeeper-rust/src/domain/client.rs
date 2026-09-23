@@ -178,6 +178,29 @@ pub struct Client {
     pub disabled_at: Option<DateTime<Utc>>,
 }
 
+impl Client {
+    /// Whether every requested scope is inside this client's `allowed_scopes`.
+    /// Coverage-aware ([`scopes_rust::allowed_scope_covers`]), not exact
+    /// membership: a client allowed a broad scope (`patient/*.rs`) also admits
+    /// a narrower request it covers (`patient/Observation.r`). Read at
+    /// `/authorize` (the first-party host) and `/device_authorization` (every
+    /// client).
+    #[must_use]
+    pub fn allows_scopes(&self, requested: &[String]) -> bool {
+        requested
+            .iter()
+            .all(|requested_scope| self.allows_scope(requested_scope))
+    }
+
+    /// Whether some entry of this client's `allowed_scopes` covers
+    /// `requested_scope`.
+    fn allows_scope(&self, requested_scope: &str) -> bool {
+        self.allowed_scopes
+            .iter()
+            .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested_scope))
+    }
+}
+
 #[cfg(test)]
 mod registered_redirect_uri_tests {
     use super::*;
@@ -230,5 +253,22 @@ mod registered_redirect_uri_tests {
     #[test]
     fn deserialize_rejects_protocol_relative() {
         assert!(serde_json::from_str::<RegisteredRedirectUri>("\"//evil.example\"").is_err());
+    }
+}
+
+#[cfg(test)]
+mod allows_scopes_tests {
+    use crate::domain::test_fake::{client, owned_scopes};
+
+    /// Coverage, not spelling: a broad allowlist admits a narrower request it
+    /// covers; a permission or context outside it is refused; an empty request
+    /// is trivially allowed.
+    #[test]
+    fn allows_scopes_is_coverage_aware() {
+        let client = client("app", &["patient/*.rs", "openid"]);
+        assert!(client.allows_scopes(&owned_scopes(&["patient/Observation.r", "openid"])));
+        assert!(client.allows_scopes(&[]));
+        assert!(!client.allows_scopes(&owned_scopes(&["patient/Observation.c"])));
+        assert!(!client.allows_scopes(&owned_scopes(&["system/*.r"])));
     }
 }

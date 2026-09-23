@@ -8,10 +8,10 @@ use std::collections::HashSet;
 use crate::scope::{Grant, Scope};
 
 /// The scopes an Owner approval can actually grant: those that are both still
-/// requested by the pending request and covered by the client's *current*
-/// `allowed_scopes`. The Owner can only narrow, never widen, and the `allowed`
-/// clamp stops a stale request from granting a scope the client's policy no
-/// longer permits.
+/// requested by the pending request and covered by the `ceiling` (for a consent
+/// prompt, the most the client's registration permits). The Owner can only
+/// narrow, never widen, and the `ceiling` clamp stops a stale request from
+/// granting a scope the client's policy no longer permits.
 ///
 /// Both sides match by **coverage**, not exact equality (each parsed to a [`Scope`]
 /// and compared with [`Scope::covers`]). Coverage on the requested side is what
@@ -28,17 +28,17 @@ use crate::scope::{Grant, Scope};
 pub fn grantable_scopes(
     approved: Vec<String>,
     requested: &HashSet<&str>,
-    allowed: &HashSet<&str>,
+    ceiling: &HashSet<&str>,
 ) -> Vec<String> {
     let requested: Vec<Scope> = requested.iter().map(|&s| Scope::from(s)).collect();
-    let allowed: Vec<Scope> = allowed.iter().map(|&s| Scope::from(s)).collect();
+    let ceiling: Vec<Scope> = ceiling.iter().map(|&s| Scope::from(s)).collect();
 
     let mut seen: HashSet<String> = HashSet::new();
     let mut granted: Vec<String> = Vec::new();
     for approved_scope in approved.into_iter().map(|s| Scope::from(s.as_str())) {
         let is_requested = requested.iter().any(|r| r.covers(&approved_scope));
-        let is_allowed = allowed.iter().any(|a| a.covers(&approved_scope));
-        if is_requested && is_allowed {
+        let is_under_ceiling = ceiling.iter().any(|c| c.covers(&approved_scope));
+        if is_requested && is_under_ceiling {
             let rendered = approved_scope.to_string();
             if seen.insert(rendered.clone()) {
                 granted.push(rendered);

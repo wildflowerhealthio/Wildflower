@@ -3,16 +3,14 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 
 use super::client_auth::{
-    ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
-    BASIC_AUTH_CHALLENGE,
+    ClientAuthenticationMethod, ResolveClientCredentialsError, BASIC_AUTH_CHALLENGE,
 };
-use crate::crypto_util::client_secret::verify_client_secret;
-use crate::domain::client::{Client, ClientKind};
+use crate::domain::authority::ClientAuthenticationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::token::{mint_access_token, NewJwtArgs, ACCESS_TOKEN_TTL};
-use crate::domain::GatekeeperStore;
+use crate::domain::token::TokenIssuanceError;
+use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::http::errors::InternalError;
-use crate::http::wire_representations::{CacheSuppressed, OAuthError, TokenResponse};
+use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 
 /// An [`OAuthError`] paired with the HTTP status it renders at — the
 /// `(status, JSON body)` shape every OAuth-surface error response shares.
@@ -67,7 +65,7 @@ pub enum TokenError {
     ResolveCredentials(ResolveClientCredentialsError),
     /// Client-authentication failure — renders its own response, possibly with
     /// a `WWW-Authenticate: Basic` challenge.
-    ClientAuth(ValidateClientError),
+    ClientAuth(ClientAuthenticationFailure),
     /// A logged, opaque, cache-suppressed 500 (e.g. a store read failed) —
     /// see [`InternalError`].
     Internal(InternalError),
@@ -114,14 +112,89 @@ impl From<crate::domain::gatekeeper_error::GatekeeperError> for TokenError {
     }
 }
 
+/// Render the exchange flows' failure vocabulary onto RFC 6749 §5.2 / RFC 8628
+/// §3.5. The [`InvalidGrant`](TokenExchangeError::InvalidGrant) reasons collapse
+/// onto one generic description per grant type — distinguishing "wrong client"
+/// from "wrong redirect_uri" from "expired" from "bad verifier" would leak facts
+/// about a code that may belong to another client — and the specific reason is
+/// logged (it carries no secrets) so the operator can still tell them apart.
+impl From<TokenExchangeError> for TokenError {
+    fn from(error: TokenExchangeError) -> Self {
+        match error {
+            TokenExchangeError::UnauthorizedGrantType => TokenError::bad_request(
+                OAuthErrorCode::UnauthorizedClient,
+                Some("Client may not use this grant type"),
+            ),
+            TokenExchangeError::InvalidCodeVerifier => TokenError::bad_request(
+                OAuthErrorCode::InvalidGrant,
+                Some("Invalid code_verifier parameter"),
+            ),
+            TokenExchangeError::InvalidRedirectUri => TokenError::bad_request(
+                OAuthErrorCode::InvalidRequest,
+                Some("Invalid redirect_uri parameter"),
+            ),
+            TokenExchangeError::InvalidGrant(reason) => {
+                tracing::warn!(?reason, "token exchange rejected");
+                TokenError::bad_request(
+                    OAuthErrorCode::InvalidGrant,
+                    Some(invalid_grant_description(&reason)),
+                )
+            }
+            TokenExchangeError::ExpiredToken => {
+                TokenError::bad_request(OAuthErrorCode::ExpiredToken, None)
+            }
+            TokenExchangeError::AuthorizationPending => {
+                TokenError::bad_request(OAuthErrorCode::AuthorizationPending, None)
+            }
+            TokenExchangeError::AccessDenied => {
+                TokenError::bad_request(OAuthErrorCode::AccessDenied, None)
+            }
+            TokenExchangeError::SlowDown => TokenError::bad_request(OAuthErrorCode::SlowDown, None),
+            TokenExchangeError::Issuance(error) => {
+                tracing::error!(%error, "access token issuance failed");
+                let description = match error {
+                    TokenIssuanceError::NoActiveSigningKey | TokenIssuanceError::Store(_) => {
+                        "No JSON Web Keys available to sign token"
+                    }
+                    TokenIssuanceError::Signing(_) => "Failed to sign JWT",
+                };
+                TokenError::server_error(OAuthError::new(
+                    OAuthErrorCode::ServerError,
+                    Some(description),
+                ))
+            }
+            TokenExchangeError::Store(error) => TokenError::from(error),
+        }
+    }
+}
+
+/// The one wire description each family of refusal shares (see
+/// [`From<TokenExchangeError>`](TokenError)).
+fn invalid_grant_description(reason: &InvalidGrantReason) -> &'static str {
+    match reason {
+        InvalidGrantReason::CodeNotFoundOrRedeemed
+        | InvalidGrantReason::CodeClientMismatch { .. }
+        | InvalidGrantReason::CodeRedirectMismatch { .. }
+        | InvalidGrantReason::CodeExpired { .. }
+        | InvalidGrantReason::PkceMismatch { .. } => "Invalid authorization grant",
+        InvalidGrantReason::DeviceRequestNotFound { .. } => "Unknown device_code",
+        InvalidGrantReason::DeviceCodeAlreadyRedeemed { .. } => "Device code already redeemed",
+        InvalidGrantReason::RefreshTokenNotFound
+        | InvalidGrantReason::RefreshTokenClientMismatch { .. }
+        | InvalidGrantReason::RefreshTokenVanished { .. } => "Invalid refresh_token parameter",
+        InvalidGrantReason::RefreshTokenExpired => "Refresh token has expired",
+        InvalidGrantReason::RefreshTokenReplayed { .. } => "Refresh token has been revoked",
+    }
+}
+
 impl From<ResolveClientCredentialsError> for TokenError {
     fn from(error: ResolveClientCredentialsError) -> Self {
         TokenError::ResolveCredentials(error)
     }
 }
 
-impl From<ValidateClientError> for TokenError {
-    fn from(error: ValidateClientError) -> Self {
+impl From<ClientAuthenticationFailure> for TokenError {
+    fn from(error: ClientAuthenticationFailure) -> Self {
         TokenError::ClientAuth(error)
     }
 }
@@ -137,166 +210,56 @@ impl IntoResponse for TokenError {
     }
 }
 
-/// Reasons that client authentication at the token endpoint can fail.
+/// A domain [`ClientAuthenticationError`] paired with how the client
+/// authenticated, which is what the rendering needs: RFC 6749 §5.2 says a `401`
+/// answering a Basic-authentication attempt carries a matching
+/// `WWW-Authenticate: Basic` challenge.
 #[derive(Debug)]
-pub enum ValidateClientError {
-    /// Client identification or secret check failed — surface as 401. RFC
-    /// 6749 §5.2: the response to a Basic-authentication attempt carries a
-    /// matching `WWW-Authenticate: Basic` challenge.
-    Unauthorized {
-        error: OAuthError,
-        attempted_via: ClientAuthenticationMethod,
-    },
-    /// Server-side failure (e.g. database read) — surface as 500.
-    Internal(OAuthError),
+pub struct ClientAuthenticationFailure {
+    pub error: ClientAuthenticationError,
+    pub presented_via: ClientAuthenticationMethod,
 }
 
-impl IntoResponse for ValidateClientError {
+impl IntoResponse for ClientAuthenticationFailure {
+    /// The caller's-fault variants render as `401 invalid_client` with a
+    /// description naming the check; the server-side ones log and render as
+    /// `500 server_error` with no detail.
     fn into_response(self) -> Response {
-        match self {
-            ValidateClientError::Unauthorized {
-                error,
-                attempted_via: ClientAuthenticationMethod::HttpBasic,
-            } => (
+        let server_error = || {
+            OAuthErrorResponse::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                OAuthErrorCode::ServerError,
+                None,
+            )
+            .into_response()
+        };
+        let description = match self.error {
+            ClientAuthenticationError::UnknownClient => "Unknown client_id",
+            ClientAuthenticationError::Disabled => "Client is disabled",
+            ClientAuthenticationError::SecretNotConfigured => "Client secret not configured",
+            ClientAuthenticationError::SecretRequired => "Client secret required",
+            ClientAuthenticationError::SecretMismatch => "Invalid client_secret",
+            ClientAuthenticationError::Verification(error) => {
+                tracing::error!(%error, "client secret verification failed");
+                return server_error();
+            }
+            ClientAuthenticationError::Store(error) => {
+                tracing::error!(%error, "client_by_id lookup failed");
+                return server_error();
+            }
+        };
+        let unauthorized = OAuthErrorResponse::new(
+            StatusCode::UNAUTHORIZED,
+            OAuthErrorCode::InvalidClient,
+            Some(description),
+        );
+        match self.presented_via {
+            ClientAuthenticationMethod::HttpBasic => (
                 [(header::WWW_AUTHENTICATE, BASIC_AUTH_CHALLENGE)],
-                OAuthErrorResponse {
-                    status: StatusCode::UNAUTHORIZED,
-                    error,
-                },
+                unauthorized,
             )
                 .into_response(),
-            ValidateClientError::Unauthorized {
-                error,
-                attempted_via: ClientAuthenticationMethod::RequestBody,
-            } => OAuthErrorResponse {
-                status: StatusCode::UNAUTHORIZED,
-                error,
-            }
-            .into_response(),
-            ValidateClientError::Internal(error) => OAuthErrorResponse {
-                status: StatusCode::INTERNAL_SERVER_ERROR,
-                error,
-            }
-            .into_response(),
+            ClientAuthenticationMethod::RequestBody => unauthorized.into_response(),
         }
     }
-}
-
-/// Look up the client named by the resolved credentials and authenticate it.
-/// For confidential clients the presented secret is verified against the
-/// stored argon2id PHC string (constant-time internally). Returns the loaded
-/// `Client` if both checks pass.
-pub fn require_valid_client_for_token(
-    store: &impl GatekeeperStore,
-    presented_credentials: &ClientCredentials,
-) -> Result<Client, ValidateClientError> {
-    // Every authentication failure records how the client authenticated, so
-    // 401s answer Basic attempts with a matching `WWW-Authenticate` header
-    // (RFC 6749 §5.2).
-    let unauthorized = |description: &str| ValidateClientError::Unauthorized {
-        error: OAuthError::new(OAuthErrorCode::InvalidClient, Some(description)),
-        attempted_via: presented_credentials.presented_via,
-    };
-    let client = store
-        .client_by_id(&presented_credentials.client_id)
-        .map_err(|e| {
-            tracing::error!(error = %e, "client_by_id lookup failed");
-            ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
-        })?;
-    let client = client.ok_or_else(|| unauthorized("Unknown client_id"))?;
-    if client.disabled_at.is_some() {
-        return Err(unauthorized("Client is disabled"));
-    }
-    if matches!(client.kind, ClientKind::Public) {
-        return Ok(client);
-    }
-    let stored_hash = client
-        .secret_hash
-        .as_deref()
-        .ok_or_else(|| unauthorized("Client secret not configured"))?;
-    let presented = presented_credentials
-        .client_secret
-        .as_deref()
-        .ok_or_else(|| unauthorized("Client secret required"))?;
-    let secret_matches = verify_client_secret(presented, stored_hash).map_err(|e| {
-        tracing::error!(error = %e, "client secret verification failed");
-        ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
-    })?;
-    if !secret_matches {
-        return Err(unauthorized("Invalid client_secret"));
-    }
-    Ok(client)
-}
-
-/// Inputs required to mint and frame an OAuth `TokenResponse`.
-pub struct IssueTokenInput<'a> {
-    /// Client the token is being issued to.
-    pub client_id: &'a str,
-    /// Scopes granted by the user (or the host) during authorization.
-    pub granted_scopes: &'a [String],
-    /// SMART-on-FHIR patient context, if any.
-    pub patient: Option<&'a str>,
-    /// Origin minting the token — feeds **only** the `aud` claim
-    /// (`{origin}/fhir-r4`). `iss` is always
-    /// [`shared_structures_rust::CANONICAL_ISSUER`], independent of `origin`.
-    pub origin: &'a str,
-}
-
-/// Mint a signed JWT for `input` and wrap it in a `TokenResponse`. Returns
-/// `OAuthError("server_error", ...)` if no signing key is available or the
-/// JWS encode fails.
-pub fn issue_token_response(
-    store: &impl GatekeeperStore,
-    input: &IssueTokenInput<'_>,
-) -> Result<TokenResponse, OAuthError> {
-    let signing_key = store
-        .active_signing_key()
-        .map_err(|e| {
-            tracing::error!(error = %e, "active_signing_key lookup failed");
-            OAuthError::new(
-                OAuthErrorCode::ServerError,
-                Some("No JSON Web Keys available to sign token"),
-            )
-        })?
-        .ok_or_else(|| {
-            OAuthError::new(
-                OAuthErrorCode::ServerError,
-                Some("No JSON Web Keys available to sign token"),
-            )
-        })?;
-    // `iss` is the fixed [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is
-    // this request's origin. See `docs/Origins/Explanation.md`.
-    let audience = format!("{}/fhir-r4", input.origin);
-    // Mint each granted scope alongside its alternate canonical form, so a
-    // v1-worded grant also carries its v2 letter spelling — see
-    // [`scopes_rust::with_alternate_canonical_forms`] and scopes-rust's
-    // `Permission` for why. The app-facing `TokenResponse.scope` below stays
-    // the granted set as-is.
-    let token_scopes = scopes_rust::with_alternate_canonical_forms(input.granted_scopes);
-    let signed = mint_access_token(
-        &signing_key,
-        &NewJwtArgs {
-            client_id: input.client_id,
-            scope: &token_scopes,
-            ttl: ACCESS_TOKEN_TTL,
-            origin: shared_structures_rust::CANONICAL_ISSUER,
-            audience: Some(&audience),
-            patient: input.patient,
-            // OAuth-minted tokens carry a served-origin `aud`, never the
-            // canonical audience — so they are never the host owner token.
-            is_host_owner: false,
-        },
-    )
-    .map_err(|e| {
-        tracing::error!(error = %e, "mint_access_token failed");
-        OAuthError::new(OAuthErrorCode::ServerError, Some("Failed to sign JWT"))
-    })?;
-    Ok(TokenResponse {
-        access_token: signed,
-        token_type: "Bearer".to_string(),
-        expires_in: ACCESS_TOKEN_TTL.num_seconds(),
-        scope: input.granted_scopes.join(" "),
-        refresh_token: None,
-        patient: input.patient.map(str::to_string),
-    })
 }

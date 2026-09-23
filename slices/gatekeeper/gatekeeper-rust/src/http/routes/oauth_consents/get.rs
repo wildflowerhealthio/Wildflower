@@ -7,7 +7,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::domain::capabilities::{OAuthConsentView, Scoped};
-use crate::domain::client_registration::ClientRegistration;
+use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
@@ -37,7 +37,7 @@ pub(crate) struct OAuthConsent {
 }
 
 /// Wire shape of [`OAuthConsent::registration`] — the
-/// [`ClientRegistration`] verdict, `status`-tagged.
+/// [`ClientRegistrationVerdict`] verdict, `status`-tagged.
 ///
 /// `{"status":"registered"}` for a request that matches the registration,
 /// `{"status":"new"}` for a client this gatekeeper has never seen, and
@@ -60,14 +60,14 @@ pub(crate) enum ClientRegistrationBody {
 }
 
 /// Render the domain verdict onto the wire.
-impl From<ClientRegistration> for ClientRegistrationBody {
-    fn from(registration: ClientRegistration) -> Self {
+impl From<ClientRegistrationVerdict> for ClientRegistrationBody {
+    fn from(registration: ClientRegistrationVerdict) -> Self {
         match registration {
-            ClientRegistration::Registered => ClientRegistrationBody::Registered,
-            ClientRegistration::New => ClientRegistrationBody::New,
-            ClientRegistration::Changed {
+            ClientRegistrationVerdict::Registered => ClientRegistrationBody::Registered,
+            ClientRegistrationVerdict::New => ClientRegistrationBody::New,
+            ClientRegistrationVerdict::WouldWiden {
                 redirect_uri_is_new,
-                new_scopes,
+                unregistered_requested_scopes: new_scopes,
             } => ClientRegistrationBody::Changed {
                 redirect_uri_is_new,
                 new_scopes,
@@ -89,18 +89,18 @@ async fn handle_get_oauth_consent(
 ) -> Result<Json<OAuthConsent>, GatekeeperError> {
     let OAuthConsentView {
         request,
-        redirect_uri,
+        requested_redirect_uri,
         client_name,
-        registration,
+        registration_verdict,
     } = consents.oauth_consent(&id, &origin)?;
     Ok(Json(OAuthConsent {
         id: id.clone(),
         client_id: request.client_id,
         client_name,
         scopes: request.requested_scopes,
-        redirect_uri,
+        redirect_uri: requested_redirect_uri,
         pre_approved_scopes: request.pre_approved_scopes,
         patient: request.patient,
-        registration: registration.into(),
+        registration: registration_verdict.into(),
     }))
 }

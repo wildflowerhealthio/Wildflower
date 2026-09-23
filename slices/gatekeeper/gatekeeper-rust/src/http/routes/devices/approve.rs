@@ -29,7 +29,7 @@ async fn handle_approve_device_consent(
     let outcome = consents.approve_device(
         &user_code,
         ApproveDeviceConsentInput {
-            approved_scopes: body.approved_scopes,
+            owner_approved_scopes: body.approved_scopes,
             patient: body.patient,
             device_name: body.device_name,
         },

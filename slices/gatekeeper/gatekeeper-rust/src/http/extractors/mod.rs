@@ -1,8 +1,10 @@
-//! Axum request extractors for the gatekeeper's HTTP layer. Each extractor
-//! reaches into the gatekeeper's [`GatekeeperState`](crate::http::state::GatekeeperState) or
-//! request parts to hand a handler a ready-to-use value, so a handler declares
-//! what it needs in its signature instead of threading a `HeaderMap` and
-//! calling a resolver by hand.
+//! The gatekeeper's request extractors — the [`ServedOrigin`] every OAuth
+//! handler resolves its request's origin through, and [`Live<F>`], the door to
+//! the capabilities that no principal unlocks (see `crate::live_bindings`).
+//! The scope-gated `Scoped<…>` and authenticated-only `Authenticated<…>`
+//! extractors come from `scope-capabilities-rust`.
 
+pub(crate) mod live;
 pub(crate) mod served_origin;
-pub(crate) mod session;
+
+pub(crate) use live::Live;

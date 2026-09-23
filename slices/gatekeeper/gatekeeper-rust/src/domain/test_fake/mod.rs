@@ -16,7 +16,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -28,7 +28,10 @@ use crate::domain::GatekeeperStore;
 mod fixtures;
 mod tx;
 
-pub(crate) use fixtures::{client, code_grant, code_request, device_request};
+pub(crate) use fixtures::{
+    authenticated_public_client, client, code_grant, code_request, delegated_scopes,
+    device_request, owned_scopes, redeemed_code, seed_active_signing_key, RecordingPublisher,
+};
 
 /// An in-memory [`GatekeeperStore`] modelling the primitive port semantics with
 /// no diesel and no database — enough to exercise the actions' semantic mapping
@@ -38,7 +41,7 @@ pub(crate) struct FakeGatekeeperStore {
     clients: RefCell<HashMap<String, Client>>,
     signing_keys: RefCell<Vec<SigningKey>>,
     authorization_requests: RefCell<HashMap<String, AuthorizationRequest>>,
-    authorization_codes: RefCell<HashMap<String, AuthorizationCode>>,
+    authorization_codes: RefCell<HashMap<String, IssuedAuthorizationCode>>,
     families: RefCell<HashMap<String, RefreshTokenFamily>>,
     tokens: RefCell<HashMap<String, RefreshToken>>,
     code_grants: RefCell<HashMap<String, AuthorizationCodeGrant>>,
@@ -51,7 +54,7 @@ struct Snapshot {
     clients: HashMap<String, Client>,
     signing_keys: Vec<SigningKey>,
     authorization_requests: HashMap<String, AuthorizationRequest>,
-    authorization_codes: HashMap<String, AuthorizationCode>,
+    authorization_codes: HashMap<String, IssuedAuthorizationCode>,
     families: HashMap<String, RefreshTokenFamily>,
     tokens: HashMap<String, RefreshToken>,
     code_grants: HashMap<String, AuthorizationCodeGrant>,

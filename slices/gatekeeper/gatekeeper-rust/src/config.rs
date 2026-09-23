@@ -9,14 +9,14 @@ pub struct GatekeeperConfig {
     /// origin via [`shared_structures_rust::origin_string`]).
     pub loopback_base_url: Url,
 
-    /// The host's granted-scope wire strings — seeded as the first-party
+    /// The host owner's scopes, as wire strings — seeded as the first-party
     /// client's `allowed_scopes` and minted into the boot-time host owner token.
     /// The live Tauri app sources these from `tauri-shared-config.json` (the
     /// single source shared with the TS shell); standalone/test builds use
     /// [`crate::default_local_granted_scopes`]. Must cover every
     /// [`crate::WILDFLOWER_WIDEST_SCOPES`] entry or the host token can't pass the
     /// `/access/*` owner gate (asserted in [`crate::setup_gatekeeper`]).
-    pub granted_scopes: Vec<String>,
+    pub host_owner_scopes: Vec<String>,
 
     /// The `client_id` of the host's first-party OAuth client — seeded as the
     /// first-party client row, minted into the boot-time host owner token, and

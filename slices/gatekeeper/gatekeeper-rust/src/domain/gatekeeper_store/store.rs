@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use url::Url;
 
 use super::GatekeeperTx;
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -257,7 +257,7 @@ pub trait GatekeeperStore {
     fn redeem_authorization_code(
         &self,
         code: &str,
-    ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+    ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
         self.with_connection(|tx| tx.redeem_authorization_code(code))
     }
 
@@ -269,7 +269,7 @@ pub trait GatekeeperStore {
     fn authorization_code_by_request_id(
         &self,
         request_id: &str,
-    ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+    ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
         self.with_connection(|tx| tx.authorization_code_by_request_id(request_id))
     }
 
@@ -278,7 +278,10 @@ pub trait GatekeeperStore {
     /// # Errors
     ///
     /// Propagates [`GatekeeperTx::issue_authorization_code`]'s error.
-    fn issue_authorization_code(&self, code: &AuthorizationCode) -> Result<(), GatekeeperError> {
+    fn issue_authorization_code(
+        &self,
+        code: &IssuedAuthorizationCode,
+    ) -> Result<(), GatekeeperError> {
         self.with_connection(|tx| tx.issue_authorization_code(code))
     }
 

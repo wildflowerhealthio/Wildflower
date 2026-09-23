@@ -1,29 +1,23 @@
 //! Consent capabilities — the `wildflower/AuthorizationRequest.*` capabilities
-//! behind `/access/oauth-consents/*` and `/access/devices/*`, and the consent
-//! operations they own. The transaction scripts (load-and-validate, the
-//! approve/deny flows, the standing-grant upserts they trigger) live here as
-//! `&impl GatekeeperStore` functions so they stay unit-testable against the
-//! in-memory fake; the capabilities are the scope-gated entries, generic over the
-//! store and holding the port dependencies lifted from the state.
+//! behind `/access/oauth-consents/*` and `/access/devices/*`. The flows
+//! (load-and-validate, approve, deny) are `&impl GatekeeperStore` functions in
+//! the submodules; an approval's privileged writes go through the
+//! [`writers`](crate::domain::capabilities::writers) under the
+//! [`DelegatedScopes`](crate::domain::authority::DelegatedScopes) proof it
+//! obtains, so what the Owner clicked is never recorded wider than what the
+//! Owner holds.
 //!
-//! The code-flow surfaces additionally carry the **registration verdict** (see
-//! [`crate::domain::client_registration`]): the prompt renders it, and an
-//! approval that steps outside the registration must acknowledge it. Computing
-//! it needs the self-hosted redirect seam and the request's served origin, which
-//! is why both consent capabilities hold a
-//! [`SelfHostedRedirectResolver`] and take a `served_origin`.
+//! The code-flow surfaces also carry the **registration verdict** (see
+//! [`crate::domain::client_registration`]), which is why both capabilities hold
+//! a [`SelfHostedRedirectResolver`] and take a `served_origin`.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
-use crate::domain::authorization_code::PendingCodeConsent;
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client::Client;
-use crate::domain::client_registration::{
-    classify_registration, ClientRegistration, PendingRegistration,
-};
+use crate::domain::client_registration::{ClientRegistrationVerdict, RegistrationClassifier};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::ports::{PendingConsentPublisher, SelfHostedRedirectResolver};
@@ -34,8 +28,7 @@ mod oauth;
 
 use device::{approve_device_consent, deny_device_consent, load_pending_device_request};
 use oauth::{
-    approve_oauth_consent, deny_oauth_consent, load_pending_authorization_code_request,
-    ApprovalContext,
+    approve_oauth_consent, deny_oauth_consent, load_pending_code_request, ApprovalContext,
 };
 
 /// The scope gating [`ConsentReader`] — `wildflower/AuthorizationRequest.r`.
@@ -61,66 +54,16 @@ pub(crate) fn consent_decider_scopes() -> Vec<Scope> {
 
 /// A consent prompt loaded for the Owner UI to render — the data a `GET`
 /// authorization-code consent handler needs, with the client's display name and
-/// its [registration verdict](ClientRegistration) already resolved.
+/// its [registration verdict](ClientRegistrationVerdict) already resolved.
 pub(crate) struct OAuthConsentView {
     pub(crate) request: AuthorizationRequest,
-    pub(crate) redirect_uri: url::Url,
+    pub(crate) requested_redirect_uri: url::Url,
     pub(crate) client_name: String,
     /// How this request compares against the client's registration **as it
     /// stands now** — the warning the prompt leads with when the app, its
     /// redirect, or its scopes are new to the Owner. Recomputed on every read,
     /// never stored.
-    pub(crate) registration: ClientRegistration,
-}
-
-/// The request-scoped inputs the [registration verdict](ClientRegistration)
-/// needs beyond the store: the self-hosted redirect seam (to expand an
-/// app-relative allowlist entry) and the origin this request was served on (the
-/// base it expands against), plus the first-party `client_id` the trust-on-first
-/// -use path exempts.
-///
-/// Assembled by the consent capabilities from the handles they hold plus the
-/// handler's `ServedOrigin`, so the verdict a prompt renders is computed exactly
-/// the way `/authorize` computed it.
-pub(crate) struct RegistrationContext<'a> {
-    /// Resolves a `client_id` to a self-hosted app's `{port, subdomain}`.
-    pub(crate) redirects: &'a dyn SelfHostedRedirectResolver,
-    /// The origin this request was served on, unparsed.
-    pub(crate) served_origin: &'a str,
-    /// The first-party host's `client_id`, which is never trusted on first use
-    /// and whose registration an approval never widens.
-    pub(crate) first_party_client_id: &'a str,
-}
-
-impl RegistrationContext<'_> {
-    /// Classify a pending request against `client` (the current row, or `None`
-    /// when the id is unknown), expanding app-relative allowlist entries for this
-    /// request's provenance.
-    pub(crate) fn classify(
-        &self,
-        client_id: &str,
-        client: Option<&Client>,
-        redirect_uri: &url::Url,
-        requested_scopes: &[String],
-    ) -> ClientRegistration {
-        let topology = self.redirects.resolve(client_id);
-        // An unparseable served origin simply resolves no app-relative entry;
-        // absolute entries still match.
-        let served = url::Url::parse(self.served_origin).ok();
-        classify_registration(&PendingRegistration {
-            maybe_existing_client: client,
-            redirect_uri,
-            requested_scopes,
-            served_origin: served.as_ref(),
-            topology: topology.as_ref(),
-        })
-    }
-
-    /// Whether `client_id` is the first-party host — the one client held to its
-    /// registration rather than trusted on first use.
-    pub(crate) fn is_first_party(&self, client_id: &str) -> bool {
-        client_id == self.first_party_client_id
-    }
+    pub(crate) registration_verdict: ClientRegistrationVerdict,
 }
 
 /// A device-code consent prompt loaded for the Owner UI — adds the client's full
@@ -128,7 +71,7 @@ impl RegistrationContext<'_> {
 pub(crate) struct DeviceConsentView {
     pub(crate) request: AuthorizationRequest,
     pub(crate) client_name: String,
-    pub(crate) allowed_scopes: Vec<String>,
+    pub(crate) registered_client_scopes: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -150,16 +93,16 @@ pub(crate) enum ConsentOutcome {
 /// The Owner's approval of an authorization-code consent prompt.
 pub(crate) struct ApproveOAuthConsentInput {
     /// The scopes the Owner ticked.
-    pub approved_scopes: Vec<String>,
+    pub owner_approved_scopes: Vec<String>,
     /// Optional SMART-on-FHIR patient context to bind to the grant.
     pub patient: Option<String>,
     /// The Owner's explicit acknowledgement that they recognise this app and
     /// its redirect address. Required when the
-    /// [registration verdict](ClientRegistration) is
-    /// [`New`](ClientRegistration::New) or
-    /// [`Changed`](ClientRegistration::Changed) — approving without it fails
+    /// [registration verdict](ClientRegistrationVerdict) is
+    /// [`New`](ClientRegistrationVerdict::New) or
+    /// [`WouldWiden`](ClientRegistrationVerdict::WouldWiden) — approving without it fails
     /// with [`GatekeeperError::RegistrationNotAcknowledged`]. Ignored for a
-    /// [`Registered`](ClientRegistration::Registered) request, which shows no
+    /// [`Registered`](ClientRegistrationVerdict::Registered) request, which shows no
     /// warning to acknowledge.
     pub acknowledged_registration: bool,
 }
@@ -167,7 +110,7 @@ pub(crate) struct ApproveOAuthConsentInput {
 /// The Owner's approval of a device-code consent prompt.
 pub(crate) struct ApproveDeviceConsentInput {
     /// The scopes the Owner ticked.
-    pub approved_scopes: Vec<String>,
+    pub owner_approved_scopes: Vec<String>,
     /// Optional SMART-on-FHIR patient context to bind to the grant.
     pub patient: Option<String>,
     /// An optional adjusted device name (the approver renaming the device before
@@ -183,32 +126,20 @@ pub(crate) struct ApproveDeviceConsentInput {
 /// `/access/oauth-consents/{id}` and `/access/devices/{userCode}`.
 pub(crate) struct ConsentReader<S: GatekeeperStore> {
     store: S,
-    redirects: Arc<dyn SelfHostedRedirectResolver>,
-    first_party_client_id: Arc<str>,
+    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
 }
 
 impl<S: GatekeeperStore> ConsentReader<S> {
-    /// Build the reader over a store handle, the self-hosted redirect seam, and
-    /// the first-party `client_id` — all lifted from the state. The latter two
-    /// feed the [registration verdict](ClientRegistration) each prompt carries.
+    /// Build the reader over a store handle and the self-hosted redirect seam,
+    /// both lifted from the state. The seam feeds the
+    /// [registration verdict](ClientRegistrationVerdict) each prompt carries.
     pub(crate) fn new(
         store: S,
-        redirects: Arc<dyn SelfHostedRedirectResolver>,
-        first_party_client_id: Arc<str>,
+        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
     ) -> Self {
         ConsentReader {
             store,
-            redirects,
-            first_party_client_id,
-        }
-    }
-
-    /// The request-scoped registration inputs for a prompt served on `origin`.
-    fn registration_context<'a>(&'a self, origin: &'a str) -> RegistrationContext<'a> {
-        RegistrationContext {
-            redirects: self.redirects.as_ref(),
-            served_origin: origin,
-            first_party_client_id: &self.first_party_client_id,
+            self_hosted_redirects,
         }
     }
 
@@ -222,29 +153,31 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         id: &str,
         served_origin: &str,
     ) -> Result<OAuthConsentView, GatekeeperError> {
-        let PendingCodeConsent {
-            request,
-            redirect_uri,
-            ..
-        } = load_pending_authorization_code_request(&self.store, id)?;
+        let pending_request = load_pending_code_request(&self.store, id)?;
+        let requested_redirect_uri = pending_request.redirect_uri().clone();
+        let request = pending_request.into_request();
         // A missing row is the `New` verdict, and its name falls back to the raw
-        // `client_id` — a store failure reads the same way, deliberately: the
-        // prompt still renders, warning rather than silently reassuring.
-        let client = self.store.client_by_id(&request.client_id).ok().flatten();
-        let client_name = client
-            .as_ref()
-            .map_or_else(|| request.client_id.clone(), |c| c.name.clone());
-        let registration = self.registration_context(served_origin).classify(
+        // `client_id`. A store failure fails the read.
+        let maybe_existing_client = self.store.client_by_id(&request.client_id)?;
+        let client_name = maybe_existing_client.as_ref().map_or_else(
+            || request.client_id.clone(),
+            |existing_client| existing_client.name.clone(),
+        );
+        let classifier = RegistrationClassifier {
+            self_hosted_redirects: self.self_hosted_redirects.as_ref(),
+            served_origin,
+        };
+        let registration_verdict = classifier.classify(
             &request.client_id,
-            client.as_ref(),
-            &redirect_uri,
+            maybe_existing_client.as_ref(),
+            &requested_redirect_uri,
             &request.requested_scopes,
         );
         Ok(OAuthConsentView {
             request,
-            redirect_uri,
+            requested_redirect_uri,
             client_name,
-            registration,
+            registration_verdict,
         })
     }
 
@@ -255,14 +188,15 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         user_code: &str,
     ) -> Result<DeviceConsentView, GatekeeperError> {
         let request = load_pending_device_request(&self.store, user_code)?;
-        let (client_name, allowed_scopes) = match self.store.client_by_id(&request.client_id) {
-            Ok(Some(client)) => (client.name, client.allowed_scopes),
-            _ => (request.client_id.clone(), Vec::new()),
-        };
+        let (client_name, registered_client_scopes) =
+            match self.store.client_by_id(&request.client_id)? {
+                Some(existing_client) => (existing_client.name, existing_client.allowed_scopes),
+                None => (request.client_id.clone(), Vec::new()),
+            };
         Ok(DeviceConsentView {
             request,
             client_name,
-            allowed_scopes,
+            registered_client_scopes,
         })
     }
 }
@@ -275,8 +209,8 @@ impl<S: GatekeeperStore> ConsentReader<S> {
 pub(crate) struct ConsentDecider<S: GatekeeperStore> {
     store: S,
     publisher: Arc<dyn PendingConsentPublisher>,
-    approver: Grant,
-    redirects: Arc<dyn SelfHostedRedirectResolver>,
+    approver_grant: Grant,
+    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
     first_party_client_id: Arc<str>,
 }
 
@@ -284,28 +218,28 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
     /// Build the decider over a store handle, the republish port, the approver's
     /// own granted scopes, the self-hosted redirect seam, and the first-party
     /// `client_id` — all lifted from the state + claims. The last two feed the
-    /// [registration verdict](ClientRegistration) a code-flow approval is checked
+    /// [registration verdict](ClientRegistrationVerdict) a code-flow approval is checked
     /// against.
     pub(crate) fn new(
         store: S,
         publisher: Arc<dyn PendingConsentPublisher>,
-        approver: Grant,
-        redirects: Arc<dyn SelfHostedRedirectResolver>,
+        approver_grant: Grant,
+        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
         first_party_client_id: Arc<str>,
     ) -> Self {
         ConsentDecider {
             store,
             publisher,
-            approver,
-            redirects,
+            approver_grant,
+            self_hosted_redirects,
             first_party_client_id,
         }
     }
 
     /// Approve an authorization-code consent; a resource scope beyond the
     /// approver's own authority fails the approval with a `403`, and an
-    /// unacknowledged [`New`](ClientRegistration::New) /
-    /// [`Changed`](ClientRegistration::Changed) registration fails it with a
+    /// unacknowledged [`New`](ClientRegistrationVerdict::New) /
+    /// [`WouldWiden`](ClientRegistrationVerdict::WouldWiden) registration fails it with a
     /// `409`. `served_origin` is the origin the approval arrived on, so the
     /// verdict matches the one the prompt rendered.
     pub(crate) fn approve_oauth(
@@ -323,12 +257,12 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
             input,
             generate_code,
             &ApprovalContext {
-                approver: &self.approver,
-                registration: &RegistrationContext {
-                    redirects: self.redirects.as_ref(),
+                approver_grant: &self.approver_grant,
+                classifier: &RegistrationClassifier {
+                    self_hosted_redirects: self.self_hosted_redirects.as_ref(),
                     served_origin,
-                    first_party_client_id: &self.first_party_client_id,
                 },
+                first_party_client_id: &self.first_party_client_id,
                 now,
             },
         )
@@ -352,7 +286,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
             self.publisher.as_ref(),
             user_code,
             input,
-            &self.approver,
+            &self.approver_grant,
             now,
         )
     }
@@ -365,34 +299,33 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
 
     use chrono::Duration;
 
-    use super::oauth::{upsert_authorization_code_grant, RegistrationWrite};
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::client::RegisteredRedirectUri;
-    use crate::domain::test_fake::{client, code_request, device_request, FakeGatekeeperStore};
+    use crate::domain::test_fake::{
+        client, code_request, device_request, FakeGatekeeperStore, RecordingPublisher,
+    };
     use crate::ports::NoSelfHostedRedirects;
 
-    /// The registration inputs the code-consent tests share: no self-hosted app
-    /// (so app-relative entries resolve to nothing), the loopback served origin,
-    /// and the real first-party id — which the `client` fixture never uses, so
-    /// the fixture client always takes the trust-on-first-use path.
-    const TEST_REGISTRATION: RegistrationContext<'static> = RegistrationContext {
-        redirects: &NoSelfHostedRedirects,
+    /// The classifier the code-consent tests share: no self-hosted app (so
+    /// app-relative entries resolve to nothing) and the loopback served origin.
+    const TEST_CLASSIFIER: RegistrationClassifier<'static> = RegistrationClassifier {
+        self_hosted_redirects: &NoSelfHostedRedirects,
         served_origin: "http://127.0.0.1",
-        first_party_client_id: crate::FIRST_PARTY_CLIENT_ID,
     };
 
-    /// Approve a code-flow consent with the shared registration context.
+    /// Approve a code-flow consent with the shared classifier and the real
+    /// first-party id — which the `client` fixture never uses, so the fixture
+    /// client always takes the trust-on-first-use path.
     fn approve_code(
         store: &FakeGatekeeperStore,
         publisher: &RecordingPublisher,
         id: &str,
         input: ApproveOAuthConsentInput,
-        approver: &Grant,
+        approver_grant: &Grant,
         generate_code: impl FnOnce() -> String,
     ) -> Result<ConsentOutcome, GatekeeperError> {
         approve_oauth_consent(
@@ -402,8 +335,9 @@ mod tests {
             input,
             generate_code,
             &ApprovalContext {
-                approver,
-                registration: &TEST_REGISTRATION,
+                approver_grant,
+                classifier: &TEST_CLASSIFIER,
+                first_party_client_id: crate::FIRST_PARTY_CLIENT_ID,
                 now: Utc::now(),
             },
         )
@@ -412,28 +346,9 @@ mod tests {
     /// An approval of everything requested, acknowledged — the common input.
     fn approved(scopes: &[&str]) -> ApproveOAuthConsentInput {
         ApproveOAuthConsentInput {
-            approved_scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
+            owner_approved_scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
             patient: None,
             acknowledged_registration: true,
-        }
-    }
-
-    /// A [`PendingConsentPublisher`] that just counts republish calls. Uses an
-    /// atomic (not a `Cell`) so it satisfies the port's `Send + Sync` bound.
-    #[derive(Default)]
-    struct RecordingPublisher {
-        republishes: AtomicU32,
-    }
-
-    impl RecordingPublisher {
-        fn count(&self) -> u32 {
-            self.republishes.load(Ordering::Relaxed)
-        }
-    }
-
-    impl PendingConsentPublisher for RecordingPublisher {
-        fn republish_active(&self) {
-            self.republishes.fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -534,7 +449,7 @@ mod tests {
             &publisher,
             "req-1",
             ApproveOAuthConsentInput {
-                approved_scopes: vec!["read".to_owned()],
+                owner_approved_scopes: vec!["read".to_owned()],
                 patient: None,
                 acknowledged_registration: false,
             },
@@ -774,7 +689,7 @@ mod tests {
             &publisher,
             "UC-1",
             ApproveDeviceConsentInput {
-                approved_scopes: vec!["read".to_owned()],
+                owner_approved_scopes: vec!["read".to_owned()],
                 patient: None,
                 device_name: Some("My Phone".to_owned()),
             },
@@ -832,19 +747,19 @@ mod tests {
     #[test]
     fn approve_oauth_consent_rejects_a_resource_scope_the_approver_cannot_delegate() {
         let (store, publisher) = resource_scope_code_store("system/Patient.r");
-        let approver = Grant::parse(["system/Observation.r"]);
+        let approver_grant = Grant::parse(["system/Observation.r"]);
         let result = approve_code(
             &store,
             &publisher,
             "req-1",
             approved(&["system/Patient.r"]),
-            &approver,
+            &approver_grant,
             || panic!("must not mint a code when the approver lacks authority"),
         );
         assert_eq!(
             result,
             Err(GatekeeperError::InsufficientApproverScope {
-                missing_scopes: vec!["system/Patient.r".to_owned()],
+                approver_missing_scopes: vec!["system/Patient.r".to_owned()],
             }),
         );
         assert_eq!(
@@ -868,23 +783,23 @@ mod tests {
         store
             .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
-        let approver = Grant::parse(["system/Observation.r"]);
+        let approver_grant = Grant::parse(["system/Observation.r"]);
         let result = approve_device_consent(
             &store,
             &publisher,
             "UC-1",
             ApproveDeviceConsentInput {
-                approved_scopes: vec!["system/Patient.r".to_owned()],
+                owner_approved_scopes: vec!["system/Patient.r".to_owned()],
                 patient: None,
                 device_name: None,
             },
-            &approver,
+            &approver_grant,
             Utc::now(),
         );
         assert_eq!(
             result,
             Err(GatekeeperError::InsufficientApproverScope {
-                missing_scopes: vec!["system/Patient.r".to_owned()],
+                approver_missing_scopes: vec!["system/Patient.r".to_owned()],
             }),
         );
         assert_eq!(publisher.count(), 0);
@@ -900,17 +815,17 @@ mod tests {
         store
             .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
-        let approver = Grant::parse(["system/*.cruds"]);
+        let approver_grant = Grant::parse(["system/*.cruds"]);
         let outcome = approve_device_consent(
             &store,
             &publisher,
             "UC-1",
             ApproveDeviceConsentInput {
-                approved_scopes: vec!["system/Patient.r".to_owned()],
+                owner_approved_scopes: vec!["system/Patient.r".to_owned()],
                 patient: None,
                 device_name: Some("My Phone".to_owned()),
             },
-            &approver,
+            &approver_grant,
             Utc::now(),
         )
         .unwrap();
@@ -927,11 +842,10 @@ mod tests {
                 Utc::now() + Duration::minutes(5),
             ))
             .unwrap();
-        let loaded =
-            load_pending_authorization_code_request(&store, "req-1").expect("live request");
-        assert_eq!(loaded.request.id, "req-1");
-        assert_eq!(loaded.redirect_uri.as_str(), "https://example.com/cb");
-        assert_eq!(loaded.code_challenge.len(), 43);
+        let loaded = load_pending_code_request(&store, "req-1").expect("live request");
+        assert_eq!(loaded.request().id, "req-1");
+        assert_eq!(loaded.redirect_uri().as_str(), "https://example.com/cb");
+        assert_eq!(loaded.code_challenge().len(), 43);
 
         // Denied / expired / wrong-flow / unknown → OAuthConsentNotFound.
         store
@@ -943,53 +857,10 @@ mod tests {
             .unwrap();
         for id in ["expired", "ghost"] {
             assert_eq!(
-                load_pending_authorization_code_request(&store, id),
+                load_pending_code_request(&store, id),
                 Err(GatekeeperError::OAuthConsentNotFound { id: id.to_owned() }),
             );
         }
-    }
-
-    #[test]
-    fn upsert_authorization_code_grant_inserts_then_unions_scopes() {
-        let store = FakeGatekeeperStore::default();
-        let redirect = url::Url::parse("https://example.com/cb").unwrap();
-
-        upsert_authorization_code_grant(
-            &store,
-            "client-a",
-            &redirect,
-            &["read".to_owned()],
-            Some("pat-1"),
-            Utc::now(),
-            &RegistrationWrite::Untouched,
-        )
-        .unwrap();
-        let first = store
-            .grant_by_client_and_redirect("client-a", &redirect)
-            .unwrap()
-            .expect("grant inserted");
-        assert_eq!(first.scopes, vec!["read".to_owned()]);
-
-        upsert_authorization_code_grant(
-            &store,
-            "client-a",
-            &redirect,
-            &["read".to_owned(), "write".to_owned()],
-            Some("pat-2"),
-            Utc::now(),
-            &RegistrationWrite::Untouched,
-        )
-        .unwrap();
-        let merged = store
-            .grant_by_client_and_redirect("client-a", &redirect)
-            .unwrap()
-            .expect("grant present");
-        assert_eq!(
-            merged.id, first.id,
-            "the same grant is updated, not duplicated"
-        );
-        assert_eq!(merged.scopes, vec!["read".to_owned(), "write".to_owned()]);
-        assert_eq!(merged.patient.as_deref(), Some("pat-2"));
     }
 
     #[test]
@@ -1003,15 +874,56 @@ mod tests {
                 Utc::now() + Duration::minutes(5),
             ))
             .unwrap();
-        let reader = ConsentReader::new(
-            store,
-            Arc::new(NoSelfHostedRedirects),
-            crate::FIRST_PARTY_CLIENT_ID.into(),
-        );
+        let reader = ConsentReader::new(store, Arc::new(NoSelfHostedRedirects));
         let view = reader
             .oauth_consent("req-1", "http://127.0.0.1")
             .expect("view");
         assert_eq!(view.request.id, "req-1");
-        assert_eq!(view.redirect_uri.as_str(), "https://example.com/cb");
+        assert_eq!(
+            view.requested_redirect_uri.as_str(),
+            "https://example.com/cb"
+        );
+    }
+
+    /// A client row the store cannot read fails the prompt read instead of
+    /// rendering as an unknown (`New`) client, on both consent surfaces.
+    #[test]
+    fn consent_reader_surfaces_a_client_read_failure() {
+        use crate::db::SqliteGatekeeperStore;
+        use diesel::RunQueryDsl;
+
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        store.upsert_client(&client("client", &["read"])).unwrap();
+        store
+            .insert_authorization_request(&code_request(
+                "req-1",
+                RequestStatus::Pending,
+                Utc::now() + Duration::minutes(5),
+            ))
+            .unwrap();
+        store
+            .insert_authorization_request(&device_request(
+                "dev-1",
+                "USER-CODE",
+                RequestStatus::Pending,
+            ))
+            .unwrap();
+        let mut conn = store.pool().get().expect("check out a connection");
+        diesel::sql_query(
+            "UPDATE clients SET allowed_scopes = 'not json' WHERE client_id = 'client'",
+        )
+        .execute(&mut conn)
+        .expect("corrupt the stored row");
+        drop(conn);
+
+        let reader = ConsentReader::new(store, Arc::new(NoSelfHostedRedirects));
+        assert!(matches!(
+            reader.oauth_consent("req-1", "http://127.0.0.1"),
+            Err(GatekeeperError::Infrastructure { .. })
+        ));
+        assert!(matches!(
+            reader.device_consent("USER-CODE"),
+            Err(GatekeeperError::Infrastructure { .. })
+        ));
     }
 }

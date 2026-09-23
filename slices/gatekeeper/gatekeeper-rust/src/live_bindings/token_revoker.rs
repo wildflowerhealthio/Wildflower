@@ -8,7 +8,7 @@ use std::sync::Arc;
 use scopes_rust::Scope;
 
 use super::state::GatekeeperState;
-use crate::domain::capabilities::tokens::token_revoker_scopes;
+use crate::domain::capabilities::access::tokens::token_revoker_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, TokenRevoker};
 use crate::domain::token::VerifiedClaims;
 

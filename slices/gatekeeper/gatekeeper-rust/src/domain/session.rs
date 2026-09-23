@@ -16,7 +16,7 @@ use crate::ports::Revocation;
 /// — leaving the session cookie in place would be the worse outcome — so a
 /// failure is logged and swallowed rather than returned. See #218 / #269.
 pub(crate) fn revoke_session_token(
-    revoker: &impl Revocation,
+    revoker: &(impl Revocation + ?Sized),
     jti: &str,
     expires_at: DateTime<Utc>,
 ) {

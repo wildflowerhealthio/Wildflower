@@ -27,11 +27,13 @@ pub enum GatekeeperError {
     /// polling endpoint's 404.
     AuthorizationRequestNotFound { id: String },
     /// An approver tried to grant a client more than they themselves hold —
-    /// the consent approve surfaces' **403**. `missing_scopes` are the rendered
+    /// the consent approve surfaces' **403**. `approver_missing_scopes` are the rendered
     /// scopes the approval would grant that the approver's own token does not
     /// cover ("you can't delegate more permission than you have"). Semantic and
     /// client-facing: the approver must step up (or narrow their approval).
-    InsufficientApproverScope { missing_scopes: Vec<String> },
+    InsufficientApproverScope {
+        approver_missing_scopes: Vec<String>,
+    },
     /// The Owner approved an authorization-code consent whose client is new to
     /// this gatekeeper (or whose redirect / scopes step outside its
     /// registration) without acknowledging that warning — the consent approve
@@ -66,11 +68,13 @@ impl std::fmt::Display for GatekeeperError {
             GatekeeperError::AuthorizationRequestNotFound { id } => {
                 write!(f, "no authorization request with id {id}")
             }
-            GatekeeperError::InsufficientApproverScope { missing_scopes } => {
+            GatekeeperError::InsufficientApproverScope {
+                approver_missing_scopes,
+            } => {
                 write!(
                     f,
                     "approver cannot delegate scopes they do not hold: {}",
-                    missing_scopes.join(" ")
+                    approver_missing_scopes.join(" ")
                 )
             }
             GatekeeperError::RegistrationNotAcknowledged { id } => {

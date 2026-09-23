@@ -30,9 +30,9 @@ proptest! {
             key,
             &NewJwtArgs {
                 client_id: &client_id,
-                scope: &scopes,
+                scopes: &scopes,
                 ttl: Duration::seconds(ttl_seconds),
-                origin: &origin,
+                issuer: &origin,
                 audience: audience.as_deref(),
                 patient: patient.as_deref(),
                 is_host_owner,
@@ -88,9 +88,9 @@ fn verify_rejects_wrong_issuer() {
         &key,
         &NewJwtArgs {
             client_id: "c",
-            scope: &[],
+            scopes: &[],
             ttl: Duration::seconds(60),
-            origin: "tauri://localhost",
+            issuer: "tauri://localhost",
             audience: None,
             patient: None,
             is_host_owner: false,
@@ -141,9 +141,9 @@ fn verify_rejects_when_no_keys() {
 fn owner_args<'a>(client_id: &'a str, origin: &'a str) -> NewJwtArgs<'a> {
     NewJwtArgs {
         client_id,
-        scope: &[],
+        scopes: &[],
         ttl: Duration::seconds(60),
-        origin,
+        issuer: origin,
         audience: None,
         patient: None,
         is_host_owner: false,
