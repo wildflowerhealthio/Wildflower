@@ -2,12 +2,12 @@
 
 The Web Trace viewer, a SMART-on-FHIR app published to
 <https://wildflowerhealth.io/web-trace-app> and launched as a cloud app (with a
-self-hosted `web-trace-app-dev` row in debug builds — see below). It wraps
+`web-trace-app-dev` row in debug builds — see below). It wraps
 [`web-trace-react`](../../slices/web-trace/web-trace-react/AGENTS.md) — the app
 itself holds no viewing logic, only the wiring a self-hosted origin needs.
 
 `apps/medications-app` is the template for the bundle shape (two HTML entries,
-a relative `base`, a build straight into the vendored `self-hosted-apps` tree).
+a relative `base`, a build into the package's own `dist/`).
 What is _not_ shared with it is the auth wiring below.
 
 ## Boot and branding
@@ -120,17 +120,13 @@ package growing a second, prop-threaded way in.
 
 ## Where the bundle is served
 
-Two places, from the same build output:
-
-- **On the published site**, at
-  [`/web-trace-app`](https://wildflowerhealth.io/web-trace-app) — `github-pages`
-  copies the `outDir` into the Pages artifact
-  ([apps/github-pages/README.md](../github-pages/README.md)). This is the
-  **production** launch target: the `web-trace-app` registry row is a _cloud_ row
-  pointing at that URL.
-- **On device**, from the vendored `self-hosted-apps/web-trace` tree this app's
-  `outDir` writes — as the debug-only `web-trace-app-dev` row's fallback content
-  when the vite dev server is not running (see below).
+One place: **the published site**, at
+[`/web-trace-app`](https://wildflowerhealth.io/web-trace-app). `vp build` writes
+this package's default `dist/`, and `github-pages` copies it into the Pages
+artifact ([apps/github-pages/README.md](../github-pages/README.md)). This is the
+**production** launch target: the `web-trace-app` registry row is a _cloud_ row
+pointing at that URL. Nothing ships on device — in development the
+`web-trace-app-dev` row launches the vite dev server instead (see below).
 
 ## Registration
 
@@ -155,12 +151,12 @@ an app up by `client_id`.
 vp run -F wildflower-web-trace dev     # strictPort, from slices/apps/dev-app-ports.json
 ```
 
-Debug builds of the host additionally seed a `web-trace-app-dev` **self-hosted**
-row on that port plus its own OAuth client (`apps-rust`'s `seed_dev_apps` /
+Debug builds of the host additionally seed a `web-trace-app-dev` **cloud** row
+on that port plus its own OAuth client (`apps-rust`'s `seed_dev_apps` /
 `gatekeeper-rust`'s `seed_dev_app_clients`), so the homescreen carries a "Web
-Trace (Dev)" tile that launches whatever is serving that port —
-the vite dev server when it is up, otherwise the host's copy of the vendored
-build. The port has a single source, `slices/apps/dev-app-ports.json`:
+Trace (Dev)" tile that launches whatever is serving that port — the vite dev
+server when it is up, nothing when it is down (there is no fallback build). The
+port has a single source, `slices/apps/dev-app-ports.json`:
 `vite.config.ts` reads it through the shared `devAppServer` helper in the root
 `vite.config.base.ts` and `apps-rust` embeds it, so the dev server and the row
 cannot drift.
@@ -208,6 +204,6 @@ Body decoding and header-row keying are the slice's tests now, in
   store-raw / view-raw / anonymize-at-export asymmetry.
 - [Store and Install Explanation](../../docs/Apps/Store%20and%20Install%20Explanation.md)
   — how a seeded self-hosted app is registered, ported, and served.
-- [self-hosted-apps README](../../slices/apps/self-hosted-apps/README.md) — the
-  vendored-build sync this app's `outDir` feeds.
+- [self-hosted-apps README](../../slices/apps/self-hosted-apps/README.md) — why
+  first-party apps are cloud rows and nothing of this app is vendored.
 - [apps/AGENTS.md](../AGENTS.md) — the rules every app follows.

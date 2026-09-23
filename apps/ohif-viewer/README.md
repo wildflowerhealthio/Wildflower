@@ -101,7 +101,7 @@ A debug build of the host also seeds an `ohif-viewer-dev` row and client
 `dist/` on that port, and `app-config.js` sends the `ohif-viewer-dev` client ID
 when served from a loopback origin.
 
-Unlike the other first-party apps' dev rows, this one is a **cloud** row —
+Like the other first-party apps' dev rows, this one is a **cloud** row —
 `http://localhost:<port>/fhir-viewer?…`, the production launch template against
 the preview origin. Nothing is vendored under `slices/apps/self-hosted-apps/`
 for it, so a self-hosted row would give the host no fallback content to serve

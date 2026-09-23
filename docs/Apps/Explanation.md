@@ -37,8 +37,7 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   origin** (a loopback port, or the user's domain via subdomain dispatch). The
   isolated origin is what lets a Self-Hosted app make data-residence guarantees.
   A Self-Hosted app is either **seeded** (a Wildflower-shipped vendored build,
-  synced into app-data at host startup — Patient Browser, plus the debug-only
-  `…-dev` rows for the first-party apps that have one) or **uploaded** (a
+  synced into app-data at host startup — only Patient Browser) or **uploaded** (a
   user-supplied `.zip` extracted at runtime by the `wildflower/Apps.c`-gated
   `POST /self-hosted-apps` upload endpoint). Both serve the same way; they
   differ only in origin and removability (see the data model).
@@ -71,13 +70,13 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   migrations run unconditionally, so a migration-seeded dev row would exist in
   release databases too.
 
-  Most are Self-Hosted, so the host also binds the port and serves a vendored
-  build whenever vite is not holding it. `ohif-viewer-dev` is Cloud instead: it
-  has no vendored build to fall back to, so a host listener could only contend
-  with the preview server for the port, and a Cloud row leaves that server the
-  only thing on the origin. It pays for this with its OAuth redirect — an
-  app-relative entry resolves only for a Self-Hosted row, so its dev client
-  registers the absolute loopback route instead.
+  The dev rows are Cloud too: the first-party apps build into their own
+  `dist/` for the published site, so there is no vendored build for the host to
+  fall back to. A tile launches whatever is serving the port — the vite (or
+  preview) server when it is up, nothing when it is down — and the host binds no
+  listener that could contend with it. Each pays for this with its OAuth
+  redirect: an app-relative entry resolves only for a Self-Hosted row, so its dev
+  client registers the absolute loopback route instead.
 
 System vs Self-Hosted is about **origin isolation, not where the bytes shipped
 from**: Patient Browser ships inside the download yet is Self-Hosted (it gets its
