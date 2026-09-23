@@ -72,7 +72,6 @@ const fhirR4AllDatatypeNames = [
   'Signature',
   'SimpleQuantity',
   'Timing',
-  'MetaDataTypes',
   'ContactDetail',
   'Contributor',
   'DataRequirement',
