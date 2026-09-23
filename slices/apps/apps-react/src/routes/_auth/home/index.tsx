@@ -26,9 +26,9 @@ import {
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
 import { launchBannerError } from './-launch-error.ts'
-import { launchApp } from './-launch.ts'
+import { launchApp, type LaunchContext, type LaunchOutcome } from './-launch.ts'
 import { reorderApps } from './-reorder.ts'
-import { SortableAppTile } from './-tiles.tsx'
+import { SortableAppTile, type LaunchPlace } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
 
 export interface HomeSearch {
@@ -89,12 +89,43 @@ interface AppsHomeBodyProps {
    * Called with the launch outcome — the encoded `?launchError` body on failure,
    * `right` on success — so the route can reflect it into the search param.
    */
-  readonly onLaunchResult?: (result: Either.Either<void, string>) => void
+  readonly onLaunchResult?: (result: Either.Either<LaunchOutcome, string>) => void
 }
 
 /** Move this tab to a launch URL a forwarded launch answered with. */
 const navigateToLaunch = (url: string): void => {
   window.location.assign(url)
+}
+
+/**
+ * Launch into a new tab. The tab is opened now, inside the click, because a
+ * popup blocker only lets a page open one from a user gesture — not after the
+ * launch request resolves. It then follows the app's URL, or closes again when
+ * the host opened the app natively or the launch failed. `opener` is dropped
+ * before the app loads so it can't reach back into this page.
+ */
+const launchInNewTab = (
+  runAuthed: LaunchContext['runAuthed'],
+  appId: string
+): ReturnType<typeof launchApp> => {
+  const tab = window.open('', '_blank')
+  return launchApp(
+    {
+      runAuthed,
+      navigate: (url) => {
+        if (tab === null) {
+          window.open(url, '_blank', 'noopener,noreferrer')
+          return
+        }
+        tab.opener = null
+        tab.location.replace(url)
+      },
+    },
+    appId
+  ).then((result) => {
+    if (!Either.isRight(result) || result.right !== 'navigated') tab?.close()
+    return result
+  })
 }
 
 const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps): JSX.Element => {
@@ -154,9 +185,13 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
 
   // The outcome (an encoded failure body, or `right` on success) is handed up
   // so the route reflects it into the `?launchError` banner. A forwarded launch
-  // answers a URL, which moves this tab (see `launchApp`).
-  const launch = (app: AppRegistration): void => {
-    void launchApp({ runAuthed, navigate: navigateToLaunch }, app).then((kind) => {
+  // answers a URL, which moves this tab — or the new one (see `launchApp`).
+  const launch = (app: AppRegistration, place: LaunchPlace): void => {
+    const launching =
+      place === 'newTab'
+        ? launchInNewTab(runAuthed, app.id)
+        : launchApp({ runAuthed, navigate: navigateToLaunch }, app.id)
+    void launching.then((kind) => {
       onLaunchResult?.(kind)
     })
   }

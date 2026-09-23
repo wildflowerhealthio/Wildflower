@@ -59,11 +59,11 @@ describe('launchApp', () => {
     const stub = resolvingRunAuthed()
     const nav = recordingNavigate()
 
-    const result = await launchApp({ runAuthed: stub.runAuthed, navigate: nav.navigate }, app)
+    const result = await launchApp({ runAuthed: stub.runAuthed, navigate: nav.navigate }, app.id)
 
     // The launch rides `runAuthed` (not a raw `fetch`), so the owner bearer is
     // attached; a `204` means the host opened the app, so the tab doesn't move.
-    expect(Either.isRight(result)).toBe(true)
+    expect(result).toEqual(Either.right('openedOnHost'))
     expect(stub.calls).toHaveLength(1)
     expect(nav.seen).toEqual([])
   })
@@ -72,9 +72,9 @@ describe('launchApp', () => {
     const stub = resolvingRunAuthed({ url: 'https://patient-browser.demo.example.com/' })
     const nav = recordingNavigate()
 
-    const result = await launchApp({ runAuthed: stub.runAuthed, navigate: nav.navigate }, app)
+    const result = await launchApp({ runAuthed: stub.runAuthed, navigate: nav.navigate }, app.id)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(result).toEqual(Either.right('navigated'))
     expect(nav.seen).toEqual(['https://patient-browser.demo.example.com/'])
   })
 
@@ -85,20 +85,20 @@ describe('launchApp', () => {
     const body = { error: 'InsufficientScope', missingScopes: ['wildflower/launch'] }
     const nav = recordingNavigate()
 
-    const result = await launchApp(ctxRejecting(body, nav), app)
+    const result = await launchApp(ctxRejecting(body, nav), app.id)
 
     expect(launchBannerError(Either.isLeft(result) ? result.left : undefined)).toEqual(body)
     expect(nav.seen).toEqual([])
   })
 
   test('encodes a 503 as a reachability message', async () => {
-    const result = await launchApp(ctxRejecting(responseError(503), recordingNavigate()), app)
+    const result = await launchApp(ctxRejecting(responseError(503), recordingNavigate()), app.id)
 
     expect(launchBannerError(Either.isLeft(result) ? result.left : undefined)).toContain('reached')
   })
 
   test('encodes an unrecognised failure as the generic launch message', async () => {
-    const result = await launchApp(ctxRejecting(new Error('boom'), recordingNavigate()), app)
+    const result = await launchApp(ctxRejecting(new Error('boom'), recordingNavigate()), app.id)
 
     expect(launchBannerError(Either.isLeft(result) ? result.left : undefined)).toBe(
       'That app couldn’t be launched.'
@@ -114,7 +114,7 @@ describe('launchApp', () => {
       (rejection: unknown) => rejection
     )
 
-    const result = await launchApp(ctxRejecting(fiberFailure, recordingNavigate()), app)
+    const result = await launchApp(ctxRejecting(fiberFailure, recordingNavigate()), app.id)
 
     expect(launchBannerError(Either.isLeft(result) ? result.left : undefined)).toEqual(body)
   })

@@ -5,7 +5,6 @@ import { Effect, Either, type Schema } from 'effect'
 import { unwrapFiberFailure } from 'kitchen-sink'
 import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
 
-import type { AppRegistration } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
 import { encodeLaunchError, launchErrorTag, type LaunchErrorBody } from './-launch-error.ts'
 
@@ -22,30 +21,39 @@ type LaunchTarget = Schema.Schema.Type<typeof Schemas.LaunchTargetSchema>
  *   gets one; for a loopback caller the host opened the app in a native popup and
  *   there is nowhere to go. Injected so a test can observe it.
  */
-export interface LaunchContext {
+interface LaunchContext {
   readonly runAuthed: RunAuthed
   readonly navigate: (url: string) => void
 }
 
 /**
- * Launch `app` through `AppsHttpApiClient.LaunchApp` and follow the result:
- * navigate to the URL a forwarded launch answers with, or do nothing when the host
- * opened the app itself. A failure is caught and returned as an encoded
- * `?launchError` body (see {@link postLaunch}), not thrown to the click handler.
+ * How a successful launch ended: the page was sent to the app's URL (a
+ * forwarded launch), or the host opened the app itself in a native popup (a
+ * loopback launch), leaving nowhere to navigate.
+ */
+type LaunchOutcome = 'navigated' | 'openedOnHost'
+
+/**
+ * Launch the app `appId` through `AppsHttpApiClient.LaunchApp` and follow the
+ * result: navigate to the URL a forwarded launch answers with, or do nothing
+ * when the host opened the app itself. A failure is caught and returned as an
+ * encoded `?launchError` body (see {@link postLaunch}), not thrown to the
+ * caller.
  *
- * Returns that body on failure, for the caller to reflect into the home route's
- * search (so the banner names the missing scopes for a `403`).
+ * Returns the {@link LaunchOutcome}, or that body on failure, for the caller to
+ * reflect into the home route's search (so the banner names the missing scopes
+ * for a `403`).
  */
 const launchApp = async (
   ctx: LaunchContext,
-  app: AppRegistration
-): Promise<Either.Either<void, string>> => {
-  const launched = await postLaunch(ctx.runAuthed, app.id)
-  if (Either.isRight(launched) && launched.right !== undefined) {
-    ctx.navigate(launched.right.url)
-    return Either.right(undefined)
-  }
-  return Either.map(launched, () => undefined)
+  appId: string
+): Promise<Either.Either<LaunchOutcome, string>> => {
+  const launched = await postLaunch(ctx.runAuthed, appId)
+  return Either.map(launched, (target): LaunchOutcome => {
+    if (target === undefined) return 'openedOnHost'
+    ctx.navigate(target.url)
+    return 'navigated'
+  })
 }
 
 /**
@@ -85,6 +93,5 @@ const postLaunch = async (
   }
 }
 
-// `LaunchContext` stays an inline `export interface` above; the functions are
-// grouped here to satisfy `import/group-exports` (one export decl).
 export { launchApp }
+export type { LaunchContext, LaunchOutcome }

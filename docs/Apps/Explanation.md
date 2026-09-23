@@ -225,7 +225,12 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
   `204`s after the host opens the app in a native popup. A forwarded launch (the
   hosted owner UI reaching the server through its tunnel) answers `200 { url }`,
   and the page navigates the tab there — a redirect would be followed invisibly by
-  `fetch` rather than moving the tab.
+  `fetch` rather than moving the tab. A home tile is a real link to the owner
+  UI's launch route (`/home/launch/{id}`, carrying `?server=`): a plain click
+  launches in place, and a ctrl/cmd/shift or middle click opens the new tab
+  inside the click (so no popup blocker stops it) and launches into it on this
+  page's session. A tab the browser opens by itself from the link signs in on
+  arrival, then the route launches.
 
 Separately, a Self-Hosted app reachable remotely is served by the host's
 **subdomain reverse proxy**: a forwarded `<id>.<public_host>` request is proxied

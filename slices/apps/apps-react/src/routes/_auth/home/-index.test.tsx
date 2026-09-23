@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // `AppsHomeBody` reads its home-screen mutation from `queries.ts` and two
@@ -25,6 +26,22 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     createFileRoute: () => (options: unknown) => options,
     // The body reads `runAuthed` off the root context.
     useRouteContext: ({ select }: { select: (ctx: unknown) => unknown }) => select(routeContext),
+    // A tile's launch link: a plain anchor at the route's path, so the tile
+    // renders without a router.
+    Link: ({
+      to,
+      params,
+      children,
+      ...rest
+    }: {
+      readonly to: string
+      readonly params: { readonly id: string }
+      readonly children: ReactNode
+    }) => (
+      <a href={to.replace('$id', params.id)} {...rest}>
+        {children}
+      </a>
+    ),
   }
 })
 
@@ -211,17 +228,68 @@ describe('<AppsHomeBody> live content', () => {
 })
 
 describe('<AppsHomeBody> launch tiles', () => {
-  afterEach(() => {
-    cleanup()
+  beforeEach(() => {
+    // The host opened the app (a loopback `204`): `LaunchApp` resolves empty.
+    routeContext.runAuthed.mockReset()
+    routeContext.runAuthed.mockResolvedValue(undefined)
   })
 
-  test('each view-mode tile is a launch button, not a link', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  test('each view-mode tile is a link to its app’s launch route', () => {
     render(<AppsHomeBody apps={[APP]} />)
 
-    // Launching goes through the authed client (see `-launch.ts`), so the tile
-    // is a button; a link would navigate to the server without the bearer.
-    expect(screen.queryByRole('link')).toBeNull()
-    // (The sortable `<li>` is also role=button, so find the real element.)
-    expect(screen.getByText('Cloud App').closest('button')).not.toBeNull()
+    // A real link, so hover shows it and right-click → "Open in new tab" works.
+    const link = screen.getByRole('link', { name: /Cloud App/ })
+    expect(link.getAttribute('href')).toBe('/home/launch/cloud-app')
+  })
+
+  test('a plain click launches here, through this page’s session', () => {
+    const open = vi.spyOn(window, 'open')
+    render(<AppsHomeBody apps={[APP]} />)
+
+    const followed = fireEvent.click(screen.getByRole('link', { name: /Cloud App/ }))
+
+    expect(followed).toBe(false)
+    expect(routeContext.runAuthed).toHaveBeenCalledTimes(1)
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  test('a cmd/ctrl click opens a tab inside the click, then launches into it', async () => {
+    // Arrange — the tab the page opens; the host opens this app natively, so
+    // the tab has nothing to show and closes again.
+    const tab = { close: vi.fn(), opener: null, location: { replace: vi.fn() } }
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a stand-in for the opened Window
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
+    render(<AppsHomeBody apps={[APP]} />)
+
+    // Act
+    const followed = fireEvent.click(screen.getByRole('link', { name: /Cloud App/ }), {
+      ctrlKey: true,
+    })
+
+    // Assert — opened synchronously (popup blockers allow it only there), the
+    // launch still rides this page's bearer, and the empty tab closes.
+    expect(followed).toBe(false)
+    expect(open).toHaveBeenCalledWith('', '_blank')
+    expect(routeContext.runAuthed).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(tab.close).toHaveBeenCalled()
+    })
+  })
+
+  test('a right click is left to the browser', () => {
+    render(<AppsHomeBody apps={[APP]} />)
+
+    const followed = fireEvent(
+      screen.getByRole('link', { name: /Cloud App/ }),
+      new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 })
+    )
+
+    expect(followed).toBe(true)
+    expect(routeContext.runAuthed).not.toHaveBeenCalled()
   })
 })
