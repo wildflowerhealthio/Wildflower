@@ -67,12 +67,9 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    */
   readonly firstPartyClientId?: string
   /**
-   * The served root of this copy of the owner UI (e.g.
-   * `https://wildflowerhealth.io/app/`, or a PR preview's
-   * `…/staging/pr-<n>/app/`). Read by the gatekeeper slice's `NeedsAuthMessage`,
-   * which names it on the device-flow request so the `verification_uri` points
-   * back at this copy. Set by `main-web`; omitted on Tauri, whose pages the
-   * host's configured owner UI already serves.
+   * The served root of this copy of the owner UI, which the gatekeeper slice's
+   * `NeedsAuthMessage` names on its device-flow request. Set by `main-web`;
+   * omitted on Tauri.
    */
   readonly clientBaseUrl?: string
   /**

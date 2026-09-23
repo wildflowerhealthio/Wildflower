@@ -26,10 +26,8 @@ pub struct DeviceAuthorizationPayload {
     /// surfaced to the approver. Absent for strict RFC clients.
     pub device_name: Option<String>,
     /// Wildflower extension: the served root of the owner UI copy starting the
-    /// pairing. For a first-party client the `verification_uri`s resolve there
-    /// rather than on the configured owner UI; any other client's value is
-    /// ignored. Must be an absolute `http`/`https` URL — see
-    /// [`crate::domain::client_base_url`].
+    /// pairing, which a first-party client's `verification_uri`s resolve on —
+    /// see [`crate::domain::client_base_url`].
     pub wildflower_client_base_url: Option<String>,
 }
 

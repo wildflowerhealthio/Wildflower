@@ -112,7 +112,7 @@
           {
             "name": "wildflower_client_base_url",
             "in": "query",
-            "description": "Wildflower extension: the served root of the owner UI copy starting\nthis sign-in (e.g. `https://wildflowerhealth.io/app/`, or a PR\npreview's `…/staging/pr-<n>/app/`). For a first-party client the polling\npage resolves there rather than on the configured owner UI; any other\nclient's value is ignored. Must be an absolute `http`/`https` URL — see\n[`crate::domain::client_base_url`].",
+            "description": "Wildflower extension: the served root of the owner UI copy signing in,\nwhich a first-party client's polling page resolves on — see\n[`crate::domain::client_base_url`].",
             "required": false,
             "schema": {
               "type": "string"

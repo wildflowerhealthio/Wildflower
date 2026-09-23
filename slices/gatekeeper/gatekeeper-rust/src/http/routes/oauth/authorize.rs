@@ -137,11 +137,8 @@ pub struct AuthorizeParams {
     /// <https://github.com/Assessment-is/Wildflower/issues/257>.
     #[serde(default)]
     pub aud: Option<String>,
-    /// Wildflower extension: the served root of the owner UI copy starting
-    /// this sign-in (e.g. `https://wildflowerhealth.io/app/`, or a PR
-    /// preview's `…/staging/pr-<n>/app/`). For a first-party client the polling
-    /// page resolves there rather than on the configured owner UI; any other
-    /// client's value is ignored. Must be an absolute `http`/`https` URL — see
+    /// Wildflower extension: the served root of the owner UI copy signing in,
+    /// which a first-party client's polling page resolves on — see
     /// [`crate::domain::client_base_url`].
     #[serde(default)]
     pub wildflower_client_base_url: Option<String>,

@@ -134,12 +134,9 @@ type SignInStep<A> =
   | { readonly tag: 'Failed'; readonly reason: string }
 
 /**
- * The served root of the copy at `href` — its origin plus `basePath` — which the
- * page names to the server as gatekeeper-core's `CLIENT_BASE_URL_PARAM` so the
- * pages the server hands back (the `/authorize` polling page, the device-flow
- * `verification_uri`, logout's landing) resolve on this copy rather than on the
- * host's configured owner UI. `undefined` for a page not served over
- * `http`/`https`, which the server would reject.
+ * The served root of the copy at `href` — its origin plus `basePath` — named to
+ * the server as gatekeeper-core's `CLIENT_BASE_URL_PARAM`. `undefined` for a
+ * page not served over `http`/`https`, which the server would reject.
  *
  * @example clientBaseUrlFor('https://wildflowerhealth.io/app/settings', '/app/') // 'https://wildflowerhealth.io/app/'
  */

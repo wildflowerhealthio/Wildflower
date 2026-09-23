@@ -1,14 +1,7 @@
-//! Which owner UI a first-party client's browser-facing pages resolve on.
-//!
-//! The host configures one hosted owner UI ([`OwnerUiBase`]), but a copy of that
-//! UI can be served from anywhere — the published `/app/`, a PR preview under
-//! `/staging/pr-<n>/app/`, a local dev server. A first-party client names the
-//! copy it runs from with the non-standard [`CLIENT_BASE_URL_PARAM`] on
-//! `/oauth/authorize`, `/oauth/device_authorization` and `/access/logout`, and
-//! the pages those endpoints hand back (the polling page, the device-flow
-//! `verification_uri`, logout's landing) resolve on that copy instead of the
-//! configured one. Any other client — and a first-party client that names none —
-//! gets the configured base.
+//! Which owner UI a first-party client's browser-facing pages resolve on: the
+//! copy it names with [`CLIENT_BASE_URL_PARAM`], or the configured
+//! [`OwnerUiBase`]. The concept is the "Client base URL" entry of
+//! `slices/gatekeeper/docs/Jargon Explanation.md`.
 
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use url::Url;

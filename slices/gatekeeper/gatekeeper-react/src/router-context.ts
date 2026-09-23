@@ -36,11 +36,9 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
    */
   readonly firstPartyClientId?: string
   /**
-   * The served root of the owner UI copy this slice is mounted in, threaded by
-   * the web entry. `NeedsAuthMessage` names it on its device-authorization
-   * request (gatekeeper-core's `CLIENT_BASE_URL_PARAM`) so the returned
-   * `verification_uri` points back at this copy. Omitted on Tauri, where the
-   * host's configured owner UI is already the right one.
+   * The served root of the owner UI copy this slice is mounted in, which
+   * `NeedsAuthMessage` names as gatekeeper-core's `CLIENT_BASE_URL_PARAM`.
+   * Threaded by the web entry; omitted on Tauri.
    */
   readonly clientBaseUrl?: string
 }
