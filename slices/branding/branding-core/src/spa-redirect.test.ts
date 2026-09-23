@@ -81,6 +81,18 @@ describe('restoredUrl', () => {
     ).toBe('/medications-app/')
   })
 
+  it('should keep a route named like the app directory when the path is site-absolute', () => {
+    // What 404.html sends for `/medications-app/medications-app`; app-relative
+    // (`?redirect=/medications-app`) it would read as the app root.
+    expect(
+      restoredUrl({
+        pathname: '/medications-app/',
+        search: '?redirect=/medications-app/medications-app',
+        hash: '',
+      })
+    ).toBe('/medications-app/medications-app')
+  })
+
   it('should return undefined when the load carries no redirect', () => {
     expect(
       restoredUrl({ pathname: '/medications-app/', search: '?iss=https%3A%2F%2Fx', hash: '' })
@@ -134,35 +146,18 @@ describe('restoredUrl', () => {
     )
   })
 
-  it('should restore the deep link the 404 page was reached by', () => {
+  it('should always restore the deep link the 404 page was reached by', () => {
     fc.assert(
       fc.property(basenameArb, routeArb, otherParametersArb, (basename, route, others) => {
-        // What the reader typed, before GitHub Pages fell through to 404.html.
+        // What the reader typed, before GitHub Pages fell through to 404.html —
+        // which passes that path on as is, site-absolute.
         const deepLink = `${basename}${route.replace(/^\/+/, '')}`
-        const url = restoredUrl({ pathname: basename, search: searchFor(route, others), hash: '' })
+        const url = restoredUrl({
+          pathname: basename,
+          search: searchFor(deepLink, others),
+          hash: '',
+        })
         expect(parse(url ?? '').pathname).toBe(deepLink)
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-
-  it('should read a site-absolute and an app-relative route the same way', () => {
-    fc.assert(
-      fc.property(basenameArb, routeArb, (basename, route) => {
-        const siteAbsolute = `${basename}${route.replace(/^\/+/, '')}`
-        expect(
-          restoredUrl({
-            pathname: basename,
-            search: searchFor(siteAbsolute, new URLSearchParams()),
-            hash: '',
-          })
-        ).toBe(
-          restoredUrl({
-            pathname: basename,
-            search: searchFor(route, new URLSearchParams()),
-            hash: '',
-          })
-        )
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )

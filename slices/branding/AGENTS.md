@@ -29,8 +29,10 @@ the homepage and absolute from an app.
 
 GitHub Pages serves one `404.html` for every path it has no file for.
 `apps/github-pages/404.html` probes ancestor directories for an `index.html`,
-redirects to the deepest one that answers, and passes the leftover route along
-as `?redirect=<route>`. `restoreRedirectedUrl(window)` is the other half: each
+redirects to the deepest one that answers, and passes the requested path along,
+site-absolute, as `?redirect=<path>` (an app-relative route named like the
+app's own directory, `/app` below `/app/`, would read as the app root).
+`restoreRedirectedUrl(window)` is the other half: each
 first-party SPA entry (`apps/medications-app`, `apps/importer-web`,
 `apps/web-trace`, `apps/wildflower-server-docs`) calls it as its first statement,
 before the router, the SMART callback check, or the `?server=` read — it puts

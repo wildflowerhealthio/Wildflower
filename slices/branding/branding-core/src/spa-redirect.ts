@@ -1,10 +1,11 @@
 /**
  * The query parameter `apps/github-pages/404.html` carries an unresolved
- * deep-link route in.
+ * deep link's path in, site-absolute.
  *
  * @remarks
  * `/medications-app/anything?iss=…` lands on
- * `/medications-app/?redirect=/anything&iss=…` instead of an error page.
+ * `/medications-app/?redirect=/medications-app/anything&iss=…` instead of an
+ * error page.
  * Completing that redirect is the app's half of the contract
  * ({@link restoreRedirectedUrl}); both halves are described under "The 404
  * redirect" in `slices/branding/AGENTS.md`.
