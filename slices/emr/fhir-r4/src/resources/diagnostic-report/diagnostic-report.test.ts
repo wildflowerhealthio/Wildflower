@@ -4,6 +4,7 @@ import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
 import {
   Attachment,
@@ -156,7 +157,7 @@ describe('FhirR4DiagnosticReport', () => {
   test('property: effective[x] choice field round-trips', () => {
     fc.assert(
       fc.property(
-        overrideArb({
+        atMostOnePopulatedSlot({
           effectiveDateTime: Schema.NullOr(Schema.DateTimeUtc),
           effectivePeriod: Schema.NullOr(Period.Schema),
         }),

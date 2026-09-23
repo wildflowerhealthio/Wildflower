@@ -4,7 +4,10 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
-import { choiceElementSetPassthroughFields } from '../../data-types/base/choice-element-passthrough-fields.ts'
+import {
+  filterForExclusiveChoiceElementSet,
+  choiceElementSetPassthroughFields,
+} from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
@@ -288,7 +291,22 @@ const ServiceRequestStruct = Schema.extend(
       relevantHistory: referenceArray,
     })
   )
-).annotations({ jsonSchema: serviceRequestJsonSchema })
+)
+  .pipe(
+    filterForExclusiveChoiceElementSet(
+      'quantity',
+      ChoiceElementSet.FhirR4SetChoices['ServiceRequest.quantity[x]']
+    ),
+    filterForExclusiveChoiceElementSet(
+      'occurrence',
+      ChoiceElementSet.FhirR4SetChoices['ServiceRequest.occurrence[x]']
+    ),
+    filterForExclusiveChoiceElementSet(
+      'asNeeded',
+      ChoiceElementSet.FhirR4SetChoices['ServiceRequest.asNeeded[x]']
+    )
+  )
+  .annotations({ jsonSchema: serviceRequestJsonSchema })
 
 const ServiceRequestSchema: Schema.Schema<
   typeof ServiceRequestStruct.Type,

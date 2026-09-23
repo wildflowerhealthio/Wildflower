@@ -4,6 +4,7 @@ import { AnnotateArrayWithArbitrary, TimelessDateFromString } from 'kitchen-sink
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import {
   Address,
   AdministrativeGender,
@@ -242,11 +243,7 @@ describe('FhirR4Patient', () => {
       Schema.Struct({
         active: Schema.NullOr(Schema.Boolean),
         birthDate: Schema.NullOr(TimelessDateFromString),
-        deceasedBoolean: Schema.NullOr(Schema.Boolean),
-        deceasedDateTime: Schema.NullOr(Schema.DateTimeUtc),
         gender: Schema.NullOr(AdministrativeGender),
-        multipleBirthBoolean: Schema.NullOr(Schema.Boolean),
-        multipleBirthInteger: Schema.NullOr(Schema.Int),
         language: Schema.NullOr(Code),
         implicitRules: Schema.NullOr(Schema.URL),
         meta: Schema.NullOr(Meta.Schema),
@@ -257,6 +254,28 @@ describe('FhirR4Patient', () => {
       {
         numRuns: numRunsFor({ base: 100 }),
       }
+    )
+  })
+
+  test('property: deceased[x] choice field round-trips', () => {
+    const deceasedArb = atMostOnePopulatedSlot({
+      deceasedBoolean: Schema.NullOr(Schema.Boolean),
+      deceasedDateTime: Schema.NullOr(Schema.DateTimeUtc),
+    })
+    fc.assert(
+      fc.property(deceasedArb, (override) => roundTrip({ ...samplePatient, ...override })),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  test('property: multipleBirth[x] choice field round-trips', () => {
+    const multipleBirthArb = atMostOnePopulatedSlot({
+      multipleBirthBoolean: Schema.NullOr(Schema.Boolean),
+      multipleBirthInteger: Schema.NullOr(Schema.Int),
+    })
+    fc.assert(
+      fc.property(multipleBirthArb, (override) => roundTrip({ ...samplePatient, ...override })),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
