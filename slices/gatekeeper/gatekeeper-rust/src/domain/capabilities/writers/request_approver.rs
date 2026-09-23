@@ -17,9 +17,8 @@ use crate::domain::{GatekeeperStore, GatekeeperTx};
 /// On whose authority a code-flow request is approved — the two proofs that
 /// may issue an authorization code. Listing them here is the point: a reader
 /// auditing "who can issue a code with no human?" finds
-/// [`StandingGrant`](Self::StandingGrant) by name. It is an enum rather than a
-/// trait the two proofs implement for the same reason: a trait is open, so the
-/// set of authorities would be wherever its impls are, not one list here.
+/// [`StandingGrant`](Self::StandingGrant) by name — an enum, not a trait, for
+/// the reason in the [`authority` module docs](crate::domain::authority).
 pub(crate) enum CodeAuthority<'a> {
     /// The Owner approved the prompt.
     OwnerDelegated(&'a DelegatedScopes),

@@ -42,8 +42,7 @@ pub(crate) struct PresentedAuthorizationCode<'a> {
 }
 
 /// A redemption that may start a refresh-token family: the two grants that
-/// establish a session rather than renew one. An enum, like
-/// [`TokenEntitlement`], so the set is closed and listed here.
+/// establish a session rather than renew one.
 #[derive(Clone, Copy)]
 pub(crate) enum GrantRedemption<'a> {
     /// An authorization code redeemed at `/oauth/token`.

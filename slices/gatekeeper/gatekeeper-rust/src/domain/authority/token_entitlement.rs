@@ -7,10 +7,9 @@
 use super::host_owner_entitlement::HostOwnerEntitlement;
 use super::redemption::{ConsumedDeviceRequest, RedeemedAuthorizationCode, ValidatedRefreshToken};
 
-/// The proof a token is minted under. An enum rather than a trait on purpose:
-/// the variants below are the whole answer to "what can a token be minted
-/// for?", readable in one place, and a new source of token authority has to be
-/// added here, where an audit looks.
+/// The proof a token is minted under. The variants are the whole answer to
+/// "what can a token be minted for?" — an enum, not a trait, for the reason in
+/// the [module docs](super).
 #[derive(Clone, Copy)]
 pub(crate) enum TokenEntitlement<'a> {
     /// The host's own owner token, minted from configuration at boot.
