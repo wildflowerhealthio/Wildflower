@@ -3,6 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <title>Redirecting&hellip;</title>
+    <meta name="color-scheme" content="light dark" />
+    <style>
+      /* Paint the design system's page canvas (`--color-canvas` in
+       * react-tundraish's colors-custom.css) for the moment this page is on
+       * screen, so the redirect doesn't flash white at dark-mode users. */
+      html {
+        background-color: #dedede;
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background-color: #161616;
+        }
+      }
+    </style>
     <script>
       // GitHub Pages SPA redirect.  Probes for the deepest ancestor path
       // that serves an index.html and redirects there, passing the leftover

@@ -30,6 +30,10 @@ root by `assemble.ts`, not by any section — probes ancestor directories for an
 `index.html`, redirects to the deepest one that answers, and hands the leftover
 route over as `?redirect=<route>` alongside whatever query the link carried.
 
+While it probes, the page paints the design system's `--color-canvas` for the
+visitor's `prefers-color-scheme`, so dark-mode users don't see a white flash;
+`assembly.test.ts` pins those colors to `react-tundraish`'s palette.
+
 Completing that redirect is the app's half of the contract. Every first-party
 SPA calls `restoreRedirectedUrl(window)` (from `branding-core`) as the first
 statement of its entry module, which rewrites the address bar with

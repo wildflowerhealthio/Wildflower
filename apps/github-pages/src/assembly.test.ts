@@ -188,6 +188,25 @@ describe('site-wide files', () => {
     expect(content).toContain('redirect')
     expect(content).toContain('index.html')
   })
+
+  it('paints the 404.html with the design system canvas in both color schemes', () => {
+    // The redirect page is on screen briefly before it hands off; painting the
+    // same canvas the apps do avoids a white flash for dark-mode users.
+    // Reading the values from the palette makes this fail if the canvas moves.
+    const palette = readFileSync(
+      join(repoRoot, 'global', 'react-tundraish', 'src', 'colors-custom.css'),
+      'utf8'
+    )
+    const canvases = [...palette.matchAll(/--color-canvas:\s*(#[0-9a-f]{3,8})/gi)].map(
+      ([, hex]) => hex ?? ''
+    )
+    expect(canvases).toHaveLength(2)
+    const [light, dark] = canvases
+    const content = readFileSync(join(repoRoot, 'apps', 'github-pages', '404.html'), 'utf8')
+    const [base, darkBlock] = content.split('@media (prefers-color-scheme: dark)')
+    expect(base).toContain(`background-color: ${light}`)
+    expect(darkBlock).toContain(`background-color: ${dark}`)
+  })
 })
 
 describe('layout reconciliation with the packages it assembles', () => {
