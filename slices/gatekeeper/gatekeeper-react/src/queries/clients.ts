@@ -50,14 +50,19 @@ const useSetClientDisabledMutation = (): UseMutationResult<
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ clientId, action }) =>
-      runAuthed(
+    mutationFn: ({ clientId, action }) => {
+      // `HttpApiClient` splices path params in raw, and trust on first use
+      // admits any `client_id` string — a URL-shaped one (`https://app/cb`)
+      // would otherwise split into extra segments and miss the route.
+      const path = { clientId: encodeURIComponent(clientId) }
+      return runAuthed(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           action === 'disable'
-            ? c['access-management'].DisableClient({ path: { clientId } })
-            : c['access-management'].EnableClient({ path: { clientId } })
+            ? c['access-management'].DisableClient({ path })
+            : c['access-management'].EnableClient({ path })
         )
-      ),
+      )
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: CLIENTS_QUERY_KEY })
     },
