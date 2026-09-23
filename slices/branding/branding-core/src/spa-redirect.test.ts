@@ -261,6 +261,19 @@ describe('redirectedUrl', () => {
     expect(redirectedUrl({ pathname: '/other/x', search: '', hash: '' }, '/app/')).toBeUndefined()
   })
 
+  it('should keep a route named like the app directory, not mistake it for the app root', () => {
+    // A route `/app` below the app `/app/`: sent app-relative (`?redirect=/app`)
+    // it reads as "the basename without its slash", i.e. the root. (The
+    // counterexample fast-check found: basename `/-/`, route `/-`.)
+    const landed = parse(
+      redirectedUrl({ pathname: '/app/app', search: '', hash: '' }, '/app/') ?? ''
+    )
+
+    const restored = restoredUrl({ pathname: landed.pathname, search: landed.search, hash: '' })
+
+    expect(restored).toBe('/app/app')
+  })
+
   it('should always be undone by restoredUrl', () => {
     fc.assert(
       fc.property(basenameArb, routeArb, otherParametersArb, (basename, route, others) => {

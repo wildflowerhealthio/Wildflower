@@ -102,22 +102,28 @@ const restoredUrl = (location: RestorableLocation): string | undefined => {
  *
  * @param location - The deep link the browser asked for
  * @param basename - The app's directory, slash-suffixed
- * @returns `basename` with the route below it set as {@link REDIRECT_PARAM}
- *   and every other parameter and the fragment preserved — or `undefined` when
- *   `location` is the app root itself or lies outside `basename`
+ * @returns `basename` with the deep link's full path set as
+ *   {@link REDIRECT_PARAM} and every other parameter and the fragment
+ *   preserved — or `undefined` when `location` is the app root itself or lies
+ *   outside `basename`
+ *
+ * @remarks
+ * The path goes over site-absolute, not app-relative as `404.html` sends it.
+ * {@link restoredUrl} accepts both, but an app-relative route named like the
+ * app's own directory (`/app` below `/app/`) is indistinguishable from the
+ * basename without its trailing slash, and restores to the app root.
  *
  * @example
  * ```ts
- * redirectedUrl({ pathname: '/gatekeeper/devices', search: '?server=x', hash: '' }, '/')
- * // → '/?server=x&redirect=%2Fgatekeeper%2Fdevices'
+ * redirectedUrl({ pathname: '/app/gatekeeper/devices', search: '?server=x', hash: '' }, '/app/')
+ * // → '/app/?server=x&redirect=%2Fapp%2Fgatekeeper%2Fdevices'
  * ```
  */
 const redirectedUrl = (location: RestorableLocation, basename: string): string | undefined => {
   if (!location.pathname.startsWith(basename)) return undefined
-  const route = location.pathname.slice(basename.length)
-  if (route === '') return undefined
+  if (location.pathname === basename) return undefined
   const parameters = new URLSearchParams(location.search)
-  parameters.set(REDIRECT_PARAM, `/${route}`)
+  parameters.set(REDIRECT_PARAM, location.pathname)
   return `${basename}?${parameters.toString()}${location.hash}`
 }
 
