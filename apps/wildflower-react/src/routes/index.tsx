@@ -6,13 +6,13 @@ import {
   searchWithServerUrl,
   serverUrlFromSearch,
 } from 'gatekeeper-core/smart-client'
-import { type JSX, type SubmitEvent, useEffect, useState } from 'react'
+import { type JSX, type SubmitEvent, useEffect, useRef, useState } from 'react'
 import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitchen-sink'
 import { TextField, pageLayoutStyles } from 'react-tundraish'
 
 import { localNetworkAccessHint } from '../local-network-hint.ts'
 import type { RouterContext } from '../router-context.ts'
-import { rememberReturnTo, signInEnvironment, startSignIn } from '../sign-in.ts'
+import { rememberReturnTo, signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
 import { apiServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
 
 const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
@@ -68,15 +68,65 @@ function LandingRoute(): JSX.Element {
   return <Landing bootSignInProblem={bootProblem} />
 }
 
+/** How the landing page starts a sign-in and leaves for it — injected by tests. */
+interface LandingSignIn {
+  /** Begin a SMART sign-in against `target`, yielding the authorization URL. */
+  readonly start: (target: string) => Promise<SignInStep<string>>
+  /** Leave for the authorization server at `authorizationUrl`. */
+  readonly leave: (authorizationUrl: string) => void
+}
+
 /**
- * The web entry's landing page: pick a server, then sign in to it.
+ * The real {@link LandingSignIn}. Sign-in only starts from this landing, which
+ * sits at the app root, so the page's own directory is the served base — the
+ * same value `main-web` hands the router and the callback re-derives (see
+ * `sign-in.ts`). The gate's `?returnTo=` is stashed just before leaving, because
+ * the registered redirect URI drops it.
+ */
+const browserSignIn: LandingSignIn = {
+  start: (target) =>
+    startSignIn(target, signInEnvironment(window, basenameOf(window.location.pathname))),
+  leave: (authorizationUrl) => {
+    rememberReturnTo(window)
+    window.location.assign(authorizationUrl)
+  },
+}
+
+/**
+ * Whether the landing should start signing in as soon as it opens, rather than
+ * wait for a click: the page was opened already naming a usable server (a
+ * server's own link into the app, or the auth gate's bounce), that server is
+ * reachable from this page, and no sign-in has just failed — retrying one on
+ * arrival would loop the reader through the authorization server.
+ */
+const shouldSignInOnArrival = (arrival: {
+  readonly hasServerInUrl: boolean
+  readonly blockedReason: string | undefined
+  readonly bootSignInProblem: string | undefined
+}): boolean =>
+  arrival.hasServerInUrl &&
+  arrival.blockedReason === undefined &&
+  arrival.bootSignInProblem === undefined
+
+/**
+ * The web entry's landing page: pick a server, then sign in to it. Opened
+ * already naming a server, it signs in straight away (see
+ * {@link shouldSignInOnArrival}).
  *
  * @param bootSignInProblem - Why a sign-in failed on the *previous* page load,
  *   before this tree existed. `main-web` redeems the authorization code
  *   ahead of mounting the router, so that failure has to be carried in rather
  *   than raised here. Seeds the state once; a fresh attempt replaces it.
+ * @param signIn - How to start a sign-in and leave for it; the browser's own by
+ *   default.
  */
-function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string }): JSX.Element {
+function Landing({
+  bootSignInProblem,
+  signIn = browserSignIn,
+}: {
+  readonly bootSignInProblem?: string
+  readonly signIn?: LandingSignIn
+}): JSX.Element {
   const navigate = useNavigate()
   const authSignal = useSubscribable(useAuthStateSubscribable())
   const [subdomain, setSubdomain] = useState('')
@@ -93,8 +143,6 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
   useEffect(() => {
     if (authed) void navigate({ to: '/home' })
   }, [authed, navigate])
-
-  if (authed) return <></>
 
   // The server this page is pointed at — the same resolution `web-entry.ts`
   // gives the transport, so the token is asked of whichever server the requests
@@ -117,16 +165,9 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
   const signInTo = (target: string): void => {
     setLeavingToSignIn(true)
     setSignInProblem(undefined)
-    // Sign-in only starts from this landing, which sits at the app root, so the
-    // page's own directory is the served base — the same value `main-web` hands
-    // the router and the callback re-derives. See `sign-in.ts`.
-    const basePath = basenameOf(window.location.pathname)
-    void startSignIn(target, signInEnvironment(window, basePath)).then((started) => {
+    void signIn.start(target).then((started) => {
       if (started.tag === 'Ok') {
-        // Carry the gate's `?returnTo=` across the redirect: the registered
-        // redirect URI drops it, so it is stashed just before leaving.
-        rememberReturnTo(window)
-        window.location.assign(started.value)
+        signIn.leave(started.value)
         return
       }
       setLeavingToSignIn(false)
@@ -178,6 +219,21 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
   // says something else names the wrong server on the one control that hands
   // out a token.
   const hasServerInUrl = serverUrlFromSearch(window.location.search) !== undefined
+
+  // Sign in on arrival, once. The ref keeps a re-render (or StrictMode's double
+  // effect) from starting a second flow while the first is still in hand.
+  const signedInOnArrival = useRef(false)
+  const signInOnArrival =
+    !authed && shouldSignInOnArrival({ hasServerInUrl, blockedReason, bootSignInProblem })
+  useEffect(() => {
+    if (!signInOnArrival || signedInOnArrival.current) return
+    signedInOnArrival.current = true
+    signInTo(serverUrl)
+    // `signInTo` is rebuilt every render; the ref, not the deps, is the guard.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [signInOnArrival, serverUrl])
+
+  if (authed) return <></>
 
   // A failed attempt outranks the up-front warning: the reader has already
   // acted, so what went wrong is the more useful thing to read.
@@ -243,11 +299,10 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
         </div>
 
         <div style={{ marginTop: 'var(--space-9)', display: 'grid', gap: 'var(--space-5)' }}>
-          {/* Shown only when a server is already chosen — a reader who arrived
-              on a shared link, or who was bounced here by the auth gate, has
-              nothing to pick and just needs the way back in. Picking a server
-              above signs in on its own, so this would be a dead second step
-              otherwise. */}
+          {/* Shown only when a server is already chosen. Such a page signs in
+              on arrival, so this is the way back in when that couldn't run or
+              failed (the reason shows below). Picking a server above signs in
+              on its own, so this would be a dead second step otherwise. */}
           {hasServerInUrl ? (
             <button
               type="button"
@@ -270,4 +325,5 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
   )
 }
 
-export { Landing, Route }
+export { Landing, Route, shouldSignInOnArrival }
+export type { LandingSignIn }

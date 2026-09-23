@@ -7,15 +7,24 @@
 //! everything else gets the API's usual structured error body,
 //! `{ "error": "RouteNotFound", … }` — the shape each slice's `*NotFound`
 //! responses take (`error` tag, camelCase fields).
+//!
+//! The owner UI's entry routes ([`APP_ENTRY_PATHS`]) are the exception: a browser
+//! `GET` of one is plainly someone opening the app, so it is sent straight there
+//! with a `303` rather than shown a page to click through.
 
 use std::sync::Arc;
 
-use axum::http::{header, HeaderMap, StatusCode, Uri};
-use axum::response::{Html, IntoResponse, Json, Response};
+use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
+use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use serde::Serialize;
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::served_origin::served_base_url_for;
 use url::Url;
+
+/// Owner-UI routes a browser opening this server most likely wants: the root and
+/// the home screen. A browser `GET` of one redirects to the same route on the
+/// hosted owner UI, pointed at this server.
+const APP_ENTRY_PATHS: [&str; 2] = ["/", "/home"];
 
 /// What the fallback needs to point a lost browser at the hosted owner UI.
 pub struct NotFoundConfig {
@@ -42,23 +51,34 @@ struct RouteNotFoundBody {
 /// Build the fallback handler over `config`.
 pub fn fallback(
     config: Arc<NotFoundConfig>,
-) -> impl Fn(HeaderMap, Uri) -> std::future::Ready<Response> + Clone + Send + Sync + 'static {
-    move |headers, uri| std::future::ready(respond(&config, &headers, &uri))
+) -> impl Fn(Method, HeaderMap, Uri) -> std::future::Ready<Response> + Clone + Send + Sync + 'static
+{
+    move |method, headers, uri| std::future::ready(respond(&config, &method, &headers, &uri))
 }
 
-/// The `404` for an unmatched `uri`, as HTML or JSON per the `Accept` header.
-fn respond(config: &NotFoundConfig, headers: &HeaderMap, uri: &Uri) -> Response {
+/// The response for an unmatched `uri`: a redirect into the owner UI for a
+/// browser opening one of its [`APP_ENTRY_PATHS`], else the `404`, as HTML or
+/// JSON per the `Accept` header.
+fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &Uri) -> Response {
+    // Resolved per request, like every other served-origin consumer: over the
+    // tunnel the links must name the public origin, not loopback.
+    let served_origin = served_base_url_for(headers, &config.loopback_base_url)
+        .map(|served| shared_structures_rust::origin_string(&served));
+    let is_browser_navigation =
+        (method == Method::GET || method == Method::HEAD) && accepts_html(headers);
+    if let Some(origin) = served_origin.as_deref() {
+        if is_browser_navigation && APP_ENTRY_PATHS.contains(&uri.path()) {
+            let target = config.owner_ui_base.route_url(uri.path(), origin, &[]);
+            return Redirect::to(target.as_str()).into_response();
+        }
+    }
+
     let path = uri
         .path_and_query()
         .map_or_else(|| uri.path().to_owned(), |pq| pq.as_str().to_owned());
-    // Resolved per request, like every other served-origin consumer: over the
-    // tunnel the link must name the public origin, not loopback.
-    let open_in_app = served_base_url_for(headers, &config.loopback_base_url).map(|served| {
-        config
-            .owner_ui_base
-            .open_url(&shared_structures_rust::origin_string(&served), &path)
-            .to_string()
-    });
+    let open_in_app = served_origin
+        .as_deref()
+        .map(|origin| config.owner_ui_base.open_url(origin, &path).to_string());
 
     if accepts_html(headers) {
         (
@@ -149,7 +169,7 @@ fn escape_html(raw: &str) -> String {
 mod tests {
     use super::{escape_html, respond, NotFoundConfig};
     use axum::body::to_bytes;
-    use axum::http::{header, HeaderMap, HeaderValue, StatusCode, Uri};
+    use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
     use shared_structures_rust::owner_ui::OwnerUiBase;
     use url::Url;
 
@@ -178,7 +198,7 @@ mod tests {
     #[tokio::test]
     async fn api_clients_get_the_structured_route_not_found_body() {
         let uri: Uri = "/settings/tunnel?tab=a".parse().expect("uri");
-        let response = respond(&config(), &headers(&[]), &uri);
+        let response = respond(&config(), &Method::GET, &headers(&[]), &uri);
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body: serde_json::Value =
             serde_json::from_str(&body_text(response).await).expect("json");
@@ -196,10 +216,11 @@ mod tests {
 
     #[tokio::test]
     async fn browsers_get_an_html_page_linking_to_the_hosted_ui() {
-        let uri: Uri = "/home".parse().expect("uri");
+        let uri: Uri = "/settings/tunnel".parse().expect("uri");
         let response = respond(
             &config(),
-            &headers(&[("accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")]),
+            &Method::GET,
+            &headers(&[("accept", BROWSER_ACCEPT)]),
             &uri,
         );
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -210,7 +231,7 @@ mod tests {
             .is_some_and(|v| v.starts_with("text/html")));
         let html = body_text(response).await;
         assert!(html.contains(
-            "href=\"https://owner-ui.test/app/?server=http%3A%2F%2F127.0.0.1%3A8080&amp;returnTo=%2Fhome\""
+            "href=\"https://owner-ui.test/app/?server=http%3A%2F%2F127.0.0.1%3A8080&amp;returnTo=%2Fsettings%2Ftunnel\""
         ));
     }
 
@@ -219,6 +240,7 @@ mod tests {
         let uri: Uri = "/".parse().expect("uri");
         let response = respond(
             &config(),
+            &Method::GET,
             &headers(&[(
                 "forwarded",
                 "for=1.2.3.4;host=abc.tunnel.example;proto=https",
@@ -236,13 +258,94 @@ mod tests {
     #[tokio::test]
     async fn an_unresolvable_forwarded_origin_still_404s_without_a_link() {
         let uri: Uri = "/x".parse().expect("uri");
-        let response = respond(&config(), &headers(&[("forwarded", "for=1.2.3.4")]), &uri);
+        let response = respond(
+            &config(),
+            &Method::GET,
+            &headers(&[("forwarded", "for=1.2.3.4")]),
+            &uri,
+        );
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body: serde_json::Value =
             serde_json::from_str(&body_text(response).await).expect("json");
         assert_eq!(
             body,
             serde_json::json!({ "error": "RouteNotFound", "path": "/x" })
+        );
+    }
+
+    const BROWSER_ACCEPT: &str = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8";
+
+    fn location(response: &axum::response::Response) -> &str {
+        response
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .expect("a Location header")
+    }
+
+    #[test]
+    fn a_browser_opening_the_root_or_home_is_sent_to_the_app() {
+        for (path, expected) in [
+            (
+                "/",
+                "https://owner-ui.test/app/?server=http%3A%2F%2F127.0.0.1%3A8080",
+            ),
+            (
+                "/home",
+                "https://owner-ui.test/app/home?server=http%3A%2F%2F127.0.0.1%3A8080",
+            ),
+        ] {
+            let uri: Uri = path.parse().expect("uri");
+            let response = respond(
+                &config(),
+                &Method::GET,
+                &headers(&[("accept", BROWSER_ACCEPT)]),
+                &uri,
+            );
+            assert_eq!(response.status(), StatusCode::SEE_OTHER, "{path}");
+            assert_eq!(location(&response), expected, "{path}");
+        }
+    }
+
+    #[test]
+    fn a_forwarded_browser_is_sent_to_the_app_pointed_at_the_public_origin() {
+        let uri: Uri = "/home".parse().expect("uri");
+        let response = respond(
+            &config(),
+            &Method::GET,
+            &headers(&[
+                ("accept", BROWSER_ACCEPT),
+                (
+                    "forwarded",
+                    "for=1.2.3.4;host=abc.tunnel.example;proto=https",
+                ),
+            ]),
+            &uri,
+        );
+        assert_eq!(
+            location(&response),
+            "https://owner-ui.test/app/home?server=https%3A%2F%2Fabc.tunnel.example"
+        );
+    }
+
+    #[test]
+    fn only_browser_gets_of_the_entry_paths_redirect() {
+        let status = |method: Method, accept: Option<&str>, path: &str| {
+            let uri: Uri = path.parse().expect("uri");
+            let pairs: Vec<(&'static str, &str)> =
+                accept.map(|a| vec![("accept", a)]).unwrap_or_default();
+            respond(&config(), &method, &headers(&pairs), &uri).status()
+        };
+        // An API client asking for `/`, a browser POST to `/home`, and a browser
+        // GET of any other path all still get the 404.
+        assert_eq!(status(Method::GET, None, "/"), StatusCode::NOT_FOUND);
+        assert_eq!(
+            status(Method::POST, Some(BROWSER_ACCEPT), "/home"),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            status(Method::GET, Some(BROWSER_ACCEPT), "/home/extra"),
+            StatusCode::NOT_FOUND
         );
     }
 
