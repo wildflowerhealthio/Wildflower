@@ -25,8 +25,8 @@ class GatekeeperHttpApiClient extends sliceClient.ClientTag<GatekeeperHttpApiCli
 
 /**
  * Resolved client shape — keyed off the Tag's `Service` accessor so a
- * change to the underlying HttpApi flows through to consumers (e.g.
- * `pollAuthorizationStatus`) without re-deriving via `HttpApiClient.make`.
+ * change to the underlying HttpApi flows through to consumers without
+ * re-deriving via `HttpApiClient.make`.
  */
 type GatekeeperHttpApiClientShape = typeof GatekeeperHttpApiClient.Service
 

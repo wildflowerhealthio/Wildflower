@@ -1,3 +1,4 @@
+import { sectionUrl } from 'branding-core'
 import { Effect, Equal, Option } from 'effect'
 import * as fc from 'fast-check'
 import {
@@ -18,48 +19,23 @@ import {
   Unauthed,
 } from 'react-kitchen-sink'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import seedMigrationSql from '../../../slices/gatekeeper/gatekeeper-rust/migrations/0013_wildflower_react_client_returns_to_app_root/up.sql?raw'
 
 import {
   authStateForSession,
   CLIENT_ID,
-  clientBaseUrlFor,
   finishSignIn,
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,
   REGISTERED_REDIRECT_URI,
-  rememberReturnTo,
-  RETURN_TO_KEY,
+  returnToOnPage,
   scheduleExpiry,
   signInEnvironment,
   startSignIn,
-  takeReturnTo,
 } from './sign-in.ts'
 
-describe('clientBaseUrlFor', () => {
-  it('property: is the origin plus the served base, whatever route the page is on', () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom('https://wildflowerhealth.io', 'http://localhost:5195'),
-        fc.array(fc.stringMatching(/^[a-z0-9-]{1,8}$/), { maxLength: 3 }),
-        fc.array(fc.stringMatching(/^[a-z0-9-]{1,8}$/), { maxLength: 3 }),
-        (origin, baseSegments, routeSegments) => {
-          const basePath = `/${baseSegments.map((segment) => `${segment}/`).join('')}`
-          const href = `${origin}${basePath}${routeSegments.join('/')}?server=x#y`
-          expect(clientBaseUrlFor(href, basePath)).toBe(`${origin}${basePath}`)
-        }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-
-  it('names nothing for a page not served over http or https', () => {
-    expect(clientBaseUrlFor('file:///Users/ruth/app/index.html')).toBeUndefined()
-    expect(clientBaseUrlFor('not a url')).toBeUndefined()
-  })
-})
-
 describe('signInEnvironment', () => {
-  it('returns to the fixed /home route, not to the section the reader signed in from', () => {
+  it('returns to the app root, not to the section the reader signed in from', () => {
     // Arrange / Act — the same build reached from three of its sections. A
     // directory-derived URI (what the server-docs console uses) would give
     // three different values here and only one could be the registered entry.
@@ -68,9 +44,9 @@ describe('signInEnvironment', () => {
     const fromDev = signInEnvironment(pageAt('http://127.0.0.1:5173/gatekeeper/grants'))
 
     // Assert
-    expect(fromRoot.redirectUri).toBe('https://wildflowerhealth.io/home')
-    expect(fromSection.redirectUri).toBe('https://wildflowerhealth.io/home')
-    expect(fromDev.redirectUri).toBe('http://127.0.0.1:5173/home')
+    expect(fromRoot.redirectUri).toBe('https://wildflowerhealth.io/')
+    expect(fromSection.redirectUri).toBe('https://wildflowerhealth.io/')
+    expect(fromDev.redirectUri).toBe('http://127.0.0.1:5173/')
   })
 
   it('returns under the served subpath when the build is published there', () => {
@@ -85,21 +61,7 @@ describe('signInEnvironment', () => {
     // Assert — production derives exactly the seeded row (so the sign-in returns
     // silently); the preview derives its own base, correct for where it is served.
     expect(production.redirectUri).toBe(REGISTERED_REDIRECT_URI)
-    expect(preview.redirectUri).toBe('https://wildflowerhealthio.github.io/staging/pr-719/app/home')
-  })
-
-  it('names the served root of the copy signing in, whichever section it started from', () => {
-    // Arrange / Act — the server resolves its polling page on this value, so a
-    // preview must name itself and not the published `/app/`.
-    const preview = signInEnvironment(
-      pageAt('https://wildflowerhealthio.github.io/staging/pr-736/app/settings'),
-      '/staging/pr-736/app/'
-    )
-    const dev = signInEnvironment(pageAt('http://localhost:5195/gatekeeper/grants'))
-
-    // Assert
-    expect(preview.clientBaseUrl).toBe('https://wildflowerhealthio.github.io/staging/pr-736/app/')
-    expect(dev.clientBaseUrl).toBe('http://localhost:5195/')
+    expect(preview.redirectUri).toBe('https://wildflowerhealthio.github.io/staging/pr-719/app/')
   })
 
   it('falls back to the published URI from an address a sign-in must not return to', () => {
@@ -109,11 +71,17 @@ describe('signInEnvironment', () => {
       pageAt('http://preview.example/home', { protocol: 'http:' })
     )
 
-    // Assert — pinned to the seeded row's sole entry, which `/oauth/authorize`
-    // matches by exact string equality. A drift from
-    // `0012_seed_wildflower_react_client` fails the flow at the endpoint.
+    // Assert
     expect(environment.redirectUri).toBe(REGISTERED_REDIRECT_URI)
-    expect(REGISTERED_REDIRECT_URI).toBe('https://wildflowerhealth.io/app/home')
+  })
+
+  it('names the published app root the seeded row registers', () => {
+    // `/oauth/authorize` matches the row's entry by exact string equality, so a
+    // drift from the migration that sets it fails the flow at the endpoint. Both
+    // sides are read from their sources: the published section address, and the
+    // migration's SQL.
+    expect(REGISTERED_REDIRECT_URI).toBe(`${sectionUrl('app')}/`)
+    expect(seedMigrationSql).toContain(`'${JSON.stringify([REGISTERED_REDIRECT_URI])}'`)
   })
 
   it('asks for exactly the scopes the seeded row allows', () => {
@@ -152,7 +120,7 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const started = await startSignIn(SERVER_URL, signInEnvironment(page))
+    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
 
     // Assert
     expect(started.tag).toBe('Ok')
@@ -160,7 +128,7 @@ describe('startSignIn', () => {
     const authorize = new URL(started.value)
     expect(authorize.origin + authorize.pathname).toBe(`${SERVER_URL}/oauth/authorize`)
     expect(authorize.searchParams.get('client_id')).toBe(CLIENT_ID)
-    expect(authorize.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:5173/home')
+    expect(authorize.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:5173/')
     expect(authorize.searchParams.get('scope')).toBe(standaloneLaunchScopeParameter())
     expect(authorize.searchParams.get('code_challenge_method')).toBe('S256')
   })
@@ -176,7 +144,7 @@ describe('startSignIn', () => {
     })
 
     // Act
-    await startSignIn(SERVER_URL, signInEnvironment(page))
+    await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
 
     // Assert
     expect(store.getItem(PENDING_AUTHORIZATION_KEY)).not.toBeNull()
@@ -191,7 +159,7 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const started = await startSignIn(SERVER_URL, signInEnvironment(page))
+    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
 
     // Assert
     expect(started.tag).toBe('Failed')
@@ -211,15 +179,16 @@ describe('finishSignIn', () => {
       sessionStorage: store,
     })
     const environment = signInEnvironment(page)
-    const started = await startSignIn(SERVER_URL, environment)
+    const started = await startSignIn(SERVER_URL, '/settings/tunnel', environment)
     expect(started.tag).toBe('Ok')
     if (started.tag !== 'Ok') return
     const state = new URL(started.value).searchParams.get('state') ?? ''
 
-    // Act — the callback lands on /home with the code and state.
+    // Act — the callback lands on the app root with the code and state.
     const completed = await finishSignIn(`?code=the-code&state=${state}`, environment)
 
-    // Assert
+    // Assert — the return path the sign-in started with rides back on the
+    // session, since the callback URL carries no query of its own.
     expect(completed.tag).toBe('Ok')
     if (completed.tag !== 'Ok') return
     expect(Option.getOrUndefined(completed.value)).toEqual({
@@ -227,6 +196,7 @@ describe('finishSignIn', () => {
       scope: 'system/*.cruds',
       serverUrl: SERVER_URL,
       expiresInSeconds: 3600,
+      returnTo: '/settings/tunnel',
     })
     // Single-use: the record is gone, so a replayed callback cannot look
     // legitimate.
@@ -362,37 +332,19 @@ describe('scheduleExpiry', () => {
   })
 })
 
-describe('rememberReturnTo / takeReturnTo', () => {
-  it('carries the gate’s returnTo across the redirect and hands it back once', () => {
-    // Arrange — the auth gate bounced the reader here with the path they were
-    // headed for; the registered redirect URI will drop the query, so it is
-    // stashed just before leaving.
-    const store = memoryStore()
-    const page = pageAt('https://wildflowerhealth.io/?returnTo=%2Fsettings%2Ftunnel', {
-      sessionStorage: store,
-    })
+describe('returnToOnPage', () => {
+  it('reads the path the auth gate bounced the reader from, raw', () => {
+    // Arrange — raw: `main-web` sanitises what comes back, not this reader.
+    const href = `https://wildflowerhealth.io/app/?server=x&returnTo=${encodeURIComponent('/settings/tunnel?tab=logs')}`
 
-    // Act / Assert — written under this app’s key…
-    rememberReturnTo(page)
-    expect(store.getItem(RETURN_TO_KEY)).toBe('/settings/tunnel')
-
-    // …and read back exactly once, so a later stray load cannot replay it.
-    expect(takeReturnTo(page)).toBe('/settings/tunnel')
-    expect(takeReturnTo(page)).toBeNull()
+    // Act / Assert
+    expect(returnToOnPage(href)).toBe('/settings/tunnel?tab=logs')
   })
 
-  it('clears a stale return path when the page carries none', () => {
-    // A fresh sign-in with no `returnTo` must not honour one left by an
-    // abandoned earlier attempt.
-    const store = memoryStore()
-    store.setItem(RETURN_TO_KEY, '/settings/tunnel')
-    const page = pageAt('https://wildflowerhealth.io/?server=https%3A%2F%2Fx.test', {
-      sessionStorage: store,
-    })
-
-    rememberReturnTo(page)
-
-    expect(store.getItem(RETURN_TO_KEY)).toBeNull()
+  it('names nothing when the page carries no returnTo, or an empty one', () => {
+    // Act / Assert
+    expect(returnToOnPage('https://wildflowerhealth.io/app/?server=x')).toBeUndefined()
+    expect(returnToOnPage('https://wildflowerhealth.io/app/?returnTo=')).toBeUndefined()
   })
 })
 
@@ -453,6 +405,7 @@ const sessionWith = (expiresInSeconds: number | undefined): Session => ({
   scope: 'system/*.cruds',
   serverUrl: SERVER_URL,
   expiresInSeconds,
+  returnTo: undefined,
 })
 
 /** A `sessionStorage` stand-in with no browser behind it. */

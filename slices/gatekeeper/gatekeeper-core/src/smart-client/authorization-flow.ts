@@ -15,7 +15,6 @@
  */
 
 import { Data, Either, Option } from 'effect'
-import { CLIENT_BASE_URL_PARAM } from '../client-base-url.ts'
 
 /**
  * Raised when a returning authorization cannot be completed: the server refused
@@ -36,9 +35,10 @@ class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
 /**
  * What the client must remember across the redirect to the authorization
  * server: the PKCE verifier it will redeem the code with, the `state` it will
- * check the return against, and the target the sign-in was started for — the
- * registered redirect URI carries no query string, so `?server=` cannot ride
- * back in the URL and travels here instead.
+ * check the return against, the target the sign-in was started for, and where
+ * the app asked to land once it is signed in. The registered redirect URI
+ * carries no query string, so neither `?server=` nor a return path can ride back
+ * in the URL, and both travel here instead.
  *
  * This is the one thing that touches `sessionStorage`, because a full-page
  * redirect leaves no other way to carry it. It holds **no credential**: the
@@ -51,6 +51,12 @@ interface PendingAuthorization {
   readonly codeVerifier: string
   readonly serverUrl: string
   readonly tokenEndpoint: string
+  /**
+   * The in-app path to land on after the sign-in, as the app handed it to
+   * `beginSignIn`: raw, so the app sanitises it before navigating. `undefined`
+   * when the app named none.
+   */
+  readonly returnTo: string | undefined
 }
 
 /**
@@ -63,10 +69,12 @@ const serializePendingAuthorization = (pending: PendingAuthorization): string =>
 /**
  * `raw` read back as a pending record, or `None` when it is absent or not one.
  *
- * Every field is required and must be a non-empty string: a half-written record
- * cannot complete a sign-in, and treating it as one would send a request with
- * `undefined` in it. Absence is not an error here — most page loads have no
- * record — so the caller decides whether a missing one matters.
+ * Every field the exchange needs is required and must be a non-empty string: a
+ * half-written record cannot complete a sign-in, and treating it as one would
+ * send a request with `undefined` in it. `returnTo` may be absent (the app named
+ * none), but when present it must be a non-empty string too. Absence of the
+ * whole record is not an error here — most page loads have no record — so the
+ * caller decides whether a missing one matters.
  */
 const parsePendingAuthorization = (raw: string | null): Option.Option<PendingAuthorization> => {
   if (raw === null) return Option.none()
@@ -82,6 +90,7 @@ const parsePendingAuthorization = (raw: string | null): Option.Option<PendingAut
     codeVerifier: nonEmptyString(parsed.codeVerifier),
     serverUrl: nonEmptyString(parsed.serverUrl),
     tokenEndpoint: nonEmptyString(parsed.tokenEndpoint),
+    returnTo: optionalNonEmptyString(parsed.returnTo),
   })
 }
 
@@ -92,6 +101,14 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 /** `value` when it is a non-empty string. */
 const nonEmptyString = (value: unknown): Option.Option<string> =>
   typeof value === 'string' && value !== '' ? Option.some(value) : Option.none()
+
+/**
+ * `Some(undefined)` when `value` is absent, `Some(value)` when it is a non-empty
+ * string, and `None` for anything else — an absent optional field is fine, a
+ * malformed one spoils the record.
+ */
+const optionalNonEmptyString = (value: unknown): Option.Option<string | undefined> =>
+  value === undefined ? Option.some(undefined) : nonEmptyString(value)
 
 /** Everything the authorization request carries beyond the endpoint itself. */
 interface AuthorizationRequestParameters {
@@ -106,12 +123,6 @@ interface AuthorizationRequestParameters {
    * it is derived from the server URL rather than configured.
    */
   readonly audience: string
-  /**
-   * The served root of the owner UI copy signing in, sent as
-   * {@link CLIENT_BASE_URL_PARAM} so the server's polling page lands on this
-   * copy. Omitted by a client that isn't a copy of the owner UI.
-   */
-  readonly clientBaseUrl?: string
 }
 
 /**
@@ -133,8 +144,6 @@ const authorizationRequestUrl = (
   url.searchParams.set('code_challenge', parameters.codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
   url.searchParams.set('aud', parameters.audience)
-  if (parameters.clientBaseUrl !== undefined)
-    url.searchParams.set(CLIENT_BASE_URL_PARAM, parameters.clientBaseUrl)
   return url.toString()
 }
 

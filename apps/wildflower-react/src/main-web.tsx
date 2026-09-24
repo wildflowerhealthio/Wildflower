@@ -17,7 +17,6 @@ import {
   postSignInUrl,
   scheduleExpiry,
   signInEnvironment,
-  takeReturnTo,
 } from './sign-in.ts'
 import { apiServerUrlForLoad, makeWebEntryOptions, underBasepath } from './web-entry.ts'
 
@@ -70,13 +69,14 @@ const settleUrlAfterSignIn = (returnTo: string): void => {
  * Redeem an authorization code, if this load is a return leg, and only then
  * mount the app.
  *
- * The order is the point. The flow returns to `/home`, which sits behind the
- * `_auth` gate, and the bearer store starts `Unauthed` on every load (the token
- * is in page memory only). A router mounted before the exchange settled would
- * run that gate against an empty store and redirect to `/` while the token was
- * still in flight, so the sign-in would appear to fail every time. An ordinary
- * load pays a microtask for this: with no pending record, `completeSignIn`
- * resolves to `None` without touching the network.
+ * The order is the point. The flow returns to the app root and settles on the
+ * return path (`/home` by default), which sits behind the `_auth` gate, and the
+ * bearer store starts `Unauthed` on every load (the token is in page memory
+ * only). A router mounted before the exchange settled would run that gate
+ * against an empty store and redirect to `/` while the token was still in
+ * flight, so the sign-in would appear to fail every time. An ordinary load pays
+ * a microtask for this: with no pending record, `completeSignIn` resolves to
+ * `None` without touching the network.
  */
 const boot = async (): Promise<void> => {
   const returnSearch = window.location.search
@@ -86,10 +86,10 @@ const boot = async (): Promise<void> => {
   const session = completed.tag === 'Ok' ? Option.getOrUndefined(completed.value) : undefined
 
   if (session !== undefined) {
-    // Read the stashed return path (the gate's `?returnTo=`, carried across the
-    // redirect in `sessionStorage`) and honour it once, sanitised — same rules
-    // as `NeedsAuthMessage`'s device-flow return leg.
-    settleUrlAfterSignIn(sanitizeReturnTo(takeReturnTo(window)))
+    // Honour the gate's `?returnTo=`, carried across the redirect in the
+    // pending record, sanitised — same rules as `NeedsAuthMessage`'s
+    // device-flow return leg.
+    settleUrlAfterSignIn(sanitizeReturnTo(session.returnTo ?? null))
   } else if (isAuthorizationResponse(returnSearch)) {
     // A return leg that resolved to nothing usable: the response still has to
     // leave the URL, or a reload would replay a code that is already spent.

@@ -9,7 +9,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let challenge = compute_code_challenge(CODE_VERIFIER);
 
-    // 1. /authorize parks a pending request and 302s to the owner polling page.
+    // 1. /authorize parks a pending request and 302s to the wait page.
     let query = format!(
         "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
          code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
@@ -413,7 +413,7 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
         .get("location")
         .and_then(|v| v.to_str().ok())
         .expect("location");
-    // Straight back to the client — not the polling page.
+    // Straight back to the client — not the wait page.
     let url = Url::parse(location).expect("location url");
     assert_eq!(
         url.as_str().split('?').next(),

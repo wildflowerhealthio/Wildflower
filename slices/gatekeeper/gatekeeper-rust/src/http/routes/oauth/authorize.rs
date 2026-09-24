@@ -12,12 +12,13 @@ use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::capabilities::oauth::{
     asks_loopback_dialog, AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
 };
-use crate::domain::client_base_url::ClientBaseUrl;
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
-use crate::http::extractors::{Live, OwnerUiPages};
+use crate::http::extractors::Live;
 use crate::http::ServedOrigin;
+
+use super::wait_page::wait_page_location;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveLoopbackOwnerApprover};
 
 /// `302 Found` redirect. RFC 6749's examples use 302 and the TypeScript
@@ -137,17 +138,12 @@ pub struct AuthorizeParams {
     /// <https://github.com/Assessment-is/Wildflower/issues/257>.
     #[serde(default)]
     pub aud: Option<String>,
-    /// Wildflower extension: the served root of the owner UI copy signing in,
-    /// which a first-party client's polling page resolves on — see
-    /// [`crate::domain::client_base_url`].
-    #[serde(default)]
-    pub wildflower_client_base_url: Option<String>,
 }
 
 /// The authorization endpoint (RFC 6749 §3.1), the public front door of the
 /// OAuth flow. Validates the request, then either auto-issues an authorization
-/// code (when an existing grant pre-approves every requested scope) or
-/// redirects the user-agent to the Owner UI to drive the approval.
+/// code (when an existing grant pre-approves every requested scope) or parks
+/// the user-agent on the gatekeeper's wait page while the Owner decides.
 ///
 /// Nothing in-process calls this route. Registered clients (e.g.
 /// SMART-on-FHIR apps) discover it via the FHIR server's
@@ -160,13 +156,14 @@ pub struct AuthorizeParams {
 /// 2. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue (raising the host webview's popup) and the browser is 302'd to the
-///    Owner UI's polling page, which polls `GET /oauth/authorize/{id}` (a custom
-///    extension, not part of any RFC) until the Owner decides — on that page if
-///    the viewer is signed in, in the popup otherwise. RFC 6749
-///    leaves the owner-interaction mechanism unspecified, so the polling
-///    page is spec-legal; likewise §4.1 explicitly allows skipping consent
-///    on a previously established authorization decision, which is what the
-///    grant fast path implements.
+///    wait page at `/oauth/authorize/{id}/wait`, served by this gatekeeper on
+///    the origin the browser used, which polls `GET /oauth/authorize/{id}` (a
+///    custom extension, not part of any RFC) until the Owner decides — in the
+///    popup, in a signed-in owner UI, or in the host's native dialog. RFC 6749
+///    leaves the owner-interaction mechanism unspecified, so the wait page is
+///    spec-legal; likewise §4.1 explicitly allows skipping consent on a
+///    previously established authorization decision, which is what the grant
+///    fast path implements.
 /// 3. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
@@ -185,7 +182,7 @@ pub struct AuthorizeParams {
     path = "/authorize",
     params(AuthorizeParams),
     responses(
-        (status = 302, description = "Redirect to the client redirect_uri or the owner approval UI"),
+        (status = 302, description = "Redirect to the client redirect_uri or the gatekeeper's wait page"),
         (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
         (status = 503, description = "No active signing key")
     )
@@ -195,15 +192,8 @@ pub(super) async fn handle_authorize_request(
     loopback_owner_approver: Live<LiveLoopbackOwnerApprover>,
     origin: ServedOrigin,
     headers: HeaderMap,
-    pages: OwnerUiPages,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
-    // Checked before anything is parked, so a malformed value can't leave a
-    // pending request behind. A local page, like every failure before the
-    // `redirect_uri` is vouched for.
-    let client_base_url =
-        ClientBaseUrl::parse_optional(params.wildflower_client_base_url.as_deref())
-            .map_err(|_| AuthorizeError::LocalPage(OAuthErrorKind::InvalidClientBaseUrl))?;
     // Log the SMART App Launch params (see the `launch` / `aud` field docs) so
     // an operator can correlate a SMART app's request back to the click that
     // triggered it.
@@ -244,13 +234,11 @@ pub(super) async fn handle_authorize_request(
             &code,
             &client_state,
         )),
-        // Otherwise the Owner UI's polling page, which waits for whichever
-        // surface — its inline consent, the host popup, or (for the hosted owner
-        // UI over direct loopback) the host's native dialog — decides first.
-        AuthorizeNextStep::AwaitOwner {
-            request_id,
-            registered_redirect_uris,
-        } => {
+        // Otherwise this gatekeeper's wait page, which waits for whichever
+        // surface — the host popup, a signed-in owner UI's consent list, or (for
+        // the hosted owner UI over direct loopback) the host's native dialog —
+        // decides first.
+        AuthorizeNextStep::AwaitOwner { request_id } => {
             let is_direct_loopback = matches!(
                 request_provenance(&headers),
                 Some(RequestProvenance::Loopback)
@@ -268,12 +256,7 @@ pub(super) async fn handle_authorize_request(
                     }
                 });
             }
-            let pages = pages.for_signing_in_client(
-                &params.client_id,
-                &registered_redirect_uris,
-                client_base_url,
-            );
-            found_redirect(&pages.oauth_polling_url(&request_id))
+            found_redirect(&wait_page_location(&request_id))
         }
     })
 }

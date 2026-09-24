@@ -227,8 +227,8 @@ describe('redirectUriForRoute', () => {
 
   it('re-roots the route under a subpath base when one is given', () => {
     // Arrange / Act / Assert — a copy published under `/app/` (or a PR preview's
-    // `/staging/pr-<n>/app/`) returns under its own served root, which is the
-    // registered `/app/home` in production, not `<origin>/home` off the app.
+    // `/staging/pr-<n>/app/`) returns under its own served root — `/app/home` in
+    // production, not `<origin>/home` off the app.
     expect(redirectUriForRoute('https://wildflowerhealth.io/app/', '/home', '/app/')).toBe(
       'https://wildflowerhealth.io/app/home'
     )

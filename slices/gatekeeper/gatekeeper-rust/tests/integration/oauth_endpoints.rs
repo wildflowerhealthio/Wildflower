@@ -34,44 +34,6 @@ async fn authorize_unknown_client_parks_a_pending_request() {
 /// may NOT be 302'd to it (RFC 6749 §4.1.2.1's open-redirect rule): a malformed
 /// PKCE challenge and a non-`code` `response_type` both render the local HTML
 /// page instead.
-/// The polling redirect names the request's served origin as `?server=`, so the
-/// hosted owner UI polls the server the browser actually reached: loopback for a
-/// direct caller, the forwarded public origin for one relayed through the front.
-#[tokio::test]
-async fn polling_redirect_names_the_served_origin() {
-    let (g, _host_owner_token, _db) = spin_up();
-    let server_of = |res: &axum::response::Response| {
-        let url = Url::parse(&location_of(res)).expect("absolute polling URL");
-        url.query_pairs()
-            .find(|(key, _)| key == "server")
-            .map(|(_, value)| value.into_owned())
-    };
-
-    let direct = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
-    assert_eq!(server_of(&direct).as_deref(), Some(LOOPBACK_ORIGIN));
-
-    let forwarded = g
-        .router
-        .clone()
-        .oneshot(loopback_request(
-            Request::get(format!(
-                "/oauth/authorize?{}",
-                authorize_query("ghost", "read")
-            ))
-            .header(
-                "forwarded",
-                "host=ruth.wildflowerhealth.example;proto=https",
-            ),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
-    assert_eq!(
-        server_of(&forwarded).as_deref(),
-        Some("https://ruth.wildflowerhealth.example")
-    );
-}
-
 #[tokio::test]
 async fn authorize_unknown_client_renders_later_failures_locally() {
     let (g, _host_owner_token, _db) = spin_up();
@@ -242,8 +204,8 @@ async fn authorize_disallowed_scope_parks_a_pending_request() {
 }
 
 /// A parked `/authorize` request must reach the host's consent popup, not only
-/// the polling page. The polling page tells an unauthenticated viewer to
-/// "approve this request on your device"; if the request never joins the
+/// the wait page. The wait page tells its viewer to "approve this request on
+/// your device"; if the request never joins the
 /// pending-consent queue, that prompt never appears and the flow hangs until the
 /// 5-minute TTL — the bug this covers.
 #[tokio::test]
@@ -446,7 +408,7 @@ async fn authorize_accepts_smart_launch_and_aud_params() {
     // (the FHIR base URL the app expects) alongside the standard authorize
     // params. They're optional (`#[serde(default)]`) and not validated today,
     // so a request carrying them must validate exactly like one without them:
-    // park a pending request and 302 to the owner polling page — never an
+    // park a pending request and 302 to the wait page — never an
     // `error=` redirect back to the client.
     let (g, _host_owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);

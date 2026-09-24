@@ -7,13 +7,22 @@ mod internal;
 mod openapi;
 mod token_exchange;
 mod token_request;
+mod wait_page;
 
 use std::sync::Arc;
 
+use axum::Router;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::http::state::GatekeeperState;
+
+/// The `/oauth/*` pages — the [`wait_page`] and its assets — mounted under
+/// `/oauth` beside [`openapi_router`]. Kept out of the `OpenAPI` spec: they are
+/// a browser's pages, not API surface.
+pub(crate) fn page_router() -> Router<Arc<GatekeeperState>> {
+    wait_page::router()
+}
 
 /// The `/oauth/*` routes as an `OpenApiRouter`, so the OpenAPI spec is collected
 /// from the same handlers that serve traffic. Mounted under `/oauth` by

@@ -58,28 +58,19 @@ and 90 days respectively). See the
 - `/oauth/authorize` — OAuth 2.0 authorization endpoint. An unknown
   `client_id`, an unregistered `redirect_uri`, or scopes outside the
   registration are carried to the consent prompt as a registration verdict
-  rather than rejected (`wildflower-host` excepted). Always
-  redirects to the polling page (`/gatekeeper/oauth-polling/:id`) on the
-  hosted owner UI, with `?server=<served origin>` so the page knows which
-  server to poll (the host serves no UI of its own; `OwnerUiPages` builds
-  the URL from the host-configured `OwnerUiBase`); the page picks
-  same-device-vs-cross-device based on whether it's already authenticated.
-  A first-party client (`wildflower-react`, or the host's first-party id)
-  may name the owner UI copy it runs from with `wildflower_client_base_url`
-  (`CLIENT_BASE_URL_PARAM`, `src/client-base-url.ts`), and the polling page
-  then resolves on that copy once a registered redirect vouches for it — a
-  PR preview's polling page stays on the preview. An unvouched copy's
-  polling page stays on the configured owner UI, which asks the Owner
-  before continuing there. Other clients' values are ignored; a value that
-  is not an absolute `http`/`https` URL is a `400`. See "Client base URL"
-  in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
+  rather than rejected (`wildflower-host` excepted). A request no standing
+  grant covers redirects to the wait page below, relative to itself, so the
+  browser stays on whichever origin it reached the gatekeeper at.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
+- `/oauth/authorize/:id/wait` — the **wait page**, served by the gatekeeper
+  itself: static HTML, CSS and JS (`gatekeeper-rust`'s
+  `http/routes/oauth/wait_page/`) that polls `/oauth/authorize/:id` and, once
+  the Owner decides, leaves for the redirect the status carries. See "Wait
+  page" in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
   `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`
-  on the hosted owner UI, carrying `?server=`; on the named copy for a
-  first-party client that sends `wildflower_client_base_url`, under the same
-  vouching as `/oauth/authorize`).
+  on the hosted owner UI, carrying `?server=`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.
@@ -166,8 +157,9 @@ outbound-equals-callback property `redirectUriForPage` gets from the directory.
 `basePath` is the slash-suffixed directory the build is served from
 (`branding-core`'s `basenameOf(location.pathname)`), defaulting to `/` — so a
 root-served copy is unchanged. A copy under `/app/` (or a PR preview's
-`/staging/pr-<n>/app/`) passes that directory, so the route returns under it:
-`/app/home`, the registered value, rather than `<origin>/home` off the app. The
+`/staging/pr-<n>/app/`) passes that directory, so the route returns under it —
+the hosted owner UI's `/` route returns to `/app/`, the registered value, rather
+than to `<origin>/` off the app. The
 caller derives `basePath` at the served root on both legs — the hosted owner UI
 can, because its sign-in is reachable only from that root.
 

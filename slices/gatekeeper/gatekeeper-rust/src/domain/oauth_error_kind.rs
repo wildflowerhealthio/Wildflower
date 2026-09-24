@@ -23,7 +23,4 @@ pub enum OAuthErrorKind {
     UnsupportedCodeChallengeMethod,
     /// `code_challenge` is not a well-formed S256 challenge.
     InvalidCodeChallenge,
-    /// `wildflower_client_base_url` is present but not an absolute `http` or
-    /// `https` URL (see [`crate::domain::client_base_url`]).
-    InvalidClientBaseUrl,
 }

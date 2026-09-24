@@ -55,11 +55,9 @@ describe('apiServerUrlForLoad', () => {
 })
 
 describe('makeWebEntryOptions', () => {
-  it('should send requests to the server it is given, not one the address bar names', () => {
-    // Arrange — the address bar says one server; the caller resolved another.
-    const page = pageAt(
-      `https://wildflowerhealth.io/app/home?server=${encodeURIComponent(RUTH_SERVER_URL)}`
-    )
+  it('should send requests to the server it is given', () => {
+    // Arrange
+    const page = stubPage()
 
     // Act
     const options = makeWebEntryOptions(page, '/app/', DEFAULT_SERVER_URL)
@@ -70,7 +68,7 @@ describe('makeWebEntryOptions', () => {
 
   it('should leave for the bare landing on logout, naming no server', async () => {
     // Arrange — a PR preview served under a subpath, signed in to a remote server.
-    const page = pageAt('https://wildflowerhealthio.github.io/staging/pr-7/app/settings')
+    const page = stubPage()
     const options = makeWebEntryOptions(page, '/staging/pr-7/app/', RUTH_SERVER_URL)
 
     // Act
@@ -91,21 +89,21 @@ const sessionOn = (serverUrl: string): Session => ({
   scope: 'openid',
   serverUrl,
   expiresInSeconds: 3600,
+  returnTo: undefined,
 })
 
 /**
- * A stub page at `href`. `assigned` resolves with the first URL the page is
- * sent to. `fetch` answers `204` (logout revocation's response).
+ * A stub page. `assigned` resolves with the first URL the page is sent to.
+ * `fetch` answers `204` (logout revocation's response).
  */
-const pageAt = (
-  href: string
-): Parameters<typeof makeWebEntryOptions>[0] & { readonly assigned: Promise<string> } => {
+const stubPage = (): Parameters<typeof makeWebEntryOptions>[0] & {
+  readonly assigned: Promise<string>
+} => {
   const assignment = Promise.withResolvers<string>()
   return {
     assigned: assignment.promise,
     fetch: () => Promise.resolve(new Response(null, { status: 204 })),
     location: {
-      href,
       assign: (url: string | URL) => {
         assignment.resolve(String(url))
       },

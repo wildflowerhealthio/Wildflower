@@ -1,5 +1,4 @@
 import * as fc from 'fast-check'
-import { CLIENT_BASE_URL_PARAM } from 'gatekeeper-core/smart-client'
 import { numRunsFor } from 'kitchen-sink/test'
 import { AuthedUntil } from 'react-kitchen-sink'
 import { describe, expect, it } from 'vite-plus/test'
@@ -29,28 +28,6 @@ describe('logOutBearerSession', () => {
         redirect: 'manual',
       },
     ])
-  })
-
-  it('should name this copy’s served root on the revoke when it has one', async () => {
-    // Arrange
-    const store = signedInStore('eyJ.owner.token')
-    const requests = recordingFetch()
-
-    // Act
-    await logOutBearerSession({
-      apiBaseUrl: 'https://abc.tunnel.example/',
-      clientBaseUrl: 'https://wildflowerhealthio.github.io/staging/pr-736/app/',
-      bearerStore: store,
-      fetch: requests.fetch,
-      leave: () => {},
-    })
-
-    // Assert
-    const url = new URL(requests.seen[0]?.url ?? '')
-    expect(url.origin + url.pathname).toBe('https://abc.tunnel.example/access/logout')
-    expect(url.searchParams.get(CLIENT_BASE_URL_PARAM)).toBe(
-      'https://wildflowerhealthio.github.io/staging/pr-736/app/'
-    )
   })
 
   it('should forget the bearer and leave for the landing page', async () => {

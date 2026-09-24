@@ -3,7 +3,6 @@ import { userEvent } from '@testing-library/user-event'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import * as fc from 'fast-check'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { CLIENT_BASE_URL_PARAM } from 'gatekeeper-core/smart-client'
 import { numRunsFor } from 'kitchen-sink/test'
 import type { JSX, ReactNode } from 'react'
 import {
@@ -68,15 +67,15 @@ const scopesHolder: { current: string | undefined } = { current: undefined }
 // fallback; a set value proves the device-login request forwards the injected id.
 const clientIdHolder: { current: string | undefined } = { current: undefined }
 
-// Stands in for the host-threaded `clientBaseUrl` router-context value.
-// `undefined` (the default) is the Tauri shape, which names no base.
-const clientBaseUrlHolder: { current: string | undefined } = { current: undefined }
+// Stands in for the served root of the owner UI copy the screen is mounted in —
+// a PR preview, so it differs from the owner UI the server's URIs name.
+const SERVED_ROOT = 'https://wildflowerhealthio.github.io/staging/pr-7/app/'
 
 vi.mock('../router-context.ts', () => ({
   useGatekeeperRuntimeLayer: (): Layer.Layer<GatekeeperHttpApiClient> => layerHolder.current,
   useGatekeeperLocalGrantedScopes: (): string | undefined => scopesHolder.current,
   useGatekeeperFirstPartyClientId: (): string | undefined => clientIdHolder.current,
-  useGatekeeperClientBaseUrl: (): string | undefined => clientBaseUrlHolder.current,
+  useGatekeeperServedRoot: (): string => SERVED_ROOT,
 }))
 
 // The device flow publishes the freshly-authed signal through the
@@ -104,15 +103,17 @@ afterEach(() => {
   setAuthStateMock.mockReset()
   scopesHolder.current = undefined
   clientIdHolder.current = undefined
-  clientBaseUrlHolder.current = undefined
 })
 
 /** The canned RFC 8628 §3.2 device-authorization response the stubs return. */
 const DEVICE_AUTH_RESPONSE = {
   user_code: 'WDJB-MJHT',
   device_code: 'dev-1',
-  verification_uri: 'https://example.com/device',
-  verification_uri_complete: 'https://example.com/device?code=WDJB-MJHT',
+  // On the owner UI the server is configured with, pointed back at itself.
+  verification_uri:
+    'https://wildflowerhealth.io/app/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io',
+  verification_uri_complete:
+    'https://wildflowerhealth.io/app/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT',
   interval: 5,
 }
 
@@ -193,6 +194,31 @@ describe('<NeedsAuthMessage> device flow', () => {
     expect(screen.getByText('Sign in on another device')).toBeTruthy()
   })
 
+  test('links the pairing to this copy’s own device-entry page, keeping the server’s query', async () => {
+    // The server builds its URIs on the owner UI it is configured with; a pairing
+    // started on this copy is approved on this copy.
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: () => Effect.succeed(DEVICE_AUTH_RESPONSE),
+      TokenExchange: () => PENDING_FOREVER,
+    })
+
+    render(withTokenStore(<NeedsAuthMessage />))
+    await startSignIn()
+
+    const expected = `${SERVED_ROOT}gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT`
+    await waitFor(
+      () => {
+        expect(screen.getByRole('link', { name: expected }).getAttribute('href')).toBe(expected)
+      },
+      { timeout: 2000 }
+    )
+    expect(
+      screen.getByText(
+        `${SERVED_ROOT}gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io`
+      )
+    ).toBeTruthy()
+  })
+
   test('forwards the typed device name and the seeded read+search preset scopes', async () => {
     // The picker seeds the read+search happy path (all records, all patients, plus
     // Wildflower admin), so an untouched form requests exactly that; the typed
@@ -223,37 +249,6 @@ describe('<NeedsAuthMessage> device flow', () => {
     expect(payload['scope']).toBe('system/*.rs wildflower/*.rs')
     // No host-threaded id → the standalone `FIRST_PARTY_CLIENT_ID` fallback.
     expect(payload['client_id']).toBe('wildflower-host')
-    // No host-threaded base → none named, so the server's configured one applies.
-    expect(payload).not.toHaveProperty(CLIENT_BASE_URL_PARAM)
-  })
-
-  test('names the host-threaded owner UI copy so the verification_uri points back at it', async () => {
-    // A PR preview (or any copy other than the host's configured one) must get a
-    // `verification_uri` on itself, which the server builds from this field.
-    clientBaseUrlHolder.current = 'https://wildflowerhealthio.github.io/staging/pr-736/app/'
-    let capturedInput: unknown
-    layerHolder.current = makeClientLayer({
-      DeviceAuthorization: (input) => {
-        capturedInput = input
-        return Effect.succeed(DEVICE_AUTH_RESPONSE)
-      },
-      TokenExchange: () => PENDING_FOREVER,
-    })
-
-    render(withTokenStore(<NeedsAuthMessage />))
-    await startSignIn()
-
-    await waitFor(
-      () => {
-        expect(capturedInput).toBeDefined()
-      },
-      { timeout: 2000 }
-    )
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the payload
-    const payload = (capturedInput as { readonly payload: Record<string, unknown> }).payload
-    expect(payload[CLIENT_BASE_URL_PARAM]).toBe(
-      'https://wildflowerhealthio.github.io/staging/pr-736/app/'
-    )
   })
 
   test('identifies the request with the host-threaded first-party client id', async () => {

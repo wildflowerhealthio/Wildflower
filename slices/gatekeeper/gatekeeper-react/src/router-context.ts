@@ -1,4 +1,4 @@
-import { useRouteContext } from '@tanstack/react-router'
+import { useRouteContext, useRouter } from '@tanstack/react-router'
 import { type Layer } from 'effect'
 import { type GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { type BaseRouterContext } from 'shared-structures-react'
@@ -35,12 +35,6 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
    * falls back to gatekeeper-core's `FIRST_PARTY_CLIENT_ID`.
    */
   readonly firstPartyClientId?: string
-  /**
-   * The served root of the owner UI copy this slice is mounted in, which
-   * `NeedsAuthMessage` names as gatekeeper-core's `CLIENT_BASE_URL_PARAM`.
-   * Threaded by the web entry; omitted on Tauri.
-   */
-  readonly clientBaseUrl?: string
 }
 
 /**
@@ -55,18 +49,12 @@ const sliceRuntimeLayer: Layer.Layer<
 > = buildGatekeeperClientLayer()
 
 /**
- * The fully-composed `runtimeLayer` from router context, for the two
- * gatekeeper call sites that aren't one-shot Promises and so can't go
- * through `runAuthed`/`useSuspenseQuery`:
- *
- *   - `NeedsAuthMessage` — the RFC 8628 device flow runs a long-lived
- *     fiber with retry + interrupt-on-unmount.
- *   - `oauth-polling` — `pollAuthorizationStatus` is a `Stream` that
- *     emits `pending` heartbeats until a terminal status.
- *
- * Both `Effect.provide` / `Stream.provideSomeLayer` this layer onto a
- * gatekeeper Effect/Stream and run it imperatively (via `react-kitchen-sink`'s
- * generic `useStream` / `Effect.runFork`). The annotated `select` re-narrows
+ * The fully-composed `runtimeLayer` from router context, for the gatekeeper
+ * call site that isn't a one-shot Promise and so can't go through
+ * `runAuthed`/`useSuspenseQuery`: `NeedsAuthMessage`, whose RFC 8628 device
+ * flow runs a long-lived fiber with retry + interrupt-on-unmount. It
+ * `Effect.provide`s this layer onto a gatekeeper Effect and runs it
+ * imperatively (via `Effect.runFork`). The annotated `select` re-narrows
  * the result when the slice's router isn't registered (standalone build),
  * where `useRouteContext()` would otherwise widen to `any` — no cast.
  */
@@ -101,21 +89,22 @@ const useGatekeeperFirstPartyClientId = (): string | undefined =>
   })
 
 /**
- * The owner UI copy's served root from router context (see
- * {@link RouterContext.clientBaseUrl}), or `undefined` where the host doesn't
- * thread one.
+ * The served root of the owner UI copy this slice is mounted in: the page's
+ * origin plus the router's basepath, slash-terminated (e.g.
+ * `https://wildflowerhealthio.github.io/staging/pr-7/app/`). `NeedsAuthMessage`
+ * points its device-flow link here (see gatekeeper-core's
+ * `GatekeeperPaths.deviceEntryUrlOn`).
  */
-const useGatekeeperClientBaseUrl = (): string | undefined =>
-  useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.clientBaseUrl,
-  })
+const useGatekeeperServedRoot = (): string => {
+  const { basepath } = useRouter()
+  return new URL(basepath.endsWith('/') ? basepath : `${basepath}/`, window.location.origin).href
+}
 
 export {
   sliceRuntimeLayer,
-  useGatekeeperClientBaseUrl,
   useGatekeeperFirstPartyClientId,
   useGatekeeperLocalGrantedScopes,
   useGatekeeperRuntimeLayer,
+  useGatekeeperServedRoot,
 }
 export type { RouterContext, RunAuthed, RuntimeLayer }

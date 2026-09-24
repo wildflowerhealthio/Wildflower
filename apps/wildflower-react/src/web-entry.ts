@@ -18,7 +18,6 @@ import {
 
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
-import { clientBaseUrlFor } from './sign-in.ts'
 
 /**
  * The API origin assumed when the URL carries no usable `?server=`: the loopback
@@ -86,9 +85,6 @@ const underBasepath = (basepath: string, route: string): string =>
  * - `apiBaseUrl`: the caller's `apiBaseUrl`, which `main-web` resolves with
  *   {@link apiServerUrlForLoad}. Past sign-in the address bar no longer names
  *   the server.
- * - `clientBaseUrl`: this copy's served root (origin + `basepath`), named to
- *   the server on the device-flow request and the logout so the pages it hands
- *   back point at this copy — see `sign-in.ts`'s `clientBaseUrlFor`.
  * - `readBearer`: wired to the store's `bearer()` reader, so
  *   every relative request gets an `Authorization` header.
  * - `makeTransport`: pre-resolved stub (no host bridge).
@@ -102,13 +98,13 @@ const underBasepath = (basepath: string, route: string): string =>
  *   page signs in by SMART redirect instead (`sign-in.ts`), so that route is
  *   reached only from this fallback and from a step-up, not from the picker.
  *
- * `page` is the slice of `window` this wiring reads and navigates; a real
+ * `page` is the slice of `window` this wiring navigates; a real
  * `Window` satisfies it, and a test passes a stub.
  */
 const makeWebEntryOptions = (
   page: {
     readonly fetch: typeof globalThis.fetch
-    readonly location: Pick<Location, 'href' | 'assign'>
+    readonly location: Pick<Location, 'assign'>
   },
   basepath: string,
   apiBaseUrl: string
@@ -118,7 +114,6 @@ const makeWebEntryOptions = (
   | 'awaitAuthReady'
   | 'makeTransport'
   | 'apiBaseUrl'
-  | 'clientBaseUrl'
   | 'readBearer'
   | 'platformSettingsItems'
   | 'platformTabs'
@@ -126,20 +121,16 @@ const makeWebEntryOptions = (
 > & { readonly bearerStore: BearerAuthStateStore } => {
   const bearerStore = makeBearerAuthStateStore()
 
-  const clientBaseUrl = clientBaseUrlFor(page.location.href, basepath)
-
   return {
     bearerStore,
     tokenStore: bearerStore,
     awaitAuthReady: () => makeAwaitLandingAuthReady(bearerStore.subscribable),
     makeTransport: () => Promise.resolve(stubTransport),
     apiBaseUrl,
-    ...(clientBaseUrl === undefined ? {} : { clientBaseUrl }),
     readBearer: bearerStore.bearer,
     platformSettingsItems: [
       gatekeeperLogoutSettingsItem({
         apiBaseUrl,
-        ...(clientBaseUrl === undefined ? {} : { clientBaseUrl }),
         bearerStore,
         fetch: (input, init) => page.fetch(input, init),
         leave: () => {

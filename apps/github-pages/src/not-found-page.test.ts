@@ -27,11 +27,11 @@ describe('404.html redirect', () => {
     // Act
     const landed = await followNotFound(
       site,
-      'https://example.test/staging/pr-745/app/gatekeeper/oauth-polling/1?server=s'
+      'https://example.test/staging/pr-745/app/gatekeeper/devices/ABCD?server=s'
     )
 
     // Assert
-    expect(restoreAt(landed)).toBe('/staging/pr-745/app/gatekeeper/oauth-polling/1?server=s')
+    expect(restoreAt(landed)).toBe('/staging/pr-745/app/gatekeeper/devices/ABCD?server=s')
   })
 
   it('should show a not-found page when a closed preview has no ancestor to redirect to', async () => {

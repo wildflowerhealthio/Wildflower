@@ -15,7 +15,7 @@ use crate::domain::GatekeeperStore;
 pub(crate) enum AuthorizationStatusView {
     Pending,
     /// Denied; for a code-flow request the client callback carrying
-    /// `error=access_denied` so the polling page can complete the flow.
+    /// `error=access_denied` so the wait page can complete the flow.
     Denied {
         redirect_uri: Option<Url>,
         client_state: Option<String>,

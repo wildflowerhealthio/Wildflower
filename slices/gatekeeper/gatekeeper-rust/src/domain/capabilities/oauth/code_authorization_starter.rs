@@ -15,7 +15,7 @@ use crate::domain::authority::GrantCoverage;
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::capabilities::writers::{CodeAuthority, RequestApprover};
-use crate::domain::client::{Client, RegisteredRedirectUri};
+use crate::domain::client::Client;
 use crate::domain::client_registration::RegistrationClassifier;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
@@ -58,14 +58,7 @@ pub(crate) enum AuthorizeNextStep {
     },
     /// The request is parked and the Owner has been asked; the user-agent
     /// polls for the decision.
-    AwaitOwner {
-        request_id: String,
-        /// The client's redirect allowlist as it stood — empty for a client new
-        /// to this gatekeeper. Whether a first-party client's named owner UI
-        /// copy is vouched for (see
-        /// [`client_base_url`](crate::domain::client_base_url)).
-        registered_redirect_uris: Vec<RegisteredRedirectUri>,
-    },
+    AwaitOwner { request_id: String },
 }
 
 /// The ways starting an authorization can fail. `LocalPage` failures render
@@ -249,9 +242,6 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         self.publisher.republish_active();
         Ok(AuthorizeNextStep::AwaitOwner {
             request_id: ids.request_id,
-            // A client new to this gatekeeper has registered nothing yet.
-            registered_redirect_uris: maybe_existing_client
-                .map_or_else(Vec::new, |existing_client| existing_client.redirect_uris),
         })
     }
 
@@ -463,8 +453,7 @@ mod tests {
         assert_eq!(
             outcome,
             AuthorizeNextStep::AwaitOwner {
-                request_id: "req-1".to_owned(),
-                registered_redirect_uris: client("app", &["openid"]).redirect_uris,
+                request_id: "req-1".to_owned()
             }
         );
         let parked_request = code_authorization_starter

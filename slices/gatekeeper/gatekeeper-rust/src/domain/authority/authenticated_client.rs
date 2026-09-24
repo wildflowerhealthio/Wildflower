@@ -7,7 +7,7 @@
 //! secret was never checked.
 
 use crate::crypto_util::client_secret::verify_client_secret;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegisteredRedirectUri};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
@@ -84,11 +84,6 @@ impl AuthenticatedClient {
     /// The verified client's id.
     pub(crate) fn client_id(&self) -> &str {
         &self.client.client_id
-    }
-
-    /// The verified client's redirect allowlist.
-    pub(crate) fn redirect_uris(&self) -> &[RegisteredRedirectUri] {
-        &self.client.redirect_uris
     }
 
     /// The verified client's display name.

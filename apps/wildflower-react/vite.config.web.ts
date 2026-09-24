@@ -4,7 +4,7 @@ import { devDeepLinkRedirect } from './src/dev-server/deep-link-redirect.ts'
 import baseConfig from './vite.config.base.ts'
 
 // The port the debug Tauri host sends browsers to for its owner-UI pages (the
-// device-flow `verification_uri`, the `/authorize` polling page, the 404 link)
+// device-flow `verification_uri`, logout's landing, the 404 link)
 // — read from the same `tauri-shared-config.json` entry, so the two can't drift.
 const devPort = Number(new URL(sharedConfig.owner_ui_dev_base_url).port)
 

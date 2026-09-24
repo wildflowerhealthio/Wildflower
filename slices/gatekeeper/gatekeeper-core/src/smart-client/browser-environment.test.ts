@@ -80,18 +80,13 @@ describe('browserSignInEnvironment', () => {
           pendingKey: fc.string(),
           scope: fc.string(),
           redirectUri: fc.string(),
-          clientBaseUrl: fc.option(fc.string(), { nil: undefined }),
         }),
-        ({ clientBaseUrl, ...required }) => {
-          const registration: ClientRegistration =
-            clientBaseUrl === undefined ? required : { ...required, clientBaseUrl }
+        (registration) => {
           const environment = browserSignInEnvironment(pageAt('https://x.test/'), registration)
           expect(environment.clientId).toBe(registration.clientId)
           expect(environment.pendingKey).toBe(registration.pendingKey)
           expect(environment.scope).toBe(registration.scope)
           expect(environment.redirectUri).toBe(registration.redirectUri)
-          expect(environment.clientBaseUrl).toBe(registration.clientBaseUrl)
-          expect('clientBaseUrl' in environment).toBe(clientBaseUrl !== undefined)
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }

@@ -12,7 +12,7 @@ import { TextField, pageLayoutStyles } from 'react-tundraish'
 
 import { localNetworkAccessHint } from '../local-network-hint.ts'
 import type { RouterContext } from '../router-context.ts'
-import { rememberReturnTo, signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
+import { returnToOnPage, signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
 import { apiServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
 
 const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
@@ -81,14 +81,17 @@ interface LandingSignIn {
  * The real {@link LandingSignIn}. Sign-in only starts from this landing, which
  * sits at the app root, so the page's own directory is the served base — the
  * same value `main-web` hands the router and the callback re-derives (see
- * `sign-in.ts`). The gate's `?returnTo=` is stashed just before leaving, because
- * the registered redirect URI drops it.
+ * `sign-in.ts`). The gate's `?returnTo=` rides the pending record, because the
+ * registered redirect URI drops it.
  */
 const browserSignIn: LandingSignIn = {
   start: (target) =>
-    startSignIn(target, signInEnvironment(window, basenameOf(window.location.pathname))),
+    startSignIn(
+      target,
+      returnToOnPage(window.location.href),
+      signInEnvironment(window, basenameOf(window.location.pathname))
+    ),
   leave: (authorizationUrl) => {
-    rememberReturnTo(window)
     window.location.assign(authorizationUrl)
   },
 }

@@ -1,7 +1,6 @@
 mod bearer_only;
 mod cache_suppression;
 mod client_auth;
-mod client_base_url;
 mod common;
 mod device_code;
 mod grant_flows;
@@ -10,3 +9,4 @@ mod oauth_endpoints;
 mod revocation;
 mod scope_gating;
 mod smoke;
+mod wait_page;

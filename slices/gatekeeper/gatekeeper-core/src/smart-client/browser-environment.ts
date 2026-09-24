@@ -45,11 +45,6 @@ interface ClientRegistration {
   readonly scope: string
   /** The redirect URI to send, derived from where the page is served. */
   readonly redirectUri: string
-  /**
-   * The served root of this page, for a copy of the owner UI — see
-   * `SignInEnvironment.clientBaseUrl`.
-   */
-  readonly clientBaseUrl?: string
 }
 
 /** Wire `page`'s impure edges and `registration` into a {@link SignInEnvironment}. */
@@ -68,9 +63,6 @@ const browserSignInEnvironment = (
   scope: registration.scope,
   redirectUri: registration.redirectUri,
   pageIsSecure: page.location.protocol === 'https:',
-  ...(registration.clientBaseUrl === undefined
-    ? {}
-    : { clientBaseUrl: registration.clientBaseUrl }),
 })
 
 export { browserSignInEnvironment }

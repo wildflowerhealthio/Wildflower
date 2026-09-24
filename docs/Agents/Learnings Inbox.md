@@ -410,5 +410,17 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 ## The web owner UI talks to gatekeeper as two different clients
 
 **Discovered during**: claude/oauth-redirect-routing-9cmhrj (sending a PR preview's sign-in back to the preview)
-**Learning**: `main-web` signs in by SMART redirect as `client_id=wildflower-react`, but its device-login fallback and step-up screen (`NeedsAuthMessage`) start the device flow as `wildflower-host`. With no host-threaded id it falls back to `FIRST_PARTY_CLIENT_ID`. A web session's token can therefore be bound to either id, so a server-side rule meant for "the web owner UI" has to accept both. `wildflower_client_base_url` does (`gatekeeper-rust/src/domain/client_base_url.rs`). The debug host's configured owner UI is the `main-web` dev server on `localhost:5195`, so before this parameter a deployed preview that signed in through a debug host's tunnel was sent to `localhost`.
+**Learning**: `main-web` signs in by SMART redirect as `client_id=wildflower-react`, but its device-login fallback and step-up screen (`NeedsAuthMessage`) start the device flow as `wildflower-host`. With no host-threaded id it falls back to `FIRST_PARTY_CLIENT_ID`. A web session's token can therefore be bound to either id, so a server-side rule meant for "the web owner UI" has to accept both. The debug host's configured owner UI is the `main-web` dev server on `localhost:5195`, so any page the server builds on its configured owner UI points a deployed PR preview at `localhost`.
 **Suggested destination**: gatekeeper Jargon Explanation (Client)
+
+## A page reached by a full navigation starts signed out under an in-memory bearer
+
+**Discovered during**: claude/oauth-redirect-routing-9cmhrj (replacing the owner UI's polling page with the gatekeeper's wait page)
+**Learning**: `main-web` holds its bearer in page memory, and `/oauth/authorize` reaches whatever page it redirects to by a full navigation, so that page always boots `Unauthed`. The owner UI's old polling page offered inline consent to a signed-in viewer, but on the web that branch could never run. It was a spinner that polled and redirected, which is why a static page the gatekeeper serves could replace it. Before building a "signed-in viewer" branch into any page a server redirects to, check that something can actually carry the credential across the navigation.
+**Suggested destination**: Strategies.md ("Bearer-only auth makes HTML pages public") or the gatekeeper Jargon Explanation
+
+## oxlint type-checks plain `.js` files anywhere in the repo, including inside a Rust crate
+
+**Discovered during**: claude/oauth-redirect-routing-9cmhrj (the wait page's `wait.js`, embedded by `gatekeeper-rust` with `include_str!`)
+**Learning**: `vp check` runs oxlint's type-aware rules over every `.js` file, so an untyped parameter counts as `any` and trips `no-unsafe-assignment`, even for a browser asset no TS package imports. JSDoc (`@param {string} x`, `/** @type {unknown} */ let body`) satisfies it without a build step. `consistent-function-scoping` also flags helpers inside an IIFE, so load such a script as `type="module"`, whose scope is already private, and keep the helpers at top level. To test the file from Vitest, read it with `readFileSync` and run it through `new Function('window', 'document', 'fetch', source)` as `apps/github-pages`' 404 test does. Under Vitest a `?raw` import of a `.css` file is an empty string.
+**Suggested destination**: Testing Reference or CONTRIBUTING.md (code style)

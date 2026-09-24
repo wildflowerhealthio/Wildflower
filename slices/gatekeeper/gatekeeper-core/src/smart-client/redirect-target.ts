@@ -74,7 +74,7 @@ const redirectUriForPage = (href: string): string | undefined => {
  * (`branding-core`'s `basenameOf(location.pathname)`); it defaults to `/`, the
  * origin root, so a root-served copy behaves exactly as before. A copy under
  * `/app/` (or a PR preview's `/staging/pr-<n>/app/`) passes that directory so
- * the route returns **under it** — `/app/home`, the registered value — rather
+ * the route returns **under it** — a `/home` route becomes `/app/home` — rather
  * than at `<origin>/home`, off the app. The caller must derive `basePath` at
  * the served root on both legs (so the two derivations agree), which the hosted
  * owner UI does: its sign-in is reachable only from that root.

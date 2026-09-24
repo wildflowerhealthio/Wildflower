@@ -255,7 +255,8 @@ signInButton.addEventListener('click', () => {
   }
   signInButton.disabled = true
   showStatus(`Asking ${serverUrl} how to sign in…`)
-  runSignInEffect(beginSignIn(serverUrl, signInEnvironment), (authorizationUrl) => {
+  // The console is one page, so there is nowhere in particular to return to.
+  runSignInEffect(beginSignIn(serverUrl, undefined, signInEnvironment), (authorizationUrl) => {
     window.location.assign(authorizationUrl)
   })
 })

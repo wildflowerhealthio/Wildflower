@@ -31,8 +31,8 @@
         "tags": [
           "OAuth 2.0"
         ],
-        "summary": "The authorization endpoint (RFC 6749 §3.1), the public front door of the\nOAuth flow. Validates the request, then either auto-issues an authorization\ncode (when an existing grant pre-approves every requested scope) or\nredirects the user-agent to the Owner UI to drive the approval.",
-        "description": "Nothing in-process calls this route. Registered clients (e.g.\nSMART-on-FHIR apps) discover it via the FHIR server's\n`.well-known/smart-configuration` (`authorization_endpoint`) and send the\n*user's browser* here with PKCE params to start an authorization-code\nflow:\n\n1. Browser lands here; the request is parked as an `AuthorizationRequest`\n   (5-minute TTL).\n2. Unless every requested scope is pre-approved by an existing grant for\n   this (client, `redirect_uri`) pair, the request joins the pending-consent\n   queue (raising the host webview's popup) and the browser is 302'd to the\n   Owner UI's polling page, which polls `GET /oauth/authorize/{id}` (a custom\n   extension, not part of any RFC) until the Owner decides — on that page if\n   the viewer is signed in, in the popup otherwise. RFC 6749\n   leaves the owner-interaction mechanism unspecified, so the polling\n   page is spec-legal; likewise §4.1 explicitly allows skipping consent\n   on a previously established authorization decision, which is what the\n   grant fast path implements.\n3. Approval 302s the browser back to the client's `redirect_uri` with\n   `code` + `state` (§4.1.2); the client then redeems the short-lived\n   code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.\n\nClients other than the first-party host are **trusted on first use**: an\nunknown `client_id`, an unregistered `redirect_uri`, and scopes outside the\nregistration are all carried to the Owner's prompt as a registration warning\nrather than rejected here, and nothing is written to the `clients` table\nuntil the Owner approves. Such a request never takes the grant fast path,\nand while its redirect is untrusted every other failure renders the local\nHTML page instead of redirecting. `wildflower-host` keeps the strict\ntreatment, and a disabled client is rejected either way.",
+        "summary": "The authorization endpoint (RFC 6749 §3.1), the public front door of the\nOAuth flow. Validates the request, then either auto-issues an authorization\ncode (when an existing grant pre-approves every requested scope) or parks\nthe user-agent on the gatekeeper's wait page while the Owner decides.",
+        "description": "Nothing in-process calls this route. Registered clients (e.g.\nSMART-on-FHIR apps) discover it via the FHIR server's\n`.well-known/smart-configuration` (`authorization_endpoint`) and send the\n*user's browser* here with PKCE params to start an authorization-code\nflow:\n\n1. Browser lands here; the request is parked as an `AuthorizationRequest`\n   (5-minute TTL).\n2. Unless every requested scope is pre-approved by an existing grant for\n   this (client, `redirect_uri`) pair, the request joins the pending-consent\n   queue (raising the host webview's popup) and the browser is 302'd to the\n   wait page at `/oauth/authorize/{id}/wait`, served by this gatekeeper on\n   the origin the browser used, which polls `GET /oauth/authorize/{id}` (a\n   custom extension, not part of any RFC) until the Owner decides — in the\n   popup, in a signed-in owner UI, or in the host's native dialog. RFC 6749\n   leaves the owner-interaction mechanism unspecified, so the wait page is\n   spec-legal; likewise §4.1 explicitly allows skipping consent on a\n   previously established authorization decision, which is what the grant\n   fast path implements.\n3. Approval 302s the browser back to the client's `redirect_uri` with\n   `code` + `state` (§4.1.2); the client then redeems the short-lived\n   code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.\n\nClients other than the first-party host are **trusted on first use**: an\nunknown `client_id`, an unregistered `redirect_uri`, and scopes outside the\nregistration are all carried to the Owner's prompt as a registration warning\nrather than rejected here, and nothing is written to the `clients` table\nuntil the Owner approves. Such a request never takes the grant fast path,\nand while its redirect is untrusted every other failure renders the local\nHTML page instead of redirecting. `wildflower-host` keeps the strict\ntreatment, and a disabled client is rejected either way.",
         "operationId": "handle_authorize_request",
         "parameters": [
           {
@@ -108,20 +108,11 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "wildflower_client_base_url",
-            "in": "query",
-            "description": "Wildflower extension: the served root of the owner UI copy signing in,\nwhich a first-party client's polling page resolves on — see\n[`crate::domain::client_base_url`].",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
           "302": {
-            "description": "Redirect to the client redirect_uri or the owner approval UI"
+            "description": "Redirect to the client redirect_uri or the gatekeeper's wait page"
           },
           "400": {
             "description": "Local HTML error page (untrusted redirect_uri)"
@@ -343,7 +334,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Client callback URL carrying `error=access_denied&state=...` for\ncode-flow requests (RFC 6749 §4.1.2.1) so the polling page can\ncomplete the flow. Absent for device-flow denials, which have no\nclient `redirect_uri`."
+                "description": "Client callback URL carrying `error=access_denied&state=...` for\ncode-flow requests (RFC 6749 §4.1.2.1) so the wait page can\ncomplete the flow. Absent for device-flow denials, which have no\nclient `redirect_uri`."
               },
               "status": {
                 "type": "string",
@@ -394,7 +385,7 @@
       },
       "DeviceAuthorizationRequest": {
         "type": "object",
-        "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials, and the non-standard\n`device_name` and `wildflower_client_base_url` extensions. Form-urlencoded.",
+        "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials, and the non-standard\n`device_name` extension. Form-urlencoded.",
         "properties": {
           "client_id": {
             "type": [
@@ -415,12 +406,6 @@
             ]
           },
           "device_name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "wildflower_client_base_url": {
             "type": [
               "string",
               "null"

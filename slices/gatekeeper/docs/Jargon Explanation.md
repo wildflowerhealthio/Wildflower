@@ -255,9 +255,10 @@ client. Flow:
    The verification URIs point at the hosted owner UI
    (`https://wildflowerhealth.io/app/gatekeeper/devices?server=<origin>`,
    the host's `owner_ui_base_url`), not at the server itself — the host
-   serves no UI of its own. A first-party client that names the owner UI copy
-   it runs from ([client base URL](#client-base-url)) gets them on that copy
-   instead.
+   serves no UI of its own. A copy of the owner UI that starts a pairing
+   itself (`NeedsAuthMessage`) shows its **own** device-entry page instead,
+   keeping the query the server built (`GatekeeperPaths.deviceEntryUrlOn`),
+   so a pairing started on a PR preview or a dev server is approved there.
 2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device — or answers the popup the request raised there through the
@@ -324,9 +325,30 @@ background reaper re-runs the query so an idle host doesn't stay stuck on a head
 whose TTL lapsed.
 
 The popup is dismissable (× / ESC / backdrop) and dismissing decides nothing:
-the request stays pending and answerable from its standalone surface — Settings
-for a device request, the requesting browser's polling page for a code request —
-until it expires.
+the request stays pending and answerable from Settings until it expires, while
+the requesting browser keeps waiting (on the [wait page](#wait-page) for a code
+request).
+
+### Wait page
+
+The page `/oauth/authorize` parks a browser on while the Owner decides:
+`/oauth/authorize/{id}/wait`, served by the gatekeeper itself on whichever
+origin the browser reached it at (loopback, a tunnel, a forwarded front). The
+`Location` is relative to `/oauth/authorize`, so no owner UI address is
+involved. The page is static HTML, CSS and JS
+(`gatekeeper-rust/src/http/routes/oauth/wait_page/`). It polls
+`GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
+redirect the status carries, which the gatekeeper built from the client's
+allowlisted or just-approved `redirect_uri`. That makes this redirect the only
+address a sign-in ever leaves the gatekeeper for, and no request parameter can
+name a different one. The page takes no decision itself: the Owner answers in
+the host popup, a signed-in owner UI, or the
+[loopback owner dialog](#loopback-owner-dialog).
+
+It interpolates nothing (the script reads the request id from its own path),
+loads only from its own origin under a strict CSP, and follows only an
+`http:`/`https:` redirect. Its colours are copies of `react-tundraish` palette
+tokens, held equal by `gatekeeper-react/src/wait-page.test.ts`.
 
 ### Loopback owner dialog
 
@@ -337,8 +359,8 @@ on the same machine. The person at the keyboard is the Owner, so the host asks
 them in place rather than sending them to the in-app consent page.
 
 The request is parked and queued exactly as any other code request: the browser
-is still sent to the polling page, and the request still appears in the Owner
-UI. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
+is still sent to the [wait page](#wait-page), and the request still appears in
+the Owner UI. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
 `LoopbackConsentPrompt` port). Whichever surface decides first wins, because a
 deny, like an approve, only changes a request that is still `pending`.
 
@@ -349,7 +371,7 @@ deny, like an approve, only changes a request that is still `pending`.
   **no** standing [Grant](#grant) (`ApprovalMemory::AskEveryTime`), so every
   loopback login asks again.
 - **Reject**, closing the dialog, or leaving it unanswered until the request
-  expires denies it (`access_denied` at the polling page).
+  expires denies it (the wait page carries `access_denied` back to the client).
 - A host with no native dialog wires `NoLoopbackConsentPrompt`, which
   **abstains**, leaving the request to the Owner UI.
 
@@ -357,37 +379,6 @@ Forwarded (tunnel) requests and every other `client_id` never reach the dialog.
 Anyone on loopback can present the `client_id`. The dialog names the redirect
 origin, and the Owner is at the machine, which is the same trade-off as trust on
 first use.
-
-### Client base URL
-
-The served root of the owner UI copy a first-party client runs from — the
-published `https://wildflowerhealth.io/app/`, a PR preview's
-`https://wildflowerhealthio.github.io/staging/pr-<n>/app/`, a local dev server.
-The client names it with the non-standard `wildflower_client_base_url`
-parameter (`CLIENT_BASE_URL_PARAM` in `gatekeeper-core/src/client-base-url.ts`)
-on `/oauth/authorize`, `/oauth/device_authorization` and `/access/logout`, and
-the page each hands back — the polling page, the verification URIs, logout's
-landing — resolves on that copy rather than on the host's configured
-`owner_ui_base_url`. Only the first-party ids (`wildflower-react` and the
-host's first-party `client_id`) are honoured; any other client's value is
-ignored, since the polling page is where that client's consent is decided. A
-value that is not an absolute `http`/`https` URL is rejected with a `400`
-before the endpoint has any effect — except logout, which revokes the presented
-token first, since the client has already forgotten it. The decision lives in
-`gatekeeper-rust`'s `domain/client_base_url.rs`.
-
-Nothing authenticates a sign-in request's `client_id`, so on the two sign-in
-endpoints a first-party id alone doesn't move the pages — otherwise a crafted
-link could send the Owner from the gatekeeper's address to any page. The copy
-must be **vouched for**: it is the configured one, or one of the client's
-registered redirects lies under it (same origin, at or below its path).
-`wildflower-react` is trusted on first use, so a copy's first sign-in registers
-its redirect when the Owner approves, and later sign-ins from that copy stay on
-it. An unvouched copy's page stays on the configured owner UI and carries the
-copy as `wildflower_client_base_url`; `ConfirmClientCopy` in `gatekeeper-react`
-asks the Owner whether to continue there or stay. The seeded host client
-registers no redirects, so its device flow always asks. Logout needs no vouching:
-its `client_id` comes from the verified bearer.
 
 ### Expandable consent
 
@@ -434,8 +425,7 @@ on the page's direct-loopback requests.
 ### `gatekeeper-pages` group
 
 The HttpApi group whose endpoints serve **HTML** to humans
-(`OAuthPollingPage`, `OAuthConsentPage`, `DeviceEntryPage`,
-`DeviceConsentPage`). Core ships definitions only; consumer slices
+(`OAuthConsentPage`, `DeviceEntryPage`, `DeviceConsentPage`). Core ships definitions only; consumer slices
 (`gatekeeper-react`) provide the handler layer through the phantom-id
 bridge described in `docs/Effect/HttpApi Composition How-To.md`. Every
 page is public; auth is JS-driven on the JSON endpoints behind them.
@@ -567,14 +557,14 @@ verifies PKCE + redirect_uri + client_id match the issued code, then
 mints a JWT.
 
 Unless an existing [grant](#grant) pre-approves every requested scope, the
-request is parked for the Owner and reaches them two ways at once: the browser
-lands on the polling page (which offers consent inline when its viewer is
-already signed in), and the request joins the
+request is parked for the Owner: the browser lands on the
+[wait page](#wait-page), and the request joins the
 [pending-consent queue](#pending-consent-queue) so the host app raises its
-popup. Either surface decides it; the polling page redirects the client once its
-poll observes the outcome. Both are needed because the browser that started the
-flow is often not signed in — a SMART app launched from another device, or one
-reaching the tunnel origin.
+popup and a signed-in owner UI lists it. Whichever surface decides it, the wait
+page redirects the client once its poll observes the outcome. The browser that
+started the flow is usually not signed in — a SMART app launched from another
+device, one reaching the tunnel origin, or the owner UI signing in to begin
+with — so it waits rather than decides.
 
 ### Device authorization flow / `grant_type=urn:ietf:params:oauth:grant-type:device_code`
 

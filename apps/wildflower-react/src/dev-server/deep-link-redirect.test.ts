@@ -5,10 +5,10 @@ const BROWSER_ACCEPT = 'text/html,application/xhtml+xml,*/*;q=0.8'
 
 describe('deepLinkRedirect', () => {
   it('should send a browser deep link to the app root with the route in ?redirect=', () => {
-    // Arrange — the link a debug Tauri host hands out for its polling page.
+    // Arrange — the link a debug Tauri host hands out for its device-flow page.
     const request = {
       method: 'GET',
-      url: '/gatekeeper/oauth-polling/7294c89d?server=https%3A%2F%2Fruth.wildflowerhealth.io',
+      url: '/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WXYZ-2345',
       accept: BROWSER_ACCEPT,
     }
 
@@ -17,7 +17,7 @@ describe('deepLinkRedirect', () => {
 
     // Assert
     expect(location).toBe(
-      '/?server=https%3A%2F%2Fruth.wildflowerhealth.io&redirect=%2Fgatekeeper%2Foauth-polling%2F7294c89d'
+      '/?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WXYZ-2345&redirect=%2Fgatekeeper%2Fdevices'
     )
   })
 

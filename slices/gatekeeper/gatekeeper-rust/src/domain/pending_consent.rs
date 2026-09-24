@@ -21,7 +21,7 @@ pub enum PendingConsentHead {
     /// approval. Hydrated through `GET /access/oauth-consents/{id}`.
     OAuth {
         /// The `AuthorizationRequest` primary key, which is also the `$id` of
-        /// the polling page the requesting browser is sitting on.
+        /// the wait page the requesting browser is sitting on.
         id: String,
     },
 }
