@@ -8,7 +8,7 @@ import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { DIN_CODE_SYSTEM, ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
+import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { PrescriptionHistoryResponseKind } from './prescription-history-response-kind.ts'
 
@@ -119,7 +119,6 @@ describe('PrescriptionHistoryResponseKind', () => {
           status: 'completed',
           medicationCodeableConcept: {
             coding: [
-              { system: DIN_CODE_SYSTEM, code: '51480840', display: 'Amoxicillin 500mg' },
               { system: CanadianCodingSystem.Din, code: '51480840', display: 'Amoxicillin 500mg' },
             ],
             text: 'Amoxil',
@@ -141,7 +140,6 @@ describe('PrescriptionHistoryResponseKind', () => {
           status: 'completed',
           medicationCodeableConcept: {
             coding: [
-              { system: DIN_CODE_SYSTEM, code: '80717730', display: 'Amoxicillin 500mg' },
               { system: CanadianCodingSystem.Din, code: '80717730', display: 'Amoxicillin 500mg' },
             ],
             text: 'Apo-Amoxi',
@@ -188,10 +186,7 @@ describe('PrescriptionHistoryResponseKind', () => {
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-9' }],
           status: 'completed',
           medicationCodeableConcept: {
-            coding: [
-              { system: DIN_CODE_SYSTEM, code: '51480840' },
-              { system: CanadianCodingSystem.Din, code: '51480840' },
-            ],
+            coding: [{ system: CanadianCodingSystem.Din, code: '51480840' }],
           },
           authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
         }),

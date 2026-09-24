@@ -1,223 +1,112 @@
 import { DateTime, Option, Schema } from 'effect'
-import { WildflowerExtension } from 'fhir-r4/data-types'
-import type { MedicationRequest } from 'fhir-r4/resources'
+import {
+  CanadianCodingSystem,
+  CodeableConcept,
+  IdentifierAndReference,
+  WildflowerExtension,
+} from 'fhir-r4/data-types'
+import { Medication as FhirMedication, type MedicationRequest } from 'fhir-r4/resources'
 import { nonEmpty } from 'kitchen-sink'
 import { nextFillDate } from 'medication-calendar-core'
 
 import type { Medication } from '../medication.ts'
 
 /** The decoded FHIR R4 `MedicationRequest` resource. */
-type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Schema>
+type MedicationRequestResource = MedicationRequest.Type
 
-// carebook dialect constants for the Medications app's FHIR server. Keep them
-// verbatim. The DIN lives as a `code.coding` entry on the (contained)
-// Medication; the human-readable description and the remaining-repeats count
-// are `extension`s.
-//
-// These are *the same* dialect `rexall-be-well-collector` decodes, not a
-// distinct one — a real capture of the Rexall tunnel emits these exact URLs,
-// including the `v2` spelling of the repeats extension below. That package
-// exports the catalogue as `Carebook.*`, but importing it would make this
-// package depend on a collector slice for six string constants, so the two are
-// kept in step by hand. Change one side and check the other.
-const DIN_CODING_SYSTEM = 'http://schema.carebook.com/v1/fhir/coding/medication-din-code'
+/** A decoded FHIR R4 `CodeableConcept`. */
+type CodeableConceptValue = Schema.Schema.Type<typeof CodeableConcept.Schema>
+
+/**
+ * The carebook `description` extension on a contained Medication (e.g.
+ * `"999 mg - Capsule"`). `rexall-be-well-source` promotes it into the
+ * Medication's narrative, but stands down — leaving the extension in place —
+ * when the narrative already holds real content, so the reader still looks here
+ * first. Kept in step by hand with that package's
+ * `CarebookExtension.MedicationDescription`; importing it would make this
+ * package depend on a source slice for one string.
+ */
 const DESCRIPTION_EXTENSION_URL =
   'http://schemas.carebook.com/v1/fhir/medication/extension/description'
-// Legacy slots: `rexall-be-well-source` now promotes the repeats count onto
-// `WildflowerExtension.RepeatsAvailable` and the store link onto
-// `dispenseRequest.performer.reference`, but requests stored before that
-// promotion still carry the carebook shapes below, so both are read.
-const REPEATS_AVAILABLE_EXTENSION_URL =
-  'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available'
-// A legacy request sourced from a Rexall pharmacy carries both of these top-level
-// extensions; together they build a store-locator link. `external-system-source`
-// must read `RexallPharmacy` and `external-store-id` supplies the store number.
-const EXTERNAL_SYSTEM_SOURCE_URL =
-  'http://schemas.carebook.com/v1/fhir/common/extension/external-system-source'
-const EXTERNAL_STORE_ID_URL =
-  'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id'
-const REXALL_SYSTEM_SOURCE = 'RexallPharmacy'
+
+/**
+ * Store-locator bases the sources write onto
+ * `dispenseRequest.performer.reference`. A reference under one of them names
+ * that chain's store. Keep in step with `rexall-be-well-source`'s
+ * `REXALL_STORE_LOCATOR_BASE` and `shoppers-drugmart-source`'s
+ * `SHOPPERS_STORE_LOCATOR_BASE`.
+ */
 const REXALL_STORE_URL_BASE = 'https://www.rexall.ca/storelocator/store/'
-// A Shoppers Drug Mart request carries its dispensing store as a
-// `dispenseRequest.performer` reference to the public store-locator URL (legacy
-// requests: a `supportingInformation` reference). Unlike
-// Rexall (which needs two top-level extensions), the URL is self-identifying:
-// any such reference under this base marks a Shoppers store.
-// Keep in sync with the collector's `SHOPPERS_STORE_LOCATOR_BASE`.
 const SHOPPERS_STORE_URL_BASE = 'https://www.shoppersdrugmart.ca/store-locator/store/'
-// Shoppers puts the DIN inline on `medicationCodeableConcept.coding` rather than
-// on a contained Medication. Keep in sync with the collector's
-// `DIN_CODE_SYSTEM` (`shoppers-drugmart-source/src/shoppers.ts`).
-const SHOPPERS_DIN_CODING_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din'
-// The coding systems whose `code` genuinely *is* a DIN — see `conceptDinOf`.
-const DIN_CODING_SYSTEMS: readonly string[] = [DIN_CODING_SYSTEM, SHOPPERS_DIN_CODING_SYSTEM]
 
-// Several fields we read — the `medication[x]` choice slots, `contained`,
-// `requester`, `note`, `dispenseRequest`, and the passthrough `value[x]` on an
-// extension — are typed loosely (often `any`) on the decoded resource. Rather
-// than read `any`, we take each as `unknown` and decode it through a permissive
-// local schema naming only the fields we display: type-safe, and tolerant of
-// both the wire and decoded shapes. Effect's `Struct` ignores excess keys on
-// decode, so these narrow schemas happily read a much larger object.
-const nullableString = Schema.optional(Schema.NullOr(Schema.String))
-const nullableNumber = Schema.optional(Schema.NullOr(Schema.Number))
-
-// A FHIR `uri` is a plain string on the wire and on loosely-typed `contained`
-// resources, but the fully-typed top-level `medicationCodeableConcept` decodes
-// it to a `URL`. Accept either and normalize to the string form so a decoded
-// `Coding.system` still reads (and `=== <system-uri>` comparisons still work).
-const nullableUri = Schema.optional(
-  Schema.NullOr(
-    Schema.transform(Schema.Union(Schema.String, Schema.instanceOf(URL)), Schema.String, {
-      decode: (value) => (typeof value === 'string' ? value : value.href),
-      encode: (value) => value,
-    })
-  )
+// `medication[x]` is typed `any` on the decoded resource (fhir-r4 resolves
+// choice datatypes through a registry) and `contained` is untyped passthrough.
+// Each is taken as `unknown` and decoded through fhir-r4's own schema: the
+// `medication[x]` slots already hold *decoded* values, so they go through the
+// type side (`Schema.typeSchema`); `contained` entries are raw wire JSON, so they
+// go through the full wire schema.
+const decodeConcept = Schema.decodeUnknownOption(Schema.typeSchema(CodeableConcept.Schema))
+const decodeReference = Schema.decodeUnknownOption(
+  Schema.typeSchema(IdentifierAndReference.ReferenceSchema)
 )
+const decodeContainedMedication = Schema.decodeUnknownOption(FhirMedication.Schema)
 
-// A FHIR `dateTime` on a fully-typed decoded resource is an Effect `DateTime.Utc`
-// (see `Period.start`/`end`), but on the wire it is a plain ISO string. Accept
-// either and normalize to the ISO string form the UI renders and date-maths on.
-const nullableIsoDateTime = Schema.optional(
-  Schema.NullOr(
-    Schema.transform(Schema.Union(Schema.String, Schema.DateTimeUtcFromSelf), Schema.String, {
-      decode: (value) => (typeof value === 'string' ? value : DateTime.formatIso(value)),
-      encode: (value) => value,
-    })
-  )
-)
+/** `medicationCodeableConcept`, or `null` when the request names its drug another way. */
+const medicationConceptOf = (request: MedicationRequestResource): CodeableConceptValue | null => {
+  const slot: unknown = request.medicationCodeableConcept
+  return Option.getOrNull(decodeConcept(slot))
+}
 
-const Coding = Schema.Struct({
-  system: nullableUri,
-  code: nullableString,
-  display: nullableString,
-})
-const MedicationConcept = Schema.Struct({
-  text: nullableString,
-  coding: Schema.optional(Schema.Array(Coding)),
-})
-const MedicationReference = Schema.Struct({
-  display: nullableString,
-  reference: nullableString,
-})
-
-/** A Medication carried inline in `MedicationRequest.contained` (carebook `#id`). */
-const ContainedMedication = Schema.Struct({
-  id: nullableString,
-  resourceType: nullableString,
-  code: Schema.optional(Schema.NullOr(MedicationConcept)),
-  text: Schema.optional(Schema.NullOr(Schema.Struct({ div: nullableString }))),
-  extension: Schema.optional(
-    Schema.Array(Schema.Struct({ url: nullableString, valueString: nullableString }))
-  ),
-})
-type ContainedMedicationValue = Schema.Schema.Type<typeof ContainedMedication>
-
-const Requester = Schema.Struct({ display: nullableString })
-const Notes = Schema.Array(Schema.Struct({ text: nullableString }))
-/** `MedicationRequest.dosageInstruction` entries carrying a free-text sig. */
-const DosageInstructions = Schema.Array(Schema.Struct({ text: nullableString }))
-/** FHIR `Duration` (a Quantity): a numeric `value` with a UCUM `code`/`unit`. */
-const SupplyDuration = Schema.Struct({
-  value: nullableNumber,
-  unit: nullableString,
-  code: nullableString,
-})
-type SupplyDuration = Schema.Schema.Type<typeof SupplyDuration>
-/** FHIR `Period` (`dispenseRequest.validityPeriod`): the prescription's fill window. */
-const Period = Schema.Struct({ start: nullableIsoDateTime, end: nullableIsoDateTime })
-const DispenseRequest = Schema.Struct({
-  numberOfRepeatsAllowed: nullableNumber,
-  expectedSupplyDuration: Schema.optional(Schema.NullOr(SupplyDuration)),
-  validityPeriod: Schema.optional(Schema.NullOr(Period)),
-  modifierExtension: Schema.optional(
-    Schema.Array(Schema.Struct({ url: nullableString, valueDecimal: nullableNumber }))
-  ),
-  extension: Schema.optional(
-    Schema.Array(Schema.Struct({ url: nullableString, valueInteger: nullableNumber }))
-  ),
-  performer: Schema.optional(Schema.NullOr(Schema.Struct({ reference: nullableString }))),
-})
-/** Decoded once per view and threaded into the readers that need it. */
-type DispenseRequestValue = Schema.Schema.Type<typeof DispenseRequest>
-
-/** Top-level `MedicationRequest.extension` entries carrying a `valueString`. */
-const StringExtensions = Schema.Array(
-  Schema.Struct({ url: nullableString, valueString: nullableString })
-)
-
-/** `MedicationRequest.supportingInformation` references (Shoppers store-locator link). */
-const SupportingInformation = Schema.Array(Schema.Struct({ reference: nullableString }))
-
-const decodeConcept = Schema.decodeUnknownOption(MedicationConcept)
-const decodeReference = Schema.decodeUnknownOption(MedicationReference)
-const decodeContainedMedication = Schema.decodeUnknownOption(ContainedMedication)
-const decodeRequester = Schema.decodeUnknownOption(Requester)
-const decodeNotes = Schema.decodeUnknownOption(Notes)
-const decodeDosageInstructions = Schema.decodeUnknownOption(DosageInstructions)
-const decodeDispenseRequest = Schema.decodeUnknownOption(DispenseRequest)
-const decodeStringExtensions = Schema.decodeUnknownOption(StringExtensions)
-const decodeSupportingInformation = Schema.decodeUnknownOption(SupportingInformation)
-
-/**
- * The Medication resource carebook inlines in `MedicationRequest.contained`,
- * pointed at by a `#id` `medicationReference`. Returns the entry matching that
- * fragment id, or the first contained Medication when the reference is absent
- * or external — the DIN coding and description extension are read from it.
- */
-const containedMedicationOf = (
+/** `medicationReference`, or `null` when the request names its drug another way. */
+const medicationReferenceOf = (
   request: MedicationRequestResource
-): ContainedMedicationValue | undefined => {
-  const referenceSlot: unknown = request.medicationReference
-  const reference = decodeReference(referenceSlot)
-  const ref = Option.isSome(reference) ? nonEmpty(reference.value.reference) : null
-
-  const containedSlot: unknown = request.contained
-  const contained: readonly unknown[] = Array.isArray(containedSlot) ? containedSlot : []
-  const medications = contained.flatMap((entry) => {
-    const decoded = decodeContainedMedication(entry)
-    return Option.isSome(decoded) && decoded.value.resourceType === 'Medication'
-      ? [decoded.value]
-      : []
-  })
-
-  const byId = ref === null ? undefined : medications.find((med) => `#${med.id ?? ''}` === ref)
-  return byId ?? medications[0]
-}
-
-/** The DIN carried on the Medication's `code.coding` under the carebook system. */
-const dinOf = (medication: ContainedMedicationValue): string | null => {
-  for (const coding of medication.code?.coding ?? []) {
-    if (coding.system === DIN_CODING_SYSTEM) {
-      const code = nonEmpty(coding.code)
-      if (code !== null) return code
-    }
-  }
-  return null
+): IdentifierAndReference.ReferenceType | null => {
+  const slot: unknown = request.medicationReference
+  return Option.getOrNull(decodeReference(slot))
 }
 
 /**
- * DIN fallback for requests that carry the code inline on
- * `medicationCodeableConcept.coding` (e.g. Shoppers Drug Mart) rather than on a
- * contained Medication: the first coding under a known DIN system
- * ({@link DIN_CODING_SYSTEMS}) bearing a non-empty `code`.
+ * The Medication carried inline in `MedicationRequest.contained`.
  *
- * Matching on the system is what keeps this a *DIN* fallback rather than a
- * "first code wins" one — a generic FHIR R4 source's `medicationCodeableConcept`
- * is usually RxNorm or SNOMED CT, and neither is a DIN.
+ * @returns The contained Medication a `#id` `medicationReference` points at, or
+ *   the first contained Medication when the reference is absent or external;
+ *   `null` when none decodes.
+ *
+ * @remarks
+ * An entry that does not decode as an R4 `Medication` is skipped, not fatal.
  */
-const conceptDinOf = (request: MedicationRequestResource): string | null => {
-  const conceptSlot: unknown = request.medicationCodeableConcept
-  const concept = decodeConcept(conceptSlot)
-  if (Option.isNone(concept)) return null
-  for (const coding of concept.value.coding ?? []) {
-    const system = nonEmpty(coding.system)
-    if (system === null || !DIN_CODING_SYSTEMS.includes(system)) continue
+const containedMedicationOf = (request: MedicationRequestResource): FhirMedication.Type | null => {
+  const ref = nonEmpty(medicationReferenceOf(request)?.reference)
+  const medications = request.contained.flatMap((entry: unknown) => {
+    const decoded = decodeContainedMedication(entry)
+    return Option.isSome(decoded) ? [decoded.value] : []
+  })
+  const byId = ref === null ? undefined : medications.find((med) => `#${med.id ?? ''}` === ref)
+  return byId ?? medications[0] ?? null
+}
+
+/** The first non-empty `code` under {@link CanadianCodingSystem.Din} in a concept. */
+const canonicalDinIn = (concept: CodeableConceptValue | null): string | null => {
+  for (const coding of concept?.coding ?? []) {
+    if (coding.system?.href !== CanadianCodingSystem.Din) continue
     const code = nonEmpty(coding.code)
     if (code !== null) return code
   }
   return null
 }
+
+/**
+ * The Drug Identification Number: the {@link CanadianCodingSystem.Din} coding
+ * on the contained Medication's `code`, else on `medicationCodeableConcept`.
+ *
+ * @remarks
+ * Only the canonical system is read. A source keeps any vendor DIN coding
+ * beside it, and a drug vocabulary that is not a DIN (RxNorm, SNOMED CT) must
+ * never print as one.
+ */
+const dinOf = (request: MedicationRequestResource): string | null =>
+  canonicalDinIn(containedMedicationOf(request)?.code ?? null) ??
+  canonicalDinIn(medicationConceptOf(request))
 
 const XML_UNESCAPES: Readonly<Record<string, string>> = {
   '&amp;': '&',
@@ -237,9 +126,7 @@ const XML_UNESCAPES: Readonly<Record<string, string>> = {
  * @remarks
  * Deliberately crude. A narrative is free-form and a server may put a whole
  * generated table in one, which this flattens to a run-on line — acceptable
- * because it is only ever the *fallback* in {@link descriptionOf}, reached when
- * the carebook description extension is gone precisely because a promotion put
- * that description in the narrative.
+ * because it is only ever a fallback in {@link descriptionOf}.
  */
 const narrativeText = (div: string): string =>
   div
@@ -249,39 +136,11 @@ const narrativeText = (div: string): string =>
     .trim()
 
 /**
- * The carebook description (e.g. `"999 mg - Capsule"`).
- *
- * Read from the `description` extension first, falling back to the Medication's
- * narrative. `rexall-be-well-collector` promotes that extension into `text.div`
- * and drops it, so a resource it wrote carries exactly one of the two.
- *
- * The order matters for a resource that has *not* been promoted — a row already
- * in the store, or one from the Medications app's own FHIR server — because it
- * carries **both**: the extension, and the dialect's own narrative, which is a
- * byte-copy of `code.text`, i.e. the drug name the card already shows as its
- * title.
+ * Newline-join the non-empty `text` of every entry; `null` when none carry text.
+ * Shared by the `note` and `dosageInstruction` accessors.
  */
-const descriptionOf = (medication: ContainedMedicationValue): string | null => {
-  for (const extension of medication.extension ?? []) {
-    if (extension.url === DESCRIPTION_EXTENSION_URL) {
-      const value = nonEmpty(extension.valueString)
-      if (value !== null) return value
-    }
-  }
-  const narrative = nonEmpty(medication.text?.div)
-  return narrative === null ? null : nonEmpty(narrativeText(narrative))
-}
-
-/**
- * Newline-join the non-empty `text` of every entry in a decoded `{ text }[]`
- * slot; `null` when none carry text. Shared by the `note` and
- * `dosageInstruction` readers, which differ only in which slot they decode.
- */
-const joinTexts = (
-  entries: Option.Option<readonly { readonly text?: string | null }[]>
-): string | null => {
-  if (Option.isNone(entries)) return null
-  const texts = entries.value.flatMap((entry) => {
+const joinTexts = (entries: readonly { readonly text: string | null }[]): string | null => {
+  const texts = entries.flatMap((entry) => {
     const text = nonEmpty(entry.text)
     return text === null ? [] : [text]
   })
@@ -291,185 +150,120 @@ const joinTexts = (
 /**
  * The free-text dosage sig, newline-joining every `dosageInstruction.text`
  * (e.g. Shoppers Drug Mart's per-prescription "direction"); `null` when none
- * carry text. Used as the description fallback when no carebook description
- * extension is present.
+ * carry text.
  */
 const dosageTextOf = (request: MedicationRequestResource): string | null =>
-  joinTexts(decodeDosageInstructions(request.dosageInstruction))
+  joinTexts(request.dosageInstruction)
 
 /**
- * Best human-readable name for the medication, preferring the inline
- * `medicationCodeableConcept` text, then its first coding display, then a
- * referenced medication's display, then the contained Medication's own
- * `code`. Falls back to a generic label so a row always renders.
+ * A human-readable description of the medication (e.g. `"20 mg - Tablet"`).
+ *
+ * @returns The first of: the contained Medication's carebook `description`
+ *   extension, the text of its narrative, the joined `dosageInstruction` sig;
+ *   `null` when none is present.
+ *
+ * @remarks
+ * The extension comes before the narrative because `rexall-be-well-source`
+ * only promotes it into the narrative when the narrative is free real estate;
+ * when it stands down, the narrative is someone else's content and the
+ * extension is the description.
  */
-const displayNameOf = (request: MedicationRequestResource): string => {
-  const conceptSlot: unknown = request.medicationCodeableConcept
-  const concept = decodeConcept(conceptSlot)
-  if (Option.isSome(concept)) {
-    const text = nonEmpty(concept.value.text)
-    if (text !== null) return text
-    for (const coding of concept.value.coding ?? []) {
-      const display = nonEmpty(coding.display)
-      if (display !== null) return display
-    }
-  }
-  const referenceSlot: unknown = request.medicationReference
-  const reference = decodeReference(referenceSlot)
-  if (Option.isSome(reference)) {
-    const display = nonEmpty(reference.value.display)
-    if (display !== null) return display
-  }
+const descriptionOf = (request: MedicationRequestResource): string | null => {
   const contained = containedMedicationOf(request)
-  if (contained !== undefined) {
-    const text = nonEmpty(contained.code?.text)
-    if (text !== null) return text
-    for (const coding of contained.code?.coding ?? []) {
-      const display = nonEmpty(coding.display)
-      if (display !== null) return display
+  if (contained !== null) {
+    for (const extension of contained.extension) {
+      if (extension.url !== DESCRIPTION_EXTENSION_URL) continue
+      const value = nonEmpty(extension.valueString)
+      if (value !== null) return value
     }
+    const div = nonEmpty(contained.text?.div)
+    const narrative = div === null ? null : nonEmpty(narrativeText(div))
+    if (narrative !== null) return narrative
   }
-  return 'Unknown medication'
+  return dosageTextOf(request)
 }
 
-/** The prescriber's display name, from `MedicationRequest.requester`. */
-const requesterOf = (request: MedicationRequestResource): string | null => {
-  const requester = decodeRequester(request.requester)
-  return Option.isSome(requester) ? nonEmpty(requester.value.display) : null
-}
-
-/** All `MedicationRequest.note` texts, newline-joined; `null` when there are none. */
-const noteOf = (request: MedicationRequestResource): string | null =>
-  joinTexts(decodeNotes(request.note))
-
-/**
- * The `dispenseRequest.performer.reference` when it is a store-locator URL under
- * `base` — where the sources put the dispensing store's public page.
- */
-const performerStoreUrlOf = (
-  dispenseRequest: Option.Option<DispenseRequestValue>,
-  base: string
-): string | null => {
-  if (Option.isNone(dispenseRequest)) return null
-  const reference = nonEmpty(dispenseRequest.value.performer?.reference)
-  return reference !== null && reference.startsWith(base) ? reference : null
-}
-
-/**
- * The Rexall store-locator URL: the `dispenseRequest.performer.reference` under
- * the Rexall store base, falling back (legacy requests) to one built from the
- * `external-system-source` (`RexallPharmacy`) and `external-store-id` top-level
- * extensions; `null` unless one of the two is present.
- */
-const rexallStoreUrlOf = (
-  request: MedicationRequestResource,
-  dispenseRequest: Option.Option<DispenseRequestValue>
-): string | null =>
-  performerStoreUrlOf(dispenseRequest, REXALL_STORE_URL_BASE) ?? legacyRexallStoreUrlOf(request)
-
-/** The Rexall store-locator URL built from the legacy carebook extension pair. */
-const legacyRexallStoreUrlOf = (request: MedicationRequestResource): string | null => {
-  const extensions = decodeStringExtensions(request.extension)
-  if (Option.isNone(extensions)) return null
-  let isRexall = false
-  let storeId: string | null = null
-  for (const extension of extensions.value) {
-    if (
-      extension.url === EXTERNAL_SYSTEM_SOURCE_URL &&
-      extension.valueString === REXALL_SYSTEM_SOURCE
-    ) {
-      isRexall = true
-    } else if (extension.url === EXTERNAL_STORE_ID_URL) {
-      storeId = nonEmpty(extension.valueString) ?? storeId
-    }
-  }
-  return isRexall && storeId !== null
-    ? `${REXALL_STORE_URL_BASE}${encodeURIComponent(storeId)}`
-    : null
-}
-
-/**
- * The Shoppers Drug Mart store-locator URL: the `dispenseRequest.performer`
- * reference under the Shoppers store base (`…/store-locator/store/:id`), falling
- * back (legacy requests) to the first such `supportingInformation` reference;
- * `null` when neither carries one.
- */
-const shoppersStoreUrlOf = (
-  request: MedicationRequestResource,
-  dispenseRequest: Option.Option<DispenseRequestValue>
-): string | null =>
-  performerStoreUrlOf(dispenseRequest, SHOPPERS_STORE_URL_BASE) ?? legacyShoppersStoreUrlOf(request)
-
-/** The Shoppers store-locator URL from a legacy `supportingInformation` reference. */
-const legacyShoppersStoreUrlOf = (request: MedicationRequestResource): string | null => {
-  const slot: unknown = request.supportingInformation
-  const supportingInformation = decodeSupportingInformation(slot)
-  if (Option.isNone(supportingInformation)) return null
-  for (const entry of supportingInformation.value) {
-    const reference = nonEmpty(entry.reference)
-    if (reference !== null && reference.startsWith(SHOPPERS_STORE_URL_BASE)) return reference
+/** A concept's `text`, else its first coding `display`; `null` when neither is present. */
+const conceptName = (concept: CodeableConceptValue | null): string | null => {
+  if (concept === null) return null
+  const text = nonEmpty(concept.text)
+  if (text !== null) return text
+  for (const coding of concept.coding) {
+    const display = nonEmpty(coding.display)
+    if (display !== null) return display
   }
   return null
 }
 
 /**
- * The dispense-repeat counts: `numberOfRepeatsAllowed` (standard R4) and the
- * remaining repeats — the {@link WildflowerExtension.RepeatsAvailable}
- * `extension` (`valueInteger`), falling back (legacy requests) to the carebook
- * `modifierExtension` (`valueDecimal`).
+ * Best human-readable name for the medication: the `medicationCodeableConcept`
+ * text or first coding display, then the `medicationReference` display, then
+ * the contained Medication's `code`. Falls back to `"Unknown medication"` so a
+ * row always renders.
  */
-const repeatsOf = (
-  dispenseRequest: Option.Option<DispenseRequestValue>
-): { readonly allowed: number | null; readonly available: number | null } => {
-  if (Option.isNone(dispenseRequest)) return { allowed: null, available: null }
-  const allowed = dispenseRequest.value.numberOfRepeatsAllowed ?? null
-  let available: number | null = null
-  for (const extension of dispenseRequest.value.extension ?? []) {
-    if (
-      extension.url === WildflowerExtension.RepeatsAvailable &&
-      extension.valueInteger !== null &&
-      extension.valueInteger !== undefined
-    ) {
-      return { allowed, available: extension.valueInteger }
+const displayNameOf = (request: MedicationRequestResource): string =>
+  conceptName(medicationConceptOf(request)) ??
+  nonEmpty(medicationReferenceOf(request)?.display) ??
+  conceptName(containedMedicationOf(request)?.code ?? null) ??
+  'Unknown medication'
+
+/** The prescriber's display name, from `MedicationRequest.requester`. */
+const requesterOf = (request: MedicationRequestResource): string | null =>
+  nonEmpty(request.requester?.display)
+
+/** All `MedicationRequest.note` texts, newline-joined; `null` when there are none. */
+const noteOf = (request: MedicationRequestResource): string | null => joinTexts(request.note)
+
+/** `dispenseRequest.numberOfRepeatsAllowed` — the total repeats authorized. */
+const repeatsAllowedOf = (request: MedicationRequestResource): number | null =>
+  request.dispenseRequest?.numberOfRepeatsAllowed ?? null
+
+/**
+ * The repeats still available: the {@link WildflowerExtension.RepeatsAvailable}
+ * `valueInteger` on `dispenseRequest.extension`. R4 has no standard slot for
+ * it, only the total {@link repeatsAllowedOf}.
+ */
+const repeatsAvailableOf = (request: MedicationRequestResource): number | null => {
+  for (const extension of request.dispenseRequest?.extension ?? []) {
+    if (extension.url === WildflowerExtension.RepeatsAvailable && extension.valueInteger !== null) {
+      return extension.valueInteger
     }
   }
-  for (const extension of dispenseRequest.value.modifierExtension ?? []) {
-    if (
-      extension.url === REPEATS_AVAILABLE_EXTENSION_URL &&
-      extension.valueDecimal !== null &&
-      extension.valueDecimal !== undefined
-    ) {
-      available = extension.valueDecimal
-      break
-    }
-  }
-  return { allowed, available }
+  return null
 }
 
 /**
- * Estimated next-fill date as an ISO instant: `authoredOn` advanced by the
- * `dispenseRequest.expectedSupplyDuration` (i.e. when the current supply runs
- * out). `null` unless both the authored date and a usable supply duration are
- * present. The date math lives in `medication-calendar-core`; this reads the
- * two slots off the decoded resource (the authored `DateTime` formatted to ISO)
- * and delegates.
+ * `dispenseRequest.performer.reference` when it is a URL under `base` — the
+ * slot the sources write the dispensing store's public store-locator page to.
  */
-const nextFillDateOf = (
-  request: MedicationRequestResource,
-  dispenseRequest: Option.Option<DispenseRequestValue>
-): string | null => {
+const storeUrlOf = (request: MedicationRequestResource, base: string): string | null => {
+  const reference = nonEmpty(request.dispenseRequest?.performer?.reference)
+  return reference !== null && reference.startsWith(base) ? reference : null
+}
+
+/** The Rexall store-locator URL the request was dispensed from, if any. */
+const rexallStoreUrlOf = (request: MedicationRequestResource): string | null =>
+  storeUrlOf(request, REXALL_STORE_URL_BASE)
+
+/** The Shoppers Drug Mart store-locator URL the request was dispensed from, if any. */
+const shoppersStoreUrlOf = (request: MedicationRequestResource): string | null =>
+  storeUrlOf(request, SHOPPERS_STORE_URL_BASE)
+
+/**
+ * Estimated next-fill date as an ISO instant: `authoredOn` advanced by
+ * `dispenseRequest.expectedSupplyDuration` (when the current supply runs out).
+ * `null` unless both are present. The date math is `medication-calendar-core`'s
+ * `nextFillDate`.
+ *
+ * @remarks
+ * `dispenseRequest.validityPeriod.end` is the *authorization* expiry in R4, not
+ * a fill date, so it is deliberately not a fallback.
+ */
+const nextFillDateOf = (request: MedicationRequestResource): string | null => {
   const authored = request.authoredOn
-  if (authored === null || authored === undefined) return null
-  if (Option.isNone(dispenseRequest)) return null
-  const supply = dispenseRequest.value.expectedSupplyDuration
-  if (supply === null || supply === undefined) return null
-  // Rebuild as a `medication-calendar-core` `SupplyDuration`: the decoded slots
-  // are optional properties, which core requires present (each nullable).
-  return nextFillDate(DateTime.formatIso(authored), {
-    value: supply.value,
-    unit: supply.unit,
-    code: supply.code,
-  })
+  const supply = request.dispenseRequest?.expectedSupplyDuration
+  if (authored === null || supply === null || supply === undefined) return null
+  return nextFillDate(DateTime.formatIso(authored), supply)
 }
 
 /**
@@ -484,29 +278,20 @@ const medicationRequestToMedication = (
   id: nonEmpty(request.id) ?? fallbackId,
   displayName: displayNameOf(request),
   status: request.status,
-  authoredOn:
-    request.authoredOn === null || request.authoredOn === undefined
-      ? undefined
-      : DateTime.formatIso(request.authoredOn),
+  authoredOn: request.authoredOn === null ? undefined : DateTime.formatIso(request.authoredOn),
 })
 
 /**
  * The display-oriented view of a `MedicationRequest`: the core {@link Medication}
- * (used for sponsorship and interaction matching) plus the extra carebook fields
- * the medication card renders. Any field the resource does not carry is `null`.
+ * (used for sponsorship and interaction matching) plus the extra fields the
+ * medication card renders, each read by the accessor of the same name. Any
+ * field the resource does not carry is `null`.
  */
 interface MedicationView {
   readonly medication: Medication
-  /**
-   * Drug Identification Number, from the contained Medication's DIN coding,
-   * falling back to a `medicationCodeableConcept.coding` under a known DIN
-   * system ({@link DIN_CODING_SYSTEMS}).
-   */
+  /** Drug Identification Number — see {@link dinOf}. */
   readonly din: string | null
-  /**
-   * carebook human-readable description (e.g. `"999 mg - Capsule"`), falling
-   * back to the newline-joined `dosageInstruction.text` sig.
-   */
+  /** Human-readable description or sig — see {@link descriptionOf}. */
   readonly description: string | null
   /** Prescriber display name (`requester.display`). */
   readonly requester: string | null
@@ -514,17 +299,9 @@ interface MedicationView {
   readonly note: string | null
   /** `dispenseRequest.numberOfRepeatsAllowed`. */
   readonly repeatsAllowed: number | null
-  /**
-   * Remaining repeats: the Wildflower `repeats-available` extension, or the
-   * legacy carebook `modifierExtension`.
-   */
+  /** Remaining repeats — see {@link repeatsAvailableOf}. */
   readonly repeatsAvailable: number | null
-  /**
-   * Estimated next-fill date (ISO) — `authoredOn` + `expectedSupplyDuration`.
-   * `null` when either is missing: `dispenseRequest.validityPeriod.end` is the
-   * *authorization* expiry in R4, not a fill date, so it is deliberately not
-   * used as a fallback.
-   */
+  /** Estimated next-fill date (ISO) — see {@link nextFillDateOf}. */
   readonly nextFillDate: string | null
   /** Rexall store-locator URL when the request is sourced from a Rexall store. */
   readonly rexallStoreUrl: string | null
@@ -544,24 +321,18 @@ const hasRefill = (view: MedicationView): boolean =>
 const medicationRequestToMedicationView = (
   request: MedicationRequestResource,
   fallbackId: string
-): MedicationView => {
-  const contained = containedMedicationOf(request)
-  const dispenseRequest = decodeDispenseRequest(request.dispenseRequest)
-  const repeats = repeatsOf(dispenseRequest)
-  return {
-    medication: medicationRequestToMedication(request, fallbackId),
-    din: (contained === undefined ? null : dinOf(contained)) ?? conceptDinOf(request),
-    description:
-      (contained === undefined ? null : descriptionOf(contained)) ?? dosageTextOf(request),
-    requester: requesterOf(request),
-    note: noteOf(request),
-    repeatsAllowed: repeats.allowed,
-    repeatsAvailable: repeats.available,
-    nextFillDate: nextFillDateOf(request, dispenseRequest),
-    rexallStoreUrl: rexallStoreUrlOf(request, dispenseRequest),
-    shoppersStoreUrl: shoppersStoreUrlOf(request, dispenseRequest),
-  }
-}
+): MedicationView => ({
+  medication: medicationRequestToMedication(request, fallbackId),
+  din: dinOf(request),
+  description: descriptionOf(request),
+  requester: requesterOf(request),
+  note: noteOf(request),
+  repeatsAllowed: repeatsAllowedOf(request),
+  repeatsAvailable: repeatsAvailableOf(request),
+  nextFillDate: nextFillDateOf(request),
+  rexallStoreUrl: rexallStoreUrlOf(request),
+  shoppersStoreUrl: shoppersStoreUrlOf(request),
+})
 
 /** Map a bundle's worth of requests, deriving fallback keys from position. */
 const medicationRequestsToMedications = (
@@ -580,11 +351,25 @@ const medicationRequestsToMedicationViews = (
   )
 
 export {
+  containedMedicationOf,
+  descriptionOf,
+  dinOf,
+  displayNameOf,
+  dosageTextOf,
   hasRefill,
+  medicationConceptOf,
+  medicationReferenceOf,
   medicationRequestToMedication,
   medicationRequestsToMedications,
   medicationRequestToMedicationView,
   medicationRequestsToMedicationViews,
+  nextFillDateOf,
+  noteOf,
+  repeatsAllowedOf,
+  repeatsAvailableOf,
+  requesterOf,
+  rexallStoreUrlOf,
+  shoppersStoreUrlOf,
   type MedicationRequestResource,
   type MedicationView,
 }

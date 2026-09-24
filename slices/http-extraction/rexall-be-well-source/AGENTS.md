@@ -52,6 +52,17 @@ slot for them. Promoting inside it would turn each promotion into a round-trip
 invariant on a slice whose job is _generic_ STU3⇄R4. These are Rexall-specific readings of a vendor
 dialect, so they live beside the rest of the carebook knowledge.
 
+**How it is built.** Each resource is promoted by a `pipe` of small
+`(resource) => resource` steps — one per promotion, over the
+`MedicationRequest`, its `dispenseRequest`, the `MedicationDispense`, and each
+contained `Medication`. A step decodes what it reads with an Effect Schema
+first (the carebook extension shapes decode straight to the value they carry;
+`fhir-r4`'s `CodeableConcept` / `Reference` type schemas re-read the `any`-typed
+`value[x]` / `medication[x]` slots), then — only if the value lands — writes the
+target slot **and** drops the source extension in the same edit. Nothing is
+remembered between steps. Add a promotion by adding a step to the pipe, not by
+threading state through one.
+
 What moves (lift-and-drop — the extension is removed once the value lands):
 
 | Extension                                                                                        | Conventional home                                                                                                                                                                                 |
@@ -101,13 +112,20 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   `medication-processor` on a request that carries no `dispenseRequest` to hold
   it, a narrative already holding real content — each is a no-op, never a silent
   drop.
-- **Extensions are consumed by array index, never by url.** The dialect writes
-  several urls twice and `promote.ts` reads only the first, so dropping by url
-  would delete a second copy nobody examined. Same reasoning inside a contained
-  Medication, where each extension entry is decoded on its own: one malformed
-  entry then disables only itself instead of switching off every promotion on
-  the drug that carries it.
-- **`parseStrength` takes `.` as the only decimal separator.** Rexall is an
+- **A step drops exactly the entry it read, never every entry at its url.**
+  The dialect writes several urls twice and `promote.ts` reads only the first,
+  so dropping by url would delete a second copy nobody examined. Inside a
+  contained Medication the rule is "the first entry that decodes": each
+  extension entry is decoded on its own, so one malformed entry disables only
+  itself instead of switching off every promotion on the drug that carries it.
+- **`contained` is decoded at the boundary, and all-or-nothing per entry.**
+  `contained` is untyped passthrough in `fhir-r4`, so each entry is decoded
+  once against a local `ContainedMedication` wire schema (string `Coding.system`,
+  explicit `null`s tolerated, every unmodelled key carried through untouched).
+  An entry that does not decode — another resource type, or a Medication whose
+  `code`, `text`, `ingredient` or `id` has the wrong shape — is returned exactly
+  as it went in: no DIN twin, no narrative, no strength, and it is not linked.
+- **`StrengthRatioFromString` takes `.` as the only decimal separator.** Rexall is an
   English-Canadian pharmacy, so `"1,000 mg"` is one thousand milligrams written
   with a thousands separator. Reading that comma as a decimal point would write
   a 1 mg strength and drop the extension holding the truth — a silent 1000×

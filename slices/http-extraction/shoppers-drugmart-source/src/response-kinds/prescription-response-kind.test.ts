@@ -10,7 +10,6 @@ import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
 import {
-  DIN_CODE_SYSTEM,
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   ShoppersIdentifierSystem,
   shoppersStoreLocatorUrl,
@@ -110,10 +109,7 @@ const expectedRequest = decodeRequest({
   subject: { reference: 'Patient/pt-uuid-1' },
   identifier: [{ system: ShoppersIdentifierSystem.PrescriptionNumber, value: '998877' }],
   medicationCodeableConcept: {
-    coding: [
-      { system: DIN_CODE_SYSTEM, code: '02123456', display: 'atorvastatin 20mg' },
-      { system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' },
-    ],
+    coding: [{ system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' }],
     text: 'Atorvastatin',
   },
   requester: { display: 'Dr. A Prescriber' },
@@ -144,10 +140,7 @@ const expectedDispense = decodeDispense({
   subject: { reference: 'Patient/pt-uuid-1' },
   authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
   medicationCodeableConcept: {
-    coding: [
-      { system: DIN_CODE_SYSTEM, code: '02123456', display: 'atorvastatin 20mg' },
-      { system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' },
-    ],
+    coding: [{ system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' }],
     text: 'Atorvastatin',
   },
   quantity: { value: 30 },
@@ -388,7 +381,7 @@ describe('PrescriptionResponseKind', () => {
       expect(byType(result, 'MedicationDispense')[0]?.location).toBeNull()
     })
 
-    it('should pair every vendor DIN coding with exactly one canonical one carrying the same code', () => {
+    it('should code the DIN once, under the canonical DIN system alone', () => {
       fc.assert(
         fc.property(dinArbitrary, (din) => {
           // Act
@@ -399,10 +392,10 @@ describe('PrescriptionResponseKind', () => {
             ...byType(result, 'MedicationRequest'),
             ...byType(result, 'MedicationDispense'),
           ]) {
-            const systems = decodeConcept(resource.medicationCodeableConcept)
-              .coding.filter((coding) => coding.code === din)
-              .map((coding) => coding.system?.href)
-            expect(systems).toStrictEqual([DIN_CODE_SYSTEM, CanadianCodingSystem.Din])
+            const codings = decodeConcept(resource.medicationCodeableConcept).coding.map(
+              (coding) => ({ system: coding.system?.href, code: coding.code })
+            )
+            expect(codings).toStrictEqual([{ system: CanadianCodingSystem.Din, code: din }])
           }
         }),
         { numRuns: numRunsFor({ base: 100 }) }

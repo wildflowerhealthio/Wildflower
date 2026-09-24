@@ -26,8 +26,8 @@ non-FHIR portal JSON.
   builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
 - `src/shoppers.ts` — the identifier/coding-system URL catalogue
-  (`ShoppersIdentifierSystem`, `DIN_CODE_SYSTEM`,
-  `PRESCRIPTION_STATUS_TYPE_SYSTEM`).
+  (`ShoppersIdentifierSystem`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`). There is no
+  Shoppers DIN system — DINs use the canonical `CanadianCodingSystem.Din`.
 - `src/source-system.ts` — `SHOPPERS_DRUGMART_SYSTEM`, the Wildflower-minted
   `sid` URI each kind's `tryRecognize` mints and adoption keys under.
 - `src/dates.ts` — `decodesAsDateTime` / `firstDateTime` date-validation helpers
@@ -57,10 +57,10 @@ config/plan/form are its concern) or `slices/importer` (whose
 What a synthesized resource carries where, so one reader covers this source
 and `rexall-be-well-source` alike:
 
-- **DIN** — two codings on `medicationCodeableConcept`, both carrying the same
-  `code`: the vendor `DIN_CODE_SYSTEM` first, then `fhir-r4`'s canonical
-  `CanadianCodingSystem.Din` (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). A
-  reader matches on the canonical one; the vendor one is kept, additively.
+- **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
+  canonical `CanadianCodingSystem.Din`
+  (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
+  DINs, so no vendor DIN system is minted beside it.
 - **Store link** — the public store-locator URL
   (`SHOPPERS_STORE_LOCATOR_BASE` + `storeId`) as a literal `reference` on
   `MedicationRequest.dispenseRequest.performer`, and on

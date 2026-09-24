@@ -1,12 +1,23 @@
 import { Schema } from 'effect'
+import * as fc from 'fast-check'
+import { CanadianCodingSystem, WildflowerExtension } from 'fhir-r4/data-types'
 import { MedicationRequest } from 'fhir-r4/resources'
-import { describe, expect, test } from 'vite-plus/test'
+import { numRunsFor } from 'kitchen-sink/test'
+import { describe, expect, it, test } from 'vite-plus/test'
 
 import {
+  containedMedicationOf,
+  dinOf,
+  dosageTextOf,
   hasRefill,
   medicationRequestsToMedications,
   medicationRequestToMedication,
   medicationRequestToMedicationView,
+  noteOf,
+  repeatsAllowedOf,
+  repeatsAvailableOf,
+  rexallStoreUrlOf,
+  shoppersStoreUrlOf,
 } from './medication-request.ts'
 
 const decode = Schema.decodeUnknownSync(MedicationRequest.Schema)
@@ -18,10 +29,16 @@ const base = {
   subject: { reference: 'Patient/1' },
 }
 
-// A carebook-dialect request: the Medication is contained and pointed at by a
-// `#id` reference, the DIN rides its `code.coding`, and the description /
-// remaining-repeats are carebook extensions.
-const carebookRequest = {
+const CAREBOOK_DIN_SYSTEM = 'http://schema.carebook.com/v1/fhir/coding/medication-din-code'
+const REXALL_STORE_BASE = 'https://www.rexall.ca/storelocator/store/'
+const SHOPPERS_STORE_BASE = 'https://www.shoppersdrugmart.ca/store-locator/store/'
+
+// A Rexall request as `rexall-be-well-source` writes it: the Medication is
+// contained and pointed at by a `#id` reference, its `code` carries the vendor
+// carebook DIN coding beside the canonical twin, the description is still the
+// carebook extension (the dialect narrative is a byte-copy of `code.text`), and
+// the remaining repeats ride the Wildflower extension.
+const rexallRequest = {
   ...base,
   id: 'mr-din',
   authoredOn: '2026-06-01T00:00:00Z',
@@ -30,14 +47,12 @@ const carebookRequest = {
     {
       resourceType: 'Medication',
       id: 'med-1',
-      // The dialect ships a narrative of its own: a byte-copy of `code.text`.
-      // It is here so the extension-vs-narrative precedence below is exercised
-      // against the shape the vendor really sends, not a stripped-down one.
       text: { status: 'generated', div: 'Atorvastatin 20 mg tablet' },
       code: {
         coding: [
+          { system: CAREBOOK_DIN_SYSTEM, code: '02241497', display: 'Atorvastatin 20 mg tablet' },
           {
-            system: 'http://schema.carebook.com/v1/fhir/coding/medication-din-code',
+            system: CanadianCodingSystem.Din,
             code: '02241497',
             display: 'Atorvastatin 20 mg tablet',
           },
@@ -55,33 +70,32 @@ const carebookRequest = {
   note: [{ text: 'Take with food' }],
   dispenseRequest: {
     numberOfRepeatsAllowed: 3,
-    modifierExtension: [
-      {
-        url: 'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available',
-        valueDecimal: 0,
-      },
-    ],
+    extension: [{ url: WildflowerExtension.RepeatsAvailable, valueInteger: 0 }],
   },
 }
 
-// A Shoppers-Drug-Mart-dialect request: no contained Medication — the DIN rides
-// the top-level `medicationCodeableConcept.coding` (under a portal-namespaced
-// system) and the sig lives in `dosageInstruction.text`.
+// A Shoppers Drug Mart request: no contained Medication — the DIN rides the
+// top-level `medicationCodeableConcept.coding` under the canonical system and
+// the sig lives in `dosageInstruction.text`.
 const shoppersRequest = {
   ...base,
   id: 'mr-sdm',
   medicationCodeableConcept: {
     text: 'LIPITOR',
-    coding: [
-      {
-        system: 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din',
-        code: '02241497',
-        display: 'atorvastatin calcium',
-      },
-    ],
+    coding: [{ system: CanadianCodingSystem.Din, code: '02241497', display: 'atorvastatin' }],
   },
   dosageInstruction: [{ text: 'Take 1 tablet by mouth once daily' }],
 }
+
+/** A non-empty code with no leading/trailing surprises — DINs are 8 digits, but any code reads. */
+const codeArbitrary = fc.stringMatching(/^[0-9A-Za-z]{1,12}$/)
+
+/** Coding systems that are *not* the canonical DIN system. */
+const otherSystemArbitrary = fc.constantFrom(
+  CAREBOOK_DIN_SYSTEM,
+  'http://www.nlm.nih.gov/research/umls/rxnorm',
+  'http://snomed.info/sct'
+)
 
 describe('medicationRequestToMedication', () => {
   test('prefers the codeableConcept text', () => {
@@ -98,26 +112,13 @@ describe('medicationRequestToMedication', () => {
     expect(med.authoredOn).toBe('2024-01-02T03:04:05.000Z')
   })
 
-  test('falls back to the first coding display', () => {
-    const request = decode({
-      ...base,
-      medicationCodeableConcept: { coding: [{ display: 'aripiprazole' }] },
-    })
-    expect(medicationRequestToMedication(request, 'fallback').displayName).toBe('aripiprazole')
-  })
-
-  test('falls back to the coding display even when the coding carries a system', () => {
+  test('falls back to the first coding display, even when the coding carries a system', () => {
     // The top-level `medicationCodeableConcept.coding.system` decodes to a `URL`;
-    // the concept reader must still surface the sibling `display`.
+    // the concept accessor must still surface the sibling `display`.
     const request = decode({
       ...base,
       medicationCodeableConcept: {
-        coding: [
-          {
-            system: 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din',
-            display: 'atorvastatin calcium',
-          },
-        ],
+        coding: [{ system: CanadianCodingSystem.Din, display: 'atorvastatin calcium' }],
       },
     })
     expect(medicationRequestToMedication(request, 'fallback').displayName).toBe(
@@ -134,13 +135,12 @@ describe('medicationRequestToMedication', () => {
   })
 
   test('names the contained Medication by its coding when no concept/reference display', () => {
-    const med = medicationRequestToMedication(decode(carebookRequest), 'fallback')
+    const med = medicationRequestToMedication(decode(rexallRequest), 'fallback')
     expect(med.displayName).toBe('Atorvastatin 20 mg tablet')
   })
 
   test('uses the fallback id and a generic name when nothing is present', () => {
-    const request = decode(base)
-    const med = medicationRequestToMedication(request, 'fallback-7')
+    const med = medicationRequestToMedication(decode(base), 'fallback-7')
     expect(med.id).toBe('fallback-7')
     expect(med.displayName).toBe('Unknown medication')
     expect(med.authoredOn).toBeUndefined()
@@ -149,75 +149,27 @@ describe('medicationRequestToMedication', () => {
 
 describe('medicationRequestsToMedications', () => {
   test('derives positional fallback keys', () => {
-    const requests = [decode(base), decode(base)]
-    const meds = medicationRequestsToMedications(requests)
+    const meds = medicationRequestsToMedications([decode(base), decode(base)])
     expect(meds.map((m) => m.id)).toEqual(['medication-request-0', 'medication-request-1'])
   })
 })
 
 describe('medicationRequestToMedicationView', () => {
   test('extracts DIN, description, prescriber, note and both repeat counts', () => {
-    const view = medicationRequestToMedicationView(decode(carebookRequest), 'fallback')
+    const view = medicationRequestToMedicationView(decode(rexallRequest), 'fallback')
     expect(view.medication.displayName).toBe('Atorvastatin 20 mg tablet')
     expect(view.din).toBe('02241497')
     expect(view.description).toBe('20 mg - Tablet')
     expect(view.requester).toBe('Dr. Jane Smith')
     expect(view.note).toBe('Take with food')
     expect(view.repeatsAllowed).toBe(3)
-    // `valueDecimal: 0` is a real value, not "missing".
+    // `valueInteger: 0` is a real value, not "missing".
     expect(view.repeatsAvailable).toBe(0)
     // No `expectedSupplyDuration` on this request → no next-fill estimate.
     expect(view.nextFillDate).toBeNull()
   })
 
-  test('reads the description out of the narrative once the extension has been promoted', () => {
-    // `rexall-be-well-collector` promotes the carebook `description` extension
-    // into `text.div` and drops the extension. `div` is `xhtml`, so the
-    // promoted narrative is markup and the text content is what displays.
-    const promoted = {
-      ...carebookRequest,
-      contained: [
-        {
-          ...carebookRequest.contained[0],
-          text: {
-            status: 'generated',
-            div: '<div xmlns="http://www.w3.org/1999/xhtml">20 mg - Atorvastatin</div>',
-          },
-          extension: [],
-        },
-      ],
-    }
-    const view = medicationRequestToMedicationView(decode(promoted), 'fallback')
-    expect(view.description).toBe('20 mg - Atorvastatin')
-  })
-
-  test('unescapes XML entities carried in a promoted narrative', () => {
-    const promoted = {
-      ...carebookRequest,
-      contained: [
-        {
-          ...carebookRequest.contained[0],
-          text: {
-            status: 'generated',
-            div: '<div xmlns="http://www.w3.org/1999/xhtml">5 mg &amp; 10 mg &lt;combo&gt;</div>',
-          },
-          extension: [],
-        },
-      ],
-    }
-    const view = medicationRequestToMedicationView(decode(promoted), 'fallback')
-    expect(view.description).toBe('5 mg & 10 mg <combo>')
-  })
-
-  test('prefers the description extension over the dialect narrative before promotion', () => {
-    // The un-promoted fixture carries both: the extension's richer description
-    // and the dialect's narrative byte-copy of `code.text`. Reading the
-    // narrative first would show the drug name the card already displays.
-    const view = medicationRequestToMedicationView(decode(carebookRequest), 'fallback')
-    expect(view.description).toBe('20 mg - Tablet')
-  })
-
-  test('leaves every carebook field null when the request carries none of them', () => {
+  test('leaves every field null when the request carries none of them', () => {
     const view = medicationRequestToMedicationView(decode(base), 'fallback')
     expect(view.din).toBeNull()
     expect(view.description).toBeNull()
@@ -230,240 +182,33 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.shoppersStoreUrl).toBeNull()
   })
 
-  test('builds a Rexall store URL only when both source and store-id extensions are present', () => {
-    const sourceExt = {
-      url: 'http://schemas.carebook.com/v1/fhir/common/extension/external-system-source',
-      valueString: 'RexallPharmacy',
-    }
-    const storeExt = {
-      url: 'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id',
-      valueString: '8174',
-    }
-
-    const both = medicationRequestToMedicationView(
-      decode({ ...base, extension: [sourceExt, storeExt] }),
-      'fallback'
-    )
-    expect(both.rexallStoreUrl).toBe('https://www.rexall.ca/storelocator/store/8174')
-
-    // Store id alone (no RexallPharmacy source) → no link.
-    const storeOnly = medicationRequestToMedicationView(
-      decode({ ...base, extension: [storeExt] }),
-      'fallback'
-    )
-    expect(storeOnly.rexallStoreUrl).toBeNull()
-
-    // Rexall source alone (no store id) → no link.
-    const sourceOnly = medicationRequestToMedicationView(
-      decode({ ...base, extension: [sourceExt] }),
-      'fallback'
-    )
-    expect(sourceOnly.rexallStoreUrl).toBeNull()
-  })
-
-  test('surfaces a Shoppers store URL from a supportingInformation reference under the store base', () => {
-    const withStore = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        supportingInformation: [
-          { reference: 'https://www.shoppersdrugmart.ca/store-locator/store/1414' },
-        ],
-      }),
-      'fallback'
-    )
-    expect(withStore.shoppersStoreUrl).toBe(
-      'https://www.shoppersdrugmart.ca/store-locator/store/1414'
-    )
-
-    // A supportingInformation reference to anything else is not a store link.
-    const other = medicationRequestToMedicationView(
-      decode({ ...base, supportingInformation: [{ reference: 'Encounter/9' }] }),
-      'fallback'
-    )
-    expect(other.shoppersStoreUrl).toBeNull()
-  })
-
-  test('reads the store link from dispenseRequest.performer.reference, as the sources now promote it', () => {
-    const rexall = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        dispenseRequest: {
-          performer: {
-            reference: 'https://www.rexall.ca/storelocator/store/8174',
-            identifier: { value: '8174' },
+  test('reads the description out of the narrative once the extension has been promoted', () => {
+    // `rexall-be-well-source` promotes the carebook `description` extension
+    // into `text.div` and drops the extension. `div` is `xhtml`, so the
+    // promoted narrative is markup and the text content is what displays.
+    const promoted = {
+      ...rexallRequest,
+      contained: [
+        {
+          ...rexallRequest.contained[0],
+          text: {
+            status: 'generated',
+            div: '<div xmlns="http://www.w3.org/1999/xhtml">5 mg &amp; 10 mg &lt;combo&gt;</div>',
           },
+          extension: [],
         },
-      }),
-      'fallback'
-    )
-    expect(rexall.rexallStoreUrl).toBe('https://www.rexall.ca/storelocator/store/8174')
-    expect(rexall.shoppersStoreUrl).toBeNull()
-
-    const shoppers = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        dispenseRequest: {
-          performer: { reference: 'https://www.shoppersdrugmart.ca/store-locator/store/1414' },
-        },
-      }),
-      'fallback'
-    )
-    expect(shoppers.shoppersStoreUrl).toBe(
-      'https://www.shoppersdrugmart.ca/store-locator/store/1414'
-    )
-    expect(shoppers.rexallStoreUrl).toBeNull()
-
-    // A performer reference outside either store base is not a store link.
-    const other = medicationRequestToMedicationView(
-      decode({ ...base, dispenseRequest: { performer: { reference: 'Organization/9' } } }),
-      'fallback'
-    )
-    expect(other.rexallStoreUrl).toBeNull()
-    expect(other.shoppersStoreUrl).toBeNull()
+      ],
+    }
+    const view = medicationRequestToMedicationView(decode(promoted), 'fallback')
+    expect(view.description).toBe('5 mg & 10 mg <combo>')
   })
 
-  test('reads remaining repeats from the Wildflower repeats-available extension, before the legacy modifierExtension', () => {
-    const repeatsExtension = (value: number): { url: string; valueInteger: number } => ({
-      url: 'https://wildflowerhealth.io/fhir/StructureDefinition/repeats-available',
-      valueInteger: value,
-    })
-    const promoted = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        dispenseRequest: { numberOfRepeatsAllowed: 5, extension: [repeatsExtension(2)] },
-      }),
-      'fallback'
-    )
-    expect(promoted.repeatsAllowed).toBe(5)
-    expect(promoted.repeatsAvailable).toBe(2)
-
-    const both = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        dispenseRequest: {
-          extension: [repeatsExtension(1)],
-          modifierExtension: [
-            {
-              url: 'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available',
-              valueDecimal: 4,
-            },
-          ],
-        },
-      }),
-      'fallback'
-    )
-    expect(both.repeatsAvailable).toBe(1)
-  })
-
-  test('does not treat validityPeriod.end as a next fill date', () => {
-    // `validityPeriod.end` is the *authorization* expiry in R4 — the last date
-    // the script may be dispensed against, not when the current supply runs
-    // out — so it must not surface as "next fill" on its own.
-    const view = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        dispenseRequest: {
-          numberOfRepeatsAllowed: 2,
-          validityPeriod: { start: '2026-06-01T00:00:00Z', end: '2026-09-01T00:00:00Z' },
-        },
-      }),
-      'fallback'
-    )
-    expect(view.nextFillDate).toBeNull()
-  })
-
-  test('computes the supply-runout even when a validityPeriod is present', () => {
-    const view = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        authoredOn: '2026-06-01T00:00:00Z',
-        dispenseRequest: {
-          expectedSupplyDuration: { value: 30, code: 'd', system: 'http://unitsofmeasure.org' },
-          validityPeriod: { end: '2026-12-31T00:00:00Z' },
-        },
-      }),
-      'fallback'
-    )
-    expect(view.nextFillDate).toBe('2026-07-01T00:00:00.000Z')
-  })
-
-  test('estimates next fill as authoredOn + expectedSupplyDuration', () => {
-    const days = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        authoredOn: '2026-06-01T00:00:00Z',
-        dispenseRequest: {
-          numberOfRepeatsAllowed: 3,
-          expectedSupplyDuration: {
-            value: 30,
-            unit: 'days',
-            code: 'd',
-            system: 'http://unitsofmeasure.org',
-          },
-        },
-      }),
-      'fallback'
-    )
-    expect(days.nextFillDate).toBe('2026-07-01T00:00:00.000Z')
-
-    // A UCUM week code advances by whole weeks.
-    const weeks = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        authoredOn: '2026-06-01T00:00:00Z',
-        dispenseRequest: {
-          expectedSupplyDuration: { value: 2, code: 'wk', system: 'http://unitsofmeasure.org' },
-        },
-      }),
-      'fallback'
-    )
-    expect(weeks.nextFillDate).toBe('2026-06-15T00:00:00.000Z')
-  })
-
-  test('no next-fill estimate without an authored date', () => {
-    const noDate = medicationRequestToMedicationView(
-      decode({ ...base, dispenseRequest: { expectedSupplyDuration: { value: 30, code: 'd' } } }),
-      'fallback'
-    )
-    expect(noDate.nextFillDate).toBeNull()
-  })
-
-  test('an unrecognized supply unit falls back to days', () => {
-    const unknownUnit = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        authoredOn: '2026-06-01T00:00:00Z',
-        dispenseRequest: { expectedSupplyDuration: { value: 30, unit: 'doses', code: '{dose}' } },
-      }),
-      'fallback'
-    )
-    expect(unknownUnit.nextFillDate).toBe('2026-07-01T00:00:00.000Z')
-  })
-
-  test('falls back to a DIN-system medicationCodeableConcept coding for DIN', () => {
-    const view = medicationRequestToMedicationView(decode(shoppersRequest), 'fallback')
-    expect(view.din).toBe('02241497')
-  })
-
-  test.each([
-    { label: 'RxNorm', system: 'http://www.nlm.nih.gov/research/umls/rxnorm', code: '1049221' },
-    { label: 'SNOMED CT', system: 'http://snomed.info/sct', code: '108537001' },
-    { label: 'systemless', system: undefined, code: '12345678' },
-  ])('does not surface a $label coding as a DIN', ({ system, code }) => {
-    // A generic FHIR R4 source spells `medicationCodeableConcept` with a drug
-    // vocabulary that is not a DIN; printing its code as "DIN …" would be a
-    // confidently wrong identifier.
-    const view = medicationRequestToMedicationView(
-      decode({
-        ...base,
-        medicationCodeableConcept: {
-          text: 'Oxycodone 5mg',
-          coding: [{ ...(system === undefined ? {} : { system }), code }],
-        },
-      }),
-      'fallback'
-    )
-    expect(view.din).toBeNull()
+  test('prefers the description extension over a narrative the promotion stood down for', () => {
+    // The fixture carries both: the extension's richer description and a
+    // narrative holding something else. Reading the narrative first would show
+    // the drug name the card already displays.
+    const view = medicationRequestToMedicationView(decode(rexallRequest), 'fallback')
+    expect(view.description).toBe('20 mg - Tablet')
   })
 
   test('falls back to the joined dosageInstruction sig for the description', () => {
@@ -474,6 +219,7 @@ describe('medicationRequestToMedicationView', () => {
       }),
       'fallback'
     )
+    expect(view.din).toBe('02241497')
     expect(view.description).toBe('Take 1 tablet by mouth once daily\nWith food')
   })
 
@@ -483,7 +229,10 @@ describe('medicationRequestToMedicationView', () => {
   test('prefers the contained Medication DIN and description over the sig fallback', () => {
     const view = medicationRequestToMedicationView(
       decode({
-        ...carebookRequest,
+        ...rexallRequest,
+        medicationCodeableConcept: {
+          coding: [{ system: CanadianCodingSystem.Din, code: 'DO-NOT-USE' }],
+        },
         dosageInstruction: [{ text: 'do-not-use sig' }],
       }),
       'fallback'
@@ -492,45 +241,246 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.description).toBe('20 mg - Tablet')
   })
 
-  test('joins multiple notes with newlines', () => {
+  test('does not treat validityPeriod.end as a next fill date', () => {
+    // `validityPeriod.end` is the *authorization* expiry in R4 — the last date
+    // the script may be dispensed against, not when the current supply runs
+    // out — so it must not surface as "next fill" on its own.
     const view = medicationRequestToMedicationView(
-      decode({ ...base, note: [{ text: 'First' }, { text: 'Second' }] }),
-      'fallback'
-    )
-    expect(view.note).toBe('First\nSecond')
-  })
-})
-
-describe('hasRefill', () => {
-  const view = (
-    repeatsAllowed: number | null,
-    repeatsAvailable: number | null
-  ): Parameters<typeof hasRefill>[0] =>
-    medicationRequestToMedicationView(
       decode({
         ...base,
+        authoredOn: '2026-06-01T00:00:00Z',
         dispenseRequest: {
-          ...(repeatsAllowed === null ? {} : { numberOfRepeatsAllowed: repeatsAllowed }),
-          modifierExtension:
-            repeatsAvailable === null
-              ? []
-              : [
-                  {
-                    url: 'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available',
-                    valueDecimal: repeatsAvailable,
-                  },
-                ],
+          numberOfRepeatsAllowed: 2,
+          validityPeriod: { start: '2026-06-01T00:00:00Z', end: '2026-09-01T00:00:00Z' },
         },
       }),
       'fallback'
     )
+    expect(view.nextFillDate).toBeNull()
+  })
 
-  test('is true only when repeats are allowed and at least one remains', () => {
-    expect(hasRefill(view(3, 2))).toBe(true)
-    // Repeats allowed but none left → no refill (supply merely exhausts).
-    expect(hasRefill(view(3, 0))).toBe(false)
-    // No repeats allowed at all.
-    expect(hasRefill(view(0, 0))).toBe(false)
-    expect(hasRefill(view(null, null))).toBe(false)
+  test('estimates next fill as authoredOn + expectedSupplyDuration', () => {
+    const at = (supply: Record<string, unknown>, authoredOn?: string): string | null =>
+      medicationRequestToMedicationView(
+        decode({
+          ...base,
+          ...(authoredOn === undefined ? {} : { authoredOn }),
+          dispenseRequest: {
+            expectedSupplyDuration: supply,
+            validityPeriod: { end: '2026-12-31T00:00:00Z' },
+          },
+        }),
+        'fallback'
+      ).nextFillDate
+
+    expect(at({ value: 30, unit: 'days', code: 'd' }, '2026-06-01T00:00:00Z')).toBe(
+      '2026-07-01T00:00:00.000Z'
+    )
+    // A UCUM week code advances by whole weeks.
+    expect(at({ value: 2, code: 'wk' }, '2026-06-01T00:00:00Z')).toBe('2026-06-15T00:00:00.000Z')
+    // An unrecognized supply unit falls back to days.
+    expect(at({ value: 30, unit: 'doses', code: '{dose}' }, '2026-06-01T00:00:00Z')).toBe(
+      '2026-07-01T00:00:00.000Z'
+    )
+    // No authored date → no estimate.
+    expect(at({ value: 30, code: 'd' })).toBeNull()
+  })
+})
+
+describe('dinOf', () => {
+  it('should read the canonical DIN from medicationCodeableConcept past any other coding', () => {
+    fc.assert(
+      fc.property(
+        codeArbitrary,
+        fc.array(fc.tuple(otherSystemArbitrary, codeArbitrary), { maxLength: 3 }),
+        (din, others) => {
+          const request = decode({
+            ...base,
+            medicationCodeableConcept: {
+              coding: [
+                ...others.map(([system, code]) => ({ system, code })),
+                { system: CanadianCodingSystem.Din, code: din },
+              ],
+            },
+          })
+          expect(dinOf(request)).toBe(din)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should read nothing when no coding is under the canonical DIN system', () => {
+    // The vendor carebook DIN system, RxNorm and SNOMED CT alike: a vendor
+    // coding always has a canonical twin beside it, and printing a non-DIN code
+    // as "DIN …" would be a confidently wrong identifier.
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.option(otherSystemArbitrary), codeArbitrary), { maxLength: 3 }),
+        fc.boolean(),
+        (codings, onContained) => {
+          const code = {
+            coding: codings.map(([system, value]) => ({
+              ...(system === null ? {} : { system }),
+              code: value,
+            })),
+          }
+          const request = decode(
+            onContained
+              ? { ...base, contained: [{ resourceType: 'Medication', id: 'm', code }] }
+              : { ...base, medicationCodeableConcept: code }
+          )
+          expect(dinOf(request)).toBeNull()
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('containedMedicationOf', () => {
+  it('should pick the contained Medication the #id reference names, else the first', () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.stringMatching(/^[a-z][a-z0-9-]{0,8}$/), { minLength: 1, maxLength: 4 }),
+        fc.nat(),
+        fc.boolean(),
+        (ids, pick, referenced) => {
+          const target = ids[pick % ids.length] ?? ''
+          const request = decode({
+            ...base,
+            ...(referenced ? { medicationReference: { reference: `#${target}` } } : {}),
+            contained: ids.map((id) => ({ resourceType: 'Medication', id })),
+          })
+          expect(containedMedicationOf(request)?.id).toBe(referenced ? target : ids[0])
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should skip contained entries that are not Medications', () => {
+    const request = decode({
+      ...base,
+      contained: [
+        { resourceType: 'Organization', id: 'org' },
+        { resourceType: 'Medication', id: 'med' },
+      ],
+    })
+    expect(containedMedicationOf(request)?.id).toBe('med')
+  })
+})
+
+describe('repeatsAllowedOf / repeatsAvailableOf', () => {
+  it('should read the total and the Wildflower remaining-repeats extension', () => {
+    fc.assert(
+      fc.property(fc.option(fc.nat(99)), fc.option(fc.nat(99)), (allowed, available) => {
+        const request = decode({
+          ...base,
+          dispenseRequest: {
+            ...(allowed === null ? {} : { numberOfRepeatsAllowed: allowed }),
+            extension:
+              available === null
+                ? []
+                : [{ url: WildflowerExtension.RepeatsAvailable, valueInteger: available }],
+          },
+        })
+        expect(repeatsAllowedOf(request)).toBe(allowed)
+        expect(repeatsAvailableOf(request)).toBe(available)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should ignore a remaining-repeats count under any other extension URL', () => {
+    fc.assert(
+      fc.property(fc.webUrl(), fc.nat(99), (url, count) => {
+        fc.pre(url !== WildflowerExtension.RepeatsAvailable)
+        const request = decode({
+          ...base,
+          dispenseRequest: { extension: [{ url, valueInteger: count }] },
+        })
+        expect(repeatsAvailableOf(request)).toBeNull()
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('rexallStoreUrlOf / shoppersStoreUrlOf', () => {
+  const withPerformer = (reference: string): MedicationRequest.Type =>
+    decode({ ...base, dispenseRequest: { performer: { reference } } })
+
+  it('should attribute a performer reference to exactly the chain whose base it is under', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(REXALL_STORE_BASE, SHOPPERS_STORE_BASE),
+        fc.stringMatching(/^[0-9]{1,6}$/),
+        (storeBase, storeId) => {
+          const url = `${storeBase}${storeId}`
+          const request = withPerformer(url)
+          const isRexall = storeBase === REXALL_STORE_BASE
+          expect(rexallStoreUrlOf(request)).toBe(isRexall ? url : null)
+          expect(shoppersStoreUrlOf(request)).toBe(isRexall ? null : url)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should read no store from a performer reference under neither base', () => {
+    fc.assert(
+      fc.property(fc.oneof(fc.webUrl(), fc.constant('Organization/9')), (reference) => {
+        fc.pre(!reference.startsWith(REXALL_STORE_BASE))
+        fc.pre(!reference.startsWith(SHOPPERS_STORE_BASE))
+        const request = withPerformer(reference)
+        expect(rexallStoreUrlOf(request)).toBeNull()
+        expect(shoppersStoreUrlOf(request)).toBeNull()
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('noteOf / dosageTextOf', () => {
+  it('should newline-join the non-empty texts, or read null when there are none', () => {
+    fc.assert(
+      fc.property(fc.array(fc.string({ maxLength: 8 }), { maxLength: 4 }), (texts) => {
+        const request = decode({
+          ...base,
+          note: texts.map((text) => ({ text })),
+          dosageInstruction: texts.map((text) => ({ text })),
+        })
+        const present = texts.filter((text) => text.length > 0)
+        const expected = present.length > 0 ? present.join('\n') : null
+        expect(noteOf(request)).toBe(expected)
+        expect(dosageTextOf(request)).toBe(expected)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('hasRefill', () => {
+  it('should be true only when repeats are allowed and at least one remains', () => {
+    fc.assert(
+      fc.property(fc.option(fc.nat(5)), fc.option(fc.nat(5)), (allowed, available) => {
+        const view = medicationRequestToMedicationView(
+          decode({
+            ...base,
+            dispenseRequest: {
+              ...(allowed === null ? {} : { numberOfRepeatsAllowed: allowed }),
+              extension:
+                available === null
+                  ? []
+                  : [{ url: WildflowerExtension.RepeatsAvailable, valueInteger: available }],
+            },
+          }),
+          'fallback'
+        )
+        expect(hasRefill(view)).toBe((allowed ?? 0) > 0 && (available ?? 0) > 0)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })

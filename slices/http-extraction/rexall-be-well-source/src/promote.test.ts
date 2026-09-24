@@ -735,6 +735,59 @@ describe('promoteMedicationRequest', () => {
     expect(promoted.dispenseRequest?.extension[0]?.valueInteger).toBe(2)
   })
 
+  it('should return a contained entry that is not a Medication exactly as it went in', () => {
+    fc.assert(
+      fc.property(nonMedicationEntry, (entry) => {
+        // Arrange
+        const request = { ...MedicationRequest.empty, contained: [entry] }
+
+        // Act
+        const promoted = promoteMedicationRequest(request)
+
+        // Assert
+        expect(promoted.contained[0]).toBe(entry)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should leave a contained Medication whose shape does not decode untouched', () => {
+    // Arrange — `contained` is raw passthrough, so a malformed `code` (here a
+    // bare string) reaches promotion. It is not a concept to hang a strength
+    // or a link on, so nothing on the entry moves.
+    const entry = {
+      ...containedMedication({ id: 'med-1', strength: '20 mg', description: 'Drug' }),
+      code: 'Atorvastatin 20 mg tablet',
+    }
+    const request = { ...MedicationRequest.empty, contained: [entry] }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.contained[0]).toBe(entry)
+    expect(promoted.medicationReference).toBeNull()
+  })
+
+  it('should carry every key it does not read through a promoted contained Medication', () => {
+    fc.assert(
+      fc.property(unreadContainedFields, (extras) => {
+        // Arrange
+        const request = {
+          ...MedicationRequest.empty,
+          contained: [{ ...extras, ...containedMedication({ id: 'med-1', strength: '20 mg' }) }],
+        }
+
+        // Act
+        const medication = firstContained(promoteMedicationRequest(request))
+
+        // Assert
+        expect(medication).toMatchObject(extras)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   it('should always be idempotent — a second promotion changes nothing', () => {
     fc.assert(
       fc.property(fc.boolean(), fc.array(unrelatedUrl), (doNotPerform, extras) => {
@@ -974,6 +1027,26 @@ describe('promoteMedicationDispense', () => {
 
 /** Urls that cannot collide with a carebook one, so they must survive promotion. */
 const unrelatedUrl = fc.string().map((suffix) => `http://example.org/${suffix}`)
+
+/** A raw `contained` entry of any resource type but `Medication`. */
+const nonMedicationEntry = fc
+  .tuple(
+    fc.string().filter((resourceType) => resourceType !== 'Medication'),
+    fc.dictionary(fc.string(), fc.jsonValue())
+  )
+  .map(([resourceType, fields]) => ({ ...fields, resourceType }))
+
+/** Keys a contained Medication's promotion never reads, with arbitrary JSON values. */
+const unreadContainedFields = fc.dictionary(
+  fc
+    .string({ minLength: 1 })
+    .filter(
+      (key) =>
+        key !== '__proto__' &&
+        !['resourceType', 'id', 'code', 'text', 'extension', 'ingredient'].includes(key)
+    ),
+  fc.jsonValue()
+)
 
 /** An 8-digit Health Canada DIN. */
 const dinArbitrary = fc.stringMatching(/^\d{8}$/)

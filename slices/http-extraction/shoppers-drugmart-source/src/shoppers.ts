@@ -23,11 +23,9 @@
  *   (see {@link CustomerResponseKind}). The two systems stay distinct because they
  *   identify different things (an account vs a person), not because the join is
  *   unknown.
- * - `DIN_CODE_SYSTEM` is the portal-namespaced vendor DIN system. Every DIN
- *   coding under it has a twin under `fhir-r4`'s canonical
- *   `CanadianCodingSystem.Din` beside it; the vendor one is kept so a reader
- *   that already matches on it still finds the code (mirrors how
- *   `rexall-be-well-source` treats its carebook DIN system).
+ * - There is deliberately **no** Shoppers DIN system: the portal does not
+ *   namespace DINs, so a DIN is coded under `fhir-r4`'s canonical
+ *   `CanadianCodingSystem.Din` only.
  */
 
 /** Base URL every Shoppers identifier/coding system is built from. */
@@ -52,15 +50,6 @@ const ShoppersIdentifierSystem = {
   /** A dispense's `dispenseId`. */
   DispenseId: `${SYSTEM_BASE}/identifier/dispense-id`,
 } as const
-
-/**
- * The portal-namespaced vendor coding system for Health Canada Drug
- * Identification Numbers (DIN), stamped onto the synthesized
- * `medicationCodeableConcept.coding`. Each coding under it is paired with one
- * under the canonical `CanadianCodingSystem.Din` (`fhir-r4`), which is the
- * system a reader should match on; this one is kept alongside, additively.
- */
-const DIN_CODE_SYSTEM = `${SYSTEM_BASE}/CodeSystem/din`
 
 /**
  * Coding system for the portal's machine-readable prescription-status `type`
@@ -91,7 +80,6 @@ const shoppersStoreLocatorUrl = (storeId: string | number): string =>
 
 export {
   ShoppersIdentifierSystem,
-  DIN_CODE_SYSTEM,
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   SYSTEM_BASE,
   SHOPPERS_STORE_LOCATOR_BASE,
