@@ -1,11 +1,11 @@
 //! `token-revocation-rust` — the shared token-revocation store.
 //!
-//! A gatekeeper access token is a stateless, **multi-use** bearer: the SPA
-//! reuses one `wf_auth` cookie token across many FHIR calls. So a token's `jti`
+//! A gatekeeper access token is a stateless, **multi-use** bearer: a client
+//! reuses one token across many FHIR calls. So a token's `jti`
 //! (RFC 7519 §4.1.7) is an **identity handle for revocation**, not a one-shot
 //! nonce — nothing is rejected unless the `jti` (or the subject's whole token
 //! cohort) has been *explicitly* revoked. That keeps ordinary reuse intact
-//! while still letting a leaked cookie be invalidated before its `exp`.
+//! while still letting a leaked token be invalidated before its `exp`.
 //!
 //! This crate owns the storage only — two tables on the shared
 //! `wildflower.sqlite` under the `token_revocation` migration namespace:

@@ -109,7 +109,7 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 
 pub mod ports;
 
-use ports::{AppLaunchScopes, LaunchCookies};
+use ports::AppLaunchScopes;
 
 /// Result of [`setup_apps`]: the two routers a host mounts (gated + launch),
 /// plus the shared state and the self-hosted catalogue.
@@ -134,7 +134,7 @@ pub struct Apps {
     /// claims.
     pub launch_router: Router,
     /// Shared handler state (the store, the loopback base URL, the tunnel, the
-    /// on-device webview seam, and the launch-cookie / launch-scope ports).
+    /// on-device webview seam, and the launch-scope port).
     pub state: Arc<AppsState>,
     /// The self-hosted catalogue the host binds loopback listeners for — each app's
     /// `(registration, configuration)` pair.
@@ -167,10 +167,6 @@ impl Apps {
 /// an app online / offline through the identical instance that binds the seed
 /// listeners — and stage/remove files under its `apps_dir`.
 ///
-/// `launch_cookies` is the host seam re-scoping the caller's owner session onto a
-/// forwarded self-hosted app's public host (see [`LaunchCookies`]). The Tauri host
-/// passes the gatekeeper cookie builder; others pass [`NoLaunchCookies`].
-///
 /// `launch_scopes` is the host seam resolving a SMART app's required launch scopes
 /// for the per-app launch check (see [`AppLaunchScopes`]). The Tauri host passes a
 /// gatekeeper-backed adapter; others pass [`NoAppLaunchScopes`](ports::NoAppLaunchScopes).
@@ -184,7 +180,6 @@ pub fn setup_apps(
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     self_hosted: Arc<SelfHostedAppsService>,
-    launch_cookies: Arc<dyn LaunchCookies>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> anyhow::Result<Apps> {
     // `SqliteAppsStore::new` runs the embedded migrations — building the
@@ -203,7 +198,6 @@ pub fn setup_apps(
         tunnel,
         webview_handle,
         self_hosted,
-        launch_cookies,
         launch_scopes,
     ));
 

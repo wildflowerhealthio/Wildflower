@@ -31,7 +31,7 @@ describe('unauthorizedRetrySchedule (boot-race retry)', () => {
   })
 
   it('stops re-sending as soon as a 401 clears', async () => {
-    // Arrange / Act — 401 twice, then the cookie has landed and it succeeds.
+    // Arrange / Act — 401 twice, then the owner token is minted and it succeeds.
     const program = Effect.gen(function* () {
       const attempts = yield* Ref.make(0)
       const flaky = Effect.flatMap(

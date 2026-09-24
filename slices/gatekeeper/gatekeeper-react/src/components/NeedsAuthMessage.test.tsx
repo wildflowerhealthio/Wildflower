@@ -275,9 +275,8 @@ describe('<NeedsAuthMessage> device flow', () => {
       render(withTokenStore(<NeedsAuthMessage />))
       await startSignIn()
 
-      // The web store ignores the passed signal and re-derives from the cookie,
-      // but the value NeedsAuthMessage publishes is the honest `AuthedUntil` the
-      // sign-in just achieved.
+      // With no token response handler (the Tauri entry) the screen publishes
+      // the honest `AuthedUntil` the sign-in just achieved, then reloads.
       await waitFor(
         () => {
           expect(setAuthStateMock).toHaveBeenCalledTimes(1)

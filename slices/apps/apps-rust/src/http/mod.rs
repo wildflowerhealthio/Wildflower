@@ -12,9 +12,8 @@
 //!    gated/launch router split lives in [`routes`]; the route files stay pure.
 //!  - [`errors`] — the wire bodies + `impl IntoResponse` for
 //!    [`AppsError`](crate::domain::AppsError).
-//!  - [`ports`](crate::ports) — the host-seam dependency-inversion traits
-//!    ([`AppLaunchScopes`](crate::ports::AppLaunchScopes),
-//!    [`LaunchCookies`](crate::ports::LaunchCookies)) the host wires into
+//!  - [`ports`](crate::ports) — the host-seam dependency-inversion trait
+//!    ([`AppLaunchScopes`](crate::ports::AppLaunchScopes)) the host wires into
 //!    [`AppsState`].
 //!
 //! The shared [`AppsState`] itself lives at the crate root

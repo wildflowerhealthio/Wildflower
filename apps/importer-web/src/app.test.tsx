@@ -104,8 +104,7 @@ describe('ImporterApp', () => {
 
   // The two halves that a self-hosted origin makes non-obvious: the app is not
   // served by the API, so a relative path would resolve against the app's own
-  // port, and the API's cookie is not sent cross-origin so the token is the
-  // credential. This app writes, so both halves have to hold for writes too —
+  // port, and the granted token is the app's only credential. This app writes, so both halves have to hold for writes too —
   // an unaddressed PUT is not a failed read, it is a record written somewhere
   // else.
   it('should address every read and write to the FHIR server named by the handshake, with the granted token', async () => {

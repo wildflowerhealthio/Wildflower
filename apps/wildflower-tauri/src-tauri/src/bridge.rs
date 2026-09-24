@@ -197,14 +197,11 @@ fn raise_main_window(_handle: &AppHandle) {}
 /// Wire the webview↔host bridge onto Tauri's event bus and return the
 /// publishers the server task feeds.
 ///
-/// - Token delivery: the bearer never reaches the JS side at all, and
-///   it isn't planted as a cookie either — the desktop webview
-///   authenticates by *connection provenance* (the host presents its own
-///   owner token for direct-loopback requests; see
+/// - Token delivery: the bearer never reaches the JS side at all — the
+///   desktop webview authenticates by *connection provenance* (the host
+///   presents its own owner token for direct-loopback requests; see
 ///   `inject_loopback_owner_token` in `lib.rs`, which reads the same
-///   token watch channel this bridge feeds). WKWebView won't carry a
-///   host-planted cross-site cookie anyway (wry drops `SameSite=None`;
-///   WebKit won't send a `Secure` cookie over http loopback). The only
+///   token watch channel this bridge feeds). The only
 ///   thing that rides the multiplexed bridge channel is a contentless
 ///   `bridge:AuthTokenIssued` notify, emitted whenever the webview
 ///   signals `bridge:__Ready` (every page load and reload — the web
@@ -355,8 +352,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
 ///
 /// `borrow_and_update` marks the value seen so a delivery triggered by one arm
 /// doesn't re-fire the `changed` arm for the same value. The token stays
-/// host-side — the desktop authenticates by loopback provenance, not a cookie —
-/// so only the contentless notify travels, and only for `Some` (a fresh /
+/// host-side — the desktop authenticates by loopback provenance — so only the contentless notify travels, and only for `Some` (a fresh /
 /// re-minted token): a `None` (logout) just stops the host injecting it and the
 /// page's loopback fetches start coming back 401, with no "logged out" notify to
 /// emit. A change landing before the first page load emits into the void (Tauri

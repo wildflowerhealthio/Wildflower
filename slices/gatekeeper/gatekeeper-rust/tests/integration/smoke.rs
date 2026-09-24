@@ -167,8 +167,8 @@ async fn access_grants_with_owner_token_returns_empty_list() {
 }
 
 /// The host owner token must authenticate on a FORWARDED (tunnel-origin)
-/// request too — it rides the `wf_auth` cookie seeded into the cloud-app popup
-/// (#256), where the served origin is the tunnel public host, not loopback.
+/// request too, where the served origin is the tunnel public host, not
+/// loopback.
 /// Its canonical `aud` (= `CANONICAL_ISSUER`) is what makes one token valid on
 /// both; a served-origin audience would 401 here.
 #[tokio::test]

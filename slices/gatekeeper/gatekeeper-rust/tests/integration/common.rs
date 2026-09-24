@@ -604,10 +604,8 @@ pub fn spin_up_with_confidential_client() -> (Gatekeeper, TestDb) {
 }
 
 // ---------------------------------------------------------------------------
-// Cookie-based web-session auth (#218): the device-code / refresh grants set
-// the `wf_auth` (HttpOnly JWT) + `wf_auth_exp` (readable hint) cookies, the auth
-// middleware accepts a cookie-sourced token identically to a header-sourced one,
-// and `POST /access/logout` clears them.
+// Bearer-only auth: no grant or logout response sets a cookie, and a cookie
+// authenticates nothing (see `bearer_only.rs`).
 // ---------------------------------------------------------------------------
 
 /// Collect every `Set-Cookie` value off a response, in order.

@@ -376,19 +376,19 @@ const NeedsAuthMessage = (): JSX.Element => {
         // signal flips, so the first authed request after it has a header to
         // carry.
         tokenResponseHandler?.writeBearer(tokenResponse.access_token)
-        // Nudge the store to publish the freshly-authed signal. The cookie
-        // store ignores the argument and re-derives from the `wf_auth_exp`
-        // cookie the server just set (its source of truth); `AuthedUntil` is
-        // the honest value this sign-in just achieved.
+        // Publish the freshly-authed signal; `AuthedUntil` is the honest
+        // value this sign-in just achieved.
         setAuthState(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in }))
         if (tokenResponseHandler !== undefined) {
           // Client-side navigation, because a full reload would drop the
           // in-memory bearer this entry just acquired.
           tokenResponseHandler.navigateAfterAuth(returnTo)
         } else {
-          // Cookie-web / Tauri entry: the server set an HttpOnly cookie, so a
-          // full-page reload picks it up — matching the "this page will reload
-          // automatically once you sign in" copy.
+          // Tauri entry: the page holds no credential — the host stamps its
+          // owner bearer onto direct-loopback requests by connection
+          // provenance — so there is no token to keep. A full-page load of
+          // `returnTo` matches the "this page will reload automatically once
+          // you sign in" copy.
           window.location.assign(returnTo)
         }
       })

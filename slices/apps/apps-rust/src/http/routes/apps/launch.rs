@@ -28,10 +28,9 @@
 //!      handing the URL to the host webview; a forwarded launch answers `200` with
 //!      the URL ([`LaunchTargetBody`]) for the caller's page to navigate to — the
 //!      caller is the hosted owner UI's `fetch`, which would follow a redirect
-//!      invisibly rather than move the tab. A forwarded **self-hosted** launch
-//!      additionally plants a `Set-Cookie` re-scoping the caller's owner session
-//!      onto the app's public host — see [`crate::http::LaunchCookies`] and
-//!      `docs/Apps/Explanation.md`.
+//!      invisibly rather than move the tab. No launch sets a cookie: an app
+//!      authenticates to the API with its own bearer (SMART) or, on the device,
+//!      by loopback provenance — see `docs/Apps/Explanation.md`.
 //!
 //! The auth posture (scope-gated on `wildflower/launch` + a per-app SMART check;
 //! a forwarded launch rides the front trust boundary) is canonical in
@@ -40,8 +39,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::header::SET_COOKIE;
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -136,7 +134,7 @@ async fn launch(
 
     // Resolve before dispatching: an unreachable target bails here with
     // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
-    let resolved = resolve_launch(&registration, &configuration, &state, &provenance).await?;
+    let target_url = resolve_launch(&registration, &configuration, &state, &provenance).await?;
 
     match &provenance {
         // The loopback caller cleared the umbrella + SMART gates above; hand the URL
@@ -145,42 +143,21 @@ async fn launch(
             state.on_device_webview_handle.open(
                 registration.id.clone(),
                 registration.name.clone(),
-                resolved.target_url,
+                target_url,
             );
             Ok(no_content())
         }
-        // A forwarded self-hosted launch re-scopes the caller's session onto its
-        // public host (`session_cookie_host`); every other launch plants nothing.
-        RequestProvenance::Forwarded { .. } => {
-            let set_cookies = match &resolved.session_cookie_host {
-                Some(host) => state.launch_cookies.rescope_for_host(&headers, host),
-                None => Vec::new(),
-            };
-            Ok(navigate_to(resolved.target_url, set_cookies))
-        }
+        RequestProvenance::Forwarded { .. } => Ok(navigate_to(target_url)),
     }
 }
 
-/// A resolved launch: the provenance-aware `target_url` and — for a forwarded
-/// self-hosted launch only — the public host to re-scope the caller's owner
-/// session onto.
-struct ResolvedLaunch {
-    /// The provenance-aware launch URL (loopback origin, public subdomain, or a
-    /// rendered cloud template).
-    target_url: String,
-    /// `Some(public_host)` for a **forwarded self-hosted** launch — the host to
-    /// re-scope the caller's owner session onto (see [`crate::http::LaunchCookies`]).
-    /// `None` for loopback, system, and cloud launches, which need no cookie.
-    session_cookie_host: Option<String>,
-}
-
-/// Resolve an app (its `(registration, configuration)` pair) to a
-/// [`ResolvedLaunch`], dispatching on the `configuration` kind — the whole app came
+/// Resolve an app (its `(registration, configuration)` pair) to its
+/// provenance-aware launch URL (loopback origin, public subdomain, or a rendered
+/// cloud template), dispatching on the `configuration` kind — the whole app came
 /// out of one store read, so the kind-specific launch data is already in hand (a
 /// system app always carries a valid compiled-in source; a corrupt registry row
-/// fails inside the store read as a typed error, never here). `session_cookie_host`
-/// is `Some` only for a forwarded self-hosted launch. `503` if the matched app has
-/// no reachable target.
+/// fails inside the store read as a typed error, never here). `503` if the matched
+/// app has no reachable target.
 ///
 /// Lives beside the launch handler rather than in `domain` on purpose: the
 /// resolution reaches into `AppsState` (the tunnel, the loopback config) and yields
@@ -191,26 +168,15 @@ async fn resolve_launch(
     configuration: &AppConfiguration,
     state: &AppsState,
     provenance: &RequestProvenance,
-) -> Result<ResolvedLaunch, AppsError> {
+) -> Result<String, AppsError> {
     match configuration {
-        AppConfiguration::System(config) => Ok(ResolvedLaunch {
-            target_url: render_system_target(state, config, provenance),
-            session_cookie_host: None,
-        }),
+        AppConfiguration::System(config) => Ok(render_system_target(state, config, provenance)),
         AppConfiguration::SelfHosted(config) => {
-            let SelfHostedTarget {
-                target_url,
-                session_cookie_host,
-            } = render_self_hosted_target(config, state, provenance)?;
-            Ok(ResolvedLaunch {
-                target_url,
-                session_cookie_host,
-            })
+            render_self_hosted_target(config, state, provenance)
         }
-        AppConfiguration::Cloud(config) => Ok(ResolvedLaunch {
-            target_url: render_cloud_target(state, provenance, registration, config).await?,
-            session_cookie_host: None,
-        }),
+        AppConfiguration::Cloud(config) => {
+            render_cloud_target(state, provenance, registration, config).await
+        }
     }
 }
 
@@ -231,48 +197,30 @@ fn render_system_target(
     })
 }
 
-/// A resolved self-hosted launch target: the provenance-aware URL plus, for a
-/// forwarded launch only, the public host to re-scope the caller's owner session
-/// onto. Named (rather than a `(String, Option<String>)` tuple) so the two strings
-/// can't be transposed at the call site.
-struct SelfHostedTarget {
-    /// The launch URL — the loopback origin for a loopback caller, or the public
-    /// subdomain for a forwarded one.
-    target_url: String,
-    /// `Some(public_host)` for a **forwarded** launch, whose cookie `Domain` this
-    /// re-scopes to; `None` for a loopback launch.
-    session_cookie_host: Option<String>,
-}
-
 /// Render a self-hosted app's launch target off its own origin — the loopback
-/// `http://{host}:{port}/` for a loopback caller (no cookie host), else the public
-/// subdomain ([`SelfHostedAppConfiguration::subdomain_url`], paired with the same
-/// `public_host` so the cookie `Domain` can't drift from the redirect target). A
-/// forwarded launch with **no** `public_host` configured has no reachable target,
+/// `http://{host}:{port}/` for a loopback caller, else the public subdomain
+/// ([`SelfHostedAppConfiguration::subdomain_url`]). A forwarded launch with **no** `public_host` configured has no reachable target,
 /// so it `503 LaunchUnavailable`s rather than handing back loopback. Any
 /// `launch_path` is applied by [`SelfHostedAppConfiguration::render_launch`].
 fn render_self_hosted_target(
     config: &SelfHostedAppConfiguration,
     state: &AppsState,
     provenance: &RequestProvenance,
-) -> Result<SelfHostedTarget, AppsError> {
-    let (app_base, session_cookie_host) = match provenance {
+) -> Result<String, AppsError> {
+    let app_base = match provenance {
         RequestProvenance::Forwarded { .. } => {
             let Some(public_host) = state.tunnel.current_public_host() else {
                 return Err(AppsError::Unavailable {
                     reason: "no public host is configured for this remote launch".to_owned(),
                 });
             };
-            (config.subdomain_url(&public_host), Some(public_host))
+            config.subdomain_url(&public_host)
         }
-        RequestProvenance::Loopback => (config.local_launch_url(&state.loopback_hostname()), None),
+        RequestProvenance::Loopback => config.local_launch_url(&state.loopback_hostname()),
     };
     let served = served_origin(state, provenance);
     let launch = mint_launch_nonce();
-    Ok(SelfHostedTarget {
-        target_url: config.render_launch(&app_base, &served, &launch),
-        session_cookie_host,
-    })
+    Ok(config.render_launch(&app_base, &served, &launch))
 }
 
 /// Render a cloud app's launch target: resolve the served origin (or the tunnel's
@@ -336,15 +284,9 @@ pub(crate) struct LaunchTargetBody {
     pub url: String,
 }
 
-/// `200` with the launch URL as [`LaunchTargetBody`], carrying each of
-/// `set_cookies` as a distinct `Set-Cookie` (empty for every launch but a
-/// forwarded self-hosted one).
-fn navigate_to(url: String, set_cookies: Vec<HeaderValue>) -> Response {
-    let mut response = (StatusCode::OK, Json(LaunchTargetBody { url })).into_response();
-    for cookie in set_cookies {
-        response.headers_mut().append(SET_COOKIE, cookie);
-    }
-    response
+/// `200` with the launch URL as [`LaunchTargetBody`].
+fn navigate_to(url: String) -> Response {
+    (StatusCode::OK, Json(LaunchTargetBody { url })).into_response()
 }
 
 /// 204 No Content — the response when the host's

@@ -15,9 +15,9 @@ import type { AuthState } from './auth-state.ts'
  *    plumbing into every consumer without any of them needing it.
  *  - `setAuthState` is the *write* side: every sign-in, host push, or
  *    re-derive dispatches through this single seam. It carries an
- *    {@link AuthState}, not a bearer token — the JS side never holds the
- *    credential (the web path's token is an `HttpOnly` cookie; the
- *    embedded path's stays host-side).
+ *    {@link AuthState}, not a bearer token — the signal never carries the
+ *    credential (a bearer-holding page keeps its token in a separate store
+ *    reader; the embedded path's stays host-side).
  *
  * Apps construct an environment-specific store and pass it in; the
  * concrete storage policies live with the app's store factories.
@@ -31,9 +31,7 @@ interface AuthStateStore {
   readonly subscribable: Subscribable.Subscribable<AuthState>
   /**
    * Publish a new auth signal. Synchronous side-effect — `subscribable.changes`
-   * emits the new value before this returns to its caller. A cookie-derived
-   * store may ignore the argument and re-derive its signal from the source of
-   * truth (the readable expiry cookie) instead.
+   * emits the new value before this returns to its caller.
    */
   readonly setAuthState: (signal: AuthState) => void
 }

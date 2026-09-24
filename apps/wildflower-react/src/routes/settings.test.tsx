@@ -6,10 +6,9 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { makeBearerAuthStateStore } from 'gatekeeper-react'
+import { gatekeeperLogoutSettingsItem, makeBearerAuthStateStore } from 'gatekeeper-react'
 import type { SettingsItem } from 'shared-structures-react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
-import { makeBearerLogoutSettingsItem } from '../bearer-logout.ts'
 
 // The `/settings` auth gate now lives in the route's `beforeLoad`
 // (shared `authGatedRouteOptions`), not inside `SettingsLayout` — so
@@ -113,13 +112,13 @@ describe('SettingsScreen', () => {
 
   test('renders main-web’s logout row as a button that logs the session out', async () => {
     // `main-web` threads its bearer logout row into `platformSettingsItems`.
-    // It is an action row: the page holds a bearer, not a cookie, so a
-    // same-origin form post would carry no credential and log nothing out.
+    // It is an action row: the page holds its bearer in memory, so logging
+    // out means forgetting it and revoking it with an authenticated request.
     const store = makeBearerAuthStateStore()
     store.writeBearer('eyJ.owner.token')
     const left = Promise.withResolvers<undefined>()
     renderSettingsScreen([
-      makeBearerLogoutSettingsItem({
+      gatekeeperLogoutSettingsItem({
         apiBaseUrl: 'https://abc.tunnel.example',
         bearerStore: store,
         fetch: () => Promise.resolve(new Response(null, { status: 204 })),

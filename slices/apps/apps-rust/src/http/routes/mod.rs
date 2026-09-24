@@ -101,12 +101,11 @@ mod tests {
         SelfHostedAppConfigurationPayload,
     };
     use crate::http::test_support::{
-        state, state_with_launch_cookies, state_with_launch_scopes, state_with_sink,
-        state_with_tunnel, state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable,
-        tunnel_with_public_host, FixedLaunchScopes, RecordingLaunchCookies, SENTINEL_SET_COOKIE,
+        state, state_with_launch_scopes, state_with_sink, state_with_tunnel,
+        state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable, tunnel_with_public_host,
+        FixedLaunchScopes,
     };
     use crate::live_bindings::state::AppsState;
-    use crate::ports::LaunchCookies;
     use scope_capabilities_rust::ScopeClaims;
 
     /// The owner-level scope claim the host's bearer gate would insert for the
@@ -588,61 +587,20 @@ mod tests {
         );
     }
 
-    /// A forwarded self-hosted launch plants the re-scoped owner session.
+    /// No launch sets a cookie — forwarded or loopback, self-hosted or cloud.
     #[tokio::test]
-    async fn launch_self_hosted_forwarded_plants_rescoped_session_cookie() {
-        let recorder = Arc::new(RecordingLaunchCookies::default());
-        let st = state_with_launch_cookies(
-            tunnel_with_public_host("demo.example.com"),
-            Arc::clone(&recorder) as Arc<dyn LaunchCookies>,
-        );
-        let res = send_raw(&st, post_forwarded("/apps/patient-browser")).await;
-        assert_eq!(res.status(), StatusCode::OK);
-        let cookies: Vec<String> = res
-            .headers()
-            .get_all("set-cookie")
-            .iter()
-            .map(|v| v.to_str().unwrap().to_owned())
-            .collect();
-        assert_eq!(cookies, vec![SENTINEL_SET_COOKIE.to_owned()]);
-        assert_eq!(
-            launch_url(res).await,
-            "https://patient-browser.demo.example.com/",
-        );
-        assert_eq!(
-            *recorder.hosts.lock().unwrap(),
-            vec!["demo.example.com".to_string()],
-            "the seam is scoped to the public host that built the subdomain URL",
-        );
-    }
-
-    /// A forwarded *cloud* launch plants no session cookie.
-    #[tokio::test]
-    async fn launch_cloud_forwarded_plants_no_session_cookie() {
-        let recorder = Arc::new(RecordingLaunchCookies::default());
-        let st = state_with_launch_cookies(
-            tunnel_with_public_host("demo.example.com"),
-            Arc::clone(&recorder) as Arc<dyn LaunchCookies>,
-        );
+    async fn no_launch_sets_a_cookie() {
+        let st = state_with_tunnel(tunnel_with_public_host("demo.example.com"));
         seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
-        let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
-        assert_eq!(res.status(), StatusCode::OK);
-        assert!(res.headers().get("set-cookie").is_none());
-        assert!(recorder.hosts.lock().unwrap().is_empty());
-    }
-
-    /// A *loopback* self-hosted launch plants no session cookie.
-    #[tokio::test]
-    async fn launch_self_hosted_loopback_plants_no_session_cookie() {
-        let recorder = Arc::new(RecordingLaunchCookies::default());
-        let st = state_with_launch_cookies(
-            tunnel_with_public_host("demo.example.com"),
-            Arc::clone(&recorder) as Arc<dyn LaunchCookies>,
-        );
-        let res = send_raw(&st, post_launch("/apps/patient-browser")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        assert!(res.headers().get("set-cookie").is_none());
-        assert!(recorder.hosts.lock().unwrap().is_empty());
+        for (request, status) in [
+            (post_forwarded("/apps/patient-browser"), StatusCode::OK),
+            (post_forwarded("/apps/app-y"), StatusCode::OK),
+            (post_launch("/apps/patient-browser"), StatusCode::NO_CONTENT),
+        ] {
+            let res = send_raw(&st, request).await;
+            assert_eq!(res.status(), status);
+            assert!(res.headers().get("set-cookie").is_none());
+        }
     }
 
     /// A forwarded self-hosted launch with no `public_host` is 503.

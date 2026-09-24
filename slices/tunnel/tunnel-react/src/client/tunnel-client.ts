@@ -13,8 +13,8 @@ type TunnelAdminClientRequirements = HttpClient.HttpClient | TunnelAdminHttpApiC
  * Build a tokenless `TunnelAdminHttpApiClient` layer.
  *
  * `TunnelAdminHttpApiClient.layer` is produced by `defineSliceHttpClient`,
- * which sets no `Authorization` header — auth rides the `HttpOnly` `wf_auth`
- * cookie the browser sends with same-origin requests. This builder just
+ * which sets no `Authorization` header — the host app's `HttpClient` layer
+ * decides how requests authenticate. This builder just
  * re-exposes that layer under a `buildXClientLayer()` name matching the other
  * slices. Leaves `HttpClient` unprovided: the host app supplies one (its
  * `webHttpClientLayer`) shared across every slice's client layer via the

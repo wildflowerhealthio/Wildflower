@@ -13,9 +13,9 @@ type FhirR4ResourcesClientRequirements = HttpClient.HttpClient | FhirR4Resources
  * Build a tokenless `FhirR4ResourcesHttpApiClient` layer.
  *
  * `FhirR4ResourcesHttpApiClient.layer` is produced by
- * `defineSliceHttpClient`, which sets no `Authorization` header — auth
- * rides the `HttpOnly` `wf_auth` cookie the browser sends with
- * same-origin requests. This builder just re-exposes that layer under a
+ * `defineSliceHttpClient`, which sets no `Authorization` header — the
+ * provider's `HttpClient` layer decides how requests authenticate. This
+ * builder just re-exposes that layer under a
  * `buildXClientLayer()` name matching the other slices (e.g.
  * `gatekeeper-react`'s `buildGatekeeperClientLayer`).
  *

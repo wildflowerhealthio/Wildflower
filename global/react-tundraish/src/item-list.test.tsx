@@ -101,38 +101,6 @@ describe('ItemList', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
-  it('renders a POST <form> with a submit button when formAction is provided', () => {
-    // Arrange — a logout row must be a real same-origin form POST (a GET
-    // would be CSRF-able via a top-level navigation), so the row renders a
-    // submit button inside a `<form method="post" action=…>`.
-    const items: ItemListItem[] = [
-      { id: '1', title: 'Logout', formAction: '/access/logout', method: 'post' },
-    ]
-
-    // Act
-    render(<ItemList items={items} />)
-
-    // Assert — a submit button enclosed in a form that POSTs to the action.
-    const button = screen.getByRole('button', { name: /Logout/ })
-    expect(button.getAttribute('type')).toBe('submit')
-    const form = button.closest('form')
-    expect(form?.getAttribute('method')).toBe('post')
-    expect(form?.getAttribute('action')).toBe('/access/logout')
-  })
-
-  it('disables the submit button when a formAction row is disabled', () => {
-    // Arrange
-    const items: ItemListItem[] = [
-      { id: '1', title: 'Logout', formAction: '/access/logout', method: 'post', disabled: true },
-    ]
-
-    // Act
-    render(<ItemList items={items} />)
-
-    // Assert — the submit control can't fire while disabled.
-    expect(screen.getByRole('button', { name: /Logout/ })).toHaveProperty('disabled', true)
-  })
-
   it('renders a static (non-interactive) row when neither href nor onClick is provided', () => {
     // Arrange — a read-only feed entry has no destination and no
     // primary action; the row must render without becoming a link or

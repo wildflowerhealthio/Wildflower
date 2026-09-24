@@ -11,8 +11,8 @@ const sliceClient = defineSliceHttpClient({
  * Effect Service providing the resolved `DatabasesApi` HttpApi client —
  * `ListDatabases` + `DeleteDatabase`. The host authenticates the `/databases`
  * surface behind the gatekeeper bearer gate, then authorizes delete per database
- * by its declared scope; auth rides the `HttpOnly` `wf_auth` cookie the browser
- * sends with same-origin requests, so the client sets no `Authorization` header.
+ * by its declared scope. The client itself sets no `Authorization` header — the
+ * host app's `HttpClient` layer carries the credential.
  * Adapter layers (`databases-react`) provide `.layer`; call sites consume
  * Effect-natively.
  */

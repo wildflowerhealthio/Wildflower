@@ -89,7 +89,7 @@ describe('defineSliceHttpClient', () => {
     expect(result).toEqual({ ok: true })
   })
 
-  test('never attaches an Authorization header (cookie auth)', async () => {
+  test('never attaches an Authorization header of its own', async () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixtureClient',
       api: FixtureApi,

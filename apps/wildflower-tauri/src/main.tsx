@@ -15,11 +15,12 @@ import { bridges } from 'wildflower-react/bridges'
 
 addOsColorSchemeListener()
 
-// In-memory store, initial value `null`. On the Tauri path the SPA never
-// holds the bearer: the host plants the `wf_auth` cookie directly in the
-// webview's cookie jar (it rides loopback fetches), and the contentless
-// `AuthTokenIssued` notify the host emits on each `bridge:__Ready` and on
-// re-mint just flips this store's auth-readiness signal.
+// In-memory store, initial value `Unauthed`. On the Tauri path the SPA never
+// holds the bearer: the host authenticates the webview's direct-loopback
+// fetches by connection provenance, stamping its own owner bearer onto each
+// one, and the contentless `AuthTokenIssued` notify the host emits on each
+// `bridge:__Ready` and on re-mint just flips this store's auth-readiness
+// signal.
 const tokenStore = makeEmbeddedAuthStateStore()
 
 renderApp({
@@ -35,10 +36,10 @@ renderApp({
   // drift from the server. 127.0.0.1 matches the canonical `Host:` form
   // loopback requests carry to the gatekeeper.
   apiBaseUrl: WILDFLOWER_LOOPBACK_ORIGIN,
-  // No platform settings rows: the web logout row is meaningless here (the
-  // session is the host's loopback-owner trust, re-authenticated per request —
-  // clearing a cookie logs nothing out, and this origin doesn't serve
-  // `/access/logout`). The entry, not the settings route, encodes that.
+  // No platform settings rows: a logout row is meaningless here (the session is
+  // the host's loopback-owner trust, re-authenticated per request, so the page
+  // holds nothing to forget or revoke). The entry, not the settings route,
+  // encodes that.
   platformSettingsItems: [],
   // Desktop-only: the recorder drives the native sniffer webview and the host
   // writes the `.har` into `saved_data`, neither of which a browser tab has.

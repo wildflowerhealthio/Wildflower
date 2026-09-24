@@ -10,10 +10,11 @@ import { prependApiBaseUrl } from './prepend-api-base-url.ts'
 /**
  * Build the shared `QueryClient` + authed runner threaded into the
  * router context. Page-lifetime; one HTTP layer for every entry (the
- * embedded bridge carries only messages, not HTTP). Clients are
- * tokenless — auth rides the `HttpOnly` `wf_auth` cookie (sent in
- * credentialed mode so it also rides the Tauri webview's cross-origin
- * loopback fetches).
+ * host bridge carries only messages, not HTTP). Clients are tokenless;
+ * the entry decides how a request authenticates — `main-web` supplies
+ * `readBearer`, and `main-tauri` supplies none because the host stamps
+ * its owner bearer onto direct-loopback requests by connection
+ * provenance.
  *
  * @param apiBaseUrl - Absolute API origin for entries whose page isn't
  *   served by the API server (see {@link prependApiBaseUrl}). Omitted,
@@ -23,7 +24,7 @@ import { prependApiBaseUrl } from './prepend-api-base-url.ts'
  *   retry — the entry uses it to send the user to device login.
  * @param readBearer - Lazy bearer reader for the hosted entry. When
  *   provided, every relative request carries `Authorization: Bearer
- *   <token>`. Omitted for cookie-authed entries.
+ *   <token>`. Omitted for `main-tauri`, which the host authenticates.
  */
 const buildAppQueryRuntime = (
   apiBaseUrl: string | undefined,

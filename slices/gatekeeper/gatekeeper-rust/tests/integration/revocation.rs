@@ -75,14 +75,14 @@ async fn gate_rejects_after_subject_epoch_bump() {
 async fn logout_revokes_the_presented_jti() {
     let (g, host_owner_token, db) = spin_up();
     let jti = jti_of(&host_owner_token);
-    // Log out, presenting the token as the `wf_auth` cookie (the web path).
+    // Log out, presenting the token as a bearer.
     let res = g
         .router
         .clone()
         .oneshot(loopback_request(
             Request::post("/access/logout")
                 .header("host", "127.0.0.1")
-                .header("cookie", format!("wf_auth={host_owner_token}")),
+                .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
         ))
         .await

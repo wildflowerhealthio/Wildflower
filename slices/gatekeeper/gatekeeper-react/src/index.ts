@@ -1,7 +1,4 @@
-export {
-  gatekeeperLogoutSettingsItem,
-  gatekeeperSettingsItemsFragment,
-} from './settings-fragments.ts'
+export { gatekeeperSettingsItemsFragment } from './settings-fragments.ts'
 
 export {
   buildDeviceLoginTarget,
@@ -52,18 +49,18 @@ export { NeedsAuthMessage, sanitizeReturnTo } from './components/NeedsAuthMessag
 
 export {
   EMBEDDED_TOKEN_TIMEOUT,
-  makeAwaitDeviceLoginAuthReady,
   makeAwaitEmbeddedAuthReady,
   makeAwaitLandingAuthReady,
   TokenTimeout,
 } from './client/auth-ready.ts'
 
+export { makeEmbeddedAuthStateStore } from './client/auth-state-store.ts'
+
 export {
-  AUTH_EXP_COOKIE_NAME,
-  makeCookieAuthStateStore,
-  makeEmbeddedAuthStateStore,
-  readAuthedSignalFromCookie,
-} from './client/auth-state-store.ts'
+  gatekeeperLogoutSettingsItem,
+  logOutBearerSession,
+  type BearerLogoutDeps,
+} from './logout.ts'
 
 export {
   makeBearerAuthStateStore,

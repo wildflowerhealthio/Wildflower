@@ -13,8 +13,8 @@ type DatabasesClientRequirements = HttpClient.HttpClient | DatabasesHttpApiClien
  * Build a tokenless `DatabasesHttpApiClient` layer.
  *
  * `DatabasesHttpApiClient.layer` is produced by `defineSliceHttpClient`, which
- * sets no `Authorization` header — auth rides the `HttpOnly` `wf_auth` cookie
- * the browser sends with same-origin requests. This builder just re-exposes that
+ * sets no `Authorization` header — the host app's `HttpClient` layer decides how
+ * requests authenticate. This builder just re-exposes that
  * layer under a `buildXClientLayer()` name matching the other slices. Leaves
  * `HttpClient` unprovided: the host app supplies one shared across every slice's
  * client layer via the composed `runtimeLayer`. Mirrors `tunnel-react`.

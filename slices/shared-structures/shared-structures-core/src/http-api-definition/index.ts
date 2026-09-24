@@ -20,9 +20,9 @@ import type { Simplify } from 'effect/Types'
  *    name doubles as the tag identifier.
  *  - `makeLayerFactory(Tag)` returns a
  *    `() => Layer<Self, never, HttpClient.HttpClient>`. The client is
- *    tokenless — it sets no `Authorization` header. Auth rides the
- *    `HttpOnly` `wf_auth` cookie, which the platform `fetch` sends with
- *    same-origin requests automatically.
+ *    tokenless — it sets no `Authorization` header. The host app's
+ *    `HttpClient` layer decides how requests authenticate (a bearer the
+ *    app attaches itself, or a host that authenticates them for it).
  *
  * @example
  * ```ts

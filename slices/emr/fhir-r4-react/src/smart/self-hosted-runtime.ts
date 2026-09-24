@@ -41,9 +41,9 @@ const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test
  * Both halves are needed because a self-hosted app is served from its **own**
  * origin (`http://127.0.0.1:8091/` on device, an app's own site in the cloud),
  * not the FHIR server's. Left alone, the typed client's relative `/Patient…`
- * paths would resolve against the app's origin, and no cookie authenticates the
- * app cross-origin. So this app authenticates the way any third-party SMART app
- * does: with the token it was granted.
+ * paths would resolve against the app's origin, and nothing else authenticates
+ * the app cross-origin. So this app authenticates the way any third-party SMART
+ * app does: with the token it was granted.
  *
  * The base is `session.serverUrl` verbatim — the typed client no longer bakes in
  * Wildflower's `/fhir-r4` mount path, so whatever server the handshake named is
@@ -141,7 +141,7 @@ const buildSmartQueryClient = (): QueryClient =>
  * select to type.
  *
  * There is no boot-race retry (the host app's `runAuthed` has one for the gap
- * before its `wf_auth` cookie lands). A bearer token is in hand before this is
+ * before the Tauri host mints its owner token). A bearer token is in hand before this is
  * built, so a 401 here is a real 401.
  *
  * @param session - The FHIR base and bearer token from the SMART handshake

@@ -6,17 +6,12 @@ pub mod config;
 // `pub(crate)` while a `pub` module's doc links into it fails
 // `cargo doc -D warnings` (rustdoc's `private_intra_doc_links`). `seeding` has no
 // inbound doc links, so it is the one narrowed to `pub(crate)`.
-// The web Owner-session cookie builders — a package-level capability lifted out
-// of `http`: the desktop host seeds these cookies into the native-webview popup
-// (#256) and the forwarded self-hosted launch re-scopes them, neither of which
-// is an HTTP-handler concern. See `docs/Apps/Explanation.md`.
-pub mod cookies;
 pub mod crypto_util;
 pub mod db;
 pub mod domain;
 pub mod http;
 // Host/HTTP-seam dependency-inversion traits the domain actions call out through
-// (device-consent republish, session-token revoke, session-cookie clear); the
+// (device-consent republish, session-token revoke); the
 // concrete impls are wired onto `Arc<GatekeeperState>` in `http::state`. Mirrors
 // apps-rust.
 pub(crate) mod ports;
@@ -59,11 +54,6 @@ pub use domain::{GatekeeperStore, GatekeeperTx};
 // Re-exported so the host can name the pool type at the `setup_gatekeeper`
 // call site without a direct diesel dependency; the canonical home is
 // persistence-rust (collector re-exports it the same way).
-pub use persistence_rust::DieselPool;
-// The owner-session cookie builders keep their top-level path
-// (`gatekeeper_rust::owner_session_cookies`) after the lift out of `http`, so
-// the desktop host's call sites don't move.
-pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 /// The admin scopes the `/access` surface enforces — the registry meant to
 /// couple *enforced* (the scope-gated capability extractors) with *grantable*
 /// (the vocabulary the consent surfaces will offer). Re-exported for the host
@@ -75,6 +65,7 @@ pub use http::{
     is_pre_auth_public_path, openapi_spec, require_loopback_peer_middleware,
     GatekeeperAuthMiddleware, GatekeeperState, RequireLoopbackPeerMiddleware,
 };
+pub use persistence_rust::DieselPool;
 // The self-hosted redirect seam: the host implements it (backed by the apps
 // store) and passes it into `setup_gatekeeper`, so its trait + types are public.
 pub use ports::{NoSelfHostedRedirects, SelfHostedRedirectResolver, SelfHostedRedirectTopology};
@@ -170,8 +161,8 @@ pub fn default_first_party_client_id() -> String {
 const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(2);
 
 /// How often the host owner token is re-minted and republished on the owner-token
-/// `watch` channel. Comfortably inside [`HOST_OWNER_TOKEN_TTL`] so the webview's
-/// session cookie is always refreshed to a live token before the previous one
+/// `watch` channel. Comfortably inside [`HOST_OWNER_TOKEN_TTL`] so the host's
+/// loopback owner trust always presents a live token before the previous one
 /// expires (they overlap by at least an hour).
 const OWNER_TOKEN_REMINT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
@@ -333,8 +324,8 @@ pub fn setup_gatekeeper(
 
 /// Spawn the timer that re-mints the host owner token every
 /// [`OWNER_TOKEN_REMINT_INTERVAL`] and republishes it on the owner-token
-/// `watch` channel, so the webview's session cookie is refreshed to a live
-/// token before the previous (short-lived, #269) one expires. On a mint failure
+/// `watch` channel, so the host's loopback owner trust moves to a live token
+/// before the previous (short-lived, #269) one expires. On a mint failure
 /// it logs and retries next tick; when every receiver has dropped (app
 /// shutdown) it stops.
 fn spawn_owner_token_reminter(

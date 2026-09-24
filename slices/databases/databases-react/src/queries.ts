@@ -82,8 +82,8 @@ interface DatabaseExport {
  * Fetch a database export as raw bytes. The export endpoint
  * (`GET /databases/:id`) streams a binary SQLite snapshot, so it isn't part of
  * the JSON `DatabasesApi`; this hits it through the platform `HttpClient`
- * directly. Tokenless: auth rides the `HttpOnly` `wf_auth` cookie the browser
- * sends with the same-origin request, like the generated client. The caller
+ * directly. Tokenless, like the generated client: the host app's `HttpClient`
+ * layer carries the credential. The caller
  * hands the bytes to the browser (see the settings screen's `saveBytesAsFile`).
  */
 const exportDatabaseEffect = (

@@ -3,15 +3,13 @@ import { Data } from 'effect'
 /**
  * The auth-readiness signal an app's {@link AuthStateStore} publishes.
  *
- * A tagged sum type so the platform modes are unrepresentable-wrong — unlike the
- * `string | null` it replaces, which overloaded one value with three
- * platform-dependent meanings (a `wf_auth_exp` digit string, a literal host
- * sentinel, and `null`):
+ * A tagged sum type, so each platform mode is its own variant rather than an
+ * overloaded sentinel value:
  *
  *  - `Unauthed` — no session.
- *  - `AuthedUntil({ exp })` — authed with a known unix-seconds expiry. The
- *    cookie/web path derives this from the readable expiry hint; a consumer that
- *    wants freshness without waiting for a re-derive can compare `exp` to now.
+ *  - `AuthedUntil({ exp })` — authed with a known unix-seconds expiry. A
+ *    bearer-holding page publishes this from the token response's
+ *    `expires_in`; a consumer that wants freshness can compare `exp` to now.
  *  - `HostAuthed` — authed via an external host/provenance with no token expiry
  *    known to the page (an embedded-webview path, where the host holds the
  *    credential and pushes a contentless "authed" notify).
@@ -34,9 +32,9 @@ const isAuthed = (signal: AuthState): boolean => signal._tag !== 'Unauthed'
 /**
  * Whether the session is still *fresh* at `nowSeconds` (unix seconds). Like
  * {@link isAuthed}, except an {@link AuthedUntil} whose `exp` has already passed
- * counts as not fresh: the cookie/web path derives `exp` from a client-readable
- * hint the server can already have expired, so a consumer that must not act on a
- * lapsed session — e.g. gating an authed-only fetch that would otherwise 401 —
+ * counts as not fresh: the page computes `exp` once at sign-in and nothing
+ * re-derives it, so the server can already have expired the credential behind
+ * it. A consumer that must not act on a lapsed session — e.g. gating an authed-only fetch that would otherwise 401 —
  * checks this instead of {@link isAuthed}. {@link HostAuthed} carries no
  * page-known expiry, so it is always fresh.
  */

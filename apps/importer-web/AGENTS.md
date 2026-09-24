@@ -47,7 +47,7 @@ runtime:
   (`/fhir-r4/DocumentReference`), which would resolve against the app's own
   origin and 404. So the layer prefixes them with the FHIR base the SMART
   handshake named.
-- **The API's `wf_auth` cookie is not sent cross-origin.** So this app
+- **The granted SMART token is its only credential.** So this app
   authenticates the way any SMART app does — with the token it was granted,
   attached as a bearer header.
 

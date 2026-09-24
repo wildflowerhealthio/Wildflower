@@ -25,7 +25,7 @@ impl SessionEnder {
     /// can't outlive the logout. Best-effort by design (see
     /// [`revoke_session_token`]): a legacy token with no `jti` or `exp` has
     /// nothing to denylist, and a store hiccup is logged, never surfaced — the
-    /// cookie clear that follows must not be blocked.
+    /// logout's redirect must not be blocked.
     pub(crate) fn end(&self) {
         let (Some(jti), Some(expires_at)) = (self.claims.jti.as_deref(), self.claims.expires_at)
         else {
