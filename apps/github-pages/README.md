@@ -32,6 +32,11 @@ path over, site-absolute, as `?redirect=<path>` alongside whatever query the
 link carried. Site-absolute because an app-relative route named like the app's
 own directory (`/app` below `/app/`) would read as the app root.
 
+When no ancestor answers, the page shows a plain "Page not found" message instead
+of redirecting. In production the site root always answers, so this only happens
+on staging, which has nothing at its root: a link into a closed PR preview, or a
+staging URL outside any preview.
+
 While it probes, the page paints the design system's `--color-canvas` for the
 visitor's `prefers-color-scheme`, so dark-mode users don't see a white flash;
 `assembly.test.ts` pins those colors to `react-tundraish`'s palette.
@@ -90,3 +95,9 @@ sections to have been built already; `vp run pack` guarantees that ordering.
 
 `.github/workflows/deploy-github-pages.yml` runs the workspace build on every
 push to `main`, and uploads `dist/` to GitHub Pages.
+
+`.github/workflows/pr-preview.yml` publishes the same `dist/` into
+`pr-<n>/` of the `wildflowerhealthio/staging` Pages site. There the artifact's
+`404.html` lands at `pr-<n>/404.html`, which Pages never serves, so the workflow
+also syncs `404.html` to the staging repo root. One copy covers every preview,
+because the redirect probes ancestor paths site-absolutely.

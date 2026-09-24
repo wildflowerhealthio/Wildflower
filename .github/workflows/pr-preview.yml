@@ -130,6 +130,40 @@ jobs:
               --field branch=main
           fi
 
+      # GitHub Pages serves one 404.html for the whole site, read from the site
+      # root — here the staging repo root, not `pr-<n>/`. The assembled
+      # artifact's own `404.html` lands at `pr-<n>/404.html`, which Pages never
+      # consults, so without this step every deep link into a preview
+      # (`pr-<n>/app/gatekeeper/…`) is GitHub's stock 404 instead of the SPA
+      # redirect. The redirect page probes ancestors site-absolutely, so the
+      # one copy at the root serves every `pr-<n>/` prefix. Synced on every
+      # run (not create-once) so a change to the redirect page reaches staging;
+      # the most recently deployed PR's copy is the one live.
+      - name: Sync 404.html to the staging site root
+        if: github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ steps.staging-token.outputs.token }}
+        run: |
+          content=$(base64 -w0 apps/github-pages/404.html)
+          # `gh api` prints the error body on stdout for a 404, so the exit
+          # status, not the output, says whether the file exists.
+          existing=$(gh api "repos/wildflowerhealthio/staging/contents/404.html?ref=main" 2>/dev/null) || existing=''
+          if [ -n "$existing" ] && [ "$(echo "$existing" | jq -r '.content' | tr -d '\n')" = "$content" ]; then
+            echo '404.html at the staging site root is already current'
+          else
+            echo 'Writing 404.html at the staging site root'
+            sha_args=()
+            if [ -n "$existing" ]; then
+              sha_args=(--field sha="$(echo "$existing" | jq -r '.sha')")
+            fi
+            gh api "repos/wildflowerhealthio/staging/contents/404.html" \
+              --method PUT \
+              --field message='Sync the SPA redirect 404.html from wildflowerhealthio/Wildflower' \
+              --field content="$content" \
+              --field branch=main \
+              "${sha_args[@]}"
+          fi
+
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1.8.1
         with:
