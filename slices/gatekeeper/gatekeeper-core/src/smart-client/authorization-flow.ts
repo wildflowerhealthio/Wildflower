@@ -11,10 +11,12 @@
  * Every fallible step is an `Either` with a tagged error on the left, and
  * "there is no sign-in in progress" is an `Option`, not a failure — so
  * `sign-in.ts` can `yield*` all of it into one Effect and the two cases stay
- * distinguishable at the end.
+ * distinguishable at the end. Everything read back from outside (storage, the
+ * redirect query, the token endpoint) is decoded with a Schema before any rule
+ * looks at it.
  */
 
-import { Data, Either, Option } from 'effect'
+import { Data, Either, Option, Schema } from 'effect'
 
 /**
  * Raised when a returning authorization cannot be completed: the server refused
@@ -45,19 +47,24 @@ class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
  * verifier is worthless without the code, and the record is deleted the moment
  * the client returns. The access token itself never goes near storage — see
  * `slices/gatekeeper/docs/Auth Token Storage Explanation.md`.
+ *
+ * Every field the exchange needs is a required non-empty string: a half-written
+ * record cannot complete a sign-in, and treating it as one would send a request
+ * with `undefined` in it.
  */
-interface PendingAuthorization {
-  readonly state: string
-  readonly codeVerifier: string
-  readonly serverUrl: string
-  readonly tokenEndpoint: string
+const PendingAuthorization = Schema.Struct({
+  state: Schema.NonEmptyString,
+  codeVerifier: Schema.NonEmptyString,
+  serverUrl: Schema.NonEmptyString,
+  tokenEndpoint: Schema.NonEmptyString,
   /**
    * The in-app path to land on after the sign-in, as the app handed it to
-   * `beginSignIn`: raw, so the app sanitises it before navigating. `undefined`
-   * when the app named none.
+   * `beginSignIn`: raw, so the app sanitises it before navigating. Absent when
+   * the app named none.
    */
-  readonly returnTo: string | undefined
-}
+  returnTo: Schema.optional(Schema.NonEmptyString),
+})
+type PendingAuthorization = Schema.Schema.Type<typeof PendingAuthorization>
 
 /**
  * The pending record as the string form stored under the `sessionStorage` key
@@ -66,49 +73,34 @@ interface PendingAuthorization {
 const serializePendingAuthorization = (pending: PendingAuthorization): string =>
   JSON.stringify(pending)
 
+const decodePendingAuthorization = Schema.decodeUnknownOption(
+  Schema.parseJson(PendingAuthorization)
+)
+
 /**
  * `raw` read back as a pending record, or `None` when it is absent or not one.
- *
- * Every field the exchange needs is required and must be a non-empty string: a
- * half-written record cannot complete a sign-in, and treating it as one would
- * send a request with `undefined` in it. `returnTo` may be absent (the app named
- * none), but when present it must be a non-empty string too. Absence of the
- * whole record is not an error here — most page loads have no record — so the
- * caller decides whether a missing one matters.
+ * Absence is not an error here — most page loads have no record — so the caller
+ * decides whether a missing one matters.
  */
-const parsePendingAuthorization = (raw: string | null): Option.Option<PendingAuthorization> => {
-  if (raw === null) return Option.none()
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return Option.none()
-  }
-  if (!isRecord(parsed)) return Option.none()
-  return Option.all({
-    state: nonEmptyString(parsed.state),
-    codeVerifier: nonEmptyString(parsed.codeVerifier),
-    serverUrl: nonEmptyString(parsed.serverUrl),
-    tokenEndpoint: nonEmptyString(parsed.tokenEndpoint),
-    returnTo: optionalNonEmptyString(parsed.returnTo),
-  })
-}
-
-/** Whether `value` is a plain JSON object (and so safe to read fields off). */
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-/** `value` when it is a non-empty string. */
-const nonEmptyString = (value: unknown): Option.Option<string> =>
-  typeof value === 'string' && value !== '' ? Option.some(value) : Option.none()
+const parsePendingAuthorization = (raw: string | null): Option.Option<PendingAuthorization> =>
+  Option.flatMap(Option.fromNullable(raw), decodePendingAuthorization)
 
 /**
- * `Some(undefined)` when `value` is absent, `Some(value)` when it is a non-empty
- * string, and `None` for anything else — an absent optional field is fine, a
- * malformed one spoils the record.
+ * An OAuth error: what the authorization server redirects back with instead of
+ * a code (RFC 6749 §4.1.2.1), and what the token endpoint answers instead of a
+ * token (§5.2).
  */
-const optionalNonEmptyString = (value: unknown): Option.Option<string | undefined> =>
-  value === undefined ? Option.some(undefined) : nonEmptyString(value)
+const OAuthError = Schema.Struct({
+  error: Schema.String,
+  error_description: Schema.optionalWith(Schema.String, { nullable: true }),
+})
+type OAuthError = Schema.Schema.Type<typeof OAuthError>
+
+const decodeOAuthError = Schema.decodeUnknownOption(OAuthError)
+
+/** `error` with its human-readable description, when the server gave one. */
+const describeOAuthError = ({ error, error_description }: OAuthError): string =>
+  error_description === undefined ? error : `${error} (${error_description})`
 
 /** Everything the authorization request carries beyond the endpoint itself. */
 interface AuthorizationRequestParameters {
@@ -150,6 +142,14 @@ const authorizationRequestUrl = (
 /** The FHIR base of `serverUrl` — the `aud` a standalone launch names. */
 const fhirAudienceFor = (serverUrl: string): string => `${serverUrl}/fhir-r4`
 
+/** A code the authorization server redirected back with (RFC 6749 §4.1.2). */
+const ReturnedCode = Schema.Struct({
+  code: Schema.String,
+  state: Schema.optional(Schema.String),
+})
+
+const decodeReturnedCode = Schema.decodeUnknownOption(ReturnedCode)
+
 /** A code that passed the `state` check, with the request it belongs to. */
 interface RedeemableCode {
   readonly code: string
@@ -170,18 +170,17 @@ const authorizationRedirectOutcome = (
   search: string,
   pending: Option.Option<PendingAuthorization>
 ): Either.Either<Option.Option<RedeemableCode>, AuthorizationRejected> => {
-  const params = new URLSearchParams(search)
-  const error = params.get('error')
-  const code = params.get('code')
-  if (error === null && code === null) return Either.right(Option.none())
-  if (error !== null) {
-    const description = params.get('error_description')
+  const params = Object.fromEntries(new URLSearchParams(search))
+  const refusal = decodeOAuthError(params)
+  if (Option.isSome(refusal)) {
     return Either.left(
       new AuthorizationRejected({
-        reason: `The server refused the sign-in: ${error}${description === null ? '' : ` (${description})`}.`,
+        reason: `The server refused the sign-in: ${describeOAuthError(refusal.value)}.`,
       })
     )
   }
+  const returned = decodeReturnedCode(params)
+  if (Option.isNone(returned)) return Either.right(Option.none())
   if (Option.isNone(pending)) {
     return Either.left(
       new AuthorizationRejected({
@@ -191,16 +190,14 @@ const authorizationRedirectOutcome = (
       })
     )
   }
-  if (params.get('state') !== pending.value.state) {
+  if (returned.value.state !== pending.value.state) {
     return Either.left(
       new AuthorizationRejected({
         reason: 'The sign-in came back with the wrong state parameter, so it was discarded.',
       })
     )
   }
-  // `code === null` is unreachable: one of `error`/`code` is non-null to get
-  // past the early return, and `error` is handled above.
-  return Either.right(Option.some({ code: code ?? '', pending: pending.value }))
+  return Either.right(Option.some({ code: returned.value.code, pending: pending.value }))
 }
 
 /** The authorization-response parameters, which must not linger in the URL. */
@@ -254,6 +251,21 @@ const tokenRequestBody = (input: {
     code_verifier: input.codeVerifier,
   }).toString()
 
+/**
+ * A successful token response (RFC 6749 §5.1) carrying a token this client can
+ * send. Only a `Bearer` token is accepted, because a bearer header is the only
+ * thing the client knows how to send. A refresh token is not read: the client
+ * keeps no credential past the tab, so there is nothing for it to refresh into.
+ */
+const BearerTokenResponse = Schema.Struct({
+  access_token: Schema.NonEmptyString,
+  token_type: Schema.String.pipe(Schema.filter((type) => type.toLowerCase() === 'bearer')),
+  scope: Schema.optionalWith(Schema.String, { nullable: true, default: () => '' }),
+  expires_in: Schema.optionalWith(Schema.Finite, { nullable: true }),
+})
+
+const decodeBearerTokenResponse = Schema.decodeUnknownEither(BearerTokenResponse)
+
 /** A usable token response, reduced to what the client keeps. */
 interface AccessGrant {
   readonly accessToken: string
@@ -264,51 +276,32 @@ interface AccessGrant {
 }
 
 /**
- * A token-endpoint response read as a grant, or the reason it is not one.
- *
- * Only a `Bearer` token is accepted, because a bearer header is the only thing
- * the client knows how to send. A refresh token in the response is **ignored**:
- * the client keeps no credential past the tab, so there is nothing for it to
- * refresh into.
+ * A token-endpoint response read as a grant, or the reason it is not one. An
+ * RFC 6749 §5.2 error body is reported with the server's own error; anything
+ * else that is not a {@link BearerTokenResponse} gets one generic reason.
  */
 const parseTokenResponse = (body: unknown): Either.Either<AccessGrant, TokenExchangeFailed> => {
-  if (!isRecord(body)) {
-    return Either.left(
-      new TokenExchangeFailed({ reason: 'The token endpoint did not answer with a JSON object.' })
-    )
-  }
-  if (typeof body.error === 'string') {
-    const description = body.error_description
+  const refusal = decodeOAuthError(body)
+  if (Option.isSome(refusal)) {
     return Either.left(
       new TokenExchangeFailed({
-        reason: `The token request was rejected: ${body.error}${
-          typeof description === 'string' ? ` (${description})` : ''
-        }.`,
+        reason: `The token request was rejected: ${describeOAuthError(refusal.value)}.`,
       })
     )
   }
-  const accessToken = body.access_token
-  if (typeof accessToken !== 'string' || accessToken === '') {
-    return Either.left(
-      new TokenExchangeFailed({ reason: 'The token endpoint returned no access token.' })
+  return decodeBearerTokenResponse(body).pipe(
+    Either.map((response) => ({
+      accessToken: response.access_token,
+      scope: response.scope,
+      expiresInSeconds: response.expires_in,
+    })),
+    Either.mapLeft(
+      () =>
+        new TokenExchangeFailed({
+          reason: 'The token endpoint did not return a usable bearer token.',
+        })
     )
-  }
-  const tokenType = body.token_type
-  if (typeof tokenType !== 'string' || tokenType.toLowerCase() !== 'bearer') {
-    return Either.left(
-      new TokenExchangeFailed({
-        reason: 'The token endpoint returned a token this client cannot send.',
-      })
-    )
-  }
-  return Either.right({
-    accessToken,
-    scope: typeof body.scope === 'string' ? body.scope : '',
-    expiresInSeconds:
-      typeof body.expires_in === 'number' && Number.isFinite(body.expires_in)
-        ? body.expires_in
-        : undefined,
-  })
+  )
 }
 
 export {

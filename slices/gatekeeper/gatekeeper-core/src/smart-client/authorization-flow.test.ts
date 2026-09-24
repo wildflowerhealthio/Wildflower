@@ -239,6 +239,26 @@ describe('authorizationRedirectOutcome', () => {
     )
   })
 
+  it('never redeems a code that comes back without any state', () => {
+    // Act
+    const outcome = authorizationRedirectOutcome('?code=abc123', Option.some(pendingRecord))
+
+    // Assert
+    expect(Either.isLeft(outcome)).toBe(true)
+  })
+
+  it('reads a refusal as a refusal even when a code rides along', () => {
+    // Act
+    const outcome = authorizationRedirectOutcome(
+      `?error=access_denied&code=abc123&state=${pendingRecord.state}`,
+      Option.some(pendingRecord)
+    )
+
+    // Assert
+    if (Either.isRight(outcome)) throw new Error('expected the refusal to win')
+    expect(outcome.left.reason).toContain('access_denied')
+  })
+
   it('surfaces the server’s own refusal, description included', () => {
     // Act
     const outcome = authorizationRedirectOutcome(
@@ -386,6 +406,41 @@ describe('parseTokenResponse', () => {
         scope: 'openid system/*.cruds',
         expiresInSeconds: 3600,
       })
+    )
+  })
+
+  it('reads a null or absent scope and lifetime as unstated', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom<Record<string, unknown>>({}, { scope: null, expires_in: null }),
+        (optionals) => {
+          // Act
+          const result = parseTokenResponse({
+            access_token: 'a-token',
+            token_type: 'Bearer',
+            ...optionals,
+          })
+
+          // Assert
+          expect(result).toEqual(
+            Either.right({ accessToken: 'a-token', scope: '', expiresInSeconds: undefined })
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it('accepts a bearer token type in any letter case', () => {
+    fc.assert(
+      fc.property(fc.mixedCase(fc.constant('bearer')), (tokenType) => {
+        // Act
+        const result = parseTokenResponse({ access_token: 'a-token', token_type: tokenType })
+
+        // Assert
+        expect(Either.isRight(result)).toBe(true)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 
