@@ -1,6 +1,5 @@
 //! The `/authorize` wait page: where a parked request sends the browser, and
-//! how the page and its two assets are served. What the page's script does is
-//! pinned in `gatekeeper-react/src/wait-page.test.ts`.
+//! how the page and its two assets are served.
 
 use crate::common::*;
 

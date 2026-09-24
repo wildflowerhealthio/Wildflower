@@ -1,4 +1,5 @@
 import { createBrowserHistory } from '@tanstack/react-router'
+import { sectionUrl } from 'branding-core'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
 import 'wildflower-react/instrument'
@@ -62,6 +63,10 @@ renderApp({
   // first-party client — so `NeedsAuthMessage`'s device-login `client_id` can't
   // drift from the seeded id.
   firstPartyClientId: WILDFLOWER_FIRST_PARTY_CLIENT_ID,
+  // The webview's own origin (the dev server or Tauri's asset protocol) is not
+  // an address another device can open, so a device-flow pairing link points
+  // at the hosted owner UI instead.
+  externalLinkRoot: () => sectionUrl('app'),
   // Same gate as embedded: wait for the transport's readiness signal
   // (so the host has had its chance to push `AuthTokenIssued`), then
   // take the first present token from the store.

@@ -1,12 +1,12 @@
 import { identity, Option, Schema } from 'effect'
 
 /**
- * An optional text field that decodes an empty string as absent: a failure
- * whose message is `''` has said nothing, and rendering it would leave a
- * dangling space after the headline.
+ * An optional text field that decodes `null` and an empty string as absent: a
+ * failure whose message is `null` or `''` has said nothing, and rendering it
+ * would leave a dangling space (or the word "null") after the headline.
  */
-const OptionalText = Schema.optionalToOptional(Schema.String, Schema.String, {
-  decode: Option.filter((text) => text !== ''),
+const OptionalText = Schema.optionalToOptional(Schema.NullOr(Schema.String), Schema.String, {
+  decode: Option.filter((text): text is string => text !== null && text !== ''),
   encode: identity,
 })
 
@@ -31,8 +31,11 @@ const LaunchErrorBody = Schema.Struct({
   description: OptionalText,
   /** An OAuth `error_uri` from the authorization server. */
   uri: OptionalText,
-  /** Present on an `InsufficientScope` — the scopes the caller's token lacks. */
-  missingScopes: Schema.optional(Schema.Array(Schema.String)),
+  /**
+   * Present on an `InsufficientScope` — the scopes the caller's token lacks.
+   * `null` decodes as absent, like the text fields.
+   */
+  missingScopes: Schema.optionalWith(Schema.Array(Schema.String), { nullable: true }),
 })
 type LaunchErrorBody = Schema.Schema.Type<typeof LaunchErrorBody>
 

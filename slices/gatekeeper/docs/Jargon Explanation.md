@@ -348,7 +348,7 @@ the host popup, a signed-in owner UI, or the
 It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an
 `http:`/`https:` redirect. Its colours are copies of `react-tundraish` palette
-tokens, held equal by `gatekeeper-react/src/wait-page.test.ts`.
+tokens under the same names.
 
 ### Loopback owner dialog
 

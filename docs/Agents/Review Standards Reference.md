@@ -86,7 +86,7 @@ Before pushing, reconcile the doc comments of every touched module against the d
 
 ## 12. Pre-launch defaults: no compatibility, no swallowed errors
 
-- **No backwards compatibility.** "We're pre-launch. There should be no attempt to maintain compatibility with data from before this pr" (PR #747). That covers stored data, wire shapes between the Tauri host and hosted server, and deprecated aliases after a rename: change the shape and update every reader.
+- **No backwards compatibility.** "We're pre-launch. There should be no attempt to maintain compatibility with data from before this pr" (PR #747). That covers stored data, wire shapes between the Tauri host and hosted server, and deprecated aliases after a rename: change the shape and update every reader. Database migrations are the exception: a change to shipped schema or seed data is a new migration, not an edit to one that has already run.
 - **Errors bubble.** "Does this ok() swallow an error reading a client? I think that should bubble up as a failure" (PR #730). `.ok()`, `unwrap_or_default()`, and catch-all arms turn failures into plausible defaults; a comment explaining why the swallow is deliberate is the tell.
 
 ## See Also

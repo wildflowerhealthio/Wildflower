@@ -19,7 +19,6 @@ import {
   Unauthed,
 } from 'react-kitchen-sink'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
-import seedMigrationSql from '../../../slices/gatekeeper/gatekeeper-rust/migrations/0013_wildflower_react_client_returns_to_app_root/up.sql?raw'
 
 import {
   authStateForSession,
@@ -75,13 +74,11 @@ describe('signInEnvironment', () => {
     expect(environment.redirectUri).toBe(REGISTERED_REDIRECT_URI)
   })
 
-  it('names the published app root the seeded row registers', () => {
-    // `/oauth/authorize` matches the row's entry by exact string equality, so a
-    // drift from the migration that sets it fails the flow at the endpoint. Both
-    // sides are read from their sources: the published section address, and the
-    // migration's SQL.
+  it('names the published app root', () => {
+    // `/oauth/authorize` matches the seeded row's entry by exact string
+    // equality. This holds the constant to the published section address;
+    // gatekeeper-rust's `clients.rs` holds the seeded row to the same value.
     expect(REGISTERED_REDIRECT_URI).toBe(`${sectionUrl('app')}/`)
-    expect(seedMigrationSql).toContain(`'${JSON.stringify([REGISTERED_REDIRECT_URI])}'`)
   })
 
   it('asks for exactly the scopes the seeded row allows', () => {

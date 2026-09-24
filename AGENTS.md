@@ -67,7 +67,7 @@ Recurring review cues — the reasoning and examples are in [Review Standards](.
 - **Types name what they hold; functions name what they do.** A type is a noun for its contents, not the event that produced it. A function's name says what it does to its input (converts, filters, starts), not what comes out.
 - **A new type must earn its keep.** Before adding one, check whether a method on an existing type or an `Option` already says it. Suspects: single-variant enums, single-field wrappers, parameter bags repeating an existing type's fields, anonymous multi-field returns, enums mirroring one that exists.
 - **Decode, then transform.** Parse input into typed values at the boundary (Effect Schema in TS, typed serde structs in Rust), then work on those. Don't carry `unknown`/untyped values into logic and check shapes as you go. Write edits as `T → T` steps rather than collecting indexes to filter later.
-- **Pre-launch: no backwards compatibility.** No fallbacks, dual reads, migrations, wire-compat shims, or deprecated aliases for shapes that existed before your change. Change the shape and update every reader.
+- **Pre-launch: no backwards compatibility.** No fallbacks, dual reads, wire-compat shims, or deprecated aliases for shapes that existed before your change. Change the shape and update every reader. Database migrations are the exception: add a new one rather than editing one that has already shipped.
 - **Errors bubble.** Don't turn a failure into a default (`.ok()`, `unwrap_or_default()`, a catch-all arm). A comment explaining why a swallow is fine is a signal to propagate instead.
 
 ## Branch Naming

@@ -7,9 +7,8 @@
 //!
 //! The three files under `wait_page/` are embedded verbatim, with nothing
 //! interpolated: `wait.js` reads the request id from its own path, so a
-//! request id can never reach the markup. `gatekeeper-react/src/wait-page.test.ts`
-//! drives `wait.js` and holds `wait.css`'s colours to `react-tundraish`'s
-//! palette.
+//! request id can never reach the markup. How they are served is pinned by
+//! `tests/integration/wait_page.rs`; the script itself has no tests.
 
 use std::sync::Arc;
 

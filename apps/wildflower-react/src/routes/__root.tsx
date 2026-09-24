@@ -26,8 +26,9 @@ const validateRootSearch = (search: Record<string, unknown>): RootSearch => {
  * a reader who has picked a server but not yet signed in keeps it through the
  * auth gate's bounce back to the landing. After sign-in `main-web` settles on
  * a URL without it (see `postSignInUrl`), and from then on there is nothing to
- * retain: the address bar and the links the router builds name no server, and
- * a reload returns to the picker.
+ * retain: the address bar and the links the router builds name no server. The
+ * tab remembers it in `sessionStorage` instead, so a reload signs back in to
+ * the same server (see `web-entry.ts`'s `chosenServerUrl`).
  */
 /** The root's search handling, shared with its test. */
 const rootSearchOptions = {

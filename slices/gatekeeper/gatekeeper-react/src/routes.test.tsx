@@ -23,6 +23,7 @@ const router = createRouter({
     runAuthed: stubRunAuthed,
     runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
     awaitAuthReady: () => Promise.resolve(),
+    externalLinkRoot: () => 'https://example.test',
   },
 })
 

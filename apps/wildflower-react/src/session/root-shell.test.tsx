@@ -230,6 +230,7 @@ describe('renderApp InnerWrap lifecycle', () => {
         tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
+        externalLinkRoot: () => 'https://example.test',
         platformSettingsItems: [],
         platformTabs: [],
         redirectToDeviceLoginOnUnauthorized: false,

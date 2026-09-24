@@ -10,8 +10,8 @@ type RunAuthed = BaseRouterContext.RunAuthedWith<GatekeeperHttpApiClient>
 
 /**
  * Slice-local router-context — `BaseRouterContext.RouterContextWith`
- * narrowed to this slice's client, plus the optional host-threaded
- * `localGrantedScopes` and `firstPartyClientId`. `awaitAuthReady` is inherited
+ * narrowed to this slice's client, plus the host-threaded
+ * `localGrantedScopes`, `firstPartyClientId` and `externalLinkRoot`. `awaitAuthReady` is inherited
  * only to keep this structural context a faithful subset of the host app's
  * `RouterContext`; gatekeeper loaders don't read it — the gate guarantees the
  * token before the loader runs.
@@ -35,6 +35,14 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
    * falls back to gatekeeper-core's `FIRST_PARTY_CLIENT_ID`.
    */
   readonly firstPartyClientId?: string
+  /**
+   * Where a link meant for another device points: this owner UI's address as
+   * seen from outside the page, with no trailing slash, to which the router's
+   * basepath is appended. The web entry passes its own origin; the Tauri
+   * webview, whose origin no other device can open, passes the hosted owner
+   * UI. Read through {@link useGatekeeperExternalRoot}.
+   */
+  readonly externalLinkRoot: () => string
 }
 
 /**
@@ -89,22 +97,27 @@ const useGatekeeperFirstPartyClientId = (): string | undefined =>
   })
 
 /**
- * The served root of the owner UI copy this slice is mounted in: the page's
- * origin plus the router's basepath, slash-terminated (e.g.
- * `https://wildflowerhealthio.github.io/staging/pr-7/app/`). `NeedsAuthMessage`
- * points its device-flow link here (see gatekeeper-core's
+ * The address another device reaches this owner UI's routes at: the host's
+ * {@link RouterContext.externalLinkRoot} plus the router's basepath,
+ * slash-terminated (e.g. `https://wildflowerhealthio.github.io/staging/pr-7/app/`
+ * on a PR preview, `https://wildflowerhealth.io/app/` from the Tauri webview).
+ * `NeedsAuthMessage` points its device-flow link here (see gatekeeper-core's
  * `GatekeeperPaths.deviceEntryUrlOn`).
  */
-const useGatekeeperServedRoot = (): string => {
+const useGatekeeperExternalRoot = (): string => {
   const { basepath } = useRouter()
-  return new URL(basepath.endsWith('/') ? basepath : `${basepath}/`, window.location.origin).href
+  const externalLinkRoot = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.externalLinkRoot,
+  })
+  return `${externalLinkRoot()}${basepath.endsWith('/') ? basepath : `${basepath}/`}`
 }
 
 export {
   sliceRuntimeLayer,
+  useGatekeeperExternalRoot,
   useGatekeeperFirstPartyClientId,
   useGatekeeperLocalGrantedScopes,
   useGatekeeperRuntimeLayer,
-  useGatekeeperServedRoot,
 }
 export type { RouterContext, RunAuthed, RuntimeLayer }

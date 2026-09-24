@@ -243,7 +243,8 @@ const returnToOnPage = (href: string): string | undefined => {
  * `returnTo`, with no `?server=`.
  *
  * `?server=` only picks the server a sign-in goes to. Once the session is
- * redeemed, `main-web` takes the server from the session instead, so the
+ * redeemed, `main-web` remembers the session's server in the tab's
+ * `sessionStorage` instead (see `web-entry.ts`'s `chosenServerUrl`), so the
  * parameter comes out of the address bar. The root route only carries forward
  * a `server` that is already in the URL, so later navigations don't add it
  * back. `returnTo` may bring its own query and hash (the gate keeps the whole

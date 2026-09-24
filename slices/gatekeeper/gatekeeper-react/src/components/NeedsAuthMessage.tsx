@@ -17,10 +17,10 @@ import { ScopePicker } from 'scopes-react'
 import { useTokenResponseHandler } from '../client/token-response-handler.ts'
 import { parseDeviceLoginSearch, parseRequestScopes } from '../device-login-route.ts'
 import {
+  useGatekeeperExternalRoot,
   useGatekeeperFirstPartyClientId,
   useGatekeeperLocalGrantedScopes,
   useGatekeeperRuntimeLayer,
-  useGatekeeperServedRoot,
   type RuntimeLayer,
 } from '../router-context.ts'
 import deviceCodeStyles from '../styles/device-code.module.css'
@@ -241,10 +241,10 @@ const NeedsAuthMessage = (): JSX.Element => {
   // can't drift — the config is the shared source). Used as the device-login
   // request's `client_id` below.
   const firstPartyClientId = useGatekeeperFirstPartyClientId() ?? FIRST_PARTY_CLIENT_ID
-  // This copy of the owner UI. The pairing link points at its own device-entry
-  // page rather than the one on the server's configured owner UI, so a pairing
-  // started on a PR preview or a dev server is approved there too.
-  const servedRoot = useGatekeeperServedRoot()
+  // This owner UI as another device reaches it. The pairing link points at its
+  // device-entry page rather than the one on the server's configured owner UI,
+  // so a pairing started on a PR preview or a dev server is approved there too.
+  const externalRoot = useGatekeeperExternalRoot()
 
   // The step-up pre-fill: the scopes a `403 InsufficientScope` named, threaded
   // here as `?requestScopes=` by `buildStepUpTarget`. Read once at mount (the
@@ -351,9 +351,9 @@ const NeedsAuthMessage = (): JSX.Element => {
 
       const verificationUris = yield* Effect.try({
         try: () => ({
-          verificationUri: GatekeeperPaths.deviceEntryUrlOn(servedRoot, auth.verification_uri),
+          verificationUri: GatekeeperPaths.deviceEntryUrlOn(externalRoot, auth.verification_uri),
           verificationUriComplete: GatekeeperPaths.deviceEntryUrlOn(
-            servedRoot,
+            externalRoot,
             auth.verification_uri_complete
           ),
         }),

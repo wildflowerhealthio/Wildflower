@@ -14,7 +14,7 @@ import { AuthedUntil, AuthStateProvider } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import type { SignInStep } from '../sign-in.ts'
-import { DEFAULT_SERVER_URL } from '../web-entry.ts'
+import { DEFAULT_SERVER_URL, rememberSignedInServer } from '../web-entry.ts'
 import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
 
 /**
@@ -30,6 +30,7 @@ import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
 describe('Landing', () => {
   afterEach(() => {
     cleanup()
+    window.sessionStorage.clear()
   })
 
   test('offers the server picker but no sign-in until a server is chosen', async () => {
@@ -64,6 +65,21 @@ describe('Landing', () => {
       expect(signIn.left).toEqual(['http://127.0.0.1:8080/oauth/authorize?x=1'])
     })
     expect(signIn.started).toEqual(['http://127.0.0.1:8080'])
+  })
+
+  test('signs in straight away to the server this tab last signed in to', async () => {
+    // Arrange — a reload, or the expiry bounce: the settled URL names no server,
+    // but the tab remembered the one its last sign-in was redeemed against.
+    rememberSignedInServer(window.sessionStorage, 'https://ruth.wildflowerhealth.io')
+    const signIn = recordingSignIn(pendingStart)
+
+    // Act
+    await mountLanding('/', { signIn: signIn.stub })
+
+    // Assert
+    await waitFor(() => {
+      expect(signIn.started).toEqual(['https://ruth.wildflowerhealth.io'])
+    })
   })
 
   test('shows why an automatic sign-in failed and does not retry it', async () => {
@@ -174,7 +190,7 @@ describe('shouldSignInOnArrival', () => {
   test('should sign in when a usable, reachable server is named and nothing just failed', () => {
     expect(
       shouldSignInOnArrival({
-        hasServerInUrl: true,
+        hasChosenServer: true,
         blockedReason: undefined,
         bootSignInProblem: undefined,
       })
@@ -187,14 +203,14 @@ describe('shouldSignInOnArrival', () => {
         fc.boolean(),
         fc.option(fc.string(), { nil: undefined }),
         fc.option(fc.string(), { nil: undefined }),
-        (hasServerInUrl, blockedReason, bootSignInProblem) => {
-          // Arrange — at least one of: no server named, the server is
+        (hasChosenServer, blockedReason, bootSignInProblem) => {
+          // Arrange — at least one of: no server chosen, the server is
           // unreachable from this page, or a sign-in just failed.
-          fc.pre(!hasServerInUrl || blockedReason !== undefined || bootSignInProblem !== undefined)
+          fc.pre(!hasChosenServer || blockedReason !== undefined || bootSignInProblem !== undefined)
 
           // Act
           const decision = shouldSignInOnArrival({
-            hasServerInUrl,
+            hasChosenServer,
             blockedReason,
             bootSignInProblem,
           })

@@ -92,6 +92,29 @@ describe('encodeLaunchError / decodeLaunchError', () => {
     )
     expect(decoded).toEqual(Option.some({ error: 'AuthorizeFailed' }))
   })
+
+  it('reads a null optional field as absent', () => {
+    fc.assert(
+      fc.property(
+        fc.subarray(['message', 'iss', 'description', 'uri', 'missingScopes'], { minLength: 1 }),
+        (nullFields) => {
+          // Arrange — a producer that writes `null` for what it does not know.
+          const body = {
+            error: 'AuthorizeFailed',
+            ...Object.fromEntries(nullFields.map((field) => [field, null])),
+          }
+          const parameter = btoa(JSON.stringify(body))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '')
+
+          // Act / Assert
+          expect(decodeLaunchError(parameter)).toEqual(Option.some({ error: 'AuthorizeFailed' }))
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
 })
 
 describe('launchErrorRedirect', () => {

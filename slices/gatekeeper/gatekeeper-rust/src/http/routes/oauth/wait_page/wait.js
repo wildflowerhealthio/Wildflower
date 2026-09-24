@@ -3,9 +3,7 @@
 // for the redirect the gatekeeper built from the client's allowlisted
 // `redirect_uri`. See "Wait page" in the gatekeeper Jargon Explanation.
 //
-// Loaded as a module script, so its names stay out of the page's globals. Reads
-// only `window`, `document`, `fetch` and `setTimeout`, so
-// `gatekeeper-react/src/wait-page.test.ts` can run it against stubs.
+// Loaded as a module script, so its names stay out of the page's globals.
 
 /** How long to wait between polls, matching the device flow's own cadence. */
 const POLL_INTERVAL_MS = 1500
@@ -86,8 +84,9 @@ const follow = (statusPath, status) => {
       return
     case 'denied':
       // A code-flow denial carries the client's `error=access_denied`
-      // callback, so the client learns the outcome too.
-      if (status.redirect === undefined) {
+      // callback, so the client learns the outcome too. A device-flow denial
+      // has no callback, whether the field is absent or `null`.
+      if (status.redirect === undefined || status.redirect === null) {
         settle('denied', 'Request declined', 'The authorization request was declined.')
       } else {
         leaveFor(status.redirect)
@@ -104,6 +103,18 @@ const follow = (statusPath, status) => {
       settleError(UNEXPECTED_RESPONSE)
   }
 }
+
+/**
+ * The human-readable `error_description` of an RFC 6749 §5.2 error body (what
+ * the status endpoint answers a `500` with), when it carries a non-empty one.
+ *
+ * @param {{ readonly error_description?: unknown }} body
+ * @returns {string | undefined}
+ */
+const errorDescription = (body) =>
+  typeof body.error_description === 'string' && body.error_description !== ''
+    ? body.error_description
+    : undefined
 
 /**
  * Poll `statusPath` once. `unreachablePolls` counts the network failures in a
@@ -142,8 +153,12 @@ const poll = async (statusPath, unreachablePolls) => {
   } catch {
     body = undefined
   }
-  if (!response.ok || typeof body !== 'object' || body === null) {
+  if (typeof body !== 'object' || body === null) {
     settleError(UNEXPECTED_RESPONSE)
+    return
+  }
+  if (!response.ok) {
+    settleError(errorDescription(body) ?? UNEXPECTED_RESPONSE)
     return
   }
   follow(statusPath, body)

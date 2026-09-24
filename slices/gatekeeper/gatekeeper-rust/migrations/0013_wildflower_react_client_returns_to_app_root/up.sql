@@ -17,7 +17,8 @@
 --
 -- `wildflowerhealth.io/app/` MUST equal `REGISTERED_REDIRECT_URI` in
 -- `apps/wildflower-react/src/sign-in.ts`, which is matched by exact string
--- equality; `sign-in.test.ts` reads this file to hold the two equal.
+-- equality. `db/clients.rs`'s seed test pins this value, and `sign-in.test.ts`
+-- pins the constant to branding-core's published app address.
 UPDATE clients
    SET redirect_uris = '["https://wildflowerhealth.io/app/"]'
  WHERE client_id = 'wildflower-react';

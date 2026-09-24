@@ -18,7 +18,12 @@ import {
   scheduleExpiry,
   signInEnvironment,
 } from './sign-in.ts'
-import { apiServerUrlForLoad, makeWebEntryOptions, underBasepath } from './web-entry.ts'
+import {
+  apiServerUrl,
+  makeWebEntryOptions,
+  rememberSignedInServer,
+  underBasepath,
+} from './web-entry.ts'
 
 addOsColorSchemeListener()
 
@@ -58,8 +63,8 @@ const replaceSearch = (search: string): void => {
  * is rebuilt from it rather than from the address the browser arrived on, which
  * drops the callback's single-use `?code=`/`?state=`. Left in the URL, they
  * would sit in history and in anything the reader copies out of the bar. The
- * settled URL names no server: `boot` hands the transport the session's server
- * directly (see `postSignInUrl`).
+ * settled URL names no server: `boot` remembers the session's server in the
+ * tab's `sessionStorage` instead (see `postSignInUrl`).
  */
 const settleUrlAfterSignIn = (returnTo: string): void => {
   window.history.replaceState(null, '', postSignInUrl(returnTo, window.location.origin))
@@ -86,6 +91,10 @@ const boot = async (): Promise<void> => {
   const session = completed.tag === 'Ok' ? Option.getOrUndefined(completed.value) : undefined
 
   if (session !== undefined) {
+    // The settled URL names no server, so the tab remembers the one that issued
+    // the token: for the transport below, and for a reload or the expiry
+    // bounce back to the landing.
+    rememberSignedInServer(window.sessionStorage, session.serverUrl)
     // Honour the gate's `?returnTo=`, carried across the redirect in the
     // pending record, sanitised — same rules as `NeedsAuthMessage`'s
     // device-flow return leg.
@@ -96,10 +105,12 @@ const boot = async (): Promise<void> => {
     replaceSearch(searchWithoutAuthorizationResponse(returnSearch))
   }
 
+  // Resolved after the rewrites above: a redeemed sign-in has just remembered
+  // its server, and the settled URL has no `?server=` to outrank it.
   const { bearerStore, ...entryOptions } = makeWebEntryOptions(
     window,
     basepath,
-    apiServerUrlForLoad(returnSearch, session)
+    apiServerUrl(window.location.search, window.sessionStorage)
   )
 
   if (session !== undefined) {

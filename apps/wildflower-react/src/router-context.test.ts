@@ -32,6 +32,7 @@ describe('RouterContext assembly', () => {
         coordinator: { register: () => Effect.void, unregister: () => Effect.void },
       }),
       entry: 'main-web',
+      externalLinkRoot: () => 'https://example.test',
     } satisfies RouterContext
 
     // Assert

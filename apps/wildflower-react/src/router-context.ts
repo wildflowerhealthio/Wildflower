@@ -67,6 +67,15 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    */
   readonly firstPartyClientId?: string
   /**
+   * Where a link meant for another device points: this owner UI's address as
+   * seen from outside the page, with no trailing slash, to which the router's
+   * basepath is appended. Read by the gatekeeper slice's `NeedsAuthMessage` for
+   * its device-flow pairing link. `main-web` passes its own origin;
+   * `main-tauri`, whose origin no other device can open, passes the hosted
+   * owner UI.
+   */
+  readonly externalLinkRoot: () => string
+  /**
    * Why the web entry's boot-time SMART sign-in failed, when it did — the
    * `reason` off a `SignInError`, already written for a reader. `main-web`
    * redeems the authorization code before it mounts the router, so a failed

@@ -67,15 +67,15 @@ const scopesHolder: { current: string | undefined } = { current: undefined }
 // fallback; a set value proves the device-login request forwards the injected id.
 const clientIdHolder: { current: string | undefined } = { current: undefined }
 
-// Stands in for the served root of the owner UI copy the screen is mounted in —
+// Stands in for the external root of the owner UI copy the screen is mounted in —
 // a PR preview, so it differs from the owner UI the server's URIs name.
-const SERVED_ROOT = 'https://wildflowerhealthio.github.io/staging/pr-7/app/'
+const EXTERNAL_ROOT = 'https://wildflowerhealthio.github.io/staging/pr-7/app/'
 
 vi.mock('../router-context.ts', () => ({
   useGatekeeperRuntimeLayer: (): Layer.Layer<GatekeeperHttpApiClient> => layerHolder.current,
   useGatekeeperLocalGrantedScopes: (): string | undefined => scopesHolder.current,
   useGatekeeperFirstPartyClientId: (): string | undefined => clientIdHolder.current,
-  useGatekeeperServedRoot: (): string => SERVED_ROOT,
+  useGatekeeperExternalRoot: (): string => EXTERNAL_ROOT,
 }))
 
 // The device flow publishes the freshly-authed signal through the
@@ -205,7 +205,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     render(withTokenStore(<NeedsAuthMessage />))
     await startSignIn()
 
-    const expected = `${SERVED_ROOT}gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT`
+    const expected = `${EXTERNAL_ROOT}gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT`
     await waitFor(
       () => {
         expect(screen.getByRole('link', { name: expected }).getAttribute('href')).toBe(expected)
@@ -214,7 +214,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     )
     expect(
       screen.getByText(
-        `${SERVED_ROOT}gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io`
+        `${EXTERNAL_ROOT}gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io`
       )
     ).toBeTruthy()
   })
