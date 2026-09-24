@@ -17,7 +17,7 @@ never disagree on a decode.
   `https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?…`
   → R4 `MedicationRequest` + `MedicationDispense` resources.
 - `src/carebook.ts` — the carebook STU3 dialect decoder.
-- `src/promote.ts` — STU3-to-R4 promotion helpers.
+- `src/promote/` — extension promotion (see "Extension Promotion" below).
 - `src/bundle.ts` — searchset Bundle unwrapping.
 - `src/source-system.ts` — `REXALL_CAREBOOK_SYSTEM`, the Wildflower-minted
   `sid` URI each kind's `tryRecognize` mints and adoption keys under.
@@ -41,7 +41,7 @@ reverse.
 ## Extension Promotion
 
 The dialect is extension-heavy, and several of those extensions carry values R4
-has a conventional field for. `src/promote.ts` moves them, running on the R4
+has a conventional field for. `src/promote/` moves them, running on the R4
 output of the `fhir-stu3-as-r4` transform.
 
 **It is deliberately a post-step in this package, not part of that transform.**
@@ -62,6 +62,17 @@ first (the carebook extension shapes decode straight to the value they carry;
 target slot **and** drops the source extension in the same edit. Nothing is
 remembered between steps. Add a promotion by adding a step to the pipe, not by
 threading state through one.
+
+**Where each piece lives.** `promote/medication-request.ts` and
+`promote/medication-dispense.ts` own the two pipelines and are the only entry
+points. Every other module is one concern that exports only its pipeline steps
+and keeps its schemas and helpers private: `pharmacy-location.ts` (processor
+and store link), `contained-medication.ts` (the contained Medication's own
+promotions and its link from `medication[x]`), `din.ts`,
+`repeats-available.ts` and `supply-days.ts`. The shared plumbing underneath
+them is `lift.ts` (the lift-and-drop machinery), `decoded-r4.ts`, `wire.ts`
+and `strength-ratio.ts`. Each concern has a `*.test.ts` beside it that
+exercises it through the public pipelines, never its internals.
 
 What moves (lift-and-drop — the extension is removed once the value lands):
 
@@ -113,7 +124,7 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   it, a narrative already holding real content — each is a no-op, never a silent
   drop.
 - **A step drops exactly the entry it read, never every entry at its url.**
-  The dialect writes several urls twice and `promote.ts` reads only the first,
+  The dialect writes several urls twice and promotion reads only the first,
   so dropping by url would delete a second copy nobody examined. Inside a
   contained Medication the rule is "the first entry that decodes": each
   extension entry is decoded on its own, so one malformed entry disables only
@@ -132,7 +143,7 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   dosage error in the clinical record. The string simply fails to match instead.
 - **The promoted narrative is XHTML, not the bare description.** R4 types
   `Narrative.div` as `xhtml` and requires a single `<div>` in the XHTML
-  namespace; a conformant server rejects anything else on write. `promote.ts`
+  namespace; a conformant server rejects anything else on write. Promotion
   wraps and escapes, and `medication-core` extracts the text
   content back out — the two are a pair.
 - **The store number lands on `Reference.reference`, never
