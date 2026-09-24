@@ -1,3 +1,15 @@
+import { identity, Option, Schema } from 'effect'
+
+/**
+ * An optional text field that decodes an empty string as absent: a failure
+ * whose message is `''` has said nothing, and rendering it would leave a
+ * dangling space after the headline.
+ */
+const OptionalText = Schema.optionalToOptional(Schema.String, Schema.String, {
+  decode: Option.filter((text) => text !== ''),
+  encode: identity,
+})
+
 /**
  * The JSON error body a failed SMART launch carries to an app's home page.
  *
@@ -8,20 +20,44 @@
  * the tag; the remaining fields are the diagnostics a launch failure can offer,
  * all optional because a failure rarely knows all of them.
  */
-interface LaunchErrorBody {
+const LaunchErrorBody = Schema.Struct({
   /** The failure tag — one of {@link LAUNCH_ERROR_MESSAGES}' keys, or any other. */
-  readonly error: string
+  error: Schema.String,
   /** The underlying failure's own message, when there was one. */
-  readonly message?: string
+  message: OptionalText,
   /** The FHIR server base (`iss`) the launch was reaching for. */
-  readonly iss?: string
+  iss: OptionalText,
   /** An OAuth `error_description` from the authorization server. */
-  readonly description?: string
+  description: OptionalText,
   /** An OAuth `error_uri` from the authorization server. */
-  readonly uri?: string
+  uri: OptionalText,
   /** Present on an `InsufficientScope` — the scopes the caller's token lacks. */
-  readonly missingScopes?: readonly string[]
-}
+  missingScopes: Schema.optional(Schema.Array(Schema.String)),
+})
+type LaunchErrorBody = Schema.Schema.Type<typeof LaunchErrorBody>
+
+/**
+ * The `?launchError` wire: URL-safe base64 (unpadded) of the body as UTF-8
+ * JSON. UTF-8 first is what lets a message with non-Latin-1 text survive
+ * base64, and the URL-safe alphabet is what lets it ride a query string
+ * untouched.
+ */
+const LaunchErrorParameter = Schema.compose(
+  Schema.StringFromBase64Url,
+  Schema.parseJson(LaunchErrorBody)
+)
+
+/**
+ * The OAuth-standard error return (RFC 6749 §4.1.2.1) the authorization server
+ * appends to the redirect URI.
+ */
+const OAuthErrorReturn = Schema.Struct({
+  error: Schema.NonEmptyString,
+  error_description: OptionalText,
+  error_uri: OptionalText,
+})
+
+const decodeOAuthErrorReturn = Schema.decodeUnknownOption(OAuthErrorReturn)
 
 /** The search parameter the launch error rides on, matching the Tauri arm. */
 const LAUNCH_ERROR_PARAM = 'launchError'
@@ -40,61 +76,16 @@ const LAUNCH_ERROR_MESSAGES: Record<string, string> = {
 /** Shown when the tag is absent or unrecognised — still better than nothing. */
 const FALLBACK_LAUNCH_MESSAGE = 'The SMART launch failed.'
 
-/**
- * URL-safe-base64 (unpadded) of the body as JSON — the `?launchError` wire.
- *
- * @remarks
- * `btoa` takes a binary string, so the JSON is UTF-8 encoded first and the bytes
- * mapped to code units one by one; a message containing non-Latin-1 text would
- * otherwise throw. The `+/=` → `-_` substitution is what makes it URL-safe.
- */
-const encodeLaunchError = (body: LaunchErrorBody): string => {
-  const bytes = new TextEncoder().encode(JSON.stringify(body))
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
+/** The body as the `?launchError` parameter value. */
+const encodeLaunchError: (body: LaunchErrorBody) => string = Schema.encodeSync(LaunchErrorParameter)
 
 /**
- * Decode a `?launchError` parameter back to its JSON body, or `null` when it is
- * not valid URL-safe base64 carrying JSON — a hand-edited or truncated URL.
+ * A `?launchError` parameter decoded back to its body, or `None` when it is not
+ * URL-safe base64 of a launch-error body — a hand-edited or truncated URL.
  */
-const decodeLaunchError = (parameter: string): unknown => {
-  try {
-    const standard = parameter.replace(/-/g, '+').replace(/_/g, '/')
-    const padded = standard + '='.repeat((4 - (standard.length % 4)) % 4)
-    const binary = atob(padded)
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
-    const value: unknown = JSON.parse(new TextDecoder().decode(bytes))
-    return value
-  } catch {
-    return null
-  }
-}
+const decodeLaunchError: (parameter: string) => Option.Option<LaunchErrorBody> =
+  Schema.decodeUnknownOption(LaunchErrorParameter)
 
-/** Read a string field off a decoded body, or `undefined` when it is absent. */
-const stringField = (decoded: unknown, key: string): string | undefined => {
-  if (typeof decoded !== 'object' || decoded === null || !(key in decoded)) return undefined
-  const value: unknown = Reflect.get(decoded, key)
-  return typeof value === 'string' && value !== '' ? value : undefined
-}
-
-/** The `error` tag of a decoded body, when it carries a string one. */
-const launchErrorTag = (decoded: unknown): string | undefined => stringField(decoded, 'error')
-
-/**
- * Build the {@link Error} that {@link ErrorBanner} renders for a decoded body:
- * the tag's friendly sentence followed by whatever concrete detail the failure
- * carried.
- *
- * @remarks
- * An `Error` rather than a plain string because tundraish's `formatErrorDetails`
- * returns `null` for a non-`Error`, which would drop the "Show details"
- * disclosure. The remaining diagnostics are attached as own enumerable
- * properties, which is exactly what `formatErrorDetails`' own-fields pass
- * surfaces — so `iss`, the OAuth `error_uri` and the tag land in the details
- * block where they can be read off and acted on.
- */
 /**
  * The friendly sentence for a tag, or `undefined` when the tag is not one we
  * know.
@@ -109,19 +100,37 @@ const launchErrorTag = (decoded: unknown): string | undefined => stringField(dec
 const messageForTag = (tag: string): string | undefined =>
   Object.hasOwn(LAUNCH_ERROR_MESSAGES, tag) ? LAUNCH_ERROR_MESSAGES[tag] : undefined
 
-const launchError = (decoded: unknown): Error => {
-  const tag = launchErrorTag(decoded)
-  const headline = (tag === undefined ? undefined : messageForTag(tag)) ?? FALLBACK_LAUNCH_MESSAGE
-  const detail = stringField(decoded, 'description') ?? stringField(decoded, 'message')
-  const error = new Error(detail === undefined ? headline : `${headline} ${detail}`)
-  error.name = 'SmartLaunchError'
+/**
+ * Build the {@link Error} that {@link ErrorBanner} renders for a decoded body
+ * (`None` when the parameter did not decode): the tag's friendly sentence
+ * followed by whatever concrete detail the failure carried.
+ *
+ * @remarks
+ * An `Error` rather than a plain string because tundraish's `formatErrorDetails`
+ * returns `null` for a non-`Error`, which would drop the "Show details"
+ * disclosure. The remaining diagnostics are attached as own enumerable
+ * properties, which is exactly what `formatErrorDetails`' own-fields pass
+ * surfaces — so `iss`, the OAuth `error_uri` and the tag land in the details
+ * block where they can be read off and acted on.
+ */
+const launchError = (decoded: Option.Option<LaunchErrorBody>): Error => {
+  if (Option.isNone(decoded)) return smartLaunchError(FALLBACK_LAUNCH_MESSAGE)
+  const body = decoded.value
+  const headline = messageForTag(body.error) ?? FALLBACK_LAUNCH_MESSAGE
+  const detail = body.description ?? body.message
+  const error = smartLaunchError(detail === undefined ? headline : `${headline} ${detail}`)
   // Diagnostics for the details disclosure. Assigned only when present so an
   // absent field does not render as an explicit `undefined`.
-  const iss = stringField(decoded, 'iss')
-  const uri = stringField(decoded, 'uri')
-  if (tag !== undefined) Object.assign(error, { tag })
-  if (iss !== undefined) Object.assign(error, { iss })
-  if (uri !== undefined) Object.assign(error, { errorUri: uri })
+  if (body.error !== '') Object.assign(error, { tag: body.error })
+  if (body.iss !== undefined) Object.assign(error, { iss: body.iss })
+  if (body.uri !== undefined) Object.assign(error, { errorUri: body.uri })
+  return error
+}
+
+/** An {@link Error} named for the banner's details block. */
+const smartLaunchError = (message: string): Error => {
+  const error = new Error(message)
+  error.name = 'SmartLaunchError'
   return error
 }
 
@@ -153,21 +162,18 @@ const launchErrorFrom = (search: string = window.location.search): Error | null 
   const encoded = parameters.get(LAUNCH_ERROR_PARAM)
   if (encoded !== null && encoded !== '') return launchError(decodeLaunchError(encoded))
 
-  const oauthError = parameters.get('error')
-  if (oauthError !== null && oauthError !== '') {
-    return launchError({
-      error: 'AuthorizationDenied',
-      message: oauthError,
-      ...(parameters.get('error_description') === null
-        ? {}
-        : { description: parameters.get('error_description') ?? undefined }),
-      ...(parameters.get('error_uri') === null
-        ? {}
-        : { uri: parameters.get('error_uri') ?? undefined }),
-    })
-  }
-
-  return null
+  return Option.match(decodeOAuthErrorReturn(Object.fromEntries(parameters)), {
+    onNone: () => null,
+    onSome: (oauthError) =>
+      launchError(
+        Option.some({
+          error: 'AuthorizationDenied',
+          message: oauthError.error,
+          description: oauthError.error_description,
+          uri: oauthError.error_uri,
+        })
+      ),
+  })
 }
 
 /**
@@ -227,6 +233,5 @@ export {
   launchErrorBodyFor,
   launchErrorFrom,
   launchErrorRedirect,
-  launchErrorTag,
   type LaunchErrorBody,
 }

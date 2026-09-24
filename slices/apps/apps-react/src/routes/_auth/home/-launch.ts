@@ -1,12 +1,12 @@
 import { HttpClientError } from '@effect/platform'
 import { AppsHttpApiClient } from 'apps-core/clients'
-import type { Schemas } from 'apps-core/http-api-definition'
-import { Effect, Either, type Schema } from 'effect'
+import { Schemas } from 'apps-core/http-api-definition'
+import { Effect, Either, Schema } from 'effect'
 import { unwrapFiberFailure } from 'kitchen-sink'
 import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
 
 import type { RunAuthed } from '../../../router-context.ts'
-import { encodeLaunchError, launchErrorTag, type LaunchErrorBody } from './-launch-error.ts'
+import { encodeLaunchError, type LaunchErrorBody } from './-launch-error.ts'
 
 /** A forwarded launch's answer: the URL for this page to navigate to. */
 type LaunchTarget = Schema.Schema.Type<typeof Schemas.LaunchTargetSchema>
@@ -56,6 +56,8 @@ const launchApp = async (
   })
 }
 
+const isAppNotFound = Schema.is(Schemas.AppNotFoundSchema)
+
 /**
  * Classify a rejected launch into the {@link LaunchErrorBody} the home banner
  * reads. `runAuthed` rejects with a `FiberFailure`, so unwrap it first.
@@ -68,7 +70,7 @@ const launchErrorBody = (error: unknown): LaunchErrorBody => {
   if (isInsufficientScopeBody(cause)) {
     return { error: 'InsufficientScope', missingScopes: cause.missingScopes }
   }
-  if (launchErrorTag(cause) === 'AppNotFound') return { error: 'AppNotFound' }
+  if (isAppNotFound(cause)) return { error: 'AppNotFound' }
   if (cause instanceof HttpClientError.ResponseError && cause.response.status === 503) {
     return { error: 'LaunchUnavailable' }
   }

@@ -424,3 +424,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/oauth-redirect-routing-9cmhrj (the wait page's `wait.js`, embedded by `gatekeeper-rust` with `include_str!`)
 **Learning**: `vp check` runs oxlint's type-aware rules over every `.js` file, so an untyped parameter counts as `any` and trips `no-unsafe-assignment`, even for a browser asset no TS package imports. JSDoc (`@param {string} x`, `/** @type {unknown} */ let body`) satisfies it without a build step. `consistent-function-scoping` also flags helpers inside an IIFE, so load such a script as `type="module"`, whose scope is already private, and keep the helpers at top level. To test the file from Vitest, read it with `readFileSync` and run it through `new Function('window', 'document', 'fetch', source)` as `apps/github-pages`' 404 test does. Under Vitest a `?raw` import of a `.css` file is an empty string.
 **Suggested destination**: Testing Reference or CONTRIBUTING.md (code style)
+
+## A runtime `Schema` import in the sniffer bootstrap costs ~800 KB
+
+**Discovered during**: claude/oauth-redirect-routing-9cmhrj (trying to replace `native-bridge.ts`'s hand-rolled envelope parse with `Schema.parseJson`)
+**Learning**: `browser-sniffer-tauri`'s bootstraps are self-contained IIFEs injected into every sniffed page, and Effect `Schema` does not tree-shake. Adding one `Schema.decodeUnknownOption(Schema.parseJson(...))` to `native-bridge.ts` grew `dist/native-bootstrap.js` from ~58 K to ~832 K characters. `Match`/`Predicate` are cheap, but `Schema` (and anything pulling `ParseResult`) is not. Keep that transport's validation hand-written, and check the bootstrap size (`node scripts/build-native-bootstrap.mts` prints it) after adding any runtime `effect` import there.
+**Suggested destination**: browser-sniffer Architecture Explanation (IIFE constraint section)

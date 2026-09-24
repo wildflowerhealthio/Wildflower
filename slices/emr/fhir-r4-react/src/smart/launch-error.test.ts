@@ -1,3 +1,4 @@
+import { Option } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -12,7 +13,6 @@ import {
   launchErrorBodyFor,
   launchErrorFrom,
   launchErrorRedirect,
-  launchErrorTag,
   type LaunchErrorBody,
 } from './launch-error.ts'
 
@@ -36,7 +36,7 @@ describe('encodeLaunchError / decodeLaunchError', () => {
   it('round-trips any body through the URL-safe base64 wire', () => {
     fc.assert(
       fc.property(bodyArb, (body) => {
-        expect(decodeLaunchError(encodeLaunchError(body))).toEqual(body)
+        expect(decodeLaunchError(encodeLaunchError(body))).toEqual(Option.some(body))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -60,17 +60,37 @@ describe('encodeLaunchError / decodeLaunchError', () => {
         const href = launchErrorRedirect('https://wildflowerhealth.io/medications-app/', body)
         const parameter = new URL(href).searchParams.get(LAUNCH_ERROR_PARAM)
         expect(parameter).not.toBeNull()
-        expect(decodeLaunchError(parameter ?? '')).toEqual(body)
+        expect(decodeLaunchError(parameter ?? '')).toEqual(Option.some(body))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
-  it('returns null for a parameter that is not valid base64 JSON', () => {
+  it('returns None for a parameter that is not valid base64 JSON', () => {
     // A hand-edited or truncated URL must not throw its way out of the banner.
-    expect(decodeLaunchError('not-base64-json')).toBeNull()
-    expect(decodeLaunchError('!!!!')).toBeNull()
-    expect(decodeLaunchError('')).toBeNull()
+    expect(decodeLaunchError('not-base64-json')).toEqual(Option.none())
+    expect(decodeLaunchError('!!!!')).toEqual(Option.none())
+    expect(decodeLaunchError('')).toEqual(Option.none())
+  })
+
+  it('returns None for base64 JSON that is not a launch-error body', () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(fc.constant(null), fc.constant({}), fc.record({ error: fc.integer() })),
+        (value) => {
+          const parameter = btoa(JSON.stringify(value)).replace(/=+$/, '')
+          expect(decodeLaunchError(parameter)).toEqual(Option.none())
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('reads an empty text field as absent', () => {
+    const decoded = decodeLaunchError(
+      encodeLaunchError({ error: 'AuthorizeFailed', message: '', iss: '' })
+    )
+    expect(decoded).toEqual(Option.some({ error: 'AuthorizeFailed' }))
   })
 })
 
@@ -199,31 +219,16 @@ describe('launchErrorFrom', () => {
 describe('launchError', () => {
   it('opens with the tag’s sentence when the tag is a known one', () => {
     for (const [tag, sentence] of Object.entries(LAUNCH_ERROR_MESSAGES)) {
-      expect(launchError({ error: tag }).message).toBe(sentence)
+      expect(launchError(Option.some({ error: tag })).message).toBe(sentence)
     }
   })
 
   it('falls back for an unknown or missing tag', () => {
-    expect(launchError({ error: 'SomethingNew' }).message).toBe(FALLBACK_LAUNCH_MESSAGE)
-    expect(launchError({}).message).toBe(FALLBACK_LAUNCH_MESSAGE)
-    expect(launchError(null).message).toBe(FALLBACK_LAUNCH_MESSAGE)
-  })
-})
-
-describe('launchErrorTag', () => {
-  it('reads back the tag of anything encoded', () => {
-    fc.assert(
-      fc.property(bodyArb, (body) => {
-        expect(launchErrorTag(decodeLaunchError(encodeLaunchError(body)))).toBe(body.error)
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
+    expect(launchError(Option.some({ error: 'SomethingNew' })).message).toBe(
+      FALLBACK_LAUNCH_MESSAGE
     )
-  })
-
-  it('is undefined for a value carrying no string tag', () => {
-    expect(launchErrorTag(null)).toBeUndefined()
-    expect(launchErrorTag({ error: 7 })).toBeUndefined()
-    expect(launchErrorTag('a string')).toBeUndefined()
+    expect(launchError(Option.some({ error: '' })).message).toBe(FALLBACK_LAUNCH_MESSAGE)
+    expect(launchError(Option.none()).message).toBe(FALLBACK_LAUNCH_MESSAGE)
   })
 })
 
