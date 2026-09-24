@@ -19,8 +19,21 @@ const CodingStruct = mutableEncoded(
   })
 )
 
-const CodingSchema: Schema.Schema<typeof CodingStruct.Type, FhirR4.Coding, never> = CodingStruct
+type Type = typeof CodingStruct.Type
+
+const CodingSchema: Schema.Schema<Type, FhirR4.Coding, never> = CodingStruct
 
 registerDatatypeSchema('Coding', CodingSchema)
 
-export { CodingSchema as Schema }
+/**
+ * Whether a coding is under `system` — a predicate for `Array.find` /
+ * `Array.filter` over a concept's `coding`. Compared by `href`, since a decoded
+ * `Coding.system` is a `URL`.
+ */
+const isInSystem =
+  (system: string) =>
+  (coding: Type): boolean =>
+    coding.system?.href === system
+
+export { CodingSchema as Schema, isInSystem }
+export type { Type }

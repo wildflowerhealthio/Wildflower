@@ -37,7 +37,7 @@ const nullableUri = Schema.transform(
 )
 ```
 
-Better still, skip the local schema: when the slot is merely typed `any` on an already-decoded resource (a `medication[x]` choice slot), decode it with `Schema.typeSchema(<fhir-r4 schema>)`, which expects exactly the decoded shape (`URL`, `DateTime.Utc`); and decode a raw-wire `contained` entry with the full fhir-r4 resource schema. `medication-core`'s `src/fhir/medication-request.ts` accessors do this — an earlier version hand-coerced `Coding.system` after a string-typed local `system` silently disabled its DIN and display-name fallbacks. The same asymmetry hits `dateTime` fields, which decode to an Effect `DateTime.Utc` on the typed top level.
+Better still, skip the local schema: when the slot is merely typed `any` on an already-decoded resource (a `medication[x]` choice slot), decode it with `Schema.typeSchema(<fhir-r4 schema>)`, which expects exactly the decoded shape (`URL`, `DateTime.Utc`); and decode a raw-wire `contained` entry with the full fhir-r4 resource schema. `medication-core`'s `src/fhir/medication-slots.ts` accessors do this — an earlier version hand-coerced `Coding.system` after a string-typed local `system` silently disabled its DIN and display-name fallbacks. The same asymmetry hits `dateTime` fields, which decode to an Effect `DateTime.Utc` on the typed top level.
 
 ## See Also
 

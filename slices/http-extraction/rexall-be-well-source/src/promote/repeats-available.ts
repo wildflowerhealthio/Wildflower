@@ -58,7 +58,7 @@ const withRepeatsAvailable = (
   extensions: readonly Extension.Type[],
   count: number
 ): readonly Extension.Type[] =>
-  extensions.some((extension) => extension.url === WildflowerExtension.RepeatsAvailable)
+  extensions.some(Extension.hasUrl(WildflowerExtension.RepeatsAvailable))
     ? extensions
     : [
         ...extensions,

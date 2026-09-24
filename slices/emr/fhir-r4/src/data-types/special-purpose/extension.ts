@@ -51,4 +51,13 @@ const ExtensionSchema: Schema.Schema<ExtensionType, FhirR4.Extension, never> = m
   })
 ).pipe(filterForExclusiveChoiceElementSet('value', Datatype.names))
 
-export { ExtensionSchema as Schema, emptyValueChoice, type ExtensionType as Type }
+/**
+ * Whether an extension is at `url` — a predicate for `Array.find` /
+ * `Array.filter` over an `extension` or `modifierExtension` list.
+ */
+const hasUrl =
+  (url: string) =>
+  (extension: ExtensionType): boolean =>
+    extension.url === url
+
+export { ExtensionSchema as Schema, emptyValueChoice, hasUrl, type ExtensionType as Type }

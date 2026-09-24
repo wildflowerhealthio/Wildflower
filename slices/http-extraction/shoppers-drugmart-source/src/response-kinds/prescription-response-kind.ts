@@ -1,4 +1,4 @@
-import { Effect, Option, Schema } from 'effect'
+import { Array as Arr, Effect, Option, pipe, Schema } from 'effect'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
@@ -261,6 +261,19 @@ const dispenseWire = (
 }
 
 /**
+ * One raw `dispenses` entry as its `MedicationDispense` wire — `None` when it
+ * does not decode as a {@link SourceDispense} or has no `dispenseId`, so the
+ * caller can count it as dropped.
+ */
+const dispenseWireFrom =
+  (rx: SourcePrescription, medication: Record<string, unknown> | undefined) =>
+  (raw: unknown): Option.Option<Record<string, unknown>> =>
+    pipe(
+      decodeSourceDispense(raw),
+      Option.flatMap((dispense) => Option.fromNullable(dispenseWire(dispense, rx, medication)))
+    )
+
+/**
  * The exact prescription-status XHR URL, anchored and pinned to host + `v1` +
  * full path with an optional query; only the `<uuid>` path parameter and query
  * vary. Disjoint from the sibling kinds.
@@ -289,19 +302,9 @@ const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> 
         const request = yield* decodeRequest(requestWire(rx, medication))
 
         const rawDispenses = flattenDispenses(rx.dispenses ?? [])
-        const dispenses: Array<typeof MedicationDispense.Schema.Type> = []
-        let dropped = 0
-        for (const raw of rawDispenses) {
-          const decoded = decodeSourceDispense(raw)
-          const wire = Option.isSome(decoded)
-            ? dispenseWire(decoded.value, rx, medication)
-            : undefined
-          if (wire === undefined) {
-            dropped += 1
-            continue
-          }
-          dispenses.push(yield* decodeDispense(wire))
-        }
+        const dispenseWires = Arr.filterMap(rawDispenses, dispenseWireFrom(rx, medication))
+        const dropped = rawDispenses.length - dispenseWires.length
+        const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))
         if (dropped > 0) {
           yield* Effect.logInfo(
             `PrescriptionResponseKind: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`

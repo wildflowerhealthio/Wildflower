@@ -14,26 +14,23 @@
  *
  * @packageDocumentation
  */
+export { descriptionOf } from './description.ts'
+export { dinOf } from './din.ts'
+export { nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf } from './dispense-request.ts'
+export { displayNameOf } from './display-name.ts'
+export { dosageTextOf, noteOf, requesterOf } from './free-text.ts'
 export {
   containedMedicationOf,
-  descriptionOf,
-  dinOf,
-  displayNameOf,
-  dosageTextOf,
-  hasRefill,
   medicationConceptOf,
   medicationReferenceOf,
+} from './medication-slots.ts'
+export {
+  hasRefill,
   medicationRequestsToMedications,
   medicationRequestsToMedicationViews,
   medicationRequestToMedication,
   medicationRequestToMedicationView,
-  nextFillDateOf,
-  noteOf,
-  repeatsAllowedOf,
-  repeatsAvailableOf,
-  requesterOf,
-  rexallStoreUrlOf,
-  shoppersStoreUrlOf,
   type MedicationRequestResource,
   type MedicationView,
-} from './medication-request.ts'
+} from './medication-view.ts'
+export { rexallStoreUrlOf, shoppersStoreUrlOf } from './store-url.ts'
