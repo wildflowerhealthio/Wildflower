@@ -20,6 +20,8 @@ import {
 import { AsyncErrorView } from 'react-tundraish'
 
 import { Match, Stream } from 'effect'
+import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
+import { ConfirmClientCopy } from '../../../components/ConfirmClientCopy.tsx'
 import { useOAuthConsentQuery } from '../../../queries/index.ts'
 import type { OAuthConsentResult } from '../../../queries/index.ts'
 import { useGatekeeperRuntimeLayer } from '../../../router-context.ts'
@@ -273,11 +275,16 @@ const ExternalRedirect = ({ href }: { readonly href: string }): JSX.Element => {
 /**
  * The `/gatekeeper/oauth-polling/$id` file route. Reads the typed `$id`
  * path param from the generated route via `Route.useParams()` and hands it
- * to the screen as a prop.
+ * to the screen as a prop — once {@link ConfirmClientCopy} has let the Owner
+ * decline continuing on another copy, so nothing polls until then.
  */
 function OAuthPollingRoute(): JSX.Element {
   const { id } = Route.useParams()
-  return <OAuthPollingScreen id={id} />
+  return (
+    <ConfirmClientCopy route={GatekeeperPaths.oauthPollingPath(id)} search={window.location.search}>
+      <OAuthPollingScreen id={id} />
+    </ConfirmClientCopy>
+  )
 }
 
 const Route = createFileRoute('/_open/gatekeeper/oauth-polling/$id')({

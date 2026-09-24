@@ -372,8 +372,22 @@ landing — resolves on that copy rather than on the host's configured
 host's first-party `client_id`) are honoured; any other client's value is
 ignored, since the polling page is where that client's consent is decided. A
 value that is not an absolute `http`/`https` URL is rejected with a `400`
-before the endpoint has any effect. The decision lives in `gatekeeper-rust`'s
-`domain/client_base_url.rs`.
+before the endpoint has any effect — except logout, which revokes the presented
+token first, since the client has already forgotten it. The decision lives in
+`gatekeeper-rust`'s `domain/client_base_url.rs`.
+
+Nothing authenticates a sign-in request's `client_id`, so on the two sign-in
+endpoints a first-party id alone doesn't move the pages — otherwise a crafted
+link could send the Owner from the gatekeeper's address to any page. The copy
+must be **vouched for**: it is the configured one, or one of the client's
+registered redirects lies under it (same origin, at or below its path).
+`wildflower-react` is trusted on first use, so a copy's first sign-in registers
+its redirect when the Owner approves, and later sign-ins from that copy stay on
+it. An unvouched copy's page stays on the configured owner UI and carries the
+copy as `wildflower_client_base_url`; `ConfirmClientCopy` in `gatekeeper-react`
+asks the Owner whether to continue there or stay. The seeded host client
+registers no redirects, so its device flow always asks. Logout needs no vouching:
+its `client_id` comes from the verified bearer.
 
 ### Expandable consent
 

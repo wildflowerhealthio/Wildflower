@@ -61,21 +61,25 @@ and 90 days respectively). See the
   rather than rejected (`wildflower-host` excepted). Always
   redirects to the polling page (`/gatekeeper/oauth-polling/:id`) on the
   hosted owner UI, with `?server=<served origin>` so the page knows which
-  server to poll (the host serves no UI of its own; `page_paths.rs` builds
+  server to poll (the host serves no UI of its own; `OwnerUiPages` builds
   the URL from the host-configured `OwnerUiBase`); the page picks
   same-device-vs-cross-device based on whether it's already authenticated.
   A first-party client (`wildflower-react`, or the host's first-party id)
   may name the owner UI copy it runs from with `wildflower_client_base_url`
   (`CLIENT_BASE_URL_PARAM`, `src/client-base-url.ts`), and the polling page
-  then resolves on that copy — a PR preview's polling page stays on the
-  preview. Other clients' values are ignored; a value that is not an
-  absolute `http`/`https` URL is a `400`.
+  then resolves on that copy once a registered redirect vouches for it — a
+  PR preview's polling page stays on the preview. An unvouched copy's
+  polling page stays on the configured owner UI, which asks the Owner
+  before continuing there. Other clients' values are ignored; a value that
+  is not an absolute `http`/`https` URL is a `400`. See "Client base URL"
+  in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
   `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`
   on the hosted owner UI, carrying `?server=`; on the named copy for a
-  first-party client that sends `wildflower_client_base_url`).
+  first-party client that sends `wildflower_client_base_url`, under the same
+  vouching as `/oauth/authorize`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.

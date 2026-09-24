@@ -2,6 +2,9 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { PageHeader } from 'react-tundraish'
 
+import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
+
+import { ConfirmClientCopy } from '../../../components/ConfirmClientCopy.tsx'
 import { DeviceCodeEntryForm } from '../../../screens/device/device-code-entry-form.tsx'
 
 /**
@@ -18,14 +21,14 @@ import { DeviceCodeEntryForm } from '../../../screens/device/device-code-entry-f
 function DeviceEntryScreen(): JSX.Element {
   const navigate = useNavigate()
   return (
-    <>
+    <ConfirmClientCopy route={GatekeeperPaths.deviceEntryPath()} search={window.location.search}>
       <PageHeader title="Enter Code" />
       <DeviceCodeEntryForm
         onSubmit={(code) => {
           void navigate({ to: `/gatekeeper/devices/${encodeURIComponent(code)}` })
         }}
       />
-    </>
+    </ConfirmClientCopy>
   )
 }
 

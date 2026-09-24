@@ -247,7 +247,10 @@ pub(super) async fn handle_authorize_request(
         // Otherwise the Owner UI's polling page, which waits for whichever
         // surface — its inline consent, the host popup, or (for the hosted owner
         // UI over direct loopback) the host's native dialog — decides first.
-        AuthorizeNextStep::AwaitOwner { request_id } => {
+        AuthorizeNextStep::AwaitOwner {
+            request_id,
+            registered_redirect_uris,
+        } => {
             let is_direct_loopback = matches!(
                 request_provenance(&headers),
                 Some(RequestProvenance::Loopback)
@@ -265,7 +268,11 @@ pub(super) async fn handle_authorize_request(
                     }
                 });
             }
-            let pages = pages.for_client(&params.client_id, client_base_url);
+            let pages = pages.for_signing_in_client(
+                &params.client_id,
+                &registered_redirect_uris,
+                client_base_url,
+            );
             found_redirect(&pages.oauth_polling_url(&request_id))
         }
     })

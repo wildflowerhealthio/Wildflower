@@ -99,7 +99,11 @@ fn device_authorization(
     .map_err(|error| {
         TokenError::bad_request(OAuthErrorCode::InvalidRequest, Some(&error.to_string()))
     })?;
-    let pages = pages.for_client(authenticated_client.client_id(), client_base_url);
+    let pages = pages.for_signing_in_client(
+        authenticated_client.client_id(),
+        authenticated_client.redirect_uris(),
+        client_base_url,
+    );
     let requested_scopes: Vec<String> = payload
         .scope
         .as_deref()

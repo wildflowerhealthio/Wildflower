@@ -43,7 +43,7 @@ export {
   serverUrlFromSearch,
 } from './server-target.ts'
 
-export { CLIENT_BASE_URL_PARAM } from '../client-base-url.ts'
+export { CLIENT_BASE_URL_PARAM, pageOnClientCopy, parseClientBaseUrl } from '../client-base-url.ts'
 export { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 
 export { browserSignInEnvironment } from './browser-environment.ts'
