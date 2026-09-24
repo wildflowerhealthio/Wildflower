@@ -3,9 +3,33 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperPaths } from './page-paths.ts'
 
-test('oauthPollingPath percent-encodes the request id', () => {
-  expect(GatekeeperPaths.oauthPollingPath('abc')).toBe('/gatekeeper/oauth-polling/abc')
-  expect(GatekeeperPaths.oauthPollingPath('a/b')).toBe('/gatekeeper/oauth-polling/a%2Fb')
+test('deviceEntryUrlOn moves the server’s device-entry page onto the given copy, query intact', () => {
+  fc.assert(
+    fc.property(
+      fc.constantFrom(
+        'https://wildflowerhealthio.github.io/staging/pr-7/app/',
+        'http://localhost:5195/',
+        'https://wildflowerhealth.io/app/'
+      ),
+      fc.webUrl({ withQueryParameters: true }),
+      (servedRoot, verificationUri) => {
+        // Act
+        const moved = new URL(GatekeeperPaths.deviceEntryUrlOn(servedRoot, verificationUri))
+
+        // Assert — the copy's own device-entry page, carrying exactly the
+        // query the server built.
+        expect(`${moved.origin}${moved.pathname}`).toBe(`${servedRoot}gatekeeper/devices`)
+        expect(moved.search).toBe(new URL(verificationUri).search)
+      }
+    ),
+    { numRuns: numRunsFor({ base: 100 }) }
+  )
+})
+
+test('deviceEntryUrlOn refuses a verification URI that is not absolute', () => {
+  expect(() =>
+    GatekeeperPaths.deviceEntryUrlOn('https://x.test/app/', '/gatekeeper/devices')
+  ).toThrow(TypeError)
 })
 
 test('oauthConsentPath percent-encodes the request id', () => {

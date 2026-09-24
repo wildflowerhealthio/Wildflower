@@ -406,3 +406,27 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/wildflower-cookie-auth-audit-z4hncx (removing `wf_auth` / `wf_auth_exp`)
 **Learning**: The gatekeeper extractor reads `Authorization: Bearer` and nothing else, no grant or logout sets a cookie, and the API's CORS layer never allows credentials. So a top-level browser navigation to a gated route (a `/fhir-r4/...` URL opened in a browser tab, a non-SMART self-hosted app on a remote subdomain) is always a `401`: only a page whose JS attaches a bearer, or a direct-loopback caller on the desktop (the host's loopback-provenance owner trust), is authenticated. Anything that needs remote access to on-device data must be a SMART app that earns its own bearer. Before adding a gated route meant to be opened as a page, re-read "Bearer-only auth makes HTML pages public" in Strategies.md.
 **Suggested destination**: Origins Explanation or the gatekeeper Jargon Explanation
+
+## The web owner UI talks to gatekeeper as two different clients
+
+**Discovered during**: claude/oauth-redirect-routing-9cmhrj (sending a PR preview's sign-in back to the preview)
+**Learning**: `main-web` signs in by SMART redirect as `client_id=wildflower-react`, but its device-login fallback and step-up screen (`NeedsAuthMessage`) start the device flow as `wildflower-host`. With no host-threaded id it falls back to `FIRST_PARTY_CLIENT_ID`. A web session's token can therefore be bound to either id, so a server-side rule meant for "the web owner UI" has to accept both. The debug host's configured owner UI is the `main-web` dev server on `localhost:5195`, so any page the server builds on its configured owner UI points a deployed PR preview at `localhost`.
+**Suggested destination**: gatekeeper Jargon Explanation (Client)
+
+## A page reached by a full navigation starts signed out under an in-memory bearer
+
+**Discovered during**: claude/oauth-redirect-routing-9cmhrj (replacing the owner UI's polling page with the gatekeeper's wait page)
+**Learning**: `main-web` holds its bearer in page memory, and `/oauth/authorize` reaches whatever page it redirects to by a full navigation, so that page always boots `Unauthed`. The owner UI's old polling page offered inline consent to a signed-in viewer, but on the web that branch could never run. It was a spinner that polled and redirected, which is why a static page the gatekeeper serves could replace it. Before building a "signed-in viewer" branch into any page a server redirects to, check that something can actually carry the credential across the navigation.
+**Suggested destination**: Strategies.md ("Bearer-only auth makes HTML pages public") or the gatekeeper Jargon Explanation
+
+## oxlint type-checks plain `.js` files anywhere in the repo, including inside a Rust crate
+
+**Discovered during**: claude/oauth-redirect-routing-9cmhrj (the wait page's `wait.js`, embedded by `gatekeeper-rust` with `include_str!`)
+**Learning**: `vp check` runs oxlint's type-aware rules over every `.js` file, so an untyped parameter counts as `any` and trips `no-unsafe-assignment`, even for a browser asset no TS package imports. JSDoc (`@param {string} x`, `/** @type {unknown} */ let body`) satisfies it without a build step. `consistent-function-scoping` also flags helpers inside an IIFE, so load such a script as `type="module"`, whose scope is already private, and keep the helpers at top level. To test the file from Vitest, read it with `readFileSync` and run it through `new Function('window', 'document', 'fetch', source)` as `apps/github-pages`' 404 test does. Under Vitest a `?raw` import of a `.css` file is an empty string.
+**Suggested destination**: Testing Reference or CONTRIBUTING.md (code style)
+
+## A runtime `Schema` import in the sniffer bootstrap costs ~800 KB
+
+**Discovered during**: claude/oauth-redirect-routing-9cmhrj (trying to replace `native-bridge.ts`'s hand-rolled envelope parse with `Schema.parseJson`)
+**Learning**: `browser-sniffer-tauri`'s bootstraps are self-contained IIFEs injected into every sniffed page, and Effect `Schema` does not tree-shake. Adding one `Schema.decodeUnknownOption(Schema.parseJson(...))` to `native-bridge.ts` grew `dist/native-bootstrap.js` from ~58 K to ~832 K characters. `Match`/`Predicate` are cheap, but `Schema` (and anything pulling `ParseResult`) is not. Keep that transport's validation hand-written, and check the bootstrap size (`node scripts/build-native-bootstrap.mts` prints it) after adding any runtime `effect` import there.
+**Suggested destination**: browser-sniffer Architecture Explanation (IIFE constraint section)

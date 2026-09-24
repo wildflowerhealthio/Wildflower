@@ -14,7 +14,57 @@ describe('404.html redirect', () => {
     const landed = await followNotFound(site, 'https://example.test/app/gatekeeper/devices?x=1')
 
     // Assert
-    expect(landed).toBe('/app/?x=1&redirect=%2Fapp%2Fgatekeeper%2Fdevices')
+    expect(landed).toEqual({
+      _tag: 'Redirected',
+      to: '/app/?x=1&redirect=%2Fapp%2Fgatekeeper%2Fdevices',
+    })
+  })
+
+  it('should hand a PR preview deep link to that preview app root', async () => {
+    // Arrange — the staging site: previews under `/staging/pr-<n>/`, nothing at the root.
+    const site = pagesSite(['/staging/pr-745/', '/staging/pr-745/app/'])
+
+    // Act
+    const landed = await followNotFound(
+      site,
+      'https://example.test/staging/pr-745/app/gatekeeper/devices/ABCD?server=s'
+    )
+
+    // Assert
+    expect(restoreAt(landed)).toBe('/staging/pr-745/app/gatekeeper/devices/ABCD?server=s')
+  })
+
+  it('should show a not-found page when a closed preview has no ancestor to redirect to', async () => {
+    // Arrange — PR 9's preview is gone; only PR 745's is served.
+    const site = pagesSite(['/staging/pr-745/', '/staging/pr-745/app/'])
+
+    // Act
+    const landed = await followNotFound(site, 'https://example.test/staging/pr-9/app/devices')
+
+    // Assert
+    expect(landed).toEqual({ _tag: 'NotFound', title: 'Page not found' })
+  })
+
+  it('should show a not-found page for the site root when nothing is served there', async () => {
+    const landed = await followNotFound(pagesSite([]), 'https://example.test/')
+
+    expect(landed).toEqual({ _tag: 'NotFound', title: 'Page not found' })
+  })
+
+  it('should never leave the page blank when nothing on the path is served', async () => {
+    await fc.assert(
+      fc.asyncProperty(appDirArb, routeArb, async (unservedDir, route) => {
+        // Arrange — a site serving nothing at all, asked for any path.
+        const asked = `${unservedDir}${route}`
+
+        // Act
+        const landed = await followNotFound(pagesSite([]), `https://example.test${asked}`)
+
+        // Assert
+        expect(landed).toEqual({ _tag: 'NotFound', title: 'Page not found' })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 
   it('should keep a route named like the app directory', async () => {
@@ -70,16 +120,21 @@ const pagesSite =
     return Promise.resolve(new Response(null, { status: served ? 200 : 404 }))
   }
 
-/**
- * Run 404.html's own script as Pages would for a request to `href`, and return
- * where it sent the browser (root-relative), or `undefined` if it stayed.
- */
-const followNotFound = async (
-  fetchStub: typeof fetch,
-  href: string
-): Promise<string | undefined> => {
+/** What 404.html did with a request once its script settled. */
+type Landing =
+  /** Sent the browser to `to` (root-relative). */
+  | { readonly _tag: 'Redirected'; readonly to: string }
+  /** Turned itself into the not-found page, retitled `title`. */
+  | { readonly _tag: 'NotFound'; readonly title: string }
+  /** Did neither — the blank "Redirecting…" tab the page must never leave up. */
+  | { readonly _tag: 'Blank' }
+
+/** Run 404.html's own script as Pages would for a request to `href`. */
+const followNotFound = async (fetchStub: typeof fetch, href: string): Promise<Landing> => {
   const url = new URL(href)
   let replacedWith: string | undefined
+  const dataset: Record<string, string> = {}
+  const document = { title: 'Redirecting…', documentElement: { dataset } }
   const window = {
     location: {
       pathname: url.pathname,
@@ -90,18 +145,22 @@ const followNotFound = async (
       },
     },
   }
-  // The page's one inline script — an async IIFE reading `window` and `fetch`.
+  // The page's one inline script — an async IIFE reading `window`, `document` and `fetch`.
   const script = /<script>([\s\S]*?)<\/script>/.exec(notFoundPage)?.[1] ?? ''
   // oxlint-disable-next-line typescript/no-implied-eval -- runs the checked-in page's own script under test
-  new Function('window', 'fetch', script)(window, fetchStub)
+  new Function('window', 'document', 'fetch', script)(window, document, fetchStub)
   await new Promise((resolve) => setTimeout(resolve, 0))
-  return replacedWith
+  if (replacedWith !== undefined) return { _tag: 'Redirected', to: replacedWith }
+  if ('notFound' in document.documentElement.dataset) {
+    return { _tag: 'NotFound', title: document.title }
+  }
+  return { _tag: 'Blank' }
 }
 
-/** Where the app lands after `restoreRedirectedUrl`, given the URL 404.html sent it to. */
-const restoreAt = (landed: string | undefined): string | undefined => {
-  if (landed === undefined) return undefined
-  const url = new URL(landed, 'https://example.test')
+/** Where the app lands after `restoreRedirectedUrl`, given where 404.html sent it. */
+const restoreAt = (landed: Landing): string | undefined => {
+  if (landed._tag !== 'Redirected') return undefined
+  const url = new URL(landed.to, 'https://example.test')
   return restoredUrl({ pathname: url.pathname, search: url.search, hash: url.hash })
 }
 

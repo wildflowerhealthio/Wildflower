@@ -4,8 +4,8 @@
  * Inert until the {@link useActivePendingConsent} hook returns a
  * non-null head. Dismissable: the × (or ESC / backdrop) closes the
  * popup *without deciding* — the request stays pending and answerable
- * from Settings (device flow) or the requesting browser's polling page
- * (code flow) until it expires.
+ * from Settings until it expires, while the requesting browser waits (on
+ * the gatekeeper's wait page for a code flow).
  *
  * The head's `kind` picks the branch, mounting the same
  * {@link DeviceConsentForm} / {@link OAuthConsentForm} the standalone
@@ -139,8 +139,8 @@ const DeviceConsentDialogBody = ({
  * The approved result's `redirect` is deliberately dropped here: the
  * viewer of this popup is the Owner on *their* device, not the client
  * that started the flow. The requesting browser is sitting on the
- * polling page and performs the redirect itself once its stream sees
- * `approved`. Navigating this window to the client's callback would
+ * gatekeeper's wait page and performs the redirect itself once its poll
+ * sees `approved`. Navigating this window to the client's callback would
  * send the Owner's app off to the app's `redirect_uri`.
  */
 const OAuthConsentDialogBody = ({

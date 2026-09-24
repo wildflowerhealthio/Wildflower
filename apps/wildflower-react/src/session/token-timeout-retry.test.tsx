@@ -51,6 +51,7 @@ const renderGate = (
       coordinator: { register: () => Effect.void, unregister: () => Effect.void },
     }),
     entry: 'main-web',
+    externalLinkRoot: () => 'https://example.test',
   }
   const router = createRouter({
     routeTree: leaf,

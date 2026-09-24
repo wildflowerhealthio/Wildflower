@@ -214,7 +214,7 @@ pub trait GatekeeperTx {
     ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError>;
 
     /// Look up the code issued for a given `request_id`, or `None` when absent —
-    /// used by the Owner UI's polling endpoint to build the final redirect URL.
+    /// used by the authorize-status poll to build the final redirect URL.
     ///
     /// # Errors
     ///

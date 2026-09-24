@@ -78,6 +78,5 @@ export {
   launchErrorBodyFor,
   launchErrorFrom,
   launchErrorRedirect,
-  launchErrorTag,
   type LaunchErrorBody,
 } from './launch-error.ts'

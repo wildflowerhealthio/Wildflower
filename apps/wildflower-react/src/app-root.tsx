@@ -151,6 +151,12 @@ interface RenderAppOptions {
    */
   readonly firstPartyClientId?: string
   /**
+   * Where a link meant for another device points, before the router basepath.
+   * Threaded into router context for `NeedsAuthMessage`'s device-flow pairing
+   * link — see `RouterContext.externalLinkRoot`.
+   */
+  readonly externalLinkRoot: () => string
+  /**
    * Platform-specific settings rows this entry contributes to the shared
    * `/settings` list. Threaded into `AppRootTree`, which provides them to the
    * tree for the settings route to append (see
@@ -252,6 +258,7 @@ const renderApp = ({
   apiBaseUrl,
   localGrantedScopes,
   firstPartyClientId,
+  externalLinkRoot,
   platformSettingsItems,
   platformTabs,
   redirectToDeviceLoginOnUnauthorized,
@@ -337,6 +344,9 @@ const renderApp = ({
       // gatekeeper seeds the first-party client under — see
       // `RouterContext.firstPartyClientId`.
       firstPartyClientId,
+      // Threaded so `NeedsAuthMessage`'s pairing link opens on another device —
+      // see `RouterContext.externalLinkRoot`.
+      externalLinkRoot,
       // Threaded so the landing page can report a sign-in that failed before
       // the tree existed — see `RouterContext.signInProblem`.
       signInProblem,

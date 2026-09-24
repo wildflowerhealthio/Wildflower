@@ -110,11 +110,17 @@ interface SignInEnvironment {
  * pair and the `state`, stash what the return leg needs, and yield the
  * authorization URL to navigate to.
  *
+ * `returnTo` is the in-app path the app wants to land on once signed in; it
+ * rides the pending record and comes back as {@link Session.returnTo}, because
+ * the registered redirect URI can't carry it. `undefined` when the app has
+ * nowhere particular to go.
+ *
  * The pending record is written **before** the URL is yielded, so a caller
  * cannot navigate away from a flow whose verifier was never saved.
  */
 const beginSignIn = (
   serverUrl: string,
+  returnTo: string | undefined,
   environment: SignInEnvironment
 ): Effect.Effect<string, SignInError> =>
   Effect.gen(function* () {
@@ -135,6 +141,7 @@ const beginSignIn = (
             codeVerifier,
             serverUrl,
             tokenEndpoint: endpoints.tokenEndpoint,
+            returnTo,
           })
         ),
       catch: () =>
@@ -163,6 +170,11 @@ interface Session {
   /** The server the token was issued by, which requests must go to. */
   readonly serverUrl: string
   readonly expiresInSeconds: number | undefined
+  /**
+   * The in-app path the sign-in was started to reach — `beginSignIn`'s
+   * `returnTo`, unsanitised. `undefined` when none was named.
+   */
+  readonly returnTo: string | undefined
 }
 
 /**
@@ -215,7 +227,7 @@ const completeSignIn = (
         new PendingRequestUnusable({ reason: 'The token endpoint did not answer with JSON.' }),
     })
     const grant = yield* parseTokenResponse(body)
-    return Option.some(sessionFrom(grant, pending.serverUrl))
+    return Option.some(sessionFrom(grant, pending))
   })
 
 /**
@@ -246,12 +258,13 @@ const forgetPendingRecord = (store: PendingStore, key: string): void => {
   }
 }
 
-/** The session a `grant` for `serverUrl` becomes. */
-const sessionFrom = (grant: AccessGrant, serverUrl: string): Session => ({
+/** The session a `grant` redeemed for the `pending` request becomes. */
+const sessionFrom = (grant: AccessGrant, pending: PendingAuthorization): Session => ({
   accessToken: grant.accessToken,
   scope: grant.scope,
-  serverUrl,
+  serverUrl: pending.serverUrl,
   expiresInSeconds: grant.expiresInSeconds,
+  returnTo: pending.returnTo,
 })
 
 export { PendingRequestUnusable, beginSignIn, completeSignIn }

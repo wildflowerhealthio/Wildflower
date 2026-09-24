@@ -16,6 +16,19 @@
           background-color: #161616;
         }
       }
+      /* Blank while the probe runs; shown only when no ancestor answers (a
+       * closed PR preview, or a staging URL outside any preview), so the page
+       * never sits on an empty "Redirecting…" tab. Text colour comes from
+       * `color-scheme` above. */
+      main {
+        display: none;
+        font-family: system-ui, sans-serif;
+        text-align: center;
+        padding-top: 20vh;
+      }
+      html[data-not-found] main {
+        display: block;
+      }
     </style>
     <script>
       // GitHub Pages SPA redirect.  Probes for the deepest ancestor path
@@ -26,10 +39,20 @@
       // The path goes over site-absolute: an app-relative route named like
       // the app's own directory (`/app` below `/app/`) would read as the app
       // root.
+      //
+      // When nothing answers — no ancestor serves an index.html, or the
+      // deepest one is the requested directory itself — the page turns into a
+      // plain not-found page instead of staying blank.
       ;(async function () {
         var loc = window.location
         var segments = loc.pathname.split('/').filter(Boolean)
-        if (!segments.length) return
+
+        function showNotFound() {
+          document.title = 'Page not found'
+          document.documentElement.dataset.notFound = ''
+        }
+
+        if (!segments.length) return showNotFound()
 
         function probe(depth) {
           var base = depth ? '/' + segments.slice(0, depth).join('/') + '/' : '/'
@@ -56,8 +79,14 @@
           loc.replace(results[j].base + '?' + params.toString() + loc.hash)
           return
         }
+        showNotFound()
       })()
     </script>
   </head>
-  <body></body>
+  <body>
+    <main>
+      <h1>Page not found</h1>
+      <p>Nothing is published at this address.</p>
+    </main>
+  </body>
 </html>

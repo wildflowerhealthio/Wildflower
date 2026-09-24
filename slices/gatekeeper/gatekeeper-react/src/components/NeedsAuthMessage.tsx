@@ -5,6 +5,7 @@ import { Duration, Effect, Either, Fiber, Match, Predicate, Schedule, Schema } f
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
+import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 
 import { Fragment, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { AuthedUntil, cn, useAuthStateSetter } from 'react-kitchen-sink'
@@ -16,6 +17,7 @@ import { ScopePicker } from 'scopes-react'
 import { useTokenResponseHandler } from '../client/token-response-handler.ts'
 import { parseDeviceLoginSearch, parseRequestScopes } from '../device-login-route.ts'
 import {
+  useGatekeeperExternalRoot,
   useGatekeeperFirstPartyClientId,
   useGatekeeperLocalGrantedScopes,
   useGatekeeperRuntimeLayer,
@@ -239,6 +241,10 @@ const NeedsAuthMessage = (): JSX.Element => {
   // can't drift — the config is the shared source). Used as the device-login
   // request's `client_id` below.
   const firstPartyClientId = useGatekeeperFirstPartyClientId() ?? FIRST_PARTY_CLIENT_ID
+  // This owner UI as another device reaches it. The pairing link points at its
+  // device-entry page rather than the one on the server's configured owner UI,
+  // so a pairing started on a PR preview or a dev server is approved there too.
+  const externalRoot = useGatekeeperExternalRoot()
 
   // The step-up pre-fill: the scopes a `403 InsufficientScope` named, threaded
   // here as `?requestScopes=` by `buildStepUpTarget`. Read once at mount (the
@@ -343,13 +349,19 @@ const NeedsAuthMessage = (): JSX.Element => {
         },
       })
 
+      const verificationUris = yield* Effect.try({
+        try: () => ({
+          verificationUri: GatekeeperPaths.deviceEntryUrlOn(externalRoot, auth.verification_uri),
+          verificationUriComplete: GatekeeperPaths.deviceEntryUrlOn(
+            externalRoot,
+            auth.verification_uri_complete
+          ),
+        }),
+        catch: () => new Error('The server sent a verification address that is not a URL.'),
+      })
+
       yield* Effect.sync(() => {
-        setState({
-          tag: 'pending',
-          userCode: auth.user_code,
-          verificationUri: auth.verification_uri,
-          verificationUriComplete: auth.verification_uri_complete,
-        })
+        setState({ tag: 'pending', userCode: auth.user_code, ...verificationUris })
       })
 
       // RFC 8628 `slow_down` is treated as another "keep waiting" signal — a fixed retry approximates a growing interval.

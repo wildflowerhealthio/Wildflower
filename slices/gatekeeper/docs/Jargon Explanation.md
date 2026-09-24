@@ -255,7 +255,10 @@ client. Flow:
    The verification URIs point at the hosted owner UI
    (`https://wildflowerhealth.io/app/gatekeeper/devices?server=<origin>`,
    the host's `owner_ui_base_url`), not at the server itself — the host
-   serves no UI of its own.
+   serves no UI of its own. A copy of the owner UI that starts a pairing
+   itself (`NeedsAuthMessage`) shows its **own** device-entry page instead,
+   keeping the query the server built (`GatekeeperPaths.deviceEntryUrlOn`),
+   so a pairing started on a PR preview or a dev server is approved there.
 2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device — or answers the popup the request raised there through the
@@ -322,9 +325,30 @@ background reaper re-runs the query so an idle host doesn't stay stuck on a head
 whose TTL lapsed.
 
 The popup is dismissable (× / ESC / backdrop) and dismissing decides nothing:
-the request stays pending and answerable from its standalone surface — Settings
-for a device request, the requesting browser's polling page for a code request —
-until it expires.
+the request stays pending and answerable from Settings until it expires, while
+the requesting browser keeps waiting (on the [wait page](#wait-page) for a code
+request).
+
+### Wait page
+
+The page `/oauth/authorize` parks a browser on while the Owner decides:
+`/oauth/authorize/{id}/wait`, served by the gatekeeper itself on whichever
+origin the browser reached it at (loopback, a tunnel, a forwarded front). The
+`Location` is relative to `/oauth/authorize`, so no owner UI address is
+involved. The page is static HTML, CSS and JS
+(`gatekeeper-rust/src/http/routes/oauth/wait_page/`). It polls
+`GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
+redirect the status carries, which the gatekeeper built from the client's
+allowlisted or just-approved `redirect_uri`. That makes this redirect the only
+address a sign-in ever leaves the gatekeeper for, and no request parameter can
+name a different one. The page takes no decision itself: the Owner answers in
+the host popup, a signed-in owner UI, or the
+[loopback owner dialog](#loopback-owner-dialog).
+
+It interpolates nothing (the script reads the request id from its own path),
+loads only from its own origin under a strict CSP, and follows only an
+`http:`/`https:` redirect. Its colours are copies of `react-tundraish` palette
+tokens under the same names.
 
 ### Loopback owner dialog
 
@@ -335,8 +359,8 @@ on the same machine. The person at the keyboard is the Owner, so the host asks
 them in place rather than sending them to the in-app consent page.
 
 The request is parked and queued exactly as any other code request: the browser
-is still sent to the polling page, and the request still appears in the Owner
-UI. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
+is still sent to the [wait page](#wait-page), and the request still appears in
+the Owner UI. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
 `LoopbackConsentPrompt` port). Whichever surface decides first wins, because a
 deny, like an approve, only changes a request that is still `pending`.
 
@@ -347,7 +371,7 @@ deny, like an approve, only changes a request that is still `pending`.
   **no** standing [Grant](#grant) (`ApprovalMemory::AskEveryTime`), so every
   loopback login asks again.
 - **Reject**, closing the dialog, or leaving it unanswered until the request
-  expires denies it (`access_denied` at the polling page).
+  expires denies it (the wait page carries `access_denied` back to the client).
 - A host with no native dialog wires `NoLoopbackConsentPrompt`, which
   **abstains**, leaving the request to the Owner UI.
 
@@ -401,8 +425,7 @@ on the page's direct-loopback requests.
 ### `gatekeeper-pages` group
 
 The HttpApi group whose endpoints serve **HTML** to humans
-(`OAuthPollingPage`, `OAuthConsentPage`, `DeviceEntryPage`,
-`DeviceConsentPage`). Core ships definitions only; consumer slices
+(`OAuthConsentPage`, `DeviceEntryPage`, `DeviceConsentPage`). Core ships definitions only; consumer slices
 (`gatekeeper-react`) provide the handler layer through the phantom-id
 bridge described in `docs/Effect/HttpApi Composition How-To.md`. Every
 page is public; auth is JS-driven on the JSON endpoints behind them.
@@ -534,14 +557,14 @@ verifies PKCE + redirect_uri + client_id match the issued code, then
 mints a JWT.
 
 Unless an existing [grant](#grant) pre-approves every requested scope, the
-request is parked for the Owner and reaches them two ways at once: the browser
-lands on the polling page (which offers consent inline when its viewer is
-already signed in), and the request joins the
+request is parked for the Owner: the browser lands on the
+[wait page](#wait-page), and the request joins the
 [pending-consent queue](#pending-consent-queue) so the host app raises its
-popup. Either surface decides it; the polling page redirects the client once its
-poll observes the outcome. Both are needed because the browser that started the
-flow is often not signed in — a SMART app launched from another device, or one
-reaching the tunnel origin.
+popup and a signed-in owner UI lists it. Whichever surface decides it, the wait
+page redirects the client once its poll observes the outcome. The browser that
+started the flow is usually not signed in — a SMART app launched from another
+device, one reaching the tunnel origin, or the owner UI signing in to begin
+with — so it waits rather than decides.
 
 ### Device authorization flow / `grant_type=urn:ietf:params:oauth:grant-type:device_code`
 

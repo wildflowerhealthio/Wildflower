@@ -43,7 +43,7 @@ pub(super) fn redeem_authorization_code(
 }
 
 /// Look up the code that was issued for a given `request_id`, used by the
-/// Owner UI's polling endpoint to build the final redirect URL.
+/// authorize-status poll to build the final redirect URL.
 pub(super) fn authorization_code_by_request_id(
     conn: &mut SqliteConnection,
     request_id: &str,

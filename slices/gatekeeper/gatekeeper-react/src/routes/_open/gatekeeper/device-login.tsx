@@ -12,9 +12,8 @@ import { pickDeviceLoginSearch, type DeviceLoginSearch } from '../../../device-l
  * issued bearer through `authTokenRef`.
  *
  * Lives under the public `_open` layout (no auth gate) so the gate's
- * redirect doesn't loop. Sits beside the other gatekeeper OAuth /
- * device-flow screens (`devices`, `oauth-polling`) — same RFC 8628
- * surface, conventional placement.
+ * redirect doesn't loop. Sits beside the other public device-flow screen
+ * (`devices`) — same RFC 8628 surface, conventional placement.
  *
  * `validateSearch` declares the optional `returnTo` the auth gate's
  * `redirect(...)` rides (the originally-requested same-origin path) and

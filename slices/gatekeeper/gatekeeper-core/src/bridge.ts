@@ -34,7 +34,7 @@ type PendingConsentHead = Schema.Schema.Type<typeof PendingConsentHead>
  * `null`. Only the head's lookup key rides the bridge — the popup uses
  * the existing `useDeviceConsentQuery(userCode)` /
  * `useOAuthConsentQuery(id)` HTTP fetches (the same ones the standalone
- * `/gatekeeper/devices/:userCode` and `/gatekeeper/oauth-polling/:id`
+ * `/gatekeeper/devices/:userCode` and `/gatekeeper/oauth-consent/:id`
  * routes use) to hydrate the matching form, so there's one source of
  * truth per consent payload.
  *

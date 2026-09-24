@@ -12,13 +12,31 @@
  * the page should talk back to.
  */
 export namespace GatekeeperPaths {
-  export const oauthPollingPath = (id: string): string =>
-    `/gatekeeper/oauth-polling/${encodeURIComponent(id)}`
-
   export const oauthConsentPath = (id: string): string =>
     `/gatekeeper/oauth-consent/${encodeURIComponent(id)}`
 
   export const deviceEntryPath = (): string => `/gatekeeper/devices`
+
+  /**
+   * The device-entry page a server's `verification_uri` (or
+   * `verification_uri_complete`) names, moved onto the owner UI copy served at
+   * `servedRoot` — keeping the query the server built: `?server=` naming the
+   * origin it was reached at, and `user_code` on the complete form. The server
+   * builds its URIs on the owner UI it is configured with; a copy of the owner
+   * UI showing a pairing it started itself (a PR preview, a dev server) links to
+   * its own device-entry page instead, so the pairing is approved on the same
+   * copy. The server is not asked to trust any address for this.
+   *
+   * `servedRoot` is slash-terminated (the copy's origin plus its basepath).
+   * Throws a `TypeError` when `verificationUri` is not an absolute URL.
+   *
+   * @example GatekeeperPaths.deviceEntryUrlOn('https://x.test/pr-7/app/', 'https://wildflowerhealth.io/app/gatekeeper/devices?server=s&user_code=AB') // 'https://x.test/pr-7/app/gatekeeper/devices?server=s&user_code=AB'
+   */
+  export const deviceEntryUrlOn = (servedRoot: string, verificationUri: string): string => {
+    const page = new URL(deviceEntryPath().replace(/^\//, ''), servedRoot)
+    page.search = new URL(verificationUri).search
+    return page.href
+  }
 
   export const deviceConsentPath = (userCode: string): string =>
     `/gatekeeper/devices/${encodeURIComponent(userCode)}`

@@ -1,7 +1,8 @@
 //! The hosted owner UI's gatekeeper pages, as an axum extractor. A handler that
-//! sends a browser to one (the `/authorize` polling page, the device-flow
-//! `verification_uri`, logout's landing) takes `pages: OwnerUiPages` rather than
-//! reaching into the state for the configured base.
+//! sends a browser to one (the device-flow `verification_uri`, logout's landing)
+//! takes `pages: OwnerUiPages` rather than reaching into the state for the
+//! configured base. The `/authorize` wait page is not one of them: the
+//! gatekeeper serves it itself.
 
 use std::sync::Arc;
 
@@ -26,11 +27,6 @@ impl OwnerUiPages {
     /// The owner UI's root, with no server named.
     pub(crate) fn root_url(&self) -> &str {
         self.base.as_url().as_str()
-    }
-
-    /// The OAuth polling page for authorization request `id`.
-    pub(crate) fn oauth_polling_url(&self, id: &str) -> String {
-        page_paths::oauth_polling_url(&self.base, &self.server_origin, id)
     }
 
     /// The device-flow code-entry page.

@@ -30,7 +30,8 @@
  * in-memory `BearerAuthStateStore` and dies with the tab, the policy
  * `slices/gatekeeper/docs/Auth Token Storage Explanation.md` sets for a bearer a
  * public page holds. The only thing that reaches `sessionStorage` is the pending
- * record, which carries no credential.
+ * record, which carries no credential — and which is also how the auth gate's
+ * `?returnTo=` survives the round trip (see {@link returnToOnPage}).
  */
 
 import type { Option } from 'effect'
@@ -40,7 +41,7 @@ import {
   browserSignInEnvironment,
   completeSignIn,
   redirectUriForRoute,
-  searchWithServerUrl,
+  SERVER_QUERY_PARAM,
   standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
@@ -64,40 +65,44 @@ import { AuthedUntil, type AuthState, HostAuthed, Unauthed } from 'react-kitchen
 const CLIENT_ID = 'wildflower-react'
 
 /**
- * The route a sign-in returns to. A fixed route rather than the page's own
- * directory (what the server-docs console derives): this is a single-page app on
- * browser history, so the directory is whichever section the reader was in when
- * they clicked sign in, and only one of those could ever be the registered
- * value.
+ * The route a sign-in returns to: the app root. A fixed route rather than the
+ * page's own directory (what the server-docs console derives): this is a
+ * single-page app on browser history, so the directory is whichever section the
+ * reader was in when they clicked sign in, and only one of those could ever be
+ * the registered value. The root is also the one address every static host
+ * serves as a real file, so the callback needs no 404 redirect to reach the app.
+ * Where the reader was headed rides the pending record instead (see
+ * {@link returnToOnPage}).
  *
- * It is behind the `_auth` gate, which is why `main-web.tsx` redeems the code
- * **before** it mounts the router — a router mounted first would find the store
- * still unauthed and bounce to `/` while the token was in flight.
+ * `main-web.tsx` redeems the code **before** it mounts the router, then settles
+ * on that return path, which is usually behind the `_auth` gate — a router
+ * mounted first would find the store still unauthed and bounce to the landing
+ * while the token was in flight.
  *
  * Resolved under the **served base** the caller passes to {@link
  * signInEnvironment} (the router's basepath), not the bare origin: on a subpath
- * deploy the route returns under `/app/` (or a PR preview's
+ * deploy the route returns to `/app/` (or a PR preview's
  * `/staging/pr-<n>/app/`) the same way the router resolves it — see {@link
  * REGISTERED_REDIRECT_URI}.
  */
-const POST_SIGN_IN_ROUTE = '/home'
+const POST_SIGN_IN_ROUTE = '/'
 
 /**
  * The redirect URI of the **published** web build, and the sole entry of the
- * seeded row (`0012_seed_wildflower_react_client`). Every other copy derives its
- * own from where it is served; this is the fallback for a page whose address a
- * sign-in must not return to at all, which is unreachable from a browser
- * actually running this build.
+ * seeded row (`0013_wildflower_react_client_returns_to_app_root`). Every other
+ * copy derives its own from where it is served; this is the fallback for a page
+ * whose address a sign-in must not return to at all, which is unreachable from a
+ * browser actually running this build.
  *
  * It MUST equal the row's entry, which is matched by exact string equality. The
- * row names `/app/home`, and the production copy is served under `/app/`, so its
+ * row names `/app/`, and the production copy is served under `/app/`, so its
  * base-aware derivation (see {@link POST_SIGN_IN_ROUTE}) yields exactly this
  * value and the sign-in returns silently. A PR preview served under
- * `/staging/pr-<n>/app/` derives its own `…/app/home` — correct for where it is,
+ * `/staging/pr-<n>/app/` derives its own `…/app/` — correct for where it is,
  * but unregistered, so it completes through the consent prompt's "this app is
  * asking to return somewhere new" warning instead.
  */
-const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/app/home'
+const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/app/'
 
 /**
  * The `sessionStorage` key this entry's pending-authorization record lives at,
@@ -107,18 +112,6 @@ const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/app/home'
  * could consume a record the other was waiting on.
  */
 const PENDING_AUTHORIZATION_KEY = 'wildflower-react.pending-authorization'
-
-/**
- * The `sessionStorage` key that carries where to land after a redeemed sign-in.
- *
- * The auth gate bounces an unauthed reader to the landing with a `?returnTo=`
- * naming the path they were headed for, but the SMART redirect returns to the
- * registered `/home` — which carries no query — so the parameter is gone by the
- * callback. Stashing it here is what carries it across the round trip. Like the
- * pending record it holds no credential, and it is namespaced for the same
- * reason: the server-docs console shares this origin.
- */
-const RETURN_TO_KEY = 'wildflower-react.post-sign-in-return-to'
 
 /** The query parameter the auth gate preserves the originally-requested path in. */
 const RETURN_TO_PARAM = 'returnTo'
@@ -166,13 +159,16 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
 
 /**
  * Start a sign-in against `serverUrl`, yielding the authorization URL for the
- * caller to navigate to. The pending record is written before the URL comes
- * back, so a caller cannot leave on a flow whose verifier was never saved.
+ * caller to navigate to. `returnTo` (raw, from {@link returnToOnPage}) rides the
+ * pending record and comes back as the redeemed session's `returnTo`. The
+ * pending record is written before the URL comes back, so a caller cannot leave
+ * on a flow whose verifier was never saved.
  */
 const startSignIn = (
   serverUrl: string,
+  returnTo: string | undefined,
   environment: SignInEnvironment
-): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, environment))
+): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment))
 
 /**
  * Finish a sign-in from the query string this page load arrived on: `None` when
@@ -231,49 +227,36 @@ const scheduleExpiry = (
 }
 
 /**
- * Remember where to return after sign-in, reading the `?returnTo=` the auth gate
- * left on this page. Called just before leaving for the authorization server. A
- * page carrying no `returnTo` clears any stale value rather than leaving one a
- * later, unrelated sign-in would honour.
+ * The `?returnTo=` the auth gate left on the page at `href` — where the reader
+ * was headed when it bounced them to the landing — or `undefined` when it names
+ * none. Raw: the SMART redirect returns to the app root with no query, so this
+ * is handed to {@link startSignIn} to ride the pending record, and `main-web`
+ * sanitises what comes back before navigating.
  */
-const rememberReturnTo = (page: Pick<SignInPage, 'location' | 'sessionStorage'>): void => {
-  const returnTo = new URL(page.location.href).searchParams.get(RETURN_TO_PARAM)
-  try {
-    if (returnTo === null || returnTo === '') page.sessionStorage.removeItem(RETURN_TO_KEY)
-    else page.sessionStorage.setItem(RETURN_TO_KEY, returnTo)
-  } catch {
-    // A storage that refuses the write only means the reader lands on the
-    // default `/home` — not a reason to fail the sign-in.
-  }
-}
-
-/**
- * Take the remembered return path, removing it so it is honoured once. `null`
- * when none was stashed; the caller sanitises it before navigating.
- */
-const takeReturnTo = (page: Pick<SignInPage, 'sessionStorage'>): string | null => {
-  try {
-    const stored = page.sessionStorage.getItem(RETURN_TO_KEY)
-    page.sessionStorage.removeItem(RETURN_TO_KEY)
-    return stored
-  } catch {
-    return null
-  }
+const returnToOnPage = (href: string): string | undefined => {
+  const returnTo = new URL(href).searchParams.get(RETURN_TO_PARAM)
+  return returnTo === null || returnTo === '' ? undefined : returnTo
 }
 
 /**
  * The in-app URL to settle on after a redeemed sign-in: the (already sanitised)
- * `returnTo`, carrying the signed-in `?server=` so a reload keeps its target.
+ * `returnTo`, with no `?server=`.
  *
- * `returnTo` may bring its own query and hash — the gate preserves the whole
- * path it bounced — so `server` is merged into that query rather than replacing
- * it, and any `?code=`/`?state=` from the callback is dropped because the URL is
- * rebuilt from the return path, not from the address the browser arrived on.
+ * `?server=` only picks the server a sign-in goes to. Once the session is
+ * redeemed, `main-web` remembers the session's server in the tab's
+ * `sessionStorage` instead (see `web-entry.ts`'s `chosenServerUrl`), so the
+ * parameter comes out of the address bar. The root route only carries forward
+ * a `server` that is already in the URL, so later navigations don't add it
+ * back. `returnTo` may bring its own query and hash (the gate keeps the whole
+ * path it bounced, including the `server` it carried), so only `server` is
+ * removed from that query and the rest is kept. Any `?code=`/`?state=` from the
+ * callback is dropped because the URL is rebuilt from the return path, not from
+ * the address the browser arrived on.
  */
-const postSignInUrl = (returnTo: string, serverUrl: string, origin: string): string => {
+const postSignInUrl = (returnTo: string, origin: string): string => {
   const url = new URL(returnTo, origin)
-  const search = searchWithServerUrl(url.search, serverUrl)
-  return `${url.pathname}${search}${url.hash}`
+  url.searchParams.delete(SERVER_QUERY_PARAM)
+  return `${url.pathname}${url.search}${url.hash}`
 }
 
 export {
@@ -284,12 +267,10 @@ export {
   postSignInUrl,
   POST_SIGN_IN_ROUTE,
   REGISTERED_REDIRECT_URI,
-  rememberReturnTo,
-  RETURN_TO_KEY,
   RETURN_TO_PARAM,
+  returnToOnPage,
   scheduleExpiry,
   signInEnvironment,
   startSignIn,
-  takeReturnTo,
 }
 export type { SignInStep }

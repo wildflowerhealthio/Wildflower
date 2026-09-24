@@ -1,4 +1,4 @@
-import { useRouteContext } from '@tanstack/react-router'
+import { useRouteContext, useRouter } from '@tanstack/react-router'
 import { type Layer } from 'effect'
 import { type GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { type BaseRouterContext } from 'shared-structures-react'
@@ -10,8 +10,8 @@ type RunAuthed = BaseRouterContext.RunAuthedWith<GatekeeperHttpApiClient>
 
 /**
  * Slice-local router-context — `BaseRouterContext.RouterContextWith`
- * narrowed to this slice's client, plus the optional host-threaded
- * `localGrantedScopes` and `firstPartyClientId`. `awaitAuthReady` is inherited
+ * narrowed to this slice's client, plus the host-threaded
+ * `localGrantedScopes`, `firstPartyClientId` and `externalLinkRoot`. `awaitAuthReady` is inherited
  * only to keep this structural context a faithful subset of the host app's
  * `RouterContext`; gatekeeper loaders don't read it — the gate guarantees the
  * token before the loader runs.
@@ -35,6 +35,14 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
    * falls back to gatekeeper-core's `FIRST_PARTY_CLIENT_ID`.
    */
   readonly firstPartyClientId?: string
+  /**
+   * Where a link meant for another device points: this owner UI's address as
+   * seen from outside the page, with no trailing slash, to which the router's
+   * basepath is appended. The web entry passes its own origin; the Tauri
+   * webview, whose origin no other device can open, passes the hosted owner
+   * UI. Read through {@link useGatekeeperExternalRoot}.
+   */
+  readonly externalLinkRoot: () => string
 }
 
 /**
@@ -49,18 +57,12 @@ const sliceRuntimeLayer: Layer.Layer<
 > = buildGatekeeperClientLayer()
 
 /**
- * The fully-composed `runtimeLayer` from router context, for the two
- * gatekeeper call sites that aren't one-shot Promises and so can't go
- * through `runAuthed`/`useSuspenseQuery`:
- *
- *   - `NeedsAuthMessage` — the RFC 8628 device flow runs a long-lived
- *     fiber with retry + interrupt-on-unmount.
- *   - `oauth-polling` — `pollAuthorizationStatus` is a `Stream` that
- *     emits `pending` heartbeats until a terminal status.
- *
- * Both `Effect.provide` / `Stream.provideSomeLayer` this layer onto a
- * gatekeeper Effect/Stream and run it imperatively (via `react-kitchen-sink`'s
- * generic `useStream` / `Effect.runFork`). The annotated `select` re-narrows
+ * The fully-composed `runtimeLayer` from router context, for the gatekeeper
+ * call site that isn't a one-shot Promise and so can't go through
+ * `runAuthed`/`useSuspenseQuery`: `NeedsAuthMessage`, whose RFC 8628 device
+ * flow runs a long-lived fiber with retry + interrupt-on-unmount. It
+ * `Effect.provide`s this layer onto a gatekeeper Effect and runs it
+ * imperatively (via `Effect.runFork`). The annotated `select` re-narrows
  * the result when the slice's router isn't registered (standalone build),
  * where `useRouteContext()` would otherwise widen to `any` — no cast.
  */
@@ -94,8 +96,26 @@ const useGatekeeperFirstPartyClientId = (): string | undefined =>
     select: (context: RouterContext) => context.firstPartyClientId,
   })
 
+/**
+ * The address another device reaches this owner UI's routes at: the host's
+ * {@link RouterContext.externalLinkRoot} plus the router's basepath,
+ * slash-terminated (e.g. `https://wildflowerhealthio.github.io/staging/pr-7/app/`
+ * on a PR preview, `https://wildflowerhealth.io/app/` from the Tauri webview).
+ * `NeedsAuthMessage` points its device-flow link here (see gatekeeper-core's
+ * `GatekeeperPaths.deviceEntryUrlOn`).
+ */
+const useGatekeeperExternalRoot = (): string => {
+  const { basepath } = useRouter()
+  const externalLinkRoot = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.externalLinkRoot,
+  })
+  return `${externalLinkRoot()}${basepath.endsWith('/') ? basepath : `${basepath}/`}`
+}
+
 export {
   sliceRuntimeLayer,
+  useGatekeeperExternalRoot,
   useGatekeeperFirstPartyClientId,
   useGatekeeperLocalGrantedScopes,
   useGatekeeperRuntimeLayer,

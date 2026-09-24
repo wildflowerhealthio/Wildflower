@@ -6,7 +6,6 @@ import { Option } from 'effect'
 import {
   isAuthorizationResponse,
   searchWithoutAuthorizationResponse,
-  type Session,
 } from 'gatekeeper-core/smart-client'
 import { sanitizeReturnTo, type TokenResponseHandler } from 'gatekeeper-react'
 import { addOsColorSchemeListener } from 'react-tundraish'
@@ -18,9 +17,13 @@ import {
   postSignInUrl,
   scheduleExpiry,
   signInEnvironment,
-  takeReturnTo,
 } from './sign-in.ts'
-import { makeWebEntryOptions, underBasepath } from './web-entry.ts'
+import {
+  apiServerUrl,
+  makeWebEntryOptions,
+  rememberSignedInServer,
+  underBasepath,
+} from './web-entry.ts'
 
 addOsColorSchemeListener()
 
@@ -40,7 +43,7 @@ const basepath = basenameOf(window.location.pathname)
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see
 // "The 404 redirect" in `slices/branding/AGENTS.md`. Ahead of both the
-// return-leg check and the `?server=` read below.
+// return-leg check and the `?server=` read in `boot`.
 restoreRedirectedUrl(window)
 
 /** Rewrite the query string, keeping the path this load landed on. */
@@ -53,37 +56,32 @@ const replaceSearch = (search: string): void => {
 }
 
 /**
- * Land on where the reader was headed, put the signed-in server back in the
- * address bar, and take the authorization response out of it — in one rewrite.
+ * Land on where the reader was headed and take the authorization response out
+ * of the address bar, in one rewrite.
  *
- * `returnTo` is the sanitised path the auth gate bounced (or `/home`); the URL
+ * `returnTo` is the sanitised path the auth gate bounced (or `/home`). The URL
  * is rebuilt from it rather than from the address the browser arrived on, which
- * is what drops the callback's single-use `?code=`/`?state=` (left in the URL
- * they would sit in history and in anything the reader copies out of the bar).
- * `?server=` has to be *restored* rather than kept: the registered redirect URI
- * carries no query, so by the callback the parameter is gone, and `web-entry.ts`
- * derives `apiBaseUrl` from it — left alone, the page would sign in to one
- * server and send every request to the loopback default.
+ * drops the callback's single-use `?code=`/`?state=`. Left in the URL, they
+ * would sit in history and in anything the reader copies out of the bar. The
+ * settled URL names no server: `boot` remembers the session's server in the
+ * tab's `sessionStorage` instead (see `postSignInUrl`).
  */
-const settleUrlAfterSignIn = (session: Session, returnTo: string): void => {
-  window.history.replaceState(
-    null,
-    '',
-    postSignInUrl(returnTo, session.serverUrl, window.location.origin)
-  )
+const settleUrlAfterSignIn = (returnTo: string): void => {
+  window.history.replaceState(null, '', postSignInUrl(returnTo, window.location.origin))
 }
 
 /**
  * Redeem an authorization code, if this load is a return leg, and only then
  * mount the app.
  *
- * The order is the point. The flow returns to `/home`, which sits behind the
- * `_auth` gate, and the bearer store starts `Unauthed` on every load (the token
- * is in page memory only). A router mounted before the exchange settled would
- * run that gate against an empty store and redirect to `/` while the token was
- * still in flight, so the sign-in would appear to fail every time. An ordinary
- * load pays a microtask for this: with no pending record, `completeSignIn`
- * resolves to `None` without touching the network.
+ * The order is the point. The flow returns to the app root and settles on the
+ * return path (`/home` by default), which sits behind the `_auth` gate, and the
+ * bearer store starts `Unauthed` on every load (the token is in page memory
+ * only). A router mounted before the exchange settled would run that gate
+ * against an empty store and redirect to `/` while the token was still in
+ * flight, so the sign-in would appear to fail every time. An ordinary load pays
+ * a microtask for this: with no pending record, `completeSignIn` resolves to
+ * `None` without touching the network.
  */
 const boot = async (): Promise<void> => {
   const returnSearch = window.location.search
@@ -93,18 +91,27 @@ const boot = async (): Promise<void> => {
   const session = completed.tag === 'Ok' ? Option.getOrUndefined(completed.value) : undefined
 
   if (session !== undefined) {
-    // Read the stashed return path (the gate's `?returnTo=`, carried across the
-    // redirect in `sessionStorage`) and honour it once, sanitised — same rules
-    // as `NeedsAuthMessage`'s device-flow return leg.
-    settleUrlAfterSignIn(session, sanitizeReturnTo(takeReturnTo(window)))
+    // The settled URL names no server, so the tab remembers the one that issued
+    // the token: for the transport below, and for a reload or the expiry
+    // bounce back to the landing.
+    rememberSignedInServer(window.sessionStorage, session.serverUrl)
+    // Honour the gate's `?returnTo=`, carried across the redirect in the
+    // pending record, sanitised — same rules as `NeedsAuthMessage`'s
+    // device-flow return leg.
+    settleUrlAfterSignIn(sanitizeReturnTo(session.returnTo ?? null))
   } else if (isAuthorizationResponse(returnSearch)) {
     // A return leg that resolved to nothing usable: the response still has to
     // leave the URL, or a reload would replay a code that is already spent.
     replaceSearch(searchWithoutAuthorizationResponse(returnSearch))
   }
 
-  // Built after the rewrite above, because it reads `?server=`.
-  const { bearerStore, ...entryOptions } = makeWebEntryOptions(basepath)
+  // Resolved after the rewrites above: a redeemed sign-in has just remembered
+  // its server, and the settled URL has no `?server=` to outrank it.
+  const { bearerStore, ...entryOptions } = makeWebEntryOptions(
+    window,
+    basepath,
+    apiServerUrl(window.location.search, window.sessionStorage)
+  )
 
   if (session !== undefined) {
     // The bearer is held first and the signal set second: the store publishes

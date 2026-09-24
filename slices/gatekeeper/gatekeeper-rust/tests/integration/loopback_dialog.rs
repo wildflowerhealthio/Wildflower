@@ -1,6 +1,6 @@
 //! The host's loopback dialog, end to end: a direct-loopback `/authorize` by the
 //! hosted owner UI (`wildflower-react`) is parked as usual — the browser is sent
-//! to the polling page — and the dialog, played here by a scripted fake,
+//! to the wait page — and the dialog, played here by a scripted fake,
 //! decides it in the background. Only that login asks; a forwarded request or
 //! another client never does.
 //!
@@ -161,7 +161,7 @@ async fn get_authorize_forwarded(router: &axum::Router, query: &str) -> axum::re
         .expect("oneshot")
 }
 
-/// `GET /oauth/authorize/{id}` — what the polling page sees.
+/// `GET /oauth/authorize/{id}` — what the wait page sees.
 async fn poll_status(router: &axum::Router, request_id: &str) -> Value {
     let res = router
         .clone()
@@ -180,7 +180,7 @@ fn app_redirect() -> Url {
     Url::parse("https://app.example/cb").expect("redirect url")
 }
 
-/// Approve: the browser still lands on the polling page, the dialog is shown
+/// Approve: the browser still lands on the wait page, the dialog is shown
 /// the login (client, redirect origin, the notice for a known app at a new
 /// address, the scopes), and once approved the poll hands back a code that
 /// redeems at `/token`. The redirect joins the client's registration, and no
@@ -274,7 +274,7 @@ async fn a_second_identical_login_asks_again() {
     );
 }
 
-/// Reject: the request is denied and the polling page sends the browser back
+/// Reject: the request is denied and the wait page sends the browser back
 /// with `access_denied`. The registration is left as it was.
 #[tokio::test]
 async fn a_rejected_loopback_login_is_denied() {

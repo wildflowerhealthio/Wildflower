@@ -18,7 +18,7 @@
  * whose `reason` the header bar renders verbatim.
  */
 
-import { Data, Effect, Either } from 'effect'
+import { Data, Effect, Either, Schema } from 'effect'
 
 /** Raised when the chosen target cannot be signed in to, with the reason why. */
 class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
@@ -63,10 +63,9 @@ const isLoopbackHost = (hostname: string): boolean =>
  * which would put an access token on the wire in the clear.
  */
 const usableEndpointUrl = (
-  candidate: unknown,
+  candidate: string,
   options: { readonly pageIsSecure: boolean }
 ): string | undefined => {
-  if (typeof candidate !== 'string' || candidate.trim() === '') return undefined
   let url: URL
   try {
     url = new URL(candidate.trim())
@@ -109,30 +108,44 @@ const insecureTargetReason = (
   )
 }
 
-/** Whether `value` is a plain JSON object. */
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+/**
+ * The part of a SMART configuration document (SMART App Launch §2.1) this
+ * client reads. Only the two endpoints the flow needs are required.
+ */
+const SmartConfiguration = Schema.Struct({
+  authorization_endpoint: Schema.String,
+  token_endpoint: Schema.String,
+  code_challenge_methods_supported: Schema.optional(Schema.Array(Schema.String)),
+})
+
+const decodeSmartConfiguration = Schema.decodeUnknownEither(SmartConfiguration)
 
 /**
  * The endpoints `document` advertises, or the reason it is unusable.
  *
- * Only the two endpoints the flow needs are required. `code_challenge_methods_supported`
- * is checked for `S256` when present, because a server that cannot do S256
- * cannot complete this client's flow (the gatekeeper authorize endpoint
- * mandates it) and failing here says so plainly; a document that omits the
- * field is given the benefit of the doubt rather than blocked on a hint.
+ * `code_challenge_methods_supported` is checked for `S256` when present,
+ * because a server that cannot do S256 cannot complete this client's flow (the
+ * gatekeeper authorize endpoint mandates it) and failing here says so plainly;
+ * a document that omits the field is given the benefit of the doubt rather than
+ * blocked on a hint.
  */
 const smartEndpointsFrom = (
   document: unknown,
   options: { readonly pageIsSecure: boolean }
 ): Either.Either<SmartEndpoints, DiscoveryFailed> => {
-  if (!isRecord(document)) {
+  const decoded = decodeSmartConfiguration(document)
+  if (Either.isLeft(decoded)) {
     return Either.left(
-      new DiscoveryFailed({ reason: 'The server’s SMART configuration is not a JSON object.' })
+      new DiscoveryFailed({
+        reason:
+          'The server’s SMART configuration is not a document that names an ' +
+          'authorization_endpoint and token_endpoint.',
+      })
     )
   }
-  const authorizationEndpoint = usableEndpointUrl(document.authorization_endpoint, options)
-  const tokenEndpoint = usableEndpointUrl(document.token_endpoint, options)
+  const configuration = decoded.right
+  const authorizationEndpoint = usableEndpointUrl(configuration.authorization_endpoint, options)
+  const tokenEndpoint = usableEndpointUrl(configuration.token_endpoint, options)
   if (authorizationEndpoint === undefined || tokenEndpoint === undefined) {
     return Either.left(
       new DiscoveryFailed({
@@ -142,8 +155,8 @@ const smartEndpointsFrom = (
       })
     )
   }
-  const methods = document.code_challenge_methods_supported
-  if (Array.isArray(methods) && !methods.includes('S256')) {
+  const methods = configuration.code_challenge_methods_supported
+  if (methods !== undefined && !methods.includes('S256')) {
     return Either.left(
       new DiscoveryFailed({
         reason: 'The server does not support PKCE with S256, which sign-in needs.',

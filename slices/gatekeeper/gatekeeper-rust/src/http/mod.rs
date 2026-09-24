@@ -75,6 +75,7 @@ pub fn router(state: Arc<GatekeeperState>) -> Router {
 
     Router::new()
         .merge(documented)
+        .nest("/oauth", routes::oauth::page_router())
         .nest("/access", access)
         .with_state(state)
 }

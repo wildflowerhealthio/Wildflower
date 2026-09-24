@@ -35,7 +35,7 @@ describe('beginSignIn', () => {
     const environment = testEnvironment({ store, fetch: discoveryOnly() })
 
     // Act
-    const result = await runToEither(beginSignIn(SERVER, environment))
+    const result = await runToEither(beginSignIn(SERVER, undefined, environment))
 
     // Assert
     if (Either.isLeft(result)) throw new Error(result.left.reason)
@@ -69,7 +69,7 @@ describe('beginSignIn', () => {
           }
 
           // Act
-          const result = await runToEither(beginSignIn(SERVER, environment))
+          const result = await runToEither(beginSignIn(SERVER, undefined, environment))
 
           // Assert
           if (Either.isLeft(result)) throw new Error(result.left.reason)
@@ -95,7 +95,11 @@ describe('beginSignIn', () => {
 
           // Act
           const result = await runToEither(
-            beginSignIn(SERVER, testEnvironment({ store, fetch: discoveryOnly(), pendingKey }))
+            beginSignIn(
+              SERVER,
+              undefined,
+              testEnvironment({ store, fetch: discoveryOnly(), pendingKey })
+            )
           )
 
           // Assert
@@ -116,7 +120,7 @@ describe('beginSignIn', () => {
     const environment = testEnvironment({ store, fetch: discoveryOnly() })
 
     // Act
-    const result = await runToEither(beginSignIn(SERVER, environment))
+    const result = await runToEither(beginSignIn(SERVER, undefined, environment))
 
     // Assert
     if (Either.isLeft(result)) throw new Error(result.left.reason)
@@ -139,10 +143,10 @@ describe('beginSignIn', () => {
 
     // Act
     await runToEither(
-      beginSignIn(SERVER, testEnvironment({ store: first, fetch: discoveryOnly() }))
+      beginSignIn(SERVER, undefined, testEnvironment({ store: first, fetch: discoveryOnly() }))
     )
     await runToEither(
-      beginSignIn(SERVER, testEnvironment({ store: second, fetch: discoveryOnly() }))
+      beginSignIn(SERVER, undefined, testEnvironment({ store: second, fetch: discoveryOnly() }))
     )
 
     // Assert
@@ -158,7 +162,7 @@ describe('beginSignIn', () => {
     })
 
     // Act
-    const result = await runToEither(beginSignIn(SERVER, environment))
+    const result = await runToEither(beginSignIn(SERVER, undefined, environment))
 
     // Assert
     if (Either.isRight(result)) throw new Error('expected discovery to fail the sign-in')
@@ -178,7 +182,7 @@ describe('beginSignIn', () => {
 
     // Act
     const result = await runToEither(
-      beginSignIn(SERVER, testEnvironment({ store, fetch: discoveryOnly() }))
+      beginSignIn(SERVER, undefined, testEnvironment({ store, fetch: discoveryOnly() }))
     )
 
     // Assert
@@ -264,12 +268,51 @@ describe('completeSignIn', () => {
           scope: 'openid system/*.cruds',
           serverUrl: SERVER,
           expiresInSeconds: 3600,
+          returnTo: pending.returnTo,
         })
       )
     )
     const sent = new URLSearchParams(bodies[0])
     expect(sent.get('code_verifier')).toBe(pending.codeVerifier)
     expect(sent.get('redirect_uri')).toBe(REDIRECT_URI)
+  })
+
+  it('hands back the returnTo the sign-in was started with', async () => {
+    // The redirect URI carries no query, so the return path survives the round
+    // trip only through the pending record `beginSignIn` writes.
+    await fc.assert(
+      fc.asyncProperty(
+        fc.option(
+          fc.webPath().filter((path) => path !== ''),
+          { nil: undefined }
+        ),
+        async (returnTo) => {
+          // Arrange
+          const store = memoryStore()
+          const discovery = discoveryOnly()
+          const fetchStub: typeof globalThis.fetch = (input, init) =>
+            requestUrl(input) === `${SERVER}/oauth/token`
+              ? Promise.resolve(jsonResponse({ access_token: 'a-token', token_type: 'Bearer' }))
+              : discovery(input, init)
+          const environment = testEnvironment({ store, fetch: fetchStub })
+          const started = await runToEither(beginSignIn(SERVER, returnTo, environment))
+          if (Either.isLeft(started)) throw new Error(started.left.reason)
+          const state = new URL(started.right).searchParams.get('state') ?? ''
+
+          // Act
+          const completed = await runToEither(
+            completeSignIn(`?code=the-code&state=${state}`, environment)
+          )
+
+          // Assert
+          if (Either.isLeft(completed)) throw new Error(completed.left.reason)
+          expect(Option.map(completed.right, (session) => session.returnTo)).toEqual(
+            Option.some(returnTo)
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
   })
 
   it('never writes the access token to storage', async () => {
@@ -506,6 +549,7 @@ const stashedRequest = (): PendingAuthorization => ({
   codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
   serverUrl: SERVER,
   tokenEndpoint: `${SERVER}/oauth/token`,
+  returnTo: '/settings/tunnel',
 })
 
 /** A `fetch` that answers the SMART discovery request and nothing else. */

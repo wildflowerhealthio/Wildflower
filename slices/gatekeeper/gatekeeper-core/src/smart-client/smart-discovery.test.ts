@@ -103,19 +103,6 @@ describe('usableEndpointUrl', () => {
     )
   })
 
-  it('rejects a non-string value', () => {
-    fc.assert(
-      fc.property(
-        fc.oneof(fc.integer(), fc.boolean(), fc.constant(null), fc.constant(undefined)),
-        (candidate) => {
-          // Act / Assert
-          expect(usableEndpointUrl(candidate, onSecurePage)).toBeUndefined()
-        }
-      ),
-      { numRuns: numRunsFor({ base: 50 }) }
-    )
-  })
-
   it('rejects an endpoint carrying credentials or a fragment', () => {
     // Credentials would ride into the address bar on redirect; a fragment would
     // strand the query parameters the authorize URL appends.
@@ -161,6 +148,29 @@ describe('smartEndpointsFrom', () => {
         }
       ),
       { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('reports a document whose endpoints are not strings', () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(fc.integer(), fc.boolean(), fc.constant(null), fc.array(fc.string())),
+        fc.constantFrom('authorization_endpoint', 'token_endpoint'),
+        (endpoint, field) => {
+          // Arrange
+          const document = {
+            ...wildflowerDiscoveryDocument('https://example.test'),
+            [field]: endpoint,
+          }
+
+          // Act
+          const result = smartEndpointsFrom(document, onSecurePage)
+
+          // Assert
+          expect(Either.isLeft(result)).toBe(true)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 

@@ -245,10 +245,10 @@ describe('redirectedUrl', () => {
   it('should send a deep link to the app root with the route in ?redirect=', () => {
     expect(
       redirectedUrl(
-        { pathname: '/gatekeeper/oauth-polling/abc', search: '?server=https%3A%2F%2Fx', hash: '' },
+        { pathname: '/gatekeeper/devices/ABCD', search: '?server=https%3A%2F%2Fx', hash: '' },
         '/'
       )
-    ).toBe('/?server=https%3A%2F%2Fx&redirect=%2Fgatekeeper%2Foauth-polling%2Fabc')
+    ).toBe('/?server=https%3A%2F%2Fx&redirect=%2Fgatekeeper%2Fdevices%2FABCD')
   })
 
   it('should leave the app root and paths outside the app alone', () => {

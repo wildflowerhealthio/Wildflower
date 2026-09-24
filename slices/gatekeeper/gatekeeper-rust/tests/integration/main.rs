@@ -9,3 +9,4 @@ mod oauth_endpoints;
 mod revocation;
 mod scope_gating;
 mod smoke;
+mod wait_page;

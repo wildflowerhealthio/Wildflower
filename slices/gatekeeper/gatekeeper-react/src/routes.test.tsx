@@ -23,6 +23,7 @@ const router = createRouter({
     runAuthed: stubRunAuthed,
     runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
     awaitAuthReady: () => Promise.resolve(),
+    externalLinkRoot: () => 'https://example.test',
   },
 })
 
@@ -43,7 +44,6 @@ const settings = inBucket('/settings/')
 
 // GatekeeperPaths percent-encodes its params; decode so `$id` / `$userCode`
 // line up with the route fullPaths TanStack resolves to.
-const oauthPolling = decodeURIComponent(GatekeeperPaths.oauthPollingPath('$id'))
 const oauthConsent = decodeURIComponent(GatekeeperPaths.oauthConsentPath('$id'))
 const deviceEntry = decodeURIComponent(GatekeeperPaths.deviceEntryPath())
 const deviceConsent = decodeURIComponent(GatekeeperPaths.deviceConsentPath('$userCode'))
@@ -53,18 +53,15 @@ describe('GatekeeperPaths ↔ Route.fullPath drift', () => {
   // absent from `GatekeeperPaths`.
   test('every GatekeeperPaths redirect target has a matching route', () => {
     const external = [...fullPaths(open), ...fullPaths(auth)]
-    for (const target of [oauthPolling, oauthConsent, deviceEntry, deviceConsent]) {
+    for (const target of [oauthConsent, deviceEntry, deviceConsent]) {
       expect(external).toContain(target)
     }
   })
 
-  // oauth-polling and device-entry are reachable without a bearer: the
-  // polling endpoint is unauth, and device-entry is where an owner types a
+  // device-entry is reachable without a bearer: it is where an owner types a
   // code from another device.
-  test('oauth-polling and device-entry live in the open bucket', () => {
-    const openPaths = fullPaths(open)
-    expect(openPaths).toContain(oauthPolling)
-    expect(openPaths).toContain(deviceEntry)
+  test('device-entry lives in the open bucket', () => {
+    expect(fullPaths(open)).toContain(deviceEntry)
   })
 
   // oauth-consent and device-consent require the owner to already be
@@ -122,7 +119,6 @@ describe('gatekeeper route tree', () => {
       '/_auth/gatekeeper/oauth-consent/$id',
       '/_open/gatekeeper/device-login',
       '/_open/gatekeeper/devices',
-      '/_open/gatekeeper/oauth-polling/$id',
       '/settings/gatekeeper/',
       '/settings/gatekeeper/approved/$id',
       '/settings/gatekeeper/devices',
@@ -140,7 +136,6 @@ describe('gatekeeper route tree', () => {
         '/gatekeeper/devices',
         '/gatekeeper/devices/$userCode',
         '/gatekeeper/oauth-consent/$id',
-        '/gatekeeper/oauth-polling/$id',
         '/settings/gatekeeper/',
         '/settings/gatekeeper/approved/$id',
         '/settings/gatekeeper/devices',

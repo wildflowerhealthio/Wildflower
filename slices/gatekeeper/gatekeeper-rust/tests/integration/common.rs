@@ -372,35 +372,29 @@ pub fn location_of(res: &axum::response::Response) -> String {
         .to_string()
 }
 
-/// Assert `res` is a 302 to the Owner UI's polling page and return the pending
+/// Assert `res` is a 302 to the gatekeeper's wait page and return the pending
 /// request id it names — the shape every parked `/authorize` request takes.
-/// Which server `?server=` names is pinned where it matters
-/// (`polling_redirect_names_the_served_origin`).
+/// How the relative `Location` resolves is pinned in `wait_page.rs`.
 pub fn parked_request_id(res: &axum::response::Response) -> String {
     assert_eq!(res.status(), StatusCode::FOUND);
     let location = location_of(res);
-    // The polling page lives on the hosted owner UI, pointed back at the
-    // request's served origin (loopback, or the forwarded public one) — the
-    // host serves no UI of its own.
-    let url = Url::parse(&location).expect("polling URL is absolute");
     assert!(
-        location.starts_with(&format!("{OWNER_UI_BASE}gatekeeper/oauth-polling/"))
-            && url
-                .query_pairs()
-                .any(|(key, value)| key == "server" && !value.is_empty()),
-        "expected a polling-page redirect, got {location}"
+        location.starts_with("authorize/") && location.ends_with("/wait"),
+        "expected a wait-page redirect, got {location}"
     );
     polling_request_id(&location)
 }
 
-/// The pending request id an owner-UI polling-page URL names: its last path
-/// segment (the URL also carries `?server=`, so the raw string's tail is not it).
-pub fn polling_request_id(polling_url: &str) -> String {
-    let url = Url::parse(polling_url).expect("polling URL is absolute");
-    url.path_segments()
-        .and_then(|mut segments| segments.next_back())
-        .expect("request id")
-        .to_string()
+/// The pending request id a wait-page `Location` (`authorize/{id}/wait`,
+/// relative to `/oauth/authorize`) names: the segment before `wait`.
+pub fn polling_request_id(wait_page_location: &str) -> String {
+    let url = Url::parse(LOOPBACK_ORIGIN)
+        .and_then(|origin| origin.join("/oauth/authorize"))
+        .and_then(|authorize| authorize.join(wait_page_location))
+        .expect("the wait-page location resolves");
+    let mut segments = url.path_segments().expect("an absolute path");
+    assert_eq!(segments.next_back(), Some("wait"), "{url}");
+    segments.next_back().expect("request id").to_string()
 }
 
 /// Load the Owner-facing consent prompt for `request_id` as JSON.

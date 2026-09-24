@@ -4,7 +4,6 @@ import {
   insecureTargetReason,
   normalizeServerUrl,
   searchWithServerUrl,
-  serverUrlFromSearch,
 } from 'gatekeeper-core/smart-client'
 import { type JSX, type SubmitEvent, useEffect, useRef, useState } from 'react'
 import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitchen-sink'
@@ -12,8 +11,8 @@ import { TextField, pageLayoutStyles } from 'react-tundraish'
 
 import { localNetworkAccessHint } from '../local-network-hint.ts'
 import type { RouterContext } from '../router-context.ts'
-import { rememberReturnTo, signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
-import { apiServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
+import { returnToOnPage, signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
+import { apiServerUrl, chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
 
 const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
 
@@ -22,9 +21,10 @@ const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
  *
  * `?server=` is what `web-entry.ts` reads to point the transport, so it has
  * to be in the URL — but a reload is not needed to get there and would only
- * throw away the page mid-action. It survives the sign-in round trip anyway:
- * the registered redirect carries no query, so `main-web`'s boot restores
- * `?server=` from the redeemed session rather than from the address bar.
+ * throw away the page mid-action. It does not survive the sign-in round trip,
+ * and does not need to: the registered redirect carries no query, and
+ * `main-web`'s boot remembers the redeemed session's server in the tab's
+ * `sessionStorage`, leaving `?server=` out of the settled URL.
  *
  * The current `pathname` is kept, not replaced with `/`: this build is served
  * under a subpath (`/app/`, or a PR preview's `/staging/pr-<n>/app/`), so a
@@ -80,31 +80,35 @@ interface LandingSignIn {
  * The real {@link LandingSignIn}. Sign-in only starts from this landing, which
  * sits at the app root, so the page's own directory is the served base — the
  * same value `main-web` hands the router and the callback re-derives (see
- * `sign-in.ts`). The gate's `?returnTo=` is stashed just before leaving, because
- * the registered redirect URI drops it.
+ * `sign-in.ts`). The gate's `?returnTo=` rides the pending record, because the
+ * registered redirect URI drops it.
  */
 const browserSignIn: LandingSignIn = {
   start: (target) =>
-    startSignIn(target, signInEnvironment(window, basenameOf(window.location.pathname))),
+    startSignIn(
+      target,
+      returnToOnPage(window.location.href),
+      signInEnvironment(window, basenameOf(window.location.pathname))
+    ),
   leave: (authorizationUrl) => {
-    rememberReturnTo(window)
     window.location.assign(authorizationUrl)
   },
 }
 
 /**
  * Whether the landing should start signing in as soon as it opens, rather than
- * wait for a click: the page was opened already naming a usable server (a
- * server's own link into the app, or the auth gate's bounce), that server is
+ * wait for a click: the page already has a usable server (named by the URL, as
+ * in a server's own link into the app or the auth gate's bounce, or remembered
+ * from this tab's last sign-in, as after a reload or an expiry), that server is
  * reachable from this page, and no sign-in has just failed — retrying one on
  * arrival would loop the reader through the authorization server.
  */
 const shouldSignInOnArrival = (arrival: {
-  readonly hasServerInUrl: boolean
+  readonly hasChosenServer: boolean
   readonly blockedReason: string | undefined
   readonly bootSignInProblem: string | undefined
 }): boolean =>
-  arrival.hasServerInUrl &&
+  arrival.hasChosenServer &&
   arrival.blockedReason === undefined &&
   arrival.bootSignInProblem === undefined
 
@@ -147,7 +151,7 @@ function Landing({
   // The server this page is pointed at — the same resolution `web-entry.ts`
   // gives the transport, so the token is asked of whichever server the requests
   // will go to.
-  const serverUrl = apiServerUrl(window.location.search)
+  const serverUrl = apiServerUrl(window.location.search, window.sessionStorage)
   const pageIsSecure = window.location.protocol === 'https:'
 
   // Said up front, while the reader is still looking at the address they
@@ -157,10 +161,11 @@ function Landing({
 
   /**
    * Leave for `target`'s `/oauth/authorize` — the SMART standalone launch, the
-   * same flow the server-docs console runs. The reader comes back to `/home`
-   * with a code, which `main-web`'s boot redeems before the router mounts.
-   * Nothing is held here across the redirect but the pending record in
-   * `sessionStorage`, which carries no credential.
+   * same flow the server-docs console runs. The reader comes back to the app
+   * root with a code, which `main-web`'s boot redeems before the router mounts,
+   * then settles on the gate's `returnTo` (`/home` by default). Nothing is held
+   * here across the redirect but the pending record in `sessionStorage`, which
+   * carries no credential.
    */
   const signInTo = (target: string): void => {
     setLeavingToSignIn(true)
@@ -213,18 +218,19 @@ function Landing({
     connectToServer(trimmed)
   }
 
-  // Keyed on a `?server=` the page can actually use, not on the parameter's
-  // bare presence: a junk value falls back to the loopback default, and
-  // offering "Sign in to http://127.0.0.1:8080" to a reader whose address bar
-  // says something else names the wrong server on the one control that hands
-  // out a token.
-  const hasServerInUrl = serverUrlFromSearch(window.location.search) !== undefined
+  // Keyed on a server the page can actually use, not on a `?server=`'s bare
+  // presence: a junk value falls back to the loopback default, and offering
+  // "Sign in to http://127.0.0.1:8080" to a reader whose address bar says
+  // something else names the wrong server on the one control that hands out a
+  // token.
+  const hasChosenServer =
+    chosenServerUrl(window.location.search, window.sessionStorage) !== undefined
 
   // Sign in on arrival, once. The ref keeps a re-render (or StrictMode's double
   // effect) from starting a second flow while the first is still in hand.
   const signedInOnArrival = useRef(false)
   const signInOnArrival =
-    !authed && shouldSignInOnArrival({ hasServerInUrl, blockedReason, bootSignInProblem })
+    !authed && shouldSignInOnArrival({ hasChosenServer, blockedReason, bootSignInProblem })
   useEffect(() => {
     if (!signInOnArrival || signedInOnArrival.current) return
     signedInOnArrival.current = true
@@ -303,7 +309,7 @@ function Landing({
               on arrival, so this is the way back in when that couldn't run or
               failed (the reason shows below). Picking a server above signs in
               on its own, so this would be a dead second step otherwise. */}
-          {hasServerInUrl ? (
+          {hasChosenServer ? (
             <button
               type="button"
               className="button-2 filled"

@@ -26,6 +26,9 @@ const router = createRouter({
     runAuthed: () => Promise.reject(new Error('slice-local router is never run')),
     runtimeLayer: Layer.die('slice-local router is never run'),
     awaitAuthReady: () => Promise.reject(new Error('slice-local router is never run')),
+    externalLinkRoot: () => {
+      throw new Error('slice-local router is never run')
+    },
   },
 })
 

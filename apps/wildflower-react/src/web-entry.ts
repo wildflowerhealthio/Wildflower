@@ -1,4 +1,4 @@
-import { searchWithServerUrl, serverUrlFromSearch } from 'gatekeeper-core/smart-client'
+import { normalizeServerUrl, serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import {
   gatekeeperLogoutSettingsItem,
   makeAwaitLandingAuthReady,
@@ -32,12 +32,44 @@ import { stubTransport } from './bridges/transport-context.ts'
 const DEFAULT_SERVER_URL = `http://${loopbackHostname}:${loopbackPort}`
 
 /**
- * The API origin a page load targets, given its `location.search`. Falls back to
- * {@link DEFAULT_SERVER_URL} when the parameter is absent, empty or rejected as
- * unusable — the same shape `apps/wildflower-server-docs/src/server-target.ts`
- * gives the console.
+ * The `sessionStorage` key holding the server this tab last signed in to.
+ *
+ * The settled URL after a sign-in names no server (see `postSignInUrl`), so a
+ * reload, or the expiry bounce back to the landing, would otherwise have
+ * forgotten which server the tab was using. `main-web`'s boot writes it when a
+ * sign-in is redeemed and logout clears it. It holds no credential, and is
+ * namespaced like the pending record because the server-docs console shares
+ * this origin.
  */
-const apiServerUrl = (search: string): string => serverUrlFromSearch(search) ?? DEFAULT_SERVER_URL
+const SIGNED_IN_SERVER_KEY = 'wildflower-react.signed-in-server'
+
+/** Where the signed-in server is kept: `window.sessionStorage` in the browser. */
+type SignedInServerStore = Pick<Storage, 'getItem' | 'setItem' | 'clear'>
+
+/** Record `serverUrl` as the server this tab is signed in to. */
+const rememberSignedInServer = (store: SignedInServerStore, serverUrl: string): void => {
+  store.setItem(SIGNED_IN_SERVER_KEY, serverUrl)
+}
+
+/**
+ * The server this page load is pointed at without asking the reader: the one
+ * `search`'s `?server=` names, else the one this tab last signed in to.
+ * `undefined` when neither names a server this page would accept.
+ */
+const chosenServerUrl = (search: string, store: SignedInServerStore): string | undefined => {
+  const fromSearch = serverUrlFromSearch(search)
+  if (fromSearch !== undefined) return fromSearch
+  const stored = store.getItem(SIGNED_IN_SERVER_KEY)
+  return stored === null ? undefined : normalizeServerUrl(stored)
+}
+
+/**
+ * The API origin a page load targets: the {@link chosenServerUrl}, falling back
+ * to {@link DEFAULT_SERVER_URL} — the same shape
+ * `apps/wildflower-server-docs/src/server-target.ts` gives the console.
+ */
+const apiServerUrl = (search: string, store: SignedInServerStore): string =>
+  chosenServerUrl(search, store) ?? DEFAULT_SERVER_URL
 
 /**
  * Prefix a root-absolute in-app route with the served `basepath`, so a raw
@@ -69,28 +101,44 @@ const underBasepath = (basepath: string, route: string): string =>
  * - `awaitAuthReady`: redirects unauthed users to the root landing
  *   page (`/`) instead of device-login, because this entry has no API server
  *   until the reader picks one — the picker and the sign-in live at the root.
- * - `apiBaseUrl`: read from `?server=`, defaulting to the local
- *   loopback origin.
+ * - `apiBaseUrl`: the caller's `apiBaseUrl`, which `main-web` resolves with
+ *   {@link apiServerUrl}. Past sign-in the address bar no longer names the
+ *   server; the tab's remembered one does.
+ * - `externalLinkRoot`: the page's own origin, which is an address another
+ *   device can open.
  * - `readBearer`: wired to the store's `bearer()` reader, so
  *   every relative request gets an `Authorization` header.
  * - `makeTransport`: pre-resolved stub (no host bridge).
  * - `platformSettingsItems`: gatekeeper's logout row (`gatekeeperLogoutSettingsItem`) —
- *   forgets the bearer, revokes it at `{server}/access/logout`, and reloads the
- *   landing page at `basepath`, still pointed at the same server.
+ *   forgets the bearer, revokes it at `{server}/access/logout`, clears the
+ *   tab's `sessionStorage` (the signed-in server included), and reloads the
+ *   bare landing page at `basepath`.
+ *   Nothing then names a server, so the reader picks one rather than being
+ *   signed straight back in.
  * - `platformTabs`: none.
  * - `redirectToDeviceLoginOnUnauthorized`: true — a 401 that outlives the
  *   boot-race retry still falls back to the device-code screen. The landing
  *   page signs in by SMART redirect instead (`sign-in.ts`), so that route is
  *   reached only from this fallback and from a step-up, not from the picker.
+ *
+ * `page` is the slice of `window` this wiring navigates; a real
+ * `Window` satisfies it, and a test passes a stub.
  */
 const makeWebEntryOptions = (
-  basepath: string
+  page: {
+    readonly fetch: typeof globalThis.fetch
+    readonly location: Pick<Location, 'assign' | 'origin'>
+    readonly sessionStorage: SignedInServerStore
+  },
+  basepath: string,
+  apiBaseUrl: string
 ): Pick<
   RenderAppOptions,
   | 'tokenStore'
   | 'awaitAuthReady'
   | 'makeTransport'
   | 'apiBaseUrl'
+  | 'externalLinkRoot'
   | 'readBearer'
   | 'platformSettingsItems'
   | 'platformTabs'
@@ -98,24 +146,24 @@ const makeWebEntryOptions = (
 > & { readonly bearerStore: BearerAuthStateStore } => {
   const bearerStore = makeBearerAuthStateStore()
 
-  const apiBaseUrl = apiServerUrl(window.location.search)
-
   return {
     bearerStore,
     tokenStore: bearerStore,
     awaitAuthReady: () => makeAwaitLandingAuthReady(bearerStore.subscribable),
     makeTransport: () => Promise.resolve(stubTransport),
     apiBaseUrl,
+    externalLinkRoot: () => page.location.origin,
     readBearer: bearerStore.bearer,
     platformSettingsItems: [
       gatekeeperLogoutSettingsItem({
         apiBaseUrl,
         bearerStore,
-        fetch: (input, init) => window.fetch(input, init),
+        fetch: (input, init) => page.fetch(input, init),
         leave: () => {
-          window.location.assign(
-            `${underBasepath(basepath, '/')}${searchWithServerUrl('', apiBaseUrl)}`
-          )
+          // Everything this tab kept for the origin: the signed-in server and
+          // any half-finished sign-in's pending record.
+          page.sessionStorage.clear()
+          page.location.assign(underBasepath(basepath, '/'))
         },
       }),
     ],
@@ -124,4 +172,13 @@ const makeWebEntryOptions = (
   }
 }
 
-export { apiServerUrl, DEFAULT_SERVER_URL, makeWebEntryOptions, underBasepath }
+export {
+  apiServerUrl,
+  chosenServerUrl,
+  DEFAULT_SERVER_URL,
+  makeWebEntryOptions,
+  rememberSignedInServer,
+  SIGNED_IN_SERVER_KEY,
+  underBasepath,
+}
+export type { SignedInServerStore }

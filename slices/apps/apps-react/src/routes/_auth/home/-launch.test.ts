@@ -91,6 +91,17 @@ describe('launchApp', () => {
     expect(nav.seen).toEqual([])
   })
 
+  test('encodes a declared 404 as the no-longer-available message', async () => {
+    const result = await launchApp(
+      ctxRejecting({ error: 'AppNotFound', id: app.id }, recordingNavigate()),
+      app.id
+    )
+
+    expect(launchBannerError(Either.isLeft(result) ? result.left : undefined)).toBe(
+      'That app is no longer available.'
+    )
+  })
+
   test('encodes a 503 as a reachability message', async () => {
     const result = await launchApp(ctxRejecting(responseError(503), recordingNavigate()), app.id)
 

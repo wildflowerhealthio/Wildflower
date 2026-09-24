@@ -378,16 +378,17 @@ mod tests {
         let web_client = store.client_by_id("wildflower-react").unwrap().unwrap();
         assert_eq!(web_client.allowed_scopes, docs.allowed_scopes);
         assert_eq!(web_client.allowed_grant_types, docs.allowed_grant_types);
-        // One absolute entry, and it is the app's fixed post-sign-in ROUTE, not a
-        // directory: the web UI is a SPA on browser history, so
-        // `redirectUriForRoute` derives `/home` per origin (the directory form
-        // would vary by whichever section the reader signed in from). Any other
-        // origin the build runs at is trusted on first use through the consent
-        // prompt, so this single entry is the published address only.
+        // One absolute entry, and it is the app ROOT (`0013` replaced 0012's
+        // `/home`): the web UI is a SPA on browser history, so
+        // `redirectUriForRoute` derives the served root per origin (the
+        // directory form would vary by whichever section the reader signed in
+        // from), and the reader's destination rides the client's pending record.
+        // Any other origin the build runs at is trusted on first use through the
+        // consent prompt, so this single entry is the published address only.
         assert_eq!(
             web_client.redirect_uris,
             vec![RegisteredRedirectUri::Absolute(
-                "https://wildflowerhealth.io/app/home"
+                "https://wildflowerhealth.io/app/"
                     .parse()
                     .expect("a valid absolute redirect"),
             )],

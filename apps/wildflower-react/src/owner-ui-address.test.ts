@@ -9,7 +9,7 @@ import {
 import { RETURN_TO_PARAM } from './sign-in.ts'
 
 // The Tauri host links every browser-facing owner-UI page (device-flow
-// `verification_uri`, `/authorize` polling page, the unmatched-route 404) to the
+// `verification_uri`, logout's landing, the unmatched-route 404) to the
 // address in `tauri-shared-config.json`. Rust can't read branding-core, so the
 // JSON repeats the published address; these pin the copy to its source.
 describe('tauri-shared-config.json owner UI address', () => {

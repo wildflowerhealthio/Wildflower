@@ -22,6 +22,7 @@ const pendingRecord: PendingAuthorization = {
   codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
   serverUrl: 'https://ruth.wildflowerhealth.io',
   tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
+  returnTo: '/settings/tunnel',
 }
 
 /** Arbitrary pending records, for the round-trip properties. */
@@ -30,6 +31,7 @@ const pendingArbitrary = fc.record({
   codeVerifier: fc.string({ minLength: 1 }),
   serverUrl: fc.webUrl(),
   tokenEndpoint: fc.webUrl(),
+  returnTo: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
 })
 
 describe('serializePendingAuthorization / parsePendingAuthorization', () => {
@@ -69,6 +71,29 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
     )
   })
 
+  it('refuses a record whose returnTo is present but not a non-empty string', () => {
+    fc.assert(
+      fc.property(
+        pendingArbitrary,
+        fc.oneof(
+          fc.constant(''),
+          fc.constant(null),
+          fc.integer(),
+          fc.boolean(),
+          fc.array(fc.string())
+        ),
+        (pending, returnTo) => {
+          // Arrange
+          const raw = JSON.stringify({ ...pending, returnTo })
+
+          // Act / Assert
+          expect(parsePendingAuthorization(raw)).toEqual(Option.none())
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   it('refuses stored junk instead of half-reading it', () => {
     fc.assert(
       fc.property(
@@ -84,6 +109,7 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
           if (Option.isSome(parsed)) {
             expect(Object.keys(parsed.value).toSorted()).toEqual([
               'codeVerifier',
+              'returnTo',
               'serverUrl',
               'state',
               'tokenEndpoint',
@@ -211,6 +237,26 @@ describe('authorizationRedirectOutcome', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+
+  it('never redeems a code that comes back without any state', () => {
+    // Act
+    const outcome = authorizationRedirectOutcome('?code=abc123', Option.some(pendingRecord))
+
+    // Assert
+    expect(Either.isLeft(outcome)).toBe(true)
+  })
+
+  it('reads a refusal as a refusal even when a code rides along', () => {
+    // Act
+    const outcome = authorizationRedirectOutcome(
+      `?error=access_denied&code=abc123&state=${pendingRecord.state}`,
+      Option.some(pendingRecord)
+    )
+
+    // Assert
+    if (Either.isRight(outcome)) throw new Error('expected the refusal to win')
+    expect(outcome.left.reason).toContain('access_denied')
   })
 
   it('surfaces the server’s own refusal, description included', () => {
@@ -360,6 +406,41 @@ describe('parseTokenResponse', () => {
         scope: 'openid system/*.cruds',
         expiresInSeconds: 3600,
       })
+    )
+  })
+
+  it('reads a null or absent scope and lifetime as unstated', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom<Record<string, unknown>>({}, { scope: null, expires_in: null }),
+        (optionals) => {
+          // Act
+          const result = parseTokenResponse({
+            access_token: 'a-token',
+            token_type: 'Bearer',
+            ...optionals,
+          })
+
+          // Assert
+          expect(result).toEqual(
+            Either.right({ accessToken: 'a-token', scope: '', expiresInSeconds: undefined })
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it('accepts a bearer token type in any letter case', () => {
+    fc.assert(
+      fc.property(fc.mixedCase(fc.constant('bearer')), (tokenType) => {
+        // Act
+        const result = parseTokenResponse({ access_token: 'a-token', token_type: tokenType })
+
+        // Assert
+        expect(Either.isRight(result)).toBe(true)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 

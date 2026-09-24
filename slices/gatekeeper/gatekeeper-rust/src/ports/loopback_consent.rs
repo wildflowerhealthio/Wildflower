@@ -4,7 +4,7 @@
 //! loopback.
 //!
 //! The dialog is one more approver of the parked request, not a replacement for
-//! the Owner UI: `/authorize` still sends the browser to the polling page, and
+//! the Owner UI: `/authorize` still sends the browser to the wait page, and
 //! whichever surface decides first wins. The host implements the seam (the
 //! Tauri app with `tauri-plugin-dialog`); a host with no native dialog (and the
 //! tests) wires [`NoLoopbackConsentPrompt`], which abstains, leaving the request

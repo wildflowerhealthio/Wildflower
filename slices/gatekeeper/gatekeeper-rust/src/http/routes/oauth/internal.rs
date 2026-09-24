@@ -30,7 +30,7 @@ impl OAuthErrorResponse {
 
     /// A `server_error` 500 carrying the RFC 6749 §5.2 body — the shape every
     /// "the server failed mid-flow" OAuth response shares. Shared so a surface
-    /// like the Owner-UI polling page (which mixes `GatekeeperError` with a
+    /// like the authorize-status poll (which mixes `GatekeeperError` with a
     /// non-cache-suppressed `OAuthErrorResponse`, so it can't use `TokenError`)
     /// doesn't hand-roll the status + code each time.
     pub fn server_error(description: &str) -> Self {

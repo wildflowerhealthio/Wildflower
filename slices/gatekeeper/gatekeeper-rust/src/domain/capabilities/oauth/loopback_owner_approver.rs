@@ -238,7 +238,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
 impl<S: GatekeeperStore + Send + Sync + 'static> LoopbackOwnerApprover<S> {
     /// Put the parked request `request_id` to the dialog and apply the answer:
     /// the whole flow, which `/authorize` runs in the background after it has
-    /// sent the browser to the polling page.
+    /// sent the browser to the wait page.
     ///
     /// The store and the dialog both block, so each step runs on a blocking
     /// worker. The dialog is given until the request expires; after that the
@@ -580,7 +580,7 @@ mod tests {
         assert_eq!(status_of(&approver), RequestStatus::Denied);
     }
 
-    /// Rejecting denies the request (the polling page then sends
+    /// Rejecting denies the request (the wait page then sends
     /// `access_denied`) and registers nothing.
     #[test]
     fn reject_denies_and_registers_nothing() {

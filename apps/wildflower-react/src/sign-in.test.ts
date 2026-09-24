@@ -1,3 +1,4 @@
+import { sectionUrl } from 'branding-core'
 import { Effect, Equal, Option } from 'effect'
 import * as fc from 'fast-check'
 import {
@@ -26,16 +27,14 @@ import {
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,
   REGISTERED_REDIRECT_URI,
-  rememberReturnTo,
-  RETURN_TO_KEY,
+  returnToOnPage,
   scheduleExpiry,
   signInEnvironment,
   startSignIn,
-  takeReturnTo,
 } from './sign-in.ts'
 
 describe('signInEnvironment', () => {
-  it('returns to the fixed /home route, not to the section the reader signed in from', () => {
+  it('returns to the app root, not to the section the reader signed in from', () => {
     // Arrange / Act — the same build reached from three of its sections. A
     // directory-derived URI (what the server-docs console uses) would give
     // three different values here and only one could be the registered entry.
@@ -44,9 +43,9 @@ describe('signInEnvironment', () => {
     const fromDev = signInEnvironment(pageAt('http://127.0.0.1:5173/gatekeeper/grants'))
 
     // Assert
-    expect(fromRoot.redirectUri).toBe('https://wildflowerhealth.io/home')
-    expect(fromSection.redirectUri).toBe('https://wildflowerhealth.io/home')
-    expect(fromDev.redirectUri).toBe('http://127.0.0.1:5173/home')
+    expect(fromRoot.redirectUri).toBe('https://wildflowerhealth.io/')
+    expect(fromSection.redirectUri).toBe('https://wildflowerhealth.io/')
+    expect(fromDev.redirectUri).toBe('http://127.0.0.1:5173/')
   })
 
   it('returns under the served subpath when the build is published there', () => {
@@ -61,7 +60,7 @@ describe('signInEnvironment', () => {
     // Assert — production derives exactly the seeded row (so the sign-in returns
     // silently); the preview derives its own base, correct for where it is served.
     expect(production.redirectUri).toBe(REGISTERED_REDIRECT_URI)
-    expect(preview.redirectUri).toBe('https://wildflowerhealthio.github.io/staging/pr-719/app/home')
+    expect(preview.redirectUri).toBe('https://wildflowerhealthio.github.io/staging/pr-719/app/')
   })
 
   it('falls back to the published URI from an address a sign-in must not return to', () => {
@@ -71,11 +70,15 @@ describe('signInEnvironment', () => {
       pageAt('http://preview.example/home', { protocol: 'http:' })
     )
 
-    // Assert — pinned to the seeded row's sole entry, which `/oauth/authorize`
-    // matches by exact string equality. A drift from
-    // `0012_seed_wildflower_react_client` fails the flow at the endpoint.
+    // Assert
     expect(environment.redirectUri).toBe(REGISTERED_REDIRECT_URI)
-    expect(REGISTERED_REDIRECT_URI).toBe('https://wildflowerhealth.io/app/home')
+  })
+
+  it('names the published app root', () => {
+    // `/oauth/authorize` matches the seeded row's entry by exact string
+    // equality. This holds the constant to the published section address;
+    // gatekeeper-rust's `clients.rs` holds the seeded row to the same value.
+    expect(REGISTERED_REDIRECT_URI).toBe(`${sectionUrl('app')}/`)
   })
 
   it('asks for exactly the scopes the seeded row allows', () => {
@@ -114,7 +117,7 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const started = await startSignIn(SERVER_URL, signInEnvironment(page))
+    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
 
     // Assert
     expect(started.tag).toBe('Ok')
@@ -122,7 +125,7 @@ describe('startSignIn', () => {
     const authorize = new URL(started.value)
     expect(authorize.origin + authorize.pathname).toBe(`${SERVER_URL}/oauth/authorize`)
     expect(authorize.searchParams.get('client_id')).toBe(CLIENT_ID)
-    expect(authorize.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:5173/home')
+    expect(authorize.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:5173/')
     expect(authorize.searchParams.get('scope')).toBe(standaloneLaunchScopeParameter())
     expect(authorize.searchParams.get('code_challenge_method')).toBe('S256')
   })
@@ -138,7 +141,7 @@ describe('startSignIn', () => {
     })
 
     // Act
-    await startSignIn(SERVER_URL, signInEnvironment(page))
+    await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
 
     // Assert
     expect(store.getItem(PENDING_AUTHORIZATION_KEY)).not.toBeNull()
@@ -153,7 +156,7 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const started = await startSignIn(SERVER_URL, signInEnvironment(page))
+    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
 
     // Assert
     expect(started.tag).toBe('Failed')
@@ -173,15 +176,16 @@ describe('finishSignIn', () => {
       sessionStorage: store,
     })
     const environment = signInEnvironment(page)
-    const started = await startSignIn(SERVER_URL, environment)
+    const started = await startSignIn(SERVER_URL, '/settings/tunnel', environment)
     expect(started.tag).toBe('Ok')
     if (started.tag !== 'Ok') return
     const state = new URL(started.value).searchParams.get('state') ?? ''
 
-    // Act — the callback lands on /home with the code and state.
+    // Act — the callback lands on the app root with the code and state.
     const completed = await finishSignIn(`?code=the-code&state=${state}`, environment)
 
-    // Assert
+    // Assert — the return path the sign-in started with rides back on the
+    // session, since the callback URL carries no query of its own.
     expect(completed.tag).toBe('Ok')
     if (completed.tag !== 'Ok') return
     expect(Option.getOrUndefined(completed.value)).toEqual({
@@ -189,6 +193,7 @@ describe('finishSignIn', () => {
       scope: 'system/*.cruds',
       serverUrl: SERVER_URL,
       expiresInSeconds: 3600,
+      returnTo: '/settings/tunnel',
     })
     // Single-use: the record is gone, so a replayed callback cannot look
     // legitimate.
@@ -324,70 +329,58 @@ describe('scheduleExpiry', () => {
   })
 })
 
-describe('rememberReturnTo / takeReturnTo', () => {
-  it('carries the gate’s returnTo across the redirect and hands it back once', () => {
-    // Arrange — the auth gate bounced the reader here with the path they were
-    // headed for; the registered redirect URI will drop the query, so it is
-    // stashed just before leaving.
-    const store = memoryStore()
-    const page = pageAt('https://wildflowerhealth.io/?returnTo=%2Fsettings%2Ftunnel', {
-      sessionStorage: store,
-    })
+describe('returnToOnPage', () => {
+  it('reads the path the auth gate bounced the reader from, raw', () => {
+    // Arrange — raw: `main-web` sanitises what comes back, not this reader.
+    const href = `https://wildflowerhealth.io/app/?server=x&returnTo=${encodeURIComponent('/settings/tunnel?tab=logs')}`
 
-    // Act / Assert — written under this app’s key…
-    rememberReturnTo(page)
-    expect(store.getItem(RETURN_TO_KEY)).toBe('/settings/tunnel')
-
-    // …and read back exactly once, so a later stray load cannot replay it.
-    expect(takeReturnTo(page)).toBe('/settings/tunnel')
-    expect(takeReturnTo(page)).toBeNull()
+    // Act / Assert
+    expect(returnToOnPage(href)).toBe('/settings/tunnel?tab=logs')
   })
 
-  it('clears a stale return path when the page carries none', () => {
-    // A fresh sign-in with no `returnTo` must not honour one left by an
-    // abandoned earlier attempt.
-    const store = memoryStore()
-    store.setItem(RETURN_TO_KEY, '/settings/tunnel')
-    const page = pageAt('https://wildflowerhealth.io/?server=https%3A%2F%2Fx.test', {
-      sessionStorage: store,
-    })
-
-    rememberReturnTo(page)
-
-    expect(store.getItem(RETURN_TO_KEY)).toBeNull()
+  it('names nothing when the page carries no returnTo, or an empty one', () => {
+    // Act / Assert
+    expect(returnToOnPage('https://wildflowerhealth.io/app/?server=x')).toBeUndefined()
+    expect(returnToOnPage('https://wildflowerhealth.io/app/?returnTo=')).toBeUndefined()
   })
 })
 
 describe('postSignInUrl', () => {
   const ORIGIN = 'https://wildflowerhealth.io'
 
-  it('lands on the return path carrying the signed-in server', () => {
-    // Arrange / Act
-    const settled = new URL(postSignInUrl('/home', SERVER_URL, ORIGIN), ORIGIN)
-
-    // Assert
-    expect(settled.pathname).toBe('/home')
-    expect(settled.searchParams.get('server')).toBe(SERVER_URL)
+  it('lands on the return path as given', () => {
+    // Arrange / Act / Assert
+    expect(postSignInUrl('/home', ORIGIN)).toBe('/home')
   })
 
-  it('merges the server into a returnTo that brings its own query and hash', () => {
-    // The gate preserves the whole path it bounced, so `server` is added to that
-    // query rather than replacing it, and the fragment survives.
-    const settled = new URL(
-      postSignInUrl('/settings/tunnel?tab=logs#live', SERVER_URL, ORIGIN),
-      ORIGIN
-    )
+  it('drops the server the gate carried into returnTo, keeping the rest of its query and hash', () => {
+    // The gate preserves the whole path it bounced, including the retained
+    // `?server=`; only that parameter leaves, and the fragment survives.
+    const returnTo = `/settings/tunnel?tab=logs&server=${encodeURIComponent(SERVER_URL)}#live`
 
-    expect(settled.pathname).toBe('/settings/tunnel')
-    expect(settled.searchParams.get('tab')).toBe('logs')
-    expect(settled.searchParams.get('server')).toBe(SERVER_URL)
-    expect(settled.hash).toBe('#live')
+    expect(postSignInUrl(returnTo, ORIGIN)).toBe('/settings/tunnel?tab=logs#live')
+  })
+
+  it('property: never names a server, whatever query returnTo brings', () => {
+    fc.assert(
+      fc.property(fc.dictionary(fc.string(), fc.string()), fc.webUrl(), (query, serverUrl) => {
+        // Arrange
+        const search = new URLSearchParams({ ...query, server: serverUrl })
+
+        // Act
+        const settled = new URL(postSignInUrl(`/home?${search.toString()}`, ORIGIN), ORIGIN)
+
+        // Assert
+        expect(settled.searchParams.has('server')).toBe(false)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 
   it('carries no authorization response, since it is built from the return path', () => {
     // The callback’s single-use `?code=`/`?state=` never reaches `returnTo`, so
     // they cannot survive into the settled URL.
-    const settled = new URL(postSignInUrl('/home', SERVER_URL, ORIGIN), ORIGIN)
+    const settled = new URL(postSignInUrl('/home', ORIGIN), ORIGIN)
 
     expect(settled.searchParams.has('code')).toBe(false)
     expect(settled.searchParams.has('state')).toBe(false)
@@ -409,6 +402,7 @@ const sessionWith = (expiresInSeconds: number | undefined): Session => ({
   scope: 'system/*.cruds',
   serverUrl: SERVER_URL,
   expiresInSeconds,
+  returnTo: undefined,
 })
 
 /** A `sessionStorage` stand-in with no browser behind it. */

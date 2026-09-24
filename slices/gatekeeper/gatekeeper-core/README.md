@@ -58,14 +58,16 @@ and 90 days respectively). See the
 - `/oauth/authorize` — OAuth 2.0 authorization endpoint. An unknown
   `client_id`, an unregistered `redirect_uri`, or scopes outside the
   registration are carried to the consent prompt as a registration verdict
-  rather than rejected (`wildflower-host` excepted). Always
-  redirects to the polling page (`/gatekeeper/oauth-polling/:id`) on the
-  hosted owner UI, with `?server=<served origin>` so the page knows which
-  server to poll (the host serves no UI of its own; `page_paths.rs` builds
-  the URL from the host-configured `OwnerUiBase`); the page picks
-  same-device-vs-cross-device based on whether it's already authenticated.
+  rather than rejected (`wildflower-host` excepted). A request no standing
+  grant covers redirects to the wait page below, relative to itself, so the
+  browser stays on whichever origin it reached the gatekeeper at.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
+- `/oauth/authorize/:id/wait` — the **wait page**, served by the gatekeeper
+  itself: static HTML, CSS and JS (`gatekeeper-rust`'s
+  `http/routes/oauth/wait_page/`) that polls `/oauth/authorize/:id` and, once
+  the Owner decides, leaves for the redirect the status carries. See "Wait
+  page" in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
   `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`
   on the hosted owner UI, carrying `?server=`).
@@ -155,8 +157,9 @@ outbound-equals-callback property `redirectUriForPage` gets from the directory.
 `basePath` is the slash-suffixed directory the build is served from
 (`branding-core`'s `basenameOf(location.pathname)`), defaulting to `/` — so a
 root-served copy is unchanged. A copy under `/app/` (or a PR preview's
-`/staging/pr-<n>/app/`) passes that directory, so the route returns under it:
-`/app/home`, the registered value, rather than `<origin>/home` off the app. The
+`/staging/pr-<n>/app/`) passes that directory, so the route returns under it —
+the hosted owner UI's `/` route returns to `/app/`, the registered value, rather
+than to `<origin>/` off the app. The
 caller derives `basePath` at the served root on both legs — the hosted owner UI
 can, because its sign-in is reachable only from that root.
 

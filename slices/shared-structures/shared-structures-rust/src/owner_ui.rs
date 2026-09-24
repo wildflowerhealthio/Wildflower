@@ -2,11 +2,11 @@
 //!
 //! The owner UI (`apps/wildflower-react`'s `main-web` build) is published at a
 //! fixed address — `https://wildflowerhealth.io/app/` — and runs **cross-origin**
-//! to whichever Wildflower server its `?server=` query parameter names. A server
-//! serves no UI of its own, so every browser-facing page it hands out (the
-//! device-flow `verification_uri`, the `/authorize` polling page, the link on an
-//! unmatched route's `404`) is a URL on that hosted UI carrying
-//! `server=<the request's served origin>`.
+//! to whichever Wildflower server its `?server=` query parameter names. Apart
+//! from the gatekeeper's `/authorize` wait page, a server serves no UI of its
+//! own, so every other browser-facing page it hands out (the device-flow
+//! `verification_uri`, logout's landing, the link on an unmatched route's `404`)
+//! is a URL on that hosted UI carrying `server=<the request's served origin>`.
 //!
 //! [`OwnerUiBase`] is the one place those URLs are spelled. The host decides the
 //! base (from `tauri-shared-config.json`, switching to the local `main-web` dev
@@ -132,11 +132,11 @@ mod tests {
     #[test]
     fn route_url_keeps_percent_encoded_segments() {
         let url = base("https://wildflowerhealth.io/app/").route_url(
-            "/gatekeeper/oauth-polling/a%20b",
+            "/gatekeeper/devices/a%20b",
             SERVER,
             &[],
         );
-        assert_eq!(url.path(), "/app/gatekeeper/oauth-polling/a%20b");
+        assert_eq!(url.path(), "/app/gatekeeper/devices/a%20b");
         assert_eq!(
             url.path_segments().and_then(|mut s| s.next_back()),
             Some("a%20b")

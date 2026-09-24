@@ -1,0 +1,79 @@
+/*
+ * The gatekeeper's wait page (`../wait_page.rs`). It loads nothing from
+ * react-tundraish, so the few colours it paints are copied from that palette
+ * (`global/react-tundraish/src/colors-custom.css`) under the same names. Nothing
+ * checks the copies, so update them by hand when the palette changes. One light
+ * value and one dark value per name, in that order.
+ */
+:root {
+  --color-canvas: #dedede;
+  --color-neutral-1: #252525;
+  --color-neutral-3: #505050;
+  --color-neutral-7: #d0d0d0;
+  --color-accent: #325ac2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #161616;
+    --color-neutral-1: #e7e7e7;
+    --color-neutral-3: #a4a4a4;
+    --color-neutral-7: #2c2c2c;
+    --color-accent: #426dd7;
+  }
+}
+
+html {
+  background-color: var(--color-canvas);
+  color: var(--color-neutral-1);
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  box-sizing: border-box;
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 20vh 1rem 1rem;
+  text-align: center;
+}
+
+h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+  color: var(--color-neutral-3);
+}
+
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  margin: 0 auto 1.5rem;
+  border: 3px solid var(--color-neutral-7);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+html:not([data-state='pending']) .spinner {
+  display: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 3s;
+  }
+}
