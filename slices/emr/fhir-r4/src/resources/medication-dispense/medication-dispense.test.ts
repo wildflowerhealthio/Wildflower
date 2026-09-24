@@ -4,6 +4,7 @@ import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
 import {
   Annotation,
@@ -148,7 +149,7 @@ describe('FhirR4MedicationDispense', () => {
   test('property: statusReason[x] choice field round-trips', () => {
     fc.assert(
       fc.property(
-        overrideArb({
+        atMostOnePopulatedSlot({
           statusReasonCodeableConcept: Schema.NullOr(CodeableConcept.Schema),
           statusReasonReference: Schema.NullOr(IdentifierAndReference.ReferenceSchema),
         }),
@@ -161,7 +162,7 @@ describe('FhirR4MedicationDispense', () => {
   test('property: medication[x] choice field round-trips', () => {
     fc.assert(
       fc.property(
-        overrideArb({
+        atMostOnePopulatedSlot({
           medicationCodeableConcept: Schema.NullOr(CodeableConcept.Schema),
           medicationReference: Schema.NullOr(IdentifierAndReference.ReferenceSchema),
         }),

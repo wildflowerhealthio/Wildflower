@@ -1,7 +1,6 @@
 import './instrument.ts'
 import { createBrowserHistory } from '@tanstack/react-router'
-import 'tundra-css'
-import 'react-tundraish/styles.css'
+import 'react-tundraish/styles'
 import { basenameOf, restoreRedirectedUrl } from 'branding-core'
 import { Option } from 'effect'
 import {

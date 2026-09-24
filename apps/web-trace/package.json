@@ -32,6 +32,7 @@
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
+    "smart-app-react": "workspace:*",
     "tundra-css": "catalog:",
     "web-trace-core": "workspace:*",
     "web-trace-react": "workspace:*"

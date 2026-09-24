@@ -11,7 +11,6 @@ export default defineConfig({
     entry: {
       index: 'src/index.ts',
       'smart/index': 'src/smart/index.ts',
-      'connect/index': 'src/connect/index.ts',
     },
   },
   test: {

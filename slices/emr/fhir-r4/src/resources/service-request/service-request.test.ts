@@ -4,6 +4,7 @@ import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
 import { CodeableConcept, IdentifierAndReference, Meta, Period } from '../../data-types/index.ts'
 import * as ServiceRequest from './service-request.ts'
@@ -215,7 +216,7 @@ describe('FhirR4ServiceRequest', () => {
   test('property: occurrence[x] choice field round-trips', () => {
     fc.assert(
       fc.property(
-        overrideArb({
+        atMostOnePopulatedSlot({
           occurrenceDateTime: Schema.NullOr(Schema.DateTimeUtc),
           occurrencePeriod: Schema.NullOr(Period.Schema),
         }),
@@ -228,7 +229,7 @@ describe('FhirR4ServiceRequest', () => {
   test('property: asNeeded[x] choice field round-trips', () => {
     fc.assert(
       fc.property(
-        overrideArb({
+        atMostOnePopulatedSlot({
           asNeededBoolean: Schema.NullOr(Schema.Boolean),
           asNeededCodeableConcept: Schema.NullOr(CodeableConcept.Schema),
         }),

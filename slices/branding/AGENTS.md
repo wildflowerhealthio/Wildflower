@@ -53,8 +53,9 @@ the same `?redirect=` detour as the published site.
 
 ## The app landing page
 
-A SMART app visited without a launch (`apps/medications-app`,
-`apps/importer-web`, `apps/web-trace`) renders `SiteHeader`, then `AppLanding`
+A SMART app visited without a launch (`apps/medications-app` and
+`apps/importer-web` through `smart-app-react`'s `SmartAppRoot`, and
+`apps/web-trace`) renders `SiteHeader`, then `AppLanding`
 inside `main`, then `SiteFooter`. `AppLanding` takes the app's `AppSectionId`
 and its connect menu as children: it lays out the introduction from
 `APP_DESCRIPTIONS` on the left (the app name as the page's `h1`, the tagline,
@@ -90,7 +91,9 @@ only governs override precedence for same-named tokens; the layout tokens'
 `var(--space-N)` references resolve at computed-value time whatever the sheet
 order. In source mode the `*.module.css` rules arrive through the JS import
 chain; in built consumers they are bundled into `dist/style.css` via the
-`default` export condition.
+`default` export condition. `branding-react`'s JS entry imports this stylesheet
+itself, so an app that renders any of its components gets the tokens without
+importing them (the self-hosted SMART apps rely on this).
 
 ## Deploy contract
 

@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type * as StandaloneLaunch from '../smart/standalone-launch.ts'
+import type * as Smart from 'fhir-r4-react/smart'
 import { ConnectMenu } from './connect-menu.tsx'
 import { DEFAULT_SERVER_PRESET_GROUPS, DEFAULT_SERVER_PRESETS } from './server-presets.ts'
 
@@ -10,8 +10,8 @@ import { DEFAULT_SERVER_PRESET_GROUPS, DEFAULT_SERVER_PRESETS } from './server-p
 // validation path under test is the production one, not a mock.
 const startStandaloneLaunchMock = vi.hoisted(() => vi.fn())
 
-vi.mock('../smart/standalone-launch.ts', async (importOriginal) => {
-  const actual = await importOriginal<typeof StandaloneLaunch>()
+vi.mock('fhir-r4-react/smart', async (importOriginal) => {
+  const actual = await importOriginal<typeof Smart>()
   return { ...actual, startStandaloneLaunch: startStandaloneLaunchMock }
 })
 

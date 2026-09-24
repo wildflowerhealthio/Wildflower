@@ -1,9 +1,10 @@
-import { Arbitrary, Schema } from 'effect'
+import { Arbitrary, Either, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { InstantSchema, TimeSchema } from '../../data-types/base/primitives.ts'
 import {
   Annotation,
@@ -130,6 +131,43 @@ describe('FhirR4Observation', () => {
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+
+  describe('value[x] at-most-one guard', () => {
+    test('property: rejects decoding a wire payload populating two or more value[x] slots', () => {
+      fc.assert(
+        fc.property(conflictingValueSlotsArb, (slots) => {
+          // Arrange — each slot's wire JSON, merged onto the shell observation's
+          const wire = {
+            ...Schema.encodeSync(Observation.Schema)(sampleObservation),
+            ...Object.fromEntries(slots.map(([key, value]) => [key, wireSlot(key, value)])),
+          }
+
+          // Act
+          const result = Schema.decodeUnknownEither(Observation.Schema)(wire)
+
+          // Assert
+          expectGuardFailureNaming(result, slots)
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+
+    test('property: rejects encoding an Observation populating two or more value[x] slots', () => {
+      fc.assert(
+        fc.property(conflictingValueSlotsArb, (slots) => {
+          // Arrange
+          const observation = { ...sampleObservation, ...Object.fromEntries(slots) }
+
+          // Act
+          const result = Schema.encodeEither(Observation.Schema)(observation)
+
+          // Assert
+          expectGuardFailureNaming(result, slots)
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
   })
 
   describe('status leniency (client capability deviation)', () => {
@@ -315,7 +353,7 @@ describe('FhirR4Observation', () => {
   })
 
   test('property: effective[x] choice field round-trips', () => {
-    const effectiveArb = overrideArb({
+    const effectiveArb = atMostOnePopulatedSlot({
       effectiveDateTime: Schema.NullOr(Schema.DateTimeUtc),
       effectivePeriod: Schema.NullOr(Period.Schema),
       effectiveTiming: Schema.NullOr(Timing.Schema),
@@ -328,7 +366,7 @@ describe('FhirR4Observation', () => {
   })
 
   test('property: value[x] choice field round-trips', () => {
-    const valueArb = overrideArb({
+    const valueArb = atMostOnePopulatedSlot({
       valueQuantity: Schema.NullOr(Quantity.Schema),
       valueCodeableConcept: Schema.NullOr(CodeableConcept.Schema),
       valueString: Schema.NullOr(Schema.String),
@@ -349,3 +387,46 @@ describe('FhirR4Observation', () => {
     )
   })
 })
+
+// Helpers
+
+// Two or more `Observation.value[x]` slots, each paired with a non-null
+// decoded value — a choice element FHIR R4 forbids.
+const conflictingValueSlotsArb = Arbitrary.make(
+  Schema.Struct({
+    valueQuantity: Quantity.Schema,
+    valueCodeableConcept: CodeableConcept.Schema,
+    valueString: Schema.String,
+    valueBoolean: Schema.Boolean,
+    valueInteger: Schema.Int,
+    valueRange: Range.Schema,
+    valueRatio: Ratio.Schema,
+    valueSampledData: SampledData.Schema,
+    valueTime: TimeSchema,
+    valueDateTime: Schema.DateTimeUtc,
+    valuePeriod: Period.Schema,
+  })
+).chain((values) => fc.subarray(Object.entries(values), { minLength: 2 }))
+
+// The wire JSON of one `value[x]` slot, encoded through the whole Observation.
+const wireSlot = (key: string, value: unknown): unknown => {
+  const encoded: Readonly<Record<string, unknown>> = Schema.encodeSync(Observation.Schema)({
+    ...sampleObservation,
+    [key]: value,
+  })
+  return encoded[key]
+}
+
+const expectGuardFailureNaming = (
+  result: Either.Either<unknown, ParseResult.ParseError>,
+  slots: readonly (readonly [string, unknown])[]
+): void => {
+  const message = Either.match(result, {
+    onLeft: (error) => error.message,
+    onRight: () => 'succeeded without error',
+  })
+  expect(message).toContain(
+    `choice element value[x] allows at most one populated slot, but found ${slots.length}:`
+  )
+  for (const [key] of slots) expect(message).toContain(key)
+}

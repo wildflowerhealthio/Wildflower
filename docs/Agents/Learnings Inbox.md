@@ -395,6 +395,18 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Learning**: `tauri-build` resolves and copies every `bundle.resources` entry from the crate's `build.rs` on every compile, including debug builds and `cargo check`, not just when bundling a release. A path that doesn't exist fails with `ResourcePathNotFound`, and a glob that matches nothing fails with `GlobPathNotFound` (`tauri-utils` `resources.rs`). So a resource can only name a directory that a fresh clone and CI have. A gitignored vendored build such as `slices/apps/self-hosted-apps/patient-browser/` can't be named directly. Map a tracked parent directory instead, which is why `tauri.conf.json` still maps all of `self-hosted-apps/`.
 **Suggested destination**: slices/apps/self-hosted-apps/README.md already covers the specific case; a general note belongs in a Tauri/Rust reference
 
+## A CSS `@import` of a package stylesheet ships it twice when the package's JS also imports it
+
+**Discovered during**: ruthmarks/fhir-r4-react-app-shell (#572, the shared SMART app shell)
+**Learning**: `react-tundraish` and `branding-react` import their own `styles.css` from their JS entries (`src/index.ts`'s first line). An app that also names that stylesheet gets one copy only if it names it the same way, as a side-effect module import, because Vite dedupes a stylesheet by module id. A `.css` file that `@import`s it instead gets the stylesheet inlined into its own module, which the bundler cannot match to the JS-imported copy: the first draft of the SMART apps' shared stylesheet stack was an `@import` file, and it shipped every tundraish and branding token twice (the SMART apps' shared CSS chunk went from ~97 KB to ~128 KB). Nothing warns. The build succeeds and the page looks right, because the duplicates declare the same values. Put a stack of package stylesheets in a TS module of side-effect imports (`react-tundraish/styles`), and count a token's declarations in the built CSS (`grep -o -- '--font-sans:' dist/assets/*.css`) to check.
+**Suggested destination**: CSS / styling section of the Vite+ or React Testing docs, or `slices/branding/AGENTS.md` "Consuming the styles"
+
+## An Effect `Schema.filter` re-decodes the Type side before it encodes, and `Schema.omit` drops it
+
+**Discovered during**: ruthmarks/fhir-r4-choice-element-exclusivity (the `value[x]` at-most-one guard, #379)
+**Learning**: Encoding through a refinement first decodes the in-memory value against the schema's Type side, then encodes the result. A `Schema.declare` is its own Type side, so a declaration whose decode maps any input to `null` (fhir-r4's unregistered-datatype stub) silently turned a non-null in-memory slot into `null` once the struct was filtered, and the loud encode failure vanished. Composing the declaration onto `Schema.Null` gives it a strict Type side. Separately, `Schema.omit` / `Schema.pick` rebuild a plain struct and discard every refinement on the way — `withMandatoryId` has to re-apply them. A `jsonSchema` annotation with a `type` key on a refinement overrides the generated JSON Schema, so an OpenAPI snapshot is unchanged when the annotation moves onto the filter.
+**Suggested destination**: Effect Patterns Reference
+
 ## The server is bearer-only; there is no cookie auth to fall back on
 
 **Discovered during**: claude/wildflower-cookie-auth-audit-z4hncx (removing `wf_auth` / `wf_auth_exp`)

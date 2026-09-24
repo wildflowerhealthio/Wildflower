@@ -22,9 +22,11 @@ import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
 import { AppRootTree, type AppRootTreeProps } from './bridges/app-root-tree.tsx'
 import type { ReactTransport } from './bridges/transport-context.ts'
 import { routeTree } from './routeTree.gen.ts'
-// Self-hosted Wildflower fonts — loaded here so every entry (web and the Tauri
-// shell via `wildflower-react/app-root`) picks them up through a single import.
-import './styles/fonts.ts'
+// The design-system stylesheet stack, fonts included — imported here so every
+// entry (web and the Tauri shell via `wildflower-react/app-root`) picks it up.
+// An entry that already imported part of it gets no second copy: the bundler
+// dedupes each stylesheet by module id.
+import 'react-tundraish/styles'
 
 /**
  * Per-entry transport factory. Receives a stable `navigate` closure

@@ -13,10 +13,6 @@
       "source": "./src/smart/index.ts",
       "default": "./dist/smart/index.js"
     },
-    "./connect": {
-      "source": "./src/connect/index.ts",
-      "default": "./dist/connect/index.js"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -45,7 +41,6 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
@@ -60,7 +55,6 @@
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
-    "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*"
   }
 }

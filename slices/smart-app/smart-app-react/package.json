@@ -1,0 +1,47 @@
+{
+  "name": "smart-app-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Wildflower chrome every self-hosted SMART app boots through: `SmartAppRoot` (one QueryClient, the launched/standalone branch latched on mount, the launch-failure banner), `runSmartLaunchEntry` (the whole launch.html entry), and `ConnectMenu` (the standalone connect flow over `fhir-r4-react/smart`'s launch primitives). Built on `fhir-r4-react/smart` for the SMART wiring and `branding-react` for the Wildflower chrome, so neither of those has to know about the other.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "branding-core": "workspace:*",
+    "branding-react": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-tundraish": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "catalog:",
+    "branding-core": "workspace:*",
+    "branding-react": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-tundraish": "workspace:*"
+  }
+}

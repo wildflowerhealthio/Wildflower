@@ -1,7 +1,5 @@
 /// <reference types="vite-plus/client" />
 
-declare module 'tundra-css'
-declare module 'react-tundraish/styles.css'
 declare module 'scopes-react/styles.css'
 
 declare module '*.module.css' {
