@@ -60,6 +60,11 @@ A mutation with only an `onSuccess` handler leaves the UI silently diverged from
 - **Reuse existing verbs.** `evaluateJs`, not a fresh `send`. Use `*Args` for command argument structs, and root packages under `io.wildflowerhealth.*`.
 - **Be precise.** The maintainer holds names to their exact meaning: "if `internal_apps_loopback_host` shouldn't have a port use `internal_apps_loopback_hostname` if it should, change it"; "we're consulting the `x-public-origin` — surely this should return an origin rather than a host?".
 - **One meaning per variant.** Add a new variant rather than smuggling a second contract through an existing one — PR #241's `AppUrl::External` was made to carry loopback `http` URLs it was never meant to represent.
+- **Names carry their context.** A parameter or local names the domain thing it holds, not only its role in the function: "These parameter names (across the whole pr) should communicate more context. This is the pharmacyLocationReference right?" (PR #747). A local holding scopes says `_scopes`; two values of the same kind in scope are named by where each came from (`requested_redirect_uri`, `owner_approved_scopes` vs `registered_client_scopes`); a bare `started`/`starter`/`parked` gets a second word (PR #730).
+- **Types are nouns for what they hold, not the moment they were produced.** "A general theme I'm noticing with naming choice across these PRs is having structs representing events, like DeviceAuthorizationStarted that are just a little unnatural and unclear" (PR #723). Event-style results (`DeviceAuthorizationStarted`, `ExchangedToken`), and roles described in the abstract (`ScopeCeiling`, `RegistrationContext`, `MintAuthority`), became `DeviceCodes`, `IssuedTokens`, `ApprovableScopes`, `TokenEntitlement`.
+- **Functions name what they do to their input.** `repeatCount` → `asSafeRepeatCount` (PR #747); `choiceElementSetExclusive` → `filterForExclusiveChoiceElementSet` — "this function needs to make it clearer that it's a filter" (PR #748). A name shouldn't read like a test when it performs an action: `start_family_if_granted` "reads like it's running a test rather than reading an object" (PR #722).
+- **A bool that encodes a policy is named for the policy** (`registration_is_locked`), not for the identity it is derived from (`is_first_party`) (PR #718).
+- **Prefer a type's question-methods over a pass-through accessor** — `client.allows_grant_type(…)`, not `client.client().allowed_grant_types` (PR #720).
 
 ## 9. Docs speak in the present tense about the current state
 
@@ -72,6 +77,17 @@ Before pushing, reconcile the doc comments of every touched module against the d
 - **Values come from config.** Hosts and origins (e.g. `loopback_host` in the tauri config) are read, not hardcoded: "these are not guaranteed, you need to read config" (PR #241).
 - **Extend, don't parallelize.** Add impl methods to the existing store rather than inventing a parallel one: "Don't invent a new store, just add impl methods to the other one" (PR #241).
 - **Name the messy expression.** Split dense expressions or extract a named function: "This is really messy, let's name a function for this" (PR #253).
+
+## 11. Types must earn their keep; decode before transforming
+
+- **Check before adding a type.** A method on an existing type or an `Option<T>` usually says it. Rejected shapes: a two-variant enum whose other variant means "don't" ("a confusing half object", PR #718 — became `Option<&ClientRegistrationVerdict>`), parameter bags repeating an existing type's fields (`CodeApproval`, `MintRequest`; `approve_for_code` now takes the `PendingCodeRequest` the flow already has), single-variant error enums ("Does this enum justify itself given it has one member?", PR #730), an enum duplicating an existing outcome enum (PR #722), and anonymous multi-field returns ("This return type is very confusing", PR #747).
+- **Decode at the boundary, then work on typed values.** Effect Schema in TS, typed serde structs in Rust. "These parse actions should all be handled with schemas or something. I really don't like this parse in place style"; "These methods should expect values to parse before trying to manicure the data" (PR #747). Carrying `unknown` into the logic and checking `Array.isArray` / `instanceof` along the way is the smell.
+- **Transform as `T → T` steps.** "It's weird to hold onto the idea of two indexes for a while because you need them to filter something later" (PR #747) — write each edit as a function from the value to its edited copy and compose them.
+
+## 12. Pre-launch defaults: no compatibility, no swallowed errors
+
+- **No backwards compatibility.** "We're pre-launch. There should be no attempt to maintain compatibility with data from before this pr" (PR #747). That covers stored data, wire shapes between the Tauri host and hosted server, and deprecated aliases after a rename: change the shape and update every reader.
+- **Errors bubble.** "Does this ok() swallow an error reading a client? I think that should bubble up as a failure" (PR #730). `.ok()`, `unwrap_or_default()`, and catch-all arms turn failures into plausible defaults; a comment explaining why the swallow is deliberate is the tell.
 
 ## See Also
 

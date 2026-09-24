@@ -59,6 +59,17 @@ There do exist some, narrow exceptions to the rule:
 - The phantom-id `as unknown as Layer.Layer<...>` cast used by `*ApiHandlersFor<ParentId>()` helpers when composing `HttpApi` groups across packages — see [HttpApi Composition How-To](./docs/Effect/HttpApi%20Composition%20How-To.md)
 - When you are truly confident in an invariant that is independently verified by robust tests
 
+### Agents SHOULD write code that reads the way the maintainer reviews it
+
+Recurring review cues — the reasoning and examples are in [Review Standards](./docs/Agents/Review%20Standards%20Reference.md).
+
+- **Names carry their context.** A parameter or local names the domain thing it holds, not just its role in the function — it should read correctly deep in the body with the signature out of view. When two values of the same kind are in scope, name each by where it came from.
+- **Types name what they hold; functions name what they do.** A type is a noun for its contents, not the event that produced it. A function's name says what it does to its input (converts, filters, starts), not what comes out.
+- **A new type must earn its keep.** Before adding one, check whether a method on an existing type or an `Option` already says it. Suspects: single-variant enums, single-field wrappers, parameter bags repeating an existing type's fields, anonymous multi-field returns, enums mirroring one that exists.
+- **Decode, then transform.** Parse input into typed values at the boundary (Effect Schema in TS, typed serde structs in Rust), then work on those. Don't carry `unknown`/untyped values into logic and check shapes as you go. Write edits as `T → T` steps rather than collecting indexes to filter later.
+- **Pre-launch: no backwards compatibility.** No fallbacks, dual reads, migrations, wire-compat shims, or deprecated aliases for shapes that existed before your change. Change the shape and update every reader.
+- **Errors bubble.** Don't turn a failure into a default (`.ok()`, `unwrap_or_default()`, a catch-all arm). A comment explaining why a swallow is fine is a signal to propagate instead.
+
 ## Branch Naming
 
 `username/description` (e.g., `ruthmarks/add-fhir-server`, `ruthmarks/migrate-claude-behaviour`)
