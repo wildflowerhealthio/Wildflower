@@ -8,23 +8,35 @@ menu, where the user picks a FHIR server, on a bare visit).
 
 ## Boot structure
 
-`src/main.tsx` is the HTML entry point: it loads style sheets (tundra-css,
-react-tundraish, branding-react layout tokens, self-hosted fonts), wires the OS
-colour-scheme listener, and renders `<AppRoot />` inside `<StrictMode>`.
+Both entries run on `smart-app-react`, the chrome every self-hosted SMART app
+boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
 
-`src/app-root.tsx` exports `AppRoot`, the top-level component that wraps
-everything in a single `QueryClientProvider` and branches on whether a SMART
+`src/main.tsx` is the `index.html` entry: it imports the design-system
+stylesheet module (`react-tundraish/styles` — tundra-css, react-tundraish and
+the self-hosted fonts, in that order),
+completes a GitHub Pages 404 redirect, wires the OS colour-scheme listener, and
+renders `<AppRoot />` inside `<StrictMode>`.
+
+`src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="medications"
+standalone={standaloneSmartConfig}>` around `<App />`. `SmartAppRoot` owns the
+single `QueryClientProvider` and branches, latched on mount, on whether a SMART
 callback is in the URL:
 
 - **Launched** (OAuth callback present) — renders `<BrandBar />` (a slim brand
   link back to the marketing site) above `<App />`.
 - **Standalone** (bare visit) — renders the full Wildflower chrome:
-  `<SiteHeader>`, `<ConnectMenu>`, `<SiteFooter>`, with nav links resolving as
-  absolute URLs back to `wildflowerhealth.io`.
+  `<SiteHeader>`, the app's `<AppLanding>` introduction beside `<ConnectMenu>`,
+  `<SiteFooter>`, with nav links resolving as absolute URLs back to
+  `wildflowerhealth.io`.
 
 `AppRoot` accepts an optional `launched` prop (defaults to the live URL check)
 so both branches are testable without URL manipulation. The package exports
 `AppRoot` via the `source` condition for future aggregator-shell composition.
+
+`src/launch-main.tsx` is the `launch.html` entry: the same stylesheet import,
+then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call,
+which shows a loading line under `BrandBar` and starts the authorize redirect,
+sending a failed launch back to the app root as `?launchError`.
 
 ## Views
 

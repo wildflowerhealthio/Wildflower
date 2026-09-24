@@ -39,29 +39,6 @@
   gap: var(--space-5);
 }
 
-/*
- * Standalone (bare-visit) page: a full-height column so the footer sits at the
- * bottom of the viewport even when the ConnectMenu is shorter than the screen.
- */
-.standalone-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-/*
- * The landing area (intro beside the ConnectMenu): centred horizontally, and
- * it grows to fill the column. No `width: 100%` — a block already fills its
- * container, and under content-box sizing an explicit 100% plus the horizontal
- * padding overflows the viewport on phones and makes the page scroll sideways.
- */
-.connect-page {
-  flex: 1;
-  max-width: var(--content-max-width);
-  margin: 0 auto;
-  padding: var(--space-13) var(--page-padding-x);
-}
-
 /* Loading / error lines share the body size; only the colour differs. */
 .status {
   font-size: var(--font-size-3);

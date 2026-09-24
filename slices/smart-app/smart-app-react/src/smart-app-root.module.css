@@ -1,0 +1,24 @@
+/*
+ * The standalone (bare-visit) page `SmartAppRoot` renders: a full-height
+ * column so the footer sits at the bottom of the viewport even when the
+ * landing content is shorter than the screen. Tokens come from
+ * `react-tundraish/styles` and `branding-react`'s layout tokens.
+ */
+.standalone-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/*
+ * The landing area (intro beside the ConnectMenu): centred horizontally, and
+ * it grows to fill the column. No `width: 100%` — a block already fills its
+ * container, and under content-box sizing an explicit 100% plus the horizontal
+ * padding overflows the viewport on phones and makes the page scroll sideways.
+ */
+.connect-page {
+  flex: 1;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-13) var(--page-padding-x);
+}

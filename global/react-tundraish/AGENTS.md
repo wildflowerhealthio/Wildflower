@@ -10,6 +10,19 @@ the same target — so a token can be read from any of them. There is no
 `prefers-color-scheme` rule anywhere: both runtimes resolve the scheme in JS and
 write the attribute (see `src/color-scheme.ts`).
 
+## Loading the styles
+
+An app's entry imports `react-tundraish/styles` before anything else that
+carries CSS. It is `src/styles.ts`, a module of side-effect imports in the
+load-bearing order: `tundra-css` (base tokens and reset), then this package's
+`styles.css` (which re-points them), then the Atkinson Hyperlegible faces
+`--font-sans` / `--font-mono` resolve to. It is a module rather than a
+stylesheet of `@import`s because `index.ts` imports `./styles.css` too: the
+bundler dedupes a stylesheet by module id, so an app that still imports
+`tundra-css` or `react-tundraish/styles.css` directly gets one copy of each,
+while an `@import` would be inlined and ship twice. `tundra-css` and the two
+`@fontsource-variable` packages are peers, so the app lists them.
+
 ## Categorical series tokens
 
 `--color-series-1` … `--color-series-4` are the chart-identity slots, with

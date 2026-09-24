@@ -7,7 +7,7 @@ vi.mock('./app.tsx', () => ({
   App: (): JSX.Element => <div data-testid="mock-app">App</div>,
 }))
 
-vi.mock('fhir-r4-react/connect', () => ({
+vi.mock('smart-app-react', () => ({
   ConnectMenu: ({
     clientId,
     scope,

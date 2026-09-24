@@ -18,9 +18,9 @@
  * `--font-sans` so any lingering serif usage renders in the UI family rather
  * than a serif, and no new usage should reach for it.
  *
- * Both families are loaded by the consuming app as side-effect imports of the
- * `@fontsource-variable` packages (see `apps/wildflower-react/src/styles/
- * fonts.ts`); the variable `wght` axis spans 200–800. Tokens live on `:root`
+ * Both families are loaded as side-effect imports of the `@fontsource-variable`
+ * packages by `styles.ts` (`react-tundraish/styles`), which an app imports
+ * first; the variable `wght` axis spans 200–800. Tokens live on `:root`
  * so any component or app stylesheet can read `var(--font-sans)` without
  * importing this file directly.
  */

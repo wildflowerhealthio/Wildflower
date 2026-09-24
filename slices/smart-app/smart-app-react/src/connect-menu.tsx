@@ -1,7 +1,7 @@
 import { useState, type JSX, type SubmitEvent } from 'react'
 import { ErrorBanner, TextField } from 'react-tundraish'
 
-import { normalizeServerUrl, startStandaloneLaunch } from '../smart/standalone-launch.ts'
+import { normalizeServerUrl, startStandaloneLaunch } from 'fhir-r4-react/smart'
 import { DEFAULT_SERVER_PRESET_GROUPS, type ServerPresetGroup } from './server-presets.ts'
 
 import styles from './connect-menu.module.css'
