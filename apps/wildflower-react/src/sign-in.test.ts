@@ -399,33 +399,39 @@ describe('rememberReturnTo / takeReturnTo', () => {
 describe('postSignInUrl', () => {
   const ORIGIN = 'https://wildflowerhealth.io'
 
-  it('lands on the return path carrying the signed-in server', () => {
-    // Arrange / Act
-    const settled = new URL(postSignInUrl('/home', SERVER_URL, ORIGIN), ORIGIN)
-
-    // Assert
-    expect(settled.pathname).toBe('/home')
-    expect(settled.searchParams.get('server')).toBe(SERVER_URL)
+  it('lands on the return path as given', () => {
+    // Arrange / Act / Assert
+    expect(postSignInUrl('/home', ORIGIN)).toBe('/home')
   })
 
-  it('merges the server into a returnTo that brings its own query and hash', () => {
-    // The gate preserves the whole path it bounced, so `server` is added to that
-    // query rather than replacing it, and the fragment survives.
-    const settled = new URL(
-      postSignInUrl('/settings/tunnel?tab=logs#live', SERVER_URL, ORIGIN),
-      ORIGIN
-    )
+  it('drops the server the gate carried into returnTo, keeping the rest of its query and hash', () => {
+    // The gate preserves the whole path it bounced, including the retained
+    // `?server=`; only that parameter leaves, and the fragment survives.
+    const returnTo = `/settings/tunnel?tab=logs&server=${encodeURIComponent(SERVER_URL)}#live`
 
-    expect(settled.pathname).toBe('/settings/tunnel')
-    expect(settled.searchParams.get('tab')).toBe('logs')
-    expect(settled.searchParams.get('server')).toBe(SERVER_URL)
-    expect(settled.hash).toBe('#live')
+    expect(postSignInUrl(returnTo, ORIGIN)).toBe('/settings/tunnel?tab=logs#live')
+  })
+
+  it('property: never names a server, whatever query returnTo brings', () => {
+    fc.assert(
+      fc.property(fc.dictionary(fc.string(), fc.string()), fc.webUrl(), (query, serverUrl) => {
+        // Arrange
+        const search = new URLSearchParams({ ...query, server: serverUrl })
+
+        // Act
+        const settled = new URL(postSignInUrl(`/home?${search.toString()}`, ORIGIN), ORIGIN)
+
+        // Assert
+        expect(settled.searchParams.has('server')).toBe(false)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 
   it('carries no authorization response, since it is built from the return path', () => {
     // The callback’s single-use `?code=`/`?state=` never reaches `returnTo`, so
     // they cannot survive into the settled URL.
-    const settled = new URL(postSignInUrl('/home', SERVER_URL, ORIGIN), ORIGIN)
+    const settled = new URL(postSignInUrl('/home', ORIGIN), ORIGIN)
 
     expect(settled.searchParams.has('code')).toBe(false)
     expect(settled.searchParams.has('state')).toBe(false)

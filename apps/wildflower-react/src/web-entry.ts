@@ -1,4 +1,4 @@
-import { searchWithServerUrl, serverUrlFromSearch } from 'gatekeeper-core/smart-client'
+import { serverUrlFromSearch, type Session } from 'gatekeeper-core/smart-client'
 import {
   gatekeeperLogoutSettingsItem,
   makeAwaitLandingAuthReady,
@@ -41,6 +41,19 @@ const DEFAULT_SERVER_URL = `http://${loopbackHostname}:${loopbackPort}`
 const apiServerUrl = (search: string): string => serverUrlFromSearch(search) ?? DEFAULT_SERVER_URL
 
 /**
+ * The API origin `main-web`'s boot hands the transport: the server a sign-in
+ * just redeemed against, when this load was its return leg, and otherwise the
+ * one `search` names (see {@link apiServerUrl}).
+ *
+ * The session has to win. The registered redirect URI carries no query, so a
+ * return leg's `search` names no server. Read on its own, it would point every
+ * request at the loopback default, a server other than the one that issued the
+ * token.
+ */
+const apiServerUrlForLoad = (search: string, redeemedSession: Session | undefined): string =>
+  redeemedSession?.serverUrl ?? apiServerUrl(search)
+
+/**
  * Prefix a root-absolute in-app route with the served `basepath`, so a raw
  * `history.push`/`replace` lands where the router — configured with that same
  * `basepath` — will match it.
@@ -70,8 +83,9 @@ const underBasepath = (basepath: string, route: string): string =>
  * - `awaitAuthReady`: redirects unauthed users to the root landing
  *   page (`/`) instead of device-login, because this entry has no API server
  *   until the reader picks one — the picker and the sign-in live at the root.
- * - `apiBaseUrl`: read from `?server=`, defaulting to the local
- *   loopback origin.
+ * - `apiBaseUrl`: the caller's `apiBaseUrl`, which `main-web` resolves with
+ *   {@link apiServerUrlForLoad}. Past sign-in the address bar no longer names
+ *   the server.
  * - `clientBaseUrl`: this copy's served root (origin + `basepath`), named to
  *   the server on the device-flow request and the logout so the pages it hands
  *   back point at this copy — see `sign-in.ts`'s `clientBaseUrlFor`.
@@ -80,15 +94,24 @@ const underBasepath = (basepath: string, route: string): string =>
  * - `makeTransport`: pre-resolved stub (no host bridge).
  * - `platformSettingsItems`: gatekeeper's logout row (`gatekeeperLogoutSettingsItem`) —
  *   forgets the bearer, revokes it at `{server}/access/logout`, and reloads the
- *   landing page at `basepath`, still pointed at the same server.
+ *   bare landing page at `basepath`. The URL names no server, so the reader
+ *   picks one rather than being signed straight back in.
  * - `platformTabs`: none.
  * - `redirectToDeviceLoginOnUnauthorized`: true — a 401 that outlives the
  *   boot-race retry still falls back to the device-code screen. The landing
  *   page signs in by SMART redirect instead (`sign-in.ts`), so that route is
  *   reached only from this fallback and from a step-up, not from the picker.
+ *
+ * `page` is the slice of `window` this wiring reads and navigates; a real
+ * `Window` satisfies it, and a test passes a stub.
  */
 const makeWebEntryOptions = (
-  basepath: string
+  page: {
+    readonly fetch: typeof globalThis.fetch
+    readonly location: Pick<Location, 'href' | 'assign'>
+  },
+  basepath: string,
+  apiBaseUrl: string
 ): Pick<
   RenderAppOptions,
   | 'tokenStore'
@@ -103,8 +126,7 @@ const makeWebEntryOptions = (
 > & { readonly bearerStore: BearerAuthStateStore } => {
   const bearerStore = makeBearerAuthStateStore()
 
-  const apiBaseUrl = apiServerUrl(window.location.search)
-  const clientBaseUrl = clientBaseUrlFor(window.location.href, basepath)
+  const clientBaseUrl = clientBaseUrlFor(page.location.href, basepath)
 
   return {
     bearerStore,
@@ -119,11 +141,9 @@ const makeWebEntryOptions = (
         apiBaseUrl,
         ...(clientBaseUrl === undefined ? {} : { clientBaseUrl }),
         bearerStore,
-        fetch: (input, init) => window.fetch(input, init),
+        fetch: (input, init) => page.fetch(input, init),
         leave: () => {
-          window.location.assign(
-            `${underBasepath(basepath, '/')}${searchWithServerUrl('', apiBaseUrl)}`
-          )
+          page.location.assign(underBasepath(basepath, '/'))
         },
       }),
     ],
@@ -132,4 +152,4 @@ const makeWebEntryOptions = (
   }
 }
 
-export { apiServerUrl, DEFAULT_SERVER_URL, makeWebEntryOptions, underBasepath }
+export { apiServerUrl, apiServerUrlForLoad, DEFAULT_SERVER_URL, makeWebEntryOptions, underBasepath }

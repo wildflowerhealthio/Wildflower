@@ -22,9 +22,10 @@ const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
  *
  * `?server=` is what `web-entry.ts` reads to point the transport, so it has
  * to be in the URL — but a reload is not needed to get there and would only
- * throw away the page mid-action. It survives the sign-in round trip anyway:
- * the registered redirect carries no query, so `main-web`'s boot restores
- * `?server=` from the redeemed session rather than from the address bar.
+ * throw away the page mid-action. It does not survive the sign-in round trip,
+ * and does not need to: the registered redirect carries no query, and
+ * `main-web`'s boot points the transport at the redeemed session's server,
+ * leaving `?server=` out of the settled URL.
  *
  * The current `pathname` is kept, not replaced with `/`: this build is served
  * under a subpath (`/app/`, or a PR preview's `/staging/pr-<n>/app/`), so a

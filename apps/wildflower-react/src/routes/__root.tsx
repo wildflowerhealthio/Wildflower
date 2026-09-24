@@ -22,9 +22,12 @@ const validateRootSearch = (search: Record<string, unknown>): RootSearch => {
  * the matched child via `<Outlet />`. Slice route directories are
  * mounted beneath via virtual-route config in `vite.config.base.ts`.
  *
- * `?server=` is retained across every navigation, so the address bar — and
- * any link the router builds, like a home tile's launch link opened in a new
- * tab — still names the server this page talks to, and a reload stays on it.
+ * `?server=` is retained across every navigation while it is in the URL, so
+ * a reader who has picked a server but not yet signed in keeps it through the
+ * auth gate's bounce back to the landing. After sign-in `main-web` settles on
+ * a URL without it (see `postSignInUrl`), and from then on there is nothing to
+ * retain: the address bar and the links the router builds name no server, and
+ * a reload returns to the picker.
  */
 /** The root's search handling, shared with its test. */
 const rootSearchOptions = {

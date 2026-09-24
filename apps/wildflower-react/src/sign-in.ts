@@ -40,7 +40,7 @@ import {
   browserSignInEnvironment,
   completeSignIn,
   redirectUriForRoute,
-  searchWithServerUrl,
+  SERVER_QUERY_PARAM,
   standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
@@ -284,17 +284,22 @@ const takeReturnTo = (page: Pick<SignInPage, 'sessionStorage'>): string | null =
 
 /**
  * The in-app URL to settle on after a redeemed sign-in: the (already sanitised)
- * `returnTo`, carrying the signed-in `?server=` so a reload keeps its target.
+ * `returnTo`, with no `?server=`.
  *
- * `returnTo` may bring its own query and hash — the gate preserves the whole
- * path it bounced — so `server` is merged into that query rather than replacing
- * it, and any `?code=`/`?state=` from the callback is dropped because the URL is
- * rebuilt from the return path, not from the address the browser arrived on.
+ * `?server=` only picks the server a sign-in goes to. Once the session is
+ * redeemed, `main-web` takes the server from the session instead, so the
+ * parameter comes out of the address bar. The root route only carries forward
+ * a `server` that is already in the URL, so later navigations don't add it
+ * back. `returnTo` may bring its own query and hash (the gate keeps the whole
+ * path it bounced, including the `server` it carried), so only `server` is
+ * removed from that query and the rest is kept. Any `?code=`/`?state=` from the
+ * callback is dropped because the URL is rebuilt from the return path, not from
+ * the address the browser arrived on.
  */
-const postSignInUrl = (returnTo: string, serverUrl: string, origin: string): string => {
+const postSignInUrl = (returnTo: string, origin: string): string => {
   const url = new URL(returnTo, origin)
-  const search = searchWithServerUrl(url.search, serverUrl)
-  return `${url.pathname}${search}${url.hash}`
+  url.searchParams.delete(SERVER_QUERY_PARAM)
+  return `${url.pathname}${url.search}${url.hash}`
 }
 
 export {
