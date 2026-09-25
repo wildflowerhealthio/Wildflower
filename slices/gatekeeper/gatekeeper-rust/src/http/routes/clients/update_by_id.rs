@@ -15,9 +15,9 @@ use crate::live_bindings::LiveClientsDisabler;
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UpdateClientBody {
-    /// When the client stops working: the caller's current time to disable it
-    /// now (a time already past is replaced by the server's), a later time to
-    /// schedule it, or `null` to re-enable it. Required, `null` included.
+    /// Any time to disable the client now, or `null` to re-enable it. The
+    /// server stamps its own now whatever time is sent, so a disable can't be
+    /// scheduled or backdated. Required, `null` included.
     // `Option::deserialize` stops serde reading a missing field as `null`, so an
     // empty body can't re-enable a client by omission.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -25,10 +25,10 @@ pub(crate) struct UpdateClientBody {
     disabled_at: Option<DateTime<Utc>>,
 }
 
-/// `PATCH /access/clients/{clientId}` — disable, schedule the disabling of, or
-/// re-enable a client by writing its `disabledAt`; answers with the client as
-/// stored. A disabled client is refused at `/oauth/authorize` and
-/// `/oauth/token` from its `disabledAt` on. Idempotent (a client that already
+/// `PATCH /access/clients/{clientId}` — disable (stamped with the server's now,
+/// whatever time is sent) or re-enable a client by writing its `disabledAt`;
+/// answers with the client as stored. A disabled client is refused at
+/// `/oauth/authorize` and `/oauth/token`. Idempotent (a client that already
 /// has a `disabledAt` keeps it). Disabling the first-party host client is
 /// refused with `409 FirstPartyClientLocked`. Acquired through
 /// [`LiveClientsDisabler`] (scope `wildflower/Client.u`).
@@ -49,6 +49,7 @@ pub(super) async fn handle_update_client(
     Path(client_id): Path<String>,
     Json(body): Json<UpdateClientBody>,
 ) -> Result<Json<ClientBody>, GatekeeperError> {
-    let updated = clients.set_disabled_at(&client_id, body.disabled_at, Utc::now())?;
+    let stamp = body.disabled_at.map(|_sent| Utc::now());
+    let updated = clients.set_disabled_at(&client_id, stamp)?;
     Ok(Json(updated.into()))
 }

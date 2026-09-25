@@ -95,13 +95,11 @@ impl<S: GatekeeperStore> ClientsDisabler<S> {
     /// Set `client_id`'s `disabled_at` in one transaction and return the row as
     /// stored.
     ///
-    /// - `Some(requested)` disables the client from `requested`, or from `now`
-    ///   when `requested` is already past — the caller can schedule a disable
-    ///   but can't backdate one. A client that already carries a stamp keeps
-    ///   it, so a repeated disable doesn't move the time.
-    /// - `None` re-enables the client (or cancels a scheduled disable). Its
-    ///   registration (redirects, scopes, secret) is untouched by the round
-    ///   trip.
+    /// - `Some(stamp)` disables the client, stamped `stamp` (the handler passes
+    ///   the server's now). A client that already carries a stamp keeps it, so
+    ///   a repeated disable doesn't move the time.
+    /// - `None` re-enables the client. Its registration (redirects, scopes,
+    ///   secret) is untouched by the round trip.
     ///
     /// # Errors
     ///
@@ -113,11 +111,10 @@ impl<S: GatekeeperStore> ClientsDisabler<S> {
     pub(crate) fn set_disabled_at(
         &self,
         client_id: &str,
-        requested: Option<DateTime<Utc>>,
-        now: DateTime<Utc>,
+        stamp: Option<DateTime<Utc>>,
     ) -> Result<ClientView, GatekeeperError> {
         let first_party = client_id == &*self.first_party_client_id;
-        if first_party && requested.is_some() {
+        if first_party && stamp.is_some() {
             return Err(GatekeeperError::FirstPartyClientLocked {
                 client_id: client_id.to_owned(),
             });
@@ -129,8 +126,7 @@ impl<S: GatekeeperStore> ClientsDisabler<S> {
         // second sees (and keeps) the first one's stamp.
         let client = self.store.immediate_transaction(|tx| {
             let client = tx.client_by_id(client_id)?.ok_or_else(not_found)?;
-            let disabled_at =
-                requested.map(|requested| client.disabled_at.unwrap_or(requested.max(now)));
+            let disabled_at = stamp.map(|stamp| client.disabled_at.unwrap_or(stamp));
             if disabled_at == client.disabled_at {
                 return Ok(client);
             }
@@ -181,23 +177,23 @@ mod tests {
             .expect("client row present")
     }
 
-    /// The instant every request in these tests is handled at, unless a test
-    /// says otherwise.
+    /// The stamp every disable in these tests writes, unless a test says
+    /// otherwise.
     const NOW: i64 = 5_000;
 
     fn disable(
         disabler: &ClientsDisabler<FakeGatekeeperStore>,
         client_id: &str,
-        requested: i64,
+        stamp: i64,
     ) -> Result<ClientView, GatekeeperError> {
-        disabler.set_disabled_at(client_id, Some(at(requested)), at(NOW))
+        disabler.set_disabled_at(client_id, Some(at(stamp)))
     }
 
     fn enable(
         disabler: &ClientsDisabler<FakeGatekeeperStore>,
         client_id: &str,
     ) -> Result<ClientView, GatekeeperError> {
-        disabler.set_disabled_at(client_id, None, at(NOW))
+        disabler.set_disabled_at(client_id, None)
     }
 
     #[test]
@@ -248,25 +244,11 @@ mod tests {
         assert_eq!(stored(&disabler, "app"), registered);
     }
 
-    /// A requested time already past is replaced by the server's `now`; a
-    /// future one is kept as a scheduled disable.
-    #[test]
-    fn a_past_request_is_clamped_to_now_and_a_future_one_is_scheduled() {
-        let disabler = disabler_with(&[client("past", &["openid"]), client("later", &["openid"])]);
-        disable(&disabler, "past", NOW - 1_000).unwrap();
-        disable(&disabler, "later", NOW + 1_000).unwrap();
-        assert_eq!(stored(&disabler, "past").disabled_at, Some(at(NOW)));
-        assert_eq!(
-            stored(&disabler, "later").disabled_at,
-            Some(at(NOW + 1_000))
-        );
-    }
-
     #[test]
     fn a_repeated_disable_keeps_the_first_timestamp() {
         let disabler = disabler_with(&[client("app", &["openid"])]);
         disable(&disabler, "app", NOW).unwrap();
-        let repeated = disabler.set_disabled_at("app", Some(at(NOW + 1)), at(NOW + 1));
+        let repeated = disable(&disabler, "app", NOW + 1);
         assert_eq!(repeated.unwrap().client.disabled_at, Some(at(NOW)));
         assert_eq!(stored(&disabler, "app").disabled_at, Some(at(NOW)));
     }
@@ -316,66 +298,32 @@ mod tests {
         );
     }
 
-    /// One disable/enable step against the model; `client` indexes `IDS`, and
-    /// `tick` is how far the clock moves before the step is handled.
-    #[derive(Debug, Clone)]
-    enum Step {
-        Disable {
-            client: usize,
-            requested: i64,
-            tick: i64,
-        },
-        Enable {
-            client: usize,
-            tick: i64,
-        },
-    }
-
     /// Two registered clients and one id (`ghost`) that is never registered.
     const IDS: [&str; 3] = ["app-a", "app-b", "ghost"];
 
-    fn arb_step() -> impl Strategy<Value = Step> {
-        prop_oneof![
-            (0..IDS.len(), 0..10_000i64, 0..500i64).prop_map(|(client, requested, tick)| {
-                Step::Disable {
-                    client,
-                    requested,
-                    tick,
-                }
-            }),
-            (0..IDS.len(), 0..500i64).prop_map(|(client, tick)| Step::Enable { client, tick }),
-        ]
-    }
-
     proptest! {
-        /// Any sequence of disables and enables, handled on an advancing clock,
-        /// leaves each client's `disabled_at` equal to a simple model — the
-        /// effective time (`max(requested, now)`) of the first disable since the
-        /// last enable, or `None` — and never touches any other field or
-        /// creates a row. Each step returns the row as stored; every step naming
-        /// the unregistered id is `ClientNotFound`.
+        /// Any sequence of disables and enables — each step an index into
+        /// `IDS` and the stamp to disable with (`None` enables) — leaves each
+        /// client's `disabled_at` equal to a simple model: the stamp of the
+        /// first disable since the last enable, or `None`. No step touches any
+        /// other field or creates a row. Each step returns the row as stored;
+        /// every step naming the unregistered id is `ClientNotFound`.
         #[test]
-        fn disable_and_enable_match_the_model(steps in prop::collection::vec(arb_step(), 0..24)) {
+        fn disable_and_enable_match_the_model(
+            steps in prop::collection::vec(
+                (0..IDS.len(), prop::option::of(0..10_000i64)),
+                0..24,
+            ),
+        ) {
             let registered = [client(IDS[0], &["openid"]), client(IDS[1], &["patient/*.rs"])];
             let disabler = disabler_with(&registered);
             let mut model: [Option<DateTime<Utc>>; 2] = [None, None];
-            let mut now = 0;
 
-            for step in steps {
-                let (index, requested) = match step {
-                    Step::Disable { client, requested, tick } => {
-                        now += tick;
-                        (client, Some(requested))
-                    }
-                    Step::Enable { client, tick } => {
-                        now += tick;
-                        (client, None)
-                    }
-                };
+            for (index, stamp) in steps {
                 if let Some(slot) = model.get_mut(index) {
-                    *slot = requested.map(|requested| slot.unwrap_or(at(requested.max(now))));
+                    *slot = stamp.map(|stamp| slot.unwrap_or(at(stamp)));
                 }
-                let result = disabler.set_disabled_at(IDS[index], requested.map(at), at(now));
+                let result = disabler.set_disabled_at(IDS[index], stamp.map(at));
                 match (registered.get(index), model.get(index)) {
                     (Some(row), Some(&disabled_at)) => {
                         let expected = ClientView {

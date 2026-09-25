@@ -7,7 +7,7 @@ import {
   type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
-import { type DateTime, Effect, type Schema } from 'effect'
+import { DateTime, Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 
@@ -41,29 +41,32 @@ const clientsQueryOptions = (
 const useClientsQuery = (): UseSuspenseQueryResult<readonly Client[], Error> =>
   useSuspenseQuery(clientsQueryOptions(useRunAuthed()))
 
-/**
- * `UpdateClient`'s input: the client, and the `disabledAt` to PATCH onto it —
- * the current time to disable it, `null` to re-enable it.
- */
+/** `UpdateClient`'s input: the client, and which way to flip it. */
 interface UpdateClientVariables {
   readonly clientId: string
-  readonly disabledAt: DateTime.Utc | null
+  readonly action: ClientSwitch
 }
 
-/** `UpdateClient` (PATCH). Invalidates the clients list. */
+/**
+ * `UpdateClient` (PATCH). Disabling sends the current time from the Effect
+ * `Clock` (the server stamps its own now whatever time arrives); enabling
+ * sends `null`. Invalidates the clients list.
+ */
 const useUpdateClientMutation = (): UseMutationResult<Client, Error, UpdateClientVariables> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ clientId, disabledAt }) => {
+    mutationFn: ({ clientId, action }) => {
       // `HttpApiClient` splices path params in raw, and trust on first use
       // admits any `client_id` string — a URL-shaped one (`https://app/cb`)
       // would otherwise split into extra segments and miss the route.
       const path = { clientId: encodeURIComponent(clientId) }
       return runAuthed(
-        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-          c['access-management'].UpdateClient({ path, payload: { disabledAt } })
-        )
+        Effect.gen(function* () {
+          const disabledAt = action === 'disable' ? yield* DateTime.now : null
+          const client = yield* GatekeeperHttpApiClient
+          return yield* client['access-management'].UpdateClient({ path, payload: { disabledAt } })
+        })
       )
     },
     onSuccess: async () => {

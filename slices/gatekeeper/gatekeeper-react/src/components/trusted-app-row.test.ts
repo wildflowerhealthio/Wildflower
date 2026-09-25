@@ -13,7 +13,7 @@ describe('trustedAppRow', () => {
     const client = decodeClient({ ...ohifViewer, disabledAt: null })
 
     // Act
-    const row = trustedAppRow(client, now)
+    const row = trustedAppRow(client)
 
     // Assert
     expect(row.action).toBe('disable')
@@ -26,25 +26,12 @@ describe('trustedAppRow', () => {
     const client = decodeClient({ ...ohifViewer, disabledAt: '2026-09-01T12:00:00.000Z' })
 
     // Act
-    const row = trustedAppRow(client, now)
+    const row = trustedAppRow(client)
 
     // Assert
     expect(row.action).toBe('enable')
     expect(row.disabled).toBe(true)
     expect(row.subtitle.startsWith('ohif-viewer · Disabled ')).toBe(true)
-  })
-
-  it('should show a scheduled disable as not yet disabled, with Enable to cancel it', () => {
-    // Arrange
-    const client = decodeClient({ ...ohifViewer, disabledAt: '2026-10-01T12:00:00.000Z' })
-
-    // Act
-    const row = trustedAppRow(client, now)
-
-    // Assert
-    expect(row.action).toBe('enable')
-    expect(row.disabled).toBe(false)
-    expect(row.subtitle.startsWith('ohif-viewer · Disables ')).toBe(true)
   })
 
   it('should offer no switch for the first-party host', () => {
@@ -57,7 +44,7 @@ describe('trustedAppRow', () => {
     })
 
     // Act
-    const row = trustedAppRow(client, now)
+    const row = trustedAppRow(client)
 
     // Assert
     expect(row).toEqual({ action: null, disabled: false, subtitle: 'wildflower-host · Built in' })
@@ -65,12 +52,12 @@ describe('trustedAppRow', () => {
 
   it('should never offer a switch for the first-party host, whatever its state', () => {
     fc.assert(
-      fc.property(clientArb(), instantArb(), (generated, at) => {
+      fc.property(clientArb(), (generated) => {
         // Arrange
         const client = { ...generated, firstParty: true }
 
         // Act
-        const { action } = trustedAppRow(client, at)
+        const { action } = trustedAppRow(client)
 
         // Assert
         expect(action).toBeNull()
@@ -81,12 +68,12 @@ describe('trustedAppRow', () => {
 
   it('should always offer Disable exactly when a non-host app has no disabledAt', () => {
     fc.assert(
-      fc.property(clientArb(), instantArb(), (generated, at) => {
+      fc.property(clientArb(), (generated) => {
         // Arrange
         const client = { ...generated, firstParty: false }
 
         // Act
-        const { action, subtitle } = trustedAppRow(client, at)
+        const { action, subtitle } = trustedAppRow(client)
 
         // Assert
         expect(action === 'disable').toBe(client.disabledAt === null)
@@ -97,17 +84,14 @@ describe('trustedAppRow', () => {
     )
   })
 
-  it('should count an app as disabled exactly once its disabledAt has arrived', () => {
+  it('should always count an app as disabled exactly when it has a disabledAt', () => {
     fc.assert(
-      fc.property(clientArb(), instantArb(), (client, at) => {
+      fc.property(clientArb(), (client) => {
         // Act
-        const { disabled } = trustedAppRow(client, at)
+        const { disabled } = trustedAppRow(client)
 
         // Assert
-        const arrived =
-          client.disabledAt !== null &&
-          DateTime.toEpochMillis(client.disabledAt) <= DateTime.toEpochMillis(at)
-        expect(disabled).toBe(arrived)
+        expect(disabled).toBe(client.disabledAt !== null)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -117,9 +101,6 @@ describe('trustedAppRow', () => {
 // Helpers
 
 const decodeClient = Schema.decodeUnknownSync(AccessManagement.ClientSchema)
-
-/** The instant the example rows are derived at: after the fixed disable, before the scheduled one. */
-const now = DateTime.unsafeMake('2026-09-15T00:00:00.000Z')
 
 /** A migration-seeded SMART app, as `GET /access/clients` returns it. */
 const ohifViewer = {

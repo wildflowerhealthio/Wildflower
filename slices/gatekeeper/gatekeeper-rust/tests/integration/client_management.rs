@@ -6,9 +6,8 @@ use crate::common::*;
 //
 // The other half of trust on first use: the Owner can see every client they
 // trust (migration-seeded or TOFU-created) and take that trust back by PATCHing
-// its `disabledAt`. A disabled client is refused at both OAuth front doors from
-// that instant on; re-enabling (`null`) restores it with its registration
-// intact. The first-party host client can't be disabled.
+// its `disabledAt`. A disabled client is refused at both OAuth front doors at
+// once; re-enabling (`null`) restores it with its registration intact. The first-party host client can't be disabled.
 
 /// `GET /access/clients` as `token`.
 async fn list_clients(g: &Gatekeeper, token: &str) -> axum::response::Response {
@@ -242,44 +241,35 @@ async fn a_disabled_client_is_refused_at_token_until_re_enabled() {
     assert_eq!(body_json(res.into_body()).await["token_type"], "Bearer");
 }
 
+/// Whatever time is sent — long past or an hour ahead — the client is disabled
+/// now, stamped with the server's clock: a disable can be neither backdated nor
+/// scheduled.
 #[tokio::test]
-async fn a_past_disabled_at_is_replaced_by_the_servers_now() {
-    let (g, host_owner_token, db) = spin_up();
-    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-
-    let before = Utc::now();
-    let long_ago = before - Duration::days(365);
-    let res = disable_client(&g, &host_owner_token, "test-app", long_ago).await;
-    assert_eq!(res.status(), StatusCode::OK);
-    let answered = disabled_at_of(&body_json(res.into_body()).await).expect("disabled");
-
-    assert!(
-        answered >= before,
-        "stamped with the server's now, not the past time sent"
-    );
-    assert_eq!(stored_disabled_at(&db, "test-app"), Some(answered));
-}
-
-#[tokio::test]
-async fn a_future_disabled_at_schedules_the_disable() {
+async fn any_sent_disabled_at_disables_now_with_the_servers_time() {
     let (g, db) = spin_up_with_confidential_client();
     let owner = mint_scoped_token(&db, &["wildflower/Client.u"]);
 
-    // Whole milliseconds, as the owner UI sends and the column stores them.
-    let later =
-        DateTime::from_timestamp_millis((Utc::now() + Duration::hours(1)).timestamp_millis())
-            .expect("in-range timestamp");
-    let res = disable_client(&g, &owner, CONFIDENTIAL_CLIENT_ID, later).await;
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(
-        disabled_at_of(&body_json(res.into_body()).await),
-        Some(later)
-    );
-    assert_eq!(stored_disabled_at(&db, CONFIDENTIAL_CLIENT_ID), Some(later));
+    for sent in [
+        Utc::now() - Duration::days(365),
+        Utc::now() + Duration::hours(1),
+    ] {
+        let before = Utc::now();
+        let res = disable_client(&g, &owner, CONFIDENTIAL_CLIENT_ID, sent).await;
+        let after = Utc::now();
+        assert_eq!(res.status(), StatusCode::OK);
+        let answered = disabled_at_of(&body_json(res.into_body()).await).expect("disabled");
+        assert!(
+            (before..=after).contains(&answered),
+            "stamped with the server's now, not the time sent ({sent})"
+        );
+        assert_eq!(stored_disabled_at(&db, CONFIDENTIAL_CLIENT_ID), Some(answered));
 
-    // Scheduled, not yet disabled: the client still redeems its refresh token.
-    let res = refresh_as_confidential_client(&g).await;
-    assert_eq!(res.status(), StatusCode::OK);
+        let res = refresh_as_confidential_client(&g).await;
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "refused at once");
+
+        let res = enable_client(&g, &owner, CONFIDENTIAL_CLIENT_ID).await;
+        assert_eq!(res.status(), StatusCode::OK);
+    }
 }
 
 #[tokio::test]

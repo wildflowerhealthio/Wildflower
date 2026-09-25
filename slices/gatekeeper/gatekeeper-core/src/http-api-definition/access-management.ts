@@ -55,9 +55,9 @@ const GrantNotFoundSchema = Schema.Struct({
  * `clients` row, seeded by a migration or created when the Owner approved an
  * unknown app (trust on first use). `secret_hash` never leaves the server.
  *
- * - `disabledAt` is set while the Owner has disabled the client, or scheduled
- *   it to be disabled. From that instant `/oauth/authorize` and `/oauth/token`
- *   refuse it until it's re-enabled.
+ * - `disabledAt` is when the Owner disabled the client, and `null` while it's
+ *   enabled. While it's set, `/oauth/authorize` and `/oauth/token` refuse the
+ *   client.
  * - `firstParty` marks the Wildflower host client, which can't be disabled (it's
  *   how the Owner reaches this surface at all).
  */
@@ -79,12 +79,10 @@ const ClientsSchema = Schema.Array(ClientSchema)
  * `UpdateClient`'s body — the one client field the Owner can edit.
  *
  * `disabledAt` is required, `null` included:
- * - the caller's current time disables the client now. A time the server
- *   already sees as past is replaced by the server's own now, so the stamp
- *   can't be backdated.
- * - a later time schedules the disable, and the client keeps working until
- *   then.
- * - `null` re-enables it, or cancels a scheduled disable.
+ * - any time disables the client now. The server stamps its own now whatever
+ *   time is sent, so a disable can be neither scheduled nor backdated (the
+ *   owner UI sends its current time).
+ * - `null` re-enables it.
  *
  * A client that already has a `disabledAt` keeps it: disabling it again
  * doesn't move the time.

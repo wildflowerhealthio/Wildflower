@@ -65,7 +65,7 @@
         "tags": [
           "Access management"
         ],
-        "summary": "`PATCH /access/clients/{clientId}` — disable, schedule the disabling of, or\nre-enable a client by writing its `disabledAt`; answers with the client as\nstored. A disabled client is refused at `/oauth/authorize` and\n`/oauth/token` from its `disabledAt` on. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the first-party host client is\nrefused with `409 FirstPartyClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
+        "summary": "`PATCH /access/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the first-party host client is\nrefused with `409 FirstPartyClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
         "operationId": "handle_update_client",
         "parameters": [
           {
@@ -897,7 +897,7 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When the client stops working: the caller's current time to disable it\nnow (a time already past is replaced by the server's), a later time to\nschedule it, or `null` to re-enable it. Required, `null` included."
+            "description": "Any time to disable the client now, or `null` to re-enable it. The\nserver stamps its own now whatever time is sent, so a disable can't be\nscheduled or backdated. Required, `null` included."
           }
         },
         "additionalProperties": false

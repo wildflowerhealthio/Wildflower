@@ -142,8 +142,17 @@ pub fn openapi_spec() -> utoipa::openapi::OpenApi {
 
     let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("Gatekeeper OAuth API", "0.0.0");
-    scope_capabilities_rust::InsufficientScopeResponses::for_paths(routes::clients::GATED_PATHS)
-        .modify(&mut spec);
+    // Every documented `/access` operation is scope-gated (the ungated
+    // `/access/session` isn't documented), so the gated paths are read off the
+    // spec rather than listed by hand.
+    let gated_paths: Vec<String> = spec
+        .paths
+        .paths
+        .keys()
+        .filter(|path| path.starts_with("/access/"))
+        .cloned()
+        .collect();
+    scope_capabilities_rust::InsufficientScopeResponses::for_paths(gated_paths).modify(&mut spec);
     spec
 }
 

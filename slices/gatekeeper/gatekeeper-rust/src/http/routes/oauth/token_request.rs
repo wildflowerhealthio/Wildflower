@@ -8,7 +8,6 @@ use std::sync::Arc;
 use axum::extract::{FromRequest, Request};
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::HeaderMap;
-use chrono::Utc;
 use serde::de::DeserializeOwned;
 
 use super::client_auth::resolve_client_credentials;
@@ -73,7 +72,7 @@ where
         })?;
         let presented = resolve_client_credentials(authorization.as_deref(), &body)?;
         let authenticated_client = LiveClientAuthenticator::from_state(state)
-            .authenticate(&presented.credentials, Utc::now())
+            .authenticate(&presented.credentials)
             .map_err(|error| ClientAuthenticationFailure {
                 error,
                 presented_via: presented.presented_via,

@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
-import { DateTime, Effect, Layer, pipe } from 'effect'
+import { DateTime, Effect, Layer, pipe, TestClock, TestContext } from 'effect'
 import * as fc from 'fast-check'
 import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { numRunsFor } from 'kitchen-sink/test'
@@ -76,18 +76,14 @@ describe('useRevokeGrantMutation invalidation', () => {
   })
 })
 
-/** A disable time the UI would send, and the re-enable `null`. */
-const disabledAtValues = [
-  ['disabling', DateTime.unsafeMake('2026-09-01T12:00:00.000Z')],
-  ['enabling', null],
-] as const
+const clientSwitches = ['disable', 'enable'] as const
 
 describe('useUpdateClientMutation invalidation', () => {
-  test.each(disabledAtValues)('%s invalidates the clients list root', async (_, disabledAt) => {
+  test.each(clientSwitches)('%s invalidates the clients list root', async (action) => {
     const { result, queryClient } = renderWithClient(() => useUpdateClientMutation())
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
-    await result.current.mutateAsync({ clientId: 'ohif-viewer', disabledAt })
+    await result.current.mutateAsync({ clientId: 'ohif-viewer', action })
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'clients'] })
@@ -96,36 +92,67 @@ describe('useUpdateClientMutation invalidation', () => {
 })
 
 describe('useUpdateClientMutation request', () => {
-  test.each(disabledAtValues)(
-    '%s PATCHes the client resource with its disabledAt',
-    async (_, disabledAt) => {
-      // Arrange
-      const requests = routeRunAuthedThroughRecordingHttpClient()
-      const { result } = renderWithClient(() => useUpdateClientMutation())
+  test('disable PATCHes the client resource with the Clock time', async () => {
+    // Arrange
+    const now = DateTime.unsafeMake('2026-09-01T12:00:00.000Z')
+    const requests = routeRunAuthedThroughRecordingHttpClient(now)
+    const { result } = renderWithClient(() => useUpdateClientMutation())
 
-      // Act
-      const updated = await result.current.mutateAsync({ clientId: 'ohif-viewer', disabledAt })
+    // Act
+    const updated = await result.current.mutateAsync({ clientId: 'ohif-viewer', action: 'disable' })
 
-      // Assert
-      expect(requests.map(({ method, body }) => ({ method, body }))).toEqual([
-        {
-          method: 'PATCH',
-          body: { disabledAt: disabledAt === null ? null : DateTime.formatIso(disabledAt) },
-        },
-      ])
-      expect(requests[0]?.url).toMatch(/\/access\/clients\/ohif-viewer$/)
-      expect(updated.clientId).toBe(respondedClient.clientId)
-    }
-  )
+    // Assert
+    expect(requests.map(({ method, body }) => ({ method, body }))).toEqual([
+      { method: 'PATCH', body: { disabledAt: '2026-09-01T12:00:00.000Z' } },
+    ])
+    expect(requests[0]?.url).toMatch(/\/access\/clients\/ohif-viewer$/)
+    expect(updated.clientId).toBe(respondedClient.clientId)
+  })
+
+  test('enable PATCHes the client resource with a null disabledAt', async () => {
+    // Arrange
+    const requests = routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0))
+    const { result } = renderWithClient(() => useUpdateClientMutation())
+
+    // Act
+    await result.current.mutateAsync({ clientId: 'ohif-viewer', action: 'enable' })
+
+    // Assert
+    expect(requests.map(({ method, body }) => ({ method, body }))).toEqual([
+      { method: 'PATCH', body: { disabledAt: null } },
+    ])
+  })
+
+  test('should always send the Clock time when disabling', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.date({ noInvalidDate: true }).map((date) => DateTime.unsafeMake(date)),
+        async (now) => {
+          // Arrange
+          const requests = routeRunAuthedThroughRecordingHttpClient(now)
+          const { result } = renderWithClient(() => useUpdateClientMutation())
+
+          // Act
+          await result.current.mutateAsync({ clientId: 'ohif-viewer', action: 'disable' })
+
+          // Assert
+          expect(requests.map(({ body }) => body)).toEqual([
+            { disabledAt: DateTime.formatIso(now) },
+          ])
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
 
   test('keeps a URL-shaped client id in a single path segment', async () => {
     // Arrange — trust on first use admits any `client_id`, including URLs.
     const clientId = 'https://app.example.com/client'
-    const requests = routeRunAuthedThroughRecordingHttpClient()
+    const requests = routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0))
     const { result } = renderWithClient(() => useUpdateClientMutation())
 
     // Act
-    await result.current.mutateAsync({ clientId, disabledAt: null })
+    await result.current.mutateAsync({ clientId, action: 'enable' })
 
     // Assert
     expect(requests.map(({ url }) => url)).toEqual([
@@ -141,14 +168,14 @@ describe('useUpdateClientMutation request', () => {
           fc.string({ unit: 'binary' }),
           fc.webUrl({ withQueryParameters: true, withFragments: true })
         ),
-        fc.constantFrom(...disabledAtValues.map(([, disabledAt]) => disabledAt)),
-        async (clientId, disabledAt) => {
+        fc.constantFrom(...clientSwitches),
+        async (clientId, action) => {
           // Arrange
-          const requests = routeRunAuthedThroughRecordingHttpClient()
+          const requests = routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0))
           const { result } = renderWithClient(() => useUpdateClientMutation())
 
           // Act
-          await result.current.mutateAsync({ clientId, disabledAt })
+          await result.current.mutateAsync({ clientId, action })
 
           // Assert
           const segment = /\/clients\/([^/?#]*)$/.exec(requests[0]?.url ?? '')
@@ -273,9 +300,11 @@ interface RecordedRequest {
  * Makes the next `runAuthed` call run its effect for real over a stub
  * `HttpClient` that answers `200` with {@link respondedClient} and records
  * each request — so a test can read the method, path and body `HttpApiClient`
- * actually built.
+ * actually built. The effect's `Clock` is a `TestClock` set to `now`.
  */
-const routeRunAuthedThroughRecordingHttpClient = (): readonly RecordedRequest[] => {
+const routeRunAuthedThroughRecordingHttpClient = (
+  now: DateTime.Utc
+): readonly RecordedRequest[] => {
   const requests: RecordedRequest[] = []
   const recordingHttpClient = Layer.succeed(
     HttpClient.HttpClient,
@@ -295,8 +324,10 @@ const routeRunAuthedThroughRecordingHttpClient = (): readonly RecordedRequest[] 
   )
   runAuthedStub.mockImplementationOnce((effect) =>
     Effect.runPromise(
-      effect.pipe(
+      TestClock.setTime(DateTime.toEpochMillis(now)).pipe(
+        Effect.zipRight(effect),
         Effect.provide(pipe(sliceRuntimeLayer, Layer.provideMerge(recordingHttpClient))),
+        Effect.provide(TestContext.TestContext),
         Effect.scoped
       )
     )

@@ -16,6 +16,7 @@ export {
   type ChunkBarPhase,
   type ChunkBarProps,
 } from './chunk-bar.tsx'
+export { ConfirmDialog, type ConfirmDialogProps } from './confirm-dialog.tsx'
 export { Dialog, type DialogProps } from './dialog.tsx'
 export { ErrorBanner, type ErrorBannerProps } from './error-banner.tsx'
 export { ErrorBoundary, type ErrorBoundaryProps } from './error-boundary.tsx'

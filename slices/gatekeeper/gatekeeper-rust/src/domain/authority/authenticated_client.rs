@@ -6,8 +6,6 @@
 //! device pairing) takes one of these, so a flow cannot act for a client whose
 //! secret was never checked.
 
-use chrono::{DateTime, Utc};
-
 use crate::crypto_util::client_secret::verify_client_secret;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
@@ -45,11 +43,10 @@ pub(crate) enum ClientAuthenticationError {
 }
 
 impl AuthenticatedClient {
-    /// Look up the client the credentials name and verify them: unknown clients
-    /// and clients disabled as of `now` are refused; a public client passes on
-    /// identity alone; a confidential client must present the secret matching
-    /// its stored argon2id PHC string (compared in constant time inside the
-    /// verifier).
+    /// Look up the client the credentials name and verify them: unknown and
+    /// disabled clients are refused; a public client passes on identity alone; a
+    /// confidential client must present the secret matching its stored argon2id
+    /// PHC string (compared in constant time inside the verifier).
     ///
     /// # Errors
     ///
@@ -57,13 +54,12 @@ impl AuthenticatedClient {
     pub(crate) fn authenticate(
         store: &impl GatekeeperStore,
         presented: &ClientCredentials,
-        now: DateTime<Utc>,
     ) -> Result<Self, ClientAuthenticationError> {
         let client = store
             .client_by_id(&presented.client_id)
             .map_err(ClientAuthenticationError::Store)?
             .ok_or(ClientAuthenticationError::UnknownClient)?;
-        if client.is_disabled_at(now) {
+        if client.disabled_at.is_some() {
             return Err(ClientAuthenticationError::Disabled);
         }
         if matches!(client.kind, ClientKind::Public) {
@@ -109,30 +105,17 @@ impl AuthenticatedClient {
 
 #[cfg(test)]
 mod tests {
-    use chrono::TimeDelta;
+    use chrono::Utc;
 
     use super::*;
     use crate::crypto_util::client_secret::hash_client_secret;
     use crate::domain::test_fake::{client, FakeGatekeeperStore};
-
-    /// The instant every authentication in these tests happens at.
-    fn now() -> DateTime<Utc> {
-        DateTime::from_timestamp(1_000_000, 0).expect("in-range timestamp")
-    }
 
     fn presented(client_id: &str, secret: Option<&str>) -> ClientCredentials {
         ClientCredentials {
             client_id: client_id.to_owned(),
             client_secret: secret.map(str::to_owned),
         }
-    }
-
-    fn authenticate(
-        store: &FakeGatekeeperStore,
-        client_id: &str,
-        secret: Option<&str>,
-    ) -> Result<AuthenticatedClient, ClientAuthenticationError> {
-        AuthenticatedClient::authenticate(store, &presented(client_id, secret), now())
     }
 
     fn confidential(client_id: &str, secret: &str) -> Client {
@@ -149,52 +132,32 @@ mod tests {
     fn a_public_client_authenticates_on_identity_alone() {
         let store = FakeGatekeeperStore::default();
         store.upsert_client(&client("app", &["openid"])).unwrap();
-        let proof = authenticate(&store, "app", None).expect("public");
+        let proof =
+            AuthenticatedClient::authenticate(&store, &presented("app", None)).expect("public");
         assert_eq!(proof.client_id(), "app");
         assert_eq!(proof.name(), "app display name");
-        assert!(authenticate(&store, "app", Some("x")).is_ok());
+        assert!(AuthenticatedClient::authenticate(&store, &presented("app", Some("x"))).is_ok());
     }
 
-    /// Unknown clients, and clients disabled at or before `now`, are refused
-    /// before any secret is looked at.
+    /// Unknown and disabled clients are refused before any secret is looked at.
     #[test]
     fn unknown_and_disabled_clients_are_refused() {
         let store = FakeGatekeeperStore::default();
-        for (client_id, disabled_at) in [
-            ("gone", now() - TimeDelta::seconds(1)),
-            ("just-gone", now()),
-        ] {
-            store
-                .upsert_client(&Client {
-                    disabled_at: Some(disabled_at),
-                    ..confidential(client_id, "s3cret")
-                })
-                .unwrap();
-        }
-        assert_eq!(
-            authenticate(&store, "ghost", None).unwrap_err(),
-            ClientAuthenticationError::UnknownClient
-        );
-        for client_id in ["gone", "just-gone"] {
-            assert_eq!(
-                authenticate(&store, client_id, Some("s3cret")).unwrap_err(),
-                ClientAuthenticationError::Disabled
-            );
-        }
-    }
-
-    /// A disable scheduled for later hasn't happened yet: the client still
-    /// authenticates until its `disabled_at` arrives.
-    #[test]
-    fn a_client_scheduled_to_be_disabled_still_authenticates() {
-        let store = FakeGatekeeperStore::default();
         store
             .upsert_client(&Client {
-                disabled_at: Some(now() + TimeDelta::seconds(1)),
-                ..confidential("leaving", "s3cret")
+                disabled_at: Some(Utc::now()),
+                ..confidential("gone", "s3cret")
             })
             .unwrap();
-        assert!(authenticate(&store, "leaving", Some("s3cret")).is_ok());
+        assert_eq!(
+            AuthenticatedClient::authenticate(&store, &presented("ghost", None)).unwrap_err(),
+            ClientAuthenticationError::UnknownClient
+        );
+        assert_eq!(
+            AuthenticatedClient::authenticate(&store, &presented("gone", Some("s3cret")))
+                .unwrap_err(),
+            ClientAuthenticationError::Disabled
+        );
     }
 
     /// A confidential client needs the matching secret: absent, wrong, and
@@ -210,18 +173,22 @@ mod tests {
             })
             .unwrap();
         assert_eq!(
-            authenticate(&store, "app", None).unwrap_err(),
+            AuthenticatedClient::authenticate(&store, &presented("app", None)).unwrap_err(),
             ClientAuthenticationError::SecretRequired
         );
         assert_eq!(
-            authenticate(&store, "app", Some("wrong")).unwrap_err(),
+            AuthenticatedClient::authenticate(&store, &presented("app", Some("wrong")))
+                .unwrap_err(),
             ClientAuthenticationError::SecretMismatch
         );
         assert_eq!(
-            authenticate(&store, "broken", Some("s3cret")).unwrap_err(),
+            AuthenticatedClient::authenticate(&store, &presented("broken", Some("s3cret")))
+                .unwrap_err(),
             ClientAuthenticationError::SecretNotConfigured
         );
-        assert!(authenticate(&store, "app", Some("s3cret")).is_ok());
+        assert!(
+            AuthenticatedClient::authenticate(&store, &presented("app", Some("s3cret"))).is_ok()
+        );
     }
 
     /// The proof answers for the registration it verified: its grant types
@@ -235,7 +202,8 @@ mod tests {
                 ..client("app", &["patient/*.rs"])
             })
             .unwrap();
-        let proof = authenticate(&store, "app", None).expect("a public client authenticates");
+        let proof = AuthenticatedClient::authenticate(&store, &presented("app", None))
+            .expect("a public client authenticates");
         assert!(proof.allows_grant_type(AllowedGrantType::DeviceCode));
         assert!(!proof.allows_grant_type(AllowedGrantType::RefreshToken));
         assert!(proof.allows_scopes(&["patient/Observation.r".to_owned()]));

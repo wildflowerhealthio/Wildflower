@@ -66,20 +66,19 @@ the row is created or widened only when the Owner approves — see
 - **Lifecycle:** registered (seeded by a migration or at boot, or created
   by [trust on first use](#trust-on-first-use)) → widened (a later TOFU
   approval) → disabled / re-enabled by the Owner. Disabling is a soft switch
-  on `disabledAt`: the row, its allowlists, and its secret are kept. From
-  the `disabledAt` instant on, every OAuth endpoint refuses the client:
+  on `disabledAt`: the row, its allowlists, and its secret are kept. While
+  `disabledAt` is set, every OAuth endpoint refuses the client:
   `/oauth/authorize` renders the local "Disabled client" page, and client
   authentication at `/oauth/token` and `/oauth/device_authorization` fails
-  with `invalid_client`. A `disabledAt` still in the future is a scheduled
-  disable, and the client keeps working until then. Re-enabling clears the
-  stamp and the client works again exactly as registered.
+  with `invalid_client`. Re-enabling clears the stamp and the client works
+  again exactly as registered.
 - **Owner management:** `GET /access/clients` lists every row (never the
   secret hash) with a `firstParty` flag. `PATCH /access/clients/:clientId`
   with `{ "disabledAt": … }` answers with the updated row and sets the stamp
   as follows:
-  - a UTC time disables the client from then. A time the server already sees
-    as past becomes the server's own now, so the stamp can't be backdated.
-    The owner UI sends its current time.
+  - any UTC time disables the client now, stamped with the server's own
+    now whatever time was sent. A disable can be neither scheduled nor
+    backdated. The owner UI sends its current time.
   - `null` re-enables the client.
   - a client that already has a `disabledAt` keeps it. The update is
     idempotent, and a repeated disable doesn't move the time.

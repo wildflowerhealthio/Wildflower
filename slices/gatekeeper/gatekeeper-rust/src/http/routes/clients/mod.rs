@@ -19,11 +19,6 @@ use utoipa_axum::routes;
 
 use crate::http::state::GatekeeperState;
 
-/// The OpenAPI path keys these routes document, as nested under `/access` —
-/// every method on each is scope-gated, so the shared `403 InsufficientScope`
-/// is documented on all of them.
-pub(crate) const GATED_PATHS: [&str; 2] = ["/access/clients", "/access/clients/{clientId}"];
-
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<GatekeeperState>> {
     OpenApiRouter::new()
         .routes(routes!(list_all::handle_list_clients))
