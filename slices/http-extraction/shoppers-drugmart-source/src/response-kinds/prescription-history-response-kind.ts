@@ -1,10 +1,14 @@
-import { Array as Arr, Effect, Option, pipe, Schema } from 'effect'
+import { Array as Arr, Effect, Option, pipe, Schema, String as Str } from 'effect'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime } from '../dates.ts'
-import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
+import {
+  ShoppersIdentifierSystem,
+  shoppersStoreDisplay,
+  shoppersStoreLocatorUrl,
+} from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
@@ -69,7 +73,8 @@ const authorizingPrescriptionWire = (
 /**
  * The `location` wire: a `Reference` to the public store-locator URL for the
  * store id (absolute, so adoption leaves it untouched), with the store name as
- * `display`. `undefined` when no store id is present.
+ * `display`, else one made from the store number. `undefined` when no store id
+ * is present.
  */
 const locationWire = (
   store: typeof SourceStore.Type | undefined
@@ -79,7 +84,11 @@ const locationWire = (
   if (storeId.length === 0) return undefined
   return {
     reference: shoppersStoreLocatorUrl(storeId),
-    ...(store.storeName != null ? { display: store.storeName } : {}),
+    display: pipe(
+      Option.fromNullable(store.storeName),
+      Option.filter(Str.isNonEmpty),
+      Option.getOrElse(() => shoppersStoreDisplay(storeId))
+    ),
   }
 }
 

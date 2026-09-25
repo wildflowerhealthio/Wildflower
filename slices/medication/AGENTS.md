@@ -17,10 +17,10 @@ catalog onto it.
   duplicates to the most recent (`authoredOn`) instance. The `medication-core/fhir`
   subpath is the `MedicationRequest → Medication` / `MedicationView` adapter (the
   core `Medication` for matching, plus the display fields — DIN, description,
-  prescriber, notes, repeat counts, store-locator links, estimated next-fill
-  date) and the `hasRefill` rule the calendar shares. Each field is one small
-  exported accessor (`dinOf`, `descriptionOf`, `repeatsAvailableOf`,
-  `rexallStoreUrlOf`, …) over the decoded `fhir-r4` `MedicationRequest.Type`,
+  prescriber, notes, repeat counts, the dispensing store's link, estimated
+  next-fill date) and the `hasRefill` rule the calendar shares. Each field is
+  one small exported accessor (`dinOf`, `descriptionOf`, `repeatsAvailableOf`,
+  `storeLinkOf`, …) over the decoded `fhir-r4` `MedicationRequest.Type`,
   reading only the conventional slots the pharmacy sources write (canonical
   `CanadianCodingSystem.Din`, `WildflowerExtension.RepeatsAvailable`,
   `WildflowerExtension.MedicationDescription`,

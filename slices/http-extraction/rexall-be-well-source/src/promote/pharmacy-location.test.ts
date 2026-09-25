@@ -59,7 +59,7 @@ describe('promoteMedicationRequest', () => {
     expect(urlsOf(promoted.extension)).toEqual([CarebookExtension.RequestMedicationProcessor])
   })
 
-  it('should put the store link on performer.reference, keeping the carebook pharmacy identifier', () => {
+  it('should put the named store link on performer, keeping the carebook pharmacy identifier', () => {
     fc.assert(
       fc.property(storeIdArbitrary, fc.array(unrelatedUrl), (storeId, extras) => {
         // Arrange
@@ -82,6 +82,7 @@ describe('promoteMedicationRequest', () => {
         expect(promoted.dispenseRequest?.performer?.reference).toBe(
           `https://www.rexall.ca/storelocator/store/${encodeURIComponent(storeId)}`
         )
+        expect(promoted.dispenseRequest?.performer?.display).toBe(`Rexall (store ${storeId})`)
         expect(promoted.dispenseRequest?.performer?.identifier?.value).toBe('pharmacy-4821')
         expect(urlsOf(promoted.extension)).toEqual(extras)
       }),
@@ -104,8 +105,55 @@ describe('promoteMedicationRequest', () => {
     expect(promoted.dispenseRequest?.performer).toEqual({
       ...emptyReference,
       reference: 'https://www.rexall.ca/storelocator/store/4821',
+      display: 'Rexall (store 4821)',
     })
     expect(urlsOf(promoted.extension)).toEqual([])
+  })
+
+  it('should keep a display the pharmacy reference already has', () => {
+    // Arrange
+    const request = {
+      ...MedicationRequest.empty,
+      extension: [
+        extensionWith(CarebookExtension.RequestMedicationProcessor, {
+          valueReference: { ...referenceTo('pharmacy-4821'), display: 'Rexall Drugstore Toronto' },
+        }),
+        ...storeExtensions(CarebookExtension.RequestExternalStoreId, '4821'),
+      ],
+      dispenseRequest: { ...emptyDispenseRequest },
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.dispenseRequest?.performer?.display).toBe('Rexall Drugstore Toronto')
+  })
+
+  it('should keep the store link under the Rexall store page, whatever the store number', () => {
+    fc.assert(
+      fc.property(
+        fc.string().map((prefix) => `${prefix}0`),
+        (storeId) => {
+          // Arrange
+          const request = {
+            ...MedicationRequest.empty,
+            extension: storeExtensions(CarebookExtension.RequestExternalStoreId, storeId),
+            dispenseRequest: { ...emptyDispenseRequest },
+          }
+
+          // Act
+          const promoted = promoteMedicationRequest(request)
+
+          // Assert — a `/`, `?` or `#` in the number cannot escape the store path.
+          const storeLink = new URL(promoted.dispenseRequest?.performer?.reference ?? '')
+          expect(storeLink.href.startsWith('https://www.rexall.ca/storelocator/store/')).toBe(true)
+          expect(storeLink.search).toBe('')
+          expect(storeLink.hash).toBe('')
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 
   it('should leave a lone half of the store pair untouched', () => {
@@ -195,7 +243,7 @@ describe('promoteMedicationDispense', () => {
     expect(urlsOf(promoted.extension)).toEqual([])
   })
 
-  it('should mirror the store link on location.reference, keeping the pharmacy identifier', () => {
+  it('should mirror the named store link on location, keeping the pharmacy identifier', () => {
     fc.assert(
       fc.property(storeIdArbitrary, (storeId) => {
         // Arrange
@@ -216,6 +264,7 @@ describe('promoteMedicationDispense', () => {
         expect(promoted.location?.reference).toBe(
           `https://www.rexall.ca/storelocator/store/${encodeURIComponent(storeId)}`
         )
+        expect(promoted.location?.display).toBe(`Rexall (store ${storeId})`)
         expect(promoted.location?.identifier?.value).toBe('pharmacy-4821')
         expect(urlsOf(promoted.extension)).toEqual([])
       }),

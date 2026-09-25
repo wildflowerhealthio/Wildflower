@@ -1,7 +1,6 @@
-import { Array as Arr, Equivalence, Option, pipe, Schema, Struct } from 'effect'
+import { Array as Arr, Equivalence, Option, pipe, String as Str, Struct } from 'effect'
 
 import { CanadianCodingSystem, Code, Coding } from 'fhir-r4/data-types'
-import { nonEmpty, whenPresent } from 'kitchen-sink'
 import { modifyIfDecodes } from 'kitchen-sink/schema'
 
 import { CarebookCodingSystem } from '../carebook.ts'
@@ -23,7 +22,7 @@ import type { WireCodeableConcept, WireCoding } from './wire.ts'
 /** A DIN as a coding carries it: the code, and the display beside it, if any. */
 interface Din {
   readonly code: string
-  readonly display: string | null
+  readonly display: Option.Option<string>
 }
 
 /** Two DINs are the same drug product when their codes match; a display is only a label. */
@@ -32,29 +31,58 @@ const sameDinCode: Equivalence.Equivalence<Din> = Equivalence.mapInput(
   (din: Din) => din.code
 )
 
-/** A coding's DIN, when it carries a non-blank code. */
-const dinOf = (coding: Coding.Type): Option.Option<Din> =>
-  Option.map(Option.fromNullable(nonEmpty(coding.code)), (code) => ({
-    code,
-    display: nonEmpty(coding.display),
+/** The DIN a coding's `code` and `display` spell, when the code is non-blank. */
+const dinOf = (code: Option.Option<string>, display: Option.Option<string>): Option.Option<Din> =>
+  Option.map(Option.filter(code, Str.isNonEmpty), (dinCode) => ({
+    code: dinCode,
+    display: Option.filter(display, Str.isNonEmpty),
   }))
 
-/** Every distinct DIN coded under `system`, in the order first coded. */
-const dinsUnder =
-  (system: string) =>
-  (codings: readonly Coding.Type[]): readonly Din[] =>
-    pipe(
-      codings,
-      Arr.filter(Coding.isInSystem(system)),
-      Arr.filterMap(dinOf),
-      Arr.dedupeWith(sameDinCode)
-    )
+/** How to read a DIN off one kind of coding, when it is coded under `system`. */
+type DinUnder<C> = (system: string) => (coding: C) => Option.Option<Din>
 
-/** The vendor DINs with no canonical twin yet: each is owed exactly one. */
-const dinsOwedCanonicalTwin = (codings: readonly Coding.Type[]): readonly Din[] =>
-  Arr.differenceWith(sameDinCode)(
-    dinsUnder(CarebookCodingSystem.Din)(codings),
-    dinsUnder(CanadianCodingSystem.Din)(codings)
+/**
+ * The vendor DINs with no canonical twin yet — each is owed exactly one — read
+ * off `codings` by `dinUnder`, so decoded and raw codings follow one rule.
+ */
+const dinsOwedCanonicalTwin =
+  <C>(dinUnder: DinUnder<C>) =>
+  (codings: readonly C[]): readonly Din[] => {
+    const distinctDinsUnder = (system: string): readonly Din[] =>
+      Arr.dedupeWith(Arr.filterMap(codings, dinUnder(system)), sameDinCode)
+    return Arr.differenceWith(sameDinCode)(
+      distinctDinsUnder(CarebookCodingSystem.Din),
+      distinctDinsUnder(CanadianCodingSystem.Din)
+    )
+  }
+
+/** A decoded coding's DIN under `system`. */
+const decodedDinUnder: DinUnder<Coding.Type> = (system) => (coding) =>
+  pipe(
+    coding,
+    Option.liftPredicate(Coding.isInSystem(system)),
+    Option.flatMap(({ code, display }) =>
+      dinOf(Option.fromNullable(code), Option.fromNullable(display))
+    )
+  )
+
+const parseUrl = Option.liftThrowable((system: string) => new URL(system))
+
+/**
+ * Whether a raw coding is under `system`, compared by `href` exactly as
+ * {@link Coding.isInSystem} compares a decoded one.
+ */
+const wireCodingIsInSystem =
+  (system: string) =>
+  (wireCoding: WireCoding): boolean =>
+    Option.exists(Option.flatMap(wireCoding.system, parseUrl), ({ href }) => href === system)
+
+/** A raw coding's DIN under `system`. */
+const wireDinUnder: DinUnder<WireCoding> = (system) => (wireCoding) =>
+  pipe(
+    wireCoding,
+    Option.liftPredicate(wireCodingIsInSystem(system)),
+    Option.flatMap(({ code, display }) => dinOf(code, display))
   )
 
 /** A DIN's canonical twin, as a decoded `Coding`. */
@@ -63,46 +91,37 @@ const canonicalDinCoding = ({ code, display }: Din): Coding.Type => ({
   extension: [],
   system: new URL(CanadianCodingSystem.Din),
   code: Code.make(code),
-  display,
+  display: Option.getOrNull(display),
   userSelected: null,
   version: null,
 })
 
-/**
- * A DIN's canonical twin, as the raw wire coding a `contained` entry carries —
- * where an absent display is left out, since FHIR JSON has no `null` values.
- */
+/** A DIN's canonical twin, as the raw wire coding a `contained` entry carries. */
 const wireCanonicalDinCoding = ({ code, display }: Din): WireCoding => ({
-  system: CanadianCodingSystem.Din,
-  code,
-  ...(display === null ? {} : { display }),
+  system: Option.some(CanadianCodingSystem.Din),
+  code: Option.some(code),
+  display,
 })
 
 /** A decoded `CodeableConcept` with its owed canonical DIN codings appended. */
 const decodedConceptWithCanonicalDin = (concept: DecodedCodeableConcept): DecodedCodeableConcept =>
   Struct.evolve(concept, {
-    coding: (codings) => [...codings, ...dinsOwedCanonicalTwin(codings).map(canonicalDinCoding)],
+    coding: (codings) => [
+      ...codings,
+      ...dinsOwedCanonicalTwin(decodedDinUnder)(codings).map(canonicalDinCoding),
+    ],
   })
-
-/**
- * Re-reads a raw wire coding as a decoded R4 `Coding`, so the raw path picks
- * out DIN codings by the same {@link Coding.isInSystem} the decoded path uses.
- * A coding that does not decode is not read as a DIN.
- */
-const decodeWireCoding = Schema.decodeUnknownOption(Coding.Schema)
 
 /** Raw `CodeableConcept.coding` with its owed canonical DIN codings appended. */
 const wireCodingsWithCanonicalDin = (wireCodings: readonly WireCoding[]): readonly WireCoding[] => [
   ...wireCodings,
-  ...dinsOwedCanonicalTwin(
-    Arr.filterMap(wireCodings, (wireCoding) => decodeWireCoding(wireCoding))
-  ).map(wireCanonicalDinCoding),
+  ...dinsOwedCanonicalTwin(wireDinUnder)(wireCodings).map(wireCanonicalDinCoding),
 ]
 
 /** A raw `CodeableConcept` with its owed canonical DIN codings appended. */
 const wireConceptWithCanonicalDin = (concept: WireCodeableConcept): WireCodeableConcept =>
   Struct.evolve(concept, {
-    coding: (wireCodings) => whenPresent(wireCodings, wireCodingsWithCanonicalDin),
+    coding: Option.map(wireCodingsWithCanonicalDin),
   })
 
 /**

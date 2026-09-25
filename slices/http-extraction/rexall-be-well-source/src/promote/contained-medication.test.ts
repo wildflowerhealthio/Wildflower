@@ -292,6 +292,28 @@ describe('promoteMedicationRequest', () => {
     ])
   })
 
+  it('should drop an explicit null it reads from a contained Medication it promotes', () => {
+    // Arrange — FHIR JSON has no `null` values, so the absence is written back
+    // as a missing key.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [
+        {
+          ...containedMedication({ id: 'med-1', strength: '20 mg' }),
+          ingredient: [{ itemCodeableConcept: { text: 'Atorvastatin' }, itemReference: null }],
+        },
+      ],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationRequest(request))
+
+    // Assert
+    expect(medication['ingredient']).toStrictEqual([
+      { itemCodeableConcept: { text: 'Atorvastatin' }, strength: ratioOf(20, 'mg') },
+    ])
+  })
+
   it('should promote the siblings of a malformed extension entry', () => {
     // Arrange — one entry with no `url`. Decoding the array as a whole would
     // silently switch off every promotion on this Medication.

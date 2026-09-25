@@ -1,10 +1,16 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Option, pipe, Schema, String as Str } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
-import { nonEmpty } from 'kitchen-sink'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 
 type PatientType = typeof Patient.Schema.Type
+
+/**
+ * An optional profile string, decoded to an `Option`. A blank one is still
+ * `Some("")` here — the profile sends `""` for a name it holds no value for —
+ * so a reader filters blanks out where it reads the field.
+ */
+const OptionalProfileString = Schema.optionalWith(Schema.String, { as: 'Option' })
 
 /**
  * Just-enough schema for the bespoke (non-FHIR) carebook profile payload at
@@ -17,15 +23,13 @@ type PatientType = typeof Patient.Schema.Type
  */
 const ProfileSchema = Schema.Struct({
   data: Schema.Struct({
-    identifiers: Schema.Struct({ uid: Schema.String, email: Schema.optional(Schema.String) }),
-    names: Schema.optional(
-      Schema.Struct({
-        firstName: Schema.optional(Schema.String),
-        lastName: Schema.optional(Schema.String),
-      })
+    identifiers: Schema.Struct({ uid: Schema.String, email: OptionalProfileString }),
+    names: Schema.optionalWith(
+      Schema.Struct({ firstName: OptionalProfileString, lastName: OptionalProfileString }),
+      { as: 'Option' }
     ),
-    birthDate: Schema.optional(Schema.String),
-    zipPostalCode: Schema.optional(Schema.String),
+    birthDate: OptionalProfileString,
+    zipPostalCode: OptionalProfileString,
   }),
 })
 
@@ -34,32 +38,43 @@ type Profile = typeof ProfileSchema.Type
 const decodeProfile = Schema.decode(Schema.parseJson(ProfileSchema))
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
 
+/** A profile name's part, when the profile carries a non-blank one. */
+const namePartOf = (
+  names: Profile['data']['names'],
+  part: 'firstName' | 'lastName'
+): Option.Option<string> =>
+  pipe(
+    names,
+    Option.flatMap((profileNames) => profileNames[part]),
+    Option.filter(Str.isNonEmpty)
+  )
+
 /**
  * Build the FHIR R4 `Patient` **wire** from the decoded profile, emitting a
- * field only when the source carries it. `nonEmpty` collapses "absent" and
- * "blank" — the profile sends `""` for a name it holds no value for.
+ * field only when the source carries it. A blank string counts as absent — the
+ * profile sends `""` for a name it holds no value for.
  */
 const patientWire = (profile: Profile): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
     resourceType: 'Patient',
     id: profile.data.identifiers.uid,
   }
-  const family = nonEmpty(profile.data.names?.lastName)
-  const given = nonEmpty(profile.data.names?.firstName)
-  if (family !== null || given !== null) {
+  const family = namePartOf(profile.data.names, 'lastName')
+  const given = namePartOf(profile.data.names, 'firstName')
+  if (Option.isSome(family) || Option.isSome(given)) {
     wire['name'] = [
       {
-        ...(family !== null ? { family } : {}),
-        ...(given !== null ? { given: [given] } : {}),
+        ...(Option.isSome(family) ? { family: family.value } : {}),
+        ...(Option.isSome(given) ? { given: [given.value] } : {}),
       },
     ]
   }
-  const birthDate = nonEmpty(profile.data.birthDate)
-  if (birthDate !== null) wire['birthDate'] = birthDate
-  const email = nonEmpty(profile.data.identifiers.email)
-  if (email !== null) wire['telecom'] = [{ system: 'email', value: email }]
-  const postalCode = nonEmpty(profile.data.zipPostalCode)
-  if (postalCode !== null) wire['address'] = [{ postalCode }]
+  const birthDate = Option.filter(profile.data.birthDate, Str.isNonEmpty)
+  if (Option.isSome(birthDate)) wire['birthDate'] = birthDate.value
+  const email = Option.filter(profile.data.identifiers.email, Str.isNonEmpty)
+  if (Option.isSome(email)) wire['telecom'] = [{ system: 'email', value: email.value }]
+  const postalCode = Option.filter(profile.data.zipPostalCode, Str.isNonEmpty)
+  if (Option.isSome(postalCode)) wire['address'] = [{ postalCode: postalCode.value }]
   return wire
 }
 

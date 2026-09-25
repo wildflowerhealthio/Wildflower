@@ -157,6 +157,20 @@ describe('PrescriptionHistoryResponseKind', () => {
       ])
     })
 
+    it('should name the store after its number when the portal gives no store name', () => {
+      // Arrange
+      const payload = {
+        dispenses: [{ prescriptionId: 'rx-uuid-1', dispenseId: 'disp-1', store: { id: 9000 } }],
+      }
+
+      // Act
+      const [dispense] = parse(payload)
+
+      // Assert
+      if (dispense?.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
+      expect(dispense.location?.display).toBe('Shoppers Drug Mart (store 9000)')
+    })
+
     it('emits no subject (the history payload carries no patientId)', () => {
       // Act
       const [dispense] = parse(historyPayload())

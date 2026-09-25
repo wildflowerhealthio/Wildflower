@@ -1,6 +1,5 @@
-import { Array as Arr, Option, pipe, Schema } from 'effect'
+import { Array as Arr, Option, pipe, Schema, String as Str } from 'effect'
 
-import { nonEmpty } from 'kitchen-sink'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -49,9 +48,12 @@ interface Labelled {
  */
 const label = (concept: Labelled): Option.Option<string> =>
   pipe(
-    Option.fromNullable(nonEmpty(concept.text)),
+    Option.fromNullable(concept.text),
+    Option.filter(Str.isNonEmpty),
     Option.orElse(() =>
-      Arr.findFirst(concept.coding ?? [], (coding) => Option.fromNullable(nonEmpty(coding.display)))
+      Arr.findFirst(concept.coding ?? [], (coding) =>
+        pipe(Option.fromNullable(coding.display), Option.filter(Str.isNonEmpty))
+      )
     )
   )
 

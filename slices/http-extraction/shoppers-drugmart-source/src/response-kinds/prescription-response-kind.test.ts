@@ -124,7 +124,10 @@ const expectedRequest = decodeRequest({
   authoredOn: '2026-01-10T00:00:00Z',
   dosageInstruction: [{ text: 'Take one tablet daily' }],
   dispenseRequest: {
-    performer: { reference: shoppersStoreLocatorUrl(1414) },
+    performer: {
+      reference: shoppersStoreLocatorUrl(1414),
+      display: 'Shoppers Drug Mart (store 1414)',
+    },
     numberOfRepeatsAllowed: 3,
     quantity: { value: 90 },
     validityPeriod: { start: '2026-01-10T00:00:00Z', end: '2027-01-01T00:00:00Z' },
@@ -145,7 +148,10 @@ const expectedDispense = decodeDispense({
   },
   quantity: { value: 30 },
   whenHandedOver: '2026-01-10T00:00:00Z',
-  location: { reference: shoppersStoreLocatorUrl(1414) },
+  location: {
+    reference: shoppersStoreLocatorUrl(1414),
+    display: 'Shoppers Drug Mart (store 1414)',
+  },
 })
 
 describe('PrescriptionResponseKind', () => {
@@ -347,9 +353,30 @@ describe('PrescriptionResponseKind', () => {
           const [request] = byType(result, 'MedicationRequest')
           expect(request?.supportingInformation).toStrictEqual([])
           expect(request?.dispenseRequest?.performer?.reference).toBe(url)
+          expect(request?.dispenseRequest?.performer?.display).toBe(
+            `Shoppers Drug Mart (store ${storeId})`
+          )
           for (const dispense of byType(result, 'MedicationDispense')) {
             expect(dispense.location?.reference).toBe(url)
           }
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+
+    it('should keep the store link under the Shoppers store page, whatever the store id', () => {
+      fc.assert(
+        fc.property(fc.string({ minLength: 1 }), (storeId) => {
+          // Act
+          const [request] = byType(parse(prescriptionJson({ storeId })), 'MedicationRequest')
+
+          // Assert — a `/`, `?` or `#` in the id cannot escape the store path.
+          const storeLink = new URL(request?.dispenseRequest?.performer?.reference ?? '')
+          expect(
+            storeLink.href.startsWith('https://www.shoppersdrugmart.ca/store-locator/store/')
+          ).toBe(true)
+          expect(storeLink.search).toBe('')
+          expect(storeLink.hash).toBe('')
         }),
         { numRuns: numRunsFor({ base: 100 }) }
       )

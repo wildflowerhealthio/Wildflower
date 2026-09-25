@@ -7,6 +7,7 @@ import { decodesAsDateTime, firstDateTime } from '../dates.ts'
 import {
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   ShoppersIdentifierSystem,
+  shoppersStoreDisplay,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
@@ -141,15 +142,15 @@ const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | 
 }
 
 /**
- * The dispensing store as a `Reference` to its public store-locator URL — the
- * wire for both `dispenseRequest.performer` and each dispense's `location`;
- * `undefined` when no store id is present.
+ * The dispensing store as a `Reference` to its public store-locator URL, named
+ * after its store number — the wire for both `dispenseRequest.performer` and
+ * each dispense's `location`; `undefined` when no store id is present.
  */
 const storeReferenceWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
   if (rx.storeId == null) return undefined
   const storeId = String(rx.storeId)
   if (storeId.length === 0) return undefined
-  return { reference: shoppersStoreLocatorUrl(storeId) }
+  return { reference: shoppersStoreLocatorUrl(storeId), display: shoppersStoreDisplay(storeId) }
 }
 
 /**

@@ -1,4 +1,4 @@
-import { Array as Arr, flow, Option, pipe, Schema, Struct } from 'effect'
+import { Array as Arr, flow, Option, pipe, Schema, String as Str, Struct } from 'effect'
 
 import {
   CodeableConcept,
@@ -7,7 +7,7 @@ import {
   WildflowerExtension,
 } from 'fhir-r4/data-types'
 import type { MedicationRequest } from 'fhir-r4/resources'
-import { Lift, nonEmpty, whenPresent } from 'kitchen-sink'
+import { Lift } from 'kitchen-sink'
 import { modifyIfDecodes } from 'kitchen-sink/schema'
 
 import { CarebookExtension } from '../carebook.ts'
@@ -15,7 +15,7 @@ import { decodeCodeableConcept, decodeReference } from './decoded-r4.ts'
 import { wireConceptWithCanonicalDin } from './din.ts'
 import { promoteExtension } from './extension-lift.ts'
 import { StrengthRatioFromString } from './strength-ratio.ts'
-import { OptionalWireString, OtherWireFields, WireCodeableConcept } from './wire.ts'
+import { OtherWireFields, WireCodeableConcept, WireStringOption } from './wire.ts'
 
 /**
  * The `contained` Medication: promoted in place (a canonical DIN twin on its
@@ -35,13 +35,13 @@ import { OptionalWireString, OtherWireFields, WireCodeableConcept } from './wire
 // ---------------------------------------------------------------------------
 
 /** A raw `Narrative`, read only for its `div`. */
-const WireNarrative = Schema.Struct({ div: OptionalWireString }, OtherWireFields)
+const WireNarrative = Schema.Struct({ div: WireStringOption }, OtherWireFields)
 
 /** A raw `Medication.ingredient` entry, read only for whether it names an `item[x]`. */
 const WireIngredient = Schema.Struct(
   {
-    itemCodeableConcept: Schema.optional(Schema.NullOr(OtherWireFields)),
-    itemReference: Schema.optional(Schema.NullOr(OtherWireFields)),
+    itemCodeableConcept: Schema.optionalWith(WireCodeableConcept, { nullable: true, as: 'Option' }),
+    itemReference: Schema.optionalWith(OtherWireFields, { nullable: true, as: 'Option' }),
   },
   OtherWireFields
 )
@@ -87,9 +87,9 @@ const liftStrengthRatio = pipe(
 const ContainedMedication = Schema.Struct(
   {
     resourceType: Schema.Literal('Medication'),
-    id: OptionalWireString,
-    code: Schema.optional(Schema.NullOr(WireCodeableConcept)),
-    text: Schema.optional(Schema.NullOr(WireNarrative)),
+    id: WireStringOption,
+    code: Schema.optionalWith(WireCodeableConcept, { nullable: true, as: 'Option' }),
+    text: Schema.optionalWith(WireNarrative, { nullable: true, as: 'Option' }),
     extension: Schema.optional(Schema.Array(Schema.Unknown)),
     ingredient: Schema.optional(Schema.Array(WireIngredient)),
   },
@@ -101,6 +101,21 @@ const decodeContainedMedication = Schema.decodeUnknownOption(ContainedMedication
 
 const encodeNarrativeDiv = Schema.encodeSync(Narrative.TextFromDiv)
 
+/**
+ * A raw concept's label, by the rule `fhir-r4`'s {@link CodeableConcept.label}
+ * reads a decoded one with: its `text`, else the first coding's `display`, a
+ * blank value counting as absent.
+ */
+const wireConceptLabel = (concept: WireCodeableConcept): Option.Option<string> =>
+  pipe(
+    [
+      concept.text,
+      ...Arr.map(Option.getOrElse(concept.coding, Arr.empty), ({ display }) => display),
+    ],
+    Arr.map(Option.filter(Str.isNonEmpty)),
+    Option.firstSomeOf
+  )
+
 // ---------------------------------------------------------------------------
 // Promotions on one contained Medication
 // ---------------------------------------------------------------------------
@@ -110,7 +125,7 @@ const encodeNarrativeDiv = Schema.encodeSync(Narrative.TextFromDiv)
  * `code`, which is where a reader looks for the drug's DIN first.
  */
 const withContainedCanonicalDin = (medication: ContainedMedication): ContainedMedication =>
-  Struct.evolve(medication, { code: (code) => whenPresent(code, wireConceptWithCanonicalDin) })
+  Struct.evolve(medication, { code: Option.map(wireConceptWithCanonicalDin) })
 
 /**
  * Whether the description may take over the Medication's narrative: only when
@@ -122,10 +137,20 @@ const withContainedCanonicalDin = (medication: ContainedMedication): ContainedMe
  * strictly richer than the same string. A narrative holding anything *else* is
  * somebody's real content, which the description must not overwrite.
  */
-const narrativeIsReplaceable = (medication: ContainedMedication): boolean => {
-  const div = medication.text?.div
-  return div === undefined || div === null || div === nonEmpty(medication.code?.text)
-}
+const narrativeIsReplaceable = (medication: ContainedMedication): boolean =>
+  Option.match(
+    Option.flatMap(medication.text, ({ div }) => div),
+    {
+      onNone: () => true,
+      onSome: (div) =>
+        pipe(
+          medication.code,
+          Option.flatMap(({ text }) => text),
+          Option.filter(Str.isNonEmpty),
+          Option.exists((codeText) => codeText === div)
+        ),
+    }
+  )
 
 /** The Medication with `description` as its narrative, a conformant XHTML `div`. */
 const withDescriptionNarrative = (
@@ -133,7 +158,7 @@ const withDescriptionNarrative = (
   description: string
 ): ContainedMedication => ({
   ...medication,
-  text: { status: 'generated', div: encodeNarrativeDiv(description) },
+  text: Option.some({ status: 'generated', div: Option.some(encodeNarrativeDiv(description)) }),
 })
 
 /**
@@ -166,12 +191,15 @@ const liftDescription = promoteExtension(
     )
 )
 
-/**
- * Whether an ingredient already says which item it is an ingredient of. An
- * explicit `null` names nothing, just as an absent key does.
- */
+/** Whether an ingredient already says which item it is an ingredient of. */
 const namesItem = (ingredient: WireIngredient): boolean =>
-  (ingredient.itemCodeableConcept ?? ingredient.itemReference ?? null) !== null
+  Option.isSome(ingredient.itemCodeableConcept) || Option.isSome(ingredient.itemReference)
+
+/** An ingredient that names no item yet. */
+const itemlessIngredient: WireIngredient = {
+  itemCodeableConcept: Option.none(),
+  itemReference: Option.none(),
+}
 
 /**
  * The ingredient, naming `code` as its item when it names none. R4 requires
@@ -181,7 +209,7 @@ const namesItem = (ingredient: WireIngredient): boolean =>
 const namingItemAs =
   (code: WireCodeableConcept) =>
   (ingredient: WireIngredient): WireIngredient =>
-    namesItem(ingredient) ? ingredient : { ...ingredient, itemCodeableConcept: code }
+    namesItem(ingredient) ? ingredient : { ...ingredient, itemCodeableConcept: Option.some(code) }
 
 /**
  * `strength` merged into the first ingredient, keeping every other ingredient
@@ -195,7 +223,7 @@ const withStrength = (
 ): readonly WireIngredient[] => {
   const strengthened = flow(namingItemAs(code), (ingredient) => ({ ...ingredient, strength }))
   return Arr.matchLeft(ingredients, {
-    onEmpty: () => [strengthened({})],
+    onEmpty: () => [strengthened(itemlessIngredient)],
     onNonEmpty: (first, rest) => [strengthened(first), ...rest],
   })
 }
@@ -207,7 +235,7 @@ const withStrength = (
 const liftStrength = promoteExtension(
   liftStrengthRatio,
   (medication: ContainedMedication, strength) =>
-    Option.map(Option.fromNullable(medication.code), (code) => ({
+    Option.map(medication.code, (code) => ({
       ...medication,
       ingredient: withStrength(medication.ingredient ?? [], code, strength),
     }))
@@ -238,17 +266,16 @@ interface ContainedMedicationLink {
 const containedMedicationLink = (entry: unknown): Option.Option<ContainedMedicationLink> =>
   pipe(
     decodeContainedMedication(entry),
-    Option.flatMap(({ id, code }) =>
-      Option.all({ id: Option.fromNullable(nonEmpty(id)), code: Option.fromNullable(code) })
-    ),
-    Option.map(({ id, code }) => ({ id, label: CodeableConcept.label(code) }))
+    Option.flatMap(({ id, code }) => Option.all({ id: Option.filter(id, Str.isNonEmpty), code })),
+    Option.map(({ id, code }) => ({ id, label: wireConceptLabel(code) }))
   )
 
 /** Where `medicationReference` points today, when that is outside this resource. */
 const externalMedicationTarget = (request: MedicationRequest.Type): Option.Option<string> =>
   pipe(
     decodeReference(request.medicationReference),
-    Option.flatMapNullable(({ reference }) => nonEmpty(reference)),
+    Option.flatMapNullable(({ reference }) => reference),
+    Option.filter(Str.isNonEmpty),
     Option.filter((target) => Option.isNone(IdentifierAndReference.fragmentIdOf(target)))
   )
 
@@ -275,8 +302,10 @@ const linkedMedicationLabel = (
 ): string | null =>
   pipe(
     Option.firstSomeOf([
-      Option.flatMapNullable(decodeReference(request.medicationReference), ({ display }) =>
-        nonEmpty(display)
+      pipe(
+        decodeReference(request.medicationReference),
+        Option.flatMapNullable(({ display }) => display),
+        Option.filter(Str.isNonEmpty)
       ),
       Option.flatMap(
         decodeCodeableConcept(request.medicationCodeableConcept),

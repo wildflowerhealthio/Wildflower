@@ -1,7 +1,6 @@
-import { Array as Arr, Option, pipe, Schema } from 'effect'
+import { Array as Arr, Option, pipe, Schema, String as Str } from 'effect'
 import { Extension, Narrative, WildflowerExtension } from 'fhir-r4/data-types'
 import type { Medication as FhirMedication, MedicationRequest } from 'fhir-r4/resources'
-import { nonEmpty } from 'kitchen-sink'
 
 import { dosageTextOf } from './free-text.ts'
 import { containedMedicationOf } from './medication-slots.ts'
@@ -16,7 +15,7 @@ const narrativeText = Schema.decodeSync(Narrative.TextFromDiv)
 
 /** An extension's `valueString`, when it carries a non-blank one. */
 const nonEmptyValueStringOf = (extension: Extension.Type): Option.Option<string> =>
-  Option.fromNullable(nonEmpty(extension.valueString))
+  pipe(Option.fromNullable(extension.valueString), Option.filter(Str.isNonEmpty))
 
 /**
  * The first non-blank {@link WildflowerExtension.MedicationDescription} on a
@@ -34,8 +33,10 @@ const descriptionExtensionOf = (medication: FhirMedication.Type): string | null 
 /** The text content of a contained Medication's narrative, when it has any. */
 const narrativeTextOf = (medication: FhirMedication.Type): string | null =>
   pipe(
-    Option.fromNullable(nonEmpty(medication.text?.div)),
-    Option.flatMapNullable((div) => nonEmpty(narrativeText(div))),
+    Option.fromNullable(medication.text?.div),
+    Option.filter(Str.isNonEmpty),
+    Option.map(narrativeText),
+    Option.filter(Str.isNonEmpty),
     Option.getOrNull
   )
 

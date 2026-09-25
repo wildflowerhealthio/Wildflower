@@ -1,7 +1,6 @@
 import { Array as Arr, flow, Option, pipe, Schema, Struct } from 'effect'
 
 import type { MedicationRequest } from 'fhir-r4/resources'
-import { whenPresent } from 'kitchen-sink'
 
 import { CarebookExtension } from '../carebook.ts'
 import { linkContainedMedication, promoteContained } from './contained-medication.ts'
@@ -44,7 +43,10 @@ const liftRequestType = promoteExtension(
 const promoteDispenseRequest = (request: MedicationRequest.Type): MedicationRequest.Type =>
   Struct.evolve(request, {
     dispenseRequest: (dispenseRequest) =>
-      whenPresent(dispenseRequest, flow(withSupplyDurationInDays, promoteRepeatsAvailable)),
+      Option.fromNullable(dispenseRequest).pipe(
+        Option.map(flow(withSupplyDurationInDays, promoteRepeatsAvailable)),
+        Option.getOrNull
+      ),
   })
 
 /**

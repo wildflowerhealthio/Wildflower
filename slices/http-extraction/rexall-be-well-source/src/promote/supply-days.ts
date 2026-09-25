@@ -1,9 +1,8 @@
-import { Struct } from 'effect'
+import { Option, Struct } from 'effect'
 
 import { Code } from 'fhir-r4/data-types'
 import type { Quantity } from 'fhir-r4/data-types'
 import type { MedicationRequestDispenseRequest } from 'fhir-r4/resources'
-import { whenPresent } from 'kitchen-sink'
 
 /**
  * Supply durations get their unit. The dialect emits `{ value }` with no
@@ -40,7 +39,7 @@ const withSupplyDurationInDays = (
 ): typeof MedicationRequestDispenseRequest.Schema.Type =>
   Struct.evolve(dispenseRequest, {
     expectedSupplyDuration: (expectedSupplyDuration) =>
-      whenPresent(expectedSupplyDuration, withDayUnit),
+      Option.fromNullable(expectedSupplyDuration).pipe(Option.map(withDayUnit), Option.getOrNull),
   })
 
 export { withDayUnit, withSupplyDurationInDays }

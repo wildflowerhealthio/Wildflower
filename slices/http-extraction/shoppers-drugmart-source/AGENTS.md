@@ -61,13 +61,13 @@ and `rexall-be-well-source` alike:
   canonical `CanadianCodingSystem.Din`
   (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
   DINs, so no vendor DIN system is minted beside it.
-- **Store link** — the public store-locator URL (`fhir-r4`'s
-  `PharmacyStoreLocatorBase.ShoppersDrugMart` + `storeId`, via
-  `storeLocatorUrl`) as a literal `reference` on
+- **Store link** — the public store-locator URL (`shoppers.ts`'s
+  `shoppersStoreLocatorUrl`) as a literal `reference` on
   `MedicationRequest.dispenseRequest.performer`, and on
   `MedicationDispense.location` for every dispense (the status feed's and the
-  history feed's alike; the history one also carries the store name as
-  `display`) — never on `supportingInformation`. A request whose
+  history feed's alike) — never on `supportingInformation`. Its `display` is
+  the history feed's store name where there is one, else
+  `Shoppers Drug Mart (store <id>)` (`shoppersStoreDisplay`). A request whose
   payload carries a store but nothing else for `dispenseRequest` still gets a
   `dispenseRequest` holding just the `performer`.
 

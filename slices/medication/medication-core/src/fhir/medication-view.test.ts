@@ -65,8 +65,7 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.repeatsAllowed).toBeNull()
     expect(view.repeatsAvailable).toBeNull()
     expect(view.nextFillDate).toBeNull()
-    expect(view.rexallStoreUrl).toBeNull()
-    expect(view.shoppersStoreUrl).toBeNull()
+    expect(view.storeLink).toBeNull()
   })
 })
 

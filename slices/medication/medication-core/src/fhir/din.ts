@@ -1,13 +1,12 @@
-import { Array as Arr, Option, pipe } from 'effect'
+import { Array as Arr, Option, pipe, String as Str } from 'effect'
 import { CanadianCodingSystem, Coding, type CodeableConcept } from 'fhir-r4/data-types'
 import type { MedicationRequest } from 'fhir-r4/resources'
-import { nonEmpty } from 'kitchen-sink'
 
 import { containedMedicationOf, medicationConceptOf } from './medication-slots.ts'
 
 /** A coding's `code`, when it carries a non-blank one. */
 const nonEmptyCodeOf = (coding: Coding.Type): Option.Option<string> =>
-  Option.fromNullable(nonEmpty(coding.code))
+  pipe(Option.fromNullable(coding.code), Option.filter(Str.isNonEmpty))
 
 /** The first non-empty `code` under {@link CanadianCodingSystem.Din} in a concept. */
 const canonicalDinIn = (concept: typeof CodeableConcept.Schema.Type | null): string | null =>

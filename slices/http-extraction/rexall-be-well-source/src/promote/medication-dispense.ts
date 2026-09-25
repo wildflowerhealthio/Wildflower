@@ -1,7 +1,6 @@
-import { pipe, Struct } from 'effect'
+import { Option, pipe, Struct } from 'effect'
 
 import type { MedicationDispense } from 'fhir-r4/resources'
-import { whenPresent } from 'kitchen-sink'
 
 import { promoteContained } from './contained-medication.ts'
 import { withCanonicalDinOnMedicationConcept } from './din.ts'
@@ -28,7 +27,8 @@ const promoteMedicationDispense = (dispense: MedicationDispense.Type): Medicatio
     Struct.evolve({
       contained: promoteContained,
       medicationCodeableConcept: withCanonicalDinOnMedicationConcept,
-      daysSupply: (daysSupply) => whenPresent(daysSupply, withDayUnit),
+      daysSupply: (daysSupply) =>
+        Option.fromNullable(daysSupply).pipe(Option.map(withDayUnit), Option.getOrNull),
     })
   )
 

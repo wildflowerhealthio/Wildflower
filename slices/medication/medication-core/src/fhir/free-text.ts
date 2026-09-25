@@ -1,12 +1,11 @@
-import { Array as Arr, Option } from 'effect'
+import { Array as Arr, Option, pipe, String as Str } from 'effect'
 import type { MedicationRequest } from 'fhir-r4/resources'
-import { nonEmpty } from 'kitchen-sink'
 
 /** The free text a person wrote on a request: the dosage sig, notes, and the prescriber's name. */
 
 /** An entry's `text`, when it carries non-blank text. */
 const nonEmptyTextOf = (entry: { readonly text: string | null }): Option.Option<string> =>
-  Option.fromNullable(nonEmpty(entry.text))
+  pipe(Option.fromNullable(entry.text), Option.filter(Str.isNonEmpty))
 
 /** Newline-join the non-empty `text` of every entry; `null` when none carry text. */
 const joinTexts = (entries: readonly { readonly text: string | null }[]): string | null => {
@@ -27,6 +26,10 @@ const noteOf = (request: MedicationRequest.Type): string | null => joinTexts(req
 
 /** The prescriber's display name, from `MedicationRequest.requester`. */
 const requesterOf = (request: MedicationRequest.Type): string | null =>
-  nonEmpty(request.requester?.display)
+  pipe(
+    Option.fromNullable(request.requester?.display),
+    Option.filter(Str.isNonEmpty),
+    Option.getOrNull
+  )
 
 export { dosageTextOf, noteOf, requesterOf }

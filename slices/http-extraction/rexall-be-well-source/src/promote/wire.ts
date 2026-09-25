@@ -6,8 +6,10 @@ import { Schema } from 'effect'
  *
  * @remarks
  * Declared here rather than taken from `fhir-r4`: a raw entry's `system` is a
- * string, not the decoded `URL`, it may carry explicit `null`s, and keys the R4
- * schemas do not model must survive the round trip.
+ * string, not the decoded `URL`, and keys the R4 schemas do not model must
+ * survive the round trip. A nullable key decodes to an `Option`, whether the
+ * wire spells its absence as a missing key or an explicit `null`; `None`
+ * encodes back as a missing key, since FHIR JSON has no `null` values.
  */
 
 /**
@@ -16,21 +18,24 @@ import { Schema } from 'effect'
  */
 const OtherWireFields = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 
-/** An optional, nullable wire string — raw passthrough JSON may spell absence either way. */
-const OptionalWireString = Schema.optional(Schema.NullOr(Schema.String))
+/** A wire string that may be missing or `null`, decoded to an `Option`. */
+const WireStringOption = Schema.optionalWith(Schema.String, { nullable: true, as: 'Option' })
 
 /** A raw `Coding`. */
 const WireCoding = Schema.Struct(
-  { system: OptionalWireString, code: OptionalWireString, display: OptionalWireString },
+  { system: WireStringOption, code: WireStringOption, display: WireStringOption },
   OtherWireFields
 )
 type WireCoding = typeof WireCoding.Type
 
 /** A raw `CodeableConcept`. */
 const WireCodeableConcept = Schema.Struct(
-  { text: OptionalWireString, coding: Schema.optional(Schema.Array(WireCoding)) },
+  {
+    text: WireStringOption,
+    coding: Schema.optionalWith(Schema.Array(WireCoding), { as: 'Option' }),
+  },
   OtherWireFields
 )
 type WireCodeableConcept = typeof WireCodeableConcept.Type
 
-export { OptionalWireString, OtherWireFields, WireCodeableConcept, WireCoding }
+export { OtherWireFields, WireCodeableConcept, WireCoding, WireStringOption }

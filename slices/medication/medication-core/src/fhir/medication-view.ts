@@ -1,6 +1,5 @@
-import { DateTime, Option, pipe } from 'effect'
+import { DateTime, Option, pipe, String as Str } from 'effect'
 import type { MedicationRequest } from 'fhir-r4/resources'
-import { nonEmpty } from 'kitchen-sink'
 
 import type { Medication } from '../medication.ts'
 import { descriptionOf } from './description.ts'
@@ -8,7 +7,7 @@ import { dinOf } from './din.ts'
 import { nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf } from './dispense-request.ts'
 import { displayNameOf } from './display-name.ts'
 import { noteOf, requesterOf } from './free-text.ts'
-import { rexallStoreUrlOf, shoppersStoreUrlOf } from './store-url.ts'
+import { storeLinkOf, type StoreLink } from './store-link.ts'
 
 /** The decoded FHIR R4 `MedicationRequest` resource. */
 type MedicationRequestResource = MedicationRequest.Type
@@ -22,7 +21,11 @@ const medicationRequestToMedication = (
   request: MedicationRequestResource,
   fallbackId: string
 ): Medication => ({
-  id: nonEmpty(request.id) ?? fallbackId,
+  id: pipe(
+    Option.fromNullable(request.id),
+    Option.filter(Str.isNonEmpty),
+    Option.getOrElse(() => fallbackId)
+  ),
   displayName: displayNameOf(request),
   status: request.status,
   authoredOn: pipe(
@@ -54,10 +57,8 @@ interface MedicationView {
   readonly repeatsAvailable: number | null
   /** Estimated next-fill date (ISO) — see {@link nextFillDateOf}. */
   readonly nextFillDate: string | null
-  /** Rexall store-locator URL when the request is sourced from a Rexall store. */
-  readonly rexallStoreUrl: string | null
-  /** Shoppers Drug Mart store-locator URL when the request is sourced from a Shoppers store. */
-  readonly shoppersStoreUrl: string | null
+  /** The dispensing store's web page — see {@link storeLinkOf}. */
+  readonly storeLink: StoreLink | null
 }
 
 /**
@@ -81,8 +82,7 @@ const medicationRequestToMedicationView = (
   repeatsAllowed: repeatsAllowedOf(request),
   repeatsAvailable: repeatsAvailableOf(request),
   nextFillDate: nextFillDateOf(request),
-  rexallStoreUrl: rexallStoreUrlOf(request),
-  shoppersStoreUrl: shoppersStoreUrlOf(request),
+  storeLink: storeLinkOf(request),
 })
 
 /** Map a bundle's worth of requests, deriving fallback keys from position. */

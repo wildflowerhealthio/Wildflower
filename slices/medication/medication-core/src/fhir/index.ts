@@ -33,4 +33,4 @@ export {
   type MedicationRequestResource,
   type MedicationView,
 } from './medication-view.ts'
-export { rexallStoreUrlOf, shoppersStoreUrlOf } from './store-url.ts'
+export { storeLinkOf, type StoreLink } from './store-link.ts'

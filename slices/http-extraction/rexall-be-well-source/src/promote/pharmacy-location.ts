@@ -1,10 +1,6 @@
-import { flow, Option, pipe, Schema, Struct } from 'effect'
+import { flow, Option, pipe, Schema, String as Str, Struct } from 'effect'
 
-import {
-  IdentifierAndReference,
-  PharmacyStoreLocatorBase,
-  storeLocatorUrl,
-} from 'fhir-r4/data-types'
+import { IdentifierAndReference } from 'fhir-r4/data-types'
 import type { Extension } from 'fhir-r4/data-types'
 import type { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import { Lift } from 'kitchen-sink'
@@ -17,7 +13,8 @@ import { atUrl, promoteExtension } from './extension-lift.ts'
  * Where the dispensing pharmacy is: `medication-processor` → the request's
  * `dispenseRequest.performer` or the dispense's `location`, and the
  * `external-system-source` + `external-store-id` pair → the public Rexall
- * store-locator page, on that same reference's `reference`.
+ * store-locator page, on that same reference's `reference`, and the store's
+ * name, `Rexall (store <number>)`, on its `display` when it has none.
  *
  * @remarks
  * The store number lands on `Reference.reference`, never
@@ -47,9 +44,8 @@ const ExternalStoreId = Schema.pluck(
 )
 
 /**
- * The Rexall store-locator page the `external-system-source` +
- * `external-store-id` pair spells: a Rexall source **and** a store number,
- * consumed together.
+ * The Rexall store number the `external-system-source` + `external-store-id`
+ * pair spells: a Rexall source **and** a store number, consumed together.
  *
  * @param externalStoreIdUrl - The resource's own `external-store-id` url
  * (request and dispense each have one)
@@ -58,25 +54,39 @@ const ExternalStoreId = Schema.pluck(
  * chain's system would point at the wrong page — so a lone one reads nothing
  * and stays where it is.
  */
-const liftStoreLocatorUrl = (externalStoreIdUrl: string): Lift.Lift<string, Extension.Type> =>
+const liftRexallStoreId = (externalStoreIdUrl: string): Lift.Lift<string, Extension.Type> =>
   pipe(
     atUrl(CarebookExtension.ExternalSystemSource, RexallSystemSource),
-    Lift.zipRight(atUrl(externalStoreIdUrl, ExternalStoreId)),
-    Lift.map((storeId) => storeLocatorUrl(PharmacyStoreLocatorBase.Rexall, storeId))
+    Lift.zipRight(atUrl(externalStoreIdUrl, ExternalStoreId))
   )
 
 /**
- * The pharmacy location reference pointed at the store-locator page, keeping
- * every other field of it — in particular the `identifier` carrying carebook's
- * own pharmacy id, which the store number must not displace.
+ * Where Rexall's public store-locator pages live. A customer-facing web page,
+ * not a FHIR endpoint: the reference is a literal link a person can open.
  */
-const withStoreLocatorUrl = (
+const REXALL_STORE_LOCATOR_BASE = 'https://www.rexall.ca/storelocator/store/'
+
+/**
+ * The pharmacy location reference pointed at the store's public store-locator
+ * page and named after the store, keeping every other field of it — in
+ * particular the `identifier` carrying carebook's own pharmacy id, which the
+ * store number must not displace, and any `display` the source already gave.
+ */
+const withStoreLink = (
   pharmacyLocationReference: IdentifierAndReference.ReferenceType | null,
-  storeLocatorPage: string
-): IdentifierAndReference.ReferenceType => ({
-  ...(pharmacyLocationReference ?? IdentifierAndReference.emptyReference),
-  reference: storeLocatorPage,
-})
+  rexallStoreId: string
+): IdentifierAndReference.ReferenceType => {
+  const reference = pharmacyLocationReference ?? IdentifierAndReference.emptyReference
+  return {
+    ...reference,
+    reference: `${REXALL_STORE_LOCATOR_BASE}${encodeURIComponent(rexallStoreId)}`,
+    display: pipe(
+      Option.fromNullable(reference.display),
+      Option.filter(Str.isNonEmpty),
+      Option.getOrElse(() => `Rexall (store ${rexallStoreId})`)
+    ),
+  }
+}
 
 // ---------------------------------------------------------------------------
 // MedicationRequest
@@ -114,11 +124,11 @@ const liftRequestMedicationProcessor = promoteExtension(
  * performer when no `medication-processor` supplied one (the capture's
  * `mr-0002`).
  */
-const liftRequestStoreLocatorUrl = promoteExtension(
-  liftStoreLocatorUrl(CarebookExtension.RequestExternalStoreId),
-  (request: MedicationRequest.Type, storeLocatorPage) =>
+const liftRequestStoreLink = promoteExtension(
+  liftRexallStoreId(CarebookExtension.RequestExternalStoreId),
+  (request: MedicationRequest.Type, rexallStoreId) =>
     withDispensePerformer(request, (pharmacyLocationReference) =>
-      withStoreLocatorUrl(pharmacyLocationReference, storeLocatorPage)
+      withStoreLink(pharmacyLocationReference, rexallStoreId)
     )
 )
 
@@ -131,7 +141,7 @@ const liftRequestStoreLocatorUrl = promoteExtension(
  * carrying carebook's pharmacy `identifier` — is already in place for the store
  * link to keep; the other way round, the processor would overwrite the link.
  */
-const promoteRequestPharmacy = flow(liftRequestMedicationProcessor, liftRequestStoreLocatorUrl)
+const promoteRequestPharmacy = flow(liftRequestMedicationProcessor, liftRequestStoreLink)
 
 // ---------------------------------------------------------------------------
 // MedicationDispense
@@ -152,13 +162,13 @@ const liftDispenseMedicationProcessor = promoteExtension(
 )
 
 /** The store pair → `location.reference`, mirroring the request's `performer`. */
-const liftDispenseStoreLocatorUrl = promoteExtension(
-  liftStoreLocatorUrl(CarebookExtension.DispenseExternalStoreId),
-  (dispense: MedicationDispense.Type, storeLocatorPage) =>
+const liftDispenseStoreLink = promoteExtension(
+  liftRexallStoreId(CarebookExtension.DispenseExternalStoreId),
+  (dispense: MedicationDispense.Type, rexallStoreId) =>
     Option.some(
       Struct.evolve(dispense, {
         location: (pharmacyLocationReference) =>
-          withStoreLocatorUrl(pharmacyLocationReference, storeLocatorPage),
+          withStoreLink(pharmacyLocationReference, rexallStoreId),
       })
     )
 )
@@ -167,6 +177,6 @@ const liftDispenseStoreLocatorUrl = promoteExtension(
  * Where the dispense happened: the processor's reference, then the store page
  * on it — in that order, for the reason {@link promoteRequestPharmacy} gives.
  */
-const promoteDispensePharmacy = flow(liftDispenseMedicationProcessor, liftDispenseStoreLocatorUrl)
+const promoteDispensePharmacy = flow(liftDispenseMedicationProcessor, liftDispenseStoreLink)
 
 export { promoteDispensePharmacy, promoteRequestPharmacy }

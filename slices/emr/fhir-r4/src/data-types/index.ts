@@ -49,8 +49,6 @@ export * as Bundle from './resources/bundle.ts'
 // Terminology — canonical coding-system and extension URLs
 export {
   CanadianCodingSystem,
-  PharmacyStoreLocatorBase,
-  storeLocatorUrl,
   WILDFLOWER_EXTENSION_BASE,
   WildflowerExtension,
 } from './terminology.ts'
