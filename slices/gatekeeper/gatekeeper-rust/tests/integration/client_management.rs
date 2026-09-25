@@ -262,7 +262,10 @@ async fn any_sent_disabled_at_disables_now_with_the_servers_time() {
             (before..=after).contains(&answered),
             "stamped with the server's now, not the time sent ({sent})"
         );
-        assert_eq!(stored_disabled_at(&db, CONFIDENTIAL_CLIENT_ID), Some(answered));
+        assert_eq!(
+            stored_disabled_at(&db, CONFIDENTIAL_CLIENT_ID),
+            Some(answered)
+        );
 
         let res = refresh_as_confidential_client(&g).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "refused at once");
