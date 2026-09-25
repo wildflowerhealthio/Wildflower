@@ -1,3 +1,5 @@
+import { PharmacyStoreLocatorBase, storeLocatorUrl } from 'fhir-r4/data-types'
+
 /**
  * Constants for the Shoppers Drug Mart "mypharmacy" portal
  * (`mypharmacy.shoppersdrugmart.ca`): the FHIR identifier and coding systems
@@ -63,25 +65,19 @@ const ShoppersIdentifierSystem = {
 const PRESCRIPTION_STATUS_TYPE_SYSTEM = `${SYSTEM_BASE}/CodeSystem/prescription-status-type`
 
 /**
- * Base of the public Shoppers Drug Mart store-locator URL. A prescription's
- * `storeId` is appended to build the `…/store-locator/store/:id` link stamped
- * onto `MedicationRequest.dispenseRequest.performer.reference` and
- * `MedicationDispense.location.reference` (see {@link shoppersStoreLocatorUrl}).
- * This is a **customer-facing web URL**, not a portal-namespaced FHIR system, so
- * it lives on `www.shoppersdrugmart.ca` rather than under {@link SYSTEM_BASE}.
- * The medication-sponsorship UI recognizes a Shoppers store by prefix-matching
- * this same base, so keep the two in sync.
+ * The public store-locator page for a prescription's `storeId`, stamped onto
+ * `MedicationRequest.dispenseRequest.performer.reference` and
+ * `MedicationDispense.location.reference`. The base is `fhir-r4`'s
+ * `PharmacyStoreLocatorBase.ShoppersDrugMart` — a customer-facing web page, not
+ * a portal-namespaced FHIR system, so it is not under {@link SYSTEM_BASE} — the
+ * same base the medication view reads to recognize a Shoppers store.
  */
-const SHOPPERS_STORE_LOCATOR_BASE = 'https://www.shoppersdrugmart.ca/store-locator/store/'
-
-/** The store-locator URL for a prescription's `storeId`. */
 const shoppersStoreLocatorUrl = (storeId: string | number): string =>
-  `${SHOPPERS_STORE_LOCATOR_BASE}${encodeURIComponent(String(storeId))}`
+  storeLocatorUrl(PharmacyStoreLocatorBase.ShoppersDrugMart, String(storeId))
 
 export {
   ShoppersIdentifierSystem,
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   SYSTEM_BASE,
-  SHOPPERS_STORE_LOCATOR_BASE,
   shoppersStoreLocatorUrl,
 }

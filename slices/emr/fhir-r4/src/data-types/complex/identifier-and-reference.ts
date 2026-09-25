@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
 
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
@@ -72,10 +72,33 @@ const emptyReference: ReferenceType = {
   type: null,
 }
 
+/**
+ * A `Reference.reference` naming a resource carried in the referencing
+ * resource's own `contained`: `#` followed by that resource's `id`.
+ *
+ * @remarks
+ * The only literal reference that resolves without leaving the resource. Any
+ * other value names something outside it (a relative `Type/id`, an absolute
+ * URL), which a writer re-pointing references inside one resource must leave
+ * alone.
+ */
+const FragmentReference = Schema.TemplateLiteralParser('#', Schema.NonEmptyString)
+
+const decodeFragmentReference = Schema.decodeUnknownOption(FragmentReference)
+
+/** The `id` of the contained resource a `#id` reference names, or `None` for any other reference. */
+const fragmentIdOf = (reference: string): Option.Option<string> =>
+  Option.map(decodeFragmentReference(reference), ([, id]) => id)
+
+/** The `#id` reference to the contained resource with `id`. */
+const fragmentReferenceTo = (id: string): string => `#${id}`
+
 export {
   ReferenceSchema,
   IdentifierSchema,
   emptyReference,
+  fragmentIdOf,
+  fragmentReferenceTo,
   type ReferenceType,
   type IdentifierType,
 }

@@ -1,13 +1,19 @@
-import { Array as Arr, Option, pipe, Schema } from 'effect'
+import { Array as Arr, flow, Option, pipe, Schema, Struct } from 'effect'
 
-import { IdentifierAndReference } from 'fhir-r4/data-types'
+import {
+  CodeableConcept,
+  IdentifierAndReference,
+  Narrative,
+  WildflowerExtension,
+} from 'fhir-r4/data-types'
 import type { MedicationRequest } from 'fhir-r4/resources'
-import { nonEmpty } from 'kitchen-sink'
+import { Lift, nonEmpty, whenPresent } from 'kitchen-sink'
+import { modifyIfDecodes } from 'kitchen-sink/schema'
 
 import { CarebookExtension } from '../carebook.ts'
 import { decodeCodeableConcept, decodeReference } from './decoded-r4.ts'
 import { wireConceptWithCanonicalDin } from './din.ts'
-import { liftRawExtension } from './lift.ts'
+import { promoteExtension } from './extension-lift.ts'
 import { StrengthRatioFromString } from './strength-ratio.ts'
 import { OptionalWireString, OtherWireFields, WireCodeableConcept } from './wire.ts'
 
@@ -41,17 +47,32 @@ const WireIngredient = Schema.Struct(
 )
 type WireIngredient = typeof WireIngredient.Type
 
-/** `medication/…/description` on a raw contained Medication, with a non-blank value. */
+// Raw extensions decode whole, `url` included — never `Schema.pluck` (see AGENTS.md, "Extension Promotion").
+
+/** `medication/…/description`: carebook's label for the drug, with non-blank text. */
 const DescriptionExtension = Schema.Struct({
   url: Schema.Literal(CarebookExtension.MedicationDescription),
   valueString: Schema.NonEmptyString,
 })
 
-/** `medication/…/strength` on a raw contained Medication, parsed to a `Ratio`. */
+/** `medication/…/strength`: free text such as `"10 mg"`, read to a `Ratio`. */
 const StrengthExtension = Schema.Struct({
   url: Schema.Literal(CarebookExtension.MedicationStrength),
   valueString: StrengthRatioFromString,
 })
+type Strength = typeof StrengthRatioFromString.Type
+
+/** The description's text, off the first raw entry that is one. */
+const liftDescriptionText = pipe(
+  Lift.firstDecoding(DescriptionExtension),
+  Lift.map(({ valueString }) => valueString)
+)
+
+/** The parsed strength, off the first raw entry that is one. */
+const liftStrengthRatio = pipe(
+  Lift.firstDecoding(StrengthExtension),
+  Lift.map(({ valueString }) => valueString)
+)
 
 /**
  * A raw `contained` Medication: the fields promotion reads, typed, and every
@@ -78,29 +99,18 @@ type ContainedMedication = typeof ContainedMedication.Type
 
 const decodeContainedMedication = Schema.decodeUnknownOption(ContainedMedication)
 
-// ---------------------------------------------------------------------------
-// Narrative
-// ---------------------------------------------------------------------------
+const encodeNarrativeDiv = Schema.encodeSync(Narrative.TextFromDiv)
 
-/** The namespace FHIR R4 requires on a `Narrative.div`, which is typed `xhtml`. */
-const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
-
-const XML_ESCAPES: Readonly<Record<string, string>> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-}
+// ---------------------------------------------------------------------------
+// Promotions on one contained Medication
+// ---------------------------------------------------------------------------
 
 /**
- * A conformant `Narrative.div` carrying `text`. R4 types `div` as `xhtml` and
- * requires it to be a single `<div>` in the XHTML namespace, so a bare string
- * is not a legal narrative however readable it looks — a conformant server
- * rejects it on write.
+ * A canonical DIN twin beside the vendor DIN coding on the Medication's
+ * `code`, which is where a reader looks for the drug's DIN first.
  */
-const narrativeDiv = (text: string): string =>
-  `<div xmlns="${XHTML_NAMESPACE}">${text.replace(/[&<>"']/g, (char) => XML_ESCAPES[char] ?? char)}</div>`
+const withContainedCanonicalDin = (medication: ContainedMedication): ContainedMedication =>
+  Struct.evolve(medication, { code: (code) => whenPresent(code, wireConceptWithCanonicalDin) })
 
 /**
  * Whether the description may take over the Medication's narrative: only when
@@ -110,178 +120,208 @@ const narrativeDiv = (text: string): string =>
  * @remarks
  * The copy is what makes the narrative free real estate — the description is
  * strictly richer than the same string. A narrative holding anything *else* is
- * somebody's real content, so the promotion stands down and (per the
- * lift-and-drop rule) the description extension stays where it is.
+ * somebody's real content, which the description must not overwrite.
  */
 const narrativeIsReplaceable = (medication: ContainedMedication): boolean => {
   const div = medication.text?.div
   return div === undefined || div === null || div === nonEmpty(medication.code?.text)
 }
 
-// ---------------------------------------------------------------------------
-// Steps on one contained Medication
-// ---------------------------------------------------------------------------
-
-/** Give the contained Medication's vendor DIN coding a canonical twin. */
-const withContainedCanonicalDin = (medication: ContainedMedication): ContainedMedication =>
-  medication.code === undefined || medication.code === null
-    ? medication
-    : { ...medication, code: wireConceptWithCanonicalDin(medication.code) }
-
-/** `description` → a conformant XHTML narrative, when the narrative is free. */
-const liftDescription = (medication: ContainedMedication): ContainedMedication =>
-  narrativeIsReplaceable(medication)
-    ? pipe(
-        liftRawExtension(DescriptionExtension)(medication.extension ?? []),
-        Option.match({
-          onNone: () => medication,
-          onSome: ({ value, remaining }) => ({
-            ...medication,
-            extension: remaining,
-            text: { status: 'generated', div: narrativeDiv(value.valueString) },
-          }),
-        })
-      )
-    : medication
+/** The Medication with `description` as its narrative, a conformant XHTML `div`. */
+const withDescriptionNarrative = (
+  medication: ContainedMedication,
+  description: string
+): ContainedMedication => ({
+  ...medication,
+  text: { status: 'generated', div: encodeNarrativeDiv(description) },
+})
 
 /**
- * `strength` merged into `ingredient[0]`, keeping every other ingredient and
- * every other key of the first one. A compounded prescription carries several
- * ingredients, and replacing the array outright would delete them.
- *
- * R4 requires `ingredient.item[x]`, so a slot created from nothing names the
- * Medication's own `code` as the item — the strength is a strength *of* this
- * drug.
+ * The Medication with `description` on the Wildflower description extension —
+ * the slot for a description whose natural home, the narrative, is taken.
+ */
+const withDescriptionExtension = (
+  medication: ContainedMedication,
+  description: string
+): ContainedMedication => ({
+  ...medication,
+  extension: [
+    ...(medication.extension ?? []),
+    { url: WildflowerExtension.MedicationDescription, valueString: description },
+  ],
+})
+
+/**
+ * `description` → the narrative when it is free, else the Wildflower
+ * description extension. Either way the carebook extension goes, so a reader
+ * needs no vendor url to find the description.
+ */
+const liftDescription = promoteExtension(
+  liftDescriptionText,
+  (medication: ContainedMedication, description) =>
+    Option.some(
+      narrativeIsReplaceable(medication)
+        ? withDescriptionNarrative(medication, description)
+        : withDescriptionExtension(medication, description)
+    )
+)
+
+/**
+ * Whether an ingredient already says which item it is an ingredient of. An
+ * explicit `null` names nothing, just as an absent key does.
+ */
+const namesItem = (ingredient: WireIngredient): boolean =>
+  (ingredient.itemCodeableConcept ?? ingredient.itemReference ?? null) !== null
+
+/**
+ * The ingredient, naming `code` as its item when it names none. R4 requires
+ * `ingredient.item[x]`, and a strength with no item is a strength of nothing;
+ * the strength is a strength *of this drug*, so the drug's own code is the item.
+ */
+const namingItemAs =
+  (code: WireCodeableConcept) =>
+  (ingredient: WireIngredient): WireIngredient =>
+    namesItem(ingredient) ? ingredient : { ...ingredient, itemCodeableConcept: code }
+
+/**
+ * `strength` merged into the first ingredient, keeping every other ingredient
+ * and every other key of the first one. A compounded prescription carries
+ * several ingredients, and replacing the list outright would delete them.
  */
 const withStrength = (
   ingredients: readonly WireIngredient[],
   code: WireCodeableConcept,
-  strength: typeof StrengthRatioFromString.Type
+  strength: Strength
 ): readonly WireIngredient[] => {
-  const first: WireIngredient = ingredients[0] ?? {}
-  const namesItem = first.itemCodeableConcept !== undefined || first.itemReference !== undefined
-  return [
-    { ...first, ...(namesItem ? {} : { itemCodeableConcept: code }), strength },
-    ...ingredients.slice(1),
-  ]
+  const strengthened = flow(namingItemAs(code), (ingredient) => ({ ...ingredient, strength }))
+  return Arr.matchLeft(ingredients, {
+    onEmpty: () => [strengthened({})],
+    onNonEmpty: (first, rest) => [strengthened(first), ...rest],
+  })
 }
 
 /**
  * `strength` → `ingredient[0].strength`, when it parses and there is a `code`
  * to name the ingredient by.
  */
-const liftStrength = (medication: ContainedMedication): ContainedMedication => {
-  const code = medication.code
-  if (code === undefined || code === null) return medication
-  return pipe(
-    liftRawExtension(StrengthExtension)(medication.extension ?? []),
-    Option.match({
-      onNone: () => medication,
-      onSome: ({ value, remaining }) => ({
-        ...medication,
-        extension: remaining,
-        ingredient: withStrength(medication.ingredient ?? [], code, value.valueString),
-      }),
-    })
-  )
-}
+const liftStrength = promoteExtension(
+  liftStrengthRatio,
+  (medication: ContainedMedication, strength) =>
+    Option.map(Option.fromNullable(medication.code), (code) => ({
+      ...medication,
+      ingredient: withStrength(medication.ingredient ?? [], code, strength),
+    }))
+)
 
-/** Promote one `contained` entry, if it decodes as a {@link ContainedMedication}. */
-const promoteContainedEntry = (entry: unknown): unknown =>
-  pipe(
-    decodeContainedMedication(entry),
-    Option.map((medication) =>
-      pipe(medication, withContainedCanonicalDin, liftDescription, liftStrength)
-    ),
-    Option.getOrElse(() => entry)
-  )
-
-// ---------------------------------------------------------------------------
-// Resource steps
-// ---------------------------------------------------------------------------
+/** Every promotion on one contained Medication. */
+const promoteContainedMedication = flow(withContainedCanonicalDin, liftDescription, liftStrength)
 
 /**
- * Promote every `contained` Medication: a canonical DIN twin on its `code`,
- * `description` → the narrative, `strength` → `ingredient[0].strength`.
+ * Promote every `contained` Medication. Any other entry — another resource
+ * type, or a Medication that does not decode — is returned exactly as it went
+ * in.
  */
-const promoteContained = <R extends { readonly contained: readonly unknown[] }>(
-  resource: R
-): R => ({
-  ...resource,
-  contained: resource.contained.map(promoteContainedEntry),
-})
+const promoteContained = (contained: readonly unknown[]): readonly unknown[] =>
+  Arr.map(contained, modifyIfDecodes(ContainedMedication, promoteContainedMedication))
 
-/** The display-bearing fields shared by a decoded and a raw `CodeableConcept`. */
-interface Displayable {
-  readonly text?: string | null | undefined
-  readonly coding?: readonly { readonly display?: string | null | undefined }[] | undefined
-}
+// ---------------------------------------------------------------------------
+// Linking medication[x] to the contained Medication
+// ---------------------------------------------------------------------------
 
-/** A concept's best human-readable label: its `text`, else the first coding `display`. */
-const conceptDisplay = (concept: Displayable): string | null =>
-  nonEmpty(concept.text) ??
-  pipe(
-    Arr.findFirst(concept.coding ?? [], (coding) => Option.fromNullable(nonEmpty(coding.display))),
-    Option.getOrNull
-  )
-
-/** Where a contained Medication can be linked from: its `id`, and the best label its `code` offers. */
+/** Where a contained Medication can be linked from: its `id`, and the label its `code` offers. */
 interface ContainedMedicationLink {
   readonly id: string
-  readonly display: string | null
+  readonly label: Option.Option<string>
 }
 
-/** The link to a contained Medication, when it has both a usable `code` and an `id`. */
+/** The link to a contained Medication, when it has both an `id` to point at and a `code`. */
 const containedMedicationLink = (entry: unknown): Option.Option<ContainedMedicationLink> =>
   pipe(
     decodeContainedMedication(entry),
-    Option.flatMap(({ id, code }) => {
-      const linkId = nonEmpty(id)
-      return code === undefined || code === null || linkId === null
-        ? Option.none()
-        : Option.some({ id: linkId, display: conceptDisplay(code) })
-    })
+    Option.flatMap(({ id, code }) =>
+      Option.all({ id: Option.fromNullable(nonEmpty(id)), code: Option.fromNullable(code) })
+    ),
+    Option.map(({ id, code }) => ({ id, label: CodeableConcept.label(code) }))
   )
+
+/** Where `medicationReference` points today, when that is outside this resource. */
+const externalMedicationTarget = (request: MedicationRequest.Type): Option.Option<string> =>
+  pipe(
+    decodeReference(request.medicationReference),
+    Option.flatMapNullable(({ reference }) => nonEmpty(reference)),
+    Option.filter((target) => Option.isNone(IdentifierAndReference.fragmentIdOf(target)))
+  )
+
+/**
+ * Whether `medicationReference` may be pointed at the contained Medication: it
+ * points nowhere yet, or at a `#fragment` inside this resource. A reference to
+ * anything outside names an external Medication nobody here may retarget.
+ */
+const medicationReferenceIsRetargetable = (request: MedicationRequest.Type): boolean =>
+  Option.isNone(externalMedicationTarget(request))
+
+/**
+ * The name the linked reference carries: the name the reference already had,
+ * else the inline concept's label, else the contained `code`'s.
+ *
+ * @remarks
+ * The inline `medicationCodeableConcept` gives way to the link, but its name
+ * must not: a reader that only renders `medication[x]` still needs something
+ * to show.
+ */
+const linkedMedicationLabel = (
+  request: MedicationRequest.Type,
+  link: ContainedMedicationLink
+): string | null =>
+  pipe(
+    Option.firstSomeOf([
+      Option.flatMapNullable(decodeReference(request.medicationReference), ({ display }) =>
+        nonEmpty(display)
+      ),
+      Option.flatMap(
+        decodeCodeableConcept(request.medicationCodeableConcept),
+        CodeableConcept.label
+      ),
+      link.label,
+    ]),
+    Option.getOrNull
+  )
+
+/**
+ * `medicationReference` pointed at the contained Medication, keeping every
+ * other field of any reference already there.
+ */
+const referenceToContained = (
+  request: MedicationRequest.Type,
+  link: ContainedMedicationLink
+): IdentifierAndReference.ReferenceType => ({
+  ...Option.getOrElse(
+    decodeReference(request.medicationReference),
+    () => IdentifierAndReference.emptyReference
+  ),
+  reference: IdentifierAndReference.fragmentReferenceTo(link.id),
+  display: linkedMedicationLabel(request, link),
+})
 
 /**
  * Link the orphaned `contained` Medication by `medicationReference: '#id'`.
  *
  * @remarks
- * Nothing points at it today, so its form, manufacturer, strength and
- * description are unreachable. `medication[x]` is a choice, so the inline
- * `medicationCodeableConcept` gives way — but its label does not: whatever name
- * the existing reference, the concept, or the contained `code` carried is
- * copied onto the reference's `display`, so a reader that only knows how to
- * render `medication[x]` still has a name to show.
- *
- * The link is skipped when `medicationReference` already points somewhere that
- * is not a `#fragment`: that is an external Medication nobody here may
- * retarget.
+ * Nothing points at it as the dialect sends it, so its form, manufacturer,
+ * strength and description are unreachable. `medication[x]` is a choice, so the
+ * inline `medicationCodeableConcept` gives way to the reference.
  */
-const linkContainedMedication = (request: MedicationRequest.Type): MedicationRequest.Type => {
-  const medicationReference = Option.getOrNull(decodeReference(request.medicationReference))
-  const existingTarget = nonEmpty(medicationReference?.reference)
-  if (existingTarget !== null && !existingTarget.startsWith('#')) return request
-  return pipe(
-    Arr.findFirst(request.contained, containedMedicationLink),
-    Option.match({
-      onNone: () => request,
-      onSome: (link) => ({
-        ...request,
-        medicationReference: {
-          ...(medicationReference ?? IdentifierAndReference.emptyReference),
-          reference: `#${link.id}`,
-          display:
-            nonEmpty(medicationReference?.display) ??
-            Option.getOrNull(
-              Option.map(decodeCodeableConcept(request.medicationCodeableConcept), conceptDisplay)
-            ) ??
-            link.display,
-        },
-        medicationCodeableConcept: null,
-      }),
-    })
+const linkContainedMedication = (request: MedicationRequest.Type): MedicationRequest.Type =>
+  pipe(
+    request,
+    Option.liftPredicate(medicationReferenceIsRetargetable),
+    Option.flatMap(({ contained }) => Arr.findFirst(contained, containedMedicationLink)),
+    Option.map((link) => ({
+      ...request,
+      medicationReference: referenceToContained(request, link),
+      medicationCodeableConcept: null,
+    })),
+    Option.getOrElse(() => request)
   )
-}
 
 export { linkContainedMedication, promoteContained }

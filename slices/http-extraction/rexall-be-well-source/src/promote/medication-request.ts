@@ -1,13 +1,14 @@
-import { Option, pipe, Schema } from 'effect'
+import { Array as Arr, flow, Option, pipe, Schema, Struct } from 'effect'
 
 import type { MedicationRequest } from 'fhir-r4/resources'
+import { whenPresent } from 'kitchen-sink'
 
 import { CarebookExtension } from '../carebook.ts'
 import { linkContainedMedication, promoteContained } from './contained-medication.ts'
 import { DecodedCodeableConcept } from './decoded-r4.ts'
 import { withCanonicalDinOnMedicationConcept } from './din.ts'
-import { liftExtension, promoteExtension } from './lift.ts'
-import { liftRequestMedicationProcessor, liftRequestStoreLocatorUrl } from './pharmacy-location.ts'
+import { atUrl, promoteExtension } from './extension-lift.ts'
+import { promoteRequestPharmacy } from './pharmacy-location.ts'
 import { promoteRepeatsAvailable } from './repeats-available.ts'
 import { withSupplyDurationInDays } from './supply-days.ts'
 
@@ -20,31 +21,31 @@ const RequestType = Schema.pluck(
   'valueCodeableConcept'
 )
 
-/** `do-not-perform` → `doNotPerform`. */
+/** `do-not-perform` → `doNotPerform`, an exact 1:1. */
 const liftDoNotPerform = promoteExtension(
-  liftExtension(CarebookExtension.DoNotPerform, DoNotPerform),
+  atUrl(CarebookExtension.DoNotPerform, DoNotPerform),
   (request: MedicationRequest.Type, doNotPerform) => Option.some({ ...request, doNotPerform })
 )
 
-/** `request-type` → appended to `category`. */
+/**
+ * `request-type` → `category`. Appended rather than assigned: `category` is a
+ * list of independent classifications, and fill-vs-refill is one more of them
+ * beside any the request already carries.
+ */
 const liftRequestType = promoteExtension(
-  liftExtension(CarebookExtension.RequestType, RequestType),
+  atUrl(CarebookExtension.RequestType, RequestType),
   (request: MedicationRequest.Type, requestType) =>
-    Option.some({ ...request, category: [...request.category, requestType] })
+    Option.some(
+      Struct.evolve(request, { category: (category) => Arr.append(category, requestType) })
+    )
 )
 
 /** The `dispenseRequest`-local promotions, when there is a `dispenseRequest`. */
 const promoteDispenseRequest = (request: MedicationRequest.Type): MedicationRequest.Type =>
-  request.dispenseRequest === null
-    ? request
-    : {
-        ...request,
-        dispenseRequest: pipe(
-          request.dispenseRequest,
-          withSupplyDurationInDays,
-          promoteRepeatsAvailable
-        ),
-      }
+  Struct.evolve(request, {
+    dispenseRequest: (dispenseRequest) =>
+      whenPresent(dispenseRequest, flow(withSupplyDurationInDays, promoteRepeatsAvailable)),
+  })
 
 /**
  * Promotes carebook-dialect extensions on a `MedicationRequest` into the
@@ -63,17 +64,19 @@ const promoteDispenseRequest = (request: MedicationRequest.Type): MedicationRequ
  * drops exactly the entry it read, only once the value has landed. The full
  * table of what moves, what deliberately does not, and why, is in this
  * package's AGENTS.md under "Extension Promotion".
+ *
+ * The inline concept is twinned **after** the link: linking retires the inline
+ * concept, so only a request left unlinked still has one to twin.
  */
 const promoteMedicationRequest = (request: MedicationRequest.Type): MedicationRequest.Type =>
   pipe(
     request,
     liftDoNotPerform,
     liftRequestType,
-    liftRequestMedicationProcessor,
-    liftRequestStoreLocatorUrl,
-    promoteContained,
-    withCanonicalDinOnMedicationConcept,
+    promoteRequestPharmacy,
+    Struct.evolve({ contained: promoteContained }),
     linkContainedMedication,
+    Struct.evolve({ medicationCodeableConcept: withCanonicalDinOnMedicationConcept }),
     promoteDispenseRequest
   )
 

@@ -24,6 +24,7 @@ const WireCoding = Schema.Struct(
   { system: OptionalWireString, code: OptionalWireString, display: OptionalWireString },
   OtherWireFields
 )
+type WireCoding = typeof WireCoding.Type
 
 /** A raw `CodeableConcept`. */
 const WireCodeableConcept = Schema.Struct(
@@ -32,4 +33,4 @@ const WireCodeableConcept = Schema.Struct(
 )
 type WireCodeableConcept = typeof WireCodeableConcept.Type
 
-export { OptionalWireString, OtherWireFields, WireCodeableConcept }
+export { OptionalWireString, OtherWireFields, WireCodeableConcept, WireCoding }

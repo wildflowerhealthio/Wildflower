@@ -1,31 +1,29 @@
-import { Option, pipe, Schema } from 'effect'
+import { flow, Option, pipe, Schema, Struct } from 'effect'
 
-import { IdentifierAndReference } from 'fhir-r4/data-types'
+import {
+  IdentifierAndReference,
+  PharmacyStoreLocatorBase,
+  storeLocatorUrl,
+} from 'fhir-r4/data-types'
 import type { Extension } from 'fhir-r4/data-types'
 import type { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
+import { Lift } from 'kitchen-sink'
 
 import { CarebookExtension, REXALL_SYSTEM_SOURCE } from '../carebook.ts'
 import { DecodedReference } from './decoded-r4.ts'
-import { type Lifted, liftExtension, promoteExtension } from './lift.ts'
+import { atUrl, promoteExtension } from './extension-lift.ts'
 
 /**
  * Where the dispensing pharmacy is: `medication-processor` → the request's
  * `dispenseRequest.performer` or the dispense's `location`, and the
  * `external-system-source` + `external-store-id` pair → the public Rexall
- * store-locator URL on that same reference's `reference`.
+ * store-locator page, on that same reference's `reference`.
  *
  * @remarks
  * The store number lands on `Reference.reference`, never
  * `Reference.identifier`, which already holds carebook's own pharmacy id — see
  * AGENTS.md under "Extension Promotion".
  */
-
-/** Base of the public Rexall store-locator page a store number is appended to. */
-const REXALL_STORE_LOCATOR_BASE = 'https://www.rexall.ca/storelocator/store/'
-
-/** The public store-locator URL for a Rexall store number. */
-const rexallStoreLocatorUrl = (storeId: string): string =>
-  `${REXALL_STORE_LOCATOR_BASE}${encodeURIComponent(storeId)}`
 
 /** `…/medication-processor`: carebook's reference to the dispensing pharmacy location. */
 const PharmacyLocationReference = Schema.pluck(
@@ -49,29 +47,23 @@ const ExternalStoreId = Schema.pluck(
 )
 
 /**
- * The Rexall store-locator URL the `external-system-source` +
- * `external-store-id` pair spells, lifted as one value.
+ * The Rexall store-locator page the `external-system-source` +
+ * `external-store-id` pair spells: a Rexall source **and** a store number,
+ * consumed together.
  *
  * @param externalStoreIdUrl - The resource's own `external-store-id` url
  * (request and dispense each have one)
- * @returns `None` unless the source reads {@link REXALL_SYSTEM_SOURCE} **and**
- * a non-blank store id is present — either one alone is not a store link, so a
- * lone extension is left where it is. Otherwise the URL, with both entries
- * gone from `remaining`.
+ * @remarks
+ * Either extension alone is not a store link — a store number from another
+ * chain's system would point at the wrong page — so a lone one reads nothing
+ * and stays where it is.
  */
-const liftStoreLocatorUrl =
-  (externalStoreIdUrl: string) =>
-  (extensions: readonly Extension.Type[]): Option.Option<Lifted<string>> =>
-    pipe(
-      liftExtension(CarebookExtension.ExternalSystemSource, RexallSystemSource)(extensions),
-      Option.flatMap(({ remaining }) =>
-        liftExtension(externalStoreIdUrl, ExternalStoreId)(remaining)
-      ),
-      Option.map(({ value: storeId, remaining }) => ({
-        value: rexallStoreLocatorUrl(storeId),
-        remaining,
-      }))
-    )
+const liftStoreLocatorUrl = (externalStoreIdUrl: string): Lift.Lift<string, Extension.Type> =>
+  pipe(
+    atUrl(CarebookExtension.ExternalSystemSource, RexallSystemSource),
+    Lift.zipRight(atUrl(externalStoreIdUrl, ExternalStoreId)),
+    Lift.map((storeId) => storeLocatorUrl(PharmacyStoreLocatorBase.Rexall, storeId))
+  )
 
 /**
  * The pharmacy location reference pointed at the store-locator page, keeping
@@ -80,21 +72,21 @@ const liftStoreLocatorUrl =
  */
 const withStoreLocatorUrl = (
   pharmacyLocationReference: IdentifierAndReference.ReferenceType | null,
-  storeLocatorUrl: string
+  storeLocatorPage: string
 ): IdentifierAndReference.ReferenceType => ({
   ...(pharmacyLocationReference ?? IdentifierAndReference.emptyReference),
-  reference: storeLocatorUrl,
+  reference: storeLocatorPage,
 })
 
 // ---------------------------------------------------------------------------
-// MedicationRequest steps
+// MedicationRequest
 // ---------------------------------------------------------------------------
 
 /**
- * Put `performer` on the request's `dispenseRequest` — or `None` when it has
- * none. `dispenseRequest` is optional in the dialect, and a value with nowhere
- * to land must keep its extension (dropping it would destroy the dispensing
- * pharmacy, or the store number, outright).
+ * Edit the request's `dispenseRequest.performer` — or `None` when the request
+ * has no `dispenseRequest`. It is optional in the dialect, and a value with
+ * nowhere to land must keep its extension (dropping it would destroy the
+ * dispensing pharmacy, or the store number, outright).
  */
 const withDispensePerformer = (
   request: MedicationRequest.Type,
@@ -102,19 +94,17 @@ const withDispensePerformer = (
     currentPerformer: IdentifierAndReference.ReferenceType | null
   ) => IdentifierAndReference.ReferenceType
 ): Option.Option<MedicationRequest.Type> =>
-  request.dispenseRequest === null
-    ? Option.none()
-    : Option.some({
-        ...request,
-        dispenseRequest: {
-          ...request.dispenseRequest,
-          performer: performerFrom(request.dispenseRequest.performer),
-        },
-      })
+  pipe(
+    Option.fromNullable(request.dispenseRequest),
+    Option.map((dispenseRequest) => ({
+      ...request,
+      dispenseRequest: Struct.evolve(dispenseRequest, { performer: performerFrom }),
+    }))
+  )
 
 /** `medication-processor` → `dispenseRequest.performer`. */
 const liftRequestMedicationProcessor = promoteExtension(
-  liftExtension(CarebookExtension.RequestMedicationProcessor, PharmacyLocationReference),
+  atUrl(CarebookExtension.RequestMedicationProcessor, PharmacyLocationReference),
   (request: MedicationRequest.Type, pharmacyLocationReference) =>
     withDispensePerformer(request, () => pharmacyLocationReference)
 )
@@ -122,19 +112,29 @@ const liftRequestMedicationProcessor = promoteExtension(
 /**
  * The store pair → `dispenseRequest.performer.reference`, creating the
  * performer when no `medication-processor` supplied one (the capture's
- * `mr-0002`). Must run after {@link liftRequestMedicationProcessor}, so a
- * processor's pharmacy identifier is already in place to keep.
+ * `mr-0002`).
  */
 const liftRequestStoreLocatorUrl = promoteExtension(
   liftStoreLocatorUrl(CarebookExtension.RequestExternalStoreId),
-  (request: MedicationRequest.Type, storeLocatorUrl) =>
+  (request: MedicationRequest.Type, storeLocatorPage) =>
     withDispensePerformer(request, (pharmacyLocationReference) =>
-      withStoreLocatorUrl(pharmacyLocationReference, storeLocatorUrl)
+      withStoreLocatorUrl(pharmacyLocationReference, storeLocatorPage)
     )
 )
 
+/**
+ * Where the request was dispensed: the processor's reference, then the store
+ * page on it.
+ *
+ * @remarks
+ * The order is the rule. The processor lands first so that its reference —
+ * carrying carebook's pharmacy `identifier` — is already in place for the store
+ * link to keep; the other way round, the processor would overwrite the link.
+ */
+const promoteRequestPharmacy = flow(liftRequestMedicationProcessor, liftRequestStoreLocatorUrl)
+
 // ---------------------------------------------------------------------------
-// MedicationDispense steps
+// MedicationDispense
 // ---------------------------------------------------------------------------
 
 /**
@@ -146,24 +146,27 @@ const liftRequestStoreLocatorUrl = promoteExtension(
  * is that query's `_id`.
  */
 const liftDispenseMedicationProcessor = promoteExtension(
-  liftExtension(CarebookExtension.DispenseMedicationProcessor, PharmacyLocationReference),
+  atUrl(CarebookExtension.DispenseMedicationProcessor, PharmacyLocationReference),
   (dispense: MedicationDispense.Type, pharmacyLocationReference) =>
     Option.some({ ...dispense, location: pharmacyLocationReference })
 )
 
-/**
- * The store pair → `location.reference`, mirroring the request's `performer`.
- * Must run after {@link liftDispenseMedicationProcessor}.
- */
+/** The store pair → `location.reference`, mirroring the request's `performer`. */
 const liftDispenseStoreLocatorUrl = promoteExtension(
   liftStoreLocatorUrl(CarebookExtension.DispenseExternalStoreId),
-  (dispense: MedicationDispense.Type, storeLocatorUrl) =>
-    Option.some({ ...dispense, location: withStoreLocatorUrl(dispense.location, storeLocatorUrl) })
+  (dispense: MedicationDispense.Type, storeLocatorPage) =>
+    Option.some(
+      Struct.evolve(dispense, {
+        location: (pharmacyLocationReference) =>
+          withStoreLocatorUrl(pharmacyLocationReference, storeLocatorPage),
+      })
+    )
 )
 
-export {
-  liftDispenseMedicationProcessor,
-  liftDispenseStoreLocatorUrl,
-  liftRequestMedicationProcessor,
-  liftRequestStoreLocatorUrl,
-}
+/**
+ * Where the dispense happened: the processor's reference, then the store page
+ * on it — in that order, for the reason {@link promoteRequestPharmacy} gives.
+ */
+const promoteDispensePharmacy = flow(liftDispenseMedicationProcessor, liftDispenseStoreLocatorUrl)
+
+export { promoteDispensePharmacy, promoteRequestPharmacy }

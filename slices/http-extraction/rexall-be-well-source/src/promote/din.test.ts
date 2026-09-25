@@ -60,6 +60,31 @@ describe('promoteMedicationRequest', () => {
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
+
+  it('should give each distinct contained vendor DIN exactly one canonical twin, keeping every coding it had', () => {
+    fc.assert(
+      fc.property(dinCodingsArbitrary, (codings) => {
+        // Arrange
+        const request = {
+          ...MedicationRequest.empty,
+          contained: [
+            {
+              ...containedMedication({ id: 'med-1' }),
+              code: { coding: codings.map(({ system, code }) => ({ system, code })) },
+            },
+          ],
+        }
+
+        // Act
+        const promoted = rawCodingPairsOf(firstContained(promoteMedicationRequest(request)))
+
+        // Assert
+        expect(promoted.slice(0, codings.length)).toEqual(codings)
+        expect(canonicalCodesIn(promoted)).toEqual(expectedCanonicalCodes(codings))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
 })
 
 describe('promoteMedicationDispense', () => {
@@ -84,12 +109,91 @@ describe('promoteMedicationDispense', () => {
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
+
+  it('should give each distinct concept vendor DIN exactly one canonical twin, keeping every coding it had', () => {
+    fc.assert(
+      fc.property(dinCodingsArbitrary, (codings) => {
+        // Arrange
+        const dispense = {
+          ...MedicationDispense.empty,
+          medicationCodeableConcept: decodedConceptWith(codings),
+        }
+
+        // Act
+        const promoted = decodedCodingPairsOf(
+          promoteMedicationDispense(dispense).medicationCodeableConcept
+        )
+
+        // Assert
+        expect(promoted.slice(0, codings.length)).toEqual(codings)
+        expect(canonicalCodesIn(promoted)).toEqual(expectedCanonicalCodes(codings))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
 })
 
 // Helpers
 
 /** An 8-digit Health Canada DIN. */
 const dinArbitrary = fc.stringMatching(/^\d{8}$/)
+
+/** A coding reduced to the two fields DIN twinning reads. */
+interface DinCodingPair {
+  readonly system: string
+  readonly code: string
+}
+
+/**
+ * Vendor DIN codings drawn from a shared pool (so codes repeat), then canonical
+ * codings for a distinct subset of that pool (so some vendor codes already have
+ * their twin).
+ */
+const dinCodingsArbitrary: fc.Arbitrary<readonly DinCodingPair[]> = fc
+  .uniqueArray(dinArbitrary, { minLength: 1 })
+  .chain((pool) =>
+    fc.tuple(fc.array(fc.constantFrom(...pool), { minLength: 1 }), fc.shuffledSubarray(pool))
+  )
+  .map(([vendorCodes, canonicalCodes]) => [
+    ...vendorCodes.map((code) => ({ system: CarebookCodingSystem.Din, code })),
+    ...canonicalCodes.map((code) => ({ system: CanadianCodingSystem.Din, code })),
+  ])
+
+/** A decoded `CodeableConcept` carrying exactly `codings`. */
+const decodedConceptWith = (codings: readonly DinCodingPair[]): unknown =>
+  Schema.decodeUnknownSync(CodeableConcept.Schema)({ coding: codings })
+
+/** The canonical DIN codes in `codings`, sorted, duplicates kept. */
+const canonicalCodesIn = (codings: readonly DinCodingPair[]): readonly string[] =>
+  codings
+    .filter(({ system }) => system === CanadianCodingSystem.Din)
+    .map(({ code }) => code)
+    .toSorted()
+
+/** Every code the input mentions under either DIN system, once each, sorted. */
+const expectedCanonicalCodes = (codings: readonly DinCodingPair[]): readonly string[] =>
+  [...new Set(codings.map(({ code }) => code))].toSorted()
+
+/** A decoded `CodeableConcept` read down to the `system`/`code` pair of each coding. */
+const DecodedConceptCodingPairs = Schema.Struct({
+  coding: Schema.Array(Schema.Struct({ system: Schema.instanceOf(URL), code: Schema.String })),
+})
+
+/** The `system`/`code` pair of every decoded `coding`, in order. */
+const decodedCodingPairsOf = (concept: unknown): readonly DinCodingPair[] =>
+  Schema.decodeUnknownSync(DecodedConceptCodingPairs)(concept).coding.map(({ system, code }) => ({
+    system: system.href,
+    code,
+  }))
+
+/** A raw `CodeableConcept` read down to the `system`/`code` pair of each coding. */
+const RawConceptCodingPairs = Schema.Struct({
+  coding: Schema.Array(Schema.Struct({ system: Schema.String, code: Schema.String })),
+})
+
+/** The `system`/`code` pair of every raw `code.coding` on a contained Medication, in order. */
+const rawCodingPairsOf = (medication: Record<string, unknown>): readonly DinCodingPair[] =>
+  Schema.decodeUnknownSync(RawConceptCodingPairs)(medication['code']).coding
 
 /** A raw `contained` Medication `code` carrying one carebook vendor DIN coding. */
 const vendorDinCode = (din: string): Record<string, unknown> => ({

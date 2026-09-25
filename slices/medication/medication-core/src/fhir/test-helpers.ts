@@ -15,9 +15,9 @@ const CAREBOOK_DIN_SYSTEM = 'http://schema.carebook.com/v1/fhir/coding/medicatio
 
 // A Rexall request as `rexall-be-well-source` writes it: the Medication is
 // contained and pointed at by a `#id` reference, its `code` carries the vendor
-// carebook DIN coding beside the canonical twin, the description is still the
-// carebook extension (the dialect narrative is a byte-copy of `code.text`), and
-// the remaining repeats ride the Wildflower extension.
+// carebook DIN coding beside the canonical twin, the description rides the
+// Wildflower extension because the narrative holds other content, and the
+// remaining repeats ride the Wildflower extension.
 const rexallRequest = {
   ...base,
   id: 'mr-din',
@@ -27,7 +27,7 @@ const rexallRequest = {
     {
       resourceType: 'Medication',
       id: 'med-1',
-      text: { status: 'generated', div: 'Atorvastatin 20 mg tablet' },
+      text: { status: 'additional', div: '<div>Do not crush.</div>' },
       code: {
         coding: [
           { system: CAREBOOK_DIN_SYSTEM, code: '02241497', display: 'Atorvastatin 20 mg tablet' },
@@ -39,10 +39,7 @@ const rexallRequest = {
         ],
       },
       extension: [
-        {
-          url: 'http://schemas.carebook.com/v1/fhir/medication/extension/description',
-          valueString: '20 mg - Tablet',
-        },
+        { url: WildflowerExtension.MedicationDescription, valueString: '20 mg - Tablet' },
       ],
     },
   ],

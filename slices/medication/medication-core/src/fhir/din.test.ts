@@ -18,8 +18,12 @@ describe('dinOf', () => {
   })
 
   test('prefers the contained Medication DIN over the concept fallback', () => {
+    // `medication[x]` is a choice, so naming the drug by concept means the
+    // request carries no `medicationReference`; the contained Medication is
+    // then read as the first one.
     const request = decode({
       ...rexallRequest,
+      medicationReference: undefined,
       medicationCodeableConcept: {
         coding: [{ system: CanadianCodingSystem.Din, code: 'DO-NOT-USE' }],
       },

@@ -1,7 +1,7 @@
 /**
- * Canonical coding-system and extension URLs that more than one source maps
- * vendor data onto, defined once here so neither a source nor a reader spells
- * them.
+ * Canonical coding-system, extension and store-locator URLs that more than one
+ * source maps vendor data onto, defined once here so neither a source nor a
+ * reader spells them.
  *
  * @remarks
  * Every value here is part of the persisted wire format: a resource written
@@ -41,6 +41,40 @@ const WildflowerExtension = {
    * `numberOfRepeatsAllowed`, not how many remain.
    */
   RepeatsAvailable: `${WILDFLOWER_EXTENSION_BASE}/repeats-available`,
+  /**
+   * On a `Medication`: a human-readable description of the drug product,
+   * richer than `code.text` (e.g. `"20 mg - Tablet"`), as a `valueString`. Its
+   * natural home is the narrative; it rides this extension only when the
+   * narrative already holds other content that must not be overwritten.
+   */
+  MedicationDescription: `${WILDFLOWER_EXTENSION_BASE}/medication-description`,
 } as const
 
-export { CanadianCodingSystem, WILDFLOWER_EXTENSION_BASE, WildflowerExtension }
+/**
+ * Bases of the public store-locator pages of the pharmacy chains Wildflower
+ * imports from. A source writes a dispensing store's page onto the pharmacy
+ * reference (`dispenseRequest.performer.reference`,
+ * `MedicationDispense.location.reference`), and a reader recognizes the chain
+ * by which base the reference starts with.
+ *
+ * @remarks
+ * Customer-facing web pages, not FHIR endpoints: the reference is a literal
+ * link a person can open, which is why it does not live under any chain's
+ * FHIR system namespace.
+ */
+const PharmacyStoreLocatorBase = {
+  Rexall: 'https://www.rexall.ca/storelocator/store/',
+  ShoppersDrugMart: 'https://www.shoppersdrugmart.ca/store-locator/store/',
+} as const
+
+/** One store's store-locator page: its chain's base, then its store number, URL-encoded. */
+const storeLocatorUrl = (base: string, storeId: string): string =>
+  `${base}${encodeURIComponent(storeId)}`
+
+export {
+  CanadianCodingSystem,
+  PharmacyStoreLocatorBase,
+  storeLocatorUrl,
+  WILDFLOWER_EXTENSION_BASE,
+  WildflowerExtension,
+}

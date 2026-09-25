@@ -36,11 +36,14 @@ const repeatsAvailableOf = (request: MedicationRequest.Type): number | null =>
  * `dispenseRequest.validityPeriod.end` is the *authorization* expiry in R4, not
  * a fill date, so it is deliberately not a fallback.
  */
-const nextFillDateOf = (request: MedicationRequest.Type): string | null => {
-  const authored = request.authoredOn
-  const supply = request.dispenseRequest?.expectedSupplyDuration
-  if (authored === null || supply === null || supply === undefined) return null
-  return nextFillDate(DateTime.formatIso(authored), supply)
-}
+const nextFillDateOf = (request: MedicationRequest.Type): string | null =>
+  pipe(
+    Option.all({
+      authored: Option.fromNullable(request.authoredOn),
+      supply: Option.fromNullable(request.dispenseRequest?.expectedSupplyDuration),
+    }),
+    Option.map(({ authored, supply }) => nextFillDate(DateTime.formatIso(authored), supply)),
+    Option.getOrNull
+  )
 
 export { nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf }

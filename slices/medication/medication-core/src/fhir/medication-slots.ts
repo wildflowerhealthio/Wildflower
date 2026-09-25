@@ -1,7 +1,6 @@
-import { Array as Arr, Option, Schema } from 'effect'
+import { Array as Arr, Option, pipe, Schema } from 'effect'
 import { CodeableConcept, IdentifierAndReference } from 'fhir-r4/data-types'
 import { Medication as FhirMedication, type MedicationRequest } from 'fhir-r4/resources'
-import { nonEmpty } from 'kitchen-sink'
 
 /**
  * The three places a `MedicationRequest` names its drug: the
@@ -43,11 +42,11 @@ const medicationReferenceOf = (
 const asContainedMedication = (entry: unknown): Option.Option<FhirMedication.Type> =>
   decodeContainedMedication(entry)
 
-/** Whether a contained Medication is the one a `#id` reference points at. */
-const isTargetOf =
-  (fragmentReference: string) =>
+/** Whether a contained Medication is the one with `id`. */
+const hasId =
+  (id: string) =>
   (medication: FhirMedication.Type): boolean =>
-    `#${medication.id ?? ''}` === fragmentReference
+    medication.id === id
 
 /**
  * The Medication carried inline in `MedicationRequest.contained`.
@@ -61,9 +60,13 @@ const isTargetOf =
  */
 const containedMedicationOf = (request: MedicationRequest.Type): FhirMedication.Type | null => {
   const medications = Arr.filterMap(request.contained, asContainedMedication)
-  const reference = nonEmpty(medicationReferenceOf(request)?.reference)
-  const referenced = reference === null ? undefined : medications.find(isTargetOf(reference))
-  return referenced ?? medications[0] ?? null
+  return pipe(
+    Option.fromNullable(medicationReferenceOf(request)?.reference),
+    Option.flatMap(IdentifierAndReference.fragmentIdOf),
+    Option.flatMap((containedId) => Arr.findFirst(medications, hasId(containedId))),
+    Option.orElse(() => Arr.head(medications)),
+    Option.getOrNull
+  )
 }
 
 export { containedMedicationOf, medicationConceptOf, medicationReferenceOf }

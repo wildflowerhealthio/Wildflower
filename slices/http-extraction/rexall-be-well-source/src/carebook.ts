@@ -8,10 +8,10 @@
  * one-line change.
  *
  * @remarks
- * Reproduced verbatim from a real (anonymized) capture, and cross-checked
- * against `medication-core`, which independently reads five of
- * these off the same dialect. The inconsistencies below are the vendor's and
- * must not be "tidied":
+ * Reproduced verbatim from a real (anonymized) capture, and the only place any
+ * of these is spelled: promotion moves every value a reader needs into a
+ * conventional or Wildflower slot. The inconsistencies below are the vendor's
+ * and must not be "tidied":
  *
  * - Two host spellings, and the split is not by kind: extension URLs **and**
  *   the `request-type` coding system are under `schemas.carebook.com` (plural);

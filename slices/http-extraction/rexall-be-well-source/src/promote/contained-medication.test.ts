@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { WildflowerExtension } from 'fhir-r4/data-types'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -239,9 +240,10 @@ describe('promoteMedicationRequest', () => {
     })
   })
 
-  it('should not overwrite a narrative holding something other than the code text', () => {
-    // Arrange — somebody's real content. The promotion stands down, and per the
-    // lift-and-drop rule the description extension stays where it is.
+  it('should keep a narrative holding other content and move the description to the Wildflower extension', () => {
+    // Arrange — somebody's real content, which the description must not
+    // overwrite. The description still leaves the vendor url, so a reader
+    // finds it without knowing carebook's.
     const request = {
       ...MedicationRequest.empty,
       contained: [
@@ -260,7 +262,34 @@ describe('promoteMedicationRequest', () => {
       status: 'additional',
       div: '<div>Do not crush. Take with food.</div>',
     })
-    expect(containedExtensionUrls(medication)).toEqual([CarebookExtension.MedicationDescription])
+    expect(medication['extension']).toEqual([
+      { url: WildflowerExtension.MedicationDescription, valueString: '20 mg - Atorvastatin' },
+    ])
+  })
+
+  it('should name the drug as the item of an ingredient whose item is an explicit null', () => {
+    // Arrange — `null` names nothing, so the strength would otherwise be a
+    // strength of no item, which R4 does not allow.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [
+        {
+          ...containedMedication({ id: 'med-1', strength: '20 mg' }),
+          ingredient: [{ itemCodeableConcept: null }],
+        },
+      ],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationRequest(request))
+
+    // Assert
+    expect(medication['ingredient']).toEqual([
+      {
+        itemCodeableConcept: { text: 'Atorvastatin 20 mg tablet' },
+        strength: ratioOf(20, 'mg'),
+      },
+    ])
   })
 
   it('should promote the siblings of a malformed extension entry', () => {

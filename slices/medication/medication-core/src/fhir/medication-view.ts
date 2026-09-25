@@ -1,4 +1,4 @@
-import { DateTime } from 'effect'
+import { DateTime, Option, pipe } from 'effect'
 import type { MedicationRequest } from 'fhir-r4/resources'
 import { nonEmpty } from 'kitchen-sink'
 
@@ -25,7 +25,11 @@ const medicationRequestToMedication = (
   id: nonEmpty(request.id) ?? fallbackId,
   displayName: displayNameOf(request),
   status: request.status,
-  authoredOn: request.authoredOn === null ? undefined : DateTime.formatIso(request.authoredOn),
+  authoredOn: pipe(
+    Option.fromNullable(request.authoredOn),
+    Option.map(DateTime.formatIso),
+    Option.getOrUndefined
+  ),
 })
 
 /**

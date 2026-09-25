@@ -1,5 +1,5 @@
-import { Array as Arr, Option, pipe } from 'effect'
-import type { CodeableConcept, Coding } from 'fhir-r4/data-types'
+import { Option, pipe } from 'effect'
+import { CodeableConcept } from 'fhir-r4/data-types'
 import type { MedicationRequest } from 'fhir-r4/resources'
 import { nonEmpty } from 'kitchen-sink'
 
@@ -9,16 +9,9 @@ import {
   medicationReferenceOf,
 } from './medication-slots.ts'
 
-/** A coding's `display`, when it carries a non-blank one. */
-const nonEmptyDisplayOf = (coding: Coding.Type): Option.Option<string> =>
-  Option.fromNullable(nonEmpty(coding.display))
-
-/** A concept's `text`, else its first coding `display`; `null` when neither is present. */
+/** A concept's label (see `CodeableConcept.label`); `null` when there is no concept or no label. */
 const conceptName = (concept: typeof CodeableConcept.Schema.Type | null): string | null =>
-  concept === null
-    ? null
-    : (nonEmpty(concept.text) ??
-      pipe(Arr.findFirst(concept.coding, nonEmptyDisplayOf), Option.getOrNull))
+  pipe(Option.fromNullable(concept), Option.flatMap(CodeableConcept.label), Option.getOrNull)
 
 /**
  * Best human-readable name for the medication: the `medicationCodeableConcept`

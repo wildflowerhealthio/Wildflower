@@ -61,8 +61,9 @@ and `rexall-be-well-source` alike:
   canonical `CanadianCodingSystem.Din`
   (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
   DINs, so no vendor DIN system is minted beside it.
-- **Store link** — the public store-locator URL
-  (`SHOPPERS_STORE_LOCATOR_BASE` + `storeId`) as a literal `reference` on
+- **Store link** — the public store-locator URL (`fhir-r4`'s
+  `PharmacyStoreLocatorBase.ShoppersDrugMart` + `storeId`, via
+  `storeLocatorUrl`) as a literal `reference` on
   `MedicationRequest.dispenseRequest.performer`, and on
   `MedicationDispense.location` for every dispense (the status feed's and the
   history feed's alike; the history one also carries the store name as

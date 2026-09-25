@@ -1,128 +1,118 @@
-import { Array as Arr, Option, pipe, Schema } from 'effect'
+import { Array as Arr, Equivalence, Option, pipe, Schema, Struct } from 'effect'
 
-import { CanadianCodingSystem, Code } from 'fhir-r4/data-types'
-import { nonEmpty } from 'kitchen-sink'
+import { CanadianCodingSystem, Code, Coding } from 'fhir-r4/data-types'
+import { nonEmpty, whenPresent } from 'kitchen-sink'
+import { modifyIfDecodes } from 'kitchen-sink/schema'
 
 import { CarebookCodingSystem } from '../carebook.ts'
-import { type DecodedCodeableConcept, decodeCodeableConcept } from './decoded-r4.ts'
-import { OptionalWireString, type WireCodeableConcept } from './wire.ts'
+import { DecodedCodeableConcept } from './decoded-r4.ts'
+import type { WireCodeableConcept, WireCoding } from './wire.ts'
 
 /**
  * DIN twins: every vendor DIN coding ({@link CarebookCodingSystem.Din}) gains
  * exactly one canonical {@link CanadianCodingSystem.Din} coding carrying the
  * same `code`. Additive — the vendor coding stays, first.
+ *
+ * @remarks
+ * Readers look for a DIN under the canonical system only (a vocabulary that is
+ * not a DIN must never print as one), so a drug coded under the vendor system
+ * alone shows no DIN at all. The vendor coding is kept for any reader that
+ * already knows the vendor system.
  */
 
-/**
- * A coding under either DIN system, with its `system` as a plain string.
- * Every other coding fails to decode and is ignored.
- */
-const DinCoding = Schema.Struct({
-  system: Schema.Literal(CarebookCodingSystem.Din, CanadianCodingSystem.Din),
-  code: Schema.NonEmptyString,
-  display: OptionalWireString,
-})
-type DinCoding = typeof DinCoding.Type
-
-const decodeDinCoding = Schema.decodeUnknownOption(DinCoding)
-
-/** A vendor DIN that has no canonical twin yet: the code, and its display if any. */
-interface MissingCanonicalDin {
+/** A DIN as a coding carries it: the code, and the display beside it, if any. */
+interface Din {
   readonly code: string
   readonly display: string | null
 }
 
-/** One entry per distinct vendor DIN code that has no canonical twin yet. */
-const canonicalDinsMissingFrom = (
-  dinCodings: readonly DinCoding[]
-): readonly MissingCanonicalDin[] => {
-  const canonicalCodes = new Set(
-    dinCodings
-      .filter((coding) => coding.system === CanadianCodingSystem.Din)
-      .map((coding) => coding.code)
-  )
-  return Arr.dedupeWith(
-    dinCodings.filter((coding) => coding.system === CarebookCodingSystem.Din),
-    (a, b) => a.code === b.code
-  )
-    .filter((coding) => !canonicalCodes.has(coding.code))
-    .map((coding) => ({ code: coding.code, display: nonEmpty(coding.display) }))
-}
+/** Two DINs are the same drug product when their codes match; a display is only a label. */
+const sameDinCode: Equivalence.Equivalence<Din> = Equivalence.mapInput(
+  Equivalence.string,
+  (din: Din) => din.code
+)
 
-/**
- * A decoded `CodeableConcept` with its missing canonical DIN codings appended,
- * or `None` when it is missing none.
- */
-const decodedConceptWithCanonicalDin = (
-  concept: DecodedCodeableConcept
-): Option.Option<DecodedCodeableConcept> => {
-  const missing = canonicalDinsMissingFrom(
-    Arr.getSomes(
-      concept.coding.map((coding) =>
-        decodeDinCoding({
-          system: coding.system?.href,
-          code: coding.code,
-          display: coding.display,
-        })
-      )
+/** A coding's DIN, when it carries a non-blank code. */
+const dinOf = (coding: Coding.Type): Option.Option<Din> =>
+  Option.map(Option.fromNullable(nonEmpty(coding.code)), (code) => ({
+    code,
+    display: nonEmpty(coding.display),
+  }))
+
+/** Every distinct DIN coded under `system`, in the order first coded. */
+const dinsUnder =
+  (system: string) =>
+  (codings: readonly Coding.Type[]): readonly Din[] =>
+    pipe(
+      codings,
+      Arr.filter(Coding.isInSystem(system)),
+      Arr.filterMap(dinOf),
+      Arr.dedupeWith(sameDinCode)
     )
-  )
-  return missing.length === 0
-    ? Option.none()
-    : Option.some({
-        ...concept,
-        coding: [
-          ...concept.coding,
-          ...missing.map(({ code, display }) => ({
-            id: null,
-            extension: [],
-            system: new URL(CanadianCodingSystem.Din),
-            code: Code.make(code),
-            display,
-            userSelected: null,
-            version: null,
-          })),
-        ],
-      })
-}
 
-/** A raw `CodeableConcept` with its missing canonical DIN codings appended. */
-const wireConceptWithCanonicalDin = (concept: WireCodeableConcept): WireCodeableConcept => {
-  const codings = concept.coding ?? []
-  const missing = canonicalDinsMissingFrom(
-    Arr.getSomes(codings.map((coding) => decodeDinCoding(coding)))
+/** The vendor DINs with no canonical twin yet: each is owed exactly one. */
+const dinsOwedCanonicalTwin = (codings: readonly Coding.Type[]): readonly Din[] =>
+  Arr.differenceWith(sameDinCode)(
+    dinsUnder(CarebookCodingSystem.Din)(codings),
+    dinsUnder(CanadianCodingSystem.Din)(codings)
   )
-  return missing.length === 0
-    ? concept
-    : {
-        ...concept,
-        coding: [
-          ...codings,
-          ...missing.map(({ code, display }) => ({
-            system: CanadianCodingSystem.Din,
-            code,
-            ...(display === null ? {} : { display }),
-          })),
-        ],
-      }
-}
+
+/** A DIN's canonical twin, as a decoded `Coding`. */
+const canonicalDinCoding = ({ code, display }: Din): Coding.Type => ({
+  id: null,
+  extension: [],
+  system: new URL(CanadianCodingSystem.Din),
+  code: Code.make(code),
+  display,
+  userSelected: null,
+  version: null,
+})
 
 /**
- * Give the vendor DIN codings on `medicationCodeableConcept` their canonical
- * twins. A slot that holds no decodable concept is left as it is.
+ * A DIN's canonical twin, as the raw wire coding a `contained` entry carries —
+ * where an absent display is left out, since FHIR JSON has no `null` values.
  */
-const withCanonicalDinOnMedicationConcept = <
-  R extends { readonly medicationCodeableConcept: unknown },
->(
-  resource: R
-): R =>
-  pipe(
-    decodeCodeableConcept(resource.medicationCodeableConcept),
-    Option.flatMap(decodedConceptWithCanonicalDin),
-    Option.match({
-      onNone: () => resource,
-      onSome: (medicationCodeableConcept) => ({ ...resource, medicationCodeableConcept }),
-    })
-  )
+const wireCanonicalDinCoding = ({ code, display }: Din): WireCoding => ({
+  system: CanadianCodingSystem.Din,
+  code,
+  ...(display === null ? {} : { display }),
+})
+
+/** A decoded `CodeableConcept` with its owed canonical DIN codings appended. */
+const decodedConceptWithCanonicalDin = (concept: DecodedCodeableConcept): DecodedCodeableConcept =>
+  Struct.evolve(concept, {
+    coding: (codings) => [...codings, ...dinsOwedCanonicalTwin(codings).map(canonicalDinCoding)],
+  })
+
+/**
+ * Re-reads a raw wire coding as a decoded R4 `Coding`, so the raw path picks
+ * out DIN codings by the same {@link Coding.isInSystem} the decoded path uses.
+ * A coding that does not decode is not read as a DIN.
+ */
+const decodeWireCoding = Schema.decodeUnknownOption(Coding.Schema)
+
+/** Raw `CodeableConcept.coding` with its owed canonical DIN codings appended. */
+const wireCodingsWithCanonicalDin = (wireCodings: readonly WireCoding[]): readonly WireCoding[] => [
+  ...wireCodings,
+  ...dinsOwedCanonicalTwin(
+    Arr.filterMap(wireCodings, (wireCoding) => decodeWireCoding(wireCoding))
+  ).map(wireCanonicalDinCoding),
+]
+
+/** A raw `CodeableConcept` with its owed canonical DIN codings appended. */
+const wireConceptWithCanonicalDin = (concept: WireCodeableConcept): WireCodeableConcept =>
+  Struct.evolve(concept, {
+    coding: (wireCodings) => whenPresent(wireCodings, wireCodingsWithCanonicalDin),
+  })
+
+/**
+ * Canonical DIN twins in a `medicationCodeableConcept` slot. The slot is
+ * `any`-typed on the decoded resources; one that holds no decodable concept is
+ * left as it is.
+ */
+const withCanonicalDinOnMedicationConcept = modifyIfDecodes(
+  DecodedCodeableConcept,
+  decodedConceptWithCanonicalDin
+)
 
 export { withCanonicalDinOnMedicationConcept, wireConceptWithCanonicalDin }

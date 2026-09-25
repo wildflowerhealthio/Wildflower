@@ -1,14 +1,12 @@
-import { pipe } from 'effect'
+import { pipe, Struct } from 'effect'
 
 import type { MedicationDispense } from 'fhir-r4/resources'
+import { whenPresent } from 'kitchen-sink'
 
 import { promoteContained } from './contained-medication.ts'
 import { withCanonicalDinOnMedicationConcept } from './din.ts'
-import {
-  liftDispenseMedicationProcessor,
-  liftDispenseStoreLocatorUrl,
-} from './pharmacy-location.ts'
-import { withDaysSupplyInDays } from './supply-days.ts'
+import { promoteDispensePharmacy } from './pharmacy-location.ts'
+import { withDayUnit } from './supply-days.ts'
 
 /**
  * Promotes carebook-dialect extensions on a `MedicationDispense` into the
@@ -26,11 +24,12 @@ import { withDaysSupplyInDays } from './supply-days.ts'
 const promoteMedicationDispense = (dispense: MedicationDispense.Type): MedicationDispense.Type =>
   pipe(
     dispense,
-    liftDispenseMedicationProcessor,
-    liftDispenseStoreLocatorUrl,
-    promoteContained,
-    withCanonicalDinOnMedicationConcept,
-    withDaysSupplyInDays
+    promoteDispensePharmacy,
+    Struct.evolve({
+      contained: promoteContained,
+      medicationCodeableConcept: withCanonicalDinOnMedicationConcept,
+      daysSupply: (daysSupply) => whenPresent(daysSupply, withDayUnit),
+    })
   )
 
 export { promoteMedicationDispense }

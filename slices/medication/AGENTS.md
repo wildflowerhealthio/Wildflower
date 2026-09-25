@@ -23,11 +23,9 @@ catalog onto it.
   `rexallStoreUrlOf`, …) over the decoded `fhir-r4` `MedicationRequest.Type`,
   reading only the conventional slots the pharmacy sources write (canonical
   `CanadianCodingSystem.Din`, `WildflowerExtension.RepeatsAvailable`,
-  `dispenseRequest.performer.reference`) — no pre-promotion fallbacks. The one
-  vendor slot still read is the carebook `description` extension on a contained
-  Medication, which `rexall-be-well-source`'s promotion deliberately leaves in
-  place when the narrative already holds other content. No DOM, no platform
-  imports.
+  `WildflowerExtension.MedicationDescription`,
+  `dispenseRequest.performer.reference`) — no pre-promotion fallbacks and no
+  vendor urls. No DOM, no platform imports.
 - `medication-interaction-core` — the pure interaction layer. The compact
   bundled-file schema (`DdinterFile`: a drug table plus
   `[indexA, indexB, severityCode]` triples) and its decoder to an
