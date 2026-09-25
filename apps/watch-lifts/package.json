@@ -1,0 +1,37 @@
+{
+  "name": "WatchLifts",
+  "version": "0.0.0",
+  "private": true,
+  "keywords": [
+    "pebble-app"
+  ],
+  "author": "Wildflower Health Project",
+  "dependencies": {},
+  "pebble": {
+    "displayName": "WatchLifts",
+    "uuid": "bad5c77b-1774-4f99-a4c0-523015e43a25",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "capabilities": [
+      "health"
+    ],
+    "targetPlatforms": [
+      "aplite",
+      "basalt",
+      "chalk",
+      "diorite",
+      "emery",
+      "flint",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "dummy"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+    "env": {
+        "pebbleSdk": "${env:HOME}/Library/Application Support/Pebble SDK/SDKs/current"
+    },
+    "configurations": [
+        {
+            "name": "Pebble (basalt)",
+            "includePath": [
+                "${workspaceFolder}/src/**",
+                "${workspaceFolder}/build/basalt/src",
+                "${workspaceFolder}/build/include",
+                "${pebbleSdk}/sdk-core/pebble/basalt/include"
+            ],
+            "defines": [
+                "RELEASE",
+                "PBL_PLATFORM_BASALT",
+                "PBL_COLOR",
+                "PBL_RECT",
+                "PBL_MICROPHONE",
+                "PBL_SMARTSTRAP",
+                "PBL_HEALTH",
+                "PBL_COMPASS",
+                "PBL_SMARTSTRAP_POWER",
+                "PBL_DISPLAY_WIDTH=144",
+                "PBL_DISPLAY_HEIGHT=168",
+                "PBL_SDK_FROZEN",
+                "PBL_SDK_3"
+            ],
+            "compilerPath": "${pebbleSdk}/toolchain/arm-none-eabi/bin/arm-none-eabi-gcc",
+            "compilerArgs": ["-mcpu=cortex-m3", "-mthumb"],
+            "cStandard": "c11",
+            "intelliSenseMode": "linux-gcc-arm"
+        }
+    ],
+    "version": 4
+}
