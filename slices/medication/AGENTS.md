@@ -16,10 +16,16 @@ catalog onto it.
   built from — and `dedupeMedicationsByName`, which collapses exact-name
   duplicates to the most recent (`authoredOn`) instance. The `medication-core/fhir`
   subpath is the `MedicationRequest → Medication` / `MedicationView` adapter (the
-  core `Medication` for matching, plus the carebook display fields — DIN,
-  description, prescriber, notes, repeat counts, store-locator links, estimated
-  next-fill date) and the `hasRefill` rule the calendar shares. No DOM, no
-  platform imports.
+  core `Medication` for matching, plus the display fields — DIN, description,
+  prescriber, notes, repeat counts, the dispensing store's link, estimated
+  next-fill date) and the `hasRefill` rule the calendar shares. Each field is
+  one small exported accessor (`dinOf`, `descriptionOf`, `repeatsAvailableOf`,
+  `storeLinkOf`, …) over the decoded `fhir-r4` `MedicationRequest.Type`,
+  reading only the conventional slots the pharmacy sources write (canonical
+  `CanadianCodingSystem.Din`, `WildflowerExtension.RepeatsAvailable`,
+  `WildflowerExtension.MedicationDescription`,
+  `dispenseRequest.performer.reference`) — no pre-promotion fallbacks and no
+  vendor urls. No DOM, no platform imports.
 - `medication-interaction-core` — the pure interaction layer. The compact
   bundled-file schema (`DdinterFile`: a drug table plus
   `[indexA, indexB, severityCode]` triples) and its decoder to an
@@ -117,10 +123,12 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
   `medication-core/fhir` output, it does not decode one itself.
 - This package is a `fhir-r4` consumer, so both
   [consumer gotchas](../emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md) apply.
-  The adapter re-decodes an **already-decoded** resource, so `uri`/`url` fields
-  (`Coding.system`) arrive as `URL`s, not strings — a `system: Schema.String`
-  slot silently fails the whole concept; the adapter already coerces via
-  `nullableUri` (and `dateTime` via `nullableIsoDateTime`). And `vp pack` is the
+  The accessors read the typed slots directly and never re-declare a FHIR shape
+  locally. The two slots `fhir-r4` leaves untyped are decoded with its own
+  schemas: `medication[x]` already holds **decoded** values (a `Coding.system`
+  is a `URL`, not a string), so it goes through `Schema.typeSchema` of
+  `CodeableConcept` / `Reference`; `contained` holds raw wire JSON, so an entry
+  goes through the full `Medication.Schema`. And `vp pack` is the
   gate for the TS2883 dts trap, not `vp check` — when the adapter's inferred
   types change, run `vp run -F medication-core build`.
 - The adapter depends on `medication-calendar-core` for `nextFillDate`, so the

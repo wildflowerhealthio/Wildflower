@@ -1,5 +1,6 @@
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { CanadianCodingSystem, CodeableConcept } from 'fhir-r4/data-types'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
@@ -9,7 +10,6 @@ import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
 import {
-  DIN_CODE_SYSTEM,
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   ShoppersIdentifierSystem,
   shoppersStoreLocatorUrl,
@@ -19,11 +19,22 @@ import { PrescriptionResponseKind } from './prescription-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
 
+/** A portal store id — the portal types it inconsistently, so either shape. */
+const storeIdArbitrary = fc.oneof(
+  fc.integer({ min: 1, max: 99_999 }),
+  fc.stringMatching(/^[A-Za-z0-9-]{1,8}$/)
+)
+
+/** An 8-digit Health Canada DIN. */
+const dinArbitrary = fc.stringMatching(/^\d{8}$/)
+
 const STATUS_URL =
   'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-uuid-1/prescription-status'
 
 const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
+/** `medication[x]` is loosely typed on the decoded resource; read it as a concept. */
+const decodeConcept = Schema.decodeUnknownSync(Schema.typeSchema(CodeableConcept.Schema))
 
 const makeResponse = (body: string): HttpResponse.HttpResponse =>
   makeHttpResponse({ url: STATUS_URL, body })
@@ -98,7 +109,7 @@ const expectedRequest = decodeRequest({
   subject: { reference: 'Patient/pt-uuid-1' },
   identifier: [{ system: ShoppersIdentifierSystem.PrescriptionNumber, value: '998877' }],
   medicationCodeableConcept: {
-    coding: [{ system: DIN_CODE_SYSTEM, code: '02123456', display: 'atorvastatin 20mg' }],
+    coding: [{ system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' }],
     text: 'Atorvastatin',
   },
   requester: { display: 'Dr. A Prescriber' },
@@ -112,8 +123,11 @@ const expectedRequest = decodeRequest({
   },
   authoredOn: '2026-01-10T00:00:00Z',
   dosageInstruction: [{ text: 'Take one tablet daily' }],
-  supportingInformation: [{ reference: shoppersStoreLocatorUrl(1414) }],
   dispenseRequest: {
+    performer: {
+      reference: shoppersStoreLocatorUrl(1414),
+      display: 'Shoppers Drug Mart (store 1414)',
+    },
     numberOfRepeatsAllowed: 3,
     quantity: { value: 90 },
     validityPeriod: { start: '2026-01-10T00:00:00Z', end: '2027-01-01T00:00:00Z' },
@@ -129,11 +143,15 @@ const expectedDispense = decodeDispense({
   subject: { reference: 'Patient/pt-uuid-1' },
   authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
   medicationCodeableConcept: {
-    coding: [{ system: DIN_CODE_SYSTEM, code: '02123456', display: 'atorvastatin 20mg' }],
+    coding: [{ system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' }],
     text: 'Atorvastatin',
   },
   quantity: { value: 30 },
   whenHandedOver: '2026-01-10T00:00:00Z',
+  location: {
+    reference: shoppersStoreLocatorUrl(1414),
+    display: 'Shoppers Drug Mart (store 1414)',
+  },
 })
 
 describe('PrescriptionResponseKind', () => {
@@ -319,6 +337,95 @@ describe('PrescriptionResponseKind', () => {
       expectLeftToEqual(
         runParse(makeResponse(JSON.stringify({ brandName: 'X' }))),
         expect.objectContaining({ _tag: 'ParseError' })
+      )
+    })
+
+    it('should put the store link on performer and every dispense location, never on supportingInformation', () => {
+      fc.assert(
+        fc.property(storeIdArbitrary, (storeId) => {
+          // Arrange
+          const url = shoppersStoreLocatorUrl(storeId)
+
+          // Act
+          const result = parse(prescriptionJson({ storeId }))
+
+          // Assert
+          const [request] = byType(result, 'MedicationRequest')
+          expect(request?.supportingInformation).toStrictEqual([])
+          expect(request?.dispenseRequest?.performer?.reference).toBe(url)
+          expect(request?.dispenseRequest?.performer?.display).toBe(
+            `Shoppers Drug Mart (store ${storeId})`
+          )
+          for (const dispense of byType(result, 'MedicationDispense')) {
+            expect(dispense.location?.reference).toBe(url)
+          }
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+
+    it('should keep the store link under the Shoppers store page, whatever the store id', () => {
+      fc.assert(
+        fc.property(fc.string({ minLength: 1 }), (storeId) => {
+          // Act
+          const [request] = byType(parse(prescriptionJson({ storeId })), 'MedicationRequest')
+
+          // Assert — a `/`, `?` or `#` in the id cannot escape the store path.
+          const storeLink = new URL(request?.dispenseRequest?.performer?.reference ?? '')
+          expect(
+            storeLink.href.startsWith('https://www.shoppersdrugmart.ca/store-locator/store/')
+          ).toBe(true)
+          expect(storeLink.search).toBe('')
+          expect(storeLink.hash).toBe('')
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+
+    it('should hold the store link in a dispenseRequest of its own when nothing else fills one', () => {
+      // Arrange — no repeats, quantity or fill dates: the store is all there is.
+      const json = prescriptionJson({
+        numFillsLeft: undefined,
+        refillQuantity: undefined,
+        lastFillDate: undefined,
+        expiryDate: undefined,
+      })
+
+      // Act
+      const [request] = byType(parse(json), 'MedicationRequest')
+
+      // Assert
+      expect(request?.dispenseRequest?.performer?.reference).toBe(shoppersStoreLocatorUrl(1414))
+    })
+
+    it('should leave performer and location empty when the payload carries no store', () => {
+      // Act
+      const result = parse(prescriptionJson({ storeId: undefined }))
+
+      // Assert
+      const [request] = byType(result, 'MedicationRequest')
+      expect(request?.dispenseRequest?.performer).toBeNull()
+      expect(byType(result, 'MedicationDispense')[0]?.location).toBeNull()
+    })
+
+    it('should code the DIN once, under the canonical DIN system alone', () => {
+      fc.assert(
+        fc.property(dinArbitrary, (din) => {
+          // Act
+          const result = parse(prescriptionJson({ din }))
+
+          // Assert — on the request and on each dispense alike.
+          for (const resource of [
+            ...byType(result, 'MedicationRequest'),
+            ...byType(result, 'MedicationDispense'),
+          ]) {
+            const codings = decodeConcept(resource.medicationCodeableConcept).coding.map(
+              (coding) => ({ system: coding.system?.href, code: coding.code })
+            )
+            expect(codings).toStrictEqual([{ system: CanadianCodingSystem.Din, code: din }])
+          }
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
       )
     })
 

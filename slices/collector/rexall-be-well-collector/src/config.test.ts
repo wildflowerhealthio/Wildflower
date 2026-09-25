@@ -343,7 +343,7 @@ describe('source identity', () => {
   })
 
   it('leaves a contained-Medication fragment reference alone', () => {
-    // `promote.ts` links the contained Medication with `medicationReference:
+    // Promotion links the contained Medication with `medicationReference:
     // '#med-0001'`; a fragment is not a relative reference and must survive.
     const medications = parseFixture('MedicationListResponseKind', LIST_URL, prescriptions)
     const request = medications.find(

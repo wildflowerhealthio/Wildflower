@@ -408,15 +408,17 @@ describe('source identity', () => {
     expect(dispense.authorizingPrescription[0]?.reference).toBe(`MedicationRequest/${request.id}`)
   })
 
-  it('leaves the absolute store-locator supportingInformation URL alone', () => {
+  it('leaves the absolute store-locator performer and location URLs alone', () => {
     const resources = parsePrescription()
     const request = resources.find((r) => r.resourceType === 'MedicationRequest')
+    const dispense = resources.find((r) => r.resourceType === 'MedicationDispense')
     if (request?.resourceType !== 'MedicationRequest') throw new Error('expected a request')
+    if (dispense?.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
     // An absolute foreign URL is not a relative `Type/id` reference, so the
     // rewrite must pass it through untouched.
-    expect(request.supportingInformation[0]?.reference).toBe(
-      'https://www.shoppersdrugmart.ca/store-locator/store/1414'
-    )
+    const storeUrl = 'https://www.shoppersdrugmart.ca/store-locator/store/1414'
+    expect(request.dispenseRequest?.performer?.reference).toBe(storeUrl)
+    expect(dispense.location?.reference).toBe(storeUrl)
   })
 
   it('adopts the account Patient under a distinct id from the demographic Patient, materializing the link', () => {

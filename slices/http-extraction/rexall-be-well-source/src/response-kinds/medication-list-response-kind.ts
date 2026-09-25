@@ -1,7 +1,8 @@
 import { Effect, Schema } from 'effect'
 import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
-import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'
+import { promoteMedicationDispense } from '../promote/medication-dispense.ts'
+import { promoteMedicationRequest } from '../promote/medication-request.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 
 /** A decoded carebook medication: an fhir-r4 `MedicationRequest` or `MedicationDispense`. */
@@ -44,7 +45,7 @@ const isMedication = (resource: MedicationResource | null): resource is Medicati
 
 /**
  * Move the carebook extensions that have a conventional R4 home into it, after
- * the generic STU3→R4 transform. See `promote.ts`.
+ * the generic STU3→R4 transform. See `promote/`.
  */
 const promote = (resource: MedicationResource): MedicationResource =>
   resource.resourceType === 'MedicationRequest'

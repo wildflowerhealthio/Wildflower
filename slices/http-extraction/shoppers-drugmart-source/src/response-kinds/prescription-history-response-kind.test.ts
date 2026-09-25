@@ -1,5 +1,6 @@
 import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { CanadianCodingSystem } from 'fhir-r4/data-types'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
@@ -7,7 +8,7 @@ import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { DIN_CODE_SYSTEM, ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
+import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { PrescriptionHistoryResponseKind } from './prescription-history-response-kind.ts'
 
@@ -117,7 +118,9 @@ describe('PrescriptionHistoryResponseKind', () => {
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
           status: 'completed',
           medicationCodeableConcept: {
-            coding: [{ system: DIN_CODE_SYSTEM, code: '51480840', display: 'Amoxicillin 500mg' }],
+            coding: [
+              { system: CanadianCodingSystem.Din, code: '51480840', display: 'Amoxicillin 500mg' },
+            ],
             text: 'Amoxil',
           },
           authorizingPrescription: [
@@ -136,7 +139,9 @@ describe('PrescriptionHistoryResponseKind', () => {
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-2' }],
           status: 'completed',
           medicationCodeableConcept: {
-            coding: [{ system: DIN_CODE_SYSTEM, code: '80717730', display: 'Amoxicillin 500mg' }],
+            coding: [
+              { system: CanadianCodingSystem.Din, code: '80717730', display: 'Amoxicillin 500mg' },
+            ],
             text: 'Apo-Amoxi',
           },
           authorizingPrescription: [
@@ -150,6 +155,20 @@ describe('PrescriptionHistoryResponseKind', () => {
           location: { reference: shoppersStoreLocatorUrl(9000), display: 'SDM Pharmacy #9000' },
         }),
       ])
+    })
+
+    it('should name the store after its number when the portal gives no store name', () => {
+      // Arrange
+      const payload = {
+        dispenses: [{ prescriptionId: 'rx-uuid-1', dispenseId: 'disp-1', store: { id: 9000 } }],
+      }
+
+      // Act
+      const [dispense] = parse(payload)
+
+      // Assert
+      if (dispense?.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
+      expect(dispense.location?.display).toBe('Shoppers Drug Mart (store 9000)')
     })
 
     it('emits no subject (the history payload carries no patientId)', () => {
@@ -181,7 +200,7 @@ describe('PrescriptionHistoryResponseKind', () => {
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-9' }],
           status: 'completed',
           medicationCodeableConcept: {
-            coding: [{ system: DIN_CODE_SYSTEM, code: '51480840' }],
+            coding: [{ system: CanadianCodingSystem.Din, code: '51480840' }],
           },
           authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
         }),

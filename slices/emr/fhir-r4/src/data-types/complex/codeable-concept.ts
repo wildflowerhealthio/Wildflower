@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Array as Arr, Option, pipe, Schema, String as Str } from 'effect'
 
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
@@ -26,4 +26,35 @@ const CodeableConceptSchema: Schema.Schema<
 
 registerDatatypeSchema('CodeableConcept', CodeableConceptSchema)
 
-export { CodeableConceptSchema as Schema }
+/**
+ * The fields a concept's label is read from. A decoded concept has them, and so
+ * does one still in raw wire JSON (where absence may be `undefined`), so a
+ * writer working on passthrough `contained` data reads a label by the same rule
+ * a reader does.
+ */
+interface Labelled {
+  readonly text?: string | null | undefined
+  readonly coding?: readonly { readonly display?: string | null | undefined }[] | undefined
+}
+
+/**
+ * The concept's human-readable label: its `text`, else the first coding's
+ * `display`. A blank value counts as absent.
+ *
+ * @remarks
+ * `text` wins because R4 defines it as the concept "as entered or chosen by the
+ * user" — the source's own words — whereas a coding's `display` is the code
+ * system's name for that one code.
+ */
+const label = (concept: Labelled): Option.Option<string> =>
+  pipe(
+    Option.fromNullable(concept.text),
+    Option.filter(Str.isNonEmpty),
+    Option.orElse(() =>
+      Arr.findFirst(concept.coding ?? [], (coding) =>
+        pipe(Option.fromNullable(coding.display), Option.filter(Str.isNonEmpty))
+      )
+    )
+  )
+
+export { CodeableConceptSchema as Schema, label }

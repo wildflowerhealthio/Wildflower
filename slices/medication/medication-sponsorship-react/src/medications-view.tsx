@@ -63,28 +63,16 @@ export const MedicationsView = ({ medications }: MedicationsViewProps): JSX.Elem
         {/* Name + right-aligned pharmacy actions (wrap on mobile). */}
         <p className={styles.header}>
           <span className={styles.name}>{view.medication.displayName}</span>
-          {(view.rexallStoreUrl !== null || view.shoppersStoreUrl !== null) && (
+          {view.storeLink !== null && (
             <span className={styles.actions}>
-              {view.rexallStoreUrl !== null && (
-                <a
-                  className={styles.pharmacyLink}
-                  href={view.rexallStoreUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Rexall
-                </a>
-              )}
-              {view.shoppersStoreUrl !== null && (
-                <a
-                  className={styles.pharmacyLink}
-                  href={view.shoppersStoreUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Shoppers
-                </a>
-              )}
+              <a
+                className={styles.pharmacyLink}
+                href={view.storeLink.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {view.storeLink.label}
+              </a>
             </span>
           )}
         </p>

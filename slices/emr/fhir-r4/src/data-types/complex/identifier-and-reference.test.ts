@@ -1,10 +1,15 @@
-import { Arbitrary, Schema } from 'effect'
+import { Arbitrary, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { pickField } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
-import { describe, expect, test } from 'vite-plus/test'
+import { describe, expect, it, test } from 'vite-plus/test'
 
-import { IdentifierSchema, ReferenceSchema } from './identifier-and-reference.ts'
+import {
+  fragmentIdOf,
+  fragmentReferenceTo,
+  IdentifierSchema,
+  ReferenceSchema,
+} from './identifier-and-reference.ts'
 
 // ---------------------------------------------------------------------------
 // Reference and Identifier are mutually recursive (Reference.identifier →
@@ -159,5 +164,53 @@ describe('FhirR4Identifier', () => {
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('fragmentIdOf', () => {
+  it('should read the contained id out of a #id reference', () => {
+    // Act
+    const id = fragmentIdOf('#med-1')
+
+    // Assert
+    expect(id).toEqual(Option.some('med-1'))
+  })
+
+  it('should read back every id fragmentReferenceTo writes', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }), (id) => {
+        // Act
+        const readBack = fragmentIdOf(fragmentReferenceTo(id))
+
+        // Assert
+        expect(readBack).toEqual(Option.some(id))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should never read a reference to something outside the resource as a fragment', () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(
+          fc.webUrl(),
+          fc
+            .tuple(fc.constantFrom('Medication', 'Location'), fc.string())
+            .map(([resourceType, id]) => `${resourceType}/${id}`)
+        ),
+        (reference) => {
+          // Act
+          const id = fragmentIdOf(reference)
+
+          // Assert
+          expect(id).toEqual(Option.none())
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should not read a bare # as naming any contained resource', () => {
+    expect(fragmentIdOf('#')).toEqual(Option.none())
   })
 })

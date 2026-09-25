@@ -23,11 +23,11 @@ non-FHIR portal JSON.
   `…/prescription-history?customerId=…` → one `MedicationDispense` per history
   entry (no Patient, no MedicationRequest).
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
-  builder (brand/chemical text + DIN coding) shared by the two dispense-emitting
+  builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
 - `src/shoppers.ts` — the identifier/coding-system URL catalogue
-  (`ShoppersIdentifierSystem`, `DIN_CODE_SYSTEM`,
-  `PRESCRIPTION_STATUS_TYPE_SYSTEM`).
+  (`ShoppersIdentifierSystem`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`). There is no
+  Shoppers DIN system — DINs use the canonical `CanadianCodingSystem.Din`.
 - `src/source-system.ts` — `SHOPPERS_DRUGMART_SYSTEM`, the Wildflower-minted
   `sid` URI each kind's `tryRecognize` mints and adoption keys under.
 - `src/dates.ts` — `decodesAsDateTime` / `firstDateTime` date-validation helpers
@@ -51,6 +51,25 @@ particular it must **never** import anything from `slices/collector`
 config/plan/form are its concern) or `slices/importer` (whose
 `har-importer-core` consumes this package's
 `shoppersDrugMartSource.responseKinds`).
+
+## Conventional slots
+
+What a synthesized resource carries where, so one reader covers this source
+and `rexall-be-well-source` alike:
+
+- **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
+  canonical `CanadianCodingSystem.Din`
+  (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
+  DINs, so no vendor DIN system is minted beside it.
+- **Store link** — the public store-locator URL (`shoppers.ts`'s
+  `shoppersStoreLocatorUrl`) as a literal `reference` on
+  `MedicationRequest.dispenseRequest.performer`, and on
+  `MedicationDispense.location` for every dispense (the status feed's and the
+  history feed's alike) — never on `supportingInformation`. Its `display` is
+  the history feed's store name where there is one, else
+  `Shoppers Drug Mart (store <id>)` (`shoppersStoreDisplay`). A request whose
+  payload carries a store but nothing else for `dispenseRequest` still gets a
+  `dispenseRequest` holding just the `performer`.
 
 ## Traps
 

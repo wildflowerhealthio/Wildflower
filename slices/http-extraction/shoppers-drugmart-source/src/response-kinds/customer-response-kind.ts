@@ -1,4 +1,4 @@
-import { Effect, Option, Schema } from 'effect'
+import { Array as Arr, Effect, type Option, type ParseResult, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
@@ -155,6 +155,21 @@ const accountPatientWire = (
 }
 
 /**
+ * One raw `customer.patients[]` entry as a {@link SourcePatient} — `None` when
+ * it does not decode (no `id`, say), so the caller can count it as dropped.
+ */
+const asSourcePatient = (raw: unknown): Option.Option<SourcePatient> => decodeSourcePatient(raw)
+
+/** The demographic `Patient` for one managed person. */
+const demographicPatientOf = (
+  patient: SourcePatient
+): Effect.Effect<typeof Patient.Schema.Type, ParseResult.ParseError> =>
+  decodePatient(patientWire(patient))
+
+/** The id a managed person's demographic `Patient` is keyed by. */
+const patientIdOf = (patient: SourcePatient): string => patient.id
+
+/**
  * The exact customers XHR URL, anchored and pinned to host + `v1` + full path
  * with an optional query; `[^/?#]+(?:\?|$)` keeps the uuid a single segment (so
  * `…/pcid/<uuid>/toasts` is rejected). Disjoint from the sibling kinds.
@@ -180,25 +195,18 @@ const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = Ht
         const { customer } = yield* decodeCustomer(extractJson(response.text()))
 
         const rawPatients = customer.patients ?? []
-        const patients: Array<typeof Patient.Schema.Type> = []
-        const patientIds: Array<string> = []
-        let dropped = 0
-        for (const raw of rawPatients) {
-          const decoded = decodeSourcePatient(raw)
-          if (Option.isNone(decoded)) {
-            dropped += 1
-            continue
-          }
-          patientIds.push(decoded.value.id)
-          patients.push(yield* decodePatient(patientWire(decoded.value)))
-        }
+        const sourcePatients = Arr.filterMap(rawPatients, asSourcePatient)
+        const dropped = rawPatients.length - sourcePatients.length
+        const patients = yield* Effect.forEach(sourcePatients, demographicPatientOf)
         if (dropped > 0) {
           yield* Effect.logInfo(
             `CustomerResponseKind: dropped ${dropped} of ${rawPatients.length} patient entries with no id (or undecodable)`
           )
         }
 
-        const account = yield* decodePatient(accountPatientWire(customer, patientIds))
+        const account = yield* decodePatient(
+          accountPatientWire(customer, sourcePatients.map(patientIdOf))
+        )
         return [...patients, account]
       }),
   }

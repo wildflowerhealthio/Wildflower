@@ -1,4 +1,4 @@
-import { Effect, Option, Schema } from 'effect'
+import { Array as Arr, Effect, Option, pipe, Schema } from 'effect'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
@@ -7,6 +7,7 @@ import { decodesAsDateTime, firstDateTime } from '../dates.ts'
 import {
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   ShoppersIdentifierSystem,
+  shoppersStoreDisplay,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
@@ -42,8 +43,8 @@ const SourcePrescription = Schema.Struct({
   lastFillDate: Schema.optional(Schema.String),
   // `lastFillDate` / `nextFillDate` bound the fill window (see {@link dispenseRequestWire}).
   nextFillDate: Schema.optional(Schema.String),
-  // The store id → the store-locator link on `supportingInformation`; lenient on
-  // string vs number.
+  // The store id → the store-locator link on `dispenseRequest.performer` (and
+  // each dispense's `location`); lenient on string vs number.
   storeId: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   // `expired`/`archived` drive `MedicationRequest.status` → `'stopped'`;
   // `renewable` is decoded but not mapped.
@@ -119,6 +120,8 @@ const patientReference = (patientId: string): Record<string, unknown> => ({
 /** Build the R4 `MedicationRequest.dispenseRequest` wire, or `undefined` if it would be empty. */
 const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
   const dr: Record<string, unknown> = {}
+  const store = storeReferenceWire(rx)
+  if (store != null) dr['performer'] = store
   if (rx.numFillsLeft != null && Number.isFinite(rx.numFillsLeft)) {
     const repeats = Math.trunc(rx.numFillsLeft)
     if (repeats >= 0) dr['numberOfRepeatsAllowed'] = repeats
@@ -139,16 +142,15 @@ const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | 
 }
 
 /**
- * The `supportingInformation` wire: a `Reference` to the public store-locator URL
- * for the prescription's `storeId`; `undefined` when no store id is present.
+ * The dispensing store as a `Reference` to its public store-locator URL, named
+ * after its store number — the wire for both `dispenseRequest.performer` and
+ * each dispense's `location`; `undefined` when no store id is present.
  */
-const supportingInformationWire = (
-  rx: SourcePrescription
-): ReadonlyArray<Record<string, unknown>> | undefined => {
+const storeReferenceWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
   if (rx.storeId == null) return undefined
   const storeId = String(rx.storeId)
   if (storeId.length === 0) return undefined
-  return [{ reference: shoppersStoreLocatorUrl(storeId) }]
+  return { reference: shoppersStoreLocatorUrl(storeId), display: shoppersStoreDisplay(storeId) }
 }
 
 /**
@@ -225,9 +227,6 @@ const requestWire = (
   if (authoredOn != null) wire['authoredOn'] = authoredOn
   if (rx.direction != null) wire['dosageInstruction'] = [{ text: rx.direction }]
 
-  const supportingInformation = supportingInformationWire(rx)
-  if (supportingInformation != null) wire['supportingInformation'] = supportingInformation
-
   const dispenseRequest = dispenseRequestWire(rx)
   if (dispenseRequest != null) wire['dispenseRequest'] = dispenseRequest
   return wire
@@ -257,8 +256,23 @@ const dispenseWire = (
     wire['quantity'] = { value: dispense.quantityDispensed }
   }
   if (decodesAsDateTime(dispense.dispenseDate)) wire['whenHandedOver'] = dispense.dispenseDate
+  const location = storeReferenceWire(rx)
+  if (location != null) wire['location'] = location
   return wire
 }
+
+/**
+ * One raw `dispenses` entry as its `MedicationDispense` wire — `None` when it
+ * does not decode as a {@link SourceDispense} or has no `dispenseId`, so the
+ * caller can count it as dropped.
+ */
+const dispenseWireFrom =
+  (rx: SourcePrescription, medication: Record<string, unknown> | undefined) =>
+  (raw: unknown): Option.Option<Record<string, unknown>> =>
+    pipe(
+      decodeSourceDispense(raw),
+      Option.flatMap((dispense) => Option.fromNullable(dispenseWire(dispense, rx, medication)))
+    )
 
 /**
  * The exact prescription-status XHR URL, anchored and pinned to host + `v1` +
@@ -289,19 +303,9 @@ const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> 
         const request = yield* decodeRequest(requestWire(rx, medication))
 
         const rawDispenses = flattenDispenses(rx.dispenses ?? [])
-        const dispenses: Array<typeof MedicationDispense.Schema.Type> = []
-        let dropped = 0
-        for (const raw of rawDispenses) {
-          const decoded = decodeSourceDispense(raw)
-          const wire = Option.isSome(decoded)
-            ? dispenseWire(decoded.value, rx, medication)
-            : undefined
-          if (wire === undefined) {
-            dropped += 1
-            continue
-          }
-          dispenses.push(yield* decodeDispense(wire))
-        }
+        const dispenseWires = Arr.filterMap(rawDispenses, dispenseWireFrom(rx, medication))
+        const dropped = rawDispenses.length - dispenseWires.length
+        const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))
         if (dropped > 0) {
           yield* Effect.logInfo(
             `PrescriptionResponseKind: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`

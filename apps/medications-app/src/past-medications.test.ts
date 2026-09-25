@@ -67,6 +67,5 @@ const view = (
   repeatsAllowed: null,
   repeatsAvailable: null,
   nextFillDate: null,
-  rexallStoreUrl: null,
-  shoppersStoreUrl: null,
+  storeLink: null,
 })

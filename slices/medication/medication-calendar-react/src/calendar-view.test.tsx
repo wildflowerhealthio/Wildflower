@@ -214,8 +214,7 @@ const baseView: Omit<MedicationView, 'medication'> = {
   repeatsAllowed: null,
   repeatsAvailable: null,
   nextFillDate: null,
-  rexallStoreUrl: null,
-  shoppersStoreUrl: null,
+  storeLink: null,
 }
 
 /** Repeats remain → its next-fill date (Sep 9) carries the pickup item. */

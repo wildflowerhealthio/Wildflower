@@ -40,8 +40,7 @@ it rather than re-decide it.
   apply. The `value[x]` / `effective[x]` choice slots type as `any` on a
   decoded resource, and a decoded `Coding.system` is a `URL` while the wire
   form is a string — so the adapter reads the resource as `unknown` through a
-  permissive local schema that accepts both shapes, exactly as
-  `medication-core/fhir` does. And `vp pack` (not `vp check`) is the gate for
+  permissive local schema that accepts both shapes. And `vp pack` (not `vp check`) is the gate for
   the TS2883 dts trap: run `vp run -F health-viewer-core build` when the
   adapter's inferred types change.
 - **Search tokenizes locally rather than reusing `medication-core`'s

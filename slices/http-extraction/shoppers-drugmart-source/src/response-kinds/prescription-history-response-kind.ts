@@ -1,10 +1,14 @@
-import { Effect, Option, Schema } from 'effect'
+import { Array as Arr, Effect, Option, pipe, Schema, String as Str } from 'effect'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime } from '../dates.ts'
-import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
+import {
+  ShoppersIdentifierSystem,
+  shoppersStoreDisplay,
+  shoppersStoreLocatorUrl,
+} from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
@@ -69,7 +73,8 @@ const authorizingPrescriptionWire = (
 /**
  * The `location` wire: a `Reference` to the public store-locator URL for the
  * store id (absolute, so adoption leaves it untouched), with the store name as
- * `display`. `undefined` when no store id is present.
+ * `display`, else one made from the store number. `undefined` when no store id
+ * is present.
  */
 const locationWire = (
   store: typeof SourceStore.Type | undefined
@@ -79,7 +84,11 @@ const locationWire = (
   if (storeId.length === 0) return undefined
   return {
     reference: shoppersStoreLocatorUrl(storeId),
-    ...(store.storeName != null ? { display: store.storeName } : {}),
+    display: pipe(
+      Option.fromNullable(store.storeName),
+      Option.filter(Str.isNonEmpty),
+      Option.getOrElse(() => shoppersStoreDisplay(storeId))
+    ),
   }
 }
 
@@ -110,6 +119,17 @@ const dispenseWire = (dispense: SourceHistoryDispense): Record<string, unknown> 
 }
 
 /**
+ * One raw history entry as its `MedicationDispense` wire — `None` when it does
+ * not decode as a {@link SourceHistoryDispense} or has no `dispenseId`, so the
+ * caller can count it as dropped.
+ */
+const dispenseWireFrom = (raw: unknown): Option.Option<Record<string, unknown>> =>
+  pipe(
+    decodeSourceHistoryDispense(raw),
+    Option.flatMap((dispense) => Option.fromNullable(dispenseWire(dispense)))
+  )
+
+/**
  * The exact prescription-history XHR URL, anchored and pinned to host + `v1` +
  * full path; the required `?…customerId=` query matches the API XHR but not the
  * user-facing page. Disjoint from the sibling kinds.
@@ -136,17 +156,9 @@ const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirRes
         const { dispenses: raw } = yield* decodeHistory(extractJson(response.text()))
 
         const rawDispenses = raw ?? []
-        const dispenses: Array<typeof MedicationDispense.Schema.Type> = []
-        let dropped = 0
-        for (const entry of rawDispenses) {
-          const decoded = decodeSourceHistoryDispense(entry)
-          const wire = Option.isSome(decoded) ? dispenseWire(decoded.value) : undefined
-          if (wire === undefined) {
-            dropped += 1
-            continue
-          }
-          dispenses.push(yield* decodeDispense(wire))
-        }
+        const dispenseWires = Arr.filterMap(rawDispenses, dispenseWireFrom)
+        const dropped = rawDispenses.length - dispenseWires.length
+        const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))
         if (dropped > 0) {
           yield* Effect.logInfo(
             `PrescriptionHistoryResponseKind: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`
