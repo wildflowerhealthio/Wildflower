@@ -37,16 +37,28 @@ use utoipa_axum::routes;
 use crate::domain::capabilities::oauth::ClientScopesReader;
 
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
+/// The shared `InsufficientScopeBody` is registered here so the
+/// [`InsufficientScopeResponses`](scope_capabilities_rust::InsufficientScopeResponses)
+/// addon in [`openapi_spec`] can `$ref` it on the scope-gated `/access` paths.
 #[derive(OpenApi)]
+#[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]
 struct ApiDoc;
 
-/// The documented surface — jwks + the OAuth group — as an `OpenApiRouter`, so
-/// the spec is collected from the very routes that serve traffic. Trial scope:
-/// the `/access/*` admin surface is intentionally not documented.
-fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
+/// The documented **pre-auth** surface — jwks + the OAuth group — as an
+/// `OpenApiRouter`, so the spec is collected from the very routes that serve
+/// traffic.
+fn documented_public_router() -> OpenApiRouter<Arc<GatekeeperState>> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(routes::well_known_jwks::handle_jwks_request))
         .nest("/oauth", routes::oauth::openapi_router())
+}
+
+/// The spec-only view of the whole documented surface: the pre-auth routes
+/// plus the documented slice of `/access` (the `/clients` routes; the rest of
+/// the admin surface is not documented yet). Never served as-is — [`router`]
+/// mounts the `/access` half behind the session gate.
+fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
+    documented_public_router().nest("/access", routes::clients::openapi_router())
 }
 
 /// Build the gatekeeper's public HTTP surface. Routes live at
@@ -58,8 +70,10 @@ fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
 /// without that wrapper leaves `/oauth/*` and `/access/*` reachable from
 /// non-loopback peers.
 pub fn router(state: Arc<GatekeeperState>) -> Router {
-    let (documented, _spec) = documented_router().split_for_parts();
+    let (documented, _spec) = documented_public_router().split_for_parts();
+    let (clients, _spec) = routes::clients::openapi_router().split_for_parts();
     let access = Router::new()
+        .merge(clients)
         .merge(routes::grants::router())
         .merge(routes::oauth_consents::router())
         .merge(routes::devices::router())
@@ -117,15 +131,28 @@ pub fn client_allowed_scopes(
     Ok(reader.registered_client_scopes(client_id)?)
 }
 
-/// The gatekeeper OAuth + discovery `OpenAPI` document, collected from the very
+/// The gatekeeper OAuth + discovery + client-management `OpenAPI` document, collected from the very
 /// routes that serve traffic. `info` is set explicitly so the committed snapshot
 /// doesn't churn with the crate version. Two consumers read it: the committed
 /// snapshot the TS spec-drift test guards, and the host's unified `/docs` Scalar
 /// surface, which merges this with the other slices' documents.
 #[must_use]
 pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+    use utoipa::Modify as _;
+
     let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("Gatekeeper OAuth API", "0.0.0");
+    // Every documented `/access` operation is scope-gated (the ungated
+    // `/access/session` isn't documented), so the gated paths are read off the
+    // spec rather than listed by hand.
+    let gated_paths: Vec<String> = spec
+        .paths
+        .paths
+        .keys()
+        .filter(|path| path.starts_with("/access/"))
+        .cloned()
+        .collect();
+    scope_capabilities_rust::InsufficientScopeResponses::for_paths(gated_paths).modify(&mut spec);
     spec
 }
 

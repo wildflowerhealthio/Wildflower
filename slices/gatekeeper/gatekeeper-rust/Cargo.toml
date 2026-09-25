@@ -42,7 +42,7 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
 # `FixedScopeCapability`, `ScopeClaims`) — the enforcement half of the scopes
 # slice; gatekeeper's `/access` surface is the pattern's original adopter and
 # its bearer gate inserts the `ScopeClaims` downstream slices gate on.
-scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust" }
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = ["openapi"] }
 parking_lot = "0.12"
 # jsonwebtoken 10 split the crypto backend out of the default features: `default`
 # only enables PEM parsing, so a signer backend must be selected explicitly.

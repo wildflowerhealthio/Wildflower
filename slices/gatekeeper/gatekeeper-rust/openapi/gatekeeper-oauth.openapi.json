@@ -26,6 +26,112 @@
         }
       }
     },
+    "/access/clients": {
+      "get": {
+        "tags": [
+          "Access management"
+        ],
+        "summary": "`GET /access/clients` — every registered OAuth client (seeded or trusted on first\nuse), disabled ones included, ordered by `clientId`. Acquired through\n[`LiveClientsReader`] (scope `wildflower/Client.r`).",
+        "operationId": "handle_list_clients",
+        "responses": {
+          "200": {
+            "description": "Every registered client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClientBody"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access/clients/{clientId}": {
+      "patch": {
+        "tags": [
+          "Access management"
+        ],
+        "summary": "`PATCH /access/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the first-party host client is\nrefused with `409 FirstPartyClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
+        "operationId": "handle_update_client",
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "description": "The client's `client_id`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClientBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The client as stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover the scope this operation requires",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No client with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientNotFoundBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The first-party host client can't be disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirstPartyClientLockedBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/oauth/authorize": {
       "get": {
         "tags": [
@@ -383,6 +489,85 @@
         ],
         "description": "Polling response for the Owner UI watching an authorization request as it\nmoves from `Pending` toward approval or denial."
       },
+      "ClientBody": {
+        "type": "object",
+        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, plus `firstParty` — whether this is the host client, which can't be\ndisabled.",
+        "required": [
+          "clientId",
+          "name",
+          "kind",
+          "redirectUris",
+          "allowedScopes",
+          "allowedGrantTypes",
+          "registeredAt",
+          "disabledAt",
+          "firstParty"
+        ],
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`public` or `confidential`."
+          },
+          "redirectUris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Absolute URLs, or app-relative paths (a leading `/`) for self-hosted apps."
+          },
+          "allowedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowedGrantTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The `grant_type` values the client may use at `/oauth/token`."
+          },
+          "registeredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "disabledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Set while the client is disabled; `null` when it is enabled."
+          },
+          "firstParty": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ClientNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `ClientNotFound` (404) — no registered client has this\n`client_id`.",
+        "required": [
+          "error",
+          "clientId"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"ClientNotFound\"`."
+          },
+          "clientId": {
+            "type": "string"
+          }
+        }
+      },
       "DeviceAuthorizationRequest": {
         "type": "object",
         "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials, and the non-standard\n`device_name` extension. Form-urlencoded.",
@@ -444,6 +629,44 @@
           "interval": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "FirstPartyClientLockedBody": {
+        "type": "object",
+        "description": "Wire shape for `FirstPartyClientLocked` (409) — the named client is the\nfirst-party host, which can't be disabled without locking the Owner out.",
+        "required": [
+          "error",
+          "clientId"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"FirstPartyClientLocked\"`."
+          },
+          "clientId": {
+            "type": "string"
+          }
+        }
+      },
+      "InsufficientScopeBody": {
+        "type": "object",
+        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
+        "required": [
+          "error",
+          "missingScopes"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The rendered scopes the caller lacks."
           }
         }
       },
@@ -660,6 +883,24 @@
             ]
           }
         }
+      },
+      "UpdateClientBody": {
+        "type": "object",
+        "description": "Body of `PATCH /access/clients/{clientId}` — the one client field the Owner\ncan edit.",
+        "required": [
+          "disabledAt"
+        ],
+        "properties": {
+          "disabledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Any time to disable the client now, or `null` to re-enable it. The\nserver stamps its own now whatever time is sent, so a disable can't be\nscheduled or backdated. Required, `null` included."
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

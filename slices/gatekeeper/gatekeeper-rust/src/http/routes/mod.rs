@@ -2,8 +2,9 @@
 //! mirrors the URL tree: single-route paths are a flat file named by their
 //! operation (`well_known_jwks`, `logout`, `revocations`), multi-route segments
 //! are a folder carrying its own `mod.rs` route table (`oauth`,
-//! `oauth_consents`, `devices`, `grants`).
+//! `oauth_consents`, `devices`, `grants`, `clients`).
 
+pub mod clients;
 pub mod devices;
 pub mod grants;
 pub mod logout;

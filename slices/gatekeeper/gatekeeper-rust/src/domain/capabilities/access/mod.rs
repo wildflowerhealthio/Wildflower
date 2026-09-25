@@ -3,17 +3,19 @@
 //! the [`Capability`]/[`FixedScopeCapability`] traits) lives in
 //! [`scope_capabilities_rust`]; this module supplies one capability per
 //! (resource, permission) the surface gates, split by resource: [`grants`],
-//! [`consents`], [`tokens`]. Their privileged writes go through the sibling
+//! [`clients`], [`consents`], [`tokens`]. Their privileged writes go through the sibling
 //! [`writers`](crate::domain::capabilities::writers) under an authority proof.
 //!
 //! The (resource, permission) → required-scope mapping lives in one place — each
 //! capability's `*_scopes()` function — read by **both** its `Capability` binding
 //! and [`grantable_admin_scopes`], so *enforced* and *grantable* can't drift.
 
+pub(crate) mod clients;
 pub(crate) mod consents;
 pub(crate) mod grants;
 pub(crate) mod tokens;
 
+pub(crate) use clients::{ClientView, ClientsDisabler, ClientsReader};
 pub(crate) use consents::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentDecider, ConsentOutcome,
     ConsentReader, DeviceConsentView, OAuthConsentView,
@@ -37,6 +39,8 @@ pub fn grantable_admin_scopes() -> Vec<Scope> {
     let declared = [
         grants::grants_reader_scopes(),
         grants::grants_revoker_scopes(),
+        clients::clients_reader_scopes(),
+        clients::clients_disabler_scopes(),
         consents::consent_reader_scopes(),
         consents::consent_decider_scopes(),
         tokens::token_revoker_scopes(),
@@ -61,6 +65,8 @@ mod tests {
             vec![
                 "wildflower/Grant.r".to_owned(),
                 "wildflower/Grant.d".to_owned(),
+                "wildflower/Client.r".to_owned(),
+                "wildflower/Client.u".to_owned(),
                 "wildflower/AuthorizationRequest.r".to_owned(),
                 "wildflower/AuthorizationRequest.u".to_owned(),
                 "wildflower/Token.d".to_owned(),
@@ -90,6 +96,7 @@ mod tests {
     fn every_capability_scope_fn_is_registered_in_the_grantable_vocabulary() {
         const CAPABILITY_SOURCES: &[&str] = &[
             include_str!("grants.rs"),
+            include_str!("clients.rs"),
             include_str!("consents/mod.rs"),
             include_str!("tokens.rs"),
         ];
@@ -99,7 +106,7 @@ mod tests {
             .sum();
         // One `declared` entry per capability's scope function. Update BOTH when
         // adding a capability: its `*_scopes()` fn and the `declared` array.
-        let declared_entries = 5;
+        let declared_entries = 7;
         assert_eq!(
             scope_fns, declared_entries,
             "found {scope_fns} capability scope functions but grantable_admin_scopes() declares \

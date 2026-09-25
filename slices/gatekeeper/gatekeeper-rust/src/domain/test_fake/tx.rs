@@ -28,6 +28,26 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
         Ok(())
     }
 
+    fn list_clients(&mut self) -> Result<Vec<Client>, GatekeeperError> {
+        let mut clients: Vec<Client> = self.store.clients.borrow().values().cloned().collect();
+        clients.sort_by(|a, b| a.client_id.cmp(&b.client_id));
+        Ok(clients)
+    }
+
+    fn set_client_disabled(
+        &mut self,
+        client_id: &str,
+        disabled_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, GatekeeperError> {
+        Ok(self
+            .store
+            .clients
+            .borrow_mut()
+            .get_mut(client_id)
+            .map(|client| client.disabled_at = disabled_at)
+            .is_some())
+    }
+
     fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, GatekeeperError> {
         Ok(self.store.signing_keys.borrow().clone())
     }

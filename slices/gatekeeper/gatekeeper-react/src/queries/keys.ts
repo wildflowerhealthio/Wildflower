@@ -8,6 +8,7 @@
 
 const GRANTS_QUERY_KEY = ['gatekeeper', 'grants'] as const
 const grantQueryKey = (id: string): readonly [string, string, string] => ['gatekeeper', 'grant', id]
+const CLIENTS_QUERY_KEY = ['gatekeeper', 'clients'] as const
 const REQUESTS_QUERY_KEY = ['gatekeeper', 'requests'] as const
 const requestQueryKey = (id: string): readonly [string, string, string] => [
   'gatekeeper',
@@ -26,6 +27,7 @@ const oauthConsentQueryKey = (id: string): readonly [string, string, string] => 
 ]
 
 export {
+  CLIENTS_QUERY_KEY,
   deviceConsentQueryKey,
   GRANTS_QUERY_KEY,
   grantQueryKey,

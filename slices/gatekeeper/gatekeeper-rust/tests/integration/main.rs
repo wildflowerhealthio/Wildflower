@@ -1,6 +1,7 @@
 mod bearer_only;
 mod cache_suppression;
 mod client_auth;
+mod client_management;
 mod common;
 mod device_code;
 mod grant_flows;

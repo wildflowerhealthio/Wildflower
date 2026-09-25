@@ -1,8 +1,10 @@
 import { createFileRoute, useNavigate, useRouteContext } from '@tanstack/react-router'
+import { constVoid } from 'effect/Function'
 import type { JSX } from 'react'
 import { useState } from 'react'
 import {
   AsyncErrorView,
+  ConfirmDialog,
   ErrorBanner,
   ItemList,
   Menu,
@@ -10,9 +12,10 @@ import {
   type MenuItem,
 } from 'react-tundraish'
 
-import { RevokeGrantDialog } from '../../../components/RevokeGrantDialog.tsx'
+import { TrustedAppsSection } from '../../../components/TrustedAppsSection.tsx'
 import { formatInstant } from '../../../format-date.ts'
 import {
+  clientsQueryOptions,
   grantsQueryOptions,
   useGrantsQuery,
   useRevokeGrantMutation,
@@ -35,11 +38,13 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
   const revokeMutation = useRevokeGrantMutation()
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
+  // The dialog closes once the revoke settles either way, so a failure shows
+  // in the error banner rather than behind the modal.
   const revoke = (id: string): void => {
     revokeMutation.mutate(
       { id },
       {
-        onSuccess: () => {
+        onSettled: () => {
           setConfirmRevokeId(null)
         },
       }
@@ -90,15 +95,18 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
               <Menu
                 label={`Actions for ${grant.clientId}`}
                 items={
+                  // One revoke at a time: held while one is in flight.
                   [
-                    {
-                      id: 'revoke',
-                      label: 'Revoke',
-                      destructive: true,
-                      onSelect: () => {
-                        setConfirmRevokeId(grant.id)
-                      },
-                    },
+                    revokeMutation.isPending
+                      ? { id: 'revoke', label: 'Revoke', disabled: true }
+                      : {
+                          id: 'revoke',
+                          label: 'Revoke',
+                          destructive: true,
+                          onSelect: () => {
+                            setConfirmRevokeId(grant.id)
+                          },
+                        },
                   ] as readonly MenuItem[]
                 }
               />
@@ -106,6 +114,11 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
           }))}
         />
       ) : null}
+
+      {/* Every client the Owner trusts (seeded, or trusted on first use from a
+          consent prompt), with the switch that takes that trust back. Loads
+          and fails on its own, apart from the grants above. */}
+      <TrustedAppsSection />
 
       <ItemList
         title="Devices"
@@ -138,15 +151,21 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
         />
       ) : null}
 
-      <RevokeGrantDialog
-        clientId={grantToRevoke?.clientId ?? null}
+      <ConfirmDialog
+        open={grantToRevoke !== null}
+        title="Revoke Access"
+        confirmLabel="Revoke"
+        destructive
+        pending={revokeMutation.isPending}
         onConfirm={() => {
           if (grantToRevoke !== null) revoke(grantToRevoke.id)
         }}
         onCancel={() => {
           setConfirmRevokeId(null)
         }}
-      />
+      >
+        Are you sure you want to revoke access for &quot;{grantToRevoke?.clientId ?? ''}&quot;?
+      </ConfirmDialog>
     </>
   )
 }
@@ -165,9 +184,10 @@ interface AccessIndexErrorViewProps {
  * The route's `errorComponent`. The Retry button must do more than `reset`
  * (which only clears the `CatchBoundary`'s local error state): it explicitly
  * invalidates the grants query so the suspense query re-runs its `queryFn`
- * instead of replaying the cached rejection. The grants key is derived from
- * `grantsQueryOptions` so it can't drift from what the loader / `useGrantsQuery`
- * read. The annotated `select` keeps the context typed in the standalone
+ * instead of replaying a cached rejection. The key is derived from
+ * `grantsQueryOptions` so it can't drift from what the loader and the hook
+ * read. (A clients failure never lands here — `TrustedAppsSection` catches
+ * it.) The annotated `select` keeps the context typed in the standalone
  * (router-not-registered) build — no cast.
  */
 const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.Element => {
@@ -190,12 +210,23 @@ const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.
  * management index.
  *
  * The `/settings` `beforeLoad` gate guarantees a token before this loader
- * runs, so it's a plain `ensureQueryData` — failures propagate to
- * `errorComponent`.
+ * runs. It waits only on the grants — their failure propagates to
+ * `errorComponent`. The clients list is prefetched but not waited on:
+ * `TrustedAppsSection` suspends on it and catches its failure itself, so a
+ * session that can read grants but not clients still gets the page.
  */
 const Route = createFileRoute('/settings/gatekeeper/')({
-  loader: ({ context }) =>
-    context.queryClient.query({ ...grantsQueryOptions(context.runAuthed), staleTime: 'static' }),
+  loader: async ({ context }) => {
+    // Not awaited, and its rejection dropped here only: the failure stays in
+    // the query's state, where `TrustedAppsSection` suspends on it and shows it.
+    context.queryClient
+      .query({ ...clientsQueryOptions(context.runAuthed), staleTime: 'static' })
+      .catch(constVoid)
+    await context.queryClient.query({
+      ...grantsQueryOptions(context.runAuthed),
+      staleTime: 'static',
+    })
+  },
   component: AccessIndexScreen,
   errorComponent: ({ error, reset }) => <AccessIndexErrorView error={error} reset={reset} />,
 })

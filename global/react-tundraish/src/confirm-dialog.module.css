@@ -1,0 +1,11 @@
+/*
+ * The confirm/cancel pair under a `ConfirmDialog`'s question: full-width
+ * buttons stacked confirm-first, so the action sits nearest the question and
+ * Cancel nearest the thumb on the bottom-anchored sheet.
+ */
+.confirm-dialog__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
