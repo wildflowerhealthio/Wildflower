@@ -149,7 +149,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         };
         let registration_is_locked = self.registration_is_locked(authorize_query.client_id);
         let maybe_existing_client =
-            self.load_client(authorize_query.client_id, registration_is_locked)?;
+            self.load_client(authorize_query.client_id, registration_is_locked, now)?;
         let requested_redirect_uri = parse_redirect_uri(authorize_query.redirect_uri)?;
         // A redirect is trustworthy only when a client we already know already
         // registered it.
@@ -252,13 +252,14 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         client_id == &*self.first_party_client_id
     }
 
-    /// The client row named by the request, if any. A disabled client is
-    /// rejected outright, as is an unknown first-party `client_id`; any other
-    /// unknown `client_id` is `None` — a `New` registration verdict.
+    /// The client row named by the request, if any. A client disabled as of
+    /// `now` is rejected outright, as is an unknown first-party `client_id`; any
+    /// other unknown `client_id` is `None` — a `New` registration verdict.
     fn load_client(
         &self,
         client_id: &str,
         registration_is_locked: bool,
+        now: DateTime<Utc>,
     ) -> Result<Option<Client>, AuthorizationStartError> {
         let Some(client) = self.store.client_by_id(client_id)? else {
             return if registration_is_locked {
@@ -269,7 +270,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
                 Ok(None)
             };
         };
-        if client.disabled_at.is_some() {
+        if client.is_disabled_at(now) {
             return Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::DisabledClient,
             ));

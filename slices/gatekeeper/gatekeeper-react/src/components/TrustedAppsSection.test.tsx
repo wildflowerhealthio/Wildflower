@@ -10,7 +10,7 @@ import { TrustedAppsSection } from './TrustedAppsSection.tsx'
 /**
  * The "Trusted Apps" section on the Access index: one row per registered
  * client, with Disable (behind a confirm dialog) while trusted, Enable while
- * disabled, and no switch at all on the first-party host. The transport is
+ * disabled (or scheduled to be), and no switch at all on the first-party host. The transport is
  * stubbed at `runAuthed` (read through the mocked router context), so a
  * confirmed switch is observable as a resolved call plus the list invalidation.
  */
@@ -50,6 +50,15 @@ describe('TrustedAppsSection', () => {
     expect(screen.getByText('OHIF Viewer')).toBeTruthy()
     expect(screen.getByText('Importer')).toBeTruthy()
     expect(screen.getAllByText('Disabled')).toHaveLength(1)
+  })
+
+  it('should not mark an app disabled while its disable is still scheduled', () => {
+    // Arrange / Act
+    renderSection([scheduledImporter])
+
+    // Assert
+    expect(screen.queryByText('Disabled')).toBeNull()
+    expect(screen.getByText(/^wildflower-importer · Disables /)).toBeTruthy()
   })
 
   it('should render nothing when there are no clients', () => {
@@ -178,6 +187,13 @@ const disabledImporter = decodeClient({
   clientId: 'wildflower-importer',
   name: 'Importer',
   disabledAt: '2026-09-01T12:00:00.000Z',
+})
+/** Scheduled far enough out that the wall clock the section reads never reaches it. */
+const scheduledImporter = decodeClient({
+  ...clientBody,
+  clientId: 'wildflower-importer',
+  name: 'Importer',
+  disabledAt: '2999-01-01T00:00:00.000Z',
 })
 
 const renderSection = (

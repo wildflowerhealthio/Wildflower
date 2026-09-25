@@ -60,13 +60,13 @@
         }
       }
     },
-    "/access/clients/{clientId}/disable": {
-      "post": {
+    "/access/clients/{clientId}": {
+      "patch": {
         "tags": [
           "Access management"
         ],
-        "summary": "`POST /access/clients/{clientId}/disable` — take back the Owner's trust in a client:\n`/oauth/authorize` and `/oauth/token` refuse it until it is re-enabled.\nIdempotent (a repeat keeps the first `disabledAt`). The first-party host\nclient is refused with `409 FirstPartyClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
-        "operationId": "handle_disable_client",
+        "summary": "`PATCH /access/clients/{clientId}` — disable, schedule the disabling of, or\nre-enable a client by writing its `disabledAt`; answers with the client as\nstored. A disabled client is refused at `/oauth/authorize` and\n`/oauth/token` from its `disabledAt` on. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the first-party host client is\nrefused with `409 FirstPartyClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
+        "operationId": "handle_update_client",
         "parameters": [
           {
             "name": "clientId",
@@ -78,9 +78,26 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClientBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "The client is disabled"
+          "200": {
+            "description": "The client as stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientBody"
+                }
+              }
+            }
           },
           "403": {
             "description": "The caller's token doesn't cover the scope this operation requires",
@@ -108,51 +125,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FirstPartyClientLockedBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/access/clients/{clientId}/enable": {
-      "post": {
-        "tags": [
-          "Access management"
-        ],
-        "summary": "`POST /access/clients/{clientId}/enable` — restore a disabled client with its\nregistration intact. Idempotent. Acquired through [`LiveClientsDisabler`]\n(scope `wildflower/Client.u`).",
-        "operationId": "handle_enable_client",
-        "parameters": [
-          {
-            "name": "clientId",
-            "in": "path",
-            "description": "The client's `client_id`",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "The client is enabled"
-          },
-          "403": {
-            "description": "The caller's token doesn't cover the scope this operation requires",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No client with that id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ClientNotFoundBody"
                 }
               }
             }
@@ -911,6 +883,24 @@
             ]
           }
         }
+      },
+      "UpdateClientBody": {
+        "type": "object",
+        "description": "Body of `PATCH /access/clients/{clientId}` — the one client field the Owner\ncan edit.",
+        "required": [
+          "disabledAt"
+        ],
+        "properties": {
+          "disabledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the client stops working: the caller's current time to disable it\nnow (a time already past is replaced by the server's), a later time to\nschedule it, or `null` to re-enable it. Required, `null` included."
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

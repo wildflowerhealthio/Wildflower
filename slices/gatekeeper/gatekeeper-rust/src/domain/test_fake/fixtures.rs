@@ -136,6 +136,7 @@ pub(crate) fn authenticated_public_client(
             client_id,
             client_secret: None,
         },
+        Utc::now(),
     )
     .expect("a public client authenticates")
 }

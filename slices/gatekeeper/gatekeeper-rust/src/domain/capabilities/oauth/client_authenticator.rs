@@ -2,6 +2,8 @@
 //! credentials against the store, yielding the
 //! [`AuthenticatedClient`] proof every client-gated capability takes.
 
+use chrono::{DateTime, Utc};
+
 use crate::domain::authority::{AuthenticatedClient, ClientAuthenticationError};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::GatekeeperStore;
@@ -19,8 +21,8 @@ impl<S: GatekeeperStore> ClientAuthenticator<S> {
         ClientAuthenticator { store }
     }
 
-    /// Verify `presented` and return the proof — the rule itself lives on the
-    /// proof's constructor, [`AuthenticatedClient::authenticate`].
+    /// Verify `presented` as of `now` and return the proof — the rule itself
+    /// lives on the proof's constructor, [`AuthenticatedClient::authenticate`].
     ///
     /// # Errors
     ///
@@ -28,7 +30,8 @@ impl<S: GatekeeperStore> ClientAuthenticator<S> {
     pub(crate) fn authenticate(
         &self,
         presented: &ClientCredentials,
+        now: DateTime<Utc>,
     ) -> Result<AuthenticatedClient, ClientAuthenticationError> {
-        AuthenticatedClient::authenticate(&self.store, presented)
+        AuthenticatedClient::authenticate(&self.store, presented, now)
     }
 }

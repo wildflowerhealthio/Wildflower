@@ -174,11 +174,22 @@ pub struct Client {
     pub secret_hash: Option<String>,
     /// When the client was registered.
     pub registered_at: DateTime<Utc>,
-    /// Set when the client has been disabled; `/authorize` and `/token` reject if `Some`.
+    /// When the Owner disabled the client (or scheduled it to be disabled);
+    /// `/authorize` and `/token` reject it from this instant on — see
+    /// [`Client::is_disabled_at`].
     pub disabled_at: Option<DateTime<Utc>>,
 }
 
 impl Client {
+    /// Whether the client is disabled as of `now`: its `disabled_at` stamp is at
+    /// or before `now`. A stamp still in the future is a scheduled disable, and
+    /// the client keeps working until that instant.
+    #[must_use]
+    pub fn is_disabled_at(&self, now: DateTime<Utc>) -> bool {
+        self.disabled_at
+            .is_some_and(|disabled_at| disabled_at <= now)
+    }
+
     /// Whether every requested scope is inside this client's `allowed_scopes`.
     /// Coverage-aware ([`scopes_rust::allowed_scope_covers`]), not exact
     /// membership: a client allowed a broad scope (`patient/*.rs`) also admits
@@ -253,6 +264,33 @@ mod registered_redirect_uri_tests {
     #[test]
     fn deserialize_rejects_protocol_relative() {
         assert!(serde_json::from_str::<RegisteredRedirectUri>("\"//evil.example\"").is_err());
+    }
+}
+
+#[cfg(test)]
+mod is_disabled_at_tests {
+    use chrono::{DateTime, Utc};
+    use proptest::prelude::*;
+
+    use crate::domain::client::Client;
+    use crate::domain::test_fake::client;
+
+    fn at(seconds: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(seconds, 0).expect("in-range timestamp")
+    }
+
+    proptest! {
+        /// A client is disabled exactly from its stamp on: never while
+        /// `disabled_at` is `None`, and otherwise iff the stamp is at or before
+        /// `now` (a later stamp is a scheduled disable that hasn't happened yet).
+        #[test]
+        fn disabled_iff_the_stamp_has_arrived(
+            stamp in prop::option::of(0..10_000i64),
+            now in 0..10_000i64,
+        ) {
+            let row = Client { disabled_at: stamp.map(at), ..client("app", &["openid"]) };
+            prop_assert_eq!(row.is_disabled_at(at(now)), stamp.is_some_and(|s| s <= now));
+        }
     }
 }
 

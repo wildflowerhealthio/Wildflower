@@ -24,10 +24,10 @@ pub enum GatekeeperError {
     /// No standing grant has this id — the `/access/grants/{id}` 404.
     GrantNotFound { id: String },
     /// No registered client has this `client_id` — the
-    /// `/access/clients/{clientId}/{disable,enable}` 404.
+    /// `PATCH /access/clients/{clientId}` 404.
     ClientNotFound { client_id: String },
     /// The Owner tried to disable the first-party host client — the
-    /// `/access/clients/{clientId}/disable` **409**. The host client is how the
+    /// `PATCH /access/clients/{clientId}` **409**. The host client is how the
     /// Owner reaches this surface at all, so disabling it would lock them out;
     /// its registration is locked (like its consent registration is never
     /// trusted on first use). Nothing is written when it is raised.

@@ -3,7 +3,7 @@
  * deals with:
  *
  *   - {@link file://./grants.ts}          — access-management grants (list + detail + revoke)
- *   - {@link file://./clients.ts}         — access-management clients (list + disable/enable)
+ *   - {@link file://./clients.ts}         — access-management clients (list + update)
  *   - {@link file://./requests.ts}        — access-management HTTP requests (list + detail + decide)
  *   - {@link file://./device-consent.ts}  — RFC 8628 device-authorization consent
  *   - {@link file://./oauth-consent.ts}   — OAuth authorization-code consent
@@ -28,8 +28,8 @@ export {
 } from './grants.ts'
 export type { AppGrant, DeviceGrant, Grant } from './grants.ts'
 
-export { clientsQueryOptions, useClientsQuery, useSetClientDisabledMutation } from './clients.ts'
-export type { Client, ClientSwitch } from './clients.ts'
+export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation } from './clients.ts'
+export type { Client, ClientSwitch, UpdateClientVariables } from './clients.ts'
 
 export {
   requestQueryOptions,

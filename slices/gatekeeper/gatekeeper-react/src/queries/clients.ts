@@ -7,7 +7,7 @@ import {
   type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
-import { Effect, type Schema } from 'effect'
+import { type DateTime, Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 
@@ -18,7 +18,7 @@ import { useRunAuthed } from './use-run-authed.ts'
 /** A registered OAuth client — a row of the Owner's "Trusted Apps" list. */
 type Client = Schema.Schema.Type<typeof AccessManagement.ClientSchema>
 
-/** Which way {@link useSetClientDisabledMutation} flips a client. */
+/** Which way a "Trusted Apps" row's switch flips a client. */
 type ClientSwitch = 'disable' | 'enable'
 
 /** Shared by the route `loader` (`ensureQueryData`) and {@link useClientsQuery}. */
@@ -41,25 +41,28 @@ const clientsQueryOptions = (
 const useClientsQuery = (): UseSuspenseQueryResult<readonly Client[], Error> =>
   useSuspenseQuery(clientsQueryOptions(useRunAuthed()))
 
-/** `DisableClient` / `EnableClient` (POST). Invalidates the clients list. */
-const useSetClientDisabledMutation = (): UseMutationResult<
-  unknown,
-  Error,
-  { readonly clientId: string; readonly action: ClientSwitch }
-> => {
+/**
+ * `UpdateClient`'s input: the client, and the `disabledAt` to PATCH onto it —
+ * the current time to disable it, `null` to re-enable it.
+ */
+interface UpdateClientVariables {
+  readonly clientId: string
+  readonly disabledAt: DateTime.Utc | null
+}
+
+/** `UpdateClient` (PATCH). Invalidates the clients list. */
+const useUpdateClientMutation = (): UseMutationResult<Client, Error, UpdateClientVariables> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ clientId, action }) => {
+    mutationFn: ({ clientId, disabledAt }) => {
       // `HttpApiClient` splices path params in raw, and trust on first use
       // admits any `client_id` string — a URL-shaped one (`https://app/cb`)
       // would otherwise split into extra segments and miss the route.
       const path = { clientId: encodeURIComponent(clientId) }
       return runAuthed(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-          action === 'disable'
-            ? c['access-management'].DisableClient({ path })
-            : c['access-management'].EnableClient({ path })
+          c['access-management'].UpdateClient({ path, payload: { disabledAt } })
         )
       )
     },
@@ -69,5 +72,5 @@ const useSetClientDisabledMutation = (): UseMutationResult<
   })
 }
 
-export { clientsQueryOptions, useClientsQuery, useSetClientDisabledMutation }
-export type { Client, ClientSwitch }
+export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation }
+export type { Client, ClientSwitch, UpdateClientVariables }

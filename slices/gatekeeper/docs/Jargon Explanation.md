@@ -66,18 +66,28 @@ the row is created or widened only when the Owner approves — see
 - **Lifecycle:** registered (seeded by a migration or at boot, or created
   by [trust on first use](#trust-on-first-use)) → widened (a later TOFU
   approval) → disabled / re-enabled by the Owner. Disabling is a soft switch
-  on `disabledAt`: the row, its allowlists, and its secret are kept, and
-  every OAuth endpoint refuses the client — `/oauth/authorize` renders the
-  local "Disabled client" page, and client authentication at `/oauth/token`
-  and `/oauth/device_authorization` fails with `invalid_client`. Re-enabling
-  clears the stamp and the client works again exactly as registered.
+  on `disabledAt`: the row, its allowlists, and its secret are kept. From
+  the `disabledAt` instant on, every OAuth endpoint refuses the client:
+  `/oauth/authorize` renders the local "Disabled client" page, and client
+  authentication at `/oauth/token` and `/oauth/device_authorization` fails
+  with `invalid_client`. A `disabledAt` still in the future is a scheduled
+  disable, and the client keeps working until then. Re-enabling clears the
+  stamp and the client works again exactly as registered.
 - **Owner management:** `GET /access/clients` lists every row (never the
-  secret hash) with a `firstParty` flag; `POST /access/clients/:clientId/disable`
-  and `/enable` flip `disabledAt`. Both switches are idempotent (a repeated
-  disable keeps the first timestamp) and 404 an unknown `clientId`. They're
-  gated on `wildflower/Client.r` (list) and `wildflower/Client.u` (the
-  switches). The settings UI shows them as the "Trusted Apps" list on the
-  Access screen. Disabling leaves the client's [grants](#grant) and
+  secret hash) with a `firstParty` flag. `PATCH /access/clients/:clientId`
+  with `{ "disabledAt": … }` answers with the updated row and sets the stamp
+  as follows:
+  - a UTC time disables the client from then. A time the server already sees
+    as past becomes the server's own now, so the stamp can't be backdated.
+    The owner UI sends its current time.
+  - `null` re-enables the client.
+  - a client that already has a `disabledAt` keeps it. The update is
+    idempotent, and a repeated disable doesn't move the time.
+
+  An unknown `clientId` is a 404. The routes are gated on
+  `wildflower/Client.r` (list) and `wildflower/Client.u` (the `PATCH`). The
+  settings UI shows them as the "Trusted Apps" list on the Access screen.
+  Disabling leaves the client's [grants](#grant) and
   refresh-token families in place — unusable while it's disabled, live again
   once it's enabled; revoke a grant to end it for good.
 
@@ -86,8 +96,8 @@ auto-seeded by the server at startup, with
 `kind: 'public'`, empty `redirectUris` (it gets its token via the device
 flow or a host mint — see [bootstrap URL](#bootstrap-url) — not OAuth
 redirects), and `allowedScopes: ['owner']`. It can't be disabled: the Owner reaches
-`/access/clients` through it, so `POST /access/clients/wildflower-host/disable`
-is refused with a `409 FirstPartyClientLocked`.
+`/access/clients` through it, so a `PATCH /access/clients/wildflower-host` that
+sets a `disabledAt` is refused with a `409 FirstPartyClientLocked`.
 
 ### Trust on first use
 
@@ -458,7 +468,7 @@ page is public; auth is JS-driven on the JSON endpoints behind them.
 ### `access-management`
 
 The HttpApi group fronting the **Owner-facing** JSON endpoints under
-`/access/...` — list/inspect/revoke `Grant`s, list/disable/enable
+`/access/...` — list/inspect/revoke `Grant`s, list/update
 [`Client`](#client)s, list/decide pending HTTP requests. These all go through `RequireAuthMiddleware`.
 
 ### HTTP request gating (`httpRequests` table + `/access/requests`)

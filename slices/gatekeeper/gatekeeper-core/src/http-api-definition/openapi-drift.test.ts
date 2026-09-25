@@ -31,8 +31,7 @@ defineSpecDriftTest({
     ['/oauth/token', 'post'],
     ['/oauth/device_authorization', 'post'],
     ['/access/clients', 'get'],
-    ['/access/clients/{clientId}/disable', 'post'],
-    ['/access/clients/{clientId}/enable', 'post'],
+    ['/access/clients/{clientId}', 'patch'],
   ],
   /**
    * `get /oauth/authorize` is a browser front door: success is a 302 redirect and

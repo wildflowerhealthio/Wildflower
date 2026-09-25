@@ -55,8 +55,9 @@ const GrantNotFoundSchema = Schema.Struct({
  * `clients` row, seeded by a migration or created when the Owner approved an
  * unknown app (trust on first use). `secret_hash` never leaves the server.
  *
- * - `disabledAt` is set while the Owner has disabled the client: `/oauth/authorize`
- *   and `/oauth/token` refuse it until it's re-enabled.
+ * - `disabledAt` is set while the Owner has disabled the client, or scheduled
+ *   it to be disabled. From that instant `/oauth/authorize` and `/oauth/token`
+ *   refuse it until it's re-enabled.
  * - `firstParty` marks the Wildflower host client, which can't be disabled (it's
  *   how the Owner reaches this surface at all).
  */
@@ -74,12 +75,30 @@ const ClientSchema = Schema.Struct({
 
 const ClientsSchema = Schema.Array(ClientSchema)
 
+/**
+ * `UpdateClient`'s body — the one client field the Owner can edit.
+ *
+ * `disabledAt` is required, `null` included:
+ * - the caller's current time disables the client now. A time the server
+ *   already sees as past is replaced by the server's own now, so the stamp
+ *   can't be backdated.
+ * - a later time schedules the disable, and the client keeps working until
+ *   then.
+ * - `null` re-enables it, or cancels a scheduled disable.
+ *
+ * A client that already has a `disabledAt` keeps it: disabling it again
+ * doesn't move the time.
+ */
+const UpdateClientSchema = Schema.Struct({
+  disabledAt: Schema.NullOr(Schema.DateTimeUtc),
+})
+
 const ClientNotFoundSchema = Schema.Struct({
   error: Schema.Literal('ClientNotFound'),
   clientId: Schema.String,
 })
 
-/** `409` from `DisableClient` when the named client is the first-party host. */
+/** `409` from `UpdateClient` when it would disable the first-party host. */
 const FirstPartyClientLockedSchema = Schema.Struct({
   error: Schema.Literal('FirstPartyClientLocked'),
   clientId: Schema.String,
@@ -132,9 +151,9 @@ const SessionSchema = Schema.Struct({
  *   recorded consent decisions. Revoking a Grant means the next
  *   `/oauth/authorize` for that `(clientId, redirectUri)` will hit the
  *   consent UI again instead of auto-approving.
- * - `ListClients` / `DisableClient` / `EnableClient`: see every client the
- *   Owner trusts and take that trust back (or restore it). Both switches are
- *   idempotent; disabling the first-party host client is a `409`.
+ * - `ListClients` / `UpdateClient`: see every client the Owner trusts and take
+ *   that trust back (or restore it) by setting its `disabledAt`. Idempotent;
+ *   disabling the first-party host client is a `409`.
  * - `ListRequests` / `GetRequest`: inspect parked FHIR requests waiting
  *   on Owner decision.
  * - `ApproveRequest` / `DenyRequest`: Owner decision for a parked FHIR
@@ -161,15 +180,12 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
   )
   .add(HttpApiEndpoint.get('ListClients', '/clients').addSuccess(ClientsSchema))
   .add(
-    HttpApiEndpoint.post('DisableClient', '/clients/:clientId/disable')
+    HttpApiEndpoint.patch('UpdateClient', '/clients/:clientId')
       .setPath(Schema.Struct({ clientId: Schema.String }))
+      .setPayload(UpdateClientSchema)
+      .addSuccess(ClientSchema)
       .addError(ClientNotFoundSchema, { status: 404 })
       .addError(FirstPartyClientLockedSchema, { status: 409 })
-  )
-  .add(
-    HttpApiEndpoint.post('EnableClient', '/clients/:clientId/enable')
-      .setPath(Schema.Struct({ clientId: Schema.String }))
-      .addError(ClientNotFoundSchema, { status: 404 })
   )
   .add(HttpApiEndpoint.get('ListRequests', '/requests').addSuccess(HttpRequestsSchema))
   .add(
@@ -210,4 +226,5 @@ export {
   HttpRequestsSchema,
   HttpRequestNotFoundSchema,
   SessionSchema,
+  UpdateClientSchema,
 }
