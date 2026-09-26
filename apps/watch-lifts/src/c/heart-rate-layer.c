@@ -1,7 +1,12 @@
 #include <pebble.h>
 
+#include "heart-rate-layer.h"
+#include "ui-constants.h"
+
 static TextLayer *s_heart_icon_layer;
 static TextLayer *s_heartrate_text_layer;
+
+static char s_heartrate_buffer[4];
 
 static void prv_on_health_data(HealthEventType type, void *context)
 {
@@ -10,19 +15,17 @@ static void prv_on_health_data(HealthEventType type, void *context)
   {
     HealthValue value = health_service_peek_current_value(HealthMetricHeartRateRawBPM);
     // Display the heart rate
-    static char s_heartrate_buffer[4];
     snprintf(s_heartrate_buffer, sizeof(s_heartrate_buffer), "%d", (int)value);
     text_layer_set_text(s_heartrate_text_layer, s_heartrate_buffer);
   }
 }
 
-static void heart_rate_layer_window_load(Window *window)
+void heart_rate_layer_window_load(Window *window)
 {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
   int half_width = bounds.size.w / 2;
-  int stats_bar_height = 40;
 
   s_heart_icon_layer = text_layer_create(
       GRect(0, bounds.size.h - stats_bar_height, stats_bar_height, stats_bar_height));
@@ -54,7 +57,7 @@ static void heart_rate_layer_window_load(Window *window)
   }
 }
 
-static void heart_rate_layer_window_unload(Window *window)
+void heart_rate_layer_window_unload(Window *window)
 {
   text_layer_destroy(s_heartrate_text_layer);
   text_layer_destroy(s_heart_icon_layer);

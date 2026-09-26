@@ -1,5 +1,8 @@
 #include <pebble.h>
 
+#include "clock-layer.h"
+#include "ui-constants.h"
+
 static TextLayer *s_clock_text_layer;
 
 static void update_time()
@@ -21,13 +24,12 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed)
   update_time();
 }
 
-static void clock_layer_window_load(Window *window)
+void clock_layer_window_load(Window *window)
 {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
   int half_width = bounds.size.w / 2;
-  int stats_bar_height = 40;
 
   s_clock_text_layer = text_layer_create(
       GRect(half_width, bounds.size.h - stats_bar_height, half_width, stats_bar_height));
@@ -42,7 +44,7 @@ static void clock_layer_window_load(Window *window)
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
 }
 
-static void clock_layer_window_unload(Window *window)
+void clock_layer_window_unload(Window *window)
 {
   tick_timer_service_unsubscribe();
   text_layer_destroy(s_clock_text_layer);

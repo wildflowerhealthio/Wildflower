@@ -1,28 +1,22 @@
 #include <pebble.h>
 
-#include "clock-layer.c"
-#include "heart-rate-layer.c"
-#include "exercise-title.c"
+#include "clock-layer.h"
+#include "heart-rate-layer.h"
+#include "exercise-list.h"
+#include "title-layer.h"
 
 static Window *s_window;
-static TextLayer *s_text_layer;
-
-static TextLayer *s_heartrate_text_layer;
 
 static void prv_select_click_handler(ClickRecognizerRef recognizer, void *context)
 {
-  text_layer_set_text(s_text_layer, "Select");
-  next_exercise();
 }
 
 static void prv_up_click_handler(ClickRecognizerRef recognizer, void *context)
 {
-  text_layer_set_text(s_text_layer, "Up");
 }
 
 static void prv_down_click_handler(ClickRecognizerRef recognizer, void *context)
 {
-  text_layer_set_text(s_text_layer, "Down");
 }
 
 static void prv_click_config_provider(void *context)
@@ -34,24 +28,18 @@ static void prv_click_config_provider(void *context)
 
 static void prv_window_load(Window *window)
 {
-  Layer *window_layer = window_get_root_layer(window);
-  GRect bounds = layer_get_bounds(window_layer);
-
-  s_text_layer = text_layer_create(GRect(0, 72, bounds.size.w, 20));
-  text_layer_set_text(s_text_layer, "Press a button");
-  text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_text_layer));
-
-  exercise_title_window_load(window);
+  title_layer_window_load(window);
+  exercise_list_window_load(window);
   clock_layer_window_load(window);
   heart_rate_layer_window_load(window);
 }
 
 static void prv_window_unload(Window *window)
 {
-  text_layer_destroy(s_text_layer);
+  title_layer_window_unload(window);
   clock_layer_window_unload(window);
   heart_rate_layer_window_unload(window);
+  exercise_list_window_unload(window);
 }
 
 static void prv_init(void)
