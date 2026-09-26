@@ -4,7 +4,8 @@
 #include "ui-constants.h"
 #include "state.h"
 #include "title-layer.h"
-#include "exercise-detail.h"
+#include "clock-layer.h"
+#include "heart-rate-layer.h"
 
 static MenuLayer *s_menu_layer;
 
@@ -68,7 +69,6 @@ static void select_callback(struct MenuLayer *menu_layer,
 {
   s_editing_set_index = cell_index->row;
   menu_layer_reload_data(s_menu_layer);
-  push_detail_window(cell_index->row);
 }
 
 static void long_select_callback(struct MenuLayer *menu_layer,
@@ -79,35 +79,32 @@ static void long_select_callback(struct MenuLayer *menu_layer,
 
 /////
 
-void exercise_list_window_load(Window *window)
+Window *detail_window;
+
+void push_detail_window(int exercise_index)
 {
-  Layer *window_layer = window_get_root_layer(window);
+  detail_window = window_create();
+
+  Layer *window_layer = window_get_root_layer(detail_window);
   GRect bounds = layer_get_bounds(window_layer);
 
   bounds.size.h -= (title_bar_height + stats_bar_height); // Adjust the height to make room for padding
   bounds.origin.y = title_bar_height;
   // Create the MenuLayer
-  s_menu_layer = menu_layer_create(bounds);
 
-  // Let it receive click events
-  menu_layer_set_click_config_onto_window(s_menu_layer, window);
-
-  // Set the callbacks for behavior and rendering
-  menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks){
-                                                   .get_num_rows = get_num_rows_callback,
-                                                   .draw_row = draw_row_callback,
-                                                   .get_cell_height = get_cell_height_callback,
-                                                   .select_click = select_callback,
-                                                   .select_long_click = long_select_callback,
-
-                                               });
-
-  menu_layer_pad_bottom_enable(s_menu_layer, true);
-  // Add to the Window
-  layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
+  title_layer_window_load(detail_window, exercise_index);
+  clock_layer_window_load(detail_window);
+  heart_rate_layer_window_load(detail_window);
+  window_stack_push(detail_window, true);
 }
 
-void exercise_list_window_unload(Window *window)
+void pop_detail_window()
 {
-  menu_layer_destroy(s_menu_layer);
+  s_editing_set_index = -1;
+  window_stack_remove(detail_window, true);
+  title_layer_window_unload(detail_window);
+  clock_layer_window_unload(detail_window);
+  heart_rate_layer_window_unload(detail_window);
+  render_heartrate();
+  detail_window = NULL;
 }

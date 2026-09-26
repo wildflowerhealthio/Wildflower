@@ -28,7 +28,7 @@ static void prv_click_config_provider(void *context)
 
 static void prv_window_load(Window *window)
 {
-  title_layer_window_load(window);
+  title_layer_window_load(window, -1);
   exercise_list_window_load(window);
   clock_layer_window_load(window);
   heart_rate_layer_window_load(window);
@@ -62,9 +62,12 @@ static void prv_deinit(void)
 int main(void)
 {
   prv_init();
+  subscribe_heart_rate();
 
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_window);
 
   app_event_loop();
+  unsubscribe_heart_rate();
+
   prv_deinit();
 }

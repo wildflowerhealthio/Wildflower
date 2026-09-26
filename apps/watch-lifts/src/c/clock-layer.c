@@ -40,7 +40,7 @@ void clock_layer_window_load(Window *window)
 
   // Add it as a child layer to the Window's root layer
   layer_add_child(window_layer, text_layer_get_layer(s_clock_text_layer));
-
+  update_time();
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
 }
 

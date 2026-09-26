@@ -6,17 +6,22 @@
 static TextLayer *s_heart_icon_layer;
 static TextLayer *s_heartrate_text_layer;
 
-static char s_heartrate_buffer[4];
+char s_heartrate_buffer[4];
 
-static void prv_on_health_data(HealthEventType type, void *context)
+void render_heartrate()
+{
+  text_layer_set_text(s_heartrate_text_layer, s_heartrate_buffer);
+}
+
+void prv_on_health_data(HealthEventType type, void *context)
 {
   // If the update was from the Heart Rate Monitor, query it
   if (type == HealthEventHeartRateUpdate)
   {
     HealthValue value = health_service_peek_current_value(HealthMetricHeartRateRawBPM);
     // Display the heart rate
-    snprintf(s_heartrate_buffer, sizeof(s_heartrate_buffer), "%d", (int)value);
-    text_layer_set_text(s_heartrate_text_layer, s_heartrate_buffer);
+    snprintf(s_heartrate_buffer, 4, "%d", (int)value);
+    render_heartrate();
   }
 }
 
@@ -47,8 +52,25 @@ void heart_rate_layer_window_load(Window *window)
 
   // Add it as a child layer to the Window's root layer
   layer_add_child(window_layer, text_layer_get_layer(s_heartrate_text_layer));
-  text_layer_set_text(s_heartrate_text_layer, "... ...");
+  const char *current_text = text_layer_get_text(s_heartrate_text_layer);
+  if (s_heartrate_buffer[0] == '\0')
+  {
+    text_layer_set_text(s_heartrate_text_layer, "... ...");
+  }
+  else
+  {
+    render_heartrate();
+  }
+}
 
+void heart_rate_layer_window_unload(Window *window)
+{
+  text_layer_destroy(s_heartrate_text_layer);
+  text_layer_destroy(s_heart_icon_layer);
+}
+
+void subscribe_heart_rate()
+{
   bool health_service_subscribe_success = health_service_events_subscribe(prv_on_health_data, NULL);
   bool sample_rate_success = health_service_subscribe_success && health_service_set_heart_rate_sample_period(1);
   if (!sample_rate_success)
@@ -57,10 +79,8 @@ void heart_rate_layer_window_load(Window *window)
   }
 }
 
-void heart_rate_layer_window_unload(Window *window)
+void unsubscribe_heart_rate()
 {
-  text_layer_destroy(s_heartrate_text_layer);
-  text_layer_destroy(s_heart_icon_layer);
   health_service_events_unsubscribe();
   health_service_set_heart_rate_sample_period(0);
 }
