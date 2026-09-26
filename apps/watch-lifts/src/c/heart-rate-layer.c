@@ -20,7 +20,7 @@ void prv_on_health_data(HealthEventType type, void *context)
   {
     HealthValue value = health_service_peek_current_value(HealthMetricHeartRateRawBPM);
     // Display the heart rate
-    snprintf(s_heartrate_buffer, 4, "%d", (int)value);
+    snprintf(s_heartrate_buffer, sizeof(s_heartrate_buffer), "%d", (int)value);
     render_heartrate();
   }
 }
@@ -82,5 +82,5 @@ void subscribe_heart_rate()
 void unsubscribe_heart_rate()
 {
   health_service_events_unsubscribe();
-  health_service_set_heart_rate_sample_period(0);
+  health_service_set_heart_rate_sample_period(15);
 }
