@@ -46,6 +46,10 @@ static void prv_window_load(Window *window)
     reps_layer_set_person_name(s_exercise_detail_window->reps_layers[i], s_people_names[i]);
     reps_layer_set_weight(s_exercise_detail_window->reps_layers[i], s_weights[i][s_exercise_detail_window->exercise_index]);
 
+    reps_layer_set_reps(
+        s_exercise_detail_window->reps_layers[i],
+        s_rep_count[i][s_exercise_detail_window->exercise_index], s_set_counts[s_exercise_detail_window->exercise_index]);
+
     layer_add_child(root_layer, reps_layer_get_layer(s_exercise_detail_window->reps_layers[i]));
   }
 }

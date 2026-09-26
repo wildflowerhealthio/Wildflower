@@ -12,7 +12,8 @@ struct RepsLayer
   // Sized for two worst-case ints plus the fixed text so snprintf can never
   // truncate.
   char weights_text[43];
-  TextLayer *reps_count_layers[];
+  char reps_text[MAX_SETS * 4]; // Enough space for "x " for each rep
+  TextLayer *reps_layer;
 };
 
 RepsLayer *reps_layer_create(GRect frame)
@@ -31,7 +32,7 @@ RepsLayer *reps_layer_create(GRect frame)
   text_layer_set_background_color(reps_layer->person_name_layer, GColorClear);
   text_layer_set_text_color(reps_layer->person_name_layer, GColorBlack);
   text_layer_set_text_alignment(reps_layer->person_name_layer, GTextAlignmentLeft);
-  text_layer_set_font(reps_layer->person_name_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  text_layer_set_font(reps_layer->person_name_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28));
 
   layer_add_child(reps_layer->root_layer, text_layer_get_layer(reps_layer->person_name_layer));
 
@@ -47,6 +48,20 @@ RepsLayer *reps_layer_create(GRect frame)
   text_layer_set_text_alignment(reps_layer->weights_layer, GTextAlignmentLeft);
   text_layer_set_font(reps_layer->weights_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   layer_add_child(reps_layer->root_layer, text_layer_get_layer(reps_layer->weights_layer));
+
+  GRect reps_bounds = layer_get_bounds(reps_layer->root_layer);
+  reps_bounds.origin.x += reps_bounds.size.w * 1 / 4;
+  reps_bounds.size.w = reps_bounds.size.w * 3 / 4 - padding;
+  reps_bounds.origin.y += padding;
+  reps_layer->reps_layer = text_layer_create(reps_bounds);
+  text_layer_set_background_color(reps_layer->reps_layer, GColorClear);
+  text_layer_set_text_color(reps_layer->reps_layer, GColorBlack);
+  text_layer_set_text_alignment(reps_layer->reps_layer, GTextAlignmentRight);
+  text_layer_set_font(reps_layer->reps_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  layer_add_child(reps_layer->root_layer, text_layer_get_layer(reps_layer->reps_layer));
+
+  reps_layer->reps_text[0] = '\0';
+  text_layer_set_text(reps_layer->reps_layer, reps_layer->reps_text);
 
   return reps_layer;
 }
@@ -66,10 +81,23 @@ void reps_layer_set_weight(RepsLayer *reps_layer, int weight)
   text_layer_set_text(reps_layer->weights_layer, reps_layer->weights_text);
 }
 
+void reps_layer_set_reps(RepsLayer *reps_layer, int reps[MAX_SETS], int set_count)
+{
+  reps_layer->reps_text[0] = '\0';
+  for (int i = 0; i < set_count; i++)
+  {
+    char buffer[8];
+    snprintf(buffer, sizeof(buffer), "%i  ", reps[i]);
+    strcat(reps_layer->reps_text, buffer);
+  }
+  text_layer_set_text(reps_layer->reps_layer, reps_layer->reps_text);
+}
+
 void reps_layer_destroy(RepsLayer *reps_layer)
 {
   text_layer_destroy(reps_layer->person_name_layer);
   text_layer_destroy(reps_layer->weights_layer);
+  text_layer_destroy(reps_layer->reps_layer);
   layer_destroy(reps_layer->root_layer);
   free(reps_layer);
 }
