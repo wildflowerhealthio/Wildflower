@@ -5,17 +5,71 @@
 struct RepsLayer
 {
   Layer *root_layer;
+  TextLayer *person_name_layer;
+  TextLayer *weights_layer;
+  // text_layer_set_text stores the pointer rather than copying the string,
+  // so each RepsLayer needs its own buffer that lives as long as it does.
+  // Sized for two worst-case ints plus the fixed text so snprintf can never
+  // truncate.
+  char weights_text[43];
+  TextLayer *reps_count_layers[];
 };
 
 RepsLayer *reps_layer_create(GRect frame)
 {
   RepsLayer *reps_layer = malloc(sizeof(RepsLayer));
   reps_layer->root_layer = layer_create(frame);
+
+  GRect name_bounds = layer_get_bounds(reps_layer->root_layer);
+  int padding = 10;
+  int name_height = 28;
+  name_bounds.origin.x += padding;
+  name_bounds.origin.y += padding;
+  name_bounds.size.h = name_height;
+
+  reps_layer->person_name_layer = text_layer_create(name_bounds);
+  text_layer_set_background_color(reps_layer->person_name_layer, GColorClear);
+  text_layer_set_text_color(reps_layer->person_name_layer, GColorBlack);
+  text_layer_set_text_alignment(reps_layer->person_name_layer, GTextAlignmentLeft);
+  text_layer_set_font(reps_layer->person_name_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+
+  layer_add_child(reps_layer->root_layer, text_layer_get_layer(reps_layer->person_name_layer));
+
+  int weights_height = 24;
+  GRect weights_bounds = layer_get_bounds(reps_layer->root_layer);
+  weights_bounds.origin.x += padding;
+  weights_bounds.origin.y = weights_bounds.origin.y + weights_bounds.size.h - (weights_height + padding);
+  weights_bounds.size.h = weights_height;
+
+  reps_layer->weights_layer = text_layer_create(weights_bounds);
+  text_layer_set_background_color(reps_layer->weights_layer, GColorClear);
+  text_layer_set_text_color(reps_layer->weights_layer, GColorBlack);
+  text_layer_set_text_alignment(reps_layer->weights_layer, GTextAlignmentLeft);
+  text_layer_set_font(reps_layer->weights_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  layer_add_child(reps_layer->root_layer, text_layer_get_layer(reps_layer->weights_layer));
+
   return reps_layer;
+}
+
+void reps_layer_set_person_name(RepsLayer *reps_layer, const char *name)
+{
+  text_layer_set_text(reps_layer->person_name_layer, name);
+}
+
+void reps_layer_set_weight(RepsLayer *reps_layer, int weight)
+{
+  int bar = 45;
+  int half_weight = (weight - bar) / 2;
+  const char *half_str = (bar + half_weight * 2) < weight ? ".5" : "";
+  snprintf(reps_layer->weights_text, sizeof(reps_layer->weights_text),
+           "%i lbs - %i%s lbs / side", weight, half_weight, half_str);
+  text_layer_set_text(reps_layer->weights_layer, reps_layer->weights_text);
 }
 
 void reps_layer_destroy(RepsLayer *reps_layer)
 {
+  text_layer_destroy(reps_layer->person_name_layer);
+  text_layer_destroy(reps_layer->weights_layer);
   layer_destroy(reps_layer->root_layer);
   free(reps_layer);
 }
