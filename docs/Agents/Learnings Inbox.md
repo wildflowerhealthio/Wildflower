@@ -442,3 +442,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: ruthmarks/owner-manage-clients (loading the Access screen's Trusted Apps apart from its grants)
 **Learning**: To let one section of a route fail on its own, wrap it in `QueryErrorResetBoundary` → TanStack Router `CatchBoundary` → `Suspense`, and have Retry call both resets. `CatchBoundary`'s `reset` alone remounts a `useSuspenseQuery` that re-throws its cached error: the query only fetches again once the query boundary is reset. In a jsdom test, a section that suspended and then resolved doesn't commit until the next `act`, so its `refetchOnMount: 'always'` fetch fires on whatever the test does next (e.g. opening a menu), which uses up a `mockImplementationOnce` meant for a later call. Wait with `findBy…` for the section's content and for the query's `fetchStatus` to be `idle` before stubbing the call under test.
 **Suggested destination**: React testing docs under docs/Testing/, or the Settings Fragments How-To
+
+## Pebble's include path is the project root and `src`, not `src/c`
+
+**Discovered during**: ruthmarks/begin-watch-lifts-project (splitting `apps/watch-lifts/src/c` into `views/` and `windows/`)
+**Learning**: The Pebble SDK's waf build (`pebble_sdk_common.py`) adds `.`, `include` and `src` as include paths, not `src/c`. A header under `src/c/` is found by a bare `#include "ui-constants.h"` only from a file in that same directory. Files in `src/c/views/` or `src/c/windows/` need paths relative to themselves (`"../ui-constants.h"`). Window handlers (`WindowHandlers.load`/`appear`/`unload`) receive only the `Window *`, with no context pointer. So if a window's user data holds something else (in watch-lifts, the `StatsBarLayer*` that `main` sends events to), the window module reaches its own struct through a file-scope static.
+**Suggested destination**: apps/watch-lifts/README.md

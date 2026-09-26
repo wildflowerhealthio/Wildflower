@@ -16,5 +16,3 @@ int s_weights[2][5] = {
     {65, 55, 55, 45, 85}};
 
 char *s_people_names[] = {"Ruth", "Chloe"};
-
-int s_editing_set_index = -1;

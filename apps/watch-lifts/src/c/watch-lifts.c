@@ -1,73 +1,73 @@
 #include <pebble.h>
 
-#include "clock-layer.h"
-#include "heart-rate-layer.h"
-#include "exercise-list.h"
-#include "title-layer.h"
+#include "views/stats-bar-layer.h"
+#include "windows/select-exercise-window.h"
 
-static Window *s_window;
-
-static void prv_select_click_handler(ClickRecognizerRef recognizer, void *context)
+// Every window stores its StatsBarLayer as its user data, so the one app-wide
+// health subscription and tick subscription can update whichever is on top.
+static StatsBarLayer *prv_top_stats_bar_layer(void)
 {
+  Window *top_window = window_stack_get_top_window();
+  return top_window == NULL ? NULL : window_get_user_data(top_window);
 }
 
-static void prv_up_click_handler(ClickRecognizerRef recognizer, void *context)
+static void prv_on_health_data(HealthEventType type, void *context)
 {
+  if (type != HealthEventHeartRateUpdate)
+  {
+    return;
+  }
+  StatsBarLayer *stats_bar_layer = prv_top_stats_bar_layer();
+  if (stats_bar_layer != NULL)
+  {
+    stats_bar_layer_refresh(stats_bar_layer);
+  }
 }
 
-static void prv_down_click_handler(ClickRecognizerRef recognizer, void *context)
+static void prv_on_minute_tick(struct tm *tick_time, TimeUnits units_changed)
 {
+  StatsBarLayer *stats_bar_layer = prv_top_stats_bar_layer();
+  if (stats_bar_layer != NULL)
+  {
+    stats_bar_layer_refresh(stats_bar_layer);
+  }
 }
 
-static void prv_click_config_provider(void *context)
+static void prv_subscribe_heart_rate(void)
 {
-  window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click_handler);
-  window_single_click_subscribe(BUTTON_ID_UP, prv_up_click_handler);
-  window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click_handler);
+  bool health_service_subscribe_success = health_service_events_subscribe(prv_on_health_data, NULL);
+  bool sample_rate_success = health_service_subscribe_success && health_service_set_heart_rate_sample_period(15);
+  StatsBarLayer *stats_bar_layer = prv_top_stats_bar_layer();
+  if (!sample_rate_success && stats_bar_layer != NULL)
+  {
+    stats_bar_layer_show_heart_rate_error(stats_bar_layer);
+  }
 }
 
-static void prv_window_load(Window *window)
+static void prv_unsubscribe_heart_rate(void)
 {
-  title_layer_window_load(window, -1);
-  exercise_list_window_load(window);
-  clock_layer_window_load(window);
-  heart_rate_layer_window_load(window);
+  health_service_events_unsubscribe();
+  health_service_set_heart_rate_sample_period(0);
 }
 
-static void prv_window_unload(Window *window)
+static void prv_subscribe_minute_ticks(void)
 {
-  title_layer_window_unload(window);
-  clock_layer_window_unload(window);
-  heart_rate_layer_window_unload(window);
-  exercise_list_window_unload(window);
+  tick_timer_service_subscribe(MINUTE_UNIT, prv_on_minute_tick);
 }
 
-static void prv_init(void)
+static void prv_unsubscribe_minute_ticks(void)
 {
-  s_window = window_create();
-  window_set_click_config_provider(s_window, prv_click_config_provider);
-  window_set_window_handlers(s_window, (WindowHandlers){
-                                           .load = prv_window_load,
-                                           .unload = prv_window_unload,
-                                       });
-  const bool animated = true;
-  window_stack_push(s_window, animated);
-}
-
-static void prv_deinit(void)
-{
-  window_destroy(s_window);
+  tick_timer_service_unsubscribe();
 }
 
 int main(void)
 {
-  prv_init();
-  subscribe_heart_rate();
-
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_window);
+  select_exercise_window_push();
+  prv_subscribe_heart_rate();
+  prv_subscribe_minute_ticks();
 
   app_event_loop();
-  unsubscribe_heart_rate();
 
-  prv_deinit();
+  prv_unsubscribe_minute_ticks();
+  prv_unsubscribe_heart_rate();
 }
