@@ -1,0 +1,25 @@
+/*
+ * ProgressionReview skin — the goals as a hairline list with their decision
+ * badges, and the single apply action beneath. Tokens only, so dark mode
+ * needs no rule here.
+ */
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.heading {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nothing {
+  margin: 0;
+  color: var(--color-neutral-5);
+}

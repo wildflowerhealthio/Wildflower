@@ -8,8 +8,7 @@ with StrongLifts 5×5 as a template rather than a special case.
 
 ## Packages
 
-- `lifting-core` — the pure lifting layer, and currently the whole slice. The
-  root export is the domain:
+- `lifting-core` — the pure lifting layer. The root export is the domain:
   `Plan` (a branded, validated value — a title, one `ExerciseGoal` per
   exercise in `goalsByExerciseId`, and the `Workout`s in cycle order — built by
   `makePlan`, which returns `PlanInvalid` with every tagged `PlanProblem` it
@@ -37,7 +36,22 @@ with StrongLifts 5×5 as a template rather than a special case.
   none). The subpath also carries the lifting code
   literals (`LiftingMeasureCode`, `LiftingProgressionPart`). No DOM, no platform imports.
 
-The React layer and the app route are not built yet.
+- `lifting-react` — the browser screens an app's tabs switch between, over
+  plain props and callbacks: `TodayView` (the due workout, a tap-to-decrement
+  button per prescribed set, and "Log session" building one `ExerciseAttempt`
+  per exercise), `ProgressionReview` (each goal's increment / hold / deload
+  badge and "Apply progression", which hands back `progressPlan`'s result),
+  `PlanEditor` (the form, seeded from a plan — or, for a new plan, from
+  `strongLifts5x5` — and decoded through `makePlan`), and `HistoryView`
+  (attempts by the viewer's local calendar day, newest first). It never
+  fetches and never imports `lifting-core/fhir`. A new exercise's id
+  comes from core's `exerciseIdFromName` (suffixed `-2`, `-3`, … past an id
+  already taken); an existing one keeps its id when renamed. Every form
+  problem is a `PlanProblem` from `makePlan`, shown under its field. Each
+  screen's `error` is `unknown`, so a mutation's error passes straight to its
+  `ErrorBanner`.
+
+The app route is not built yet.
 
 ## Rules
 

@@ -61,7 +61,9 @@ importer. The stories themselves live in `wildflowerhealthio/synthetic-data`.
 exercise goals and alternating workouts, the logged attempts, and the
 increment / hold / deload decision as pure functions (with StrongLifts 5×5 as a
 template), plus, behind the `lifting-core/fhir` subpath, the adapters that
-store them as FHIR R4 `CarePlan`, `Goal` and `Observation` resources.
+store them as FHIR R4 `CarePlan`, `Goal` and `Observation` resources; its
+`lifting-react` renders the today, progression, plan-editor and history
+screens over that core.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
