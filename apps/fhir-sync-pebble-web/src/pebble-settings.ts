@@ -1,7 +1,6 @@
 import { Data, Either, Schema } from 'effect'
 import type { PatientResource } from 'fhir-r4-react'
-
-import { patientName } from './patient-name.ts'
+import { HumanName } from 'fhir-r4/data-types'
 
 /**
  * What the watch receives: everything its PebbleKit JS needs to sync the data
@@ -72,7 +71,7 @@ const fromGrant = (grant: Grant): Either.Either<Connection, MissingGrantError> =
 /** The settings for `connection`, naming the patient as the server returned it. */
 const withPatient = (connection: Connection, patient: PatientResource): Type => ({
   patientId: connection.patientId,
-  patientName: patientName(patient),
+  patientName: HumanName.displayName(patient.name),
   patientBirthDate: patient.birthDate,
   accessToken: connection.accessToken,
   fhirBaseUrl: connection.fhirBaseUrl,

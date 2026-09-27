@@ -1,4 +1,5 @@
 import { usePatientsQuery } from 'fhir-r4-react'
+import { HumanName } from 'fhir-r4/data-types'
 import type { PatientOption } from 'scopes-react'
 
 interface PatientOptionsState {
@@ -17,8 +18,9 @@ interface PatientOptionsState {
  * {@link usePatientsQuery} — a TanStack Query keyed off the slice's
  * `runAuthed` (post-migration; the old `useFhirR4ResourcesEffectAction`
  * runner is gone). This hook keeps only the gatekeeper-specific
- * presentation mapping (display-name derivation, the `PatientOption`
- * shape) and the `loading` flag the form needs.
+ * presentation mapping (the `PatientOption` shape, and its display name:
+ * `fhir-r4`'s {@link HumanName.displayName}, else the resource id) and the
+ * `loading` flag the form needs.
  *
  * `enabled` gates the query off entirely when not needed — the picker is
  * only meaningful for an authenticated owner consenting to a SMART app
@@ -36,11 +38,7 @@ const usePatientOptions = (enabled: boolean): PatientOptionsState => {
   const options: readonly PatientOption[] = (query.data ?? []).flatMap(
     (resource): readonly PatientOption[] => {
       if (resource.id === undefined || resource.id === null) return []
-      const name = resource.name?.[0]
-      const given = name?.given?.join(' ') ?? ''
-      const family = name?.family ?? ''
-      const joined = [given, family].filter((s) => s !== '').join(' ')
-      const displayName = joined === '' ? resource.id : joined
+      const displayName = HumanName.displayName(resource.name) ?? resource.id
       return [{ id: resource.id, displayName }]
     }
   )

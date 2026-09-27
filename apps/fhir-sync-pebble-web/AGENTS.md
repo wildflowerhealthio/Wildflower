@@ -25,8 +25,8 @@ SMART-built context). What differs is below.
   message is an `Effect` `Match` on the refusal's tag.
 - `patient-confirmation.tsx` — reads the patient and owns the save, which
   completes the settings with `PebbleSettings.withPatient`.
-- `patient-details.tsx` — the patient summary; `patient-name.ts` — the display
-  name the summary and the watch share.
+- `patient-details.tsx` — the patient summary. Its name and the watch's
+  `patientName` are one string, `fhir-r4`'s `HumanName.displayName`.
 - Namespace modules, imported as `* as Name`: `PebbleSettings`
   (`pebble-settings.ts`, the watch's wire shape), `ReturnTarget`
   (`return-target.ts`, the allow-listed `return_to` and the hand-off URL), and
@@ -75,7 +75,9 @@ for what the record lacks:
 
 `patientName` and `patientBirthDate` are for the watch to show the patient for
 confirmation on-device; `patientName` is the same string the settings page
-shows (`given family`, else the name's text). The settings are built in two
+shows — `fhir-r4`'s `HumanName.displayName`, the name the patient goes by now
+(`official` over `usual`, former and ended names passed over), rendered
+`given family`, else the name's text. The settings are built in two
 steps because the facts arrive separately: the grant gives a `Connection`, and
 the save adds the patient the page read (`withPatient`). Change the shape
 together with the watchapp's `webviewclosed` handler.

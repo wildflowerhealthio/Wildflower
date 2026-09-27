@@ -51,10 +51,18 @@ vi.mock('../../queries/index.ts', () => ({
   } => ({ mutate, isPending: false, error: null }),
 }))
 
-/** The minimal FHIR Patient shape `usePatientOptions` reads. */
+/**
+ * The minimal FHIR Patient shape `usePatientOptions` reads. `name` is required
+ * because the decoded `Patient` defaults it to `[]`.
+ */
 type StubPatient = {
   readonly id: string
-  readonly name?: readonly { readonly given?: readonly string[]; readonly family?: string }[]
+  readonly name: readonly {
+    readonly use?: string
+    readonly given?: readonly string[]
+    readonly family?: string
+    readonly text?: string
+  }[]
 }
 let patientResources: readonly StubPatient[] = []
 /** The patient list's read failure, or `null` when it reads. */
@@ -473,6 +481,30 @@ describe('OAuthConsentForm — launch patient', () => {
     // Assert — the approval carries the selected patient.
     const lastCall = mutate.mock.calls.at(-1)?.[0]
     expect(lastCall).toMatchObject({ kind: 'approve', payload: { patient: 'pat-1' } })
+  })
+
+  test('lists each patient by the name they go by now, else by id', async () => {
+    // Arrange — which name wins is `fhir-r4`'s `HumanName.displayName` rule
+    patientResources = [
+      {
+        id: 'pat-1',
+        name: [
+          { use: 'old', given: ['Jordan'], family: 'Smith' },
+          { use: 'official', given: ['Jordan'], family: 'Lee' },
+        ],
+      },
+      { id: 'pat-2', name: [] },
+    ]
+    const { user } = renderForm(unboundConsent(['patient/Observation.r']), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
+
+    // Assert
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Jordan Leepat-1',
+      'pat-2pat-2',
+    ])
   })
 
   test('pruning every patient scope hides the picker and drops the patient requirement', async () => {

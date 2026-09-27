@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test'
 import { PatientDetails } from './patient-details.tsx'
 import type * as PebbleSettings from './pebble-settings.ts'
 
-// Which name is shown is `patientName`'s rule, tested in `patient-name.test.ts`.
+// Which name is shown is `fhir-r4`'s `HumanName.displayName` rule, tested there.
 
 afterEach(() => {
   cleanup()

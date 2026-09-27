@@ -1,7 +1,7 @@
 import type { PatientResource } from 'fhir-r4-react'
+import { HumanName } from 'fhir-r4/data-types'
 import type { JSX } from 'react'
 
-import { patientName } from './patient-name.ts'
 import type * as PebbleSettings from './pebble-settings.ts'
 import styles from './patient-details.module.css'
 
@@ -17,7 +17,7 @@ interface PatientDetailsProps {
 const PatientDetails = ({ patient, connection }: PatientDetailsProps): JSX.Element => (
   <dl className={styles['details']}>
     <dt className="text-label-2">Name</dt>
-    <dd>{patientName(patient) ?? 'No name on record'}</dd>
+    <dd>{HumanName.displayName(patient.name) ?? 'No name on record'}</dd>
     {patient.birthDate !== null && (
       <>
         <dt className="text-label-2">Birth date</dt>
