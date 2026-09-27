@@ -10,6 +10,26 @@ pebble install --emulator emery       # install on the emery emulator
 pebble install --phone <ip>           # install to a paired phone
 ```
 
+## Tests and formatting
+
+The reps and weight text (`reps-text.c`) is plain C, so the `watch-lifts-test`
+package in `test/` builds it with the host `cc` under AddressSanitizer and tests
+it, with no Pebble SDK needed. Run it with `vp test --project watch-lifts-test`;
+the root `vp test` includes it. It is a separate package because this
+`package.json` is also the Pebble manifest, and `pebble build` runs
+`npm install` if it lists any dependencies.
+
+C is formatted with clang-format (`.clang-format`, set up to match the repo's
+Prettier-style TypeScript formatting). Install it with `brew install clang-format`,
+`apt install clang-format` or `pipx install clang-format`, then:
+
+```sh
+vp run -F watch-lifts fmt:c         # format src/ and test/
+vp run -F watch-lifts fmt:c:check   # fail if anything isn't formatted
+```
+
+CI doesn't run `fmt:c:check` yet, so run it before pushing C changes.
+
 ## Target platforms
 
 `targetPlatforms` in `package.json` controls which watches you build for. This

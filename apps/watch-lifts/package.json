@@ -6,6 +6,10 @@
     "pebble-app"
   ],
   "author": "Wildflower Health Project",
+  "scripts": {
+    "fmt:c": "clang-format -i $(find src test -name '*.[ch]')",
+    "fmt:c:check": "clang-format --dry-run -Werror $(find src test -name '*.[ch]')"
+  },
   "dependencies": {},
   "pebble": {
     "displayName": "WatchLifts",

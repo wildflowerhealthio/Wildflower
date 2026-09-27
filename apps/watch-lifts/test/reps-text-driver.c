@@ -15,12 +15,10 @@
 
 #define MAX_LINE 1024
 
-static void prv_reps(char *args)
-{
+static void prv_reps(char *args) {
   int parsed[MAX_LINE];
   int count = 0;
-  for (char *token = strtok(args, " "); token != NULL; token = strtok(NULL, " "))
-  {
+  for (char *token = strtok(args, " "); token != NULL; token = strtok(NULL, " ")) {
     parsed[count++] = atoi(token);
   }
   int *reps = malloc(sizeof(int) * (count > 0 ? count : 1));
@@ -32,34 +30,24 @@ static void prv_reps(char *args)
   free(reps);
 }
 
-static void prv_weight(const char *args)
-{
+static void prv_weight(const char *args) {
   char *text = malloc(WEIGHT_TEXT_SIZE);
   reps_text_format_weight(text, atoi(args));
   printf("%s\n", text);
   free(text);
 }
 
-int main(void)
-{
+int main(void) {
   char line[MAX_LINE];
-  while (fgets(line, sizeof(line), stdin) != NULL)
-  {
+  while (fgets(line, sizeof(line), stdin) != NULL) {
     line[strcspn(line, "\n")] = '\0';
-    if (strncmp(line, "reps", 4) == 0)
-    {
+    if (strncmp(line, "reps", 4) == 0) {
       prv_reps(line + 4);
-    }
-    else if (strcmp(line, "sizes") == 0)
-    {
+    } else if (strcmp(line, "sizes") == 0) {
       printf("%d %d\n", MAX_SETS, REPS_TEXT_SIZE);
-    }
-    else if (strncmp(line, "weight ", 7) == 0)
-    {
+    } else if (strncmp(line, "weight ", 7) == 0) {
       prv_weight(line + 7);
-    }
-    else
-    {
+    } else {
       fprintf(stderr, "unknown command: %s\n", line);
       return 1;
     }
