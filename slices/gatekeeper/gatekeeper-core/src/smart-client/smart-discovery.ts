@@ -1,9 +1,10 @@
 /**
- * SMART discovery: turning the `?server=` target into the OAuth endpoints the
- * console must send the reader to.
+ * SMART discovery: turning a FHIR base — the SMART `iss` — into the OAuth
+ * endpoints the page must send the reader to.
  *
- * The target is treated as the SMART `iss`, so nothing about the server's URL
- * layout is hardcoded here beyond the one well-known path SMART itself defines.
+ * Nothing about the server's URL layout is hardcoded here beyond the one
+ * well-known path SMART itself defines; where a Wildflower server's FHIR base
+ * sits is `beginSignIn`'s default (`wildflowerFhirBaseFor`), not this module's.
  * A Wildflower server answers it from `slices/emr/emr-rust/src/smart_configuration.rs`
  * (mounted at `/fhir-r4/.well-known/smart-configuration`, and exempt from the
  * bearer gate — `gatekeeper-rust`'s `require_valid_bearer_token`), advertising
@@ -25,12 +26,12 @@ class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
   readonly reason: string
 }> {}
 
-/** The discovery document's path, relative to the SMART `iss` base. */
-const SMART_CONFIGURATION_PATH = '/fhir-r4/.well-known/smart-configuration'
+/** The discovery document's path, relative to the SMART `iss` (a FHIR base). */
+const SMART_CONFIGURATION_PATH = '/.well-known/smart-configuration'
 
-/** The discovery URL for `serverUrl` (already canonical: no trailing slash). */
-const smartConfigurationUrl = (serverUrl: string): string =>
-  `${serverUrl}${SMART_CONFIGURATION_PATH}`
+/** The discovery URL for the FHIR base `fhirBaseUrl` (already canonical: no trailing slash). */
+const smartConfigurationUrl = (fhirBaseUrl: string): string =>
+  `${fhirBaseUrl}${SMART_CONFIGURATION_PATH}`
 
 /** The two endpoints the authorization-code flow needs. */
 interface SmartEndpoints {
@@ -167,7 +168,7 @@ const smartEndpointsFrom = (
 }
 
 /**
- * Fetch and validate `serverUrl`'s SMART configuration.
+ * Fetch and validate the SMART configuration of the FHIR base `fhirBaseUrl`.
  *
  * The three ways the request itself can fail — unreachable, error status,
  * non-JSON body — each become a {@link DiscoveryFailed} naming the URL, and the
@@ -175,11 +176,11 @@ const smartEndpointsFrom = (
  * into the same failure channel.
  */
 const discoverSmartEndpoints = (
-  serverUrl: string,
+  fhirBaseUrl: string,
   options: { readonly fetch: typeof globalThis.fetch; readonly pageIsSecure: boolean }
 ): Effect.Effect<SmartEndpoints, DiscoveryFailed> =>
   Effect.gen(function* () {
-    const url = smartConfigurationUrl(serverUrl)
+    const url = smartConfigurationUrl(fhirBaseUrl)
     const response = yield* Effect.tryPromise({
       try: () => options.fetch(url, { headers: { Accept: 'application/json' } }),
       // A network-level failure is indistinguishable from a CORS rejection to

@@ -18,6 +18,10 @@ import {
 
 const SERVER = 'https://ruth.wildflowerhealth.io'
 
+/** A plain SMART server's FHIR base, and the origin its own OAuth endpoints are on. */
+const DEMO_FHIR_BASE = 'https://launch.smarthealthit.org/v/r4/sim/demo/fhir'
+const DEMO_AUTH_ORIGIN = 'https://launch.smarthealthit.org/v/r4/sim/demo'
+
 /**
  * An app's registration, standing in for whatever the calling page supplies.
  * Nothing in `sign-in.ts` reads these from a module of its own any more, so the
@@ -80,6 +84,59 @@ describe('beginSignIn', () => {
         }
       ),
       { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('discovers at, and names as its aud, the Wildflower server’s FHIR base by default', async () => {
+    // Arrange
+    const requested: string[] = []
+    const discovery = discoveryOnly()
+    const environment = testEnvironment({
+      store: memoryStore(),
+      fetch: (input, init) => {
+        requested.push(requestUrl(input))
+        return discovery(input, init)
+      },
+    })
+
+    // Act
+    const result = await runToEither(beginSignIn(SERVER, undefined, environment))
+
+    // Assert
+    if (Either.isLeft(result)) throw new Error(result.left.reason)
+    expect(requested).toEqual([`${SERVER}/fhir-r4/.well-known/smart-configuration`])
+    expect(new URL(result.right).searchParams.get('aud')).toBe(`${SERVER}/fhir-r4`)
+  })
+
+  it('discovers at, and names as its aud, the FHIR base the caller passes, and redeems there', async () => {
+    // A plain SMART server (the SmartHealthIT demo) is addressed by its FHIR
+    // base alone: there is no `/fhir-r4` under it, and its endpoints are its own.
+    // Arrange
+    const store = memoryStore()
+    const discovery = discoveryAt(DEMO_FHIR_BASE, DEMO_AUTH_ORIGIN)
+    const fetchStub: typeof globalThis.fetch = (input, init) =>
+      requestUrl(input) === `${DEMO_AUTH_ORIGIN}/auth/token`
+        ? Promise.resolve(jsonResponse({ access_token: 'a-token', token_type: 'Bearer' }))
+        : discovery(input, init)
+    const environment = testEnvironment({ store, fetch: fetchStub })
+
+    // Act
+    const started = await runToEither(
+      beginSignIn(DEMO_FHIR_BASE, undefined, environment, DEMO_FHIR_BASE)
+    )
+    if (Either.isLeft(started)) throw new Error(started.left.reason)
+    const url = new URL(started.right)
+    const completed = await runToEither(
+      completeSignIn(`?code=the-code&state=${url.searchParams.get('state') ?? ''}`, environment)
+    )
+
+    // Assert — the return leg needs only what the pending record carried: the
+    // token endpoint discovery found, and the server the session is for.
+    expect(url.origin + url.pathname).toBe(`${DEMO_AUTH_ORIGIN}/auth/authorize`)
+    expect(url.searchParams.get('aud')).toBe(DEMO_FHIR_BASE)
+    if (Either.isLeft(completed)) throw new Error(completed.left.reason)
+    expect(Option.map(completed.right, (session) => session.serverUrl)).toEqual(
+      Option.some(DEMO_FHIR_BASE)
     )
   })
 
@@ -563,6 +620,25 @@ const discoveryOnly =
           authorization_endpoint: `${SERVER}/oauth/authorize`,
           token_endpoint: `${SERVER}/oauth/token`,
           code_challenge_methods_supported: ['S256'],
+        })
+      )
+    }
+    throw new Error(`unexpected request to ${url}`)
+  }
+
+/**
+ * A `fetch` that answers the SMART discovery request under `fhirBaseUrl`, with
+ * endpoints under `authOrigin`, and nothing else.
+ */
+const discoveryAt =
+  (fhirBaseUrl: string, authOrigin: string): typeof globalThis.fetch =>
+  (input): Promise<Response> => {
+    const url = requestUrl(input)
+    if (url === `${fhirBaseUrl}/.well-known/smart-configuration`) {
+      return Promise.resolve(
+        jsonResponse({
+          authorization_endpoint: `${authOrigin}/auth/authorize`,
+          token_endpoint: `${authOrigin}/auth/token`,
         })
       )
     }

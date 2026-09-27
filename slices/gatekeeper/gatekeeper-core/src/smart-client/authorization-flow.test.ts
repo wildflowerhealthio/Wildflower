@@ -6,13 +6,13 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
-  fhirAudienceFor,
   isAuthorizationResponse,
   parsePendingAuthorization,
   parseTokenResponse,
   searchWithoutAuthorizationResponse,
   serializePendingAuthorization,
   tokenRequestBody,
+  wildflowerFhirBaseFor,
   type PendingAuthorization,
 } from './authorization-flow.ts'
 
@@ -169,10 +169,10 @@ describe('authorizationRequestUrl', () => {
   })
 })
 
-describe('fhirAudienceFor', () => {
-  it('names the target’s FHIR base, which is what a standalone launch audits against', () => {
+describe('wildflowerFhirBaseFor', () => {
+  it('names the Wildflower server’s FHIR base, which a standalone launch discovers at and audits against', () => {
     // Act / Assert
-    expect(fhirAudienceFor('http://127.0.0.1:8080')).toBe('http://127.0.0.1:8080/fhir-r4')
+    expect(wildflowerFhirBaseFor('http://127.0.0.1:8080')).toBe('http://127.0.0.1:8080/fhir-r4')
   })
 })
 

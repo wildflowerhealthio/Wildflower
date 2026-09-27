@@ -29,13 +29,13 @@ const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> =>
 const onSecurePage = { pageIsSecure: true }
 
 describe('smartConfigurationUrl', () => {
-  it('appends the SMART well-known path to the canonical target', () => {
+  it('appends the SMART well-known path to the canonical FHIR base', () => {
     // Act / Assert
-    expect(smartConfigurationUrl('https://ruth.wildflowerhealth.io')).toBe(
+    expect(smartConfigurationUrl('https://ruth.wildflowerhealth.io/fhir-r4')).toBe(
       'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration'
     )
-    expect(smartConfigurationUrl('http://127.0.0.1:8080')).toBe(
-      `http://127.0.0.1:8080${SMART_CONFIGURATION_PATH}`
+    expect(smartConfigurationUrl('https://launch.smarthealthit.org/v/r4/fhir')).toBe(
+      `https://launch.smarthealthit.org/v/r4/fhir${SMART_CONFIGURATION_PATH}`
     )
   })
 })
@@ -220,7 +220,7 @@ describe('smartEndpointsFrom', () => {
 })
 
 describe('discoverSmartEndpoints', () => {
-  it('fetches the well-known document from the chosen server', async () => {
+  it('fetches the well-known document from under the chosen FHIR base', async () => {
     // Arrange
     const requested: string[] = []
     const fetchStub = respondingWith((url) => {
@@ -230,7 +230,7 @@ describe('discoverSmartEndpoints', () => {
 
     // Act
     const result = await runToEither(
-      discoverSmartEndpoints('https://ruth.wildflowerhealth.io', {
+      discoverSmartEndpoints('https://ruth.wildflowerhealth.io/fhir-r4', {
         fetch: fetchStub,
         pageIsSecure: true,
       })

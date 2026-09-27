@@ -84,14 +84,15 @@ in by hand.
 
 ### The flow
 
-1. **Discovery.** The `?server=` target is treated as the SMART `iss`: the
-   console fetches `{server}/fhir-r4/.well-known/smart-configuration` and reads
-   `authorization_endpoint` and `token_endpoint` out of it. Nothing about the
-   server's URL layout is assumed — a Wildflower server answers that path from
-   `slices/emr/emr-rust/src/smart_configuration.rs` (unauthenticated, exempt
-   from the bearer gate) and points it at its own gatekeeper. A target that
-   answers with something else, or not at all, fails here and the reason is
-   shown in the header bar.
+1. **Discovery.** The `?server=` target's FHIR base, `{server}/fhir-r4`
+   (`beginSignIn`'s default), is treated as the SMART `iss`: the console fetches
+   `{server}/fhir-r4/.well-known/smart-configuration` and reads
+   `authorization_endpoint` and `token_endpoint` out of it. Beyond that mount,
+   nothing about the server's URL layout is assumed — a Wildflower server
+   answers that path from `slices/emr/emr-rust/src/smart_configuration.rs`
+   (unauthenticated, exempt from the bearer gate) and points it at its own
+   gatekeeper. A target that answers with something else, or not at all, fails
+   here and the reason is shown in the header bar.
 2. **Authorization.** The console redirects to the `authorization_endpoint` as
    the public PKCE client `wildflower-server-docs` — S256 challenge, random
    `state`, `aud={server}/fhir-r4`, and the whole scope set the client is

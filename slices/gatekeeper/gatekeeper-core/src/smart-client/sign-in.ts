@@ -41,11 +41,11 @@ import { Data, Effect, Either, Option } from 'effect'
 import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
-  fhirAudienceFor,
   parsePendingAuthorization,
   parseTokenResponse,
   serializePendingAuthorization,
   tokenRequestBody,
+  wildflowerFhirBaseFor,
   type AccessGrant,
   type AuthorizationRejected,
   type PendingAuthorization,
@@ -110,6 +110,19 @@ interface SignInEnvironment {
  * pair and the `state`, stash what the return leg needs, and yield the
  * authorization URL to navigate to.
  *
+ * `fhirBaseUrl` is the SMART `iss`: the FHIR base discovery reads
+ * `.well-known/smart-configuration` under, and the `aud` the authorization
+ * request names. It defaults to the Wildflower server's own
+ * (`wildflowerFhirBaseFor(serverUrl)`); a page signing in to a plain SMART
+ * server passes that server's FHIR base, usually `serverUrl` itself. Only the
+ * endpoints discovered there ride the pending record, so the return leg needs
+ * nothing more.
+ *
+ * `fhirBaseUrl` must be served by the same server as `serverUrl`. The pending
+ * record and the resulting {@link Session} name `serverUrl` as the server the
+ * token is for, while discovery and `aud` use `fhirBaseUrl`, so a base on
+ * another server would issue a token for one server and send it to the other.
+ *
  * `returnTo` is the in-app path the app wants to land on once signed in; it
  * rides the pending record and comes back as {@link Session.returnTo}, because
  * the registered redirect URI can't carry it. `undefined` when the app has
@@ -121,10 +134,11 @@ interface SignInEnvironment {
 const beginSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
-  environment: SignInEnvironment
+  environment: SignInEnvironment,
+  fhirBaseUrl: string = wildflowerFhirBaseFor(serverUrl)
 ): Effect.Effect<string, SignInError> =>
   Effect.gen(function* () {
-    const endpoints = yield* discoverSmartEndpoints(serverUrl, {
+    const endpoints = yield* discoverSmartEndpoints(fhirBaseUrl, {
       fetch: environment.fetch,
       pageIsSecure: environment.pageIsSecure,
     })
@@ -158,7 +172,7 @@ const beginSignIn = (
       scope: environment.scope,
       state,
       codeChallenge,
-      audience: fhirAudienceFor(serverUrl),
+      audience: fhirBaseUrl,
     })
   })
 

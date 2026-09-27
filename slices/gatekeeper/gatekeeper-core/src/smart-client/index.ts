@@ -10,7 +10,6 @@ export {
   AuthorizationRejected,
   authorizationRedirectOutcome,
   authorizationRequestUrl,
-  fhirAudienceFor,
   isAuthorizationResponse,
   parsePendingAuthorization,
   parseTokenResponse,
@@ -18,6 +17,7 @@ export {
   serializePendingAuthorization,
   TokenExchangeFailed,
   tokenRequestBody,
+  wildflowerFhirBaseFor,
 } from './authorization-flow.ts'
 export type {
   AccessGrant,

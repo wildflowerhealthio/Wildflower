@@ -111,8 +111,8 @@ interface AuthorizationRequestParameters {
   readonly codeChallenge: string
   /**
    * SMART's `aud`: the FHIR base the resulting token is meant for. Sent because
-   * a standalone launch is specified to send it; the target's own FHIR base, so
-   * it is derived from the server URL rather than configured.
+   * a standalone launch is specified to send it. The caller of `beginSignIn`
+   * chooses that base, and the endpoints are discovered at the same one.
    */
   readonly audience: string
 }
@@ -139,8 +139,12 @@ const authorizationRequestUrl = (
   return url.toString()
 }
 
-/** The FHIR base of `serverUrl` — the `aud` a standalone launch names. */
-const fhirAudienceFor = (serverUrl: string): string => `${serverUrl}/fhir-r4`
+/**
+ * The FHIR base of the Wildflower server at `serverUrl` (`emr-rust` is mounted
+ * at `/fhir-r4`): the SMART `iss` a sign-in discovers its endpoints at and
+ * names as its `aud`, unless the caller names another FHIR base.
+ */
+const wildflowerFhirBaseFor = (serverUrl: string): string => `${serverUrl}/fhir-r4`
 
 /** A code the authorization server redirected back with (RFC 6749 §4.1.2). */
 const ReturnedCode = Schema.Struct({
@@ -310,7 +314,7 @@ export {
   serializePendingAuthorization,
   parsePendingAuthorization,
   authorizationRequestUrl,
-  fhirAudienceFor,
+  wildflowerFhirBaseFor,
   authorizationRedirectOutcome,
   searchWithoutAuthorizationResponse,
   isAuthorizationResponse,
