@@ -12,7 +12,9 @@ struct RepsLayer
   // Sized for two worst-case ints plus the fixed text so snprintf can never
   // truncate.
   char weights_text[43];
-  char reps_text[MAX_SETS * 4]; // Enough space for "x " for each rep
+  // Each set is written as "%i  ": up to two digits and two spaces, plus the
+  // NUL. Longer rep counts are truncated rather than overflowing.
+  char reps_text[MAX_SETS * 4 + 1];
   TextLayer *reps_layer;
 };
 
@@ -81,14 +83,20 @@ void reps_layer_set_weight(RepsLayer *reps_layer, int weight)
   text_layer_set_text(reps_layer->weights_layer, reps_layer->weights_text);
 }
 
-void reps_layer_set_reps(RepsLayer *reps_layer, int reps[MAX_SETS], int set_count)
+void reps_layer_set_reps(RepsLayer *reps_layer, const int reps[MAX_SETS], int set_count)
 {
-  reps_layer->reps_text[0] = '\0';
-  for (int i = 0; i < set_count; i++)
+  if (set_count > MAX_SETS)
   {
-    char buffer[8];
-    snprintf(buffer, sizeof(buffer), "%i  ", reps[i]);
-    strcat(reps_layer->reps_text, buffer);
+    set_count = MAX_SETS;
+  }
+  reps_layer->reps_text[0] = '\0';
+  // snprintf returns the length it wanted to write, so once it truncates,
+  // length reaches the buffer size and the loop stops.
+  size_t length = 0;
+  for (int i = 0; i < set_count && length < sizeof(reps_layer->reps_text); i++)
+  {
+    length += snprintf(reps_layer->reps_text + length, sizeof(reps_layer->reps_text) - length,
+                       "%i  ", reps[i]);
   }
   text_layer_set_text(reps_layer->reps_layer, reps_layer->reps_text);
 }
