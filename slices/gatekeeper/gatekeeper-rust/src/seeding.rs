@@ -268,11 +268,10 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // resolves to nothing and the absolute loopback root carries the
             // `ConnectMenu`'s redirect.
             [
-                "launch/patient",
                 "openid",
                 "fhirUser",
-                "patient/Patient.r",
-                "patient/Observation.c",
+                "system/Patient.rs",
+                "system/Observation.c",
             ]
             .as_slice(),
             ports.fhir_sync_pebble_dev,

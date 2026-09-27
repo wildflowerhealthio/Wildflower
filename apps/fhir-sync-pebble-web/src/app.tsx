@@ -23,8 +23,9 @@ import { SettingsPage, type SettingsPageProps } from './settings-page.tsx'
 import styles from './app.module.css'
 
 /**
- * The router context: what `fhir-r4-react`'s queries read their authed runner
- * from, plus the settings page's inputs, which the route reads back out.
+ * The router context: what the patient search reads its authed runner from
+ * (`fhir-r4-react`'s `useRunAuthed`), plus the settings page's inputs, which the
+ * route reads back out.
  */
 type RouterContext = FhirR4ResourcesRouterContext.RouterContext & {
   readonly settingsPage: SettingsPageProps
@@ -57,9 +58,9 @@ interface SettingsAppProps extends SettingsPageProps {
  * Split from {@link App} so the whole tree can be driven in a test over a stub
  * transport: the handshake is the only part that needs a browser redirect.
  *
- * A router exists for one reason: `fhir-r4-react`'s patient read takes its
- * authed runner from route context (`useRunAuthed`), which is how every
- * consumer of that package's queries gets one. The history is a *memory*
+ * A router exists for one reason: the patient search takes its authed runner
+ * from route context (`fhir-r4-react`'s `useRunAuthed`), which is how every
+ * self-hosted SMART app's reads get one. The history is a *memory*
  * history — this page is the OAuth redirect target, so its real URL carries
  * `?code=…&state=…`, which a browser history would try to route. Memoised on
  * its inputs so a re-render does not rebuild the router under live query state.
@@ -131,7 +132,6 @@ const App = (): JSX.Element => {
         queryClient
       ),
       connection: PebbleSettings.fromGrant({
-        patientId: client.patient.id,
         accessToken,
         fhirBaseUrl: client.state.serverUrl,
       }),

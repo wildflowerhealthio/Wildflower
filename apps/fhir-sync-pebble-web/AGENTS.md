@@ -1,11 +1,12 @@
 # AGENTS.md — apps/fhir-sync-pebble-web
 
 FHIR Sync for Pebble: the settings page of a Pebble watchapp that syncs the
-steps, sleep and heart rate the Pebble already records to any FHIR server. It is
+steps, sleep and heart rate the Pebble already records to a FHIR server. It is
 a SMART-on-FHIR app served from the published GitHub Pages site
 (`/fhir-sync-pebble`). The Pebble phone app opens it; the user signs in to a
-FHIR server, confirms the patient, and saves, which hands the watch what its
-PebbleKit JS needs to write that data as Observations on the patient's record.
+FHIR server, picks the patient from the server's list, and saves, which hands
+the watch what its PebbleKit JS needs to write that data as Observations on the
+patient's record.
 
 `apps/importer-web` is the template for the shape (`SmartAppRoot`, a relative
 `base`, a build into the package's own `dist/`, a memory router carrying a
@@ -16,24 +17,31 @@ SMART-built context). What differs is below.
 - `app.tsx` — `App` is the only component that holds the fhirclient `Client`.
   It completes the handshake and turns it into two things: a router context
   (`buildSmartRouterContext`), and the `PebbleSettings.Connection` the grant
-  carried (patient id, token, server).
-  `SettingsApp` mounts the router over that context, so the patient read goes
-  through `fhir-r4-react`'s `usePatientQuery` (route context → typed FHIR client
-  → the SMART HTTP layer), like every other self-hosted SMART app's reads.
+  carried (token, server).
+  `SettingsApp` mounts the router over that context, so the patient search
+  takes its authed runner from route context (`fhir-r4-react`'s
+  `useRunAuthed`), like every other self-hosted SMART app's reads.
 - `settings-page.tsx` — the page: `Either.all` of the connection and the
   recalled return target picks the confirmation or a refusal banner, whose
   message is an `Effect` `Match` on the refusal's tag.
-- `patient-confirmation.tsx` — reads the patient and owns the save, which
-  completes the settings with `PebbleSettings.withPatient`.
-- `patient-details.tsx` — the patient summary. Its name and the watch's
-  `patientName` are one string, `fhir-r4`'s `HumanName.displayName`.
+- `patient-summaries-query.ts` — the `Patient` search as TanStack Query
+  options and a hook, shaped like `fhir-r4-react`'s `patientsQueryOptions`. It
+  goes out through the router context's `HttpClient` (the SMART HTTP layer,
+  which addresses it to the granted server and adds the bearer token) and reads
+  the body with the core's lenient `PatientSummary.fromSearchBundle`.
+- `patient-confirmation.tsx` — lists the patients in the consent screen's
+  `PatientPillPicker` (`scopes-react`), shows the picked one, and owns the
+  save, which completes the settings with `PebbleSettings.withPatient`.
+- `patient-details.tsx` — the picked patient's summary. Its name and the
+  watch's `patientName` are one string, `fhir-r4`'s `HumanName.displayName`.
 - The decisions live in the slice core,
   [`fhir-sync-pebble-core`](../../slices/fhir-sync-pebble/AGENTS.md), whose
-  namespace modules this app imports by name: `PebbleSettings` (the watch's
-  wire shape), `ReturnTarget` (the allow-listed `return_to` and the hand-off
+  namespace modules this app imports by name: `PatientSummary` (a listed
+  patient, read leniently), `PebbleSettings` (the watch's wire shape),
+  `ReturnTarget` (the allow-listed `return_to` and the hand-off
   URL), and `ReturnTargetStore` (the `Store` that keeps `return_to` across the
   login, over the `sessionStorage` this app hands it). The app holds no
-  business logic of its own — it reads the handshake and the patient, and
+  business logic of its own — it reads the handshake and the patients, and
   renders.
 
 The npm package is `fhir-sync-pebble-web`; the OAuth `client_id` is
@@ -58,8 +66,10 @@ The app implements the Pebble "App Configuration (Static)" contract:
    because the SMART login leaves for the server's authorize page and the
    callback comes back without it. `sessionStorage`, not `localStorage`: the
    target must outlive the round trip in this tab and nothing longer.
-2. Once the handshake completes, the settings page reads the patient back and
-   shows who the watch will record for.
+2. Once the handshake completes, the settings page searches the server's
+   patients and lists them; the user picks the one the watch will record for,
+   and the page shows who that is. Picking another is a click, not another
+   sign-in.
 3. Save navigates to `return_to` + `encodeURIComponent(JSON.stringify(settings))`,
    falling back to the guide's `pebblejs://close#` when the page was opened
    without one.
@@ -81,9 +91,11 @@ parses — flat, with `null` for what the record lacks:
 confirmation on-device; `patientName` is the same string the settings page
 shows — `fhir-r4`'s `HumanName.displayName`, the name the patient goes by now
 (`official` over `usual`, former and ended names passed over), rendered
-`given family`, else the name's text. The settings are built in two
-steps because the facts arrive separately: the grant gives a `Connection`, and
-the save adds the patient the page read (`withPatient`). Change the shape
+`given family`, else the name's text. `patientBirthDate` is the string the
+server wrote, partial dates (`1970`, `1970-05`) included. The settings are built
+in two steps because the facts arrive separately: the grant gives a
+`Connection` (token, server), and the save adds the patient the user picked
+(`withPatient`). Change the shape
 together with the watchapp's `webviewclosed` handler.
 
 ## Traps
@@ -93,21 +105,39 @@ together with the watchapp's `webviewclosed` handler.
   record. Only the `pebblejs:` scheme and loopback `http(s)` (the `pebble`
   tool's emulator configuration server) decode as a `ReturnTarget`. Anything
   else shows an error and offers no save.
-- **The patient is picked by the server, not this page.** `launch/patient` asks
-  the consent screen to pick one, and `patient/` scopes reach only that one, so
-  there is nothing here to list. "Choose a different patient" links back to the
-  app root to sign in again; `return_to` survives in session storage.
-- **Save waits on the patient read.** Until the server has answered, the user
-  has not seen who they are connecting the watch to; a failed read means the
-  token the watch would get does not work either.
+- **The patient is picked on this page, not by the server.** The scopes are
+  `system/`, so the grant carries no patient and the page lists every patient
+  the token can search. The watch's token is just as wide: it can list and
+  read every patient on the server and create Observations for any of them;
+  the watch writes against the `patientId` it was handed.
+- **The patient list is read leniently, not through `fhir-r4`'s `Patient`
+  schema.** That schema refuses legal FHIR such as a partial `birthDate`
+  (`1970`), and a strict bundle decode fails the whole list for one such
+  patient. `PatientSummary.fromSearchBundle` drops only an entry it cannot read
+  (no id, a mistyped field). The list is one page — `_sort=family`,
+  `_count=RESOURCE_PAGE_SIZE` (200) — so a server with more patients shows the
+  first page's worth.
+- **Not every SMART server will grant `system/` scopes here.** Asking for
+  `system/` scopes in a user's standalone `authorization_code` launch is how a
+  Wildflower server works, but many third-party servers grant `system/` only
+  to backend services (client credentials). On such a server the sign-in
+  either fails at `/authorize` or yields a token whose `Patient` search 403s,
+  and the page shows that error with nothing to pick. Say "a Wildflower
+  server, or one that grants `system/` scopes to a signed-in user", never
+  "any FHIR server", in user-facing copy.
+- **Save waits on a pick.** Until the user has picked, they have not said who
+  the watch records for. A failed search shows its error and offers no pick —
+  the token the watch would get does not work either.
 - **The watch's token expires.** No `offline_access`, so no refresh token: when
   the access token lapses the user reopens the settings page to reconnect.
 
 ## Scopes
 
 `src/config.ts` requests
-`launch/patient openid fhirUser patient/Patient.r patient/Observation.c`. That
-string MUST equal the `allowed_scopes` of the `fhir-sync-pebble` client
+`openid fhirUser system/Patient.rs system/Observation.c`: `system/` rather than
+`patient/` because the page picks the patient after the grant, so there is no
+patient context for a `patient/` scope to reach (the same reasoning the other
+first-party clients document). That string MUST equal the `allowed_scopes` of the `fhir-sync-pebble` client
 (gatekeeper migration `0017_seed_fhir_sync_pebble_client`), element for
 element. Nothing spans the TS/Rust boundary to check it; the mirrors are the
 doc comment in `config.ts`, the migration's header, the vector asserted in
@@ -134,6 +164,6 @@ jsdom.
 - [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md) — the shell this
   app boots through
 - [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md) — the SMART primitives
-  (`useSmartHandshake`, `fetchPatient`)
+  (`useSmartHandshake`, `buildSmartRouterContext`)
 - [apps/github-pages README](../github-pages/README.md) — how the site is
   assembled

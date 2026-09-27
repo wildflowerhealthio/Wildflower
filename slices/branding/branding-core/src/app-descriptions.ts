@@ -86,24 +86,26 @@ const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
   fhirSyncPebble: {
     name: 'FHIR Sync for Pebble',
     tagline:
-      'Syncs the steps, sleep and heart rate your Pebble already records to any FHIR server.',
+      'Syncs the steps, sleep and heart rate your Pebble already records to your FHIR server.',
     status: 'Status: early, rough edges',
     paragraphs: [
       'My Pebble already tracks my steps, sleep and heart rate, but that data never leaves ' +
         'the watch and my phone.',
       'This watchapp sends it to a FHIR server I choose, as observations on my own record, ' +
-        'so it sits beside my labs and medications. Any server that speaks SMART on FHIR works.',
+        'so it sits beside my labs and medications. It works with a Wildflower server, and ' +
+        'with any SMART on FHIR server that lets a signed-in user grant system-level access.',
     ],
     guide: {
       title: 'Connecting your watch',
       steps: [
         "In the Pebble app on your phone, open the watchapp's settings. That opens this page.",
         'Connect to your FHIR server and sign in.',
-        "When the server asks, pick the patient whose record your Pebble's data goes to.",
+        "Back on this page, pick the patient whose record your Pebble's data goes to.",
         'Check the patient, then save. The page closes and the watch starts syncing.',
       ],
       note:
-        "The watch keeps a token that can add observations to that patient's record. " +
+        'The watch keeps a token that can list every patient on that server and add ' +
+        'observations to any of them. ' +
         'Only connect a watch you wear yourself.',
     },
     anchor: 'built',

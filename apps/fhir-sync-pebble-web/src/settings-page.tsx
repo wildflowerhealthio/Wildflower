@@ -13,8 +13,8 @@ const refusalMessage = (
 ): string =>
   Match.valueTags(refusal, {
     MissingGrantError: () =>
-      'The server did not grant a patient and an access token. Sign in again, and pick a ' +
-      'patient when the server asks.',
+      'The server did not grant an access token, so there is nothing to give the watch. ' +
+      "Open this page again from the watchapp's settings and sign in again.",
     ForeignReturnTargetError: () =>
       'This page was opened with a return address that is not the Pebble app, so it will ' +
       "not send your connection there. Open it again from the watchapp's settings.",
@@ -32,23 +32,16 @@ interface SettingsPageProps {
 
 /**
  * The settings page the Pebble phone app shows once the user has signed in:
- * the patient the watch will sync to and the save that sends the connection
- * back to the watch — or, when the page cannot hand off safely, why not. Either
- * way it offers to start over with another patient.
+ * the server's patients to pick the one the watch will sync to, and the save
+ * that sends the connection back to the watch — or, when the page cannot hand
+ * off safely, why not.
  *
  * @remarks
- * The patient is picked by the server's consent screen (`launch/patient`), not
- * here: the token's `patient/` scopes reach only that one patient, so there is
- * nothing for this page to list. Choosing another patient means signing in
- * again, which is what the app-root link does — `return_to` survives in the
- * {@link ReturnTargetStore.Store}.
- *
  * The hand-off needs both the connection and the return target, so the two are
  * combined with `Either.all`; the first refusal is matched on its tag in
  * {@link refusalMessage}.
  */
 const SettingsPage = ({ connection, returnTargets, navigate }: SettingsPageProps): JSX.Element => {
-  const appRoot = new URL('.', window.location.href).href
   const handoff = Either.all({ connection, returnTarget: returnTargets.recall() })
 
   const confirmationOrError = Either.match(handoff, {
@@ -69,16 +62,12 @@ const SettingsPage = ({ connection, returnTargets, navigate }: SettingsPageProps
       <header className={styles['header']}>
         <h1 className="text-heading-3">FHIR Sync for Pebble</h1>
         <p className={cn(styles['subtitle'], 'text-body-3')}>
-          Check the patient, then save to start syncing your Pebble&apos;s steps, sleep and heart
+          Pick the patient, then save to start syncing your Pebble&apos;s steps, sleep and heart
           rate to their record.
         </p>
       </header>
 
       {confirmationOrError}
-
-      <p className={cn(styles['restart'], 'text-body-3')}>
-        <a href={appRoot}>Choose a different patient</a>
-      </p>
     </>
   )
 }

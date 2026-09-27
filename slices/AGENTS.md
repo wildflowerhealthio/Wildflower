@@ -34,7 +34,8 @@ through), so it can be property-tested without a DOM.
 
 `fhir-sync-pebble` holds what the Pebble watchapp's settings page decides — see
 [fhir-sync-pebble/AGENTS.md](./fhir-sync-pebble/AGENTS.md). Its
-`fhir-sync-pebble-core` is the settings the watch receives, the allow-listed
+`fhir-sync-pebble-core` is the patients the page lists, the settings the watch
+receives, the allow-listed
 `return_to` they are handed back through, and the store that keeps it across
 the SMART login, as pure functions; `apps/fhir-sync-pebble-web` is the page
 that runs them.

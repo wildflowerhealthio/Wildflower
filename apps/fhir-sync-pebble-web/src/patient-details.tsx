@@ -1,15 +1,14 @@
-import type { PatientResource } from 'fhir-r4-react'
 import { HumanName } from 'fhir-r4/data-types'
-import type { PebbleSettings } from 'fhir-sync-pebble-core'
+import type { PatientSummary, PebbleSettings } from 'fhir-sync-pebble-core'
 import type { JSX } from 'react'
 
 import styles from './patient-details.module.css'
 
 /** Props for {@link PatientDetails}. */
 interface PatientDetailsProps {
-  /** The patient the server put in context, as the server returned it. */
-  readonly patient: PatientResource
-  /** The connection the watch will receive — the id and server shown beside the name. */
+  /** The patient the user picked, as the server returned it. */
+  readonly patient: PatientSummary.Type
+  /** The connection the watch will receive — the server shown beside the patient. */
   readonly connection: PebbleSettings.Connection
 }
 
@@ -25,7 +24,7 @@ const PatientDetails = ({ patient, connection }: PatientDetailsProps): JSX.Eleme
       </>
     )}
     <dt className="text-label-2">Patient id</dt>
-    <dd className={styles['machine']}>{connection.patientId}</dd>
+    <dd className={styles['machine']}>{patient.id}</dd>
     <dt className="text-label-2">FHIR server</dt>
     <dd className={styles['machine']}>{connection.fhirBaseUrl}</dd>
   </dl>

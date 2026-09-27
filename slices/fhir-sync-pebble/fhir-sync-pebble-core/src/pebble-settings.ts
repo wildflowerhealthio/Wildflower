@@ -2,6 +2,8 @@ import { Data, Either, Schema } from 'effect'
 import { trimTrailingSlashes } from 'fhir-r4/clients'
 import { HumanName } from 'fhir-r4/data-types'
 
+import type * as PatientSummary from './patient-summary.ts'
+
 /**
  * What the watch receives: everything its PebbleKit JS needs to sync the data
  * the Pebble collects to one patient's record as FHIR Observations, plus who
@@ -11,9 +13,9 @@ import { HumanName } from 'fhir-r4/data-types'
  * A namespace module — consumers speak `PebbleSettings.Connection`,
  * `PebbleSettings.fromGrant`, `PebbleSettings.withPatient`,
  * `PebbleSettings.toJson`. The settings come together in two steps, because
- * the facts arrive separately: the SMART grant names the patient, token and
- * server (a {@link Connection}), and the patient read that follows supplies the
- * name and birth date ({@link withPatient}).
+ * the facts arrive separately: the SMART grant names the token and server (a
+ * {@link Connection}), and the patient the user then picks on the settings page
+ * supplies the id, name and birth date ({@link withPatient}).
  *
  * The JSON {@link toJson} writes is the wire shape the watchapp's
  * `webviewclosed` handler parses; change the two together.
@@ -22,8 +24,6 @@ import { HumanName } from 'fhir-r4/data-types'
  */
 
 const ConnectionSchema = Schema.Struct({
-  /** The logical id of the patient the server's consent step put in context. */
-  patientId: Schema.NonEmptyString,
   /** The SMART access token, sent as `Authorization: Bearer …`. */
   accessToken: Schema.NonEmptyString,
   /**
@@ -33,14 +33,18 @@ const ConnectionSchema = Schema.Struct({
   fhirBaseUrl: Schema.NonEmptyString,
 })
 
-/** What the SMART grant carries: the patient, the token and the server. */
+/** What the SMART grant carries: the token and the server it was granted for. */
 type Connection = typeof ConnectionSchema.Type
 
 const PebbleSettingsSchema = Schema.Struct({
+  /** The logical id of the patient the user picked. */
   patientId: Schema.NonEmptyString,
-  /** The patient's display name, `given family` (else the name's text); `null` when the record has none. */
+  /** The patient's display name, `fhir-r4`'s `HumanName.displayName`; `null` when the record has none. */
   patientName: Schema.NullOr(Schema.String),
-  /** The patient's birth date as FHIR writes it (`YYYY-MM-DD`); `null` when the record has none. */
+  /**
+   * The patient's birth date as the server wrote it (`YYYY-MM-DD`, or a partial
+   * `YYYY-MM` / `YYYY`); `null` when the record has none.
+   */
   patientBirthDate: Schema.NullOr(Schema.String),
   accessToken: Schema.NonEmptyString,
   fhirBaseUrl: Schema.NonEmptyString,
@@ -51,14 +55,12 @@ type Type = typeof PebbleSettingsSchema.Type
 
 /**
  * The server finished the SMART handshake without granting what the watch
- * needs: no patient in context, or no access token.
+ * needs: no access token.
  */
 class MissingGrantError extends Data.TaggedError('MissingGrantError') {}
 
 /** The raw facts a completed SMART handshake reports, before they are checked. */
 interface Grant {
-  /** fhirclient's `client.patient.id` — `null` when the server put no patient in context. */
-  readonly patientId: string | null
   /** The token response's `access_token`, absent for an open server. */
   readonly accessToken: string | undefined
   /** The FHIR base the handshake named. */
@@ -68,7 +70,7 @@ interface Grant {
 const decodeConnection = Schema.decodeUnknownEither(ConnectionSchema)
 
 /**
- * The connection a grant carries, or {@link MissingGrantError} when it lacks any of it.
+ * The connection a grant carries, or {@link MissingGrantError} when it carries no token.
  *
  * @remarks
  * The base URL is the one the handshake named, trimmed by `fhir-r4`'s
@@ -84,21 +86,14 @@ const fromGrant = (grant: Grant): Either.Either<Connection, MissingGrantError> =
   )
 
 /**
- * The settings for `connection`, naming the patient as the server returned it.
+ * The settings for `connection`, recording for `patient` and naming them as
+ * the server returned them.
  *
- * @param connection - The patient, token and server the grant carried
- * @param patient - What the patient read returned: the record's names and its
- *   birth date as FHIR writes it (`null` when absent). A decoded `fhir-r4`
- *   `Patient` fits, and so does anything else carrying the two.
+ * @param connection - The token and server the grant carried
+ * @param patient - The patient the user picked from the server's list
  */
-const withPatient = (
-  connection: Connection,
-  patient: {
-    readonly name: readonly HumanName.Displayable[]
-    readonly birthDate: string | null
-  }
-): Type => ({
-  patientId: connection.patientId,
+const withPatient = (connection: Connection, patient: PatientSummary.Type): Type => ({
+  patientId: patient.id,
   patientName: HumanName.displayName(patient.name),
   patientBirthDate: patient.birthDate,
   accessToken: connection.accessToken,

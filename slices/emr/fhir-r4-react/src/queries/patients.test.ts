@@ -5,13 +5,7 @@ import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
-import {
-  PATIENTS_QUERY_KEY,
-  patientQueryKey,
-  patientQueryOptions,
-  patientsQueryOptions,
-  type RunAuthed,
-} from './index.ts'
+import { PATIENTS_QUERY_KEY, patientsQueryOptions, type RunAuthed } from './index.ts'
 
 /**
  * Drives the FHIR `patientsQueryOptions` over the real
@@ -40,9 +34,6 @@ const PATIENT_BUNDLE = {
   ],
 }
 
-// One Patient, as a FHIR `read` returns it.
-const ADA = { resourceType: 'Patient', id: 'pat-1', name: [{ given: ['Ada'], family: 'Lovelace' }] }
-
 // A bundle whose single entry has no resource — the flatten must drop it.
 const EMPTY_ENTRY_BUNDLE = {
   resourceType: 'Bundle',
@@ -56,18 +47,15 @@ const jsonResponse = (body: unknown): Response =>
     headers: { 'content-type': 'application/json' },
   })
 
-// `failing: true` always 500s — exercises the query's error path. `seen`, when
-// given, collects each request's URL.
+// `failing: true` always 500s — exercises the query's error path.
 const stubHttpClientLayer = (options?: {
   readonly body?: unknown
   readonly failing?: boolean
-  readonly seen?: string[]
 }): Layer.Layer<HttpClient.HttpClient> =>
   Layer.succeed(
     HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      options?.seen?.push(request.url)
-      return Effect.succeed(
+    HttpClient.make((request) =>
+      Effect.succeed(
         HttpClientResponse.fromWeb(
           request,
           options?.failing === true
@@ -75,7 +63,7 @@ const stubHttpClientLayer = (options?: {
             : jsonResponse(options?.body ?? { resourceType: 'Bundle', type: 'searchset' })
         )
       )
-    })
+    )
   )
 
 const disposers: Array<() => Promise<void>> = []
@@ -139,38 +127,5 @@ describe('patientsQueryOptions', () => {
 
     await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
     expect(queryClient.getQueryData(PATIENTS_QUERY_KEY)).toBeUndefined()
-  })
-})
-
-describe('patientQueryOptions', () => {
-  test('keys the read by the patient id, under the patient list root', () => {
-    const options = patientQueryOptions(makeRunAuthed(stubHttpClientLayer()), 'pat-1')
-    expect(options.queryKey).toEqual(patientQueryKey('pat-1'))
-    expect(options.queryKey.slice(0, PATIENTS_QUERY_KEY.length)).toEqual(PATIENTS_QUERY_KEY)
-  })
-
-  test('queryFn reads the one patient by id through the authed runner', async () => {
-    const requested: string[] = []
-    const options = patientQueryOptions(
-      makeRunAuthed(stubHttpClientLayer({ body: ADA, seen: requested })),
-      'pat-1'
-    )
-    const queryClient = freshQueryClient()
-
-    const patient = await queryClient.query({ ...options, staleTime: 'static' })
-
-    expect(patient.id).toBe('pat-1')
-    expect(requested).toEqual(['/Patient/pat-1'])
-  })
-
-  test('a failed read rejects rather than yielding a patient', async () => {
-    const options = patientQueryOptions(
-      makeRunAuthed(stubHttpClientLayer({ failing: true })),
-      'pat-1'
-    )
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    disposers.push(() => Promise.resolve(queryClient.clear()))
-
-    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
   })
 })

@@ -290,6 +290,12 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../global/react-tundraish
+      scopes-core:
+        specifier: workspace:*
+        version: link:../../slices/scopes/scopes-core
+      scopes-react:
+        specifier: workspace:*
+        version: link:../../slices/scopes/scopes-react
       smart-app-react:
         specifier: workspace:*
         version: link:../../slices/smart-app/smart-app-react

@@ -579,7 +579,7 @@ mod tests {
         );
         // `fhir-sync-pebble` (the Pebble watchapp's settings page) is
         // standalone-only, so it carries only its absolute Pages redirect, and
-        // its `patient/` scopes reach the one patient the consent step picks.
+        // its scopes are `system/`: the page picks the patient after the grant.
         // This vector must stay element-for-element equal to the `scope` string
         // in `apps/fhir-sync-pebble-web/src/config.ts` — nothing spans the
         // TS/Rust boundary to check it.
@@ -595,11 +595,10 @@ mod tests {
         assert_eq!(
             pebble.allowed_scopes,
             vec![
-                "launch/patient".to_string(),
                 "openid".to_string(),
                 "fhirUser".to_string(),
-                "patient/Patient.r".to_string(),
-                "patient/Observation.c".to_string(),
+                "system/Patient.rs".to_string(),
+                "system/Observation.c".to_string(),
             ],
         );
     }

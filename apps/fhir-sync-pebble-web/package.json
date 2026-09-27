@@ -31,6 +31,8 @@
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
+    "scopes-core": "workspace:*",
+    "scopes-react": "workspace:*",
     "smart-app-react": "workspace:*",
     "tundra-css": "catalog:"
   },

@@ -1,8 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { Schema } from 'effect'
-import type { PatientResource } from 'fhir-r4-react'
-import { Patient } from 'fhir-r4/resources'
-import type { PebbleSettings } from 'fhir-sync-pebble-core'
+import { PatientSummary, type PebbleSettings } from 'fhir-sync-pebble-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { PatientDetails } from './patient-details.tsx'
@@ -55,11 +53,10 @@ describe('PatientDetails', () => {
 // Helpers
 
 const connection: PebbleSettings.Connection = {
-  patientId: 'ada',
   accessToken: 'watch-token',
   fhirBaseUrl: 'https://fhir.example/r4',
 }
 
-/** A decoded `Patient` with id `ada` and the given fields. */
-const patient = (fields: Readonly<Record<string, unknown>>): PatientResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id: 'ada', ...fields })
+/** The patient `ada` as the settings page lists it, with the given fields. */
+const patient = (fields: Readonly<Record<string, unknown>>): PatientSummary.Type =>
+  Schema.decodeUnknownSync(PatientSummary.Schema)({ resourceType: 'Patient', id: 'ada', ...fields })

@@ -2,7 +2,7 @@
   "name": "fhir-sync-pebble-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure core of FHIR Sync for Pebble: the settings the watchapp receives (its wire shape, built from the SMART grant and the picked patient), the allow-listed Pebble `return_to` and the hand-off URL, and the store that keeps `return_to` across the SMART login. No DOM, no platform imports.",
+  "description": "Pure core of FHIR Sync for Pebble: the patients a `Patient` search lists (read leniently), the settings the watchapp receives (its wire shape, built from the SMART grant and the picked patient), the allow-listed Pebble `return_to` and the hand-off URL, and the store that keeps `return_to` across the SMART login. No DOM, no platform imports.",
   "license": "MIT",
   "type": "module",
   "exports": {

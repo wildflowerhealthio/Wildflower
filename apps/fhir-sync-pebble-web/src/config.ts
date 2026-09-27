@@ -3,20 +3,26 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
 /**
  * SMART registration for the standalone connect flow — the only way this app is
  * launched. The Pebble phone app opens the page from the watchapp's settings,
- * the user picks a FHIR server in the `ConnectMenu`, and the server's consent
- * screen picks the patient.
+ * the user picks a FHIR server in the `ConnectMenu`, and after signing in picks
+ * the patient on the settings page itself.
  *
- * The scopes are exactly what the watch needs and nothing more:
+ * The scopes are exactly what the page and the watch need and nothing more:
  *
- * - `launch/patient` — ask the server to pick a patient during consent and hand
- *   its id back in the token response. There is no bare `launch`: that scope is
- *   EHR-launch-only, and this app has no `launch.html`.
- * - `patient/Patient.r` — read that one patient back, so the settings page can
- *   show who the watch will record for before the user saves.
- * - `patient/Observation.c` — the watch's whole job: sync the steps, sleep and
- *   heart rate the Pebble records as Observations for that patient. The
+ * - `openid`, `fhirUser` — the same identity pair every first-party app asks
+ *   for.
+ * - `system/Patient.rs` — read and search the server's patients: the settings
+ *   page lists them, with their names and birth dates, for the user to pick the
+ *   one the watch will record for.
+ * - `system/Observation.c` — the watch's whole job: sync the steps, sleep and
+ *   heart rate the Pebble records as Observations for the picked patient. The
  *   watch's PebbleKit JS uses the access token this page hands it, so whatever
  *   this scope set grants is what the watch can do.
+ *
+ * `system/` rather than `patient/`, as the other first-party apps: the patient
+ * is picked on this page, after the grant, so the token carries no patient
+ * context and a `patient/` scope would reach nothing. There is no
+ * `launch/patient` for the same reason, and no bare `launch`: that scope is
+ * EHR-launch-only, and this app has no `launch.html`.
  *
  * `clientId` depends on how this build is being served:
  *
@@ -38,7 +44,7 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  */
 const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'fhir-sync-pebble-dev' : 'fhir-sync-pebble',
-  scope: 'launch/patient openid fhirUser patient/Patient.r patient/Observation.c',
+  scope: 'openid fhirUser system/Patient.rs system/Observation.c',
 }
 
 export { standaloneSmartConfig }

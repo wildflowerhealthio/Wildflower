@@ -1,7 +1,7 @@
 # AGENTS.md — slices/fhir-sync-pebble
 
 **FHIR Sync for Pebble**: a Pebble watchapp that syncs the steps, sleep and
-heart rate the Pebble records to any FHIR server. This slice holds what its
+heart rate the Pebble records to a FHIR server. This slice holds what its
 settings page decides; the page itself is
 [`apps/fhir-sync-pebble-web`](../../apps/fhir-sync-pebble-web/AGENTS.md), and
 the watchapp's PebbleKit JS is the consumer of the settings it hands off.
@@ -9,25 +9,34 @@ the watchapp's PebbleKit JS is the consumer of the settings it hands off.
 ## Packages
 
 - `fhir-sync-pebble-core` — the pure layer, and currently the whole slice.
-  Three namespace modules, re-exported from the package index:
-  `PebbleSettings` (the watch's wire shape, built from the SMART grant and the
-  patient read), `ReturnTarget` (the allow-listed Pebble `return_to` and the
-  hand-off URL), and `ReturnTargetStore` (keeps `return_to` across the SMART
-  login over a Web Storage–shaped store the app passes in). No DOM, no React,
-  no platform imports.
+  Four namespace modules, re-exported from the package index:
+  `PatientSummary` (a patient the settings page lists, read leniently out of a
+  `Patient` search), `PebbleSettings` (the watch's wire shape, built from the
+  SMART grant and the picked patient), `ReturnTarget` (the allow-listed Pebble
+  `return_to` and the hand-off URL), and `ReturnTargetStore` (keeps
+  `return_to` across the SMART login over a Web Storage–shaped store the app
+  passes in). No DOM, no React, no platform imports.
 
 ## Rules
 
-- **The core owns every decision the hand-off makes.** What the watch receives,
-  where it may be sent, and what survives the login are pure functions here,
-  so they are property-tested without a DOM. The app reads the handshake and
-  the patient, and renders what this package returns.
+- **The core owns every decision the hand-off makes.** Which patients are
+  listed, what the watch receives, where it may be sent, and what survives the
+  login are pure functions here, so they are property-tested without a DOM.
+  The app reads the handshake and the patients, and renders what this package
+  returns.
 - **`PebbleSettings.toJson` is external contract.** It is what the watchapp's
   `webviewclosed` handler parses; change the shape together with the watchapp.
 - **`ReturnTarget` is a security boundary.** The settings carry a live access
   token, so only the Pebble phone app's `pebblejs:` scheme and loopback
   `http(s)` (the `pebble` tool's emulator) decode. Widening the allow-list lets
   a crafted link collect a token for the user's record.
+- **`PatientSummary` is deliberately lenient.** It is not `fhir-r4`'s
+  `Patient.Schema`: that refuses legal FHIR like a partial `birthDate`, and the
+  page lists whatever server the user signed in to. Each search entry decodes
+  on its own, and one that does not read as a patient with an id is dropped,
+  not fatal; so does each name within it, with `given`'s `null` placeholders
+  dropped. Its names are shaped for `fhir-r4`'s `HumanName.displayName`,
+  which names the patient on the page and on the watch alike.
 - **Storage is a parameter.** `ReturnTargetStore.fromWebStorage` takes a
   structural `WebStorage`, the way `gatekeeper-core`'s sign-in takes its
   `PendingStore`, so the core names no DOM type and the app is the one place
