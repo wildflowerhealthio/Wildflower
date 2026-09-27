@@ -11,11 +11,12 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'webTrace',
   'serverDocs',
   'ohifViewer',
+  'fhirSyncPebble',
   'app'
 )
 
 describe('SECTION_PATHS', () => {
-  it('should contain exactly seven sections with the correct deploy-contract paths', () => {
+  it('should contain exactly eight sections with the correct deploy-contract paths', () => {
     expect(SECTION_PATHS).toStrictEqual({
       marketing: '',
       medications: 'medications-app',
@@ -23,6 +24,7 @@ describe('SECTION_PATHS', () => {
       webTrace: 'web-trace-app',
       serverDocs: 'wildflower-server-docs',
       ohifViewer: 'ohif-viewer',
+      fhirSyncPebble: 'fhir-sync-pebble',
       app: 'app',
     })
   })

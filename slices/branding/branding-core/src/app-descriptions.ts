@@ -2,10 +2,15 @@ import type { MarketingAnchor } from './nav.ts'
 import type { SectionId } from './site.ts'
 
 /** The site sections that are SMART on FHIR apps with a standalone landing page. */
-type AppSectionId = Extract<SectionId, 'medications' | 'importer' | 'webTrace'>
+type AppSectionId = Extract<SectionId, 'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace'>
 
-/** The three SMART app sections, in the order the marketing homepage presents them. */
-const APP_SECTION_IDS: readonly AppSectionId[] = ['medications', 'importer', 'webTrace']
+/** The four SMART app sections, in the order the marketing homepage presents them. */
+const APP_SECTION_IDS: readonly AppSectionId[] = [
+  'medications',
+  'fhirSyncPebble',
+  'importer',
+  'webTrace',
+]
 
 /**
  * The copy that introduces one SMART app: what it is, why it exists, and
@@ -76,6 +81,35 @@ const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
     launch: {
       label: 'Open the Medication Viewer',
       note: 'View the medications for a patient on any FHIR server, including our demo',
+    },
+  },
+  fhirSyncPebble: {
+    name: 'FHIR Sync for Pebble',
+    tagline:
+      'Syncs the steps, sleep and heart rate your Pebble already records to any FHIR server.',
+    status: 'Status: early, rough edges',
+    paragraphs: [
+      'My Pebble already tracks my steps, sleep and heart rate, but that data never leaves ' +
+        'the watch and my phone.',
+      'This watchapp sends it to a FHIR server I choose, as observations on my own record, ' +
+        'so it sits beside my labs and medications. Any server that speaks SMART on FHIR works.',
+    ],
+    guide: {
+      title: 'Connecting your watch',
+      steps: [
+        "In the Pebble app on your phone, open the watchapp's settings. That opens this page.",
+        'Connect to your FHIR server and sign in.',
+        "When the server asks, pick the patient whose record your Pebble's data goes to.",
+        'Check the patient, then save. The page closes and the watch starts syncing.',
+      ],
+      note:
+        "The watch keeps a token that can add observations to that patient's record. " +
+        'Only connect a watch you wear yourself.',
+    },
+    anchor: 'built',
+    launch: {
+      label: 'Open FHIR Sync for Pebble',
+      note: "Usually opened from the watchapp's settings in the Pebble app",
     },
   },
   importer: {

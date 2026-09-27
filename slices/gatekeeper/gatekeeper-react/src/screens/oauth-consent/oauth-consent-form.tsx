@@ -4,11 +4,12 @@ import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, pageLayoutStyles, StatusBadge } from 'react-tundraish'
 import { GrantDraft, Scope, ScopeRequest } from 'scopes-core'
 import type { GrantDraft as GrantDraftModel } from 'scopes-core'
-import { PatientPillPicker, ScopePicker } from 'scopes-react'
+import { ScopePicker } from 'scopes-react'
 
 import { useOAuthConsentMutation } from '../../queries/index.ts'
 import type { OAuthConsentResource, OAuthConsentResult } from '../../queries/index.ts'
 import { AppAvatar } from './app-avatar.tsx'
+import { PatientChoice } from './patient-choice.tsx'
 import { RegistrationWarning } from './registration-warning.tsx'
 import { usePatientOptions } from './use-patient-options.ts'
 import styles from '../../styles/consent-card.module.css'
@@ -59,7 +60,11 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   // shown) for `registered`, so it always sends `false` in that case.
   const [registrationAcknowledged, setRegistrationAcknowledged] = useState(false)
   const registrationNeedsAcknowledgment = consent.registration.status !== 'registered'
-  const { options: patients } = usePatientOptions(hasPatientScope)
+  const {
+    options: patients,
+    loading: patientsLoading,
+    error: patientsError,
+  } = usePatientOptions(hasPatientScope)
 
   // Whether a patient-context scope is still granted in the *current draft*. The
   // requirement to supply a launch patient tracks this, not the original request:
@@ -76,8 +81,6 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
 
   const patientBarRef = useRef<HTMLDivElement>(null)
   const errorRef = useRef<HTMLDivElement>(null)
-
-  const patientPickerShown = draftHasPatientScope && patients.length > 0
 
   const submitting = consentMutation.isPending
   // A result message (a denial / result error) takes precedence over the raw
@@ -100,9 +103,11 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
 
   const handleApprove = (): void => {
     setResultError(null)
-    // A patient-context request needs a launch patient — surface the miss
-    // beside the picker instead of sending a patientless approval.
-    if (patientPickerShown && draft.patient === null) {
+    // A patient-context grant needs a launch patient — surface the miss beside
+    // the patient bar instead of sending a patientless approval. This holds even
+    // when there is no patient to pick (an empty or unreadable list): the way
+    // forward then is to prune the patient scopes, not to approve without one.
+    if (draftHasPatientScope && draft.patient === null) {
       setPatientError('Select a patient to continue.')
       patientBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
@@ -169,11 +174,13 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
         </div>
       ) : null}
 
-      {patientPickerShown ? (
+      {draftHasPatientScope ? (
         <div className={styles['patient-bar']} ref={patientBarRef}>
           <p className={styles['eyebrow']}>Patient</p>
-          <PatientPillPicker
+          <PatientChoice
             patients={patients}
+            loading={patientsLoading}
+            error={patientsError}
             value={draft.patient}
             onChange={(patientId) => {
               setPatientError(null)

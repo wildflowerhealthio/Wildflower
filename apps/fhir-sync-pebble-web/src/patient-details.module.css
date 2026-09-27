@@ -1,0 +1,17 @@
+/* The patient summary: labels in one column, values in the other. */
+.details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-3) var(--space-7);
+  align-items: baseline;
+}
+
+.details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Ids and URLs: machine strings, set in the mono cut. */
+.machine {
+  font-family: var(--font-mono);
+}

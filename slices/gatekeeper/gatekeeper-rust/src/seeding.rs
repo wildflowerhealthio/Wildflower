@@ -105,7 +105,7 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
     "/../../apps/dev-app-ports.json"
 ));
 
-/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the four first-party
+/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the five first-party
 /// apps that register an OAuth client. The file also carries `web-server-docs-dev`,
 /// which is not a SMART app and so has no client here; serde ignores it.
 #[cfg(debug_assertions)]
@@ -119,6 +119,8 @@ struct DevAppPorts {
     importer_app_dev: u16,
     #[serde(rename = "ohif-viewer-dev")]
     ohif_viewer_dev: u16,
+    #[serde(rename = "fhir-sync-pebble-dev")]
+    fhir_sync_pebble_dev: u16,
 }
 
 /// The loopback redirect route for a dev app served at its origin root — every
@@ -255,6 +257,26 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // where OHIF's data source sends the browser back to and what it
             // passes as `redirect_uri`.
             "/fhir-viewer",
+        ),
+        (
+            "fhir-sync-pebble-dev",
+            "FHIR Sync for Pebble (Dev)",
+            // Mirrors the production `fhir-sync-pebble` client (migration
+            // `0017_seed_fhir_sync_pebble_client`, the `scope` in
+            // `apps/fhir-sync-pebble-web/src/config.ts`). Standalone-only, so
+            // there is no `apps_rust::dev_seed` row: the app-relative entry
+            // resolves to nothing and the absolute loopback root carries the
+            // `ConnectMenu`'s redirect.
+            [
+                "launch/patient",
+                "openid",
+                "fhirUser",
+                "patient/Patient.r",
+                "patient/Observation.c",
+            ]
+            .as_slice(),
+            ports.fhir_sync_pebble_dev,
+            DEV_ROOT_REDIRECT_PATH,
         ),
     ];
     for (client_id, name, scopes, port, redirect_path) in dev_clients {

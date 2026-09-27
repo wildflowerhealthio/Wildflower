@@ -1,0 +1,12 @@
+.header {
+  margin-bottom: var(--space-9);
+}
+
+.subtitle {
+  margin-top: var(--space-3);
+  color: var(--color-neutral-5);
+}
+
+.restart {
+  margin-top: var(--space-9);
+}

@@ -40,7 +40,7 @@ describe('runAuthed runner', () => {
 describe('runAuthed boot-race integration', () => {
   it('re-sends a 401 and resolves once the request clears', async () => {
     // Arrange
-    const { runAuthed } = buildRunAuthed(flakyUnauthorizedThenOkLayer())
+    const { runAuthed } = buildRunAuthed(() => flakyUnauthorizedThenOkLayer())
 
     // Act — the first send 401s; the runner re-sends and gets the 204.
     const status = await runAuthed(fetchStatus)
@@ -67,7 +67,7 @@ describe('runAuthed boot-race integration', () => {
             )
       })
     )
-    const { runAuthed } = buildRunAuthed(layer)
+    const { runAuthed } = buildRunAuthed(() => layer)
 
     // Act — boot, then a genuine post-boot 401.
     expect(await runAuthed(fetchStatus)).toBe(204)
@@ -102,7 +102,7 @@ const makeRunner = (
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-} => buildRunAuthed(capturingHttpClientLayer(captures))
+} => buildRunAuthed(() => capturingHttpClientLayer(captures))
 
 // Requires `HttpClient` and issues one request so the stub can record
 // the (absent) Authorization header.

@@ -17,8 +17,9 @@ slice is where the two meet, so neither has to know about the other.
     connect flow.
 
 Consumers: `apps/medications-app` and `apps/importer-web` mount `SmartAppRoot`
-and `runSmartLaunchEntry`; `apps/web-trace` still carries its own root and uses
-only `ConnectMenu`.
+and `runSmartLaunchEntry`; `apps/fhir-sync-pebble-web` is standalone-only, so it
+mounts `SmartAppRoot` with no launch entry; `apps/web-trace` still carries its
+own root and uses only `ConnectMenu`.
 
 ## Booting an app
 

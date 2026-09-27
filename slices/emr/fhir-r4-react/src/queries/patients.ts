@@ -9,7 +9,7 @@ import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { Patient } from 'fhir-r4/resources'
 
 import type { RunAuthed } from '../router-context.ts'
-import { PATIENTS_QUERY_KEY } from './keys.ts'
+import { PATIENTS_QUERY_KEY, patientQueryKey } from './keys.ts'
 import { useRunAuthed } from './use-run-authed.ts'
 
 /**
@@ -65,5 +65,30 @@ const patientsQueryOptions = (
 const usePatientsQuery = (enabled: boolean): UseQueryResult<readonly PatientResource[], Error> =>
   useQuery({ ...patientsQueryOptions(useRunAuthed()), enabled })
 
-export { patientsQueryOptions, usePatientsQuery }
+/**
+ * Reads one `Patient` by logical id (FHIR `read`, `GET /Patient/{id}`) — the
+ * read a `patient/Patient.r` grant allows for the patient a SMART launch put in
+ * context. Keyed under {@link patientQueryKey}. A `404` or any other failure
+ * rejects, so a caller can tell "no such patient" from a patient it can show.
+ */
+const patientQueryOptions = (
+  runAuthed: RunAuthed,
+  id: string
+): UseQueryOptions<PatientResource, Error, PatientResource, ReturnType<typeof patientQueryKey>> =>
+  queryOptions({
+    queryKey: patientQueryKey(id),
+    queryFn: (): Promise<PatientResource> =>
+      runAuthed(
+        Effect.gen(function* () {
+          const client = yield* FhirR4ResourcesHttpApiClient
+          return yield* client.Patient.GetById({ path: { id } })
+        })
+      ),
+  })
+
+/** Reads one `Patient` by logical id, through the route context's authed runner. */
+const usePatientQuery = (id: string): UseQueryResult<PatientResource, Error> =>
+  useQuery(patientQueryOptions(useRunAuthed(), id))
+
+export { patientQueryOptions, patientsQueryOptions, usePatientQuery, usePatientsQuery }
 export type { PatientResource }

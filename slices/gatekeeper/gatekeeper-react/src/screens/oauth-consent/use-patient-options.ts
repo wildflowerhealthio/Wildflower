@@ -4,6 +4,8 @@ import type { PatientOption } from 'scopes-react'
 interface PatientOptionsState {
   readonly options: readonly PatientOption[]
   readonly loading: boolean
+  /** Why the patient list could not be read, or `null` when it was (or was not asked for). */
+  readonly error: Error | null
 }
 
 /**
@@ -23,6 +25,10 @@ interface PatientOptionsState {
  * that requested a `patient/*` scope. While disabled the query never
  * fires (`isLoading` stays `false`, `data` `undefined`), so this returns
  * an empty list and `loading: false`.
+ *
+ * A failed read is returned as `error`, not folded into an empty list: the
+ * form has to tell "this server has no patients" from "the patient list could
+ * not be read".
  */
 const usePatientOptions = (enabled: boolean): PatientOptionsState => {
   const query = usePatientsQuery(enabled)
@@ -39,7 +45,7 @@ const usePatientOptions = (enabled: boolean): PatientOptionsState => {
     }
   )
 
-  return { options, loading: enabled && query.isLoading }
+  return { options, loading: enabled && query.isLoading, error: query.error }
 }
 
 export { usePatientOptions }

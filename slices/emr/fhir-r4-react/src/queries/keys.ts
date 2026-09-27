@@ -9,4 +9,10 @@
 
 const PATIENTS_QUERY_KEY = ['fhir-r4', 'patients'] as const
 
-export { PATIENTS_QUERY_KEY }
+/** The key one `Patient` read by id is cached under, beneath the list's root. */
+const patientQueryKey = (id: string): readonly ['fhir-r4', 'patients', string] => [
+  ...PATIENTS_QUERY_KEY,
+  id,
+]
+
+export { PATIENTS_QUERY_KEY, patientQueryKey }
