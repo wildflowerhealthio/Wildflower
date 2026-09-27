@@ -6,7 +6,8 @@
 
 typedef struct RepsLayer RepsLayer;
 
-// Placeholder for the exercise-detail content area; draws nothing yet.
+// One person's row on the exercise detail window: their name, the weight
+// (total and per side of the bar), and the reps for each set.
 RepsLayer *reps_layer_create(GRect frame);
 void reps_layer_destroy(RepsLayer *reps_layer);
 Layer *reps_layer_get_layer(RepsLayer *reps_layer);
