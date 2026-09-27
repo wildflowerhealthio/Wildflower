@@ -347,6 +347,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../../slices/emr/fhir-r4
       fhir-sync-pebble-web:
         specifier: workspace:*
         version: link:../../fhir-sync-pebble-web

@@ -111,8 +111,16 @@ describe('menu_text_format_time', () => {
   })
 })
 
+describe('menu_text_format_status_title', () => {
+  it('reads "Sync failed" after a failed sync, even with an earlier success', () => {
+    expect(driver.run('status-title failed')).toBe('Sync failed')
+  })
+})
+
 describe.each([
   ['last-sync', 'Synced', 'Never synced'],
+  // Without a failure the status title is the last-sync line.
+  ['status-title', 'Synced', 'Never synced'],
   ['last-auth', 'Signed in', 'Not signed in'],
 ])('the %s line', (command, prefix, never) => {
   it(`reads ${JSON.stringify(never)} when there is no time`, () => {

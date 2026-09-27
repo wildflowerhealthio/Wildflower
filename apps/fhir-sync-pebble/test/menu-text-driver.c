@@ -3,6 +3,8 @@
 //   time <mon> <mday> <hour> <min> <24h>       ->  menu_text_format_time
 //   last-sync never|<mon> <mday> <hour> <min> <24h>
 //                                              ->  menu_text_format_last_sync
+//   status-title failed|never|<mon> <mday> <hour> <min> <24h>
+//                                              ->  menu_text_format_status_title
 //   last-auth never|<mon> <mday> <hour> <min> <24h>
 //                                              ->  menu_text_format_last_auth
 //   patient-title <connected> <name...>        ->  menu_text_patient_title
@@ -58,6 +60,25 @@ static void prv_time_line(const char *args, size_t size, TimeLineFormatter forma
   free(text);
 }
 
+// "failed" formats a failed sync (with a last sync, so the failure must win
+// over it); otherwise args is a last sync as prv_time_line takes it.
+static void prv_status_title(const char *args) {
+  char *text = malloc(LAST_SYNC_TEXT_SIZE);
+  if (strcmp(args, "failed") == 0) {
+    struct tm last_sync = { .tm_mon = 8, .tm_mday = 27, .tm_hour = 14, .tm_min = 2 };
+    menu_text_format_status_title(text, true, &last_sync, true);
+  } else if (strcmp(args, "never") == 0) {
+    menu_text_format_status_title(text, false, NULL, false);
+  } else {
+    struct tm time;
+    bool clock_24h;
+    prv_parse_time(args, &time, &clock_24h);
+    menu_text_format_status_title(text, false, &time, clock_24h);
+  }
+  printf("%s\n", text);
+  free(text);
+}
+
 // Splits "<connected> <rest>" into connected and a pointer to rest, which is
 // empty when nothing follows the flag.
 static const char *prv_connected_and_rest(const char *args, bool *connected) {
@@ -96,6 +117,8 @@ int main(void) {
       prv_time(line + 5);
     } else if (strncmp(line, "last-sync ", 10) == 0) {
       prv_time_line(line + 10, LAST_SYNC_TEXT_SIZE, menu_text_format_last_sync);
+    } else if (strncmp(line, "status-title ", 13) == 0) {
+      prv_status_title(line + 13);
     } else if (strncmp(line, "last-auth ", 10) == 0) {
       prv_time_line(line + 10, LAST_AUTH_TEXT_SIZE, menu_text_format_last_auth);
     } else if (strncmp(line, "patient-title ", 14) == 0) {

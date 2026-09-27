@@ -29,7 +29,12 @@
     "messageKeys": [
       "PatientName",
       "PatientBirthDate",
-      "AuthTime"
+      "AuthTime",
+      "ActivityType",
+      "ActivityStart",
+      "ActivityEnd",
+      "ActivityCount",
+      "SyncSucceeded"
     ],
     "resources": {
       "media": []

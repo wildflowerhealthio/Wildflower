@@ -35,16 +35,13 @@ function requireStringOrNull(value, key) {
 }
 
 /**
- * Decodes the configuration page's `webviewclosed` response — the settings
- * JSON, URI-encoded — keeping only the fields the settings carry. Throws when
- * the response is not that shape.
+ * Decodes parsed settings JSON, keeping only the fields the settings carry.
+ * Throws when the value is not that shape.
  *
- * @param {string} response
+ * @param {unknown} value
  * @returns {import('./settings.js').Settings}
  */
-function decodeResponse(response) {
-  /** @type {unknown} */
-  var value = JSON.parse(decodeURIComponent(response))
+function decodeSettings(value) {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error('Settings must be a JSON object')
   }
@@ -55,6 +52,31 @@ function decodeResponse(response) {
     accessToken: requireNonEmptyString(value, 'accessToken'),
     fhirBaseUrl: requireNonEmptyString(value, 'fhirBaseUrl'),
   }
+}
+
+/**
+ * Decodes the configuration page's `webviewclosed` response — the settings
+ * JSON, URI-encoded. Throws when the response is not that shape.
+ *
+ * @param {string} response
+ * @returns {import('./settings.js').Settings}
+ */
+function decodeResponse(response) {
+  return decodeSettings(JSON.parse(decodeURIComponent(response)))
+}
+
+/**
+ * The settings `webviewclosed` last stored under {@link STORAGE_KEY}, or throws
+ * when the configuration page has never saved any.
+ *
+ * @param {string | null} stored - `localStorage.getItem(STORAGE_KEY)`
+ * @returns {import('./settings.js').Settings}
+ */
+function decodeStored(stored) {
+  if (stored === null) {
+    throw new Error('No settings stored; open the settings page first')
+  }
+  return decodeSettings(JSON.parse(stored))
 }
 
 /**
@@ -78,5 +100,6 @@ function toWatchMessage(settings, receivedAtMs) {
 module.exports = {
   STORAGE_KEY: STORAGE_KEY,
   decodeResponse: decodeResponse,
+  decodeStored: decodeStored,
   toWatchMessage: toWatchMessage,
 }

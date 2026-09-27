@@ -33,11 +33,14 @@ typedef struct {
   Connection connection;
   // Which data types sync; all of them until the user unchecks one.
   bool data_type_enabled[DATA_TYPE_COUNT];
-  // Nothing syncs yet, so the times stay 0 ("never") and syncing stays false
-  // until the sync itself lands.
+  // When the last successful sync started, 0 for never; each data type's is
+  // the last successful sync that included it.
   time_t last_sync_time;
   time_t data_type_last_sync_times[DATA_TYPE_COUNT];
+  // Whether a sync is under way.
   bool syncing;
+  // Whether the last sync this run failed. Not persisted: a restart clears it.
+  bool sync_failed;
 } AppState;
 
 // Fills state from what the last run persisted.
@@ -48,6 +51,21 @@ void state_set_connection(AppState *state, const Connection *connection);
 
 // Flips whether data_type syncs and persists the choice.
 void state_toggle_data_type(AppState *state, DataType data_type);
+
+// Marks a sync under way and clears the last one's failure.
+void state_begin_sync(AppState *state);
+
+// Ends the sync under way as failed, leaving the last-sync times alone.
+void state_fail_sync(AppState *state);
+
+// Ends the sync under way as a success that started at started_at: the last
+// sync time, and each data type's that synced_data_types marks, become it and
+// are persisted.
+void state_complete_sync(
+  AppState *state,
+  time_t started_at,
+  const bool synced_data_types[DATA_TYPE_COUNT]
+);
 
 // What the Sync Now row can do right now.
 SyncButtonState state_sync_button_state(const AppState *state);

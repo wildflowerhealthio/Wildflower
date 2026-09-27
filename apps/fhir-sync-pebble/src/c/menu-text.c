@@ -44,6 +44,19 @@ void menu_text_format_last_sync(
   snprintf(text, LAST_SYNC_TEXT_SIZE, "Synced %s", time_text);
 }
 
+void menu_text_format_status_title(
+  char text[LAST_SYNC_TEXT_SIZE],
+  bool sync_failed,
+  const struct tm *last_sync,
+  bool clock_24h
+) {
+  if (sync_failed) {
+    snprintf(text, LAST_SYNC_TEXT_SIZE, "Sync failed");
+    return;
+  }
+  menu_text_format_last_sync(text, last_sync, clock_24h);
+}
+
 void menu_text_format_last_auth(
   char text[LAST_AUTH_TEXT_SIZE],
   const struct tm *last_auth,

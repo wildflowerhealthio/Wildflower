@@ -52,6 +52,15 @@ void menu_text_format_last_sync(
   bool clock_24h
 );
 
+// Writes the status row's title: "Sync failed" when the last sync this run
+// failed, else menu_text_format_last_sync's text.
+void menu_text_format_status_title(
+  char text[LAST_SYNC_TEXT_SIZE],
+  bool sync_failed,
+  const struct tm *last_sync,
+  bool clock_24h
+);
+
 // Writes "Signed in <time>", or "Not signed in" when last_auth is NULL.
 void menu_text_format_last_auth(
   char text[LAST_AUTH_TEXT_SIZE],

@@ -8,7 +8,19 @@ enum {
   PersistKeyAuthTime = 3,
   // A bitmask, one bit per DataType; set means the type syncs.
   PersistKeyEnabledDataTypes = 4,
+  PersistKeyLastSyncTime = 5,
+  // Each DataType's last sync time is under this key plus the DataType, so
+  // keys 100 to 100 + DATA_TYPE_COUNT - 1 are taken.
+  PersistKeyFirstDataTypeLastSyncTime = 100,
 };
+
+// persist_read_int's 0 for a missing key is also "never synced".
+static void prv_load_sync_times(AppState *state) {
+  state->last_sync_time = persist_read_int(PersistKeyLastSyncTime);
+  for (int i = 0; i < DATA_TYPE_COUNT; i++) {
+    state->data_type_last_sync_times[i] = persist_read_int(PersistKeyFirstDataTypeLastSyncTime + i);
+  }
+}
 
 static void prv_load_enabled_data_types(AppState *state) {
   int all_enabled = (1 << DATA_TYPE_COUNT) - 1;
@@ -41,6 +53,7 @@ void state_load(AppState *state) {
     connection->auth_time = persist_read_int(PersistKeyAuthTime);
   }
   prv_load_enabled_data_types(state);
+  prv_load_sync_times(state);
 }
 
 void state_set_connection(AppState *state, const Connection *connection) {
@@ -54,6 +67,32 @@ void state_set_connection(AppState *state, const Connection *connection) {
 void state_toggle_data_type(AppState *state, DataType data_type) {
   state->data_type_enabled[data_type] = !state->data_type_enabled[data_type];
   prv_persist_enabled_data_types(state);
+}
+
+void state_begin_sync(AppState *state) {
+  state->syncing = true;
+  state->sync_failed = false;
+}
+
+void state_fail_sync(AppState *state) {
+  state->syncing = false;
+  state->sync_failed = true;
+}
+
+void state_complete_sync(
+  AppState *state,
+  time_t started_at,
+  const bool synced_data_types[DATA_TYPE_COUNT]
+) {
+  state->syncing = false;
+  state->last_sync_time = started_at;
+  persist_write_int(PersistKeyLastSyncTime, started_at);
+  for (int i = 0; i < DATA_TYPE_COUNT; i++) {
+    if (synced_data_types[i]) {
+      state->data_type_last_sync_times[i] = started_at;
+      persist_write_int(PersistKeyFirstDataTypeLastSyncTime + i, started_at);
+    }
+  }
 }
 
 SyncButtonState state_sync_button_state(const AppState *state) {

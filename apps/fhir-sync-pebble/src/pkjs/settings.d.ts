@@ -21,7 +21,8 @@ interface WatchMessage {
 
 declare const STORAGE_KEY: string
 declare function decodeResponse(response: string): Settings
+declare function decodeStored(stored: string | null): Settings
 declare function toWatchMessage(settings: Settings, receivedAtMs: number): WatchMessage
 
-export { decodeResponse, STORAGE_KEY, toWatchMessage }
+export { decodeResponse, decodeStored, STORAGE_KEY, toWatchMessage }
 export type { Settings, WatchMessage }

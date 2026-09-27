@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 // PebbleKit JS is CommonJS, which vite.config.ts hands to Node's own loader;
 // settings.d.ts types it.
-import { decodeResponse, toWatchMessage } from '../src/pkjs/settings.js'
+import { decodeResponse, decodeStored, toWatchMessage } from '../src/pkjs/settings.js'
 
 const settingsArbitrary = Arbitrary.make(PebbleSettings.Schema)
 
@@ -85,6 +85,33 @@ describe('decodeResponse', () => {
 
   it('rejects a response that is not JSON', () => {
     expect(() => decodeResponse(responseFor('{"patientId":'))).toThrow()
+  })
+})
+
+describe('decodeStored', () => {
+  // index.js stores what decodeResponse returns, as JSON, and the sync reads
+  // it back.
+  it('decodes the settings webviewclosed stored', () => {
+    fc.assert(
+      fc.property(settingsArbitrary, (settings) => {
+        const stored = JSON.stringify(decodeResponse(responseFor(PebbleSettings.toJson(settings))))
+        expect(decodeStored(stored)).toEqual(settings)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('rejects nothing stored, since the settings page never saved', () => {
+    expect(() => decodeStored(null)).toThrow('No settings stored')
+  })
+
+  it.each(REQUIRED_KEYS)('rejects stored settings whose %s is empty', (key) => {
+    fc.assert(
+      fc.property(settingsArbitrary, (settings) => {
+        expect(() => decodeStored(JSON.stringify({ ...settings, [key]: '' }))).toThrow(key)
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
   })
 })
 
