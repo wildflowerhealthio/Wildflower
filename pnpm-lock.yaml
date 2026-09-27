@@ -578,6 +578,18 @@ importers:
 
   apps/watch-lifts: {}
 
+  apps/watch-lifts/test:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+
   apps/web-trace:
     dependencies:
       '@effect/platform':

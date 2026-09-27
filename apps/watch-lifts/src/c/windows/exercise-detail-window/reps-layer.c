@@ -1,6 +1,7 @@
 #include <pebble.h>
 
 #include "reps-layer.h"
+#include "reps-text.h"
 
 struct RepsLayer
 {
@@ -8,13 +9,9 @@ struct RepsLayer
   TextLayer *person_name_layer;
   TextLayer *weights_layer;
   // text_layer_set_text stores the pointer rather than copying the string,
-  // so each RepsLayer needs its own buffer that lives as long as it does.
-  // Sized for two worst-case ints plus the fixed text so snprintf can never
-  // truncate.
-  char weights_text[43];
-  // Each set is written as "%i  ": up to two digits and two spaces, plus the
-  // NUL. Longer rep counts are truncated rather than overflowing.
-  char reps_text[MAX_SETS * 4 + 1];
+  // so each RepsLayer needs its own buffers that live as long as it does.
+  char weights_text[WEIGHT_TEXT_SIZE];
+  char reps_text[REPS_TEXT_SIZE];
   TextLayer *reps_layer;
 };
 
@@ -75,29 +72,13 @@ void reps_layer_set_person_name(RepsLayer *reps_layer, const char *name)
 
 void reps_layer_set_weight(RepsLayer *reps_layer, int weight)
 {
-  int bar = 45;
-  int half_weight = (weight - bar) / 2;
-  const char *half_str = (bar + half_weight * 2) < weight ? ".5" : "";
-  snprintf(reps_layer->weights_text, sizeof(reps_layer->weights_text),
-           "%i lbs - %i%s lbs / side", weight, half_weight, half_str);
+  reps_text_format_weight(reps_layer->weights_text, weight);
   text_layer_set_text(reps_layer->weights_layer, reps_layer->weights_text);
 }
 
 void reps_layer_set_reps(RepsLayer *reps_layer, const int reps[MAX_SETS], int set_count)
 {
-  if (set_count > MAX_SETS)
-  {
-    set_count = MAX_SETS;
-  }
-  reps_layer->reps_text[0] = '\0';
-  // snprintf returns the length it wanted to write, so once it truncates,
-  // length reaches the buffer size and the loop stops.
-  size_t length = 0;
-  for (int i = 0; i < set_count && length < sizeof(reps_layer->reps_text); i++)
-  {
-    length += snprintf(reps_layer->reps_text + length, sizeof(reps_layer->reps_text) - length,
-                       "%i  ", reps[i]);
-  }
+  reps_text_format_reps(reps_layer->reps_text, reps, set_count);
   text_layer_set_text(reps_layer->reps_layer, reps_layer->reps_text);
 }
 

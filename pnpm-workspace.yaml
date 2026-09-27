@@ -1,5 +1,8 @@
 packages:
   - apps/*
+  # The watch app's host-side C tests; see apps/watch-lifts/test/vite.config.ts
+  # for why they aren't part of apps/watch-lifts itself.
+  - apps/watch-lifts/test
   - global/*
   - global/effect-messaging/*
   - slices/**

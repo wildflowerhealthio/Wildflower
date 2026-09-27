@@ -53,6 +53,7 @@ export default defineConfig({
       'apps/importer-web/vite.config.ts',
       'apps/medications-app/vite.config.ts',
       'apps/ohif-viewer/vite.config.ts',
+      'apps/watch-lifts/test/vite.config.ts',
       'apps/web-trace/vite.config.ts',
       'apps/marketing-website/vite.config.ts',
       'apps/wildflower-react/vite.config.ts',
