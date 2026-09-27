@@ -3,34 +3,18 @@
 #include "views/stats-bar-layer.h"
 #include "windows/select-exercise-window.h"
 
-// Every window stores its StatsBarLayer as its user data, so the one app-wide
-// health subscription and tick subscription can update whichever is on top.
-static StatsBarLayer *prv_top_stats_bar_layer(void)
-{
-  Window *top_window = window_stack_get_top_window();
-  return top_window == NULL ? NULL : window_get_user_data(top_window);
-}
-
 static void prv_on_health_data(HealthEventType type, void *context)
 {
   if (type != HealthEventHeartRateUpdate)
   {
     return;
   }
-  StatsBarLayer *stats_bar_layer = prv_top_stats_bar_layer();
-  if (stats_bar_layer != NULL)
-  {
-    stats_bar_layer_refresh(stats_bar_layer);
-  }
+  stats_bar_layer_refresh_all();
 }
 
 static void prv_on_minute_tick(struct tm *tick_time, TimeUnits units_changed)
 {
-  StatsBarLayer *stats_bar_layer = prv_top_stats_bar_layer();
-  if (stats_bar_layer != NULL)
-  {
-    stats_bar_layer_refresh(stats_bar_layer);
-  }
+  stats_bar_layer_refresh_all();
 }
 
 static void prv_subscribe_heart_rate(void)
@@ -42,11 +26,7 @@ static void prv_subscribe_heart_rate(void)
     return;
   }
   stats_bar_layer_set_heart_rate_unavailable(true);
-  StatsBarLayer *stats_bar_layer = prv_top_stats_bar_layer();
-  if (stats_bar_layer != NULL)
-  {
-    stats_bar_layer_refresh(stats_bar_layer);
-  }
+  stats_bar_layer_refresh_all();
 }
 
 static void prv_unsubscribe_heart_rate(void)
