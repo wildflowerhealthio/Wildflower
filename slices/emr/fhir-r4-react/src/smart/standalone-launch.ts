@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from 'fhir-r4/clients'
 import { normalizeServerUrl } from 'gatekeeper-core/smart-client'
 
 import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
@@ -60,7 +61,7 @@ const detectSmartSupport = async (
   iss: string,
   fetchFn: typeof fetch = globalThis.fetch
 ): Promise<SmartSupport> => {
-  const base = iss.replace(/\/+$/u, '')
+  const base = trimTrailingSlashes(iss)
   let response: Response
   try {
     response = await fetchFn(`${base}/.well-known/smart-configuration`, {

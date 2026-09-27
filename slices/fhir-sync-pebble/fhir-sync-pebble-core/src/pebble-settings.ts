@@ -1,4 +1,5 @@
 import { Data, Either, Schema } from 'effect'
+import { trimTrailingSlashes } from 'fhir-r4/clients'
 import { HumanName } from 'fhir-r4/data-types'
 
 /**
@@ -25,7 +26,10 @@ const ConnectionSchema = Schema.Struct({
   patientId: Schema.NonEmptyString,
   /** The SMART access token, sent as `Authorization: Bearer …`. */
   accessToken: Schema.NonEmptyString,
-  /** The FHIR base URL the token was granted for; Observations are POSTed under it. */
+  /**
+   * The FHIR base URL the token was granted for, without trailing slashes;
+   * Observations are POSTed under it.
+   */
   fhirBaseUrl: Schema.NonEmptyString,
 })
 
@@ -63,9 +67,21 @@ interface Grant {
 
 const decodeConnection = Schema.decodeUnknownEither(ConnectionSchema)
 
-/** The connection a grant carries, or {@link MissingGrantError} when it lacks any of it. */
+/**
+ * The connection a grant carries, or {@link MissingGrantError} when it lacks any of it.
+ *
+ * @remarks
+ * The base URL is the one the handshake named, trimmed by `fhir-r4`'s
+ * `trimTrailingSlashes` — the rule the page's own reads go through — so the
+ * watch, which appends `/Observation` to it, addresses the server as the page
+ * did. A server entered as `https://fhir.example/r4/` would otherwise have it
+ * POST to `…/r4//Observation`.
+ */
 const fromGrant = (grant: Grant): Either.Either<Connection, MissingGrantError> =>
-  Either.mapLeft(decodeConnection(grant), () => new MissingGrantError())
+  Either.mapLeft(
+    decodeConnection({ ...grant, fhirBaseUrl: trimTrailingSlashes(grant.fhirBaseUrl) }),
+    () => new MissingGrantError()
+  )
 
 /**
  * The settings for `connection`, naming the patient as the server returned it.

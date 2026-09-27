@@ -1,4 +1,4 @@
-import { Data, Either, Schema } from 'effect'
+import { Data, Either, Option, Schema } from 'effect'
 
 import * as PebbleSettings from './pebble-settings.ts'
 
@@ -31,13 +31,24 @@ const DEFAULT = 'pebblejs://close#'
 /** Hosts a local emulator's configuration server listens on. */
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]'])
 
+/**
+ * `value` parsed as an absolute URL, or `None` when it is not one.
+ *
+ * @remarks
+ * A throwing `new URL` rather than `URL.canParse`: the page runs in the Pebble
+ * phone app's web view, and `URL.canParse` is missing from iOS 16's WKWebView
+ * and Chrome before 120 — calling it there throws inside the schema filter and
+ * blanks the page.
+ */
+const parseUrl = Option.liftThrowable((value: string) => new URL(value))
+
+/** Whether `url` is the Pebble phone app or a local emulator. */
+const isPebbleOrEmulator = (url: URL): boolean =>
+  url.protocol === 'pebblejs:' ||
+  ((url.protocol === 'http:' || url.protocol === 'https:') && LOOPBACK_HOSTS.has(url.hostname))
+
 /** Whether `value` is the Pebble phone app or a local emulator. */
-const isAllowed = (value: string): boolean => {
-  if (!URL.canParse(value)) return false
-  const url = new URL(value)
-  if (url.protocol === 'pebblejs:') return true
-  return (url.protocol === 'http:' || url.protocol === 'https:') && LOOPBACK_HOSTS.has(url.hostname)
-}
+const isAllowed = (value: string): boolean => Option.exists(parseUrl(value), isPebbleOrEmulator)
 
 const ReturnTargetSchema = Schema.String.pipe(
   Schema.filter(isAllowed, {

@@ -1,10 +1,14 @@
 import { Either } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { describe, expect, it } from 'vite-plus/test'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type * as PebbleSettings from './pebble-settings.ts'
 import * as ReturnTarget from './return-target.ts'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('isAllowed', () => {
   it("should allow the Pebble app's own close URL", () => {
@@ -18,6 +22,15 @@ describe('isAllowed', () => {
   })
 
   it('should refuse something that is not a URL', () => {
+    expect(ReturnTarget.isAllowed('close')).toBe(false)
+  })
+
+  it('should decide without URL.canParse, which older phone web views lack', () => {
+    // Arrange — iOS 16's WKWebView and Chrome before 120 have no `URL.canParse`
+    vi.stubGlobal('URL', urlWithoutCanParse())
+
+    // Act / Assert
+    expect(ReturnTarget.isAllowed(ReturnTarget.DEFAULT)).toBe(true)
     expect(ReturnTarget.isAllowed('close')).toBe(false)
   })
 
@@ -35,6 +48,19 @@ describe('decode', () => {
   it('should decode an allowed return target', () => {
     expect(ReturnTarget.decode(ReturnTarget.DEFAULT)).toStrictEqual(
       Either.right(ReturnTarget.DEFAULT)
+    )
+  })
+
+  it('should decode the default and refuse a non-URL without URL.canParse', () => {
+    // Arrange
+    vi.stubGlobal('URL', urlWithoutCanParse())
+
+    // Act / Assert
+    expect(ReturnTarget.decode(ReturnTarget.DEFAULT)).toStrictEqual(
+      Either.right(ReturnTarget.DEFAULT)
+    )
+    expect(ReturnTarget.decode('close')).toStrictEqual(
+      Either.left(new ReturnTarget.ForeignReturnTargetError({ returnTo: 'close' }))
     )
   })
 
@@ -102,6 +128,14 @@ const settingsArb: fc.Arbitrary<PebbleSettings.Type> = fc.record({
   accessToken: fc.string({ minLength: 1 }),
   fhirBaseUrl: fc.webUrl(),
 })
+
+/** The platform `URL` class with no static `canParse`, as an older web view ships it. */
+const urlWithoutCanParse = (): typeof URL => {
+  const PlatformUrl = URL
+  class UrlWithoutCanParse extends PlatformUrl {}
+  Object.defineProperty(UrlWithoutCanParse, 'canParse', { value: undefined })
+  return UrlWithoutCanParse
+}
 
 /** `returnTo` decoded as a return target, failing the test when it is refused. */
 const allowed = (returnTo: string): ReturnTarget.Type =>

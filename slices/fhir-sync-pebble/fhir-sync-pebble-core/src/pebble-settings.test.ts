@@ -44,6 +44,54 @@ describe('fromGrant', () => {
     // Assert
     expect(connection).toStrictEqual(Either.left(new PebbleSettings.MissingGrantError()))
   })
+
+  it('should trim the trailing slash off the server a user entered with one', () => {
+    // Act
+    const connection = PebbleSettings.fromGrant({
+      patientId: 'ada',
+      accessToken: 'watch-token',
+      fhirBaseUrl: 'https://fhir.example/r4/',
+    })
+
+    // Assert — the watch appends `/Observation`, so no `…/r4//Observation`
+    expect(Either.map(connection, ({ fhirBaseUrl }) => fhirBaseUrl)).toStrictEqual(
+      Either.right('https://fhir.example/r4')
+    )
+  })
+
+  it('should never hand the watch a base URL ending in a slash', () => {
+    fc.assert(
+      fc.property(fc.webUrl(), fc.nat({ max: 3 }), (fhirBaseUrl, slashCount) => {
+        // Act
+        const connection = PebbleSettings.fromGrant({
+          patientId: 'ada',
+          accessToken: 'watch-token',
+          fhirBaseUrl: fhirBaseUrl + '/'.repeat(slashCount),
+        })
+
+        // Assert
+        const granted = Either.getOrThrow(connection)
+        expect(granted.fhirBaseUrl.endsWith('/')).toBe(false)
+        expect(fhirBaseUrl.startsWith(granted.fhirBaseUrl)).toBe(true)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should leave an already-trimmed base URL as it is', () => {
+    fc.assert(
+      fc.property(connectionArb, (granted) => {
+        // Act
+        const regranted = PebbleSettings.fromGrant(
+          Either.getOrThrow(PebbleSettings.fromGrant(granted))
+        )
+
+        // Assert
+        expect(regranted).toStrictEqual(PebbleSettings.fromGrant(granted))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
 })
 
 describe('withPatient', () => {
