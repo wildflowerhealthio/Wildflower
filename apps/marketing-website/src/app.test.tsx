@@ -51,12 +51,12 @@ describe('App', () => {
     expect(wordmark.getAttribute('href')).toBe('#top')
   })
 
-  it('should link the header nav to the five app routes', () => {
+  it('should link the header nav to the seven app routes', () => {
     // Arrange / Act
     render(<App />)
 
     // Assert — every "call to action" on the page is a link into an app;
-    // the header carries all six routes.
+    // the header carries all seven routes.
     const nav = screen.getByRole('navigation', { name: 'Apps' })
     const hrefs = within(nav)
       .getAllByRole('link')
@@ -70,6 +70,7 @@ describe('App', () => {
       './web-trace-app',
       './wildflower-server-docs',
       './ohif-viewer',
+      './lifting-app',
     ])
   })
 

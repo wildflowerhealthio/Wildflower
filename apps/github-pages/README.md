@@ -9,6 +9,7 @@ that owns it, and this package places those outputs at their public URLs.
 | `/`                       | `marketing-website` (`apps/marketing-website`)           |
 | `/medications-app`        | `medications-app` (`apps/medications-app`)               |
 | `/importer-app`           | `wildflower-importer` (`apps/importer-web`)              |
+| `/lifting-app`            | `wildflower-lifting` (`apps/lifting-app`)                |
 | `/wildflower-server-docs` | `wildflower-server-docs` (`apps/wildflower-server-docs`) |
 | `/web-trace-app`          | `wildflower-web-trace` (`apps/web-trace`)                |
 | `/ohif-viewer`            | `ohif-viewer` (`apps/ohif-viewer`)                       |
@@ -58,10 +59,11 @@ workspace `devDependency` of this package, so the workspace's own build ordering
 (`vp run pack`, i.e. `vp run --cache -r build`) builds every section before this
 package's build stages them. Doing that here keeps each app's own build config
 untouched: every section builds into its own package — the medications app, the
-Web Trace app, the Importer, FHIR Sync for Pebble and the server-docs console into
-their default `dist/`, the owner UI into `dist-web/` — and this package only copies
-from there. The OHIF viewer's `dist/` is a downloaded prebuilt bundle (or a stub
-page while none is pinned) rather than a Vite build, and is copied verbatim too.
+Web Trace app, the Importer, FHIR Sync for Pebble, Lifting and the server-docs
+console into their default `dist/`, the owner UI into `dist-web/` — and this
+package only copies from there. The OHIF viewer's `dist/` is a downloaded
+prebuilt bundle (or a stub page while none is pinned) rather than a Vite build,
+and is copied verbatim too.
 
 Each of the four SMART apps sets a relative `base: './'` in its own Vite
 config, which is what lets the same build serve from a subpath here and from a

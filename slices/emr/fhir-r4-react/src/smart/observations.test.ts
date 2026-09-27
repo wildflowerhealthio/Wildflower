@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { fetchObservationPage } from './observations.ts'
+import { fetchObservationBasedOnPage, fetchObservationPage } from './observations.ts'
 import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
@@ -85,5 +85,49 @@ describe('fetchObservationPage', () => {
 
     expect(page.items.map((item) => item.id)).toEqual(['obs-1'])
     expect(page.droppedEntryCount).toBe(1)
+  })
+})
+
+describe('fetchObservationBasedOnPage', () => {
+  test('scopes the first-page query to the patient and the based-on reference, oldest-observed first, 200 to a page', async () => {
+    const { client, queries } = stubSmartClient(bundle([]))
+
+    await Effect.runPromise(
+      fetchObservationBasedOnPage(client, {
+        first: { patientId: 'pat-1', basedOn: 'CarePlan/plan-1' },
+      })
+    )
+
+    expect(queries).toEqual([
+      'Observation?patient=pat-1&based-on=CarePlan%2Fplan-1&_sort=date&_count=200',
+    ])
+  })
+
+  test('property: any patient id and reference survive the query as themselves', async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.string(), fc.string(), async (patientId, basedOn) => {
+        const { client, queries } = stubSmartClient(bundle([]))
+
+        await Effect.runPromise(
+          fetchObservationBasedOnPage(client, { first: { patientId, basedOn } })
+        )
+
+        const params = searchParamsOf(queries[0] ?? '')
+        expect(params.get('patient')).toBe(patientId)
+        expect(params.get('based-on')).toBe(basedOn)
+        expect(params.get('_sort')).toBe('date')
+        expect(params.get('_count')).toBe('200')
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  test('requests a later page by its cursor URL verbatim', async () => {
+    const { client, queries } = stubSmartClient(bundle([]))
+    const pageUrl = 'https://fhir.example/Observation?_getpages=def&_getpagesoffset=200'
+
+    await Effect.runPromise(fetchObservationBasedOnPage(client, { pageUrl }))
+
+    expect(queries).toEqual([pageUrl])
   })
 })

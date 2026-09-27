@@ -29,6 +29,27 @@ type ObservationPage = ResourcePage<ObservationResource>
  */
 type ObservationPageCursor = ResourcePageCursor<string | null>
 
+/**
+ * The first-page input for {@link fetchObservationBasedOnPage}: the patient the
+ * observations are about and the request they were made against.
+ */
+interface ObservationBasedOnFirstPage {
+  /** The patient to scope the search to — the id the caller read off `client.patient.id`. */
+  readonly patientId: string
+  /**
+   * The literal reference the observations name in `basedOn`, e.g.
+   * `CarePlan/plan-1` — sent as the `based-on` search parameter.
+   */
+  readonly basedOn: string
+}
+
+/**
+ * The cursor {@link fetchObservationBasedOnPage} reads from. `first` carries the
+ * patient and the `based-on` reference; `{ pageUrl }` continues from a previous
+ * page's `nextPageUrl`.
+ */
+type ObservationBasedOnPageCursor = ResourcePageCursor<ObservationBasedOnFirstPage>
+
 // The first page's non-scope search parameters: oldest-observed first,
 // server-side, so scroll paging can append each page without reordering rows
 // already on screen (`date` is the FHIR R4 `Observation` search parameter
@@ -48,6 +69,18 @@ const observationRead: PagedResourceRead<
     patientId === null
       ? SEARCH_PARAMS
       : `patient=${encodeURIComponent(patientId)}&${SEARCH_PARAMS}`,
+}
+
+/** The `Observation` read narrowed to the observations made against one request. */
+const observationBasedOnRead: PagedResourceRead<
+  ObservationResource,
+  Schema.Schema.Encoded<typeof Observation.Schema>,
+  ObservationBasedOnFirstPage
+> = {
+  resourceType: 'Observation',
+  schema: Observation.Schema,
+  firstPageQuery: ({ patientId, basedOn }: ObservationBasedOnFirstPage): string =>
+    `patient=${encodeURIComponent(patientId)}&based-on=${encodeURIComponent(basedOn)}&${SEARCH_PARAMS}`,
 }
 
 /**
@@ -73,8 +106,34 @@ const fetchObservationPage = (
 ): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(client, observationRead, cursor)
 
+/**
+ * Fetch a single page of one patient's `Observation`s made against one request
+ * — a plan's logged sessions, say (`based-on=CarePlan/<id>`) — and report the
+ * cursor to the next page.
+ *
+ * @param client - The SMART client the search is issued through
+ * @param cursor - The patient and `based-on` reference for the first page, or a
+ *   previous page's `nextPageUrl`
+ * @returns An effect yielding the page's decoded `Observation`s and the next page's cursor
+ *
+ * @remarks
+ * The sibling of {@link fetchObservationPage} with the same order (oldest
+ * observed first) and page size, narrowed server-side by FHIR R4's
+ * `Observation` `based-on` search parameter, so observations made against any
+ * other request never reach the caller. Always patient-scoped: the `based-on`
+ * narrowing is for one person's record, not a cross-patient report.
+ */
+const fetchObservationBasedOnPage = (
+  client: Client,
+  cursor: ObservationBasedOnPageCursor
+): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError> =>
+  fetchResourcePage(client, observationBasedOnRead, cursor)
+
 export {
+  fetchObservationBasedOnPage,
   fetchObservationPage,
+  type ObservationBasedOnFirstPage,
+  type ObservationBasedOnPageCursor,
   type ObservationPage,
   type ObservationPageCursor,
   type ObservationResource,

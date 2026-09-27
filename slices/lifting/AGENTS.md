@@ -51,7 +51,11 @@ with StrongLifts 5×5 as a template rather than a special case.
   screen's `error` is `unknown`, so a mutation's error passes straight to its
   `ErrorBanner`.
 
-The app route is not built yet.
+The app is [`apps/lifting-app`](../../apps/lifting-app/AGENTS.md)
+(`wildflower-lifting`): the four screens under a Today | Progress | Plan |
+History toggle, reading through `fhir-r4-react/smart`'s CarePlan, Goal and
+`based-on` Observation readers and writing each save, session and progression
+as one batch `Bundle`.
 
 ## Rules
 

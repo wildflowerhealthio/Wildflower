@@ -1,0 +1,31 @@
+/*
+ * App shell. Colours and spacing read from the Tundra design tokens
+ * (`--color-*`, `--space-*`) that `tundra-css` + `react-tundraish` define
+ * globally; the page title uses tundra's built-in `text-heading-3` class, so
+ * this file only lays out the shell. Dark mode needs no rule here — every token
+ * flips with `:root[data-color-scheme='dark']`.
+ */
+.app {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-7) var(--space-13);
+}
+
+/* The title row: the H1 and the view toggle share one line, the toggle pushed
+ * to the far end; both drop to their own lines when the row is too narrow. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-7);
+  margin-bottom: var(--space-9);
+}
+
+/* Header controls: the view toggle. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
+}

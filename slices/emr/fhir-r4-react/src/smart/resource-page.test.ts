@@ -6,9 +6,13 @@ import { describe, expect, test, vi } from 'vite-plus/test'
 
 import {
   BundleDecodeError,
+  ResourcePageCycleError,
   ResourcePageRequestError,
+  fetchAllResourcePages,
   fetchResourcePage,
   type PagedResourceRead,
+  type ResourcePage,
+  type ResourcePageCursor,
 } from './resource-page.ts'
 import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
@@ -263,5 +267,82 @@ describe('fetchResourcePage', () => {
         expect(page.items.map((item) => encodeObservation(item))).toEqual([wire])
       })
     )
+  })
+})
+
+describe('fetchAllResourcePages', () => {
+  test('property: reads every page in order, joining their items and summing their dropped entries', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.record({ items: fc.array(fc.nat()), dropped: fc.nat({ max: 3 }) }), {
+          minLength: 1,
+          maxLength: 6,
+        }),
+        async (pages) => {
+          // Arrange — page `n` links to page `n + 1`; the last links nowhere
+          const cursors: ResourcePageCursor<string>[] = []
+          const fetchPage = (
+            cursor: ResourcePageCursor<string>
+          ): Effect.Effect<ResourcePage<number>> => {
+            cursors.push(cursor)
+            const index = 'first' in cursor ? 0 : Number(cursor.pageUrl.split('=')[1])
+            const page = pages[index] ?? { items: [], dropped: 0 }
+            return Effect.succeed({
+              items: page.items,
+              droppedEntryCount: page.dropped,
+              nextPageUrl:
+                index + 1 < pages.length ? `https://fhir.example/next?page=${index + 1}` : null,
+            })
+          }
+
+          // Act
+          const all = await Effect.runPromise(fetchAllResourcePages(fetchPage, 'first-input'))
+
+          // Assert
+          expect(all.items).toEqual(pages.flatMap((page) => page.items))
+          expect(all.droppedEntryCount).toBe(pages.reduce((sum, page) => sum + page.dropped, 0))
+          expect(cursors[0]).toEqual({ first: 'first-input' })
+          expect(cursors).toHaveLength(pages.length)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  test('fails on a next link naming a page already read, rather than looping', async () => {
+    // Arrange — the second page links back to itself
+    const loop = 'https://fhir.example/next?page=1'
+    const fetchPage = (): Effect.Effect<ResourcePage<number>> =>
+      Effect.succeed({ items: [1], droppedEntryCount: 0, nextPageUrl: loop })
+
+    // Act
+    const failure = await Effect.runPromise(
+      Effect.flip(fetchAllResourcePages(fetchPage, 'first-input'))
+    )
+
+    // Assert
+    expect(failure).toEqual(new ResourcePageCycleError({ pageUrl: loop }))
+  })
+
+  test('fails the whole read when a page fails, rather than returning what it read so far', async () => {
+    // Arrange — the first page links on; the second fails
+    const fetchPage = (
+      cursor: ResourcePageCursor<string>
+    ): Effect.Effect<ResourcePage<number>, ResourcePageRequestError> =>
+      'first' in cursor
+        ? Effect.succeed({
+            items: [1],
+            droppedEntryCount: 0,
+            nextPageUrl: 'https://fhir.example/next?page=1',
+          })
+        : Effect.fail(new ResourcePageRequestError({ cause: 'down' }))
+
+    // Act
+    const failure = await Effect.runPromise(
+      Effect.flip(fetchAllResourcePages(fetchPage, 'first-input'))
+    )
+
+    // Assert
+    expect(failure._tag).toBe('ResourcePageRequestError')
   })
 })

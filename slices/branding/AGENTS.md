@@ -34,7 +34,7 @@ site-absolute, as `?redirect=<path>` (an app-relative route named like the
 app's own directory, `/app` below `/app/`, would read as the app root).
 `restoreRedirectedUrl(window)` is the other half: each
 first-party SPA entry (`apps/medications-app`, `apps/importer-web`,
-`apps/fhir-sync-pebble-web`, `apps/web-trace`, `apps/wildflower-server-docs`) calls it as its first statement,
+`apps/fhir-sync-pebble-web`, `apps/lifting-app`, `apps/web-trace`, `apps/wildflower-server-docs`) calls it as its first statement,
 before the router, the SMART callback check, or the `?server=` read — it puts
 the route back in the address bar with `history.replaceState` and drops the
 `redirect` parameter, leaving every other parameter and the fragment alone.
@@ -132,7 +132,7 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
   the chrome — header, footer, brand bar, icon, layout tokens — is made once, in
   this slice, and every surface picks it up. Both the homepage and the apps show
-  `HEADER_NAV_LINKS` (direct links into the six apps); only href resolution
+  `HEADER_NAV_LINKS` (direct links into the seven apps); only href resolution
   differs by `NavContext`. The `SiteFooter` is the minimal "not a company"
   footer (paragraph + contact + mono stamp) carrying `id="note"`; the homepage's
   `app.test.tsx` asserts an element exists for every `MARKETING_ANCHORS` id

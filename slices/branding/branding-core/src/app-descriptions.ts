@@ -7,7 +7,7 @@ import type { SectionId } from './site.ts'
  */
 type AppSectionId = Extract<
   SectionId,
-  'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace' | 'healthViewer' | 'app'
+  'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace' | 'healthViewer' | 'lifting' | 'app'
 >
 
 /**
@@ -18,7 +18,7 @@ type AppSectionId = Extract<
 type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'healthViewer'>
 
 /**
- * The four SMART app sections, in the order the marketing homepage presents
+ * The five SMART app sections, in the order the marketing homepage presents
  * them. The owner UI (`app`) has a landing page but no homepage row, so it is
  * not among them.
  */
@@ -27,6 +27,7 @@ const APP_SECTION_IDS: readonly HomepageAppSectionId[] = [
   'fhirSyncPebble',
   'importer',
   'webTrace',
+  'lifting',
 ]
 
 /**
@@ -226,6 +227,27 @@ const APP_DESCRIPTIONS: {
         'SMART on FHIR apps, like the ones on this site, launch against your own records.',
     ],
     anchor: 'try',
+  },
+  lifting: {
+    name: 'Lifting',
+    tagline:
+      'A strength-training plan and the sessions you lift against it, ' +
+      'kept in your own FHIR record.',
+    paragraphs: [
+      'I want my training log to live with the rest of my health record, ' +
+        'not in one more app that keeps it to itself.',
+      'A plan is a goal for each exercise (its load, sets and reps) and the workouts ' +
+        'that alternate between them. You log each session set by set, ' +
+        'and the app raises, holds or deloads each lift from your recent results. ' +
+        'StrongLifts 5×5 is built in as a starting template.',
+      'Everything is stored on your FHIR server as CarePlan, Goal and Observation resources, ' +
+        'so any other app you connect can read your training too.',
+    ],
+    anchor: 'built',
+    launch: {
+      label: 'Open Lifting',
+      note: 'Start a plan on any FHIR server you can write to, including a demo one',
+    },
   },
 }
 

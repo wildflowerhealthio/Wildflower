@@ -79,7 +79,7 @@ describe('sectionHref', () => {
 
   it('should match SECTION_PATHS on marketing and sectionUrl from an app', () => {
     const sectionArb = fc.constantFrom(
-      ...(['medications', 'importer', 'webTrace', 'serverDocs', 'ohifViewer'] as const)
+      ...(['medications', 'importer', 'webTrace', 'serverDocs', 'ohifViewer', 'lifting'] as const)
     )
     fc.assert(
       fc.property(sectionArb, (section) => {
@@ -109,7 +109,7 @@ describe('navHref', () => {
 })
 
 describe('HEADER_NAV_LINKS', () => {
-  it('should link directly into the six apps, in design order', () => {
+  it('should link directly into the seven apps, in design order', () => {
     expect(HEADER_NAV_LINKS.map((link) => link.label)).toStrictEqual([
       'Medications',
       'Health viewer',
@@ -117,6 +117,7 @@ describe('HEADER_NAV_LINKS', () => {
       'Web traces',
       'Server docs',
       'Imaging',
+      'Lifting',
     ])
   })
 

@@ -57,6 +57,15 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
+    packageName: 'wildflower-lifting',
+    // The package lives in `apps/lifting-app`; its published path is
+    // `/${SECTION_PATHS.lifting}`.
+    sourceDir: 'apps/lifting-app/dist',
+    destPath: SECTION_PATHS.lifting,
+    // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
+    requiredFiles: ['index.html', 'launch.html'],
+  },
+  {
     packageName: 'wildflower-server-docs',
     sourceDir: 'apps/wildflower-server-docs/dist',
     destPath: SECTION_PATHS.serverDocs,

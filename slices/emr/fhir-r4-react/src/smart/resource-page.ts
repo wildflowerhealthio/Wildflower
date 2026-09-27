@@ -9,13 +9,23 @@ import type Client from 'fhirclient/lib/Client'
  * @remarks
  * {@link fetchResourcePage} never applies it — `_count` belongs to the read's own
  * `firstPageQuery`, because pinning one is a per-read decision.
- * `fetchObservationPage` and `fetchPatientPage` pin it;
- * `fetchMedicationRequestPage` deliberately does not.
+ * `fetchObservationPage`, `fetchObservationBasedOnPage`, `fetchPatientPage`,
+ * `fetchCarePlanPage` and `fetchGoalPage` pin it; `fetchMedicationRequestPage`
+ * deliberately does not.
  */
 const RESOURCE_PAGE_SIZE = 200
 
 class ResourcePageRequestError extends Data.TaggedError('ResourcePageRequestError')<{
   readonly cause: unknown
+}> {}
+
+/**
+ * A search's `next` link pointed back at a page already read, so following it
+ * would never end.
+ */
+class ResourcePageCycleError extends Data.TaggedError('ResourcePageCycleError')<{
+  /** The `next`-link URL that had already been read. */
+  readonly pageUrl: string
 }> {}
 
 class BundleDecodeError extends Data.TaggedError('BundleDecodeError')<{
@@ -153,11 +163,57 @@ const fetchResourcePage = <A, I, First>(
     }
   })
 
+/**
+ * Read every page of a paged search, from its first page to the one with no
+ * `next` link, for a caller that needs the whole result rather than a page at
+ * a time (a decision over a patient's whole history, say).
+ *
+ * @typeParam A - The decoded resource type
+ * @typeParam First - The first-page input the reader's first page takes
+ * @typeParam E - The reader's error
+ * @param fetchPage - One of this module's page readers, bound to its client —
+ *   e.g. `(cursor) => fetchGoalPage(client, cursor)`
+ * @param first - The first page's input
+ * @returns An effect yielding every page's decoded resources in server order
+ *   and the total count of entries that failed to decode
+ *
+ * @remarks
+ * Takes a page reader rather than a {@link PagedResourceRead}, so every
+ * reader here — each keeping its descriptor private — pages the same way.
+ *
+ * A server whose `next` link names a page already read would loop forever;
+ * that fails with {@link ResourcePageCycleError} instead. A failed page fails
+ * the whole read: a partial history is not the whole history.
+ */
+const fetchAllResourcePages = <A, First, E>(
+  fetchPage: (cursor: ResourcePageCursor<First>) => Effect.Effect<ResourcePage<A>, E>,
+  first: First
+): Effect.Effect<Omit<ResourcePage<A>, 'nextPageUrl'>, E | ResourcePageCycleError> =>
+  Effect.gen(function* () {
+    const items: A[] = []
+    let droppedEntryCount = 0
+    const readPageUrls = new Set<string>()
+    let cursor: ResourcePageCursor<First> = { first }
+    for (;;) {
+      const page: ResourcePage<A> = yield* fetchPage(cursor)
+      items.push(...page.items)
+      droppedEntryCount += page.droppedEntryCount
+      if (page.nextPageUrl === null) return { items, droppedEntryCount }
+      if (readPageUrls.has(page.nextPageUrl)) {
+        return yield* new ResourcePageCycleError({ pageUrl: page.nextPageUrl })
+      }
+      readPageUrls.add(page.nextPageUrl)
+      cursor = { pageUrl: page.nextPageUrl }
+    }
+  })
+
 export {
   BundleDecodeError,
   RESOURCE_PAGE_SIZE,
   ResourcePageRequestError,
+  fetchAllResourcePages,
   fetchResourcePage,
+  ResourcePageCycleError,
   type PagedResourceRead,
   type ResourcePage,
   type ResourcePageCursor,

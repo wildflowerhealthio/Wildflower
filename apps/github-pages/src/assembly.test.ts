@@ -89,6 +89,15 @@ describe('site layout', () => {
     expect(pebble?.requiredPaths).toEqual([join(outDir, 'fhir-sync-pebble', 'index.html')])
   })
 
+  it('serves the lifting app from /lifting-app with both SMART entries', () => {
+    const [lifting] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-lifting')])
+    expect(lifting?.to).toBe(join(outDir, 'lifting-app'))
+    expect(lifting?.requiredPaths).toEqual([
+      join(outDir, 'lifting-app', 'index.html'),
+      join(outDir, 'lifting-app', 'launch.html'),
+    ])
+  })
+
   it('serves the server-docs console from /wildflower-server-docs', () => {
     const [serverDocs] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-server-docs')])
     expect(serverDocs?.to).toBe(join(outDir, 'wildflower-server-docs'))
@@ -189,6 +198,7 @@ describe('site layout', () => {
         'fhir-sync-pebble',
         'health-viewer-app',
         'importer-app',
+        'lifting-app',
         'medications-app',
         'ohif-viewer',
         'web-trace-app',
@@ -229,15 +239,16 @@ describe('site-wide files', () => {
 
 describe('layout reconciliation with the packages it assembles', () => {
   /**
-   * The four first-party SMART apps: each builds into its own package's
+   * The five first-party SMART apps: each builds into its own package's
    * default `dist/` and the site copies it from there. `appDir` is the folder
-   * under `apps/`, which differs from the package name for two of them.
+   * under `apps/`, which differs from the package name for three of them.
    */
   const firstPartyApps = [
     { packageName: 'medications-app', appDir: 'medications-app' },
     { packageName: 'wildflower-web-trace', appDir: 'web-trace' },
     { packageName: 'wildflower-importer', appDir: 'importer-web' },
     { packageName: 'fhir-sync-pebble-web', appDir: 'fhir-sync-pebble-web' },
+    { packageName: 'wildflower-lifting', appDir: 'lifting-app' },
   ] as const
 
   it.each(firstPartyApps)(

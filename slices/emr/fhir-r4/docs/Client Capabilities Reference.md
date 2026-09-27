@@ -82,7 +82,7 @@ Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_last
 
 Implication: the typed client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
 
-The SMART viewer reads Observations around this, not through it: `fhir-r4-react/smart`'s `fetchObservationPage` issues a raw fhirclient `Observation?patient=<id>&_sort=date&_count=200` and decodes each entry with `Observation.Schema`. That is why `patient`/`date` being undeclared here has not blocked the viewer — and why closing this gap is still worth doing for the typed client's own consumers.
+The SMART viewer reads Observations around this, not through it: `fhir-r4-react/smart`'s `fetchObservationPage` issues a raw fhirclient `Observation?patient=<id>&_sort=date&_count=200` and decodes each entry with `Observation.Schema`. That is why `patient`/`date` being undeclared here has not blocked the viewer — and why closing this gap is still worth doing for the typed client's own consumers. `apps/lifting-app` reads a plan's logged sessions the same way, through the sibling `fetchObservationBasedOnPage` (`Observation?patient=<id>&based-on=CarePlan%2F<id>&_sort=date&_count=200`), and its plans and goals through `fetchCarePlanPage` (`CarePlan?patient=<id>&category=<system>%7C<code>&status=active&_count=200`, narrowed to lifting plans) and `fetchGoalPage` (`Goal?patient=<id>&_count=200`), so the typed client not declaring `based-on` (or `patient`) is not a blocker there either.
 
 ## DocumentReference search parameters (subset declared)
 
