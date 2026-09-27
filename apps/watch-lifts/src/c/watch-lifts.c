@@ -37,10 +37,15 @@ static void prv_subscribe_heart_rate(void)
 {
   bool health_service_subscribe_success = health_service_events_subscribe(prv_on_health_data, NULL);
   bool sample_rate_success = health_service_subscribe_success && health_service_set_heart_rate_sample_period(15);
-  StatsBarLayer *stats_bar_layer = prv_top_stats_bar_layer();
-  if (!sample_rate_success && stats_bar_layer != NULL)
+  if (sample_rate_success)
   {
-    stats_bar_layer_show_heart_rate_error(stats_bar_layer);
+    return;
+  }
+  stats_bar_layer_set_heart_rate_unavailable(true);
+  StatsBarLayer *stats_bar_layer = prv_top_stats_bar_layer();
+  if (stats_bar_layer != NULL)
+  {
+    stats_bar_layer_refresh(stats_bar_layer);
   }
 }
 

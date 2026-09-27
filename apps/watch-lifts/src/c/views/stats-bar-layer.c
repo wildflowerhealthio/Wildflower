@@ -11,6 +11,10 @@ struct StatsBarLayer
   ClockLayer *clock_layer;
 };
 
+// App-wide rather than per bar: the heart rate subscription is set up once in
+// main, and every bar built after a failure has to keep showing it.
+static bool s_heart_rate_unavailable;
+
 StatsBarLayer *stats_bar_layer_create(GRect frame)
 {
   StatsBarLayer *stats_bar_layer = malloc(sizeof(StatsBarLayer));
@@ -45,12 +49,19 @@ Layer *stats_bar_layer_get_layer(StatsBarLayer *stats_bar_layer)
 
 void stats_bar_layer_refresh(StatsBarLayer *stats_bar_layer)
 {
-  heart_rate_layer_set_bpm(stats_bar_layer->heart_rate_layer,
-                           (int)health_service_peek_current_value(HealthMetricHeartRateRawBPM));
+  if (s_heart_rate_unavailable)
+  {
+    heart_rate_layer_show_error(stats_bar_layer->heart_rate_layer);
+  }
+  else
+  {
+    heart_rate_layer_set_bpm(stats_bar_layer->heart_rate_layer,
+                             (int)health_service_peek_current_value(HealthMetricHeartRateRawBPM));
+  }
   clock_layer_update_time(stats_bar_layer->clock_layer);
 }
 
-void stats_bar_layer_show_heart_rate_error(StatsBarLayer *stats_bar_layer)
+void stats_bar_layer_set_heart_rate_unavailable(bool unavailable)
 {
-  heart_rate_layer_show_error(stats_bar_layer->heart_rate_layer);
+  s_heart_rate_unavailable = unavailable;
 }
