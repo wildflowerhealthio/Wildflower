@@ -14,7 +14,8 @@ pebble install --phone <ip>           # install to a paired phone
 
 The reps and weight text (`reps-text.c`) is plain C, so the `watch-lifts-test`
 package in `test/` builds it with the host `cc` under AddressSanitizer and tests
-it, with no Pebble SDK needed. Run it with `vp test --project watch-lifts-test`;
+it, with no Pebble SDK needed. The build is `kitchen-sink/test`'s
+`buildHostCDriver`, which `apps/fhir-sync-pebble` shares. Run it with `vp test --project watch-lifts-test`;
 the root `vp test` includes it. It is a separate package because this
 `package.json` is also the Pebble manifest, and `pebble build` runs
 `npm install` if it lists any dependencies.

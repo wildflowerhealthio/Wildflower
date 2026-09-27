@@ -95,7 +95,10 @@ shows — `fhir-r4`'s `HumanName.displayName`, the name the patient goes by now
 server wrote, partial dates (`1970`, `1970-05`) included. The settings are built
 in two steps because the facts arrive separately: the grant gives a
 `Connection` (token, server), and the save adds the patient the user picked
-(`withPatient`). Change the shape
+(`withPatient`). Change the shape together with the watchapp's decoder, `decodeResponse` in
+[`apps/fhir-sync-pebble/src/pkjs/settings.js`](../fhir-sync-pebble/src/pkjs/settings.js);
+the package exports `./pebble-settings` so the watchapp's
+`test/settings.test.ts` can round-trip `toJson` through it.
 together with the watchapp's `webviewclosed` handler.
 
 ## Traps

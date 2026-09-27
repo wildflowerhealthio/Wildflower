@@ -18,7 +18,9 @@ import type * as PatientSummary from './patient-summary.ts'
  * supplies the id, name and birth date ({@link withPatient}).
  *
  * The JSON {@link toJson} writes is the wire shape the watchapp's
- * `webviewclosed` handler parses; change the two together.
+ * `decodeResponse` (`apps/fhir-sync-pebble/src/pkjs/settings.js`) parses;
+ * change the two together. The watchapp's tests round-trip one through the
+ * other.
  *
  * @packageDocumentation
  */

@@ -1,7 +1,8 @@
 packages:
   - apps/*
-  # The watch app's host-side C tests; see apps/watch-lifts/test/vite.config.ts
-  # for why they aren't part of apps/watch-lifts itself.
+  # The watch apps' host-side tests; see apps/watch-lifts/test/vite.config.ts
+  # for why they aren't part of the watch app packages themselves.
+  - apps/fhir-sync-pebble/test
   - apps/watch-lifts/test
   - global/*
   - global/effect-messaging/*

@@ -1,0 +1,3 @@
+build/
+# waf names its lock file after the host OS (.lock-waf_darwin_build, .lock-waf_linux_build).
+.lock-waf*
