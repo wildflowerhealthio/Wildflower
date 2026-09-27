@@ -12,7 +12,7 @@ Layer *stats_bar_layer_get_layer(StatsBarLayer *stats_bar_layer);
 // calls this from the app-wide health and tick events.
 void stats_bar_layer_refresh_all(void);
 
-// Makes every stats bar show an error in place of the heart rate from its next
-// refresh on (call stats_bar_layer_refresh_all to show it now). For when the
-// heart rate subscription can't be set up.
-void stats_bar_layer_set_heart_rate_unavailable(bool unavailable);
+// Whether the heart rate subscription is set up. While it isn't, every stats
+// bar shows an error in place of the heart rate from its next refresh on (call
+// stats_bar_layer_refresh_all to show it now). Starts out true.
+void stats_bar_layer_set_heart_rate_available(bool available);

@@ -17,8 +17,10 @@ struct StatsBarLayer {
 static StatsBarLayer *s_stats_bar_layers;
 
 // App-wide rather than per bar: the heart rate subscription is set up once in
-// main, and every bar built after a failure has to keep showing it.
-static bool s_heart_rate_unavailable;
+// main, and every bar built after a failure has to keep showing it. Assumed
+// available until main hears otherwise, since the first window's bar is built
+// before main subscribes.
+static bool s_heart_rate_available = true;
 
 static void prv_refresh(StatsBarLayer *stats_bar_layer);
 
@@ -64,13 +66,13 @@ Layer *stats_bar_layer_get_layer(StatsBarLayer *stats_bar_layer) {
 }
 
 static void prv_refresh(StatsBarLayer *stats_bar_layer) {
-  if (s_heart_rate_unavailable) {
-    heart_rate_layer_show_error(stats_bar_layer->heart_rate_layer);
-  } else {
+  if (s_heart_rate_available) {
     heart_rate_layer_set_bpm(
       stats_bar_layer->heart_rate_layer,
       (int)health_service_peek_current_value(HealthMetricHeartRateRawBPM)
     );
+  } else {
+    heart_rate_layer_show_error(stats_bar_layer->heart_rate_layer);
   }
   clock_layer_update_time(stats_bar_layer->clock_layer);
 }
@@ -82,6 +84,6 @@ void stats_bar_layer_refresh_all(void) {
   }
 }
 
-void stats_bar_layer_set_heart_rate_unavailable(bool unavailable) {
-  s_heart_rate_unavailable = unavailable;
+void stats_bar_layer_set_heart_rate_available(bool available) {
+  s_heart_rate_available = available;
 }

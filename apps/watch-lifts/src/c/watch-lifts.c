@@ -18,10 +18,7 @@ static void prv_subscribe_heart_rate(void) {
   bool health_service_subscribe_success = health_service_events_subscribe(prv_on_health_data, NULL);
   bool sample_rate_success =
     health_service_subscribe_success && health_service_set_heart_rate_sample_period(15);
-  if (sample_rate_success) {
-    return;
-  }
-  stats_bar_layer_set_heart_rate_unavailable(true);
+  stats_bar_layer_set_heart_rate_available(sample_rate_success);
   stats_bar_layer_refresh_all();
 }
 
