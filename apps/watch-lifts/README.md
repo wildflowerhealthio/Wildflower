@@ -12,14 +12,15 @@ pebble install --phone <ip>           # install to a paired phone
 
 ## Target platforms
 
-`targetPlatforms` in `package.json` controls which watches you build for. The
-modern Pebble hardware is **emery** (Pebble Time 2), **gabbro** (Pebble Round
-2), and **flint** (Pebble 2 Duo); the original Pebble platforms (aplite,
-basalt, chalk, diorite) are included by default for backwards compatibility.
+`targetPlatforms` in `package.json` controls which watches you build for. This
+app targets only **emery** (Pebble Time 2). The other modern platforms are
+**gabbro** (Pebble Round 2) and **flint** (Pebble 2 Duo); the original Pebble
+platforms are aplite, basalt, chalk and diorite. Add any of them to
+`targetPlatforms` to build for it.
 
 ## Project layout
 
-```
+```text
 src/c/           C source for the watchapp
 src/pkjs/        PebbleKit JS (phone-side) source, if any
 worker_src/c/    Background worker source, if any
