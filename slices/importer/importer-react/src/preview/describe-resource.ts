@@ -1,6 +1,6 @@
 import { DateTime, Either, Schema } from 'effect'
 
-import { choiceElementSetPassthroughFields, ChoiceElementSet } from 'fhir-r4/data-types'
+import { choiceElementSetPassthroughFields, ChoiceElementSet, HumanName } from 'fhir-r4/data-types'
 
 /**
  * The one-line description one previewed FHIR resource is listed under, on its
@@ -30,16 +30,38 @@ const ResourceHeader = Schema.Struct({
   id: Schema.optional(Schema.String),
 })
 
+/** Any value at all, decoded as absent. */
+const AsAbsent = Schema.transform(Schema.Unknown, Schema.Undefined, {
+  strict: true,
+  decode: () => undefined,
+  encode: () => undefined,
+})
+
+/**
+ * An optional field read as `schema` when it decodes as one, and as absent when
+ * it does not — for a field that only refines the summary, so a mistyped value
+ * is ignored rather than costing the whole summary.
+ */
+const OptionalOrIgnored = <A, I>(
+  schema: Schema.Schema<A, I>
+): Schema.optional<Schema.Union<[Schema.Schema<A, I>, typeof AsAbsent]>> =>
+  Schema.optional(Schema.Union(schema, AsAbsent))
+
 /**
  * The `HumanName` fields the summaries read — the shared shape a Patient and a
  * Practitioner both carry, so both summaries reference it rather than repeating
- * it.
+ * it. Exactly what `fhir-r4`'s `HumanName.displayName` picks and renders a name
+ * from, so the summary shows the name that rule chooses. `use` and `period`
+ * only steer which name is chosen, so a mistyped one is ignored rather than
+ * failing the summary.
  */
 const HumanNames = Schema.Array(
   Schema.Struct({
+    use: OptionalOrIgnored(Schema.String),
     text: Schema.optional(Schema.String),
     given: Schema.optional(Schema.Array(Schema.String)),
     family: Schema.optional(Schema.String),
+    period: OptionalOrIgnored(Schema.Struct({ end: Schema.optional(Schema.String) })),
   })
 )
 
@@ -120,19 +142,6 @@ const decode = <A, I>(schema: Schema.Schema<A, I>, resource: unknown): A | undef
 const idOrUnknown = (id: string | undefined): string =>
   id === undefined || id.length === 0 ? '?' : id
 
-/** The reviewer-recognisable name of a HumanName, `given family` when present, else `text`. */
-const humanNameText = (name: {
-  readonly text?: string
-  readonly given?: readonly string[]
-  readonly family?: string
-}): string => {
-  const given = (name.given ?? []).join(' ').trim()
-  const family = (name.family ?? '').trim()
-  const joined = [given, family].filter((part) => part.length > 0).join(' ')
-  if (joined.length > 0) return joined
-  return (name.text ?? '').trim()
-}
-
 /** A CodeableConcept's user-facing text: prefer `text`, else `coding.display`, else `coding.code`. */
 const codeableText = (concept: typeof CodeableFields.Type | undefined): string => {
   if (concept === undefined) return ''
@@ -190,7 +199,7 @@ const describeResource = (resource: unknown): ResourceDescription => {
   switch (resourceType) {
     case 'Patient': {
       const patient = decode(PatientSummary, resource)
-      const primary = (patient?.name ?? []).map(humanNameText).find((text) => text.length > 0) ?? ''
+      const primary = HumanName.displayName(patient?.name ?? []) ?? ''
       const birthDate = (patient?.birthDate ?? '').trim()
       const summary = joinSummary([primary, birthDate])
       return {
@@ -260,8 +269,7 @@ const describeResource = (resource: unknown): ResourceDescription => {
     }
     case 'Practitioner': {
       const practitioner = decode(PractitionerSummary, resource)
-      const primary =
-        (practitioner?.name ?? []).map(humanNameText).find((text) => text.length > 0) ?? ''
+      const primary = HumanName.displayName(practitioner?.name ?? []) ?? ''
       return {
         type: 'Practitioner',
         summary: primary.length > 0 ? primary : fallback,

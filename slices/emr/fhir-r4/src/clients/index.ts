@@ -15,6 +15,7 @@ export {
   type FieldDiff,
   type PathSegment,
 } from './field-diff.ts'
+export { trimTrailingSlashes } from './fhir-base-url.ts'
 export {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,

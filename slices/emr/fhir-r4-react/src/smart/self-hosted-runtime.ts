@@ -1,6 +1,7 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { Duration, Effect, Layer, pipe } from 'effect'
+import { trimTrailingSlashes } from 'fhir-r4/clients'
 
 import {
   sliceRuntimeLayer,
@@ -76,7 +77,7 @@ const smartHttpClientLayer = (
   transport: Layer.Layer<HttpClient.HttpClient>
 ): Layer.Layer<HttpClient.HttpClient> => {
   const { accessToken } = session
-  const baseUrl = session.serverUrl.replace(/\/+$/u, '')
+  const baseUrl = trimTrailingSlashes(session.serverUrl)
   return Layer.effect(
     HttpClient.HttpClient,
     Effect.map(HttpClient.HttpClient, (client) =>

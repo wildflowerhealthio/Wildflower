@@ -39,7 +39,7 @@ vi.mock('@tanstack/react-router', () => ({
 /** The minimal FHIR Patient shape `usePatientOptions` reads. */
 type StubPatient = {
   readonly id: string
-  readonly name?: readonly { readonly given?: readonly string[]; readonly family?: string }[]
+  readonly name: readonly { readonly given?: readonly string[]; readonly family?: string }[]
 }
 let patientResources: readonly StubPatient[] = []
 

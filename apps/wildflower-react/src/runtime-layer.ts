@@ -9,13 +9,20 @@ import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
 import { webTelemetryLayerFromEnv } from 'telemetry-web'
-import { prependApiBaseUrl } from './bridges/prepend-api-base-url.ts'
 import { unauthorizedRetrySchedule } from './retry-policy.ts'
 import type { RunAuthed, RuntimeLayer } from './router-context.ts'
 
 /**
+ * The API server's transport for the requests mounted at `mountPath` on it —
+ * `''` for the server root (every slice but FHIR), `/fhir-r4` for the FHIR
+ * slice. The entry builds it (`app-query-runtime.ts`'s `apiTransportAt`), so
+ * it decides the origin and how a request authenticates.
+ */
+type ApiTransport = (mountPath: string) => Layer.Layer<HttpClient.HttpClient>
+
+/**
  * Builds the page-lifetime runtime layer + authed runner. The runtime
- * attaches no credential itself: the entry's `httpClientLayer` decides how a
+ * attaches no credential itself: the entry's transport decides how a
  * request authenticates — the hosted web entry's `readBearer` is stamped on by
  * `attachBearer`, and on Tauri the host stamps its owner bearer onto direct-loopback requests
  * by connection provenance.
@@ -25,28 +32,28 @@ import type { RunAuthed, RuntimeLayer } from './router-context.ts'
  * `isTokenReady` reader here — loaders are plain `ensureQueryData`.
  */
 const buildRunAuthed = (
-  httpClientLayer: Layer.Layer<HttpClient.HttpClient>
+  transportAt: ApiTransport
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
 } => {
-  const baseRuntimeLayer = Layer.mergeAll(httpClientLayer, webTelemetryLayerFromEnv())
+  const baseRuntimeLayer = Layer.mergeAll(transportAt(''), webTelemetryLayerFromEnv())
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
     Layer.mergeAll(
       TunnelRouterContext.sliceRuntimeLayer,
       AppsRouterContext.sliceRuntimeLayer,
       GatekeeperRouterContext.sliceRuntimeLayer,
       CollectorRouterContext.sliceRuntimeLayer,
-      // The FHIR slice's typed client emits base-relative paths (`/Patient`) now
-      // that `FhirResourcesApi` no longer bakes in the mount prefix — so it needs
-      // an *addressed* transport that re-applies `/fhir-r4`, while every other
-      // slice keeps the shared `baseRuntimeLayer` transport. Requests flow:
-      // client `/Patient` → this wrapper `/fhir-r4/Patient` (still relative) →
-      // `httpClientLayer` (which in Tauri prepends the API origin) →
-      // `{origin}/fhir-r4/Patient`. Wrapping the entry's `httpClientLayer` keeps
-      // whatever authentication that layer carries on these reads too.
+      // The FHIR slice's typed client emits base-relative paths (`/Patient`) —
+      // `FhirResourcesApi` does not bake in the mount prefix — so it gets the
+      // entry's transport mounted at `/fhir-r4`, while every other slice keeps
+      // the root-mounted `baseRuntimeLayer` transport. The entry joins the mount
+      // path onto the API origin in one prefix (`{origin}/fhir-r4`); stacking a
+      // second prefix wrapper over an origin-prefixing layer does not work,
+      // because `HttpClient.mapRequest` runs the wrapped client's rewrite first,
+      // so the outer `/fhir-r4` wrapper would see an absolute URL and skip it.
       FhirR4ResourcesRouterContext.sliceRuntimeLayer.pipe(
-        Layer.provide(prependApiBaseUrl(httpClientLayer, FhirResourcesApiPrefix))
+        Layer.provide(transportAt(FhirResourcesApiPrefix))
       ),
       DatabasesRouterContext.sliceRuntimeLayer
     ),
@@ -85,4 +92,4 @@ const buildRunAuthed = (
   }
 }
 
-export { buildRunAuthed }
+export { buildRunAuthed, type ApiTransport }

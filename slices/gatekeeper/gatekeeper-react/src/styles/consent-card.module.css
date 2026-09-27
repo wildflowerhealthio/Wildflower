@@ -109,6 +109,13 @@
   border-bottom: 1.5px solid var(--color-divider);
 }
 
+/* Why there is no picker: still loading, an unreadable list, or no patients. */
+.patient-note {
+  flex: 1;
+  margin: 0;
+  color: var(--color-neutral-5);
+}
+
 /* The "select a patient" validation message, on its own row under the pill. */
 .patient-error {
   flex-basis: 100%;

@@ -111,6 +111,9 @@ describe('App', () => {
       './importer-app'
     )
     expect(
+      screen.getByRole('link', { name: /Open FHIR Sync for Pebble/ }).getAttribute('href')
+    ).toBe('./fhir-sync-pebble')
+    expect(
       screen.getByRole('link', { name: /Open the Web Trace Viewer/ }).getAttribute('href')
     ).toBe('./web-trace-app')
     // No public route yet — intentionally no launcher.

@@ -1,0 +1,12 @@
+/*
+ * App shell. Colours and spacing read from the Tundra design tokens
+ * (`--color-*`, `--space-*`) that `tundra-css` + `react-tundraish` define
+ * globally. The page is opened inside the Pebble phone app's web view, so it is
+ * laid out for a phone first — one narrow column. Each component below carries
+ * its own module.
+ */
+.app {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-7) var(--space-13);
+}

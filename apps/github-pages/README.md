@@ -12,6 +12,7 @@ that owns it, and this package places those outputs at their public URLs.
 | `/wildflower-server-docs` | `wildflower-server-docs` (`apps/wildflower-server-docs`) |
 | `/web-trace-app`          | `wildflower-web-trace` (`apps/web-trace`)                |
 | `/ohif-viewer`            | `ohif-viewer` (`apps/ohif-viewer`)                       |
+| `/fhir-sync-pebble`       | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble-web`)     |
 | `/app`                    | `wildflower-react` (`apps/wildflower-react`, `dist-web`) |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
@@ -56,12 +57,12 @@ workspace `devDependency` of this package, so the workspace's own build ordering
 (`vp run pack`, i.e. `vp run --cache -r build`) builds every section before this
 package's build stages them. Doing that here keeps each app's own build config
 untouched: every section builds into its own package — the medications app, the
-Web Trace app, the Importer and the server-docs console into their default
-`dist/`, the owner UI into `dist-web/` — and this package only copies from there.
-The OHIF viewer's `dist/` is a downloaded prebuilt bundle (or a stub page while
-none is pinned) rather than a Vite build, and is copied verbatim too.
+Web Trace app, the Importer, FHIR Sync for Pebble and the server-docs console into
+their default `dist/`, the owner UI into `dist-web/` — and this package only copies
+from there. The OHIF viewer's `dist/` is a downloaded prebuilt bundle (or a stub
+page while none is pinned) rather than a Vite build, and is copied verbatim too.
 
-Each of the three SMART apps sets a relative `base: './'` in its own Vite
+Each of the four SMART apps sets a relative `base: './'` in its own Vite
 config, which is what lets the same build serve from a subpath here and from a
 loopback origin's root under its dev server.
 

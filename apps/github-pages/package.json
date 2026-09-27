@@ -12,6 +12,7 @@
   "devDependencies": {
     "branding-core": "workspace:*",
     "fast-check": "catalog:",
+    "fhir-sync-pebble-web": "workspace:*",
     "kitchen-sink": "workspace:*",
     "marketing-website": "workspace:*",
     "medications-app": "workspace:*",

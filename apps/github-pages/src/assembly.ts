@@ -72,6 +72,17 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
+    packageName: 'fhir-sync-pebble-web',
+    // The package lives in `apps/fhir-sync-pebble-web`; its published path is
+    // `/${SECTION_PATHS.fhirSyncPebble}`.
+    sourceDir: 'apps/fhir-sync-pebble-web/dist',
+    destPath: SECTION_PATHS.fhirSyncPebble,
+    // One entry: the app is launched standalone only (from the Pebble phone
+    // app), so there is no `launch.html` — `index.html` is both the connect
+    // menu and the OAuth redirect target.
+    requiredFiles: ['index.html'],
+  },
+  {
     packageName: 'ohif-viewer',
     // The prebuilt OHIF viewer pinned in apps/ohif-viewer/prebuilt.json (or
     // the stub page while nothing is pinned), with Wildflower's runtime

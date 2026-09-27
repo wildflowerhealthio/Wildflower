@@ -298,8 +298,9 @@ mod tests {
     /// Every SMART client is seeded by a migration (not Rust) — the sample apps by
     /// `0003`, the two first-party apps by `0004` / `0005` (renamed and given
     /// their published-site redirect by `0006`), the server-docs API console by
-    /// `0007`, the Importer by `0008`, and the OHIF imaging viewer by `0009`
-    /// (re-seeded by `0016` on an install that skipped it) — so a
+    /// `0007`, the Importer by `0008`, the OHIF imaging viewer by `0009`
+    /// (re-seeded by `0016` on an install that skipped it), and FHIR Sync for
+    /// Pebble by `0017` — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -318,6 +319,7 @@ mod tests {
             "wildflower-react",
             "importer-app",
             "ohif-viewer",
+            "fhir-sync-pebble",
         ] {
             let client = store
                 .client_by_id(client_id)
@@ -573,6 +575,30 @@ mod tests {
                 "system/Patient.rs".to_string(),
                 "system/ImagingStudy.rs".to_string(),
                 "system/DocumentReference.rs".to_string(),
+            ],
+        );
+        // `fhir-sync-pebble` (the Pebble watchapp's settings page) is
+        // standalone-only, so it carries only its absolute Pages redirect, and
+        // its scopes are `system/`: the page picks the patient after the grant.
+        // This vector must stay element-for-element equal to the `scope` string
+        // in `apps/fhir-sync-pebble-web/src/config.ts` — nothing spans the
+        // TS/Rust boundary to check it.
+        let pebble = store.client_by_id("fhir-sync-pebble").unwrap().unwrap();
+        assert_eq!(
+            pebble.redirect_uris,
+            vec![RegisteredRedirectUri::Absolute(
+                "https://wildflowerhealth.io/fhir-sync-pebble/"
+                    .parse()
+                    .expect("a valid absolute redirect"),
+            )],
+        );
+        assert_eq!(
+            pebble.allowed_scopes,
+            vec![
+                "openid".to_string(),
+                "fhirUser".to_string(),
+                "system/Patient.rs".to_string(),
+                "system/Observation.c".to_string(),
             ],
         );
     }

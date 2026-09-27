@@ -27,6 +27,40 @@ describe('describeResource', () => {
     expect(description.summary).toBe('Alice Jones · 1990-01-01')
   })
 
+  it('summarises a Patient by the name they go by now, not a former one listed first', () => {
+    // Arrange — which name wins is `fhir-r4`'s `HumanName.displayName` rule
+    const patient = {
+      resourceType: 'Patient',
+      id: 'pat-8',
+      name: [
+        { use: 'old', given: ['Jane'], family: 'Smith' },
+        { use: 'official', given: ['Jane'], family: 'Doe' },
+      ],
+    }
+
+    // Act
+    const description = describeResource(patient)
+
+    // Assert
+    expect(description.summary).toBe('Jane Doe')
+  })
+
+  it('summarises a Patient by name even when a name carries a mistyped use or period', () => {
+    // Arrange — `use` and `period` only steer which name is chosen
+    const patient = {
+      resourceType: 'Patient',
+      id: 'pat-9',
+      name: [{ use: 42, period: { end: 123 }, given: ['Alice'], family: 'Jones' }],
+      birthDate: '1990-01-01',
+    }
+
+    // Act
+    const description = describeResource(patient)
+
+    // Assert
+    expect(description.summary).toBe('Alice Jones · 1990-01-01')
+  })
+
   it('summarises a MedicationRequest by medication and status', () => {
     // Arrange
     const request = {

@@ -21,11 +21,11 @@ import { Effect, Layer } from 'effect'
  * status in the failure it causes).
  *
  * @remarks
- * Lives in its own module — rather than beside `buildAppQueryRuntime` in
- * `app-query-runtime.ts` — because `runtime-layer.ts` also imports it (to
- * address the FHIR slice's client at `/fhir-r4` now that the typed client emits
- * base-relative paths), and `app-query-runtime.ts` imports *from*
- * `runtime-layer.ts`. Keeping the helper here breaks that would-be cycle.
+ * Apply it **once** per transport, with the whole prefix: a second wrapper
+ * over a layer that already prefixed the origin never fires, because
+ * `HttpClient.mapRequest` runs the wrapped client's rewrite first, so the outer
+ * wrapper only sees an absolute URL. `app-query-runtime.ts`'s `apiTransportAt`
+ * joins a mount path (`/fhir-r4`) onto the origin for exactly that reason.
  */
 // URL is absolute when it leads with a scheme (`http:`, `https:`, `tauri:`, …).
 // Matches RFC 3986's `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` so the

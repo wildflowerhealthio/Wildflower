@@ -21,7 +21,7 @@ describe('RouterContext assembly', () => {
   // and `buildQueryClient`'s outputs together satisfy `RouterContext`.
   it('should type RouterContext with queryClient, runAuthed, runtimeLayer, awaitAuthReady, transport', () => {
     // Arrange / Act
-    const { runAuthed, runtimeLayer } = buildRunAuthed(stubHttpClientLayer())
+    const { runAuthed, runtimeLayer } = buildRunAuthed(() => stubHttpClientLayer())
     const context = {
       queryClient: buildQueryClient(() => undefined),
       runAuthed,

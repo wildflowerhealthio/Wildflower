@@ -20,9 +20,13 @@ import { OAuthConsentForm } from './oauth-consent-form.tsx'
  *     payload and drives `onSuccess` with a configurable result. This is the only way to
  *     assert the exact `approvedScopes` the form emits (the real mutation buries the payload
  *     inside an Effect handed to `runAuthed`).
- *   - `usePatientsQuery` — the launch-patient picker's data source; defaults to empty so
- *     the picker stays hidden, with per-test overrides via `patientResources` for the
- *     launch-patient selection tests.
+ *   - `usePatientsQuery` — the launch-patient picker's data source; defaults to an empty
+ *     list, with per-test overrides via `patientResources` / `patientsError` for the
+ *     launch-patient tests.
+ *
+ * A patient-context grant cannot be approved without a launch patient, so
+ * {@link makeConsent} binds one by default (as an EHR launch does) and the tests about
+ * scope editing stay about scopes; the launch-patient tests start from `patient: null`.
  */
 
 type ApproveVars = {
@@ -47,22 +51,38 @@ vi.mock('../../queries/index.ts', () => ({
   } => ({ mutate, isPending: false, error: null }),
 }))
 
-/** The minimal FHIR Patient shape `usePatientOptions` reads. */
+/**
+ * The minimal FHIR Patient shape `usePatientOptions` reads. `name` is required
+ * because the decoded `Patient` defaults it to `[]`.
+ */
 type StubPatient = {
   readonly id: string
-  readonly name?: readonly { readonly given?: readonly string[]; readonly family?: string }[]
+  readonly name: readonly {
+    readonly use?: string
+    readonly given?: readonly string[]
+    readonly family?: string
+    readonly text?: string
+  }[]
 }
 let patientResources: readonly StubPatient[] = []
+/** The patient list's read failure, or `null` when it reads. */
+let patientsError: Error | null = null
 
 vi.mock('fhir-r4-react', () => ({
-  usePatientsQuery: (): { data: readonly StubPatient[]; isLoading: boolean } => ({
-    data: patientResources,
+  usePatientsQuery: (): {
+    data: readonly StubPatient[] | undefined
+    isLoading: boolean
+    error: Error | null
+  } => ({
+    data: patientsError === null ? patientResources : undefined,
     isLoading: false,
+    error: patientsError,
   }),
 }))
 
 beforeEach(() => {
   patientResources = []
+  patientsError = null
   // jsdom doesn't implement scrollIntoView; the form calls it to bring the error
   // banner / patient bar into view. Stub it so those code paths don't throw (and
   // so tests can assert the scroll-into-view happened).
@@ -435,7 +455,7 @@ describe('OAuthConsentForm — launch patient', () => {
   test('approving with no patient selected shows a validation error and does not submit', async () => {
     // Arrange — a patient-context request with a pickable patient, none selected.
     patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
-    const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
+    const { user } = renderForm(unboundConsent(['patient/Observation.r']), vi.fn())
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
@@ -449,7 +469,7 @@ describe('OAuthConsentForm — launch patient', () => {
   test('selecting a patient clears the error and submits that patient id', async () => {
     // Arrange — trip the validation error first.
     patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
-    const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
+    const { user } = renderForm(unboundConsent(['patient/Observation.r']), vi.fn())
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     // Act — pick the patient, then approve.
@@ -463,10 +483,34 @@ describe('OAuthConsentForm — launch patient', () => {
     expect(lastCall).toMatchObject({ kind: 'approve', payload: { patient: 'pat-1' } })
   })
 
+  test('lists each patient by the name they go by now, else by id', async () => {
+    // Arrange — which name wins is `fhir-r4`'s `HumanName.displayName` rule
+    patientResources = [
+      {
+        id: 'pat-1',
+        name: [
+          { use: 'old', given: ['Jordan'], family: 'Smith' },
+          { use: 'official', given: ['Jordan'], family: 'Lee' },
+        ],
+      },
+      { id: 'pat-2', name: [] },
+    ]
+    const { user } = renderForm(unboundConsent(['patient/Observation.r']), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
+
+    // Assert
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Jordan Leepat-1',
+      'pat-2pat-2',
+    ])
+  })
+
   test('pruning every patient scope hides the picker and drops the patient requirement', async () => {
     // A patient-context flag plus a non-patient flag, with a pickable patient.
     patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
-    const { user } = renderForm(makeConsent({ scopes: ['launch/patient', 'openid'] }), vi.fn())
+    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
 
     // While a patient-context scope is granted, the picker is shown.
     expect(screen.getByRole('button', { name: /Select a Patient/ })).toBeDefined()
@@ -480,6 +524,50 @@ describe('OAuthConsentForm — launch patient', () => {
 
     const lastCall = mutate.mock.calls.at(-1)?.[0]
     expect(lastCall).toMatchObject({ kind: 'approve', payload: { patient: null } })
+    expect(lastApprovedScopes()).toEqual(['openid'])
+  })
+
+  test('a server with no patients says so, and a patient-context grant cannot be approved', async () => {
+    // Arrange — a patient-context request against an empty patient list.
+    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert — the empty list is explained rather than the bar vanishing, and no
+    // patientless approval went out.
+    expect(screen.getByText(/no patients to choose from/)).toBeDefined()
+    expect((await screen.findByRole('alert')).textContent).toBe('Select a patient to continue.')
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  test('a patient list that could not be read shows why, and blocks a patient-context grant', async () => {
+    // Arrange — the Patient search failed (a mis-addressed request, a 403, …).
+    patientsError = new Error('Patient search returned 404')
+    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert
+    expect(screen.getAllByText(/Patient search returned 404/)).not.toHaveLength(0)
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  test('with no patients to pick, pruning the patient scope still lets the rest be approved', async () => {
+    // Arrange — nothing to pick from.
+    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+
+    // Act — turn off the patient-context scope, then approve.
+    await user.click(screen.getByRole('switch', { name: /Open a specific patient/ }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert
+    expect(screen.queryByText(/no patients to choose from/)).toBeNull()
+    expect(mutate.mock.calls.at(-1)?.[0]).toMatchObject({
+      kind: 'approve',
+      payload: { patient: null },
+    })
     expect(lastApprovedScopes()).toEqual(['openid'])
   })
 })
@@ -524,10 +612,14 @@ const makeConsent = (
   clientName: 'Fitbit Sync',
   redirectUri: 'https://app.example/cb',
   preApprovedScopes: [],
-  patient: null,
+  patient: 'pat-launch',
   registration: { status: 'registered' },
   ...overrides,
 })
+
+/** A consent for `scopes` with no launch patient bound yet — a standalone launch. */
+const unboundConsent = (scopes: readonly string[]): OAuthConsentResource =>
+  makeConsent({ scopes, patient: null })
 
 const renderForm = (
   consent: OAuthConsentResource,
