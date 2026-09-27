@@ -8,9 +8,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
     "fhir-sync-pebble-core": "workspace:*",
     "kitchen-sink": "workspace:*"
   }

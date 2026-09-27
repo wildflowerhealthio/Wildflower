@@ -7,7 +7,13 @@ sends every checked data type: Health Activity from HealthService's
 activities, the other five from its minute history.
 
 `apps/watch-lifts` is the template for the shape: this `package.json` is the
-Pebble manifest, and host-side tests live in a separate `test/` package.
+Pebble manifest, and host-side tests live in a separate `test/` package. The
+PebbleKit JS is TypeScript in a third, `pkjs/`, for the same reason: the
+manifest can't list the dependencies its build needs. What the phone decodes
+and the Observations it posts are `fhir-sync-pebble-core`'s (see
+[slices/fhir-sync-pebble](../../slices/fhir-sync-pebble/AGENTS.md)); `pkjs/`
+is the glue to Pebble's events, AppMessage, `localStorage` and
+`XMLHttpRequest`.
 
 ## Building and running
 
@@ -18,26 +24,33 @@ pebble emu-app-config --emulator emery  # open the settings page for the emulato
 pebble install --phone <ip>           # install to a paired phone
 ```
 
+`pebble build` first runs `vp pack` in `pkjs/` (the wscript does), which
+bundles the PebbleKit JS into `src/pkjs/index.js`, the one file the SDK packs
+(gitignored); so `vp` must be on the `PATH` and `vp install` done. To build the
+bundle alone, `vp run -F fhir-sync-pebble-pkjs build`; `vp run pack` builds it
+with the rest of the monorepo.
+
 The Pebble SDK and the `pebble` tool are needed only for these; the tests use
 the host `cc`.
 
 ## Layout
 
-- `src/pkjs/index.js` — opens `https://wildflowerhealth.io/fhir-sync-pebble/` on
-  `showConfiguration`, and on `webviewclosed` decodes the response, keeps the
-  full settings in `localStorage` and sends the watch its part. On
-  `appmessage` it collects a sync's activities and hours and posts them to the
-  server.
-- `src/pkjs/settings.js` — the decodes (`decodeResponse`, and `decodeStored`
-  for what `localStorage` holds) and the watch's message (`toWatchMessage`),
-  free of Pebble globals so tests load it under Node; `settings.d.ts` types it
-  for them.
-- `src/pkjs/health-activity.js` — the same for the sync: decodes the watch's
-  activity messages and builds the Observations and their transaction Bundle;
-  `health-activity.d.ts` types it.
-- `src/pkjs/minute-history.js` — the same for the hours of minute history:
-  decodes each hour message and builds its SampledData Observations;
-  `minute-history.d.ts` types it.
+- `pkjs/src/index.ts` — the PebbleKit JS. Opens
+  `https://wildflowerhealth.io/fhir-sync-pebble/` on `showConfiguration`, and
+  on `webviewclosed` decodes the response (`PhoneSettings.decodeResponse`),
+  keeps the full settings in `localStorage` and sends the watch its part
+  (`PhoneSettings.toWatchMessage`). On `appmessage` it sorts each message by
+  `WatchSync.messageKind`, collects a sync's activities and hours into a
+  `WatchSync.Type`, checks it against the counts (`WatchSync.requireComplete`)
+  and posts its transaction Bundle. Everything it calls comes from
+  `fhir-sync-pebble-core/pkjs`.
+- `pkjs/src/pebble-kit-js.d.ts` — types for the PebbleKit JS globals it uses
+  (`Pebble`, `localStorage`, `XMLHttpRequest`, `console`), since its
+  `tsconfig.json` has ES5's library and no DOM.
+- `pkjs/vite.config.ts` and `pkjs/es5.ts` — the bundle: `vp pack` bundles
+  `src/index.ts` and the core into `../src/pkjs/index.js` as an IIFE, then
+  lowers it to ES5 and checks it (see Traps).
+- `src/pkjs/index.js` — that bundle, generated and gitignored.
 - `src/c/fhir-sync-pebble.c` — `main` and the AppMessage callbacks. `main`
   owns the one `App` (the `AppState`, the settings window and the `Sync`) on
   its stack and passes it as the AppMessage context. The one file-scope static
@@ -69,9 +82,10 @@ has none — AppMessage has no null) and `AuthTime`, the Unix seconds at which t
 phone received the settings. The token and FHIR base URL stay in PebbleKit JS's
 `localStorage`, where the sync reads them.
 
-`decodeResponse` must accept exactly what the settings page's
-`PebbleSettings.toJson` writes; `test/settings.test.ts` round-trips generated
-settings through both to hold the two together.
+`PhoneSettings.decodeResponse` must accept exactly what the settings page's
+`PebbleSettings.toJson` writes. `PebbleSettings.Schema` is pinned to
+`PhoneSettings.Settings`, and the core's `phone-settings.test.ts` round-trips
+generated settings through both to hold the two together.
 
 ## Health Activity sync
 
@@ -87,8 +101,8 @@ at the next). The messages, all `int32`:
   preceded it;
 - phone → watch: `SyncSucceeded`, 1 when the server stored them all.
 
-The phone posts one transaction Bundle of every Observation (see
-`health-activity.js` for the activity coding, from the HealthService docs page)
+The phone posts one transaction Bundle of every Observation (see the core's
+`HealthActivity` for the activity coding, from the HealthService docs page)
 to the FHIR base URL with the stored token. It answers 0 if either count doesn't
 match what arrived, any message fails to decode, the settings are missing or the
 request fails. With nothing to post it answers 1 without a request. There is no
@@ -148,20 +162,22 @@ restart. With nothing checked, Sync Now succeeds without asking the phone.
 
 ## Tests
 
-`vp test --project fhir-sync-pebble-test` (the root `vp test` includes it):
+What the phone decodes and builds is tested in `fhir-sync-pebble-core`, where
+it lives. Here, `vp test --project fhir-sync-pebble-test` (the root `vp test`
+includes it):
 
 - `menu-text.test.ts` compiles `menu-text.c` with `kitchen-sink/test`'s
   `buildHostCDriver` (host `cc`, C99, ASan + UBSan) and drives it through
   `menu-text-driver.c`, as `watch-lifts` does for its reps text.
-- `settings.test.ts` tests `settings.js`, including the wire contract above.
-- `health-activity.test.ts` and `minute-history.test.ts` test their modules,
-  decoding the Observations they build with `fhir-r4`'s `Observation.Schema`.
 - `minute-wire.test.ts` packs minutes with `minute-wire.c` through
-  `minute-wire-driver.c`, then decodes the bytes with `minute-history.js`, so
-  the two ends of the byte layout are tested together.
+  `minute-wire-driver.c`, then decodes the bytes with the core's
+  `MinuteHistory`, so the two ends of the byte layout are tested together.
 
 Each driver call spawns a process, so the C properties run fewer cases than
 usual.
+
+`vp test --project fhir-sync-pebble-pkjs` tests the ES5 lowering and checks in
+`pkjs/es5.ts`.
 
 `sync.c` and the rest of the watch code need `pebble.h`, so only
 `pebble build` compiles them.
@@ -171,11 +187,26 @@ usual.
 - **`struct tm` comes from `pebble.h`.** The SDK's libc `time.h` doesn't declare
   it, so `menu-text.h` includes `pebble.h` when `PBL_SDK_3` is defined and
   `<time.h>` otherwise.
-- **PebbleKit JS is ES5 CommonJS.** Vitest's ESM transform can't load it; the
-  test loads it with `createRequire`.
+- **PebbleKit JS runs ES5.** The phone's runtime is only assumed to have ES5,
+  and the SDK's webpack 1 parses no further than ES2015 anyway. Rolldown and
+  oxc can't emit ES5, so `pkjs/es5.ts` lowers the finished bundle with
+  TypeScript 5's compiler in `generateBundle` (rolldown reprints what
+  `renderChunk` returns, restoring ES2015 shorthand), then fails the build
+  unless acorn parses it as ES5 and it reads none of `Symbol`, `Map`,
+  `Promise` and the other ES2015 globals. Syntax lowers, but library methods
+  don't: the build also type-checks every bundled source, the core's
+  included, against ES5's library, so `Array.prototype.includes` or
+  `String.prototype.padStart` fails it. TypeScript 7 has no ES5 target, so the
+  lowering relies on the 5.x the root `overrides` pin; `tsconfig.json` says
+  ES2015 only because `vp check`'s TypeScript 7 refuses ES5.
+- **Nothing the phone bundles may import Effect.** Effect needs ES2015 at run
+  time, so the core's `pkjs` entry is Effect-free and its decoders are
+  hand-written. Import `fhir-sync-pebble-core/pkjs`, not the package root,
+  from `pkjs/`.
 - **`package.json` is the Pebble manifest.** `pebble build` runs `npm install`
   if it lists dependencies, which fails on `catalog:` / `workspace:*`, so test
-  dependencies go in `test/package.json`.
+  dependencies go in `test/package.json` and the PebbleKit JS build's in
+  `pkjs/package.json`.
 - **The app needs a `.bss`.** The SDK's `inject_metadata.py` sets the app
   header's `virtual_size` to the end of `.bss`, or of `.data` when there is no
   `.bss`, but the linker places `.got`/`.got.plt` after `.data`. With no

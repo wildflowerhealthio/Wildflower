@@ -26,6 +26,12 @@ def configure(ctx):
 def build(ctx):
     ctx.load('pebble_sdk')
 
+    # The PebbleKit JS is TypeScript in pkjs/, bundled to ES5 as
+    # src/pkjs/index.js, which the bundle step below reads. Build it first so a
+    # plain `pebble build` never packs a stale or missing bundle.
+    if ctx.exec_command(['vp', 'pack'], cwd=ctx.path.find_dir('pkjs').abspath()) != 0:
+        ctx.fatal('Bundling the PebbleKit JS (vp pack in pkjs/) failed')
+
     build_worker = os.path.exists('worker_src')
     binaries = []
 

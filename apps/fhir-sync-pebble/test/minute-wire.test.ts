@@ -1,16 +1,15 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as fc from 'fast-check'
+import { MinuteHistory } from 'fhir-sync-pebble-core/pkjs'
 import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
-import { decodeMinuteHourMessage, type Minute } from '../src/pkjs/minute-history.js'
-
 // minute-wire.c packs each minute of HealthMinuteData for the phone, and
-// minute-history.js unpacks it. The watch side needs no SDK to test:
-// buildHostCDriver compiles it with the host C compiler under the sanitizers,
-// driven through minute-wire-driver.c, and these tests feed its bytes to the
-// phone's decoder to hold the two sides of the wire together.
+// fhir-sync-pebble-core's MinuteHistory unpacks it. The watch side needs no
+// SDK to test: buildHostCDriver compiles it with the host C compiler under the
+// sanitizers, driven through minute-wire-driver.c, and these tests feed its
+// bytes to the phone's decoder to hold the two sides of the wire together.
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 let driver: HostCDriver
@@ -60,7 +59,7 @@ describe('minute_wire_pack', () => {
         ).flat()
 
         // Act
-        const hour = decodeMinuteHourMessage({
+        const hour = MinuteHistory.decodeHourMessage({
           MinuteHourStart: 0,
           MinuteTypes: 0b10,
           MinuteData: hourBytes,
@@ -117,7 +116,7 @@ const expectedMinute = ({
   vmc,
   light,
   heartRateBpm,
-}: PackedFields): Minute => ({
+}: PackedFields): MinuteHistory.Minute => ({
   steps,
   yawBin,
   pitchBin,

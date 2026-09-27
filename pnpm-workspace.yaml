@@ -1,7 +1,9 @@
 packages:
   - apps/*
-  # The watch apps' host-side tests; see apps/watch-lifts/test/vite.config.ts
-  # for why they aren't part of the watch app packages themselves.
+  # The watch apps' host-side tests, and fhir-sync-pebble's PebbleKit JS build;
+  # see apps/watch-lifts/test/vite.config.ts for why they aren't part of the
+  # watch app packages themselves.
+  - apps/fhir-sync-pebble/pkjs
   - apps/fhir-sync-pebble/test
   - apps/watch-lifts/test
   - global/*
@@ -78,6 +80,7 @@ catalog:
   ajv: ^8.20.0
   bumpp: ^12.3.0
   '@types/node': ^26
+  acorn: ^8.18.0
   '@types/react': 19.3.0
   '@types/react-dom': 19.3.0
   '@typescript/native-preview': 7.0.0-dev.20260707.2

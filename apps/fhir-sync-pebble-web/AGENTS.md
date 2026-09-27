@@ -95,10 +95,10 @@ shows — `fhir-r4`'s `HumanName.displayName`, the name the patient goes by now
 server wrote, partial dates (`1970`, `1970-05`) included. The settings are built
 in two steps because the facts arrive separately: the grant gives a
 `Connection` (token, server), and the save adds the patient the user picked
-(`withPatient`). Change the shape together with the watchapp's decoder, `decodeResponse` in
-[`apps/fhir-sync-pebble/src/pkjs/settings.js`](../fhir-sync-pebble/src/pkjs/settings.js);
-the watchapp's `test/settings.test.ts` imports `PebbleSettings` from
-`fhir-sync-pebble-core` to round-trip `toJson` through it.
+(`withPatient`). The watchapp decodes the shape with `PhoneSettings.decodeResponse`,
+beside `PebbleSettings` in `fhir-sync-pebble-core`: `PebbleSettings.Schema` is
+pinned to `PhoneSettings.Settings`, so the two can't change apart, and
+`phone-settings.test.ts` round-trips `toJson` through the decoder.
 
 ## Traps
 

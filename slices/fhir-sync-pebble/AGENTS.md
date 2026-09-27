@@ -2,20 +2,29 @@
 
 **FHIR Sync for Pebble**: a Pebble watchapp that syncs the steps, sleep and
 heart rate the Pebble records to a FHIR server. This slice holds what its
-settings page decides; the page itself is
+settings page decides and what the watchapp's PebbleKit JS does with the
+watch's data; the page itself is
 [`apps/fhir-sync-pebble-web`](../../apps/fhir-sync-pebble-web/AGENTS.md), and
-the watchapp's PebbleKit JS is the consumer of the settings it hands off.
+the PebbleKit JS glue is [`apps/fhir-sync-pebble`](../../apps/fhir-sync-pebble/AGENTS.md)'s
+`pkjs/`.
 
 ## Packages
 
 - `fhir-sync-pebble-core` — the pure layer, and currently the whole slice.
-  Four namespace modules, re-exported from the package index:
-  `PatientSummary` (a patient the settings page lists, read leniently out of a
-  `Patient` search), `PebbleSettings` (the watch's wire shape, built from the
-  SMART grant and the picked patient), `ReturnTarget` (the allow-listed Pebble
-  `return_to` and the hand-off URL), and `ReturnTargetStore` (keeps
-  `return_to` across the SMART login over a Web Storage–shaped store the app
-  passes in). No DOM, no React, no platform imports.
+  Namespace modules, all re-exported from the package index. For the settings
+  page: `PatientSummary` (a patient the settings page lists, read leniently
+  out of a `Patient` search), `PebbleSettings` (the watch's wire shape, built
+  from the SMART grant and the picked patient), `ReturnTarget` (the
+  allow-listed Pebble `return_to` and the hand-off URL), and
+  `ReturnTargetStore` (keeps `return_to` across the SMART login over a Web
+  Storage–shaped store the app passes in). For the PebbleKit JS, also
+  exported alone as `fhir-sync-pebble-core/pkjs`: `PhoneSettings` (the
+  settings decoded on the phone, and the watch's part), `HealthActivity` and
+  `MinuteHistory` (the watch's activity and hour messages decoded, and the
+  Observations each becomes), `WatchDevice` (the watch as the Observations'
+  `device`), and `WatchSync` (a sync's messages collected, checked against
+  the watch's counts, and posted as one transaction Bundle). No DOM, no
+  React, no platform imports.
 
 ## Rules
 
@@ -25,7 +34,15 @@ the watchapp's PebbleKit JS is the consumer of the settings it hands off.
   The app reads the handshake and the patients, and renders what this package
   returns.
 - **`PebbleSettings.toJson` is external contract.** It is what the watchapp's
-  `webviewclosed` handler parses; change the shape together with the watchapp.
+  `webviewclosed` handler parses with `PhoneSettings.decodeResponse`.
+  `PebbleSettings.Schema` is pinned to `PhoneSettings.Settings`, so a field
+  changed on one and not the other fails to compile.
+- **The `pkjs` entry runs on ES5.** The phone's PebbleKit JS runtime is ES5,
+  so nothing reachable from `src/pkjs.ts` may import Effect, `fhir-r4` or any
+  other module needing ES2015, or call an ES2015 method; its modules import
+  nothing from the rest of the package, not even types, and decode with
+  hand-written checks in place of Schemas. The watchapp's build
+  type-checks them against ES5's library and fails on a violation.
 - **`ReturnTarget` is a security boundary.** The settings carry a live access
   token, so only the Pebble phone app's `pebblejs:` scheme and loopback
   `http(s)` (the `pebble` tool's emulator) decode. Widening the allow-list lets
@@ -46,4 +63,5 @@ the watchapp's PebbleKit JS is the consumer of the settings it hands off.
 
 - [Architecture / slice layering](../AGENTS.md)
 - [apps/fhir-sync-pebble-web AGENTS.md](../../apps/fhir-sync-pebble-web/AGENTS.md) — the settings page, the handoff steps, and the scopes
+- [apps/fhir-sync-pebble AGENTS.md](../../apps/fhir-sync-pebble/AGENTS.md) — the watchapp, the sync's messages, and the ES5 bundle
 - [Property Testing Reference](../../docs/Testing/Property%20Testing%20Reference.md)
