@@ -77,9 +77,8 @@ const decodeConnection = Schema.decodeUnknownEither(ConnectionSchema)
  * @remarks
  * The base URL is the one the handshake named, trimmed by `fhir-r4`'s
  * `trimTrailingSlashes` — the rule the page's own reads go through — so the
- * watch, which appends `/Observation` to it, addresses the server as the page
- * did. A server entered as `https://fhir.example/r4/` would otherwise have it
- * POST to `…/r4//Observation`.
+ * watch, which POSTs its transaction Bundle to it, addresses the server as the
+ * page did.
  */
 const fromGrant = (grant: Grant): Either.Either<Connection, MissingGrantError> =>
   Either.mapLeft(

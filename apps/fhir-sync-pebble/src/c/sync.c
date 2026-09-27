@@ -73,12 +73,16 @@ static bool prv_collect_activity(
   return true;
 }
 
-// The checked minute types that haven't synced hour yet, one bit per DataType.
-// Their last sync times are always on the hour, or 0 for never.
-static int prv_due_minute_types(const AppState *state, time_t hour) {
+// The minute types this sync covers that haven't synced hour yet, one bit per
+// DataType. The types are the ones checked when the sync started (their
+// synced_through is set), not the menu's live checkboxes: a type unchecked
+// mid-sync would otherwise skip hours its synced_through still claims. Their
+// last sync times are always on the hour, or 0 for never.
+static int prv_due_minute_types(const Sync *sync, time_t hour) {
+  const AppState *state = sync->state;
   int due = 0;
   for (int i = 0; i < DATA_TYPE_COUNT; i++) {
-    if (prv_is_minute_type(i) && state->data_type_enabled[i] &&
+    if (prv_is_minute_type(i) && sync->synced_through[i] != 0 &&
         state->data_type_last_sync_times[i] <= hour) {
       due |= 1 << i;
     }
@@ -125,7 +129,7 @@ static bool prv_load_next_hour(Sync *sync, time_t *hour_start, int *due_types) {
   while (sync->next_hour < sync->minutes_through) {
     time_t hour = sync->next_hour;
     sync->next_hour += SECONDS_PER_HOUR;
-    int due = prv_due_minute_types(sync->state, hour);
+    int due = prv_due_minute_types(sync, hour);
     if (due == 0) {
       continue;
     }

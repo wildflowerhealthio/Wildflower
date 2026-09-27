@@ -79,7 +79,8 @@ function postSync(sync, done) {
     return healthActivity.toObservation(activity, stored.patientId, watchDisplay)
   })
   sync.hours.forEach(function (hour) {
-    observations = observations.concat(
+    Array.prototype.push.apply(
+      observations,
       minuteHistory.toObservations(hour, stored.patientId, watchDisplay)
     )
   })

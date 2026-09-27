@@ -106,7 +106,9 @@ minute and a type still due is one message:
 - `MinuteHourStart`: Unix seconds, on the hour;
 - `MinuteTypes`: the types to post for that hour, one bit per `DataType`
   (Heart Rate = bit 1 … Ambient Light = bit 5), so a type checked later starts
-  from its own last sync;
+  from its own last sync. The types are the ones checked when the sync began
+  (those with a `synced_through`), so toggling a checkbox mid-sync takes effect
+  at the next sync rather than skipping hours the success would mark synced;
 - `MinuteData`: 60 minutes × 6 bytes, laid out in `minute-wire.h`.
 
 The phone turns each type into one Observation per hour whose value is
@@ -114,13 +116,13 @@ The phone turns each type into one Observation per hour whose value is
 an invalid minute or one without a reading. A type with no sample that hour gets
 no Observation. The conversions come from the Core Devices PebbleOS sources:
 
-| Type | Code | Unit | Conversion |
-| --- | --- | --- | --- |
-| Heart Rate | LOINC `8867-4` | `/min` | as is; 0 bpm is "no reading" |
-| Steps | LOINC `55423-8` | `{steps}` | as is |
-| Movement | `HealthMinuteData.vmc` | `{counts}/min` | as is: ActiGraph-scaled vector magnitude counts |
-| Orientation | `HealthMinuteData.orientation` | `deg` | yaw and pitch components, SampledData `factor` 22.5 over the bins |
-| Ambient Light | `HealthMinuteData.light` | `lx` | the level's band midpoint: 650, 750, 850 or 950 |
+| Type          | Code                           | Unit           | Conversion                                                        |
+| ------------- | ------------------------------ | -------------- | ----------------------------------------------------------------- |
+| Heart Rate    | LOINC `8867-4`                 | `/min`         | as is; 0 bpm is "no reading"                                      |
+| Steps         | LOINC `55423-8`                | `{steps}`      | as is                                                             |
+| Movement      | `HealthMinuteData.vmc`         | `{counts}/min` | as is: ActiGraph-scaled vector magnitude counts                   |
+| Orientation   | `HealthMinuteData.orientation` | `deg`          | yaw and pitch components, SampledData `factor` 22.5 over the bins |
+| Ambient Light | `HealthMinuteData.light`       | `lx`           | the level's band midpoint: 650, 750, 850 or 950                   |
 
 The Pebble codes use the HealthService docs page as their system.
 
