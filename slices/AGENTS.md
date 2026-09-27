@@ -19,7 +19,7 @@ slices/<name>/
 
 Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`).
 
-Current slices: `anonymizer`, `apps`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `medication`, `navigation`, `persistence`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `web-trace`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `apps`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `web-trace`. Verify with `ls slices/` — this list can go stale.
 
 `http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
 
@@ -55,6 +55,13 @@ on `http-archive`'s format and DevTools vocabulary); a
 source's generator is a `synthetic-data-<source>` package on top of it that
 writes a story as the files that source produces, proven through the real
 importer. The stories themselves live in `wildflowerhealthio/synthetic-data`.
+
+`lifting` holds a person's strength-training plan — see
+[lifting/AGENTS.md](./lifting/AGENTS.md). Its `lifting-core` is the plan of
+exercise goals and alternating workouts, the logged attempts, and the
+increment / hold / deload decision as pure functions (with StrongLifts 5×5 as a
+template), plus, behind the `lifting-core/fhir` subpath, the adapters that
+store them as FHIR R4 `CarePlan`, `Goal` and `Observation` resources.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
