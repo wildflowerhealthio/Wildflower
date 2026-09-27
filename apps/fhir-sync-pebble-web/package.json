@@ -7,9 +7,6 @@
     ".": {
       "source": "./src/app-root.tsx"
     },
-    "./pebble-settings": {
-      "source": "./src/pebble-settings.ts"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {

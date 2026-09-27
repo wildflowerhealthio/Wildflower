@@ -97,9 +97,8 @@ in two steps because the facts arrive separately: the grant gives a
 `Connection` (token, server), and the save adds the patient the user picked
 (`withPatient`). Change the shape together with the watchapp's decoder, `decodeResponse` in
 [`apps/fhir-sync-pebble/src/pkjs/settings.js`](../fhir-sync-pebble/src/pkjs/settings.js);
-the package exports `./pebble-settings` so the watchapp's
-`test/settings.test.ts` can round-trip `toJson` through it.
-together with the watchapp's `webviewclosed` handler.
+the watchapp's `test/settings.test.ts` imports `PebbleSettings` from
+`fhir-sync-pebble-core` to round-trip `toJson` through it.
 
 ## Traps
 

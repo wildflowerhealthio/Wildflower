@@ -1,6 +1,6 @@
 import { Arbitrary } from 'effect'
 import * as fc from 'fast-check'
-import * as PebbleSettings from 'fhir-sync-pebble-web/pebble-settings'
+import { PebbleSettings } from 'fhir-sync-pebble-core'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 

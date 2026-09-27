@@ -350,9 +350,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../../slices/emr/fhir-r4
-      fhir-sync-pebble-web:
+      fhir-sync-pebble-core:
         specifier: workspace:*
-        version: link:../../fhir-sync-pebble-web
+        version: link:../../../slices/fhir-sync-pebble/fhir-sync-pebble-core
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
