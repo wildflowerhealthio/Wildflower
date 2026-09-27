@@ -163,12 +163,18 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
  * pending record and comes back as the redeemed session's `returnTo`. The
  * pending record is written before the URL comes back, so a caller cannot leave
  * on a flow whose verifier was never saved.
+ *
+ * `fhirBaseUrl` is the FHIR base to discover at when `serverUrl` is a plain
+ * SMART server rather than a Wildflower one; left out, `beginSignIn` uses the
+ * Wildflower server's own.
  */
 const startSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
-  environment: SignInEnvironment
-): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment))
+  environment: SignInEnvironment,
+  fhirBaseUrl?: string
+): Promise<SignInStep<string>> =>
+  runStep(beginSignIn(serverUrl, returnTo, environment, fhirBaseUrl))
 
 /**
  * Finish a sign-in from the query string this page load arrived on: `None` when

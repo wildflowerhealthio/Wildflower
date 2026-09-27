@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import * as fc from 'fast-check'
 import { serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import { makeBearerAuthStateStore, type BearerAuthStateStore } from 'gatekeeper-react'
@@ -43,7 +43,7 @@ describe('Landing', () => {
     // Assert — signing in needs a target, so nothing starts and the call to
     // action is absent.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /local server/i })).toBeDefined()
+      expect(localServerButton()).toBeDefined()
     })
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull()
     expect(signIn.started).toEqual([])
@@ -176,13 +176,122 @@ describe('Landing', () => {
 
     // Act — picking the local server records `?server=` in the address bar. The
     // record is written synchronously, before the sign-in redirect leaves.
-    fireEvent.click(await screen.findByRole('button', { name: /local server/i }))
+    await waitFor(() => {
+      expect(localServerButton()).toBeDefined()
+    })
+    fireEvent.click(localServerButton())
 
     // Assert — the reader stays on the app's own subpath (not moved to `/`), and
     // `?server=` is now set there. A root path would point the parameter at a
     // page that is not this app.
     expect(window.location.pathname).toBe(appBase)
     expect(serverUrlFromSearch(window.location.search)).toBe(DEFAULT_SERVER_URL)
+  })
+
+  test('signs in to a hosted subdomain’s origin, as a Wildflower server', async () => {
+    // Arrange
+    const signIn = recordingSignIn(pendingStart)
+    await mountLanding('/', { signIn: signIn.stub })
+    const hosted = within(await screen.findByRole('form', { name: HOSTED_GROUP_NAME }))
+
+    // Act
+    fireEvent.change(hosted.getByLabelText('Subdomain of wildflowerhealth.io'), {
+      target: { value: 'ruth' },
+    })
+    fireEvent.click(hosted.getByRole('button', { name: 'Connect' }))
+
+    // Assert — the Wildflower server's own FHIR base is `beginSignIn`'s
+    // default, so none is passed.
+    await waitFor(() => {
+      expect(signIn.started).toEqual(['https://ruth.wildflowerhealth.io'])
+    })
+    expect(signIn.fhirBaseUrls).toEqual([undefined])
+    expect(serverUrlFromSearch(window.location.search)).toBe('https://ruth.wildflowerhealth.io')
+  })
+
+  test('signs in to the demo server at its FHIR base, under its notice', async () => {
+    // Arrange — the SmartHealthIT demo is a plain SMART server: it has no
+    // `/fhir-r4` of its own, so its preset is its FHIR base.
+    const signIn = recordingSignIn(pendingStart)
+    await mountLanding('/', { signIn: signIn.stub })
+    const demo = within(await screen.findByRole('region', { name: DEMO_GROUP_NAME }))
+
+    // Act
+    fireEvent.click(demo.getByRole('button', { name: 'Launch as logged in patient' }))
+
+    // Assert — the reader is told what won't work there, and the sign-in
+    // discovers at the picked URL, which `?server=` then names.
+    expect(demo.getByText(/Wildflower specific features won't be available/)).toBeDefined()
+    await waitFor(() => {
+      expect(signIn.started).toHaveLength(1)
+    })
+    const [demoFhirBase] = signIn.started
+    expect(demoFhirBase).toMatch(/^https:\/\/launch\.smarthealthit\.org\/.*\/fhir$/)
+    expect(signIn.fhirBaseUrls).toEqual([demoFhirBase])
+    expect(serverUrlFromSearch(window.location.search)).toBe(demoFhirBase)
+  })
+
+  test('shows why a pick failed once, in the menu, with the menu ready for a retry', async () => {
+    // Arrange
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
+    )
+    await mountLanding('/', { signIn: signIn.stub })
+    await waitFor(() => {
+      expect(localServerButton()).toBeDefined()
+    })
+
+    // Act
+    fireEvent.click(localServerButton())
+
+    // Assert — one banner, not the menu's and the page's both.
+    await waitFor(() => {
+      expect(screen.getAllByText(/Could not reach the server\./)).toHaveLength(1)
+    })
+    expect(localServerButton().hasAttribute('disabled')).toBe(false)
+  })
+
+  test('moves a failure to the page’s banner when the page’s own sign-in retries a pick', async () => {
+    // Arrange — a pick that failed, reported by the menu; the picked server is
+    // now the page's, with its "Sign in to …" button.
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
+    )
+    await mountLanding('/', { signIn: signIn.stub })
+    await waitFor(() => {
+      expect(localServerButton()).toBeDefined()
+    })
+    fireEvent.click(localServerButton())
+    const retry = await screen.findByRole('button', {
+      name: /sign in to http:\/\/127\.0\.0\.1:8080/i,
+    })
+    await waitFor(() => {
+      expect(retry.hasAttribute('disabled')).toBe(false)
+    })
+
+    // Act
+    fireEvent.click(retry)
+
+    // Assert — the retry's failure shows, and the menu's report of the earlier
+    // pick is gone rather than repeated beside it.
+    await waitFor(() => {
+      expect(signIn.started).toHaveLength(2)
+    })
+    await waitFor(() => {
+      expect(screen.getAllByText(/Could not reach the server\./)).toHaveLength(1)
+    })
+  })
+
+  test('keeps the menu disabled while the sign-in on arrival is in flight', async () => {
+    // Arrange / Act — a named server, whose sign-in never settles.
+    const signIn = recordingSignIn(pendingStart)
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', { signIn: signIn.stub })
+
+    // Assert — a pick now would start a second flow over the first.
+    await waitFor(() => {
+      expect(signIn.started).toEqual(['http://127.0.0.1:8080'])
+    })
+    expect(localServerButton().hasAttribute('disabled')).toBe(true)
   })
 })
 
@@ -281,21 +390,44 @@ const mountLanding = async (
   return { pathname: () => router.state.location.pathname }
 }
 
+/** The menu's group names this page is driven through (`smart-app-react`'s presets). */
+const LOCAL_GROUP_NAME = 'Local Wildflower Server'
+const HOSTED_GROUP_NAME = 'Wildflower Health hosted server'
+const DEMO_GROUP_NAME = 'Smart Health IT Demo Server'
+
+/** The menu's one-click sign-in to the local Wildflower server. */
+const localServerButton = (): HTMLElement =>
+  within(screen.getByRole('region', { name: LOCAL_GROUP_NAME })).getByRole('button', {
+    name: 'Connect',
+  })
+
 /** A sign-in start that never settles — the page stays "taking you to sign in". */
 const pendingStart = (): Promise<SignInStep<string>> => new Promise(() => {})
 
-/** A {@link LandingSignIn} stand-in that records each target and departure. */
+/**
+ * A {@link LandingSignIn} stand-in that records each target, the FHIR base each
+ * was started with (`undefined` for a Wildflower server's own), and each
+ * departure.
+ */
 const recordingSignIn = (
   start: (target: string) => Promise<SignInStep<string>>
-): { readonly stub: LandingSignIn; readonly started: string[]; readonly left: string[] } => {
+): {
+  readonly stub: LandingSignIn
+  readonly started: string[]
+  readonly fhirBaseUrls: (string | undefined)[]
+  readonly left: string[]
+} => {
   const started: string[] = []
+  const fhirBaseUrls: (string | undefined)[] = []
   const left: string[] = []
   return {
     started,
+    fhirBaseUrls,
     left,
     stub: {
-      start: (target) => {
+      start: (target, fhirBaseUrl) => {
         started.push(target)
+        fhirBaseUrls.push(fhirBaseUrl)
         return start(target)
       },
       leave: (authorizationUrl) => {

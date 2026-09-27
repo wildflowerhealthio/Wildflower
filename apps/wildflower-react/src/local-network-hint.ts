@@ -1,6 +1,6 @@
 /**
- * The extra line the landing shows beneath a sign-in failure when the chosen
- * server is a loopback address reached from the published (secure) page.
+ * The sentence the landing adds after a sign-in failure's reason when the
+ * chosen server is a loopback address reached from the published (secure) page.
  *
  * A hosted `https://` page fetching a `http://127.0.0.1` server is exactly the
  * case Chrome guards with its **Local Network Access** prompt (formerly Private

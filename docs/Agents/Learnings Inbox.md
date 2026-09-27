@@ -147,7 +147,7 @@ The homepage's per-app rows and each SMART app's standalone landing page render
 the same `APP_DESCRIPTIONS` entry from `branding-core`, so a copy edit in one
 place changes both. `branding-react`'s `AppLanding` takes the app's
 `AppSectionId` and the connect menu as children; it owns the page's `h1` (the
-app name), which is why `fhir-r4-react`'s `ConnectMenu` heading is an `h2`. A
+app name), which is why `smart-app-react`'s `ConnectMenu` heading is an `h2`. A
 test that looks for the connect page's heading by level should use level 2.
 
 ## A design handoff's "`--radius-5` = 18px" is `--card-border-radius`, not tundra's ramp

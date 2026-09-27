@@ -1,0 +1,43 @@
+/*
+ * The landing page `main-web` renders on a bare visit: the same full-height
+ * column and landing area as `smart-app-react`'s standalone page
+ * (`smart-app-root.module.css`), so the owner UI's landing sits in the same
+ * chrome as the SMART apps'. Tokens come from `react-tundraish/styles` and
+ * `branding-react`'s layout tokens.
+ */
+.landing-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/*
+ * The landing area (intro beside the ConnectMenu): centred horizontally, and
+ * it grows to fill the column. No `width: 100%` — a block already fills its
+ * container, and under content-box sizing an explicit 100% plus the horizontal
+ * padding overflows the viewport on phones and makes the page scroll sideways.
+ */
+.connect-page {
+  flex: 1;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-13) var(--page-padding-x);
+}
+
+/*
+ * The page's own sign-in, above the ConnectMenu: the problem banner and the
+ * "Sign in to …" button, set off from the menu's heading by the same space the
+ * menu puts between its groups. The one track is `minmax(0, 1fr)`, not `auto`,
+ * so a long server address cannot widen the column past a phone's viewport.
+ */
+.sign-in {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  margin-bottom: var(--space-10);
+}
+
+/* The button names the server, and a FHIR base can be long: let it wrap. */
+.sign-in__button {
+  overflow-wrap: anywhere;
+}
