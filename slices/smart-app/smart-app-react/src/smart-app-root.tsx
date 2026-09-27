@@ -87,6 +87,7 @@ function SmartAppRoot({ app, standalone, launched, children }: SmartAppRootProps
             <AppLanding app={app}>
               <ErrorBanner error={launchFailure} />
               <ConnectMenu
+                target="fhir-r4"
                 clientId={standalone.clientId}
                 scope={standalone.scope}
                 redirectUri={redirectUri}

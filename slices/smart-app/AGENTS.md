@@ -13,8 +13,11 @@ slice is where the two meet, so neither has to know about the other.
   - `SmartAppRoot({ app, standalone, launched?, children })` — the app root.
   - `runSmartLaunchEntry({ launch, loadingMessage })` — the whole `launch.html`
     entry.
-  - `ConnectMenu` and its `DEFAULT_SERVER_PRESET_GROUPS` — the standalone
-    connect flow.
+  - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
+    standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
+    base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
+    owner UI's own sign-in (`connect`) a server origin, and is disabled while
+    `busy` says a sign-in the page started itself is in flight.
 
 Consumers: `apps/medications-app` and `apps/importer-web` mount `SmartAppRoot`
 and `runSmartLaunchEntry`; `apps/fhir-sync-pebble-web` is standalone-only, so it
@@ -58,14 +61,23 @@ import `branding-react/styles.css` itself.
   contract is `fhir-r4-react/smart`'s `launch-error.ts`.
 - **`ConnectMenu` probes before it connects, and `unreachable` ≠ `open`.** It
   renders inside `AppLanding` on the standalone branch: launch buttons grouped
-  under each known server's name and address (`DEFAULT_SERVER_PRESET_GROUPS`)
-  as hairline-separated blocks in the landing page's vocabulary, then a free-URL
-  form. The free entry is validated with `normalizeServerUrl` in a plain
-  `type="text"` input, never `type="url"` — HTML5 constraint validation would
-  block the submit handler and mask the message. `startStandaloneLaunch`'s
-  `unreachable` outcome is shown as a retryable error banner rather than
-  connecting; why that must never degrade to `open` is the standalone-launch
-  guardrail in [slices/emr/AGENTS.md](../emr/AGENTS.md).
+  under each known server's name and address (`server-presets.ts`'s
+  `serverPresetGroupsFor`) as hairline-separated blocks in the landing page's
+  vocabulary, with a Wildflower-hosted group — `https://` [subdomain]
+  `.wildflowerhealth.io` — after the leading run of `wildflowerServer` groups,
+  then a free-URL form. Every URL is built for the `target`: a FHIR base
+  (`…/fhir-r4`) for `fhir-r4`, the server's origin for `wildflower`. The
+  subdomain is checked as dot-separated DNS labels before it is spliced into a
+  URL, and it and the free entry are validated with `normalizeServerUrl` in
+  plain `type="text"` inputs, never `type="url"` — HTML5 constraint validation
+  would block the submit handler and mask the message. An entry's validation
+  message shows inside its own form, beside the field. `startStandaloneLaunch`'s
+  `unreachable` outcome, like a problem the `wildflower` caller's `connect`
+  reports, is shown as a retryable error banner at the bottom rather than
+  connecting, and a page restored from the back-forward cache mid-launch comes
+  back idle rather than disabled; why an `unreachable` probe must never degrade
+  to `open` is the standalone-launch guardrail in
+  [slices/emr/AGENTS.md](../emr/AGENTS.md).
 
 ## References
 

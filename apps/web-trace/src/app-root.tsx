@@ -63,6 +63,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
             <AppLanding app="webTrace">
               <ErrorBanner error={launchFailure} />
               <ConnectMenu
+                target="fhir-r4"
                 clientId={standaloneSmartConfig.clientId}
                 scope={standaloneSmartConfig.scope}
                 redirectUri={redirectUri}

@@ -9,15 +9,17 @@ vi.mock('./app.tsx', () => ({
 
 vi.mock('smart-app-react', () => ({
   ConnectMenu: ({
+    target,
     clientId,
     scope,
     redirectUri,
   }: {
+    readonly target: string
     readonly clientId: string
     readonly scope: string
     readonly redirectUri: string
   }): JSX.Element => (
-    <div data-testid="mock-connect-menu" data-redirect-uri={redirectUri}>
+    <div data-testid="mock-connect-menu" data-target={target} data-redirect-uri={redirectUri}>
       {clientId} / {scope} / {redirectUri}
     </div>
   ),
@@ -66,9 +68,11 @@ describe('AppRoot', () => {
       'https://wildflowerhealth.io/wildflower-server-docs'
     )
 
-    // ConnectMenu is present, and its redirect target is this page's root
-    // (the OAuth callback lands back on AppRoot, wherever it is served from)
+    // ConnectMenu is present, launching this SMART app, and its redirect
+    // target is this page's root (the OAuth callback lands back on AppRoot,
+    // wherever it is served from)
     const connectMenu = screen.getByTestId('mock-connect-menu')
+    expect(connectMenu.getAttribute('data-target')).toBe('fhir-r4')
     expect(connectMenu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/`)
 
     // SiteFooter is present (the footer landmark)

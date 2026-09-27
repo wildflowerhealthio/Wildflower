@@ -44,10 +44,68 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * What to expect of a server, under its address: the same quiet mono voice, as
+ * a note rather than a heading.
+ */
+.group__notice {
+  margin: calc(-1 * var(--space-4)) 0 0;
+  color: var(--color-neutral-5);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+}
+
 .group__presets {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+/*
+ * The hosted server's address, spelled out around its subdomain field and
+ * split where the subdomain ends: `https://` and the field on the first line,
+ * the fixed domain on the second, starting under the field so the address
+ * reads down as one URL. The split is the same at every width, so the field
+ * always gets the whole column beside `https://`.
+ */
+.hosted {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+}
+
+/* The fixed scheme and domain around the field, in the address voice. */
+.hosted__scheme,
+.hosted__domain {
+  color: var(--color-neutral-5);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+}
+
+/* Level with the text typed into the input, not with its label. */
+.hosted__scheme {
+  align-self: last baseline;
+}
+
+/*
+ * One unbroken line under the field; a domain wider than the column breaks
+ * rather than pushing the page sideways.
+ */
+.hosted__domain {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+
+.hosted__subdomain {
+  min-width: 0;
+}
+
+/* Border-box so the input's padding and border stay inside its column. */
+.hosted__input {
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .actions {

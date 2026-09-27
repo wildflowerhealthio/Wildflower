@@ -10,15 +10,16 @@ import type { ConnectMenuProps } from './connect-menu.tsx'
 import { SmartAppRoot } from './smart-app-root.tsx'
 
 // The stub echoes the props it was handed as data attributes so the wiring
-// (`clientId` / `scope` from the `standalone` prop, `redirectUri` from the URL)
-// is observable. The branding chrome renders for real.
+// (the SMART target, `clientId` / `scope` from the `standalone` prop,
+// `redirectUri` from the URL) is observable. The branding chrome renders for real.
 vi.mock('./connect-menu.tsx', () => ({
-  ConnectMenu: ({ clientId, scope, redirectUri }: ConnectMenuProps) => (
+  ConnectMenu: (props: ConnectMenuProps) => (
     <div
       data-testid="connect-menu-stub"
-      data-client-id={clientId}
-      data-scope={scope}
-      data-redirect-uri={redirectUri}
+      data-target={props.target}
+      data-client-id={props.target === 'fhir-r4' ? props.clientId : undefined}
+      data-scope={props.target === 'fhir-r4' ? props.scope : undefined}
+      data-redirect-uri={props.target === 'fhir-r4' ? props.redirectUri : undefined}
     />
   ),
 }))
@@ -67,7 +68,7 @@ describe('SmartAppRoot', () => {
     expect(screen.queryByTestId('app')).toBeNull()
   })
 
-  it('should hand the connect menu the standalone config and this root as its redirect', () => {
+  it('should hand the connect menu the SMART target, the standalone config and this root as its redirect', () => {
     // Arrange — served from a subpath, with a query that must not leak into the redirect
     setUrl('/importer-app/index.html?utm_source=email')
 
@@ -76,6 +77,7 @@ describe('SmartAppRoot', () => {
 
     // Assert
     const menu = screen.getByTestId('connect-menu-stub')
+    expect(menu.getAttribute('data-target')).toBe('fhir-r4')
     expect(menu.getAttribute('data-client-id')).toBe(STANDALONE.clientId)
     expect(menu.getAttribute('data-scope')).toBe(STANDALONE.scope)
     expect(menu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/importer-app/`)
