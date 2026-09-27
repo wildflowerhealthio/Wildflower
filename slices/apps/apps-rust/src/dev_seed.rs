@@ -2,8 +2,8 @@
 //! apps' local vite dev servers.
 //!
 //! The first-party apps (Medications, Web Trace, Importer, the OHIF imaging
-//! viewer, Server Docs, the Synthesized Health Viewer) ship as **cloud** rows served from
-//! <https://wildflowerhealth.io> (apps migration
+//! viewer, Server Docs, the Synthesized Health Viewer, Lifting) ship as
+//! **cloud** rows served from <https://wildflowerhealth.io> (apps migration
 //! `0005_first_party_apps_to_cloud`). That is the right production target and
 //! the wrong development one: a developer editing `apps/medications-app` wants
 //! the homescreen tile to open the vite dev server they are running, not the
@@ -96,6 +96,8 @@ struct DevAppPorts {
     ohif_viewer_dev: i32,
     #[serde(rename = "health-viewer-app-dev")]
     health_viewer_app_dev: i32,
+    #[serde(rename = "lifting-app-dev")]
+    lifting_app_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -106,7 +108,7 @@ struct DevAppPorts {
 /// a compile-time-embedded, version-controlled file, so a failure here is a
 /// broken build, not a runtime condition, and only ever reachable in a debug
 /// build.
-fn dev_apps() -> [DevApp; 6] {
+fn dev_apps() -> [DevApp; 7] {
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
@@ -151,6 +153,13 @@ fn dev_apps() -> [DevApp; 6] {
             subtitle: "Local vite dev server for apps/health-viewer",
             port: ports.health_viewer_app_dev,
             url: dev_launch_url(ports.health_viewer_app_dev),
+        },
+        DevApp {
+            id: "lifting-app-dev",
+            name: "Lifting (Dev)",
+            subtitle: "Local vite dev server for apps/lifting-app",
+            port: ports.lifting_app_dev,
+            url: dev_launch_url(ports.lifting_app_dev),
         },
     ]
 }
@@ -479,6 +488,7 @@ mod tests {
             "web-trace-app",
             "importer-app",
             "ohif-viewer",
+            "lifting-app",
         ] {
             let (registration, config) = store.find_app(id).unwrap().expect("migrated cloud row");
             assert!(

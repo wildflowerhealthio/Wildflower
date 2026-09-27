@@ -52,7 +52,15 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// `medications-app`, `wildflower-web-trace` → `web-trace-app`, keeping the
 /// `client_id == app id` invariant the redirect resolver needs) and adds their
 /// published-site redirect URI now that they launch as cloud apps; `0007` seeds
-/// the server-docs API console's client. Because each migration runs only once
+/// the server-docs API console's client; `0008` the Importer's; `0009` (two
+/// migrations share the prefix) the OHIF imaging viewer's and the widening of
+/// the Importer's write scopes; `0010` repoints the viewer's redirect onto its
+/// `/fhir-viewer` route; `0011` repairs the Medications and Web Trace clients on
+/// any install `0006` left short; `0012` seeds the hosted owner UI's
+/// (`wildflower-react`) client and `0013` returns it to its app root; `0015` /
+/// `0016` repair installs that ran only one of the two `0009`s; `0017` seeds
+/// FHIR Sync for Pebble's client and `0018` widens its Observation scope; and
+/// `0019` seeds Lifting's. Because each migration runs only once
 /// per database, an upgrade neither re-drops nor re-seeds.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -720,6 +728,54 @@ mod tests {
                 ],
             )],
             "give each new migration a version no other migration uses",
+        );
+    }
+
+    /// A new seed reaches an install that already ran every earlier migration:
+    /// driving a database through `0018` and then opening it with the full set
+    /// must add the `lifting-app` client (`0019`) with its exact redirect URIs
+    /// and scope set — the upgrade path a fresh open cannot distinguish from a
+    /// first run.
+    #[test]
+    fn an_install_already_at_0018_gains_the_lifting_app_client() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0018"),
+        )
+        .expect("migrate to 0018");
+
+        let before: Vec<Name> =
+            diesel::sql_query("SELECT client_id AS name FROM clients WHERE client_id = ?")
+                .bind::<diesel::sql_types::Text, _>("lifting-app")
+                .load(&mut conn)
+                .expect("query clients");
+        assert!(
+            before.is_empty(),
+            "no migration through 0018 seeds lifting-app"
+        );
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0019");
+
+        let redirects: Vec<Name> =
+            diesel::sql_query("SELECT redirect_uris AS name FROM clients WHERE client_id = ?")
+                .bind::<diesel::sql_types::Text, _>("lifting-app")
+                .load(&mut conn)
+                .expect("0019 must seed the lifting-app client");
+        assert_eq!(
+            redirects[0].name,
+            r#"["/","https://wildflowerhealth.io/lifting-app/"]"#,
+        );
+        let scopes: Vec<Name> =
+            diesel::sql_query("SELECT allowed_scopes AS name FROM clients WHERE client_id = ?")
+                .bind::<diesel::sql_types::Text, _>("lifting-app")
+                .load(&mut conn)
+                .expect("query scopes");
+        assert_eq!(
+            scopes[0].name,
+            r#"["launch","launch/patient","openid","fhirUser","system/Patient.rs","system/CarePlan.cruds","system/Goal.cruds","system/Observation.cruds"]"#,
         );
     }
 

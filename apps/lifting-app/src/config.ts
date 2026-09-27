@@ -36,16 +36,19 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  *   `lifting-app-dev` row and its client, which registers the app-relative
  *   `"/"` redirect that resolves against the loopback origin.
  *
- * Neither registration exists yet: the follow-up registration change seeds
- * both (the `lifting-app` rows by migration, the `lifting-app-dev` ones in the
- * debug-only dev seeds).
+ * Both registrations are seeded: the `lifting-app` row by `apps-rust`
+ * migration `0010_seed_lifting_app` and its client by `gatekeeper-rust`
+ * migration `0019_seed_lifting_app_client`; the `lifting-app-dev` row and
+ * client by the debug-only dev seeds (`apps-rust`'s `dev_seed.rs` and
+ * `gatekeeper-rust`'s `seed_dev_app_clients`).
  *
  * Either way `clientId` MUST equal the app-registration id it is launched
  * through: the host's self-hosted redirect resolver looks an app up by
  * `client_id`, so the app-relative redirect only resolves when the two match.
  *
- * The `allowed_scopes` the follow-up change seeds for the `lifting-app` client
- * (and the `lifting-app-dev` one) MUST equal, element for element, the union
+ * The `allowed_scopes` migration `0019_seed_lifting_app_client` seeds for the
+ * `lifting-app` client (and `seed_dev_app_clients` for the `lifting-app-dev`
+ * one) MUST equal, element for element, the union
  * of this string's scopes and {@link standaloneSmartConfig}'s — that is, these
  * plus `launch/patient`. A scope the app requests but the client is not
  * allowed fails the authorize step, and one the client allows but neither

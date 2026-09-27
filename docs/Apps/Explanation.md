@@ -42,23 +42,28 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   `POST /self-hosted-apps` upload endpoint). Both serve the same way; they
   differ only in origin and removability (see the data model).
 - **Cloud** — assets served from a **remote** origin. Growth Chart, Medication
-  Viewer, and PRECISE-HBR are Cloud, and so are the two **first-party** apps,
-  Medications (`medications-app`) and Web Trace (`web-trace-app`), which are
-  published to <https://wildflowerhealth.io> by `apps/github-pages` and launched
-  from there (apps migration `0005_first_party_apps_to_cloud`). Serving the
-  deployed copy means a shipped app updates when the site deploys rather than
-  when the user installs a new desktop build.
+  Viewer, and PRECISE-HBR are Cloud, and so are the **first-party** apps —
+  Medications (`medications-app`), Web Trace (`web-trace-app`), the Server Docs
+  console (`web-server-docs`), Importer (`importer-app`), the OHIF imaging viewer
+  (`ohif-viewer`) and Lifting (`lifting-app`) — which are published to
+  <https://wildflowerhealth.io> by `apps/github-pages` and launched from there
+  (apps migrations `0005_first_party_apps_to_cloud`, `0006`, `0007` and `0010`).
+  Serving the deployed copy means a shipped app updates when the site deploys
+  rather than when the user installs a new desktop build.
 
   A Cloud app reaches PHI through `{origin}` in its stored launch template, and
-  `requires_tunnel` decides which origin that is: set (the third-party apps,
-  which run in someone else's browser) it forces the tunnel up and substitutes
-  the tunnel's verified origin, so a launch fails `503` when the tunnel can't
-  come up; clear (the two first-party apps) it substitutes the **served** origin
-  — loopback for an on-device launch, the forwarded public origin for a remote
-  one — which is always something the caller can reach. The trade-off of the
-  move: with the assets remote, a launch of these two now needs the network even
-  on-device, and Web Trace can no longer claim `local_only` (its data still never
-  leaves the device; its assets are no longer local).
+  `requires_tunnel` decides which origin that is: set it forces the tunnel up and
+  substitutes the tunnel's verified HTTPS origin, so a launch fails `503` when the
+  tunnel can't come up; clear it substitutes the **served** origin — loopback for
+  an on-device launch, the forwarded public origin for a remote one. Every seeded
+  Cloud row sets it, the first-party ones included: their pages are HTTPS
+  documents on <https://wildflowerhealth.io>, and an `iss={origin}` fetch from
+  there to a loopback origin is unreachable remotely and refused by WebKit even
+  on device. Only the debug-only `<id>-dev` rows below clear it, since their
+  pages are served from `localhost` themselves. The trade-off: with
+  the assets remote and the tunnel required, a first-party launch needs the
+  network even on-device, and Web Trace can no longer claim `local_only` (its
+  data still never leaves the device; its assets are no longer local).
 
   In **debug builds only** each first-party app additionally gets an `<id>-dev`
   row bound to that app's vite dev-server port (pinned once in

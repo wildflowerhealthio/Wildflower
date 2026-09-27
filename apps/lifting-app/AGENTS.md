@@ -116,9 +116,9 @@ scopes every search with `patient=<id>` itself. How the server evaluates scopes
 is in the [emr-rust Capability
 Statement](../../slices/emr/emr-rust/docs/Capability%20Statement.md).
 
-**The pin.** The `allowed_scopes` array the gatekeeper seeds for the
-`lifting-app` client (and the `lifting-app-dev` dev client), in the follow-up
-registration change, MUST equal the union of the two launches' scopes — the
+**The pin.** The `allowed_scopes` array `gatekeeper-rust` migration
+`0019_seed_lifting_app_client` seeds for the `lifting-app` client (and
+`seed_dev_app_clients` for the `lifting-app-dev` dev client) MUST equal the union of the two launches' scopes — the
 set above plus `launch/patient` — element for element: a scope the app
 requests but the client is not allowed fails the authorize step. Nothing checks this across the TS/Rust boundary: the
 doc comment in `src/config.ts`, the seed's own comment and this file carry it.
@@ -168,10 +168,12 @@ app registration id, and the published path segment must match
   `slices/apps/dev-app-ports.json` pins for `lifting-app-dev` (`5198`).
 - **Published site** — `apps/github-pages` stages this build at
   `/lifting-app`.
-- **Seeded rows** — the `lifting-app` cloud app row, its OAuth client with the
-  scopes above, and the debug-only `lifting-app-dev` row and client land in the
-  follow-up registration change (`apps-rust` / `gatekeeper-rust` migrations and
-  dev seeds). Until then no homescreen tile launches this app.
+- **Seeded rows** — the `lifting-app` cloud app row (`apps-rust` migration
+  `0010_seed_lifting_app`, launching `launch.html` through the tunnel origin
+  like every first-party app), its OAuth client with the scopes above
+  (`gatekeeper-rust` migration `0019_seed_lifting_app_client`), and the
+  debug-only `lifting-app-dev` row and client (`dev_seed.rs` and
+  `seed_dev_app_clients`, both reading the port from `dev-app-ports.json`).
 
 ## Testing
 
