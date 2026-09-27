@@ -116,7 +116,10 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   rows (`built`, `possible-today`, `dev-tools`) and the apps' landing pages
   render the same entries; editing the copy in one component would fork the
   story. The Synthesized Health Viewer and the server-docs row are not SMART
-  apps with a landing page, so their copy stays inline on the homepage.
+  apps with a landing page, so their copy stays inline on the homepage. The
+  owner UI's entry (`app`) is the reverse: it has a landing page but no
+  homepage row, so it is described but left out of `APP_SECTION_IDS`, the
+  homepage's list.
 - **`SiteHeader`/`SiteFooter` are the one chrome, used by the homepage and the
   apps.** `apps/marketing-website` consumes them just like the apps do (passing
   `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
