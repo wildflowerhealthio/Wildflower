@@ -1,10 +1,8 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { Either } from 'effect'
+import { PebbleSettings, ReturnTarget, type ReturnTargetStore } from 'fhir-sync-pebble-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import * as PebbleSettings from './pebble-settings.ts'
-import type * as ReturnTargetStore from './return-target-store.ts'
-import * as ReturnTarget from './return-target.ts'
 import { SettingsPage } from './settings-page.tsx'
 
 // The confirmation branch reads the patient through route context, so it is

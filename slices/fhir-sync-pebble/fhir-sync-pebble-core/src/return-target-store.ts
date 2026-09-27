@@ -9,7 +9,9 @@ import * as ReturnTarget from './return-target.ts'
  *
  * @remarks
  * A namespace module — consumers speak `ReturnTargetStore.Store` and build one
- * with `ReturnTargetStore.fromWebStorage`.
+ * with `ReturnTargetStore.fromWebStorage`. Pure: the storage it keeps the
+ * target in is a parameter, so the browser's `sessionStorage` is named only by
+ * the app.
  *
  * @packageDocumentation
  */
@@ -28,6 +30,16 @@ interface Store {
   readonly recall: () => Either.Either<ReturnTarget.Type, ReturnTarget.ForeignReturnTargetError>
 }
 
+/**
+ * The Web Storage–shaped slice a {@link Store} keeps the target in. Declared
+ * structurally so this package names no DOM type: the app passes
+ * `window.sessionStorage`, and a test a `Map`-backed stand-in.
+ */
+interface WebStorage {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+}
+
 /** The key the return target is kept under. */
 const STORAGE_KEY = 'fhir-sync-pebble:return-to'
 
@@ -37,7 +49,7 @@ const STORAGE_KEY = 'fhir-sync-pebble:return-to'
  * a target kept past the phone app's web view could send a later session's
  * settings somewhere the phone app no longer expects.
  */
-const fromWebStorage = (storage: Pick<Storage, 'getItem' | 'setItem'>): Store => ({
+const fromWebStorage = (storage: WebStorage): Store => ({
   rememberFrom: (pageUrl) => {
     const returnTo = pageUrl.searchParams.get(ReturnTarget.PARAM)
     if (returnTo !== null) storage.setItem(STORAGE_KEY, returnTo)
@@ -46,4 +58,4 @@ const fromWebStorage = (storage: Pick<Storage, 'getItem' | 'setItem'>): Store =>
 })
 
 export { fromWebStorage, STORAGE_KEY }
-export type { Store }
+export type { Store, WebStorage }

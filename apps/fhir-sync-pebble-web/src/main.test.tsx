@@ -1,6 +1,5 @@
+import { ReturnTargetStore } from 'fhir-sync-pebble-core'
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
-
-import * as ReturnTargetStore from './return-target-store.ts'
 
 /**
  * The entry module's URL work, which must happen before anything reads the URL

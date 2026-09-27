@@ -15,11 +15,10 @@ import {
   useLaunchFailureRedirect,
   useSmartHandshake,
 } from 'fhir-r4-react/smart'
+import { PebbleSettings, ReturnTargetStore } from 'fhir-sync-pebble-core'
 import { useMemo, useState, type JSX } from 'react'
 import { ErrorBanner, PageLoading } from 'react-tundraish'
 
-import * as PebbleSettings from './pebble-settings.ts'
-import * as ReturnTargetStore from './return-target-store.ts'
 import { SettingsPage, type SettingsPageProps } from './settings-page.tsx'
 import styles from './app.module.css'
 

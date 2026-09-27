@@ -1,12 +1,10 @@
 import { Either, Match } from 'effect'
+import type { PebbleSettings, ReturnTarget, ReturnTargetStore } from 'fhir-sync-pebble-core'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner } from 'react-tundraish'
 
 import { PatientConfirmation } from './patient-confirmation.tsx'
-import type * as PebbleSettings from './pebble-settings.ts'
-import type * as ReturnTargetStore from './return-target-store.ts'
-import type * as ReturnTarget from './return-target.ts'
 import styles from './settings-page.module.css'
 
 /** Why the page will not hand the settings off, in the user's terms. */

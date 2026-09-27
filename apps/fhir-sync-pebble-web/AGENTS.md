@@ -27,11 +27,14 @@ SMART-built context). What differs is below.
   completes the settings with `PebbleSettings.withPatient`.
 - `patient-details.tsx` — the patient summary. Its name and the watch's
   `patientName` are one string, `fhir-r4`'s `HumanName.displayName`.
-- Namespace modules, imported as `* as Name`: `PebbleSettings`
-  (`pebble-settings.ts`, the watch's wire shape), `ReturnTarget`
-  (`return-target.ts`, the allow-listed `return_to` and the hand-off URL), and
-  `ReturnTargetStore` (`return-target-store.ts`, the `Store` interface that
-  keeps `return_to` across the login, with a Web Storage implementation).
+- The decisions live in the slice core,
+  [`fhir-sync-pebble-core`](../../slices/fhir-sync-pebble/AGENTS.md), whose
+  namespace modules this app imports by name: `PebbleSettings` (the watch's
+  wire shape), `ReturnTarget` (the allow-listed `return_to` and the hand-off
+  URL), and `ReturnTargetStore` (the `Store` that keeps `return_to` across the
+  login, over the `sessionStorage` this app hands it). The app holds no
+  business logic of its own — it reads the handshake and the patient, and
+  renders.
 
 The npm package is `fhir-sync-pebble-web`; the OAuth `client_id` is
 `fhir-sync-pebble` (`fhir-sync-pebble-dev` in a vite dev build), and the
@@ -50,7 +53,8 @@ same `index.html`, where `SmartAppRoot`'s launched branch mounts `App`.
 The app implements the Pebble "App Configuration (Static)" contract:
 
 1. The phone app opens the page with `?return_to=<url>`. `main.tsx` keeps it in
-   a `ReturnTargetStore` over `sessionStorage` before anything navigates,
+   a `ReturnTargetStore` (from `fhir-sync-pebble-core`) over `sessionStorage`
+   before anything navigates,
    because the SMART login leaves for the server's authorize page and the
    callback comes back without it. `sessionStorage`, not `localStorage`: the
    target must outlive the round trip in this tab and nothing longer.
@@ -60,8 +64,8 @@ The app implements the Pebble "App Configuration (Static)" contract:
    falling back to the guide's `pebblejs://close#` when the page was opened
    without one.
 
-`PebbleSettings` is the wire shape the watchapp parses — flat, with `null`
-for what the record lacks:
+`PebbleSettings` (`fhir-sync-pebble-core`) is the wire shape the watchapp
+parses — flat, with `null` for what the record lacks:
 
 ```json
 {
@@ -125,6 +129,8 @@ jsdom.
 ## References
 
 - [apps/importer-web AGENTS.md](../importer-web/AGENTS.md) — the template app
+- [slices/fhir-sync-pebble AGENTS.md](../../slices/fhir-sync-pebble/AGENTS.md) —
+  the core the settings, the return target and its store live in
 - [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md) — the shell this
   app boots through
 - [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md) — the SMART primitives

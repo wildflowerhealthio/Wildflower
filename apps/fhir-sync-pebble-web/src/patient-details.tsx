@@ -1,8 +1,8 @@
 import type { PatientResource } from 'fhir-r4-react'
 import { HumanName } from 'fhir-r4/data-types'
+import type { PebbleSettings } from 'fhir-sync-pebble-core'
 import type { JSX } from 'react'
 
-import type * as PebbleSettings from './pebble-settings.ts'
 import styles from './patient-details.module.css'
 
 /** Props for {@link PatientDetails}. */

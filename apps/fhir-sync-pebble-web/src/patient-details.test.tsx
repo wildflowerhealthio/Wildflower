@@ -2,10 +2,10 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { Schema } from 'effect'
 import type { PatientResource } from 'fhir-r4-react'
 import { Patient } from 'fhir-r4/resources'
+import type { PebbleSettings } from 'fhir-sync-pebble-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { PatientDetails } from './patient-details.tsx'
-import type * as PebbleSettings from './pebble-settings.ts'
 
 // Which name is shown is `fhir-r4`'s `HumanName.displayName` rule, tested there.
 

@@ -7,9 +7,9 @@ import { createRoot } from 'react-dom/client'
 import 'react-tundraish/styles'
 
 import { restoreRedirectedUrl } from 'branding-core'
+import { ReturnTargetStore } from 'fhir-sync-pebble-core'
 import { addOsColorSchemeListener } from 'react-tundraish'
 import { AppRoot } from './app-root.tsx'
-import * as ReturnTargetStore from './return-target-store.ts'
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see
 // "The 404 redirect" in `slices/branding/AGENTS.md`.

@@ -1,7 +1,5 @@
-import { Either, Schema } from 'effect'
+import { Either } from 'effect'
 import * as fc from 'fast-check'
-import type { PatientResource } from 'fhir-r4-react'
-import { Patient } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -51,10 +49,10 @@ describe('fromGrant', () => {
 describe('withPatient', () => {
   it("should name the patient for the watch's on-device confirmation", () => {
     // Act
-    const settings = PebbleSettings.withPatient(
-      connection,
-      patient({ name: [{ given: ['Ada'], family: 'Lovelace' }], birthDate: '1815-12-10' })
-    )
+    const settings = PebbleSettings.withPatient(connection, {
+      name: [{ given: ['Ada'], family: 'Lovelace' }],
+      birthDate: '1815-12-10',
+    })
 
     // Assert
     expect(settings).toStrictEqual({
@@ -68,7 +66,7 @@ describe('withPatient', () => {
 
   it('should send null for a name or birth date the record does not have', () => {
     // Act
-    const settings = PebbleSettings.withPatient(connection, patient({}))
+    const settings = PebbleSettings.withPatient(connection, unnamedPatient)
 
     // Assert
     expect(settings.patientName).toBeNull()
@@ -79,7 +77,7 @@ describe('withPatient', () => {
     fc.assert(
       fc.property(connectionArb, (granted) => {
         // Act
-        const settings = PebbleSettings.withPatient(granted, patient({}))
+        const settings = PebbleSettings.withPatient(granted, unnamedPatient)
 
         // Assert
         expect({
@@ -147,6 +145,5 @@ const settingsArb: fc.Arbitrary<PebbleSettings.Type> = fc.record({
   fhirBaseUrl: fc.webUrl(),
 })
 
-/** A decoded `Patient` with id `ada` and the given fields. */
-const patient = (fields: Readonly<Record<string, unknown>>): PatientResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id: 'ada', ...fields })
+/** A patient record with no name and no birth date. */
+const unnamedPatient = { name: [], birthDate: null }

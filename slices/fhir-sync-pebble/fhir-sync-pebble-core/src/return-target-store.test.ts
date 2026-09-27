@@ -84,7 +84,7 @@ const pageOpenedWith = (returnTo: string): URL => {
 }
 
 /** A Web Storage stand-in backed by a `Map`. */
-const memoryStorage = (): Pick<Storage, 'getItem' | 'setItem'> => {
+const memoryStorage = (): ReturnTargetStore.WebStorage => {
   const items = new Map<string, string>()
   return {
     getItem: (key) => items.get(key) ?? null,

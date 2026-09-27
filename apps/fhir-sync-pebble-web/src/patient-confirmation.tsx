@@ -1,10 +1,9 @@
 import { usePatientQuery } from 'fhir-r4-react'
+import { PebbleSettings, ReturnTarget } from 'fhir-sync-pebble-core'
 import type { JSX } from 'react'
 import { ErrorBanner, PageLoading } from 'react-tundraish'
 
 import { PatientDetails } from './patient-details.tsx'
-import * as PebbleSettings from './pebble-settings.ts'
-import * as ReturnTarget from './return-target.ts'
 import styles from './patient-confirmation.module.css'
 
 /** Props for {@link PatientConfirmation}. */

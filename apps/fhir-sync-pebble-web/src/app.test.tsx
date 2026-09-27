@@ -5,12 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { Effect, Either, Layer } from 'effect'
 import type * as SmartModule from 'fhir-r4-react/smart'
 import type { SmartHandshake } from 'fhir-r4-react/smart'
+import { type PebbleSettings, ReturnTarget, type ReturnTargetStore } from 'fhir-sync-pebble-core'
 import type Client from 'fhirclient/lib/Client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
-
-import type * as PebbleSettings from './pebble-settings.ts'
-import type * as ReturnTargetStore from './return-target-store.ts'
-import * as ReturnTarget from './return-target.ts'
 
 /**
  * The app's own wiring. `App` is driven through a stubbed handshake; everything

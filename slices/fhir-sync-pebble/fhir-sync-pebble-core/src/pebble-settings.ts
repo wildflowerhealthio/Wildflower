@@ -1,5 +1,4 @@
 import { Data, Either, Schema } from 'effect'
-import type { PatientResource } from 'fhir-r4-react'
 import { HumanName } from 'fhir-r4/data-types'
 
 /**
@@ -68,8 +67,21 @@ const decodeConnection = Schema.decodeUnknownEither(ConnectionSchema)
 const fromGrant = (grant: Grant): Either.Either<Connection, MissingGrantError> =>
   Either.mapLeft(decodeConnection(grant), () => new MissingGrantError())
 
-/** The settings for `connection`, naming the patient as the server returned it. */
-const withPatient = (connection: Connection, patient: PatientResource): Type => ({
+/**
+ * The settings for `connection`, naming the patient as the server returned it.
+ *
+ * @param connection - The patient, token and server the grant carried
+ * @param patient - What the patient read returned: the record's names and its
+ *   birth date as FHIR writes it (`null` when absent). A decoded `fhir-r4`
+ *   `Patient` fits, and so does anything else carrying the two.
+ */
+const withPatient = (
+  connection: Connection,
+  patient: {
+    readonly name: readonly HumanName.Displayable[]
+    readonly birthDate: string | null
+  }
+): Type => ({
   patientId: connection.patientId,
   patientName: HumanName.displayName(patient.name),
   patientBirthDate: patient.birthDate,
