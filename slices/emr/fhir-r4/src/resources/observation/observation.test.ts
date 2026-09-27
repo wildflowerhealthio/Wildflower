@@ -1,10 +1,14 @@
-import { Arbitrary, Either, type ParseResult, Schema } from 'effect'
+import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
+import {
+  atLeastTwoPopulatedSlots,
+  atMostOnePopulatedSlot,
+  expectChoiceElementGuardFailure,
+} from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { InstantSchema, TimeSchema } from '../../data-types/base/primitives.ts'
 import {
   Annotation,
@@ -147,7 +151,7 @@ describe('FhirR4Observation', () => {
           const result = Schema.decodeUnknownEither(Observation.Schema)(wire)
 
           // Assert
-          expectGuardFailureNaming(result, slots)
+          expectChoiceElementGuardFailure(result, 'value', slots)
         }),
         { numRuns: numRunsFor({ base: 100 }) }
       )
@@ -163,7 +167,7 @@ describe('FhirR4Observation', () => {
           const result = Schema.encodeEither(Observation.Schema)(observation)
 
           // Assert
-          expectGuardFailureNaming(result, slots)
+          expectChoiceElementGuardFailure(result, 'value', slots)
         }),
         { numRuns: numRunsFor({ base: 100 }) }
       )
@@ -392,21 +396,19 @@ describe('FhirR4Observation', () => {
 
 // Two or more `Observation.value[x]` slots, each paired with a non-null
 // decoded value — a choice element FHIR R4 forbids.
-const conflictingValueSlotsArb = Arbitrary.make(
-  Schema.Struct({
-    valueQuantity: Quantity.Schema,
-    valueCodeableConcept: CodeableConcept.Schema,
-    valueString: Schema.String,
-    valueBoolean: Schema.Boolean,
-    valueInteger: Schema.Int,
-    valueRange: Range.Schema,
-    valueRatio: Ratio.Schema,
-    valueSampledData: SampledData.Schema,
-    valueTime: TimeSchema,
-    valueDateTime: Schema.DateTimeUtc,
-    valuePeriod: Period.Schema,
-  })
-).chain((values) => fc.subarray(Object.entries(values), { minLength: 2 }))
+const conflictingValueSlotsArb = atLeastTwoPopulatedSlots({
+  valueQuantity: Quantity.Schema,
+  valueCodeableConcept: CodeableConcept.Schema,
+  valueString: Schema.String,
+  valueBoolean: Schema.Boolean,
+  valueInteger: Schema.Int,
+  valueRange: Range.Schema,
+  valueRatio: Ratio.Schema,
+  valueSampledData: SampledData.Schema,
+  valueTime: TimeSchema,
+  valueDateTime: Schema.DateTimeUtc,
+  valuePeriod: Period.Schema,
+})
 
 // The wire JSON of one `value[x]` slot, encoded through the whole Observation.
 const wireSlot = (key: string, value: unknown): unknown => {
@@ -415,18 +417,4 @@ const wireSlot = (key: string, value: unknown): unknown => {
     [key]: value,
   })
   return encoded[key]
-}
-
-const expectGuardFailureNaming = (
-  result: Either.Either<unknown, ParseResult.ParseError>,
-  slots: readonly (readonly [string, unknown])[]
-): void => {
-  const message = Either.match(result, {
-    onLeft: (error) => error.message,
-    onRight: () => 'succeeded without error',
-  })
-  expect(message).toContain(
-    `choice element value[x] allows at most one populated slot, but found ${slots.length}:`
-  )
-  for (const [key] of slots) expect(message).toContain(key)
 }

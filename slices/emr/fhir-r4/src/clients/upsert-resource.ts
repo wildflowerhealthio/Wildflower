@@ -83,6 +83,12 @@ const upsertResource = (
       case 'ImagingStudy':
         yield* client.ImagingStudy.Update({ path, payload: { ...resource, id } })
         break
+      case 'CarePlan':
+        yield* client.CarePlan.Update({ path, payload: { ...resource, id } })
+        break
+      case 'Goal':
+        yield* client.Goal.Update({ path, payload: { ...resource, id } })
+        break
       default: {
         const unreachable: never = resource
         yield* Effect.fail(

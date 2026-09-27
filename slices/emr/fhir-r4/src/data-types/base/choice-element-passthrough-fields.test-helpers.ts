@@ -1,5 +1,6 @@
-import { Arbitrary, Schema } from 'effect'
+import { Arbitrary, Either, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { expect } from 'vite-plus/test'
 
 /**
  * Arbitrary over the decoded slots of one choice element (`value[x]`,
@@ -24,4 +25,41 @@ const atMostOnePopulatedSlot = <Fields extends Schema.Struct.Fields>(
         ) as Schema.Struct.Type<Fields>
     )
 
-export { atMostOnePopulatedSlot }
+/**
+ * Arbitrary over two or more of a choice element's slots, each paired with a
+ * non-null decoded value — the shapes `filterForExclusiveChoiceElementSet`
+ * rejects. Each field schema is the slot's non-null decoded type (e.g.
+ * `Period.Schema`, not `Schema.NullOr(Period.Schema)`).
+ */
+const atLeastTwoPopulatedSlots = <Fields extends Schema.Struct.Fields>(
+  fields: Fields
+): fc.Arbitrary<readonly (readonly [keyof Fields & string, unknown])[]> =>
+  Arbitrary.make(Schema.Struct(fields)).chain((values) =>
+    fc.subarray(
+      // Object.entries widens keys to `string`; every key comes from `values`, a
+      // struct over exactly `fields`.
+      Object.entries(values) as [keyof Fields & string, unknown][],
+      { minLength: 2 }
+    )
+  )
+
+/**
+ * Asserts `result` failed with the at-most-one issue for the `prefix[x]`
+ * choice element, naming the count and every populated slot in `slots`.
+ */
+const expectChoiceElementGuardFailure = (
+  result: Either.Either<unknown, ParseResult.ParseError>,
+  prefix: string,
+  slots: readonly (readonly [string, unknown])[]
+): void => {
+  const message = Either.match(result, {
+    onLeft: (error) => error.message,
+    onRight: () => 'succeeded without error',
+  })
+  expect(message).toContain(
+    `choice element ${prefix}[x] allows at most one populated slot, but found ${slots.length}:`
+  )
+  for (const [key] of slots) expect(message).toContain(key)
+}
+
+export { atLeastTwoPopulatedSlots, atMostOnePopulatedSlot, expectChoiceElementGuardFailure }
