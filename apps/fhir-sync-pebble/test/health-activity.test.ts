@@ -15,6 +15,7 @@ import {
   toObservation,
   toTransactionBundle,
 } from '../src/pkjs/health-activity.js'
+import { toObservations } from '../src/pkjs/minute-history.js'
 
 describe('decodeActivityMessage', () => {
   it('decodes a night of sleep into its coding and span', () => {
@@ -283,6 +284,41 @@ describe('toTransactionBundle', () => {
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
+  })
+
+  it('carries activity and minute-history Observations in one transaction', () => {
+    // Arrange
+    const walk = toObservation(
+      decodeActivityMessage({
+        ActivityType: 4,
+        ActivityStart: 1_790_000_000,
+        ActivityEnd: 1_790_001_800,
+      }),
+      'ada-lovelace',
+      'watch'
+    )
+    const [steps] = toObservations(
+      {
+        hourStartSeconds: 1_789_999_200,
+        dataTypes: ['steps'],
+        minutes: Array.from({ length: 60 }, () => ({
+          steps: 90,
+          yawBin: 0,
+          pitchBin: 4,
+          vmc: 800,
+          light: 3,
+          heartRateBpm: 110,
+        })),
+      },
+      'ada-lovelace',
+      'watch'
+    )
+
+    // Act
+    const bundle = toTransactionBundle([walk, steps])
+
+    // Assert
+    expect(bundle.entry.map(({ resource }) => resource)).toEqual([walk, steps])
   })
 })
 

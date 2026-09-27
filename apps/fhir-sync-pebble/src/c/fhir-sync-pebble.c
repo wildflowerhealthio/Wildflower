@@ -88,7 +88,9 @@ int main(void) {
   app_message_register_inbox_dropped(prv_inbox_dropped);
   app_message_register_outbox_sent(prv_outbox_sent);
   app_message_register_outbox_failed(prv_outbox_failed);
-  app_message_open(256, 64);
+  // The outbox fits an hour of minute history: MINUTE_WIRE_HOUR_SIZE bytes
+  // plus its hour, types and the dictionary's overhead.
+  app_message_open(256, 512);
 
   app_event_loop();
 }

@@ -166,11 +166,12 @@ function toObservation(activity, patientId, watchDisplay) {
 }
 
 /**
- * A transaction Bundle creating every Observation: the server stores all of
- * them or none.
+ * A transaction Bundle creating every Observation, of any kind: the server
+ * stores all of them or none.
  *
- * @param {ReadonlyArray<import('./health-activity.js').ActivityObservation>} observations
- * @returns {import('./health-activity.js').TransactionBundle}
+ * @template R
+ * @param {ReadonlyArray<R>} observations
+ * @returns {import('./health-activity.js').TransactionBundle<R>}
  */
 function toTransactionBundle(observations) {
   return {
@@ -183,7 +184,10 @@ function toTransactionBundle(observations) {
 }
 
 module.exports = {
+  ACTIVITY_CATEGORY_CODING: ACTIVITY_CATEGORY_CODING,
   HEALTH_SERVICE_SYSTEM: HEALTH_SERVICE_SYSTEM,
+  requireInteger: requireInteger,
+  toDateTime: toDateTime,
   decodeActivityCount: decodeActivityCount,
   decodeActivityMessage: decodeActivityMessage,
   describeWatch: describeWatch,

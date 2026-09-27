@@ -33,8 +33,9 @@ typedef struct {
   Connection connection;
   // Which data types sync; all of them until the user unchecks one.
   bool data_type_enabled[DATA_TYPE_COUNT];
-  // When the last successful sync started, 0 for never; each data type's is
-  // the last successful sync that included it.
+  // When the last successful sync started, 0 for never. Each data type's is
+  // how far the last successful sync that included it reached: when it
+  // started for Health Activity, the hour it started in for the minute types.
   time_t last_sync_time;
   time_t data_type_last_sync_times[DATA_TYPE_COUNT];
   // Whether a sync is under way.
@@ -58,13 +59,14 @@ void state_begin_sync(AppState *state);
 // Ends the sync under way as failed, leaving the last-sync times alone.
 void state_fail_sync(AppState *state);
 
-// Ends the sync under way as a success that started at started_at: the last
-// sync time, and each data type's that synced_data_types marks, become it and
-// are persisted.
+// Ends the sync under way as a success that started at started_at, which
+// becomes the last sync time. Each data type's last sync time becomes its
+// synced_through entry, except where that is 0 (the type didn't sync). All of
+// them are persisted.
 void state_complete_sync(
   AppState *state,
   time_t started_at,
-  const bool synced_data_types[DATA_TYPE_COUNT]
+  const time_t synced_through[DATA_TYPE_COUNT]
 );
 
 // What the Sync Now row can do right now.

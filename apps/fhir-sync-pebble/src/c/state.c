@@ -82,15 +82,15 @@ void state_fail_sync(AppState *state) {
 void state_complete_sync(
   AppState *state,
   time_t started_at,
-  const bool synced_data_types[DATA_TYPE_COUNT]
+  const time_t synced_through[DATA_TYPE_COUNT]
 ) {
   state->syncing = false;
   state->last_sync_time = started_at;
   persist_write_int(PersistKeyLastSyncTime, started_at);
   for (int i = 0; i < DATA_TYPE_COUNT; i++) {
-    if (synced_data_types[i]) {
-      state->data_type_last_sync_times[i] = started_at;
-      persist_write_int(PersistKeyFirstDataTypeLastSyncTime + i, started_at);
+    if (synced_through[i] != 0) {
+      state->data_type_last_sync_times[i] = synced_through[i];
+      persist_write_int(PersistKeyFirstDataTypeLastSyncTime + i, synced_through[i]);
     }
   }
 }

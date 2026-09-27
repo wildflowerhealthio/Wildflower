@@ -30,16 +30,22 @@ interface ActivityObservation {
   readonly device: { readonly display: string }
 }
 
-interface TransactionBundle {
+/** A transaction Bundle creating each `R`, an Observation of any kind. */
+interface TransactionBundle<R> {
   readonly resourceType: 'Bundle'
   readonly type: 'transaction'
   readonly entry: ReadonlyArray<{
-    readonly resource: ActivityObservation
+    readonly resource: R
     readonly request: { readonly method: 'POST'; readonly url: 'Observation' }
   }>
 }
 
+declare const ACTIVITY_CATEGORY_CODING: Coding
 declare const HEALTH_SERVICE_SYSTEM: string
+/** `payload[key]` when it is an integer; throws naming `key` otherwise. */
+declare function requireInteger(payload: object, key: string): number
+/** Unix seconds as a FHIR dateTime in UTC. */
+declare function toDateTime(seconds: number): string
 declare function decodeActivityCount(payload: object): number
 declare function decodeActivityMessage(payload: object): Activity
 declare function describeWatch(watchInfo: unknown): string
@@ -48,11 +54,12 @@ declare function toObservation(
   patientId: string,
   watchDisplay: string
 ): ActivityObservation
-declare function toTransactionBundle(
-  observations: ReadonlyArray<ActivityObservation>
-): TransactionBundle
+declare function toTransactionBundle<R>(observations: ReadonlyArray<R>): TransactionBundle<R>
 
 export {
+  ACTIVITY_CATEGORY_CODING,
+  requireInteger,
+  toDateTime,
   decodeActivityCount,
   decodeActivityMessage,
   describeWatch,

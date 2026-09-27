@@ -1,11 +1,13 @@
 // PebbleKit JS: opens the configuration page and passes what it saves on to
-// the watch, and posts the watch's Health activities to the FHIR server.
-// Implements developer.repebble.com's "App Configuration (Static)".
+// the watch, and posts the watch's Health activities and minute history to the
+// FHIR server. Implements developer.repebble.com's "App Configuration
+// (Static)".
 
 var healthActivity = require('./health-activity')
+var minuteHistory = require('./minute-history')
 var settings = require('./settings')
 
-var CONFIGURATION_URL = 'https://wildflowerhealthio.github.io/staging/pr-758/fhir-sync-pebble' //'https://wildflowerhealth.io/fhir-sync-pebble/'
+var CONFIGURATION_URL = 'https://wildflowerhealth.io/fhir-sync-pebble/'
 
 Pebble.addEventListener('showConfiguration', function () {
   Pebble.openURL(CONFIGURATION_URL)
@@ -29,14 +31,22 @@ Pebble.addEventListener('webviewclosed', function (event) {
   )
 })
 
-// Health Activity sync. The watch sends one message per activity, then one
-// with ActivityCount; this posts them to the FHIR server as one transaction and
-// answers SyncSucceeded. See src/c/sync.c for the other side.
+// The sync. The watch sends one message per activity, then one per hour of
+// minute history, then one with ActivityCount and MinuteHourCount; this posts
+// them to the FHIR server as one transaction and answers SyncSucceeded. See
+// src/c/sync.h for the other side.
 
-// The activities decoded so far in the sync under way, or null once one failed
-// to decode, which fails the whole batch.
-/** @type {Array<import('./health-activity.js').Activity> | null} */
-var pendingActivities = []
+/**
+ * @returns {{ activities: Array<import('./health-activity.js').Activity>, hours: Array<import('./minute-history.js').MinuteHour> }}
+ */
+function emptyPendingSync() {
+  return { activities: [], hours: [] }
+}
+
+// What the sync under way has decoded so far, or null once a message failed to
+// decode, which fails the whole sync.
+/** @type {ReturnType<typeof emptyPendingSync> | null} */
+var pendingSync = emptyPendingSync()
 
 /** @param {boolean} succeeded */
 function replyToWatch(succeeded) {
@@ -51,24 +61,32 @@ function replyToWatch(succeeded) {
 }
 
 /**
- * Posts activities as Observations, then calls done with whether the server
+ * Posts the sync's Observations, then calls done with whether the server
  * stored them. Throws when the settings or watch info can't be read.
  *
- * @param {ReadonlyArray<import('./health-activity.js').Activity>} activities
+ * @param {ReturnType<typeof emptyPendingSync>} sync
  * @param {(succeeded: boolean) => void} done
  */
-function postActivities(activities, done) {
+function postSync(sync, done) {
   var stored = settings.decodeStored(localStorage.getItem(settings.STORAGE_KEY))
-  if (activities.length === 0) {
+  if (sync.activities.length === 0 && sync.hours.length === 0) {
     done(true)
     return
   }
   var watchDisplay = healthActivity.describeWatch(Pebble.getActiveWatchInfo())
-  var bundle = healthActivity.toTransactionBundle(
-    activities.map(function (activity) {
-      return healthActivity.toObservation(activity, stored.patientId, watchDisplay)
-    })
-  )
+  /** @type {Array<import('./health-activity.js').ActivityObservation | import('./minute-history.js').MinuteObservation>} */
+  var observations = sync.activities.map(function (activity) {
+    return healthActivity.toObservation(activity, stored.patientId, watchDisplay)
+  })
+  sync.hours.forEach(function (hour) {
+    observations = observations.concat(
+      minuteHistory.toObservations(hour, stored.patientId, watchDisplay)
+    )
+  })
+  if (observations.length === 0) {
+    done(true)
+    return
+  }
   var request = new XMLHttpRequest()
   request.open('POST', stored.fhirBaseUrl)
   request.setRequestHeader('Content-Type', 'application/fhir+json')
@@ -91,7 +109,26 @@ function postActivities(activities, done) {
     console.error('FHIR transaction could not reach ' + stored.fhirBaseUrl)
     done(false)
   }
-  request.send(JSON.stringify(bundle))
+  request.send(JSON.stringify(healthActivity.toTransactionBundle(observations)))
+}
+
+/**
+ * Adds one activity or hour message to the sync under way, failing the sync
+ * when it doesn't decode.
+ *
+ * @param {(pending: ReturnType<typeof emptyPendingSync>) => void} add
+ */
+function addToPendingSync(add) {
+  if (pendingSync === null) {
+    return
+  }
+  try {
+    add(pendingSync)
+  } catch (error) {
+    // oxlint-disable-next-line no-console
+    console.error('Dropping the sync: ' + error)
+    pendingSync = null
+  }
 }
 
 Pebble.addEventListener('appmessage', function (event) {
@@ -101,32 +138,36 @@ Pebble.addEventListener('appmessage', function (event) {
     return
   }
   if ('ActivityType' in payload) {
-    if (pendingActivities === null) {
-      return
-    }
-    try {
-      pendingActivities.push(healthActivity.decodeActivityMessage(payload))
-    } catch (error) {
-      // oxlint-disable-next-line no-console
-      console.error('Dropping the sync: ' + error)
-      pendingActivities = null
-    }
+    addToPendingSync(function (pending) {
+      pending.activities.push(healthActivity.decodeActivityMessage(payload))
+    })
+    return
+  }
+  if ('MinuteHourStart' in payload) {
+    addToPendingSync(function (pending) {
+      pending.hours.push(minuteHistory.decodeMinuteHourMessage(payload))
+    })
     return
   }
   if (!('ActivityCount' in payload)) {
     return
   }
-  var activities = pendingActivities
-  pendingActivities = []
+  var sync = pendingSync
+  pendingSync = emptyPendingSync()
   try {
-    var count = healthActivity.decodeActivityCount(payload)
-    if (activities === null || activities.length !== count) {
-      throw new Error('The watch sent activities that did not all arrive')
+    var activityCount = healthActivity.decodeActivityCount(payload)
+    var hourCount = minuteHistory.decodeMinuteHourCount(payload)
+    if (
+      sync === null ||
+      sync.activities.length !== activityCount ||
+      sync.hours.length !== hourCount
+    ) {
+      throw new Error('The watch sent messages that did not all arrive')
     }
-    postActivities(activities, replyToWatch)
+    postSync(sync, replyToWatch)
   } catch (error) {
     // oxlint-disable-next-line no-console
-    console.error('Health Activity sync failed: ' + error)
+    console.error('Sync failed: ' + error)
     replyToWatch(false)
   }
 })
