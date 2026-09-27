@@ -1,34 +1,69 @@
 {
   "env": {
-    "pebbleSdk": "${env:HOME}/Library/Application Support/Pebble SDK/SDKs/current"
+    "pebbleSdkMac": "${env:HOME}/Library/Application Support/Pebble SDK/SDKs/current",
+    "pebbleSdkLinux": "${env:HOME}/.local/share/pebble-sdk/SDKs/current"
   },
   "configurations": [
     {
-      "name": "Pebble (basalt)",
+      "name": "Pebble (emery, macOS)",
       "includePath": [
         "${workspaceFolder}/src/**",
-        "${workspaceFolder}/build/basalt/src",
+        "${workspaceFolder}/build/emery/src",
         "${workspaceFolder}/build/include",
-        "${pebbleSdk}/sdk-core/pebble/basalt/include"
+        "${pebbleSdkMac}/sdk-core/pebble/emery/include"
       ],
       "defines": [
         "RELEASE",
-        "PBL_PLATFORM_BASALT",
+        "PBL_PLATFORM_EMERY",
         "PBL_COLOR",
         "PBL_RECT",
         "PBL_MICROPHONE",
         "PBL_SMARTSTRAP",
         "PBL_HEALTH",
-        "PBL_COMPASS",
         "PBL_SMARTSTRAP_POWER",
-        "PBL_DISPLAY_WIDTH=144",
-        "PBL_DISPLAY_HEIGHT=168",
+        "PBL_COMPASS",
+        "PBL_TOUCH",
+        "PBL_RGB_BACKLIGHT",
+        "PBL_SPEAKER",
+        "PBL_DISPLAY_WIDTH=200",
+        "PBL_DISPLAY_HEIGHT=228",
         "PBL_SDK_FROZEN",
         "PBL_SDK_3"
       ],
-      "compilerPath": "${pebbleSdk}/toolchain/arm-none-eabi/bin/arm-none-eabi-gcc",
+      "compilerPath": "${pebbleSdkMac}/toolchain/arm-none-eabi/bin/arm-none-eabi-gcc",
       "compilerArgs": ["-mcpu=cortex-m3", "-mthumb"],
-      "cStandard": "c11",
+      "cStandard": "c99",
+      "intelliSenseMode": "linux-gcc-arm"
+    },
+    {
+      "name": "Pebble (emery, Linux)",
+      "includePath": [
+        "${workspaceFolder}/src/**",
+        "${workspaceFolder}/build/emery/src",
+        "${workspaceFolder}/build/include",
+        "${pebbleSdkLinux}/sdk-core/pebble/emery/include"
+      ],
+      "defines": [
+        "RELEASE",
+        "PBL_PLATFORM_EMERY",
+        "PBL_COLOR",
+        "PBL_RECT",
+        "PBL_MICROPHONE",
+        "PBL_SMARTSTRAP",
+        "PBL_HEALTH",
+        "PBL_SMARTSTRAP_POWER",
+        "PBL_COMPASS",
+        "PBL_TOUCH",
+        "PBL_RGB_BACKLIGHT",
+        "PBL_SPEAKER",
+        "PBL_DISPLAY_WIDTH=200",
+        "PBL_DISPLAY_HEIGHT=228",
+        "PBL_SDK_FROZEN",
+        "PBL_SDK_3"
+      ],
+      "compilerPath": "${pebbleSdkLinux}/toolchain/arm-none-eabi/bin/arm-none-eabi-gcc",
+      "compilerArgs": ["-mcpu=cortex-m3", "-mthumb"],
+      "cStandard": "c99",
       "intelliSenseMode": "linux-gcc-arm"
     }
   ],
