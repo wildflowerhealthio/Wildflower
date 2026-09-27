@@ -60,7 +60,9 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * `0008_seed_wildflower_importer_client`, widened by
  * `0009_widen_importer_client_write_scopes` (broadens every type to `.cruds` and
  * adds `Practitioner`, `DiagnosticReport`, `Medication`, `MedicationRequest`,
- * `MedicationDispense`, `ServiceRequest`, and `ImagingStudy` writes) — element
+ * `MedicationDispense`, `ServiceRequest`, and `ImagingStudy` writes;
+ * `0015_repair_importer_client_write_scopes` re-applies it on an install that
+ * skipped it) — element
  * for element: a scope the app requests but the client is not allowed fails the
  * authorize step. Nothing enforces that across the TS/Rust boundary, so the
  * pairing is pinned here, in the migration's own comment, and in

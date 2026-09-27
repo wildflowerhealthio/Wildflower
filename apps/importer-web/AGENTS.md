@@ -115,7 +115,8 @@ accepts the writes and the set has room to grow.
   `0009_widen_importer_client_write_scopes` (which broadens every type to full
   `.cruds` and adds `Practitioner`, `DiagnosticReport`, `Medication`,
   `MedicationRequest`, `MedicationDispense`, `ServiceRequest`, and
-  `ImagingStudy`) — element for element: a scope the app requests but
+  `ImagingStudy`; `0015_repair_importer_client_write_scopes` re-applies it on an
+  install that skipped it) — element for element: a scope the app requests but
   the client is not allowed fails the authorize step. **There is no
   cross-language test that checks this** — the repo's derive-both-sides pattern
   needs one source, and a SQL seed and a TS constant have none in common. So the

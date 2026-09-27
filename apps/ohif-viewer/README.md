@@ -85,7 +85,11 @@ The Wildflower server seeds what the viewer needs:
   app row whose launch URL is the worklist launch above;
 - gatekeeper migration `0009_seed_ohif_viewer_client` registers the `ohif-viewer`
   public PKCE client with `https://wildflowerhealth.io/ohif-viewer/` as its
-  redirect URI and the read-only scopes the viewer requests.
+  redirect URI and the read-only scopes the viewer requests;
+  `0010_ohif_viewer_client_fhir_viewer_redirect` repoints that redirect at the
+  `/fhir-viewer` route, and `0016_repair_ohif_viewer_client` seeds the client in
+  that end state on an install that skipped `0009` (it shares its version with
+  another migration).
 
 `app-config.js` sends `smartClientId: 'ohif-viewer'` and a `smartScope` that
 must stay equal, element for element, to that client's `allowed_scopes` (and to

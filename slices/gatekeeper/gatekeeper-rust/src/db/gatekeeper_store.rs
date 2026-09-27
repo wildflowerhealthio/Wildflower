@@ -558,6 +558,171 @@ mod tests {
         );
     }
 
+    /// [`MIGRATIONS`] through `0009`, keeping only the one `0009` directory named
+    /// `.0` — an install that opened while that was the only `0009`. Two
+    /// directories share that version and the runner keys applied migrations by
+    /// version alone, so such an install recorded `0009` and never runs the
+    /// other one (the gap `0015` / `0016` repair).
+    struct MigrationsThroughOnly0009(&'static str);
+
+    impl MigrationSource<Sqlite> for MigrationsThroughOnly0009 {
+        fn migrations(&self) -> diesel::migration::Result<Vec<Box<dyn Migration<Sqlite>>>> {
+            let mut migrations = MIGRATIONS.migrations()?;
+            let version_0009 = MigrationVersion::from("0009");
+            migrations
+                .retain(|m| m.name().version() < version_0009 || m.name().to_string() == self.0);
+            // A name that matches no directory would run no `0009` at all, and
+            // the full upgrade would then run both — passing the regression
+            // tests with or without the repairs.
+            assert_eq!(
+                migrations
+                    .iter()
+                    .filter(|m| m.name().version() == version_0009)
+                    .count(),
+                1,
+                "{} must name exactly one `0009` migration",
+                self.0,
+            );
+            Ok(migrations)
+        }
+    }
+
+    fn column_for_client(conn: &mut SqliteConnection, column: &str, client_id: &str) -> Vec<Name> {
+        diesel::sql_query(format!(
+            "SELECT {column} AS name FROM clients WHERE client_id = ?"
+        ))
+        .bind::<diesel::sql_types::Text, _>(client_id)
+        .load(conn)
+        .expect("query clients")
+    }
+
+    /// The regression `0015_repair_importer_client_write_scopes` exists for: an
+    /// install that ran only `0009_seed_ohif_viewer_client` (it landed first)
+    /// skipped `0009_widen_importer_client_write_scopes`, and kept the `0008`
+    /// scope set. Upgrading it must widen the Importer's scopes to `0009`'s set.
+    #[test]
+    fn an_install_that_ran_only_the_ohif_0009_gains_the_importer_write_scopes() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThroughOnly0009("0009_seed_ohif_viewer_client"),
+        )
+        .expect("migrate to the OHIF 0009 alone");
+        assert_eq!(
+            column_for_client(&mut conn, "allowed_scopes", "importer-app")[0].name,
+            r#"["launch","openid","fhirUser","system/DocumentReference.rs","system/DocumentReference.u","system/Patient.u","system/Observation.u"]"#,
+            "the importer widening was skipped, leaving 0008's set",
+        );
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0015");
+
+        assert_eq!(
+            column_for_client(&mut conn, "allowed_scopes", "importer-app")[0].name,
+            r#"["launch","openid","fhirUser","system/DocumentReference.cruds","system/Patient.cruds","system/Observation.cruds","system/Practitioner.cruds","system/DiagnosticReport.cruds","system/Medication.cruds","system/MedicationRequest.cruds","system/MedicationDispense.cruds","system/ServiceRequest.cruds","system/ImagingStudy.cruds"]"#,
+        );
+    }
+
+    /// The regression `0016_repair_ohif_viewer_client` exists for: an install
+    /// that ran only `0009_widen_importer_client_write_scopes` has no
+    /// `ohif-viewer` client, so `0010`'s redirect update matched nothing.
+    /// Upgrading it must seed the client in the `0009` + `0010` end state.
+    #[test]
+    fn an_install_that_ran_only_the_importer_0009_gains_the_ohif_viewer_client() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThroughOnly0009("0009_widen_importer_client_write_scopes"),
+        )
+        .expect("migrate to the importer 0009 alone");
+        assert!(
+            column_for_client(&mut conn, "client_id", "ohif-viewer").is_empty(),
+            "the OHIF seed was skipped",
+        );
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0016");
+
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", "ohif-viewer")[0].name,
+            r#"["/","https://wildflowerhealth.io/ohif-viewer/fhir-viewer"]"#,
+        );
+        assert_eq!(
+            column_for_client(&mut conn, "allowed_scopes", "ohif-viewer")[0].name,
+            r#"["launch","openid","fhirUser","system/Patient.rs","system/ImagingStudy.rs","system/DocumentReference.rs"]"#,
+        );
+    }
+
+    /// The repairs leave a row alone once it has changed from the state they
+    /// fix: an Importer client whose scopes were changed after `0009` is not
+    /// reset to `0009`'s set, and an existing `ohif-viewer` row is not
+    /// touched.
+    #[test]
+    fn the_0009_repairs_leave_changed_rows_alone() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0013"),
+        )
+        .expect("migrate to 0013");
+        diesel::sql_query(
+            "UPDATE clients SET allowed_scopes = '[\"launch\"]' \
+             WHERE client_id IN ('importer-app', 'ohif-viewer')",
+        )
+        .execute(&mut conn)
+        .expect("change both rows");
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through the repairs");
+
+        for client_id in ["importer-app", "ohif-viewer"] {
+            assert_eq!(
+                column_for_client(&mut conn, "allowed_scopes", client_id)[0].name,
+                r#"["launch"]"#,
+                "{client_id} must be left as it was",
+            );
+        }
+    }
+
+    /// Every migration has a version of its own, apart from the historical
+    /// `0009` pair (left as it shipped; `0015` / `0016` repair it). The runner
+    /// records applied migrations by version alone, so a second directory
+    /// under a version an install has already applied is silently skipped
+    /// there — while a fresh database runs it, so no other test notices.
+    #[test]
+    fn migration_versions_are_unique_apart_from_the_historical_0009_pair() {
+        let mut names_by_version = std::collections::BTreeMap::<String, Vec<String>>::new();
+        for migration in
+            MigrationSource::<Sqlite>::migrations(&MIGRATIONS).expect("load migrations")
+        {
+            names_by_version
+                .entry(migration.name().version().to_string())
+                .or_default()
+                .push(migration.name().to_string());
+        }
+        let mut shared: Vec<(String, Vec<String>)> = names_by_version
+            .into_iter()
+            .filter(|(_, names)| names.len() > 1)
+            .collect();
+        for (_, names) in &mut shared {
+            names.sort();
+        }
+        assert_eq!(
+            shared,
+            vec![(
+                "0009".to_owned(),
+                vec![
+                    "0009_seed_ohif_viewer_client".to_owned(),
+                    "0009_widen_importer_client_write_scopes".to_owned(),
+                ],
+            )],
+            "give each new migration a version no other migration uses",
+        );
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database

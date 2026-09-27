@@ -205,7 +205,8 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             "Importer (Dev)",
             // Mirrors the production `importer-app` client's write-carrying set
             // (`apps/importer-web/src/config.ts`, as widened by gatekeeper
-            // migration `0009_widen_importer_client_write_scopes`) — a dev build
+            // migration `0009_widen_importer_client_write_scopes`, re-applied by
+            // `0015` on an install that skipped it) — a dev build
             // requests the same scopes, and unlike the two viewers above the
             // Importer writes. Full `.cruds` (create + read + update + delete +
             // search) on each handled type.
@@ -249,9 +250,10 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // `apps_rust::dev_seed`), so its app-relative `"/"` entry no longer
             // resolves and the absolute entry is the only one that can match. It
             // must therefore be the exact route the launch targets — the FHIR
-            // Viewer mode, as on the production client (migration
-            // `0009_seed_ohif_viewer_client`), which is where OHIF's data source
-            // sends the browser back to and what it passes as `redirect_uri`.
+            // Viewer mode, as on the production client (seeded by migration
+            // `0009_seed_ohif_viewer_client` and repointed by `0010`), which is
+            // where OHIF's data source sends the browser back to and what it
+            // passes as `redirect_uri`.
             "/fhir-viewer",
         ),
     ];
