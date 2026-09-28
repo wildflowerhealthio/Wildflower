@@ -46,11 +46,7 @@ static void prv_draw_row(
   }
 }
 
-static int16_t prv_get_cell_height(
-  MenuLayer *menu_layer,
-  MenuIndex *cell_index,
-  void *context
-) {
+static int16_t prv_get_cell_height(MenuLayer *menu_layer, MenuIndex *cell_index, void *context) {
   return 48;
 }
 
