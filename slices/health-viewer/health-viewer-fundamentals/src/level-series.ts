@@ -4,8 +4,8 @@ import * as Level from './level.ts'
 import type { ValueScale } from './series.ts'
 
 /**
- * How a level's line is stroked. The domain decides what a dash means — for a
- * dose, an extent that is inferred rather than stated.
+ * How a level's line is stroked. The domain source decides what a dash
+ * means for its levels.
  */
 type LineStyle = 'solid' | 'dashed'
 
