@@ -392,6 +392,9 @@ importers:
       fhir-sync-pebble-web:
         specifier: workspace:*
         version: link:../fhir-sync-pebble-web
+      health-viewer-app:
+        specifier: workspace:*
+        version: link:../health-viewer
       kitchen-sink:
         specifier: workspace:*
         version: link:../../global/kitchen-sink

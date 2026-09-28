@@ -13,6 +13,7 @@
     "branding-core": "workspace:*",
     "fast-check": "catalog:",
     "fhir-sync-pebble-web": "workspace:*",
+    "health-viewer-app": "workspace:*",
     "kitchen-sink": "workspace:*",
     "marketing-website": "workspace:*",
     "medications-app": "workspace:*",

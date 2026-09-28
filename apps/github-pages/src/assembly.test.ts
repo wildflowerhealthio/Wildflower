@@ -112,6 +112,16 @@ describe('site layout', () => {
     ])
   })
 
+  it('serves the health viewer from /health-viewer-app with both SMART entries', () => {
+    const [healthViewer] = resolveSections(repoRoot, outDir, [sectionFor('health-viewer-app')])
+    expect(healthViewer?.from).toBe(join(repoRoot, 'apps', 'health-viewer', 'dist'))
+    expect(healthViewer?.to).toBe(join(outDir, 'health-viewer-app'))
+    expect(healthViewer?.requiredPaths).toEqual([
+      join(outDir, 'health-viewer-app', 'index.html'),
+      join(outDir, 'health-viewer-app', 'launch.html'),
+    ])
+  })
+
   it('serves the hosted owner UI from /app with its SPA entry', () => {
     const [app] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-react')])
     expect(app?.to).toBe(join(outDir, 'app'))
@@ -177,6 +187,7 @@ describe('site layout', () => {
         '',
         'app',
         'fhir-sync-pebble',
+        'health-viewer-app',
         'importer-app',
         'medications-app',
         'ohif-viewer',
