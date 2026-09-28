@@ -74,8 +74,10 @@ version_label="$(jq -r '.versionLabel // empty' <<< "$appinfo")"
 name="$(jq -r '.longName // .shortName // empty' <<< "$appinfo")"
 [[ -n "$uuid" ]] || fail "$pbw's appinfo.json has no uuid."
 # `pebble publish` rewrites an uppercase UUID in the .pbw before uploading it;
-# this uploads the file as built, so it must already be lowercase.
-[[ "$uuid" == "${uuid,,}" ]] ||
+# this uploads the file as built, so it must already be lowercase. A glob
+# spelled out rather than `${uuid,,}`, which macOS's stock bash 3.2 can't
+# expand, or a range, which some locales stretch over lowercase.
+[[ "$uuid" != *[ABCDEF]* ]] ||
   fail "$pbw's UUID $uuid has uppercase letters; lowercase it in the app's package.json."
 [[ "$version_label" == "$version" ]] ||
   fail "$pbw is version ${version_label:-(none)}, not $version."
@@ -93,10 +95,10 @@ status="$(request "$workdir/token.json" \
 if [[ "$status" != 2?? ]]; then
   fail "Could not exchange PEBBLE_APPSTORE_REFRESH_TOKEN for an ID token (HTTP $status: $(error_of "$workdir/token.json")). Log in with \`pebble login\` and replace the secret — see $doc."
 fi
-id_token="$(jq -r '.id_token // empty' "$workdir/token.json")"
+id_token="$(jq -r '.id_token // empty' "$workdir/token.json" 2>/dev/null || true)"
 [[ -n "$id_token" ]] || fail "Firebase answered the refresh without an id_token."
 mask "$id_token"
-rotated="$(jq -r '.refresh_token // empty' "$workdir/token.json")"
+rotated="$(jq -r '.refresh_token // empty' "$workdir/token.json" 2>/dev/null || true)"
 if [[ -n "$rotated" ]]; then
   mask "$rotated"
 fi
@@ -114,8 +116,9 @@ if [[ "$status" != 2?? ]]; then
 fi
 app_id="$(jq -r --arg uuid "$uuid" '
   (.app_lookup.by_app_uuid // {}) | to_entries[]
-  | select((.key | ascii_downcase) == $uuid) | .value | tostring
-' "$workdir/me.json" | head -n 1)"
+  | select((.key | ascii_downcase) == $uuid) | .value // empty | tostring
+' "$workdir/me.json" 2>/dev/null | head -n 1)" ||
+  fail "GET $api_base/api/v1/developer/me answered HTTP $status without the app lookup it should carry: $(error_of "$workdir/me.json")"
 if [[ -z "$app_id" ]]; then
   fail "The Pebble app store has no app with UUID $uuid (${name:-this app}) under this developer account. CI only adds releases to an existing listing: create the listing by hand with the first release, then re-run this job — see $doc."
 fi

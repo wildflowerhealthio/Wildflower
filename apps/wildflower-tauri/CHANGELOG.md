@@ -7,8 +7,9 @@ prepended by the `tauri-release-prepare` GitHub workflow when a release PR is
 dispatched — the section between the marker below and the next `## v…`
 heading is what reviewers see on the release PR and what
 `tauri-release-publish` uses as the body of the GitHub Release, and as the
-Pebble apps' app store release notes, once the PR merges. Do not hand-edit the machine-inserted `- <subject> (<sha>)` bullets;
-add prose above or below them if you want to expand on a release.
+Pebble apps' app store release notes, once the PR merges. Do not hand-edit the
+machine-inserted `- <subject> (<sha>)` bullets; add prose above or below them
+if you want to expand on a release.
 
 <!-- release-notes-start -->
 

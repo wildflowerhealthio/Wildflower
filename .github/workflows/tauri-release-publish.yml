@@ -807,6 +807,10 @@ jobs:
       matrix:
         app: [watch-lifts, fhir-sync-pebble]
     runs-on: ubuntu-latest
+    # Only reads the tag; the workflow-wide `contents: write` isn't needed
+    # beside the store secret.
+    permissions:
+      contents: read
     steps:
       - name: Check for the app store token
         id: gate
@@ -827,6 +831,10 @@ jobs:
         if: steps.gate.outputs.upload == 'true'
         with:
           ref: refs/tags/${{ needs.prepare.outputs.tag }}
+          # The upload script is all this job runs from the repository.
+          sparse-checkout: scripts/ci/pebble-appstore-upload.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       # The .pbw build-pebble attached to the GitHub Release, byte for byte,
       # rather than a second build: `pebble publish` always rebuilds, one

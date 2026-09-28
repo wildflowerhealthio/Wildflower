@@ -151,6 +151,26 @@ describe('pebble-appstore-upload', () => {
     expect(run.calls).toHaveLength(2)
   })
 
+  // A null ID would otherwise pass the ID check as the string "null".
+  it('treats a UUID the store maps to no app ID as having no listing', () => {
+    const run = upload({
+      env: {
+        FAKE_ME_BODY: JSON.stringify({ app_lookup: { by_app_uuid: { [uuid]: null } } }),
+      },
+    })
+    expect(run.status).toBe(1)
+    expect(run.stderr).toContain(`no app with UUID ${uuid}`)
+    expect(run.calls).toHaveLength(2)
+  })
+
+  it('reports a developer lookup it cannot read, rather than a bare jq error', () => {
+    const run = upload({ env: { FAKE_ME_BODY: '<html>Bad gateway</html>' } })
+    expect(run.status).toBe(1)
+    expect(run.stderr).toContain('::error::')
+    expect(run.stderr).toContain('<html>Bad gateway</html>')
+    expect(run.calls).toHaveLength(2)
+  })
+
   it('fails without creating a developer account when none is linked', () => {
     const run = upload({
       env: {
