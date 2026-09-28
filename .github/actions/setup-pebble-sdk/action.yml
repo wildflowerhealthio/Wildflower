@@ -1,0 +1,119 @@
+name: Set up the Pebble SDK
+description: >-
+  Installs a pinned pebble-tool, on a uv-managed Python, and a pinned Pebble SDK,
+  so `pebble build` works in any Pebble app directory afterwards. Both come from
+  one Actions cache entry, saved straight after a cold install. The pins default
+  here so every workflow that builds a .pbw builds it with the same SDK. Linux
+  runners only; a cold install also needs node and npm on the PATH, which the
+  runner image has. Key, paths and why: docs/Pebble/CI Build Cache Explanation.md.
+
+inputs:
+  pebble-tool-version:
+    description: The pebble-tool release to install from PyPI.
+    default: '5.0.40'
+  sdk-version:
+    description: >-
+      The Pebble SDK to install and activate. Its manifest names the oldest
+      pebble-tool it runs under, which `pebble sdk install` enforces.
+    default: '4.33.1'
+  python-version:
+    description: The Python that uv installs for pebble-tool, which the SDK's own venv reuses.
+    default: '3.13'
+
+outputs:
+  sdk-version:
+    description: The active Pebble SDK version.
+    value: ${{ inputs.sdk-version }}
+  sdk-path:
+    description: The installed SDK's directory, holding `sdk-core/` and `toolchain/`.
+    value: ${{ steps.paths.outputs.sdk-path }}
+  cache-hit:
+    description: Whether the install came from the cache rather than a download.
+    value: ${{ steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # pebble-tool keeps its SDKs under its persist directory, which on Linux is
+    # $XDG_DATA_HOME/pebble-sdk. The rest of that directory holds the account
+    # login and settings, so only SDKs/ is cached. pebble-tool, its Python and
+    # the `pebble` launcher go under one root of their own.
+    - name: Resolve Pebble install paths
+      id: paths
+      shell: bash
+      env:
+        SDK_VERSION: ${{ inputs.sdk-version }}
+      run: |
+        set -euo pipefail
+        if [[ "$RUNNER_OS" != Linux ]]; then
+          echo "::error::setup-pebble-sdk supports Linux runners only, not $RUNNER_OS"
+          exit 1
+        fi
+        tool_root="$HOME/.pebble-tool"
+        sdks="${XDG_DATA_HOME:-$HOME/.local/share}/pebble-sdk/SDKs"
+        {
+          echo "tool-root=$tool_root"
+          echo "sdks=$sdks"
+          echo "sdk-path=$sdks/$SDK_VERSION"
+        } >> "$GITHUB_OUTPUT"
+        echo "$tool_root/bin" >> "$GITHUB_PATH"
+
+    # Every input is in the key, so an entry is complete and never goes stale:
+    # changing a pin means a new key, not a restore of the old install.
+    - name: Restore Pebble SDK
+      id: restore
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          ${{ steps.paths.outputs.tool-root }}
+          ${{ steps.paths.outputs.sdks }}
+        key: pebble-sdk-${{ runner.os }}-${{ runner.arch }}-sdk-${{ inputs.sdk-version }}-tool-${{ inputs.pebble-tool-version }}-python-${{ inputs.python-version }}
+
+    - name: Setup uv
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: astral-sh/setup-uv@v10.2.0
+      with:
+        enable-cache: false
+
+    # `only-managed` makes uv install its own Python under the tool root rather
+    # than use one from the runner image: the SDK's venv links to pebble-tool's
+    # interpreter, so that interpreter has to be restored along with it.
+    - name: Install pebble-tool and the Pebble SDK
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        UV_TOOL_DIR: ${{ steps.paths.outputs.tool-root }}/tools
+        UV_TOOL_BIN_DIR: ${{ steps.paths.outputs.tool-root }}/bin
+        UV_PYTHON_INSTALL_DIR: ${{ steps.paths.outputs.tool-root }}/python
+        UV_PYTHON_PREFERENCE: only-managed
+        PEBBLE_TOOL_VERSION: ${{ inputs.pebble-tool-version }}
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        SDK_VERSION: ${{ inputs.sdk-version }}
+      run: |
+        set -euo pipefail
+        uv tool install "pebble-tool==$PEBBLE_TOOL_VERSION" --python "$PYTHON_VERSION"
+        pebble sdk install "$SDK_VERSION"
+
+    # Saved here rather than at job end, so a later failing step (a format
+    # check, a test) doesn't throw the install away.
+    - name: Save Pebble SDK
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: |
+          ${{ steps.paths.outputs.tool-root }}
+          ${{ steps.paths.outputs.sdks }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+
+    - name: Check the active Pebble SDK
+      shell: bash
+      env:
+        SDK_VERSION: ${{ inputs.sdk-version }}
+      run: |
+        set -euo pipefail
+        version="$(pebble --version)"
+        echo "$version"
+        if [[ "$version" != *"active SDK: v$SDK_VERSION"* ]]; then
+          echo "::error::Expected Pebble SDK $SDK_VERSION to be active"
+          exit 1
+        fi

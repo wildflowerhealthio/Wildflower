@@ -29,8 +29,15 @@
 static void prv_parse_time(const char *args, struct tm *time, bool *clock_24h) {
   int is_24h = 0;
   memset(time, 0, sizeof(*time));
-  sscanf(args, "%d %d %d %d %d", &time->tm_mon, &time->tm_mday, &time->tm_hour, &time->tm_min,
-         &is_24h);
+  sscanf(
+    args,
+    "%d %d %d %d %d",
+    &time->tm_mon,
+    &time->tm_mday,
+    &time->tm_hour,
+    &time->tm_min,
+    &is_24h
+  );
   *clock_24h = is_24h != 0;
 }
 

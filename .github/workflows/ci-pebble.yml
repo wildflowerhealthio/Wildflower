@@ -1,0 +1,87 @@
+name: Pebble
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # PR runs are gated to the Pebble apps at the trigger level, so an unrelated
+    # PR never starts this workflow (no change-detection job needed). CI is a
+    # pre-merge gate only; this workflow doesn't run on pushes to main. The C
+    # and the wscripts live only under the two apps, so a C-only change starts
+    # nothing else: ci-typescript.yml runs the same host-side tests, but only
+    # when TS/JS changes.
+    paths:
+      - 'apps/watch-lifts/**'
+      - 'apps/fhir-sync-pebble/**'
+      # fhir-sync-pebble's PebbleKit JS bundles this core into the .pbw, and
+      # the host-side tests decode the watch's bytes with it.
+      - 'slices/fhir-sync-pebble/**'
+      # The host-side tests build the C through `buildHostCDriver`.
+      - 'global/kitchen-sink/src/test/**'
+      - '.github/workflows/ci-pebble.yml'
+      - '.github/actions/setup-pebble-sdk/**'
+
+permissions:
+  contents: read
+
+# Cancel superseded PR runs to save the actions budget.
+concurrency:
+  group: pebble-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # One job per watch app: C formatting, the host-side tests, then `pebble
+  # build`, whose .pbw is uploaded as an artifact to sideload. Draft PRs are
+  # skipped.
+  pebble:
+    name: ${{ matrix.app }}
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    strategy:
+      # One app's failure shouldn't hide the other's.
+      fail-fast: false
+      matrix:
+        include:
+          - app: watch-lifts
+            test-filters: -F watch-lifts-test
+          - app: fhir-sync-pebble
+            test-filters: -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.0
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      # Pinned because clang-format's output moves between releases; install
+      # the same version locally (see the apps' READMEs).
+      - name: Install clang-format
+        run: pipx install clang-format==23.1.1
+
+      - name: Check C formatting
+        run: vp run -F ${{ matrix.app }} fmt:c:check
+
+      # The C builds with the host `cc` under ASan and UBSan; no SDK needed.
+      - name: Run host-side tests
+        run: vp run ${{ matrix.test-filters }} test
+
+      # Key, paths and why: docs/Pebble/CI Build Cache Explanation.md.
+      - name: Setup Pebble SDK
+        uses: ./.github/actions/setup-pebble-sdk
+
+      # fhir-sync-pebble's wscript runs `vp pack` in pkjs/ first, through the
+      # node_modules/.bin/vp that `vp install` put there.
+      - name: Build
+        working-directory: apps/${{ matrix.app }}
+        run: pebble build
+
+      - name: Upload .pbw
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.app }}
+          path: apps/${{ matrix.app }}/build/${{ matrix.app }}.pbw
+          if-no-files-found: error

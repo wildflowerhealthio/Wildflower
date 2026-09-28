@@ -325,5 +325,12 @@ than the stand-in has, so only `pebble build` compiles it.
 - **Never renumber a persist key** (`state.c`): an installed watch still holds
   the old value under it.
 
-C is formatted with clang-format (`vp run -F fhir-sync-pebble fmt:c`); CI
-doesn't check it yet.
+C is formatted with clang-format (`vp run -F fhir-sync-pebble fmt:c`), at the
+version `ci-pebble.yml` pins: other releases format differently.
+
+## CI
+
+`.github/workflows/ci-pebble.yml`, on pull requests touching this app, its core
+or `apps/watch-lifts`, runs `fmt:c:check`, both test packages above and
+`pebble build`, and uploads `fhir-sync-pebble.pbw` as a workflow artifact. See
+[`apps/watch-lifts`'s README](../watch-lifts/README.md#ci).

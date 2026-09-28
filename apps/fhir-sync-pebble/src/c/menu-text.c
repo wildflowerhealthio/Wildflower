@@ -19,14 +19,27 @@ void menu_text_format_time(char text[TIME_TEXT_SIZE], const struct tm *time, boo
   const char *month = s_month_abbreviations[time->tm_mon];
   if (clock_24h) {
     snprintf(
-      text, TIME_TEXT_SIZE, "%s %d %02d:%02d", month, time->tm_mday, time->tm_hour, time->tm_min
+      text,
+      TIME_TEXT_SIZE,
+      "%s %d %02d:%02d",
+      month,
+      time->tm_mday,
+      time->tm_hour,
+      time->tm_min
     );
     return;
   }
   int hour = time->tm_hour % 12 == 0 ? 12 : time->tm_hour % 12;
   const char *meridiem = time->tm_hour < 12 ? "AM" : "PM";
   snprintf(
-    text, TIME_TEXT_SIZE, "%s %d %d:%02d %s", month, time->tm_mday, hour, time->tm_min, meridiem
+    text,
+    TIME_TEXT_SIZE,
+    "%s %d %d:%02d %s",
+    month,
+    time->tm_mday,
+    hour,
+    time->tm_min,
+    meridiem
   );
 }
 
