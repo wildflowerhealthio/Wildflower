@@ -14,13 +14,13 @@ lives in each domain package.
   `dropped` accounting), `CATALOG_GROUPS` (each source's groups, source by
   source) and `isKnownSeriesId` (some source can read the id).
 - `src/catalog.ts` — `groupForPanel` (filed series → non-empty groups in
-  `CATALOG_GROUPS` order, one row per series with its count and span) and the
+  `CATALOG_GROUPS` order, one row per series with its kind, count and span) and the
   search (`normaliseForSearch`, `matchesSearch`).
 - `src/selection-url.ts` — `encodeSelection` / `decodeSelection`: series ids
   (opaque here, in selection order), the range preset and the patient as query
   parameters.
-- `src/time-range.ts` — the range presets (`all`, `5y`, `1y`, `90d`) and
-  `xDomain`, the window a preset selects.
+- `src/time-range.ts` — the range presets (`all`, `5y`, `1y`, `90d`, `28d`,
+  `7d`, `24h`) and `xDomain`, the window a preset selects.
 
 ## Rules
 

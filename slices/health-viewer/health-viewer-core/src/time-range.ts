@@ -2,10 +2,13 @@ import { DateTime } from 'effect'
 import type { TimeDomain } from 'health-viewer-fundamentals'
 
 /** The time windows the viewer offers along the x axis. */
-type RangePreset = 'all' | '5y' | '1y' | '90d'
+type RangePreset = 'all' | '5y' | '1y' | '90d' | '28d' | '7d' | '24h'
 
-/** Every {@link RangePreset}, in the order a picker lists them. */
-const RANGE_PRESETS: readonly RangePreset[] = ['all', '5y', '1y', '90d']
+/**
+ * Every {@link RangePreset}, in the order a picker lists them: longest first.
+ * The short windows suit dense device measurements.
+ */
+const RANGE_PRESETS: readonly RangePreset[] = ['all', '5y', '1y', '90d', '28d', '7d', '24h']
 
 /** Whether `value` names a {@link RangePreset} — the guard the URL codec decodes through. */
 const isRangePreset = (value: string): value is RangePreset =>
@@ -14,7 +17,8 @@ const isRangePreset = (value: string): value is RangePreset =>
 /**
  * How far back each bounded preset reaches from `now`. The year presets
  * subtract calendar years, not fixed spans, so they are not invertible across
- * a leap day.
+ * a leap day; the day and hour presets are exact spans, since `now` is UTC and
+ * has no daylight-saving shifts.
  */
 const PRESET_LOOKBACK: Readonly<
   Record<Exclude<RangePreset, 'all'>, Partial<DateTime.DateTime.PartsForMath>>
@@ -22,6 +26,9 @@ const PRESET_LOOKBACK: Readonly<
   '5y': { years: 5 },
   '1y': { years: 1 },
   '90d': { days: 90 },
+  '28d': { days: 28 },
+  '7d': { days: 7 },
+  '24h': { hours: 24 },
 }
 
 /**

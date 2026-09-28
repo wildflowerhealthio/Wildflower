@@ -2,7 +2,7 @@
   "name": "health-viewer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser UI for the synthesized health viewer: the Observable Plot multi-axis chart with its crosshair readout, band shading and legend, drawing the point and level series health-viewer-fundamentals describes on the value axes it assigns.",
+  "description": "Browser UI for the synthesized health viewer: the Observable Plot multi-axis chart with its crosshair readout, band shading and legend, the series panel (grouped, searchable, capped checkboxes), the time-range presets, and the responsive layout that docks the panel beside the chart.",
   "type": "module",
   "exports": {
     ".": {
@@ -23,15 +23,18 @@
   "devDependencies": {
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "health-viewer-core": "workspace:*",
     "health-viewer-fundamentals": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
@@ -39,8 +42,10 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
+    "health-viewer-core": "workspace:*",
     "health-viewer-fundamentals": "workspace:*",
     "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*"
   }
 }

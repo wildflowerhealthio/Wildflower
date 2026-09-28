@@ -8,6 +8,11 @@ interface CatalogRow {
   readonly id: string
   readonly label: string
   readonly unit: string | null
+  /**
+   * Whether the series holds readings (`'points'`) or levels (`'levels'`) —
+   * what {@link CatalogRow.count} counts.
+   */
+  readonly seriesKind: Series.Series['kind']
   /** How many readings (or levels) the series holds. */
   readonly count: number
   /** The `[first, last]` instants the series spans, or `null` when it is empty. */
@@ -26,6 +31,7 @@ const rowFor = (series: Series.Series): CatalogRow => ({
   id: series.id,
   label: series.label,
   unit: series.unit,
+  seriesKind: series.kind,
   count: Series.sizeOf(series),
   span: Series.extentOf(series),
 })

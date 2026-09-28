@@ -72,6 +72,12 @@ describe('encodeSelection / decodeSelection', () => {
     )
   })
 
+  test.each(RANGE_PRESETS)('the %s preset is written as its own name and read back', (range) => {
+    const query = encodeSelection({ series: [], range, patient: null }).toString()
+    expect(query).toBe(`${RANGE_PARAM}=${range}`)
+    expect(decodeSelection(new URLSearchParams(query)).range).toBe(range)
+  })
+
   test('an absent patient stays absent rather than becoming an empty string', () => {
     const params = encodeSelection({ series: [], range: 'all', patient: null })
     expect(params.has('patient')).toBe(false)

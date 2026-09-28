@@ -16,8 +16,8 @@ health-viewer-observations   FHIR R4 Observation → PointSeries
 health-viewer-medications    medication-core DoseRegimen → LevelSeries
       ▲
 health-viewer-core           closed list of sources, catalogue, URL codec, range presets
-
-health-viewer-react          the Plot chart; imports fundamentals only
+      ▲
+health-viewer-react          the Plot chart, series panel, range presets and page layout
 ```
 
 - **`health-viewer-fundamentals`** — the plot vocabulary, as `effect`-style
@@ -45,11 +45,15 @@ health-viewer-react          the Plot chart; imports fundamentals only
   colour-matched value axis per series, point series as lines with dots, level
   series as step lines broken at gaps and dashed where the domain says, `low` /
   `high` bands, a legend, and a crosshair readout of `Series.levelAt` per
-  series. It imports no domain package. See its
+  series. `SeriesPanel` lays out `groupForPanel`'s catalogue as searchable,
+  collapsible groups of checkboxes capped at `ValueAxis.CAP`; `RangePresets`
+  picks a `RangePreset`; `HealthViewerLayout` docks the panel beside the chart
+  from 900px and folds it into a `Series (n selected)` disclosure below that.
+  It imports no domain package. See its
   [AGENTS.md](./health-viewer-react/AGENTS.md).
 
-The series panel and layout, and the app route, are not built yet. A new kind
-of record is a new package beside `health-viewer-observations` that exports a
+The app route is not built yet. A new kind of record is a new package beside
+`health-viewer-observations` that exports a
 `SeriesSource` and joins `SERIES_SOURCES`.
 
 ## Rules
