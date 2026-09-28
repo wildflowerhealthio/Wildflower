@@ -29,22 +29,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # One job per watch app: C formatting, the host-side tests, then `pebble
-  # build`, whose .pbw is uploaded as an artifact to sideload. Draft PRs are
-  # skipped.
+  # One job for C formatting + the host-side tests of both watch apps: they
+  # share one install and one pinned clang-format, and need no Pebble SDK, so
+  # they report without waiting on the SDK install and `pebble build` below.
+  # Draft PRs are skipped.
   pebble:
-    name: ${{ matrix.app }}
+    name: Lint + Test
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
-    strategy:
-      # One app's failure shouldn't hide the other's.
-      fail-fast: false
-      matrix:
-        include:
-          - app: watch-lifts
-            test-filters: -F watch-lifts-test
-          - app: fhir-sync-pebble
-            test-filters: -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -74,25 +66,67 @@ jobs:
           fi
 
       - name: Check C formatting
-        run: vp run -F ${{ matrix.app }} fmt:c:check
+        run: vp run -F watch-lifts -F fhir-sync-pebble fmt:c:check
 
       # The C builds with the host `cc` under ASan and UBSan; no SDK needed.
+      # watch-lifts-test covers watch-lifts; fhir-sync-pebble-test and
+      # fhir-sync-pebble-pkjs cover fhir-sync-pebble's C and PebbleKit JS.
       - name: Run host-side tests
-        run: vp run ${{ matrix.test-filters }} test
+        run: vp run -F watch-lifts-test -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs test
+
+  # One job for `pebble build` of both watch apps: the SDK is installed (or
+  # restored) ONCE and both .pbw files come from it, each uploaded as an
+  # artifact named after its app, ready to sideload. Runs in parallel with Lint
+  # + Test. Draft PRs are skipped.
+  build:
+    name: Build
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.0
+        with:
+          cache: true
+
+      # fhir-sync-pebble's wscript runs `vp pack` in pkjs/ first, through the
+      # node_modules/.bin/vp that `vp install` puts there.
+      - name: Install dependencies
+        run: vp install
 
       # Key, paths and why: docs/Pebble/CI Build Cache Explanation.md.
       - name: Setup Pebble SDK
+        id: sdk
         uses: ./.github/actions/setup-pebble-sdk
 
-      # fhir-sync-pebble's wscript runs `vp pack` in pkjs/ first, through the
-      # node_modules/.bin/vp that `vp install` put there.
-      - name: Build
-        working-directory: apps/${{ matrix.app }}
+      # One step per app, so a failure names its app. The fhir-sync-pebble
+      # steps run even when watch-lifts' build fails (`!cancelled()`), so one
+      # app's failure doesn't hide the other's, but not without an SDK.
+      - name: Build watch-lifts
+        id: build-watch-lifts
+        working-directory: apps/watch-lifts
         run: pebble build
 
-      - name: Upload .pbw
+      - name: Upload watch-lifts .pbw
+        if: ${{ !cancelled() && steps.build-watch-lifts.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.app }}
-          path: apps/${{ matrix.app }}/build/${{ matrix.app }}.pbw
+          name: watch-lifts
+          path: apps/watch-lifts/build/watch-lifts.pbw
+          if-no-files-found: error
+
+      - name: Build fhir-sync-pebble
+        id: build-fhir-sync-pebble
+        if: ${{ !cancelled() && steps.sdk.outcome == 'success' }}
+        working-directory: apps/fhir-sync-pebble
+        run: pebble build
+
+      - name: Upload fhir-sync-pebble .pbw
+        if: ${{ !cancelled() && steps.build-fhir-sync-pebble.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: fhir-sync-pebble
+          path: apps/fhir-sync-pebble/build/fhir-sync-pebble.pbw
           if-no-files-found: error
