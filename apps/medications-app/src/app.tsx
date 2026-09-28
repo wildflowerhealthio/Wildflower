@@ -1,13 +1,7 @@
-import { skipToken, useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { Effect, Match } from 'effect'
-import {
-  fetchMedicationRequestPage,
-  type MedicationRequestCursor,
-  useLaunchFailureRedirect,
-  useSmartHandshake,
-} from 'fhir-r4-react/smart'
+import { useQuery } from '@tanstack/react-query'
+import { Match } from 'effect'
+import { useLaunchFailureRedirect, useSmartHandshake } from 'fhir-r4-react/smart'
 import { CalendarView } from 'medication-calendar-react'
-import { medicationRequestsToMedicationViews } from 'medication-core/fhir'
 import { InteractionsView } from 'medication-interaction-react'
 import {
   dedupeMedicationsByName,
@@ -25,10 +19,12 @@ import {
   SegmentedToggle,
   type ChunkBarPhase,
 } from 'react-tundraish'
+import { LoadingLine, LoadingMoreLine, ReadFailureLine } from 'smart-app-react'
 
 import { catalogs } from './catalogs.ts'
 import { getInteractionCatalog } from './interaction-catalog.ts'
 import { pastEligibleMedications } from './past-medications.ts'
+import { useMedicationRequests } from './use-medication-requests.ts'
 import styles from './app.module.css'
 
 /** The four views the header toggle switches between. */
@@ -76,17 +72,6 @@ const useDelayedFlag = (active: boolean, delayMs: number): boolean => {
   return passed && active
 }
 
-/** The load-failure line, shown for a failed token exchange or a failed read. */
-const ErrorLine = ({ error }: { readonly error: unknown }): JSX.Element => (
-  <p className={styles.error}>
-    Could not load medications: {error instanceof Error ? error.message : String(error)}
-  </p>
-)
-
-// The first page is opened with no patient in context; `fetchMedicationRequestPage`
-// then reads across every patient the granted scopes expose (see its `null` case).
-const initialCursor: MedicationRequestCursor = { patientId: null }
-
 /**
  * The redirect-target app: completes the SMART handshake, loads the patient's
  * MedicationRequests a page at a time, and renders them as one of four views
@@ -99,13 +84,10 @@ const initialCursor: MedicationRequestCursor = { patientId: null }
  * Both async legs are TanStack Queries on the page's shared client: the token
  * exchange (`useSmartHandshake`, keyed and deduped so StrictMode's double-mount
  * exchanges the single-use code once) and the paged MedicationRequest read that
- * follows it. The read is a `useInfiniteQuery` whose cursor is the server's
- * `next`-link URL; a bottom-of-list sentinel observed by an `IntersectionObserver`
- * pulls the next page as it scrolls into view, so pages load on demand instead of
- * all at once. The read is `skipToken`-gated on the handshake resolving, which
- * also narrows `client` to defined inside the query function — no non-null
- * assertion. Pages arrive newest-authored first (server `_sort`), so appending
- * each one never reorders rows already on screen.
+ * follows it ({@link useMedicationRequests}). A bottom-of-list sentinel observed
+ * by an `IntersectionObserver` pulls the next page as it scrolls into view, so
+ * pages load on demand instead of all at once, until "load all the rest" drains
+ * the read to its last page.
  */
 export const App = (): JSX.Element => {
   const [province, setProvince] = useState<Province>('ON')
@@ -124,59 +106,11 @@ export const App = (): JSX.Element => {
   useLaunchFailureRedirect(handshake)
   const client = handshake.kind === 'ready' ? handshake.client : undefined
 
-  const medications = useInfiniteQuery({
-    queryKey: ['medications'],
-    // `pageParam` is annotated because the `skipToken` ternary blocks TanStack
-    // from inferring the page-param type through it, which would otherwise narrow
-    // it to only the first cursor variant.
-    queryFn:
-      client === undefined
-        ? skipToken
-        : ({ pageParam }: { readonly pageParam: MedicationRequestCursor }) =>
-            Effect.runPromise(fetchMedicationRequestPage(client, pageParam)),
-    initialPageParam: initialCursor,
-    getNextPageParam: (lastPage): MedicationRequestCursor | undefined =>
-      lastPage.nextPageUrl === null ? undefined : { pageUrl: lastPage.nextPageUrl },
+  const { pagedQuery: medications, views } = useMedicationRequests(client, {
+    loadAll: loadAllActive,
   })
-
   const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = medications
   const pagesReceived = medications.data?.pages.length ?? 0
-
-  // The "load all the rest" driver: while active, request the next page
-  // whenever one isn't already in flight. An effect rather than a loop so it
-  // rides React Query's in-flight dedupe (StrictMode-safe), and it halts on a
-  // failed page instead of hammering it — retry is an explicit user action.
-  // `pagesReceived` is a dependency deliberately: a page can land within a
-  // single commit (never showing `isFetchingNextPage`), and the count is the
-  // one input guaranteed to change per page, so the drive can't stall.
-  //
-  // Cancellation: the effect is not paired with a `cancelQueries` cleanup on
-  // purpose. Such a cleanup would fire on StrictMode's dev double-mount and
-  // abort the first page's own fetch, forcing a second one on remount — the
-  // opposite of what dedup should give. The loop is bounded by
-  // `hasNextPage` (the terminal page ends it) and `isFetchNextPageError` (a
-  // failed page pauses it until an explicit retry), so it can't run away.
-  // Hard abort of an in-flight page belongs on the queryFn's own `signal`
-  // seam, i.e. in `fetchMedicationRequestPage`; wire it there when its
-  // transport becomes signal-aware.
-  useEffect(() => {
-    if (
-      loadAllActive &&
-      pagesReceived > 0 &&
-      hasNextPage &&
-      !isFetchingNextPage &&
-      !isFetchNextPageError
-    ) {
-      void fetchNextPage()
-    }
-  }, [
-    loadAllActive,
-    pagesReceived,
-    hasNextPage,
-    isFetchingNextPage,
-    isFetchNextPageError,
-    fetchNextPage,
-  ])
 
   const startLoadAll = useCallback(() => {
     setLoadAllActive(true)
@@ -213,15 +147,6 @@ export const App = (): JSX.Element => {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  // `data` (and its `pages`) keeps a stable reference between renders unless a
-  // page is added, so the mapping only re-runs when the loaded set actually grows.
-  const views = useMemo(
-    () =>
-      medicationRequestsToMedicationViews(
-        (medications.data?.pages ?? []).flatMap((page) => page.items)
-      ),
-    [medications.data]
-  )
   // Interactions are checked over what the patient currently takes.
   const activeMedications = useMemo(
     () => views.flatMap((view) => (view.medication.status === 'active' ? [view.medication] : [])),
@@ -407,16 +332,16 @@ export const App = (): JSX.Element => {
       <ErrorBanner error={handshakeError} />
     )),
     Match.when({ firstPageError: Match.defined }, ({ firstPageError }): JSX.Element => (
-      <ErrorLine error={firstPageError} />
+      <ReadFailureLine subject="medications" error={firstPageError} />
     )),
-    Match.when({ hasPages: false }, (): JSX.Element => (
-      <p className={styles.status}>Loading medications…</p>
-    )),
+    Match.when({ hasPages: false }, (): JSX.Element => <LoadingLine subject="medications" />),
     Match.when({ tab: 'medications' as const }, (): JSX.Element => (
       <>
         <MedicationsView medications={views} />
-        {isFetchingNextPage && <p className={styles.status}>Loading more…</p>}
-        {medications.isFetchNextPageError && <ErrorLine error={medications.error} />}
+        {isFetchingNextPage && <LoadingMoreLine />}
+        {medications.isFetchNextPageError && (
+          <ReadFailureLine subject="medications" error={medications.error} />
+        )}
         {hasNextPage && <div ref={sentinelRef} aria-hidden="true" />}
       </>
     )),

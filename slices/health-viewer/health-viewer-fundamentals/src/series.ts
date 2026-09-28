@@ -40,6 +40,25 @@ const levelsOf = (series: Series): readonly Level.Level[] =>
 const levelAt = (series: Series, time: DateTime.Utc): Level.Level | null =>
   series.kind === 'points' ? PointSeries.levelAt(series, time) : LevelSeries.levelAt(series, time)
 
+/** The earliest and latest of `instants`, or `null` when there are none. */
+const extentOfInstants = (instants: readonly DateTime.Utc[]): TimeDomain | null => {
+  const first = instants[0]
+  if (first === undefined) return null
+  let earliest = first
+  let latest = first
+  for (const instant of instants) {
+    if (instant.epochMillis < earliest.epochMillis) earliest = instant
+    if (instant.epochMillis > latest.epochMillis) latest = instant
+  }
+  return [earliest, latest]
+}
+
+/** Every stated boundary of `series`' levels: each start, and each end that is not open. */
+const boundariesOf = (series: Series): readonly DateTime.Utc[] =>
+  levelsOf(series).flatMap((level) =>
+    level.end === null ? [level.start] : [level.start, level.end]
+  )
+
 /**
  * The instants `series` spans: the earliest level start to the latest stated
  * boundary.
@@ -49,24 +68,25 @@ const levelAt = (series: Series, time: DateTime.Utc): Level.Level | null =>
  * @remarks
  * An open-ended level contributes only its start — it has no end to span to.
  */
-const extentOf = (series: Series): TimeDomain | null => {
-  const boundaries = levelsOf(series).flatMap((level) =>
-    level.end === null ? [level.start] : [level.start, level.end]
-  )
-  const first = boundaries[0]
-  if (first === undefined) return null
-  let earliest = first
-  let latest = first
-  for (const boundary of boundaries) {
-    if (boundary.epochMillis < earliest.epochMillis) earliest = boundary
-    if (boundary.epochMillis > latest.epochMillis) latest = boundary
-  }
-  return [earliest, latest]
-}
+const extentOf = (series: Series): TimeDomain | null => extentOfInstants(boundariesOf(series))
+
+/**
+ * The instants a set of series spans together: the earliest boundary of any
+ * of them to the latest — what a chart drawing all of them over their own
+ * extent spans.
+ *
+ * @returns `null` when every series is empty, or there are none
+ *
+ * @remarks
+ * The same boundaries {@link extentOf} reads, pooled, so it equals the hull of
+ * each non-empty series' own extent.
+ */
+const extentOfAll = (seriesList: readonly Series[]): TimeDomain | null =>
+  extentOfInstants(seriesList.flatMap(boundariesOf))
 
 /** How many readings (for a point series) or levels (for a level series) `series` holds. */
 const sizeOf = (series: Series): number =>
   series.kind === 'points' ? series.points.length : series.levels.length
 
-export { extentOf, levelAt, levelsOf, sizeOf }
+export { extentOf, extentOfAll, levelAt, levelsOf, sizeOf }
 export type { Series, ValueScale }

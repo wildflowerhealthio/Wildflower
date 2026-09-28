@@ -35,7 +35,8 @@ time)` is the one lookup every crosshair read goes through: the
   discriminated on `kind` (`'points' | 'levels'`). Both carry an opaque `id`,
   `label`, `unit` and a `ValueScale` (`'fitted' | 'from-zero' |
 'zero-to-one'`). `levelsOf` is the one place the two kinds are told apart;
-  `levelAt`, `extentOf` and `sizeOf` read through it.
+  `levelAt`, `extentOf`, `extentOfAll` (the span of several series together) and
+  `sizeOf` read through it.
 - **`ValueAxis`** (`src/value-axis.ts`) — one value axis per series: `assign`
   (sides alternate in selection order, `CAP` = 4 axes), `domainFor` (fitted as
   the series' `valueScale` says), `niceDomain`, `ticksFor` (never `-0`),

@@ -1,0 +1,63 @@
+/*
+ * App shell. Colours and spacing read from the Tundra design tokens
+ * (`--color-*`, `--space-*`) that `tundra-css` + `react-tundraish` define
+ * globally; the page title uses tundra's built-in `text-heading-3` class, so
+ * this file only lays out the shell. The viewer's own layout (panel beside the
+ * chart from 900px) is `health-viewer-react`'s `HealthViewerLayout`. Dark mode
+ * needs no rule here — every token flips with `:root[data-color-scheme='dark']`.
+ */
+.app {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-7) var(--space-13);
+}
+
+/* The title and, under it, the patient whose record is open. */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-9);
+}
+
+.patient {
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}
+
+/* Loading / error lines share the body size; only the colour differs. */
+.status {
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}
+
+.error {
+  font-size: var(--font-size-3);
+  color: var(--color-red-3);
+}
+
+/* What the chart left out, under it. */
+.note {
+  margin-top: var(--space-5);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+/* The no-context patient picker. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 40rem;
+}
+
+.more-patients {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-3);
+  color: var(--color-accent);
+  cursor: pointer;
+}

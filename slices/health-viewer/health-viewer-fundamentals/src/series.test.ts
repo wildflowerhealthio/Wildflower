@@ -94,6 +94,39 @@ describe('Series.extentOf', () => {
   })
 })
 
+describe('Series.extentOfAll', () => {
+  test('is the hull of each series’ own extent, and nothing when none has one', () => {
+    fc.assert(
+      fc.property(fc.array(seriesArb, { maxLength: 5 }), (seriesList) => {
+        const extents = seriesList.flatMap((series) => {
+          const extent = Series.extentOf(series)
+          return extent === null ? [] : [extent]
+        })
+        const extent = Series.extentOfAll(seriesList)
+        if (extents.length === 0) expect(extent).toBeNull()
+        else {
+          expect(extent?.[0].epochMillis).toBe(
+            Math.min(...extents.map(([start]) => start.epochMillis))
+          )
+          expect(extent?.[1].epochMillis).toBe(
+            Math.max(...extents.map(([, end]) => end.epochMillis))
+          )
+        }
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('of one series is that series’ extent', () => {
+    fc.assert(
+      fc.property(seriesArb, (series) => {
+        expect(Series.extentOfAll([series])).toEqual(Series.extentOf(series))
+      }),
+      { numRuns: RUNS }
+    )
+  })
+})
+
 describe('Series.sizeOf', () => {
   test('counts readings or levels', () => {
     fc.assert(

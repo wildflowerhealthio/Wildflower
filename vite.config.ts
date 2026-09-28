@@ -53,6 +53,7 @@ export default defineConfig({
       'apps/fhir-sync-pebble/test/vite.config.ts',
       'apps/fhir-sync-pebble-web/vite.config.ts',
       'apps/github-pages/vite.config.ts',
+      'apps/health-viewer/vite.config.ts',
       'apps/importer-web/vite.config.ts',
       'apps/medications-app/vite.config.ts',
       'apps/ohif-viewer/vite.config.ts',

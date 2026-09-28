@@ -7,15 +7,16 @@ import { MARKETING_ANCHORS } from './nav.ts'
 import { SECTION_PATHS } from './site.ts'
 
 /**
- * Every described app: the homepage's SMART apps, and the owner UI, which has a
- * landing page but no homepage row.
+ * Every described app: the homepage's SMART apps, the Synthesized Health Viewer
+ * (a landing page, and a homepage row that does not read this copy yet), and
+ * the owner UI, which has a landing page but no homepage row.
  */
-const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'app']
+const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'healthViewer', 'app']
 
 const appSectionIdArb = fc.constantFrom<AppSectionId>(...DESCRIBED_APP_IDS)
 
 describe('APP_SECTION_IDS', () => {
-  it('should list every described app but the owner UI exactly once, and nothing else', () => {
+  it('should list every described app but the health viewer and the owner UI exactly once, and nothing else', () => {
     expect(DESCRIBED_APP_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
   })
 
@@ -53,8 +54,9 @@ describe('APP_DESCRIPTIONS', () => {
 
   it('should name the app in its launch label, so the homepage link reads as a link into it', () => {
     fc.assert(
-      fc.property(fc.constantFrom(...APP_SECTION_IDS), (id) => {
+      fc.property(fc.constantFrom(...DESCRIBED_APP_IDS), (id) => {
         const { name, launch } = APP_DESCRIPTIONS[id]
+        if (launch === undefined) return
         expect(launch.label).toContain(name)
         expect(launch.label.endsWith('→')).toBe(false)
       }),

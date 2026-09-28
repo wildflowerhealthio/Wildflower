@@ -21,9 +21,15 @@ slice is where the two meet, so neither has to know about the other.
     page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
     (`autoConnect`). Either target shows the problem the page arrived with
     (`arrivalProblem`).
+  - `LoadingLine`, `LoadingMoreLine` and `ReadFailureLine` — the read-status
+    vocabulary an app's page speaks: `Loading…` (or `Loading <subject>…`)
+    before anything lands, `Loading more…` while later pages arrive, and
+    `Could not load <subject>: <reason>` for a failed read. Pair them with
+    `react-kitchen-sink`'s `pagedQueryStatusOf` for a paged read.
 
-Consumers: `apps/medications-app`, `apps/importer-web` and `apps/web-trace`
-mount `SmartAppRoot` and `runSmartLaunchEntry`; `apps/fhir-sync-pebble-web` is
+Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/importer-web`
+and `apps/web-trace` mount `SmartAppRoot` and `runSmartLaunchEntry`, and the
+first two speak the read-status lines; `apps/fhir-sync-pebble-web` is
 standalone-only, so it mounts `SmartAppRoot` with no launch entry;
 `apps/wildflower-react`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.

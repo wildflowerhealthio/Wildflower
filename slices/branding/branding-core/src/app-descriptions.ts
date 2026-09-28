@@ -7,11 +7,15 @@ import type { SectionId } from './site.ts'
  */
 type AppSectionId = Extract<
   SectionId,
-  'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace' | 'app'
+  'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace' | 'healthViewer' | 'app'
 >
 
-/** The app sections the marketing homepage has a row for: all but the owner UI. */
-type HomepageAppSectionId = Exclude<AppSectionId, 'app'>
+/**
+ * The app sections the marketing homepage has a launcher row for: all but the
+ * owner UI, and the Synthesized Health Viewer, whose homepage row keeps its own
+ * inline copy until the app is registered on the Wildflower host.
+ */
+type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'healthViewer'>
 
 /**
  * The four SMART app sections, in the order the marketing homepage presents
@@ -189,6 +193,25 @@ const APP_DESCRIPTIONS: {
     launch: {
       label: 'Open the Web Trace Viewer',
       note: 'Load a capture against the demo server — no account, nothing uploaded',
+    },
+  },
+  healthViewer: {
+    name: 'Synthesized Health Viewer',
+    tagline:
+      "Plots labs, vitals and prescribed doses from a patient's FHIR record on one chart, " +
+      'so a dose change can be read against the numbers it is meant to move.',
+    status: 'Status: demo, rough edges',
+    paragraphs: [
+      'I want to see health data from several places on one chart.',
+      'I have a dose of a medication that keeps changing from my pharmacy, and labs ' +
+        'tracking both the medication level and possible side effects. It is hard to tell ' +
+        'what all the changes are doing to each other. This tool plots data from several ' +
+        'sources on the same chart so I can see how everything relates.',
+    ],
+    anchor: 'built',
+    launch: {
+      label: 'Open the Synthesized Health Viewer',
+      note: 'Plot observations and doses for a patient on any FHIR server, including our demo',
     },
   },
   app: {

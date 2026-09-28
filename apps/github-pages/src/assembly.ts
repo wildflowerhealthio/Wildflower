@@ -83,6 +83,16 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
+    packageName: 'health-viewer-app',
+    // The package lives in `apps/health-viewer`; its published path is
+    // `/${SECTION_PATHS.healthViewer}`.
+    sourceDir: 'apps/health-viewer/dist',
+    destPath: SECTION_PATHS.healthViewer,
+    // Two entries: the EHR launch endpoint and the app root (the redirect target,
+    // which also serves the standalone connect menu on a bare visit).
+    requiredFiles: ['index.html', 'launch.html'],
+  },
+  {
     packageName: 'ohif-viewer',
     // The prebuilt OHIF viewer pinned in apps/ohif-viewer/prebuilt.json (or
     // the stub page while nothing is pinned), with Wildflower's runtime

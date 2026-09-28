@@ -1,5 +1,6 @@
 export * from './auth-state/index.ts'
 export * from './hooks/index.ts'
+export * from './paged-query/index.ts'
 export * from './subscribable-store/index.ts'
 export { cn } from './cn.ts'
 export { prefersReducedMotion } from './prefers-reduced-motion.ts'
