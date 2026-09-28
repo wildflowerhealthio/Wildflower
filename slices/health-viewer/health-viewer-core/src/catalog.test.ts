@@ -103,6 +103,7 @@ describe('groupForPanel', () => {
     fc.assert(
       fc.property(fc.array(instant, { maxLength: 6 }), groupIdArb, (times, groupId) => {
         const row = groupForPanel([{ groupId, series: pointSeries('a', times) }])[0].rows[0]
+        expect(row.seriesKind).toBe('points')
         expect(row.count).toBe(times.length)
         if (times.length === 0) {
           expect(row.span).toBeNull()
@@ -119,6 +120,7 @@ describe('groupForPanel', () => {
   test("a level series' span covers its levels", () => {
     const [groupId] = CATALOG_GROUPS.map((group) => group.id)
     const row = groupForPanel([{ groupId, series: levelSeries('insulin') }])[0].rows[0]
+    expect(row.seriesKind).toBe('levels')
     expect(row.count).toBe(1)
     expect(row.span).toEqual([DateTime.unsafeMake(0), DateTime.unsafeMake(86_400_000)])
   })
@@ -129,6 +131,7 @@ describe('matchesSearch', () => {
     id: 'id',
     label,
     unit,
+    seriesKind: 'points',
     count: 0,
     span: null,
   })
