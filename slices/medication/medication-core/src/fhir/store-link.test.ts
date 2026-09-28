@@ -54,8 +54,8 @@ describe('storeLinkOf', () => {
   })
 
   it('should read no store link from the store extensions or supportingInformation', () => {
-    // Where the Rexall and Shoppers stores sat before their sources promoted
-    // them onto `dispenseRequest.performer`.
+    // The vendor slots a Rexall and a Shoppers store ride in, which their
+    // sources promote onto `dispenseRequest.performer`.
     expect(storeLinkOf(decode(prePromotionRexallRequest))).toBeNull()
     expect(storeLinkOf(decode(prePromotionShoppersRequest))).toBeNull()
   })

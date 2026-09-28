@@ -60,7 +60,7 @@ export const MedicationsView = ({ medications }: MedicationsViewProps): JSX.Elem
     const repeats = repeatsSummary(view.repeatsAllowed, view.repeatsAvailable)
     return (
       <li key={view.medication.id} className={styles.row}>
-        {/* Name + right-aligned pharmacy actions (wrap on mobile). */}
+        {/* Name + right-aligned store link (wrap on mobile). */}
         <p className={styles.header}>
           <span className={styles.name}>{view.medication.displayName}</span>
           {view.storeLink !== null && (

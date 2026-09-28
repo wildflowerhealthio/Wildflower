@@ -73,20 +73,32 @@ const CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS = [
   'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available',
 ] as const
 
-// A Rexall request in the carebook shape, before `rexall-be-well-source`
-// promotes it: a vendor-only DIN coding, the description on the carebook
-// extension, the store as two top-level extensions beside an identifier-only
-// performer, and the remaining repeats as `modifierExtension` copies. The
-// adapter reads none of these; such a resource is re-imported, not read around.
+// A Rexall request in the carebook shape `rexall-be-well-source` promotes: a
+// vendor-only DIN coding on both the contained Medication and
+// `medicationCodeableConcept`, the description on the carebook extension beside
+// the dialect's own narrative (a copy of the drug name), the store as two
+// top-level extensions beside an identifier-only performer, and the remaining
+// repeats as `modifierExtension` copies. The adapter reads none of the vendor
+// shapes; such a resource is re-imported, not read around.
 const prePromotionRexallRequest = {
   ...base,
   id: 'mr-pre-rexall',
-  medicationReference: { reference: '#med-1' },
+  medicationCodeableConcept: {
+    text: 'Atorvastatin 20 mg tablet',
+    coding: [{ system: CAREBOOK_DIN_SYSTEM, code: '02241497' }],
+  },
   contained: [
     {
       resourceType: 'Medication',
       id: 'med-1',
-      code: { coding: [{ system: CAREBOOK_DIN_SYSTEM, code: '02241497' }] },
+      text: {
+        status: 'generated',
+        div: '<div xmlns="http://www.w3.org/1999/xhtml">Atorvastatin 20 mg tablet</div>',
+      },
+      code: {
+        text: 'Atorvastatin 20 mg tablet',
+        coding: [{ system: CAREBOOK_DIN_SYSTEM, code: '02241497' }],
+      },
       extension: [{ url: CAREBOOK_DESCRIPTION_EXTENSION, valueString: '20 mg - Tablet' }],
     },
   ],
@@ -112,9 +124,9 @@ const prePromotionRexallRequest = {
   },
 }
 
-// A Shoppers Drug Mart request before `shoppers-drugmart-source` promotes it:
-// the DIN under the vendor system only, and the store-locator page as a
-// `supportingInformation` reference.
+// A Shoppers Drug Mart request in the shape `shoppers-drugmart-source` no longer
+// writes: the DIN under a Shoppers-hosted system only, and the store-locator
+// page as a `supportingInformation` reference.
 const prePromotionShoppersRequest = {
   ...base,
   id: 'mr-pre-sdm',

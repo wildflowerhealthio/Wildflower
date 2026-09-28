@@ -135,10 +135,11 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
   resource in a pharmacy's pre-promotion shape — a vendor-only DIN coding, the
   carebook description extension, the store as `external-*` extensions or a
   `supportingInformation` reference, remaining repeats as a `modifierExtension`
-  — shows no DIN, description, store link or remaining repeats. The fix is to
-  re-import it through the source, never a fallback reader here. The
-  `prePromotion*` fixtures in `src/fhir/test-helpers.ts` pin that each of these
-  shapes reads as absent.
+  — shows no DIN, store link or remaining repeats, and its description is only
+  what its narrative holds (for carebook, a copy of the drug name), never the
+  carebook extension. The fix is to re-import it through the source, never a
+  fallback reader here. The `prePromotion*` fixtures in
+  `src/fhir/test-helpers.ts` pin that none of these vendor shapes is read.
 - The adapter depends on `medication-calendar-core` for `nextFillDate`, so the
   matching base imports one feature core. Keep it that way round: nothing in
   `medication-calendar-core` may import `medication-core`.

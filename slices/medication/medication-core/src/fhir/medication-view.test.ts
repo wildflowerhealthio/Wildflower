@@ -74,12 +74,13 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.storeLink).toBeNull()
   })
 
-  test('reads no DIN, description, store link or remaining repeats from a pre-promotion resource', () => {
-    // A resource stored before its source wrote the conventional slots keeps
-    // only what R4 itself carries; the vendor shapes are not read around.
+  test('reads no DIN, carebook description, store link or remaining repeats from a pre-promotion resource', () => {
+    // A resource in a vendor shape shows only what R4 itself carries; the vendor
+    // shapes are not read around. Its description is the dialect's narrative (a
+    // copy of the drug name), never the carebook description extension.
     const rexall = medicationRequestToMedicationView(decode(prePromotionRexallRequest), 'fallback')
     expect(rexall.din).toBeNull()
-    expect(rexall.description).toBeNull()
+    expect(rexall.description).toBe('Atorvastatin 20 mg tablet')
     expect(rexall.storeLink).toBeNull()
     expect(rexall.repeatsAvailable).toBeNull()
     expect(rexall.repeatsAllowed).toBe(3)
@@ -90,7 +91,9 @@ describe('medicationRequestToMedicationView', () => {
     )
     expect(shoppers.medication.displayName).toBe('LIPITOR')
     expect(shoppers.din).toBeNull()
+    expect(shoppers.description).toBeNull()
     expect(shoppers.storeLink).toBeNull()
+    expect(shoppers.repeatsAvailable).toBeNull()
   })
 })
 

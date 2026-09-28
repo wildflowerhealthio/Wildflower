@@ -55,9 +55,10 @@ describe('dinOf', () => {
   })
 
   it('should read nothing when no coding is under the canonical DIN system', () => {
-    // The vendor carebook and Shoppers DIN systems, RxNorm and SNOMED CT alike: a vendor
-    // coding always has a canonical twin beside it, and printing a non-DIN code
-    // as "DIN …" would be a confidently wrong identifier.
+    // The carebook and Shoppers-hosted DIN systems, RxNorm and SNOMED CT alike:
+    // a source writes the canonical coding (beside any carebook one it keeps),
+    // and printing a non-DIN code as "DIN …" would be a confidently wrong
+    // identifier.
     fc.assert(
       fc.property(
         fc.array(fc.tuple(fc.option(otherSystemArbitrary), codeArbitrary), { maxLength: 3 }),

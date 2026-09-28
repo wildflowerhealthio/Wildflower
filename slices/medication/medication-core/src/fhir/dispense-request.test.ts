@@ -47,19 +47,20 @@ describe('repeatsAllowedOf / repeatsAvailableOf', () => {
     // absent: a resource stored in one of those shapes is re-imported.
     fc.assert(
       fc.property(
-        fc.nat(99),
+        fc.integer({ min: 1, max: 99 }),
         fc.oneof(
-          fc.constantFrom(...CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS).map((url) => ({
-            slot: 'modifierExtension',
-            url,
-            valueKey: 'valueDecimal',
-          })),
+          fc
+            .tuple(
+              fc.constantFrom(...CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS),
+              fc.constantFrom('valuePositiveInt', 'valueDecimal', 'valueInteger')
+            )
+            .map(([url, valueKey]) => ({ slot: 'modifierExtension', url, valueKey })),
           fc.constant({
             slot: 'modifierExtension',
             url: WildflowerExtension.RepeatsAvailable,
             valueKey: 'valueInteger',
           }),
-          fc.constantFrom('valueDecimal', 'valueString').map((valueKey) => ({
+          fc.constantFrom('valuePositiveInt', 'valueDecimal', 'valueString').map((valueKey) => ({
             slot: 'extension',
             url: WildflowerExtension.RepeatsAvailable,
             valueKey,
