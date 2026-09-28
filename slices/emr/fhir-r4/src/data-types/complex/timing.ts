@@ -39,8 +39,14 @@ const TimeSchema: Schema.Schema<string, string, never> = Schema.String.pipe(
   })
 )
 
-/** FHIR R4 `Timing.repeat.periodUnit` / `Timing.repeat.durationUnit`. */
+/**
+ * FHIR R4 `Timing.repeat.periodUnit` / `Timing.repeat.durationUnit` — the
+ * `UnitsOfTime` value set (UCUM codes for second through year).
+ */
 const UnitOfTimeSchema = Schema.Literal('s', 'min', 'h', 'd', 'wk', 'mo', 'a')
+
+/** One `UnitsOfTime` code — see {@link UnitOfTimeSchema}. */
+type UnitOfTime = typeof UnitOfTimeSchema.Type
 
 /** FHIR R4 `Timing.repeat.dayOfWeek`. */
 const DayOfWeekSchema = Schema.Literal('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
@@ -137,4 +143,5 @@ const TimingSchema: Schema.Schema<typeof TimingStruct.Type, FhirR4.Timing, never
 
 registerDatatypeSchema('Timing', TimingSchema)
 
-export { TimingSchema as Schema, TimingRepeatSchema }
+export { TimingSchema as Schema, TimingRepeatSchema, UnitOfTimeSchema }
+export type { UnitOfTime }
