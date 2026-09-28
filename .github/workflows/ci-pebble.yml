@@ -58,9 +58,20 @@ jobs:
         run: vp install
 
       # Pinned because clang-format's output moves between releases; install
-      # the same version locally (see the apps' READMEs).
+      # the same version locally (see the apps' READMEs). The runner image has
+      # its own clang-format in /usr/bin, so check that the pinned one is found.
       - name: Install clang-format
-        run: pipx install clang-format==23.1.1
+        env:
+          CLANG_FORMAT_VERSION: 23.1.1
+        run: |
+          set -euo pipefail
+          pipx install "clang-format==$CLANG_FORMAT_VERSION"
+          version="$(clang-format --version)"
+          echo "$version"
+          if [[ "$version" != *"clang-format version $CLANG_FORMAT_VERSION" ]]; then
+            echo "::error::Expected clang-format $CLANG_FORMAT_VERSION first on the PATH"
+            exit 1
+          fi
 
       - name: Check C formatting
         run: vp run -F ${{ matrix.app }} fmt:c:check

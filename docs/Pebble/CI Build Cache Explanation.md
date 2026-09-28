@@ -34,7 +34,7 @@ Every input the install depends on is in the key and there is no restore prefix,
 so an entry is always the complete install for its pins and never goes stale;
 changing a pin misses and installs fresh. The action restores and saves the
 entry itself (`actions/cache/restore` and `actions/cache/save`) straight after a
-cold install, so a later failing step, a format check or a test, doesn't lose it.
+cold install, so a later failing step, such as `pebble build`, doesn't lose it.
 
 The pins default in the action so every workflow that builds a `.pbw` builds it
 with the same SDK. A cold install takes under a minute; the cache is as much

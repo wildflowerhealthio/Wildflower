@@ -94,8 +94,8 @@ runs:
         uv tool install "pebble-tool==$PEBBLE_TOOL_VERSION" --python "$PYTHON_VERSION"
         pebble sdk install "$SDK_VERSION"
 
-    # Saved here rather than at job end, so a later failing step (a format
-    # check, a test) doesn't throw the install away.
+    # Saved here rather than at job end, so a later failing step (such as
+    # `pebble build`) doesn't throw the install away.
     - name: Save Pebble SDK
       if: steps.restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@v6
@@ -113,7 +113,7 @@ runs:
         set -euo pipefail
         version="$(pebble --version)"
         echo "$version"
-        if [[ "$version" != *"active SDK: v$SDK_VERSION"* ]]; then
+        if [[ "$version" != *"(active SDK: v$SDK_VERSION)"* ]]; then
           echo "::error::Expected Pebble SDK $SDK_VERSION to be active"
           exit 1
         fi
