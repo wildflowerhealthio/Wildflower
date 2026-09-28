@@ -32,6 +32,15 @@ it rather than re-decide it.
 - **The unit is part of a series' identity.** The same LOINC code reported in
   `mmol/L` and in `mg/dL` is two series. One line that silently changes scale
   mid-plot is a clinical hazard, not a convenience.
+- **A `valueSampledData` is many readings.** Each numeric sample is one point
+  at the observation's `effectivePeriod.start` (else `effectiveDateTime`, else
+  `effectiveInstant`) + index × `period`, worth `origin + factor × sample`.
+  `E`, `L` and `U` are skipped without shifting the samples after them. `issued`
+  never dates samples, only `dimensions: 1` plots, and an observation whose
+  readings are only partly dated counts as `undated` whole. The unit is
+  `origin.unit` before `origin.code`, as for a quantity, so FHIR Sync for
+  Pebble's heart rate is keyed `beats/minute` — a separate series from heart
+  rate stored as `/min`, since nothing converts between units.
 - **Nothing disappears silently.** `observationsToSeries` returns `undated` and
   `dropped` counts alongside the series, and every input moves at most one of
   them, so the UI can say what it could not plot.
