@@ -3,13 +3,12 @@
 // with no DOM, so tsconfig.json's `lib` is ES5 alone and these stand in for
 // the browser's declarations.
 
-/** An AppMessage dictionary, keyed by `messageKeys` name. */
-interface AppMessagePayload {
-  readonly [key: string]: unknown
-}
-
 interface AppMessageEvent {
-  readonly payload: AppMessagePayload
+  /**
+   * The AppMessage dictionary, keyed by `messageKeys` name. Typed `unknown` for
+   * what it is, data from the watch; the core's decoders check its shape.
+   */
+  readonly payload: unknown
 }
 
 interface WebviewClosedEvent {

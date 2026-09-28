@@ -1,4 +1,4 @@
-import { type Fields, requireInteger } from './fields.ts'
+import { requireInteger, requirePayload } from './fields.ts'
 
 /**
  * Health Activity: the watch's activity messages in, one FHIR Observation per
@@ -83,20 +83,22 @@ interface Observation {
 /**
  * Decodes one activity message from the watch — `ActivityType` (a
  * `HealthActivity` value), `ActivityStart` and `ActivityEnd` (Unix seconds).
- * Throws on an unknown activity or an end before the start.
+ * Throws on an unknown activity, an end before the start, or a payload that
+ * isn't that shape.
  *
  * @param payload - The AppMessage payload, keyed by message key name
  */
-const decodeMessage = (payload: Fields): Activity => {
-  const activityType = requireInteger(payload, 'ActivityType')
+const decodeMessage = (payload: unknown): Activity => {
+  const fields = requirePayload(payload)
+  const activityType = requireInteger(fields, 'ActivityType')
   const coding = Object.prototype.hasOwnProperty.call(ACTIVITY_CODINGS, activityType)
     ? ACTIVITY_CODINGS[activityType]
     : undefined
   if (coding === undefined) {
     throw new Error(`Unknown HealthActivity ${activityType}`)
   }
-  const startSeconds = requireInteger(payload, 'ActivityStart')
-  const endSeconds = requireInteger(payload, 'ActivityEnd')
+  const startSeconds = requireInteger(fields, 'ActivityStart')
+  const endSeconds = requireInteger(fields, 'ActivityEnd')
   if (endSeconds < startSeconds) {
     throw new Error('Activity ends before it starts')
   }
@@ -109,8 +111,8 @@ const decodeMessage = (payload: Fields): Activity => {
  *
  * @param payload - The AppMessage payload, keyed by message key name
  */
-const decodeCount = (payload: Fields): number => {
-  const count = requireInteger(payload, 'ActivityCount')
+const decodeCount = (payload: unknown): number => {
+  const count = requireInteger(requirePayload(payload), 'ActivityCount')
   if (count < 0) {
     throw new Error('Message field ActivityCount must not be negative')
   }

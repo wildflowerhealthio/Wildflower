@@ -121,7 +121,7 @@ const addToPendingSync = (add: (pending: WatchSync.Type) => WatchSync.Type): voi
 }
 
 /** Posts the sync `endPayload` ends, answering the watch whether the server stored it. */
-const finishPendingSync = (endPayload: AppMessagePayload): void => {
+const finishPendingSync = (endPayload: unknown): void => {
   const sync = pendingSync
   pendingSync = WatchSync.empty
   try {

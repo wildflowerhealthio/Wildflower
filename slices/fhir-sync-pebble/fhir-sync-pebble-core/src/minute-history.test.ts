@@ -95,6 +95,16 @@ describe('decodeHourMessage', () => {
   })
 })
 
+describe('decodeHourMessage and decodeHourCount', () => {
+  it.each([null, undefined, 'MinuteHourStart', 4])(
+    'should reject a payload that is not an object, like %s',
+    (payload) => {
+      expect(() => MinuteHistory.decodeHourMessage(payload)).toThrow('object')
+      expect(() => MinuteHistory.decodeHourCount(payload)).toThrow('object')
+    }
+  )
+})
+
 describe('decodeHourCount', () => {
   it('should decode any count of hours', () => {
     fc.assert(

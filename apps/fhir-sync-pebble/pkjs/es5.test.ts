@@ -32,7 +32,7 @@ describe('lowerToEs5', () => {
     expect(() => lowerToEs5('var r = /a.b/s')).toThrow()
   })
 
-  it.each(['Symbol', 'Map', 'Set', 'WeakMap', 'Promise', 'Reflect'])(
+  it.each(['Symbol', 'Map', 'Set', 'WeakMap', 'Promise', 'Reflect', 'globalThis'])(
     'should refuse code that reads the global %s',
     (global) => {
       expect(() => lowerToEs5(`var g = ${global}`)).toThrow(global)
@@ -75,5 +75,23 @@ describe('checkEs5Library', () => {
         join(projectDir, 'es2016.ts'),
       ])
     ).toThrow('includes')
+  })
+
+  it('should refuse a bundled module the program does not check', () => {
+    expect(() =>
+      checkEs5Library(join(projectDir, 'tsconfig.json'), [
+        join(projectDir, 'es5.ts'),
+        join(tmpdir(), 'not-in-the-program.ts'),
+      ])
+    ).toThrow('not-in-the-program.ts')
+  })
+
+  it("should pass over the bundler's virtual modules", () => {
+    expect(() =>
+      checkEs5Library(join(projectDir, 'tsconfig.json'), [
+        '\0rolldown/runtime.js',
+        join(projectDir, 'es5.ts'),
+      ])
+    ).not.toThrow()
   })
 })

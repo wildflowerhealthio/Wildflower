@@ -16,6 +16,28 @@ describe('messageKind', () => {
   ] as const)('should tell %s by its key', (_, payload, kind) => {
     expect(WatchSync.messageKind(payload)).toBe(kind)
   })
+
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['a string', 'ActivityType'],
+    ['a number', 4],
+  ])('should call a payload that is %s none of them', (_, payload) => {
+    expect(WatchSync.messageKind(payload)).toBeNull()
+  })
+
+  it.each([
+    ['ActivityType over MinuteHourStart', { ActivityType: 4, MinuteHourStart: 0 }, 'Activity'],
+    ['ActivityType over ActivityCount', { ActivityType: 4, ActivityCount: 0 }, 'Activity'],
+    ['MinuteHourStart over ActivityCount', { MinuteHourStart: 0, ActivityCount: 0 }, 'MinuteHour'],
+    [
+      'ActivityType over both',
+      { ActivityCount: 0, MinuteHourStart: 0, ActivityType: 4 },
+      'Activity',
+    ],
+  ] as const)('should rank %s when a payload carries several keys', (_, payload, kind) => {
+    expect(WatchSync.messageKind(payload)).toBe(kind)
+  })
 })
 
 describe('withActivity and withHour', () => {
@@ -107,6 +129,10 @@ describe('requireComplete', () => {
     ['a fractional MinuteHourCount', { ActivityCount: 0, MinuteHourCount: 0.5 }, 'MinuteHourCount'],
   ])('should reject an end message with %s', (_, endPayload, key) => {
     expect(() => WatchSync.requireComplete(WatchSync.empty, endPayload)).toThrow(key)
+  })
+
+  it('should reject an end message that is not an object', () => {
+    expect(() => WatchSync.requireComplete(WatchSync.empty, null)).toThrow('object')
   })
 })
 

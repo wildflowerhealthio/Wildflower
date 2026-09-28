@@ -1,12 +1,11 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "lib": ["es2024"],
-    "moduleDetection": "force",
+    "target": "es2015",
+    "lib": ["es5"],
+    "types": [],
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "customConditions": ["source"],
-    "types": ["node"],
     "strict": true,
     "noUnusedLocals": true,
     "noEmit": true,
@@ -15,5 +14,5 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
-  "include": ["*.ts"]
+  "include": ["."]
 }

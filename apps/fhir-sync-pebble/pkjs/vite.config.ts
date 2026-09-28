@@ -39,7 +39,7 @@ export default defineConfig({
           for (const output of Object.values(bundle)) {
             if (output.type === 'chunk') {
               checkEs5Library(
-                fileURLToPath(new URL('tsconfig.json', import.meta.url)),
+                fileURLToPath(new URL('src/tsconfig.json', import.meta.url)),
                 output.moduleIds
               )
               output.code = lowerToEs5(output.code)

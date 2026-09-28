@@ -1,4 +1,4 @@
-import type { Fields } from './fields.ts'
+import { isFields } from './fields.ts'
 import * as HealthActivity from './health-activity.ts'
 import * as MinuteHistory from './minute-history.ts'
 
@@ -45,13 +45,17 @@ interface TransactionBundle {
 const empty: Type = { activities: [], hours: [] }
 
 /**
- * Which of the sync's messages `payload` is, or null when it is none of them.
- * An activity message is told by `ActivityType`, an hour by `MinuteHourStart`,
- * and the one ending the sync by `ActivityCount`.
+ * Which of the sync's messages `payload` is, or null when it is none of them,
+ * not being an object at all included. An activity message is told by
+ * `ActivityType`, an hour by `MinuteHourStart`, and the one ending the sync by
+ * `ActivityCount`, in that order of precedence.
  *
  * @param payload - The AppMessage payload, keyed by message key name
  */
-const messageKind = (payload: Fields): MessageKind | null => {
+const messageKind = (payload: unknown): MessageKind | null => {
+  if (!isFields(payload)) {
+    return null
+  }
   if ('ActivityType' in payload) {
     return 'Activity'
   }
@@ -84,7 +88,7 @@ const withHour = (sync: Type, hour: MinuteHistory.Hour): Type => ({
  *
  * @param endPayload - The AppMessage payload {@link messageKind} calls `End`
  */
-const requireComplete = (sync: Type | null, endPayload: Fields): Type => {
+const requireComplete = (sync: Type | null, endPayload: unknown): Type => {
   const activityCount = HealthActivity.decodeCount(endPayload)
   const hourCount = MinuteHistory.decodeHourCount(endPayload)
   if (

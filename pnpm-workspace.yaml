@@ -77,10 +77,12 @@ catalog:
   # root so ajv 8 wins the hoist: eslint drags in ajv 6, and whichever version
   # lands at the workspace root is the one a root-level `vp lint` resolves for
   # every package.
+  # acorn parses apps/fhir-sync-pebble's PebbleKit JS bundle at ES5 to prove
+  # its language level.
+  acorn: ^8.18.0
   ajv: ^8.20.0
   bumpp: ^12.3.0
   '@types/node': ^26
-  acorn: ^8.18.0
   '@types/react': 19.3.0
   '@types/react-dom': 19.3.0
   '@typescript/native-preview': 7.0.0-dev.20260707.2
@@ -106,6 +108,12 @@ catalog:
   tundra-css: ^0.14.0
 
   typescript: 7.0.2
+  # TypeScript 5 under its own name, for the one job TypeScript 7 can't do:
+  # apps/fhir-sync-pebble/pkjs lowers its PebbleKit JS bundle to ES5, a target
+  # TypeScript 7 dropped and rolldown/oxc never had. The alias keeps it 5.x
+  # whatever `typescript` resolves to: the `typescript` override below matches
+  # the bare name only, not this one.
+  typescript-es5: npm:typescript@5.9.3
   vite: npm:@voidzero-dev/vite-plus-core@0.3.2
   vite-plus: 0.3.2
   why-is-node-running: ^3.2.2

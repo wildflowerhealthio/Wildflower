@@ -26,7 +26,9 @@ pebble install --phone <ip>           # install to a paired phone
 
 `pebble build` first runs `vp pack` in `pkjs/` (the wscript does), which
 bundles the PebbleKit JS into `src/pkjs/index.js`, the one file the SDK packs
-(gitignored); so `vp` must be on the `PATH` and `vp install` done. To build the
+(gitignored). It runs the repository's `node_modules/.bin/vp`, so `vp install`
+must have run (without it, a `vp` on the `PATH`), and Node must be on the
+`PATH`. To build the
 bundle alone, `vp run -F fhir-sync-pebble-pkjs build`; `vp run pack` builds it
 with the rest of the monorepo.
 
@@ -193,12 +195,15 @@ usual.
   TypeScript 5's compiler in `generateBundle` (rolldown reprints what
   `renderChunk` returns, restoring ES2015 shorthand), then fails the build
   unless acorn parses it as ES5 and it reads none of `Symbol`, `Map`,
-  `Promise` and the other ES2015 globals. Syntax lowers, but library methods
-  don't: the build also type-checks every bundled source, the core's
-  included, against ES5's library, so `Array.prototype.includes` or
-  `String.prototype.padStart` fails it. TypeScript 7 has no ES5 target, so the
-  lowering relies on the 5.x the root `overrides` pin; `tsconfig.json` says
-  ES2015 only because `vp check`'s TypeScript 7 refuses ES5.
+  `Promise`, `globalThis` and the other later globals `es5.ts` lists. Syntax
+  lowers, but library methods don't: the build also type-checks every bundled
+  source, the core's included, against ES5's library, so
+  `Array.prototype.includes` or `String.prototype.padStart` fails it, and a
+  bundled module outside that check fails it too. TypeScript 7 has no ES5
+  target, so `es5.ts` imports TypeScript 5 as the catalog alias
+  `typescript-es5`; `pkjs/src/tsconfig.json` (the ES5 one) says ES2015 only
+  because `vp check`'s TypeScript 7 refuses ES5, and `pkjs/tsconfig.json`
+  covers the Node-side build files and tests.
 - **Nothing the phone bundles may import Effect.** Effect needs ES2015 at run
   time, so the core's `pkjs` entry is Effect-free and its decoders are
   hand-written. Import `fhir-sync-pebble-core/pkjs`, not the package root,

@@ -1,4 +1,4 @@
-import { type Fields, requireInteger } from './fields.ts'
+import { requireInteger, requirePayload } from './fields.ts'
 import {
   ACTIVITY_CATEGORY_CODING,
   type Coding,
@@ -253,13 +253,14 @@ const minuteAt = (bytes: ReadonlyArray<number>, offset: number): Minute | null =
  *
  * @param payload - The AppMessage payload, keyed by message key name
  */
-const decodeHourMessage = (payload: Fields): Hour => {
-  const hourStartSeconds = requireInteger(payload, 'MinuteHourStart')
+const decodeHourMessage = (payload: unknown): Hour => {
+  const fields = requirePayload(payload)
+  const hourStartSeconds = requireInteger(fields, 'MinuteHourStart')
   if (hourStartSeconds % SECONDS_PER_HOUR !== 0) {
     throw new Error('Message field MinuteHourStart must be on the hour')
   }
 
-  const typeBits = requireInteger(payload, 'MinuteTypes')
+  const typeBits = requireInteger(fields, 'MinuteTypes')
   if (typeBits <= 0 || typeBits > MINUTE_TYPE_BITS || (typeBits & ~MINUTE_TYPE_BITS) !== 0) {
     throw new Error('Message field MinuteTypes must set only minute type bits, at least one')
   }
@@ -268,7 +269,7 @@ const decodeHourMessage = (payload: Fields): Hour => {
   )
 
   const hourBytes = MINUTES_PER_HOUR * MINUTE_WIRE_SIZE
-  const minuteData: unknown = payload['MinuteData']
+  const minuteData: unknown = fields['MinuteData']
   if (!Array.isArray(minuteData) || minuteData.length !== hourBytes) {
     throw new Error(`Message field MinuteData must be ${hourBytes} bytes`)
   }
@@ -290,8 +291,8 @@ const decodeHourMessage = (payload: Fields): Hour => {
  *
  * @param payload - The AppMessage payload, keyed by message key name
  */
-const decodeHourCount = (payload: Fields): number => {
-  const count = requireInteger(payload, 'MinuteHourCount')
+const decodeHourCount = (payload: unknown): number => {
+  const count = requireInteger(requirePayload(payload), 'MinuteHourCount')
   if (count < 0) {
     throw new Error('Message field MinuteHourCount must not be negative')
   }

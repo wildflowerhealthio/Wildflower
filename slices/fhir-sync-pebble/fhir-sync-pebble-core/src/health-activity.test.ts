@@ -117,6 +117,16 @@ describe('decodeMessage', () => {
   )
 })
 
+describe('decodeMessage and decodeCount', () => {
+  it.each([null, undefined, 'ActivityType', 4])(
+    'should reject a payload that is not an object, like %s',
+    (payload) => {
+      expect(() => HealthActivity.decodeMessage(payload)).toThrow('object')
+      expect(() => HealthActivity.decodeCount(payload)).toThrow('object')
+    }
+  )
+})
+
 describe('decodeCount', () => {
   it('should decode any count of activities', () => {
     fc.assert(

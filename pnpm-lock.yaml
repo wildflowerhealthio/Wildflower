@@ -144,6 +144,9 @@ catalogs:
     tundra-css:
       specifier: ^0.14.0
       version: 0.14.0
+    typescript-es5:
+      specifier: npm:typescript@5.9.3
+      version: 5.9.3
     vite:
       specifier: npm:@voidzero-dev/vite-plus-core@0.3.2
       version: 0.3.2
@@ -350,9 +353,9 @@ importers:
       fhir-sync-pebble-core:
         specifier: workspace:*
         version: link:../../../slices/fhir-sync-pebble/fhir-sync-pebble-core
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
+      typescript-es5:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
       vite:
         specifier: 'catalog:'
         version: '@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
