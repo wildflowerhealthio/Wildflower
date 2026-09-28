@@ -23,7 +23,8 @@ import { parse, tokenizer, tokTypes } from 'acorn'
 import ts from 'typescript-es5'
 
 /**
- * `code`, bundled JavaScript of any later level, lowered to ES5. Throws when
+ * `code`, bundled JavaScript of any later level, lowered to ES5 without its
+ * comments. Throws when
  * the lowered code still doesn't parse as ES5, naming where, or reads one of
  * {@link POST_ES5_GLOBALS}.
  */
@@ -34,6 +35,9 @@ const lowerToEs5 = (code: string): string => {
       target: ts.ScriptTarget.ES5,
       module: ts.ModuleKind.CommonJS,
       sourceMap: false,
+      // The sources' TSDoc is most of the bundle's size, and the phone never
+      // reads it.
+      removeComments: true,
     },
   }).outputText
   parse(lowered, { ecmaVersion: 5, sourceType: 'script' })

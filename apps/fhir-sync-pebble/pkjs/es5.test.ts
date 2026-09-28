@@ -27,6 +27,11 @@ describe('lowerToEs5', () => {
     expect(() => parse(lowered, { ecmaVersion: 5 })).not.toThrow()
   })
 
+  it('should strip comments', () => {
+    const lowered = lowerToEs5('/** Doc. */\nvar a = 1 // line\n/* block */\nvar b = a')
+    expect(lowered).not.toMatch(/Doc\.|line|block/)
+  })
+
   it('should refuse what it cannot lower to ES5', () => {
     // A regular expression's `s` flag has no ES5 form; TypeScript leaves it be.
     expect(() => lowerToEs5('var r = /a.b/s')).toThrow()
