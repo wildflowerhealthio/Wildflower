@@ -1,0 +1,13 @@
+/*
+ * The one-line read statuses a SMART app's page shows in place of, or beside,
+ * what it has loaded. Both share the body size; only the colour differs.
+ */
+.status {
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}
+
+.error {
+  font-size: var(--font-size-3);
+  color: var(--color-red-3);
+}
