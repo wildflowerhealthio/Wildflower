@@ -1,8 +1,11 @@
 import { Schema } from 'effect'
-import { CanadianCodingSystem, WildflowerExtension } from 'fhir-r4/data-types'
+import { CanadianCodingSystem, WildflowerExtension, withMandatoryId } from 'fhir-r4/data-types'
 import { MedicationRequest } from 'fhir-r4/resources'
 
 const decode = Schema.decodeUnknownSync(MedicationRequest.Schema)
+
+/** Decode a request the way the FHIR server returns one: with a required `id`. */
+const decodeWithId = Schema.decodeUnknownSync(withMandatoryId(MedicationRequest.Schema))
 
 const base = {
   resourceType: 'MedicationRequest',
@@ -64,4 +67,4 @@ const shoppersRequest = {
   dosageInstruction: [{ text: 'Take 1 tablet by mouth once daily' }],
 }
 
-export { base, CAREBOOK_DIN_SYSTEM, decode, rexallRequest, shoppersRequest }
+export { base, CAREBOOK_DIN_SYSTEM, decode, decodeWithId, rexallRequest, shoppersRequest }

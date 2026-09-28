@@ -1,9 +1,13 @@
 import { Array as Arr, DateTime, Option, pipe } from 'effect'
 import { Extension, WildflowerExtension } from 'fhir-r4/data-types'
 import type { MedicationRequest } from 'fhir-r4/resources'
+import { supplyDurationToParts } from 'fhir-utility'
 import { nextFillDate } from 'medication-calendar-core'
 
-/** What `dispenseRequest` says about supply: repeats, and when the next fill falls due. */
+/**
+ * What `dispenseRequest` says about supply: repeats, when the next fill falls
+ * due, and when the whole authorized supply runs out.
+ */
 
 /** `dispenseRequest.numberOfRepeatsAllowed` — the total repeats authorized. */
 const repeatsAllowedOf = (request: MedicationRequest.Type): number | null =>
@@ -46,4 +50,29 @@ const nextFillDateOf = (request: MedicationRequest.Type): string | null =>
     Option.getOrNull
   )
 
-export { nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf }
+/**
+ * When the whole authorized supply runs out: `supplyStart` advanced by
+ * `dispenseRequest.expectedSupplyDuration` once for the first fill and once
+ * per `numberOfRepeatsAllowed`.
+ *
+ * @returns `null` when there is no usable supply duration (see
+ *   `fhir-utility`'s `supplyDurationToParts`, which `nextFillDateOf` advances
+ *   by too), or the advance leaves the representable date range
+ */
+const authorizedSupplyEndOf = (
+  request: MedicationRequest.Type,
+  supplyStart: DateTime.Utc
+): DateTime.Utc | null => {
+  const expectedSupplyDuration = request.dispenseRequest?.expectedSupplyDuration ?? null
+  if (expectedSupplyDuration === null || expectedSupplyDuration.value === null) return null
+  const fillCount = (request.dispenseRequest?.numberOfRepeatsAllowed ?? 0) + 1
+  const authorizedSupplyDuration = supplyDurationToParts({
+    ...expectedSupplyDuration,
+    value: expectedSupplyDuration.value * fillCount,
+  })
+  if (authorizedSupplyDuration === null) return null
+  const supplyEnd = DateTime.add(supplyStart, authorizedSupplyDuration)
+  return Number.isFinite(supplyEnd.epochMillis) ? supplyEnd : null
+}
+
+export { authorizedSupplyEndOf, nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf }
