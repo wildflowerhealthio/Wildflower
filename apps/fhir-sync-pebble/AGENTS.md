@@ -42,13 +42,14 @@ the host `cc`.
   on `webviewclosed` decodes the response (`PhoneSettings.decodeResponse`),
   keeps the full settings in `localStorage` and sends the watch its part
   (`PhoneSettings.toWatchMessage`). On `appmessage` it sorts each message by
-  `WatchSync.messageKind`, collects a sync's activities and hours into a
-  `WatchSync.Type`, checks it against the counts (`WatchSync.requireComplete`)
-  and posts its transaction Bundle. Everything it calls comes from
+  `WatchSync.messageKind`, starts a `WatchSync.Type` on `SyncStart`, collects
+  the sync's activities and hours into it, checks it against the counts
+  (`WatchSync.requireComplete`), posts its transaction Bundle with a 60 s
+  timeout and answers with the sync's id. Everything it calls comes from
   `fhir-sync-pebble-core/pkjs`.
 - `pkjs/src/pebble-kit-js.d.ts` — types for the PebbleKit JS globals it uses
-  (`Pebble`, `localStorage`, `XMLHttpRequest`, `console`), since its
-  `tsconfig.json` has ES5's library and no DOM.
+  (`Pebble`, `localStorage`, `XMLHttpRequest`, `setTimeout`, `console`), since
+  its `tsconfig.json` has ES5's library and no DOM.
 - `pkjs/vite.config.ts` and `pkjs/es5.ts` — the bundle: `vp pack` bundles
   `src/index.ts` and the core into `../src/pkjs/index.js` as an IIFE, then
   lowers it to ES5 and checks it (see Traps).
@@ -58,14 +59,15 @@ the host `cc`.
   its stack and passes it as the AppMessage context. The one file-scope static
   is the `.bss` anchor (see Traps).
 - `src/c/sync.c` — `Sync`, one Sync Now run: collects the activities from
-  HealthService, sends them and then each hour of minute history to the phone
-  one message at a time, and ends the sync on the phone's answer, a failed
-  send or a timeout.
+  HealthService, sends `SyncStart`, the activities and then each hour of
+  minute history to the phone one message at a time, and ends the sync on the
+  phone's answer to it, a failed send, a timeout or a change of connection.
 - `src/c/minute-wire.c` — packs one minute of `HealthMinuteData` into the
   bytes an hour message carries, kept buildable on the host.
 - `src/c/state.c` — `AppState`, the state behind the menu, and its persist
   storage. Readers read its fields; changes go through the `state_*`
-  functions, which persist them.
+  functions, which persist them. A connection to another patient or server
+  starts the last-sync times over.
 - `src/c/windows/settings-window.c` — the app's one window, hosting the
   settings menu.
 - `src/c/views/settings-menu-layer.c` — the `MenuLayer`, with itself as its
@@ -80,35 +82,102 @@ the host `cc`.
 
 The settings carry a live access token, so only what the watch shows crosses
 over AppMessage: `PatientName`, `PatientBirthDate` (each `""` when the record
-has none — AppMessage has no null) and `AuthTime`, the Unix seconds at which the
-phone received the settings. The token and FHIR base URL stay in PebbleKit JS's
+has none — AppMessage has no null), `AuthTime`, the Unix seconds at which the
+phone received the settings, and `ConnectionId`, which patient on which server
+(`PhoneSettings.connectionId`: `fhir-r4`'s `localResourceId` for the patient
+id on the FHIR base URL). The token and FHIR base URL stay in PebbleKit JS's
 `localStorage`, where the sync reads them.
+
+The phone cuts the name to 63 bytes of UTF-8 and the birth date to 10, what
+`state.h` keeps, between code points, so the watch never cuts a character in
+half. The watch's inbox is 256 bytes (`APP_MESSAGE_INBOX_SIZE`), and the
+settings message is the largest the phone sends: with every field at its
+longest it is 144 bytes (a count byte, then per tuple a 7-byte header and its
+value: 64 and 11 for the name and birth date with their NULs, 4 for the time,
+36 for the connection id). A name long enough to overflow the inbox would get
+the whole message dropped. `test/state.test.ts` checks the phone's message
+against `state.h`'s sizes.
+
+The watch keeps its last-sync times across a new connection to the same
+patient on the same server, a sign-in again to refresh the token included, and
+starts them over at "never" for any other, so the next sync sends the new
+patient everything the watch holds. A sync under way when the connection
+changes is abandoned as failed.
 
 `PhoneSettings.decodeResponse` must accept exactly what the settings page's
 `PebbleSettings.toJson` writes. `PebbleSettings.Schema` is pinned to
 `PhoneSettings.Settings`, and the core's `phone-settings.test.ts` round-trips
 generated settings through both to hold the two together.
 
+## The sync's messages
+
+Every message is `int32` but `MinuteData`:
+
+- watch → phone, first: `SyncStart`, the sync's id. The phone starts
+  collecting afresh on it, so whatever a sync the watch gave up on left behind
+  never counts against the next;
+- watch → phone, one per activity: `ActivityType` (pebble.h's `HealthActivity`
+  value, one bit each), `ActivityStart`, `ActivityEnd` (Unix seconds);
+- watch → phone, then: one message per hour of minute history (see below);
+- watch → phone, last: `ActivityCount` and `MinuteHourCount`, how many of each
+  preceded it;
+- phone → watch: `SyncSucceeded`, 1 when the server stored them all, and
+  `SyncId`, the id `SyncStart` carried. The watch ignores an answer to any
+  sync but the one under way, such as a late one to a sync it gave up on.
+
+The sync's id is the Unix second it started, or the last id this run plus one
+when a sync started in the same second as the one before.
+
+The phone PUTs one transaction Bundle of every Observation to the FHIR base URL
+with the stored token. It answers 0 if either count doesn't match what arrived,
+any message fails to decode, the settings, watch info or watch token are
+missing, the request fails, or the server hasn't answered within 60 s
+(`REQUEST_TIMEOUT_MS`). With nothing to post it answers 1 without a request.
+With no sync started (the phone's JavaScript restarted mid-sync) it has no id
+to answer with and doesn't; the watch's own timeout ends the sync.
+
+The watch fails the sync if the phone takes 60 s to acknowledge a message, or
+90 s to answer once it has the counts (`SYNC_RESULT_TIMEOUT_MS`): the phone's
+60 s request timeout plus 30 s for building the Bundle and delivering the
+answer, so the phone's timeout fires first and the watch still hears the
+failure.
+
+### Writes are idempotent
+
+Every Observation has an id the watch's records determine, and the Bundle PUTs
+each to `Observation/<id>`, so a record sent again replaces what was sent
+before rather than adding a copy. That makes re-sending harmless: an activity
+under way at one sync and longer at the next, an activity sent again by the
+lookback, or a whole sync the server committed after the phone or watch gave
+up. The id is `WatchDevice.observationId`: `fhir-r4`'s `localResourceId` over
+the watch token (`Pebble.getWatchToken()`, unique to the watch and this app),
+the patient id and the record's key, an activity's type and start or a minute
+type and its hour. The patient is part of it so a new connection writes the new
+patient's own Observations rather than moving the old one's. Each Observation's
+`device` carries the watch token as its `identifier`, under the system
+`https://developer.repebble.com/docs/pebblekit-js/Pebble/#getWatchToken`,
+beside the model display. Without a token the phone fails the sync rather than
+write ids no later sync reproduces.
+
+The server must accept a PUT that creates a resource under a client-chosen id,
+inside a transaction. HFS, which `emr-rust` embeds, does (`helios-rest`'s
+transaction handler upserts a PUT entry).
+
 ## Health Activity sync
 
 Sync Now, with Health Activity checked, iterates `health_service_activities_iterate`
-from Health Activity's last sync to now and keeps each activity that ended
-after the last sync (an activity under way at one sync is sent again, longer,
-at the next). The messages, all `int32`:
+from a day before Health Activity's last sync (`SYNC_ACTIVITY_LOOKBACK_SECONDS`)
+to now and keeps each activity that ended in that span. HealthService
+classifies some activities after they end, sleep above all, which it records
+once the wearer wakes; the day of lookback catches a night classified after the
+sync that followed it. The lookback moves only where the iteration starts: a
+success still sets Health Activity's last sync to when the sync started. It
+adds at most a day's activities to those the watch collects in memory before
+sending. An activity whose start HealthService later moves lands as a second
+Observation, since its id comes from its start.
 
-- watch → phone, one per activity: `ActivityType` (pebble.h's `HealthActivity`
-  value, one bit each), `ActivityStart`, `ActivityEnd` (Unix seconds);
-- watch → phone, then: one message per hour of minute history (next section);
-- watch → phone, last: `ActivityCount` and `MinuteHourCount`, how many of each
-  preceded it;
-- phone → watch: `SyncSucceeded`, 1 when the server stored them all.
-
-The phone posts one transaction Bundle of every Observation (see the core's
-`HealthActivity` for the activity coding, from the HealthService docs page)
-to the FHIR base URL with the stored token. It answers 0 if either count doesn't
-match what arrived, any message fails to decode, the settings are missing or the
-request fails. With nothing to post it answers 1 without a request. There is no
-server-side dedup, so an activity under way at one sync lands twice.
+The phone turns each activity into one Observation (see the core's
+`HealthActivity` for the coding, from the HealthService docs page).
 
 ## Minute history sync
 
@@ -116,8 +185,10 @@ The other five data types come from `health_service_get_minute_history`, whole
 UTC clock hours at a time. A sync covers from the oldest last-sync time among
 the checked minute types (on a type's first sync, the oldest minute the watch
 holds) up to the start of the hour the sync began in, which becomes those
-types' last-sync time. An hour is never sent twice. Each hour with a valid
-minute and a type still due is one message:
+types' last-sync time. A successful sync doesn't send an hour again, and one
+sent again after a failed sync overwrites its Observations (see "Writes are
+idempotent"). Each hour with a valid minute and a type still due is one
+message:
 
 - `MinuteHourStart`: Unix seconds, on the hour;
 - `MinuteTypes`: the types to post for that hour, one bit per `DataType`
@@ -153,13 +224,15 @@ The Pebble codes use the HealthService docs page as their system.
 
 ## Watch state
 
-The watch persists the connection, which data types are checked (a bitmask,
-all checked by default) and the last-sync times. "Connected" means a
-connection has ever arrived. Sync Now is disabled until connected and shows
-"Syncing..." until the phone answers, a send fails or the phone is quiet for
-60 seconds. A success sets the overall and Health Activity's last-sync times to
-when the sync started, and each checked minute type's to the start of that
-hour. A failure titles the status row "Sync failed" until the next success or
+The watch persists the connection, its connection id, which data types are
+checked (a bitmask, all checked by default) and the last-sync times.
+"Connected" means a connection has ever arrived; a connection to another
+patient or server resets the last-sync times (see "What reaches the watch").
+Sync Now is disabled until connected and shows "Syncing..." until the phone
+answers, a send fails, the phone is quiet too long (see "The sync's messages")
+or the connection changes. A success sets the overall and Health Activity's
+last-sync times to when the sync started, and each checked minute type's to the
+start of that hour. A failure titles the status row "Sync failed" until the next success or
 restart. With nothing checked, Sync Now succeeds without asking the phone.
 
 ## Tests
@@ -174,6 +247,13 @@ includes it):
 - `minute-wire.test.ts` packs minutes with `minute-wire.c` through
   `minute-wire-driver.c`, then decodes the bytes with the core's
   `MinuteHistory`, so the two ends of the byte layout are tested together.
+- `state.test.ts` runs `state.c` through `state-driver.c`: the last-sync times
+  kept across a sign-in again and reset for another connection, across
+  restarts, and the core's settings message against `state.h`'s sizes and the
+  inbox. `state.c` includes `pebble.h`, so the build puts
+  `test/pebble-stand-in/` on the include path (`buildHostCDriver`'s
+  `includeDirectories`), whose `pebble.h` declares the persist functions the
+  driver keeps in memory. One driver command line is one scenario.
 
 Each driver call spawns a process, so the C properties run fewer cases than
 usual.
@@ -181,8 +261,8 @@ usual.
 `vp test --project fhir-sync-pebble-pkjs` tests the ES5 lowering and checks in
 `pkjs/es5.ts`.
 
-`sync.c` and the rest of the watch code need `pebble.h`, so only
-`pebble build` compiles them.
+`sync.c` and the rest of the watch code need more of `pebble.h` than the
+stand-in has, so only `pebble build` compiles them.
 
 ## Traps
 

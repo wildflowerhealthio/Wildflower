@@ -5,6 +5,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as HealthActivity from './health-activity.ts'
+import * as WatchDevice from './watch-device.ts'
 
 const { HEALTH_SERVICE_SYSTEM } = HealthActivity
 
@@ -154,15 +155,12 @@ describe('toObservation', () => {
     })
 
     // Act
-    const observation = HealthActivity.toObservation(
-      activity,
-      'ada-lovelace',
-      'pebble_time_2_black (emery, firmware 4.9.1)'
-    )
+    const observation = HealthActivity.toObservation(activity, 'ada-lovelace', WATCH)
 
     // Assert
     expect(observation).toEqual({
       resourceType: 'Observation',
+      id: 'wf-8eb6a4ae5c44c216fb2a5acb8d70c5f7',
       status: 'final',
       category: [
         {
@@ -189,7 +187,10 @@ describe('toObservation', () => {
       valueCodeableConcept: {
         coding: [{ system: HEALTH_SERVICE_SYSTEM, code: 'HealthActivityWalk', display: 'Walking' }],
       },
-      device: { display: 'pebble_time_2_black (emery, firmware 4.9.1)' },
+      device: {
+        display: 'pebble_time_2_black (emery, firmware 4.9.1)',
+        identifier: { system: WatchDevice.WATCH_TOKEN_SYSTEM, value: WATCH_TOKEN },
+      },
     })
   })
 
@@ -199,8 +200,14 @@ describe('toObservation', () => {
         activityArbitrary,
         fc.string({ minLength: 1 }),
         fc.string(),
-        (activity, patientId, watchDisplay) => {
-          const observation = HealthActivity.toObservation(activity, patientId, watchDisplay)
+        fc.string({ minLength: 1 }),
+        (activity, patientId, watchDisplay, watchToken) => {
+          const device = {
+            ...WATCH,
+            display: watchDisplay,
+            identifier: { ...WATCH.identifier, value: watchToken },
+          }
+          const observation = HealthActivity.toObservation(activity, patientId, device)
           expect(() => Schema.decodeUnknownSync(Observation.Schema)(observation)).not.toThrow()
         }
       ),
@@ -208,10 +215,51 @@ describe('toObservation', () => {
     )
   })
 
+  // The id is what makes sending an activity again harmless: HealthService
+  // reports one under way, or one it later refines, again with a later end.
+  it('should keep the id when only the end changes', () => {
+    fc.assert(
+      fc.property(activityArbitrary, fc.nat({ max: 86_400 }), (activity, extraSeconds) => {
+        const longer = { ...activity, endSeconds: activity.endSeconds + extraSeconds }
+        expect(HealthActivity.toObservation(longer, 'ada-lovelace', WATCH).id).toBe(
+          HealthActivity.toObservation(activity, 'ada-lovelace', WATCH).id
+        )
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  it('should give activities differing in type, start, patient or watch different ids', () => {
+    fc.assert(
+      fc.property(
+        activityArbitrary,
+        activityArbitrary,
+        fc.constantFrom('ada-lovelace', 'grace-hopper'),
+        fc.constantFrom(WATCH_TOKEN, 'another-watch-token'),
+        (first, second, secondPatientId, secondWatchToken) => {
+          const secondWatch = {
+            ...WATCH,
+            identifier: { ...WATCH.identifier, value: secondWatchToken },
+          }
+          fc.pre(
+            first.coding.code !== second.coding.code ||
+              first.startSeconds !== second.startSeconds ||
+              secondPatientId !== 'ada-lovelace' ||
+              secondWatchToken !== WATCH_TOKEN
+          )
+          expect(HealthActivity.toObservation(first, 'ada-lovelace', WATCH).id).not.toBe(
+            HealthActivity.toObservation(second, secondPatientId, secondWatch).id
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   it('should always span exactly the activity, to the second', () => {
     fc.assert(
       fc.property(activityArbitrary, (activity) => {
-        const { effectivePeriod } = HealthActivity.toObservation(activity, 'ada-lovelace', 'watch')
+        const { effectivePeriod } = HealthActivity.toObservation(activity, 'ada-lovelace', WATCH)
         expect([
           Date.parse(effectivePeriod.start) / 1000,
           Date.parse(effectivePeriod.end) / 1000,
@@ -223,6 +271,17 @@ describe('toObservation', () => {
 })
 
 // Helpers
+
+const WATCH_TOKEN = '0123456789abcdef0123456789abcdef'
+
+const WATCH: WatchDevice.Reference = WatchDevice.toReference(
+  {
+    platform: 'emery',
+    model: 'pebble_time_2_black',
+    firmware: { major: 4, minor: 9, patch: 1, suffix: '' },
+  },
+  WATCH_TOKEN
+)
 
 /** pebble.h's HealthActivity values, less HealthActivityNone. */
 const ACTIVITY_TYPES: ReadonlyArray<number> = [1, 2, 4, 8, 16]

@@ -3,9 +3,25 @@
 #include "sync.h"
 #include "windows/settings-window.h"
 
-// How long the phone may stay quiet, after the watch's last acknowledged
-// message, before the sync fails. Covers the FHIR request after the counts.
+// How long the phone may take to acknowledge a message before the sync fails.
 #define SYNC_TIMEOUT_MS 60000
+
+// How long the phone may take to answer once it has the counts. It gives the
+// FHIR request 60 s (REQUEST_TIMEOUT_MS in pkjs/src/index.ts) and answers 0
+// when that runs out, so this adds 30 s for building the Bundle before the
+// request and delivering the answer after it: the phone's timeout fires first,
+// and the watch hears the failure rather than giving up on its own.
+#define SYNC_RESULT_TIMEOUT_MS 90000
+
+// How far before Health Activity's last sync each sync looks for activities.
+// HealthService classifies some activities only after they end, sleep above
+// all: a night's sleep is recorded once the watch sees the wearer wake, and
+// then its restful stretches. A day covers a night of sleep ending before a
+// sync and classified after it. Activities sent again are harmless: the phone
+// writes each under an id from its type and start, so a second send replaces
+// the first. The window adds at most a day's activities, a few dozen, to the
+// list prv_collect_activity grows in memory, 12 bytes each.
+#define SYNC_ACTIVITY_LOOKBACK_SECONDS (24 * SECONDS_PER_HOUR)
 
 // The start of the (UTC) hour time falls in.
 static time_t prv_hour_of(time_t time) {
@@ -44,9 +60,9 @@ static void prv_timeout(void *context) {
   prv_finish(sync, false);
 }
 
-// Appends the activity unless it ended by the last sync (the iteration also
-// yields activities that merely overlap its span). Stops the iteration, with
-// sync->out_of_memory set, when the list can't grow.
+// Appends the activity unless it ended by sync->activities_after (the
+// iteration also yields activities that merely overlap its span). Stops the
+// iteration, with sync->out_of_memory set, when the list can't grow.
 static bool prv_collect_activity(
   HealthActivity activity,
   time_t time_start,
@@ -54,13 +70,12 @@ static bool prv_collect_activity(
   void *context
 ) {
   Sync *sync = context;
-  if (time_end <= sync->state->data_type_last_sync_times[DataTypeHealthActivity]) {
+  if (time_end <= sync->activities_after) {
     return true;
   }
   if (sync->activity_count == sync->activity_capacity) {
     int capacity = sync->activity_capacity == 0 ? 16 : sync->activity_capacity * 2;
-    RecordedActivity *activities =
-      realloc(sync->activities, capacity * sizeof(RecordedActivity));
+    RecordedActivity *activities = realloc(sync->activities, capacity * sizeof(RecordedActivity));
     if (activities == NULL) {
       sync->out_of_memory = true;
       return false;
@@ -82,8 +97,10 @@ static int prv_due_minute_types(const Sync *sync, time_t hour) {
   const AppState *state = sync->state;
   int due = 0;
   for (int i = 0; i < DATA_TYPE_COUNT; i++) {
-    if (prv_is_minute_type(i) && sync->synced_through[i] != 0 &&
-        state->data_type_last_sync_times[i] <= hour) {
+    if (
+      prv_is_minute_type(i) && sync->synced_through[i] != 0 &&
+      state->data_type_last_sync_times[i] <= hour
+    ) {
       due |= 1 << i;
     }
   }
@@ -170,15 +187,18 @@ static bool prv_load_next_hour(Sync *sync, time_t *hour_start, int *due_types) {
   return false;
 }
 
-// Sends the next message: the next activity, else the next hour of minute
-// history, else the counts.
+// Sends the next message: SyncStart, else the next activity, else the next
+// hour of minute history, else the counts.
 static void prv_send_next(Sync *sync) {
   DictionaryIterator *iterator;
   AppMessageResult result = app_message_outbox_begin(&iterator);
   if (result == APP_MSG_OK) {
     time_t hour_start;
     int due_types;
-    if (sync->next_activity < sync->activity_count) {
+    if (!sync->start_sent) {
+      dict_write_int32(iterator, MESSAGE_KEY_SyncStart, sync->id);
+      sync->start_sent = true;
+    } else if (sync->next_activity < sync->activity_count) {
       const RecordedActivity *recorded = &sync->activities[sync->next_activity++];
       dict_write_int32(iterator, MESSAGE_KEY_ActivityType, recorded->activity);
       dict_write_int32(iterator, MESSAGE_KEY_ActivityStart, recorded->start);
@@ -209,10 +229,18 @@ void sync_start(Sync *sync) {
   AppState *state = sync->state;
   state_begin_sync(state);
   time_t started_at = time(NULL);
+  // The start time, unless an earlier sync this run already took it: a sync
+  // that fails straight away can be followed by another in the same second.
+  int32_t id = started_at > sync->id ? (int32_t)started_at : sync->id + 1;
+  time_t activity_last_sync = state->data_type_last_sync_times[DataTypeHealthActivity];
   *sync = (Sync){
     .state = state,
     .settings_window = sync->settings_window,
+    .id = id,
     .started_at = started_at,
+    .activities_after = activity_last_sync > SYNC_ACTIVITY_LOOKBACK_SECONDS
+      ? activity_last_sync - SYNC_ACTIVITY_LOOKBACK_SECONDS
+      : 0,
     .minutes_through = prv_hour_of(started_at),
   };
   settings_window_reload(sync->settings_window);
@@ -230,7 +258,7 @@ void sync_start(Sync *sync) {
     sync->synced_through[DataTypeHealthActivity] = started_at;
     health_service_activities_iterate(
       HealthActivityMaskAll,
-      state->data_type_last_sync_times[DataTypeHealthActivity],
+      sync->activities_after,
       started_at,
       HealthIterationDirectionFuture,
       prv_collect_activity,
@@ -264,10 +292,12 @@ void sync_handle_outbox_sent(Sync *sync) {
   if (!sync->state->syncing) {
     return;
   }
-  app_timer_reschedule(sync->timeout, SYNC_TIMEOUT_MS);
-  if (!sync->end_sent) {
-    prv_send_next(sync);
+  if (sync->end_sent) {
+    app_timer_reschedule(sync->timeout, SYNC_RESULT_TIMEOUT_MS);
+    return;
   }
+  app_timer_reschedule(sync->timeout, SYNC_TIMEOUT_MS);
+  prv_send_next(sync);
 }
 
 void sync_handle_outbox_failed(Sync *sync, AppMessageResult reason) {
@@ -278,9 +308,18 @@ void sync_handle_outbox_failed(Sync *sync, AppMessageResult reason) {
   prv_finish(sync, false);
 }
 
-void sync_handle_result(Sync *sync, bool succeeded) {
-  if (!sync->state->syncing) {
+void sync_handle_result(Sync *sync, int32_t sync_id, bool succeeded) {
+  if (!sync->state->syncing || sync_id != sync->id) {
+    APP_LOG(APP_LOG_LEVEL_WARNING, "Ignoring the phone's answer to sync %ld", (long)sync_id);
     return;
   }
   prv_finish(sync, succeeded);
+}
+
+void sync_abandon(Sync *sync) {
+  if (!sync->state->syncing) {
+    return;
+  }
+  APP_LOG(APP_LOG_LEVEL_WARNING, "Abandoning the sync: the connection changed");
+  prv_finish(sync, false);
 }

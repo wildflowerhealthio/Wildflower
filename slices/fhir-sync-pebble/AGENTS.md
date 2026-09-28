@@ -22,9 +22,10 @@ the PebbleKit JS glue is [`apps/fhir-sync-pebble`](../../apps/fhir-sync-pebble/A
   settings decoded on the phone, and the watch's part), `HealthActivity` and
   `MinuteHistory` (the watch's activity and hour messages decoded, and the
   Observations each becomes), `WatchDevice` (the watch as the Observations'
-  `device`), and `WatchSync` (a sync's messages collected, checked against
-  the watch's counts, and posted as one transaction Bundle). No DOM, no
-  React, no platform imports.
+  `device`, and the deterministic id each Observation is PUT under), and
+  `WatchSync` (a sync's messages collected from its `SyncStart`, checked
+  against the watch's counts, PUT as one transaction Bundle, and the answer to
+  the watch). No DOM, no React, no platform imports.
 
 ## Rules
 
@@ -33,6 +34,13 @@ the PebbleKit JS glue is [`apps/fhir-sync-pebble`](../../apps/fhir-sync-pebble/A
   login are pure functions here, so they are property-tested without a DOM.
   The app reads the handshake and the patients, and renders what this package
   returns.
+- **A sync's writes are idempotent.** Every Observation's id derives from the
+  watch token, the patient and what identifies the record
+  (`WatchDevice.observationId`), and the Bundle PUTs each to it, so sending a
+  record again replaces it. The derivation is `fhir-r4`'s `localResourceId`,
+  ported without `bigint` for ES5 (`local-resource-id.ts`) and held to the
+  original by a parity test; changing either changes every id, and the next
+  sync duplicates everything already synced.
 - **`PebbleSettings.toJson` is external contract.** It is what the watchapp's
   `webviewclosed` handler parses with `PhoneSettings.decodeResponse`.
   `PebbleSettings.Schema` is pinned to `PhoneSettings.Settings`, so a field

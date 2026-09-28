@@ -14,13 +14,17 @@ typedef struct {
 } App;
 
 // PebbleKit JS sends a settings message when the configuration page saves: the
-// patient's name and birth date (empty when the record has none) and the time
-// it received them. See src/pkjs/settings.js for the other side.
+// patient's name and birth date (empty when the record has none), the time it
+// received them and the connection id. See the core's
+// PhoneSettings.toWatchMessage for the other side. A connection to another
+// patient or server abandons the sync under way, whose last-sync times would
+// otherwise land on the new connection.
 static void prv_receive_settings(App *app, DictionaryIterator *iterator) {
   Tuple *patient_name = dict_find(iterator, MESSAGE_KEY_PatientName);
   Tuple *birth_date = dict_find(iterator, MESSAGE_KEY_PatientBirthDate);
   Tuple *auth_time = dict_find(iterator, MESSAGE_KEY_AuthTime);
-  if (patient_name == NULL || birth_date == NULL || auth_time == NULL) {
+  Tuple *connection_id = dict_find(iterator, MESSAGE_KEY_ConnectionId);
+  if (patient_name == NULL || birth_date == NULL || auth_time == NULL || connection_id == NULL) {
     APP_LOG(APP_LOG_LEVEL_ERROR, "Settings message is missing a key; ignoring it");
     return;
   }
@@ -32,20 +36,31 @@ static void prv_receive_settings(App *app, DictionaryIterator *iterator) {
     "%s",
     patient_name->value->cstring
   );
+  snprintf(connection.birth_date, sizeof(connection.birth_date), "%s", birth_date->value->cstring);
   snprintf(
-    connection.birth_date, sizeof(connection.birth_date), "%s", birth_date->value->cstring
+    connection.connection_id,
+    sizeof(connection.connection_id),
+    "%s",
+    connection_id->value->cstring
   );
-  state_set_connection(&app->state, &connection);
+  if (state_set_connection(&app->state, &connection)) {
+    sync_abandon(&app->sync);
+  }
   settings_window_reload(app->settings_window);
 }
 
-// A message from PebbleKit JS is either a sync's answer (SyncSucceeded) or
-// the settings.
+// A message from PebbleKit JS is either a sync's answer (SyncSucceeded and
+// SyncId) or the settings.
 static void prv_inbox_received(DictionaryIterator *iterator, void *context) {
   App *app = context;
   Tuple *sync_succeeded = dict_find(iterator, MESSAGE_KEY_SyncSucceeded);
   if (sync_succeeded != NULL) {
-    sync_handle_result(&app->sync, sync_succeeded->value->int32 != 0);
+    Tuple *sync_id = dict_find(iterator, MESSAGE_KEY_SyncId);
+    if (sync_id == NULL) {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "Sync answer is missing SyncId; ignoring it");
+      return;
+    }
+    sync_handle_result(&app->sync, sync_id->value->int32, sync_succeeded->value->int32 != 0);
     return;
   }
   prv_receive_settings(app, iterator);
@@ -60,7 +75,11 @@ static void prv_outbox_sent(DictionaryIterator *iterator, void *context) {
   sync_handle_outbox_sent(&app->sync);
 }
 
-static void prv_outbox_failed(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
+static void prv_outbox_failed(
+  DictionaryIterator *iterator,
+  AppMessageResult reason,
+  void *context
+) {
   App *app = context;
   sync_handle_outbox_failed(&app->sync, reason);
 }
@@ -89,8 +108,9 @@ int main(void) {
   app_message_register_outbox_sent(prv_outbox_sent);
   app_message_register_outbox_failed(prv_outbox_failed);
   // The outbox fits an hour of minute history: MINUTE_WIRE_HOUR_SIZE bytes
-  // plus its hour, types and the dictionary's overhead.
-  app_message_open(256, 512);
+  // plus its hour, types and the dictionary's overhead. The inbox fits the
+  // settings (see APP_MESSAGE_INBOX_SIZE).
+  app_message_open(APP_MESSAGE_INBOX_SIZE, 512);
 
   app_event_loop();
 }

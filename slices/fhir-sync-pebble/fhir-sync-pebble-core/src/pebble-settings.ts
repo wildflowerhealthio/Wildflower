@@ -33,7 +33,7 @@ const ConnectionSchema = Schema.Struct({
   accessToken: Schema.NonEmptyString,
   /**
    * The FHIR base URL the token was granted for, without trailing slashes;
-   * Observations are POSTed under it.
+   * the sync's transaction Bundle is POSTed to it.
    */
   fhirBaseUrl: Schema.NonEmptyString,
 })

@@ -38,7 +38,10 @@
       "MinuteHourStart",
       "MinuteTypes",
       "MinuteData",
-      "MinuteHourCount"
+      "MinuteHourCount",
+      "SyncStart",
+      "SyncId",
+      "ConnectionId"
     ],
     "resources": {
       "media": [

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vite-plus/test'
 import type { Fields } from './fields.ts'
 import { HEALTH_SERVICE_SYSTEM } from './health-activity.ts'
 import * as MinuteHistory from './minute-history.ts'
+import * as WatchDevice from './watch-device.ts'
 
 describe('decodeHourMessage', () => {
   it('should decode an hour with one valid minute', () => {
@@ -144,6 +145,7 @@ describe('toObservations', () => {
     expect(observations).toEqual([
       {
         resourceType: 'Observation',
+        id: 'wf-f1d98d8af56586e91b7bbec9c5445ff4',
         status: 'final',
         category: [
           {
@@ -171,9 +173,54 @@ describe('toObservations', () => {
           dimensions: 1,
           data: ['72', 'E', ...Array.from({ length: 58 }, () => 'E')].join(' '),
         },
-        device: { display: WATCH },
+        device: WATCH,
       },
     ])
+  })
+
+  // The id is what makes sending an hour again harmless.
+  it("should keep each type's id for the hour whatever its minutes", () => {
+    fc.assert(
+      fc.property(
+        hourArbitrary,
+        fc.array(fullMinuteArbitrary, { minLength: 60, maxLength: 60 }),
+        fc.array(fullMinuteArbitrary, { minLength: 60, maxLength: 60 }),
+        (hour, firstMinutes, secondMinutes) => {
+          const idsOf = (minutes: ReadonlyArray<MinuteHistory.Minute>): Array<string> =>
+            MinuteHistory.toObservations({ ...hour, minutes }, 'ada-lovelace', WATCH).map(
+              ({ id }) => id
+            )
+          expect(idsOf(secondMinutes)).toEqual(idsOf(firstMinutes))
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('should give every type, hour and patient its own id', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.integer({ min: 0, max: 500_000 }), { minLength: 1, maxLength: 4 }),
+        fc.array(fullMinuteArbitrary, { minLength: 60, maxLength: 60 }),
+        (hourNumbers, minutes) => {
+          const ids = ['ada-lovelace', 'grace-hopper'].flatMap((patientId) =>
+            [...new Set(hourNumbers)].flatMap((hourNumber) =>
+              MinuteHistory.toObservations(
+                {
+                  hourStartSeconds: hourNumber * 3600,
+                  dataTypes: MINUTE_TYPE_BITS.map(([dataType]) => dataType),
+                  minutes,
+                },
+                patientId,
+                WATCH
+              ).map(({ id }) => id)
+            )
+          )
+          expect(new Set(ids).size).toBe(ids.length)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
   })
 
   it('should record orientation as yaw and pitch components in degrees, 22.5 per bin', () => {
@@ -326,7 +373,14 @@ describe('toObservations', () => {
 /** 2026-09-27T10:00:00Z. */
 const SEPTEMBER_27_2026_10AM = 1_790_503_200
 
-const WATCH = 'pebble_time_2_black (emery, firmware 4.9.1)'
+const WATCH: WatchDevice.Reference = WatchDevice.toReference(
+  {
+    platform: 'emery',
+    model: 'pebble_time_2_black',
+    firmware: { major: 4, minor: 9, patch: 1, suffix: '' },
+  },
+  '0123456789abcdef0123456789abcdef'
+)
 
 /** The minute types in `DataType` order, with their bit. */
 const MINUTE_TYPE_BITS: ReadonlyArray<readonly [MinuteHistory.DataType, number]> = [

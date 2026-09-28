@@ -25,6 +25,12 @@ interface PebbleKitJs {
   sendAppMessage(message: object, onSuccess: () => void, onFailure: (error: unknown) => void): void
   /** The connected watch's platform, model, language and firmware. */
   getActiveWatchInfo(): unknown
+  /**
+   * A token unique to the connected watch and this app. Typed `unknown`: an
+   * older phone app may lack it or return something else, which the core's
+   * `WatchDevice.toReference` rejects.
+   */
+  getWatchToken(): unknown
 }
 
 declare const Pebble: PebbleKitJs
@@ -40,9 +46,13 @@ declare class XMLHttpRequest {
   onload: (() => void) | null
   onerror: (() => void) | null
   open(method: string, url: string): void
+  abort(): void
   setRequestHeader(name: string, value: string): void
   send(body: string): void
 }
+
+declare function setTimeout(callback: () => void, delayMs: number): number
+declare function clearTimeout(timeoutId: number): void
 
 declare const console: {
   error(message: string): void

@@ -1,4 +1,5 @@
 import { requireInteger, requirePayload } from './fields.ts'
+import { observationId, type Reference } from './watch-device.ts'
 
 /**
  * Health Activity: the watch's activity messages in, one FHIR Observation per
@@ -71,13 +72,14 @@ interface Activity {
 /** The Observation one {@link Activity} becomes. */
 interface Observation {
   readonly resourceType: 'Observation'
+  readonly id: string
   readonly status: 'final'
   readonly category: ReadonlyArray<{ readonly coding: ReadonlyArray<Coding> }>
   readonly code: { readonly coding: ReadonlyArray<Coding> }
   readonly subject: { readonly reference: string }
   readonly effectivePeriod: { readonly start: string; readonly end: string }
   readonly valueCodeableConcept: { readonly coding: ReadonlyArray<Coding> }
-  readonly device: { readonly display: string }
+  readonly device: Reference
 }
 
 /**
@@ -124,16 +126,20 @@ const toDateTime = (seconds: number): string => new Date(seconds * 1000).toISOSt
 
 /**
  * The Observation recording `activity` for the patient `patientId`, made by the
- * watch `watchDisplay` names.
+ * watch `device`. Its id is the watch's for the activity's type and start
+ * (`WatchDevice.observationId`), not its end: HealthService reports an activity
+ * under way, or one it later refines, again with a later end, and that
+ * overwrites the Observation rather than adding a second.
  *
- * @param watchDisplay - `WatchDevice.describe`'s text
+ * @param device - `WatchDevice.toReference`'s reference
  */
-const toObservation = (
-  activity: Activity,
-  patientId: string,
-  watchDisplay: string
-): Observation => ({
+const toObservation = (activity: Activity, patientId: string, device: Reference): Observation => ({
   resourceType: 'Observation',
+  id: observationId(device, patientId, [
+    'HealthActivity',
+    activity.coding.code,
+    String(activity.startSeconds),
+  ]),
   status: 'final',
   category: [{ coding: [ACTIVITY_CATEGORY_CODING] }],
   code: { coding: [HEALTH_ACTIVITY_CODING] },
@@ -143,7 +149,7 @@ const toObservation = (
     end: toDateTime(activity.endSeconds),
   },
   valueCodeableConcept: { coding: [activity.coding] },
-  device: { display: watchDisplay },
+  device,
 })
 
 export {

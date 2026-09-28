@@ -4,15 +4,17 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import * as HealthActivity from './health-activity.ts'
 import * as MinuteHistory from './minute-history.ts'
+import * as WatchDevice from './watch-device.ts'
 import * as WatchSync from './watch-sync.ts'
 
 describe('messageKind', () => {
   it.each([
+    ['the start of the sync', { SyncStart: 1_790_000_000 }, 'Start'],
     ['an activity', { ActivityType: 4, ActivityStart: 0, ActivityEnd: 0 }, 'Activity'],
     ['an hour', { MinuteHourStart: 0, MinuteTypes: 0b10, MinuteData: [] }, 'MinuteHour'],
     ['the end of the sync', { ActivityCount: 0, MinuteHourCount: 0 }, 'End'],
     ['a message that does not decode', { ActivityType: 'walk' }, 'Activity'],
-    ['a message outside the sync', { SyncSucceeded: 1 }, null],
+    ['a message outside the sync', { SyncSucceeded: 1, SyncId: 7 }, null],
   ] as const)('should tell %s by its key', (_, payload, kind) => {
     expect(WatchSync.messageKind(payload)).toBe(kind)
   })
@@ -27,6 +29,8 @@ describe('messageKind', () => {
   })
 
   it.each([
+    ['SyncStart over ActivityType', { ActivityType: 4, SyncStart: 1 }, 'Start'],
+    ['SyncStart over ActivityCount', { ActivityCount: 0, SyncStart: 1 }, 'Start'],
     ['ActivityType over MinuteHourStart', { ActivityType: 4, MinuteHourStart: 0 }, 'Activity'],
     ['ActivityType over ActivityCount', { ActivityType: 4, ActivityCount: 0 }, 'Activity'],
     ['MinuteHourStart over ActivityCount', { MinuteHourStart: 0, ActivityCount: 0 }, 'MinuteHour'],
@@ -37,6 +41,56 @@ describe('messageKind', () => {
     ],
   ] as const)('should rank %s when a payload carries several keys', (_, payload, kind) => {
     expect(WatchSync.messageKind(payload)).toBe(kind)
+  })
+})
+
+describe('start', () => {
+  it('should start a sync holding nothing under the id the watch gave it', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -(2 ** 31), max: 2 ** 31 - 1 }), (syncId) => {
+        expect(WatchSync.start({ SyncStart: syncId })).toEqual({
+          syncId,
+          activities: [],
+          hours: [],
+          undecodable: false,
+        })
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  // What SyncStart exists for: an abandoned sync's leftovers never reach the
+  // next one, so its counts still match.
+  it('should complete a sync started after an abandoned one', () => {
+    fc.assert(
+      fc.property(syncArbitrary, syncArbitrary, (abandoned, next) => {
+        // Arrange: the phone holds whatever the abandoned sync got through.
+        let pending: WatchSync.Type = WatchSync.asUndecodable(abandoned)
+
+        // Act
+        pending = WatchSync.start({ SyncStart: next.syncId })
+        pending = next.activities.reduce(WatchSync.withActivity, pending)
+        pending = next.hours.reduce(WatchSync.withHour, pending)
+
+        // Assert
+        expect(
+          WatchSync.requireComplete(pending, {
+            ActivityCount: next.activities.length,
+            MinuteHourCount: next.hours.length,
+          })
+        ).toEqual(next)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  it.each([
+    ['no SyncStart', {}],
+    ['a fractional SyncStart', { SyncStart: 1.5 }],
+    ['a string SyncStart', { SyncStart: '1' }],
+    ['a payload that is not an object', null],
+  ])('should reject a start message with %s', (_, payload) => {
+    expect(() => WatchSync.start(payload)).toThrow()
   })
 })
 
@@ -52,11 +106,13 @@ describe('withActivity and withHour', () => {
               message._tag === 'Activity'
                 ? WatchSync.withActivity(collected, message.activity)
                 : WatchSync.withHour(collected, message.hour),
-            WatchSync.empty
+            WatchSync.start({ SyncStart: 7 })
           )
 
           // Assert
           expect(sync).toEqual({
+            syncId: 7,
+            undecodable: false,
             activities: messages.flatMap((message) =>
               message._tag === 'Activity' ? [message.activity] : []
             ),
@@ -76,11 +132,13 @@ describe('withActivity and withHour', () => {
       ActivityEnd: 1_790_001_800,
     })
 
+    const started = WatchSync.start({ SyncStart: 7 })
+
     // Act
-    WatchSync.withActivity(WatchSync.empty, activity)
+    WatchSync.withActivity(started, activity)
 
     // Assert
-    expect(WatchSync.empty).toEqual({ activities: [], hours: [] })
+    expect(started).toEqual({ syncId: 7, activities: [], hours: [], undecodable: false })
   })
 })
 
@@ -118,8 +176,17 @@ describe('requireComplete', () => {
   })
 
   it('should reject a sync one of whose messages failed to decode', () => {
-    expect(() => WatchSync.requireComplete(null, { ActivityCount: 0, MinuteHourCount: 0 })).toThrow(
-      'did not all arrive'
+    fc.assert(
+      fc.property(syncArbitrary, (sync) => {
+        const endPayload = {
+          ActivityCount: sync.activities.length,
+          MinuteHourCount: sync.hours.length,
+        }
+        expect(() => WatchSync.requireComplete(WatchSync.asUndecodable(sync), endPayload)).toThrow(
+          'did not all arrive'
+        )
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
     )
   })
 
@@ -128,11 +195,15 @@ describe('requireComplete', () => {
     ['a negative ActivityCount', { ActivityCount: -1, MinuteHourCount: 0 }, 'ActivityCount'],
     ['a fractional MinuteHourCount', { ActivityCount: 0, MinuteHourCount: 0.5 }, 'MinuteHourCount'],
   ])('should reject an end message with %s', (_, endPayload, key) => {
-    expect(() => WatchSync.requireComplete(WatchSync.empty, endPayload)).toThrow(key)
+    expect(() => WatchSync.requireComplete(WatchSync.start({ SyncStart: 7 }), endPayload)).toThrow(
+      key
+    )
   })
 
   it('should reject an end message that is not an object', () => {
-    expect(() => WatchSync.requireComplete(WatchSync.empty, null)).toThrow('object')
+    expect(() => WatchSync.requireComplete(WatchSync.start({ SyncStart: 7 }), null)).toThrow(
+      'object'
+    )
   })
 })
 
@@ -168,7 +239,7 @@ describe('toObservations', () => {
 })
 
 describe('toTransactionBundle', () => {
-  it('should create each Observation, in order, in one transaction', () => {
+  it('should PUT each Observation to its id, in order, in one transaction', () => {
     fc.assert(
       fc.property(syncArbitrary, (sync) => {
         // Arrange
@@ -183,7 +254,7 @@ describe('toTransactionBundle', () => {
           type: 'transaction',
           entry: observations.map((resource) => ({
             resource,
-            request: { method: 'POST', url: 'Observation' },
+            request: { method: 'PUT', url: `Observation/${resource.id}` },
           })),
         })
       }),
@@ -226,11 +297,45 @@ describe('toTransactionBundle', () => {
     expect(steps).toHaveLength(1)
     expect(bundle.entry.map(({ resource }) => resource)).toEqual([walk, ...steps])
   })
+
+  // Idempotence: a sync sent again, or one that overlaps the last, writes the
+  // same entries, so the server ends up holding each Observation once.
+  it('should write a sync sent twice to the same ids', () => {
+    fc.assert(
+      fc.property(syncArbitrary, (sync) => {
+        const requestsOf = (): Array<string> =>
+          WatchSync.toTransactionBundle(
+            WatchSync.toObservations(sync, 'ada-lovelace', WATCH)
+          ).entry.map(({ request }) => `${request.method} ${request.url}`)
+        expect(requestsOf()).toEqual(requestsOf())
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+})
+
+describe('toResultMessage', () => {
+  it.each([
+    [true, 1],
+    [false, 0],
+  ] as const)('should answer %s as SyncSucceeded %i with the sync id', (succeeded, flag) => {
+    expect(WatchSync.toResultMessage(1_790_000_000, succeeded)).toEqual({
+      SyncSucceeded: flag,
+      SyncId: 1_790_000_000,
+    })
+  })
 })
 
 // Helpers
 
-const WATCH = 'pebble_time_2_black (emery, firmware 4.9.1)'
+const WATCH: WatchDevice.Reference = WatchDevice.toReference(
+  {
+    platform: 'emery',
+    model: 'pebble_time_2_black',
+    firmware: { major: 4, minor: 9, patch: 1, suffix: '' },
+  },
+  '0123456789abcdef0123456789abcdef'
+)
 
 /** pebble.h's HealthActivity values, less HealthActivityNone. */
 const ACTIVITY_TYPES: ReadonlyArray<number> = [1, 2, 4, 8, 16]
@@ -291,6 +396,8 @@ const hourMessageArbitrary: fc.Arbitrary<SyncMessage> = hourArbitrary.map((hour)
 }))
 
 const syncArbitrary: fc.Arbitrary<WatchSync.Type> = fc.record({
+  syncId: fc.integer({ min: 0, max: 2 ** 31 - 1 }),
   activities: fc.array(activityArbitrary, { maxLength: 5 }),
   hours: fc.array(hourArbitrary, { maxLength: 3 }),
+  undecodable: fc.constant(false),
 })

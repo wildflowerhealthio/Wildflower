@@ -16,9 +16,10 @@
  * - {@link MinuteHistory} — an hour of minute history in, an Observation per
  *   minute type out.
  * - {@link PhoneSettings} — the settings the phone keeps, and the watch's part.
- * - {@link WatchDevice} — the watch as the Observations' `device`.
- * - {@link WatchSync} — a whole sync: its messages collected and checked, and
- *   its transaction Bundle.
+ * - {@link WatchDevice} — the watch as the Observations' `device`, and the id
+ *   each Observation is written under.
+ * - {@link WatchSync} — a whole sync: its messages collected from its start and
+ *   checked, its transaction Bundle, and the answer to the watch.
  *
  * @packageDocumentation
  */

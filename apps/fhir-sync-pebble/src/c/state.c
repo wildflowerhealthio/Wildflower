@@ -9,6 +9,7 @@ enum {
   // A bitmask, one bit per DataType; set means the type syncs.
   PersistKeyEnabledDataTypes = 4,
   PersistKeyLastSyncTime = 5,
+  PersistKeyConnectionId = 6,
   // Each DataType's last sync time is under this key plus the DataType, so
   // keys 100 to 100 + DATA_TYPE_COUNT - 1 are taken.
   PersistKeyFirstDataTypeLastSyncTime = 100,
@@ -25,8 +26,8 @@ static void prv_load_sync_times(AppState *state) {
 static void prv_load_enabled_data_types(AppState *state) {
   int all_enabled = (1 << DATA_TYPE_COUNT) - 1;
   int enabled = persist_exists(PersistKeyEnabledDataTypes)
-                  ? persist_read_int(PersistKeyEnabledDataTypes)
-                  : all_enabled;
+    ? persist_read_int(PersistKeyEnabledDataTypes)
+    : all_enabled;
   for (int i = 0; i < DATA_TYPE_COUNT; i++) {
     state->data_type_enabled[i] = (enabled & (1 << i)) != 0;
   }
@@ -47,21 +48,49 @@ void state_load(AppState *state) {
   if (state->connected) {
     Connection *connection = &state->connection;
     persist_read_string(
-      PersistKeyPatientName, connection->patient_name, sizeof(connection->patient_name)
+      PersistKeyPatientName,
+      connection->patient_name,
+      sizeof(connection->patient_name)
     );
-    persist_read_string(PersistKeyBirthDate, connection->birth_date, sizeof(connection->birth_date));
+    persist_read_string(
+      PersistKeyBirthDate,
+      connection->birth_date,
+      sizeof(connection->birth_date)
+    );
     connection->auth_time = persist_read_int(PersistKeyAuthTime);
+    persist_read_string(
+      PersistKeyConnectionId,
+      connection->connection_id,
+      sizeof(connection->connection_id)
+    );
   }
   prv_load_enabled_data_types(state);
   prv_load_sync_times(state);
 }
 
-void state_set_connection(AppState *state, const Connection *connection) {
+// Every last-sync time back to never, persisted.
+static void prv_reset_sync_times(AppState *state) {
+  state->last_sync_time = 0;
+  persist_write_int(PersistKeyLastSyncTime, 0);
+  for (int i = 0; i < DATA_TYPE_COUNT; i++) {
+    state->data_type_last_sync_times[i] = 0;
+    persist_write_int(PersistKeyFirstDataTypeLastSyncTime + i, 0);
+  }
+}
+
+bool state_set_connection(AppState *state, const Connection *connection) {
+  bool target_changed =
+    !state->connected || strcmp(state->connection.connection_id, connection->connection_id) != 0;
   state->connection = *connection;
   state->connected = true;
   persist_write_string(PersistKeyPatientName, connection->patient_name);
   persist_write_string(PersistKeyBirthDate, connection->birth_date);
   persist_write_int(PersistKeyAuthTime, connection->auth_time);
+  persist_write_string(PersistKeyConnectionId, connection->connection_id);
+  if (target_changed) {
+    prv_reset_sync_times(state);
+  }
+  return target_changed;
 }
 
 void state_toggle_data_type(AppState *state, DataType data_type) {

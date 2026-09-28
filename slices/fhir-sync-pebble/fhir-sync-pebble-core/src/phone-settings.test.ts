@@ -1,5 +1,7 @@
 import { Arbitrary } from 'effect'
 import * as fc from 'fast-check'
+import { localResourceId } from 'fhir-r4/identity'
+import { utf8Bytes } from 'kitchen-sink'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -129,14 +131,115 @@ describe('toWatchMessage', () => {
         settingsArbitrary,
         fc.nat({ max: 4_102_444_800_000 }),
         (settings, receivedAtMs) => {
+          fc.pre(
+            byteLength(settings.patientName) <= 63 && byteLength(settings.patientBirthDate) <= 10
+          )
           expect(PhoneSettings.toWatchMessage(settings, receivedAtMs)).toEqual({
             PatientName: settings.patientName ?? '',
             PatientBirthDate: settings.patientBirthDate ?? '',
             AuthTime: Math.floor(receivedAtMs / 1000),
+            ConnectionId: PhoneSettings.connectionId(settings),
           })
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
+
+  it('should cut the name to 63 bytes and the birth date to 10, between code points', () => {
+    fc.assert(
+      fc.property(
+        settingsArbitrary,
+        longTextArbitrary,
+        longTextArbitrary,
+        (settings, name, birthDate) => {
+          // Act
+          const message = PhoneSettings.toWatchMessage(
+            { ...settings, patientName: name, patientBirthDate: birthDate },
+            0
+          )
+
+          // Assert: what is kept is a prefix that encodes as the text's own
+          // leading bytes, so no character was split.
+          for (const [sent, text, maxBytes] of [
+            [message.PatientName, name, 63],
+            [message.PatientBirthDate, birthDate, 10],
+          ] as const) {
+            const sentBytes = utf8Bytes(sent)
+            expect(sentBytes.length).toBeLessThanOrEqual(maxBytes)
+            expect(text.startsWith(sent)).toBe(true)
+            expect(utf8Bytes(text).slice(0, sentBytes.length)).toEqual(sentBytes)
+          }
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it.each([
+    ['ASCII', 'A'.repeat(70), 'A'.repeat(63)],
+    // 21 three-byte characters are exactly 63 bytes.
+    ['three-byte characters', '日'.repeat(30), '日'.repeat(21)],
+    // 15 four-byte characters are 60 bytes; a 16th would make 64.
+    ['surrogate pairs', '😀'.repeat(20), '😀'.repeat(15)],
+    ['a surrogate pair straddling the limit', `${'a'.repeat(61)}😀`, 'a'.repeat(61)],
+  ])('should cut a name of %s', (_, patientName, sent) => {
+    const settings = { ...SETTINGS, patientName }
+    expect(PhoneSettings.toWatchMessage(settings, 0).PatientName).toBe(sent)
+  })
 })
+
+describe('connectionId', () => {
+  it('should name the patient on the server, the same for the same pair', () => {
+    fc.assert(
+      fc.property(settingsArbitrary, settingsArbitrary, (first, second) => {
+        const sameConnection =
+          first.fhirBaseUrl === second.fhirBaseUrl && first.patientId === second.patientId
+        expect(PhoneSettings.connectionId(first) === PhoneSettings.connectionId(second)).toBe(
+          sameConnection
+        )
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should stay the same across a sign-in again to the same patient', () => {
+    fc.assert(
+      fc.property(settingsArbitrary, fc.string({ minLength: 1 }), (settings, accessToken) => {
+        expect(PhoneSettings.connectionId({ ...settings, accessToken })).toBe(
+          PhoneSettings.connectionId(settings)
+        )
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('should differ for the same patient id on another server', () => {
+    const other = { ...SETTINGS, fhirBaseUrl: 'https://other.example/fhir' }
+    expect(PhoneSettings.connectionId(other)).not.toBe(PhoneSettings.connectionId(SETTINGS))
+  })
+
+  it("should be fhir-r4's local id for the patient on the server", () => {
+    expect(PhoneSettings.connectionId(SETTINGS)).toBe(
+      localResourceId(SETTINGS.fhirBaseUrl, 'Patient', SETTINGS.patientId)
+    )
+  })
+})
+
+// Helpers
+
+const SETTINGS: PhoneSettings.Settings = {
+  patientId: 'ada-lovelace',
+  patientName: 'Ada Lovelace',
+  patientBirthDate: '1815-12-10',
+  accessToken: 'token',
+  fhirBaseUrl: 'https://fhir.example/r4',
+}
+
+/** `text`'s length in UTF-8 bytes, 0 for none. */
+const byteLength = (text: string | null): number => (text === null ? 0 : utf8Bytes(text).length)
+
+/** Text often past the watch's limits, with multi-byte characters and surrogate pairs. */
+const longTextArbitrary = fc
+  .array(fc.constantFrom('a', 'é', '日', '😀', ' '), { maxLength: 80 })
+  .map((characters) => characters.join(''))

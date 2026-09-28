@@ -12,6 +12,14 @@
 // A FHIR date (YYYY-MM-DD) and the NUL.
 #define BIRTH_DATE_SIZE 11
 
+// PebbleKit JS's connection id ("wf-" and 32 hex digits) and the NUL.
+#define CONNECTION_ID_SIZE 36
+
+// The AppMessage inbox main opens. The largest message the phone sends is the
+// settings, at most 144 bytes with every field at its longest (see the core's
+// PhoneSettings.toWatchMessage).
+#define APP_MESSAGE_INBOX_SIZE 256
+
 // Who the watch records for, as the configuration page last sent it. The
 // access token stays on the phone, in PebbleKit JS.
 typedef struct {
@@ -21,6 +29,9 @@ typedef struct {
   char birth_date[BIRTH_DATE_SIZE];
   // When the configuration page handed over the settings.
   time_t auth_time;
+  // Which patient on which FHIR server: the same for a sign-in again to the
+  // same patient, different for any other.
+  char connection_id[CONNECTION_ID_SIZE];
 } Connection;
 
 // What the menu shows. main owns the one instance. Read the fields directly,
@@ -47,8 +58,12 @@ typedef struct {
 // Fills state from what the last run persisted.
 void state_load(AppState *state);
 
-// Replaces the connection and persists it.
-void state_set_connection(AppState *state, const Connection *connection);
+// Replaces the connection and persists it. When it names another patient or
+// server than the one before (connection_id differs, or there was none), the
+// last-sync times start over at never, so the next sync sends the new patient
+// everything the watch holds; a sign-in again to the same patient keeps them.
+// Returns whether they started over.
+bool state_set_connection(AppState *state, const Connection *connection);
 
 // Flips whether data_type syncs and persists the choice.
 void state_toggle_data_type(AppState *state, DataType data_type);

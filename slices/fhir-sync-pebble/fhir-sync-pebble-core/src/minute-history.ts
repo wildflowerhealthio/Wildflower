@@ -5,6 +5,7 @@ import {
   HEALTH_SERVICE_SYSTEM,
   toDateTime,
 } from './health-activity.ts'
+import { observationId, type Reference } from './watch-device.ts'
 
 /**
  * Minute history: the watch's hour messages in, one Observation per minute
@@ -122,6 +123,7 @@ interface ObservationCode {
  */
 interface Observation {
   readonly resourceType: 'Observation'
+  readonly id: string
   readonly status: 'final'
   readonly category?: ReadonlyArray<{ readonly coding: ReadonlyArray<Coding> }>
   readonly code: ObservationCode
@@ -132,7 +134,7 @@ interface Observation {
     readonly code: ObservationCode
     readonly valueSampledData: SampledData
   }>
-  readonly device: { readonly display: string }
+  readonly device: Reference
 }
 
 /** How one minute type other than orientation becomes an Observation. */
@@ -322,17 +324,24 @@ const samplesOf = (
 
 /**
  * The Observations for one hour: one per minute type the watch asked for,
- * except a type with no sample that hour, which gets none.
+ * except a type with no sample that hour, which gets none. Each one's id is the
+ * watch's for its type and hour (`WatchDevice.observationId`), so an hour sent
+ * again overwrites what it sent before.
  *
- * @param watchDisplay - `WatchDevice.describe`'s text
+ * @param device - `WatchDevice.toReference`'s reference
  */
-const toObservations = (
-  hour: Hour,
-  patientId: string,
-  watchDisplay: string
-): Array<Observation> => {
-  const observationOf = (category: Coding | null, code: ObservationCode): Observation => ({
+const toObservations = (hour: Hour, patientId: string, device: Reference): Array<Observation> => {
+  const observationOf = (
+    dataType: DataType,
+    category: Coding | null,
+    code: ObservationCode
+  ): Observation => ({
     resourceType: 'Observation',
+    id: observationId(device, patientId, [
+      'MinuteHistory',
+      dataType,
+      String(hour.hourStartSeconds),
+    ]),
     status: 'final',
     ...(category === null ? {} : { category: [{ coding: [category] }] }),
     code,
@@ -341,7 +350,7 @@ const toObservations = (
       start: toDateTime(hour.hourStartSeconds),
       end: toDateTime(hour.hourStartSeconds + SECONDS_PER_HOUR),
     },
-    device: { display: watchDisplay },
+    device,
   })
 
   const observationFor = (dataType: DataType): Observation | null => {
@@ -352,7 +361,7 @@ const toObservations = (
         return null
       }
       return {
-        ...observationOf(ACTIVITY_CATEGORY_CODING, ORIENTATION_CODE),
+        ...observationOf(dataType, ACTIVITY_CATEGORY_CODING, ORIENTATION_CODE),
         component: [
           {
             code: {
@@ -387,7 +396,7 @@ const toObservations = (
       return null
     }
     return {
-      ...observationOf(sampledType.category, sampledType.code),
+      ...observationOf(dataType, sampledType.category, sampledType.code),
       valueSampledData: toSampledData(samples, sampledType.unit, 1),
     }
   }
