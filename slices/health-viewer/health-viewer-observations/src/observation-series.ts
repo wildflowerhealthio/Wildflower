@@ -1,13 +1,25 @@
 import { DateTime, Option, Schema } from 'effect'
 import type { Observation } from 'fhir-r4/resources'
+import type { PointSeries, SeriesSource } from 'health-viewer-fundamentals'
 
-import {
-  type ObservationSeries,
-  type ObservationSeriesKey,
-  type SeriesKind,
-  type SeriesPoint,
-  seriesId,
-} from './series.ts'
+import { type ObservationSeriesKey, observationSeriesIdOf } from './observation-series-key.ts'
+
+/**
+ * A plottable line of observation readings, sharing one code and one unit: a
+ * `PointSeries` that also carries the key its `id` encodes and the category
+ * the catalogue files it under.
+ */
+interface ObservationSeries extends PointSeries.PointSeries {
+  readonly key: ObservationSeriesKey
+  /** The FHIR `Observation.category` code (`vital-signs`, `laboratory`, …), or `null`. */
+  readonly category: string | null
+}
+
+/**
+ * Which `value[x]` slot a reading came from, which decides how its line is
+ * drawn and its axis fitted.
+ */
+type ValueType = 'quantity' | 'integer' | 'boolean'
 
 /** A decoded FHIR R4 `Observation` — what this adapter is handed. */
 type ObservationResource = Observation.Type
@@ -197,11 +209,11 @@ const quantityUnit = (
   quantity: Schema.Schema.Type<typeof QuantityView> | null | undefined
 ): string | null => quantity?.unit ?? quantity?.code ?? null
 
-/** A plottable number, its unit / kind, and the instant it was taken. */
+/** A plottable number, its unit / value type, and the instant it was taken. */
 interface NumericValue {
   readonly value: number
   readonly unit: string | null
-  readonly kind: SeriesKind
+  readonly valueType: ValueType
   /** `null` when the observation states no time this value can be placed at. */
   readonly time: DateTime.Utc | null
 }
@@ -255,7 +267,7 @@ const sampledValues = (
     // counts its observation as `undated` rather than plotting it somewhere wrong.
     const time =
       start === null ? null : Option.getOrNull(DateTime.make(start.epochMillis + index * period))
-    return [{ value, unit, kind: 'quantity', time }]
+    return [{ value, unit, valueType: 'quantity', time }]
   })
 }
 
@@ -271,15 +283,15 @@ const scalarValue = (slots: ValueSlots): Omit<NumericValue, 'time'> | null => {
     return {
       value: quantity.value,
       unit: quantityUnit(quantity),
-      kind: 'quantity',
+      valueType: 'quantity',
     }
   }
   const integer = slots.valueInteger
   if (integer !== null && integer !== undefined)
-    return { value: integer, unit: null, kind: 'integer' }
+    return { value: integer, unit: null, valueType: 'integer' }
   const boolean = slots.valueBoolean
   if (boolean !== null && boolean !== undefined) {
-    return { value: boolean ? 1 : 0, unit: null, kind: 'boolean' }
+    return { value: boolean ? 1 : 0, unit: null, valueType: 'boolean' }
   }
   return null
 }
@@ -324,7 +336,7 @@ interface Reading {
   readonly key: ObservationSeriesKey
   readonly label: string
   readonly unit: string | null
-  readonly kind: SeriesKind
+  readonly valueType: ValueType
   readonly value: number
   readonly time: DateTime.Utc | null
   readonly bounds: { readonly low?: number; readonly high?: number }
@@ -361,10 +373,10 @@ const readingsOf = (observation: ObservationValue): readonly Reading[] => {
     const bounds = rangeBounds(ranges)
     for (const numeric of numerics) {
       readings.push({
-        key: { kind: 'observation', system: key.system, code: key.code, unit: numeric.unit },
+        key: { system: key.system, code: key.code, unit: numeric.unit },
         label,
         unit: numeric.unit,
-        kind: numeric.kind,
+        valueType: numeric.valueType,
         value: numeric.value,
         time: numeric.time,
         bounds,
@@ -399,37 +411,43 @@ const categoryOf = (observation: ObservationValue): string | null => {
   return (first.coding ?? [])[0]?.code ?? null
 }
 
-/** What {@link observationsToSeries} returns. */
-interface ObservationSeriesResult {
-  /** One entry per distinct series key, in first-appearance order. */
-  readonly series: readonly ObservationSeries[]
-  /**
-   * Observations that carried a plottable value but no resolvable effective
-   * time — for a `valueSampledData`, no stated start to offset samples from.
-   */
-  readonly undated: number
-  /** Observations that contributed nothing: an excluded status, or no plottable value. */
-  readonly dropped: number
-}
+/**
+ * How a yes/no reading is drawn: held flat and stepped, on an axis pinned to
+ * `[0, 1]`. Every other value type is a line between readings on a fitted
+ * axis.
+ */
+const presentationOf = (
+  valueType: ValueType
+): Pick<ObservationSeries, 'interpolation' | 'valueScale'> =>
+  valueType === 'boolean'
+    ? { interpolation: 'step', valueScale: 'zero-to-one' }
+    : { interpolation: 'linear', valueScale: 'fitted' }
 
 /**
  * Turn decoded FHIR `Observation`s into the plottable series the viewer draws.
  *
  * @param observations - Decoded resources, in any order
  * @returns The series, plus counts of what did not make it in so the UI can
- *   say "12 results could not be dated" rather than silently shrinking
+ *   say "12 results could not be dated" rather than silently shrinking:
+ *   `undated` for observations that carried a plottable value but no
+ *   resolvable effective time (for a `valueSampledData`, no stated start to
+ *   offset samples from), `dropped` for those that contributed nothing (an
+ *   excluded status, or no plottable value)
  *
  * @remarks
- * Readings group by {@link seriesId}, so one code in two units is two series
+ * Readings group by their series id, so one code in two units is two series
  * rather than one line that jumps scale. A series takes its metadata from its
- * first reading in input order. A `valueSampledData` contributes one point per
+ * first reading in input order, its value type included. A `valueSampledData` contributes one point per
  * numeric sample, so one observation can add many points, but every
  * observation still moves at most one counter.
  */
 const observationsToSeries = (
   observations: readonly ObservationResource[]
-): ObservationSeriesResult => {
-  const byId = new Map<string, { meta: Reading; points: SeriesPoint[]; category: string | null }>()
+): SeriesSource.Reading<ObservationSeries> => {
+  const byId = new Map<
+    string,
+    { meta: Reading; points: PointSeries.Point[]; category: string | null }
+  >()
   let undated = 0
   let dropped = 0
 
@@ -459,8 +477,12 @@ const observationsToSeries = (
     }
     const category = categoryOf(observation)
     for (const reading of readings) {
-      const id = seriesId(reading.key)
-      const point: SeriesPoint = { time: reading.time, value: reading.value, ...reading.bounds }
+      const id = observationSeriesIdOf(reading.key)
+      const point: PointSeries.Point = {
+        time: reading.time,
+        value: reading.value,
+        ...reading.bounds,
+      }
       const existing = byId.get(id)
       if (existing === undefined) {
         byId.set(id, { meta: reading, points: [point], category })
@@ -470,18 +492,20 @@ const observationsToSeries = (
     }
   }
 
-  const series = [...byId.values()].map(({ meta, points, category }): ObservationSeries => ({
+  const series = [...byId.entries()].map(([id, { meta, points, category }]): ObservationSeries => ({
+    kind: 'points',
+    id,
     key: meta.key,
     label: meta.label,
     unit: meta.unit,
     category,
+    ...presentationOf(meta.valueType),
     // `toSorted` is stable, so equal times keep input order.
     points: points.toSorted((left, right) => left.time.epochMillis - right.time.epochMillis),
-    kind: meta.kind,
   }))
 
   return { series, undated, dropped }
 }
 
-export type { ObservationResource, ObservationSeriesResult }
+export type { ObservationResource, ObservationSeries }
 export { EXCLUDED_STATUSES, LOINC_SYSTEM, observationsToSeries }

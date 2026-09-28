@@ -1,10 +1,13 @@
-import { type SeriesKey, parseSeriesId, seriesId } from './series.ts'
+import { isKnownSeriesId } from './series-sources.ts'
 import { type RangePreset, isRangePreset } from './time-range.ts'
 
 /** Everything the viewer's URL carries: what is plotted, over what window, for whom. */
 interface Selection {
-  /** The plotted series, in selection order — the order that decides axis sides. */
-  readonly series: readonly SeriesKey[]
+  /**
+   * The plotted series' ids, in selection order — the order that decides axis
+   * sides. Opaque here: each id belongs to the source whose prefix it carries.
+   */
+  readonly series: readonly string[]
   readonly range: RangePreset
   /** The patient whose record is open, or `null` for the signed-in patient's own. */
   readonly patient: string | null
@@ -28,7 +31,7 @@ const DEFAULT_RANGE: RangePreset = 'all'
  */
 const encodeSelection = (selection: Selection): URLSearchParams => {
   const params = new URLSearchParams()
-  for (const key of selection.series) params.append(SERIES_PARAM, seriesId(key))
+  for (const id of selection.series) params.append(SERIES_PARAM, id)
   params.set(RANGE_PARAM, selection.range)
   if (selection.patient !== null) params.set(PATIENT_PARAM, selection.patient)
   return params
@@ -40,13 +43,13 @@ const encodeSelection = (selection: Selection): URLSearchParams => {
  * @remarks
  * Everything unrecognised is dropped, not rejected: a URL is user-editable and
  * outlives the series it names, so one stale `s` must not cost the reader the
- * rest of their link. An absent or bad `r` means {@link DEFAULT_RANGE}.
+ * rest of their link. An `s` survives when some source can read it
+ * (`isKnownSeriesId`) — so an id whose source the viewer does not assemble,
+ * such as a medication id before the medication source exists, is dropped.
+ * An absent or bad `r` means {@link DEFAULT_RANGE}.
  */
 const decodeSelection = (params: URLSearchParams): Selection => {
-  const series = params
-    .getAll(SERIES_PARAM)
-    .map(parseSeriesId)
-    .filter((key): key is SeriesKey => key !== null)
+  const series = params.getAll(SERIES_PARAM).filter(isKnownSeriesId)
   const range = params.get(RANGE_PARAM)
   return {
     series,

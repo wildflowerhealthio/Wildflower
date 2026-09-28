@@ -6,62 +6,69 @@ the dose that was running when it was taken.
 
 ## Packages
 
-- `health-viewer-core` — the pure viewer layer, and currently the whole slice.
-  The plottable series model (`SeriesKey` and its escaped string form, the
-  observation point and the dose segment), the FHIR R4 `Observation` → series
-  adapter, axis assignment with its value domains and ticks, the x-axis range
-  presets, the catalogue panel's grouping and search, the URL codec a shared
-  link round-trips through, and the crosshair lookup. No DOM, no React, no
-  platform imports.
+The slice is layered like `http-extraction`: a domain-free vocabulary, one
+package per kind of record, and an assembly on top.
 
-The dose-regimen → `MedicationSeries` mapping, the React layer, and the app
-route are not built yet. The `DoseSegment` shape the mapping must produce is
-defined in `health-viewer-core`'s `series.ts`, so the mapping only has to build
-it rather than re-decide it.
+```text
+health-viewer-fundamentals   plot vocabulary and chart math; imports no slice
+      ▲
+health-viewer-observations   FHIR R4 Observation → PointSeries
+      ▲
+health-viewer-core           closed list of sources, catalogue, URL codec, range presets
+```
+
+- **`health-viewer-fundamentals`** — the plot vocabulary, as `effect`-style
+  namespaces from one flat entry: `Level`, `PointSeries`, `LevelSeries`,
+  `Series`, `ValueAxis` (domains, ticks, axis assignment), `Crosshair`,
+  `ColourSlots`, `TimeDomain`, `SeriesId` (the escaped field grammar ids are
+  written in) and `SeriesSource` (a domain source as one value). See its
+  [AGENTS.md](./health-viewer-fundamentals/AGENTS.md).
+- **`health-viewer-observations`** — the observation source,
+  `observationSource`: FHIR R4 `Observation`s read into point series, the `o:`
+  id grammar, and the catalogue grouping by `Observation.category`. See its
+  [AGENTS.md](./health-viewer-observations/AGENTS.md).
+- **`health-viewer-core`** — the assembly: `SERIES_SOURCES` and `readRecord`,
+  the catalogue panel's grouping and search, the range presets, and the URL
+  codec a shared link round-trips through. See its
+  [AGENTS.md](./health-viewer-core/AGENTS.md).
+
+The medication source (dose regimens read into level series under `m:`), the
+React layer, and the app route are not built yet. A medication source is a new
+package beside `health-viewer-observations` that exports a `SeriesSource` and
+joins `SERIES_SOURCES`.
 
 ## Rules
 
-- **The core owns every decision the chart makes.** Which series exist, what
-  each axis spans, what the crosshair reads, what a link encodes — all of it is
-  a pure function here, so it can be property-tested exhaustively. A React
-  adapter renders what this package returns; it does not re-derive any of it.
-- **`seriesId` is external contract.** It is what a shared URL carries, so
-  changing its grammar or escaping invalidates every link a patient has already
-  saved. `parseSeriesId` is its exact inverse and never throws — a URL is
-  user-editable, so a malformed entry is dropped, not raised.
+- **Chart math is fundamentals'; domain decisions are the domain package's.**
+  What each axis spans, where the crosshair snaps and what it reads, which
+  colour a series keeps — pure functions over `Series` in
+  `health-viewer-fundamentals`, property-tested exhaustively. Which series a
+  record holds, what each is labelled, how it is drawn (`Interpolation`,
+  `ValueScale`, `LineStyle`, `note`) and which catalogue group it files under
+  — the domain package's. A React adapter renders what these return; it does
+  not re-derive any of it, and it never reads a domain field.
+- **Fundamentals imports from no slice**, and depends only on `effect` and
+  `kitchen-sink`. A domain package adds the resource package it reads
+  (`health-viewer-observations` → `fhir-r4`).
+- **Series ids are external contract.** They are what a shared URL carries, so
+  changing a domain's key grammar, its prefix, or `SeriesId`'s escaping
+  invalidates every link a patient has already saved. Each source's
+  `parseSeriesId` is the exact inverse of its `seriesIdOf` and never throws — a
+  URL is user-editable, so a malformed entry is dropped, not raised.
 - **The unit is part of a series' identity.** The same LOINC code reported in
   `mmol/L` and in `mg/dL` is two series. One line that silently changes scale
   mid-plot is a clinical hazard, not a convenience.
-- **A `valueSampledData` is many readings.** Each numeric sample is one point
-  at the observation's `effectivePeriod.start` (else `effectiveDateTime`, else
-  `effectiveInstant`) + index × `period`, worth `origin + factor × sample`.
-  `E`, `L` and `U` are skipped without shifting the samples after them. `issued`
-  never dates samples, only `dimensions: 1` plots, and an observation whose
-  readings are only partly dated counts as `undated` whole. The unit is
-  `origin.unit` before `origin.code`, as for a quantity, so FHIR Sync for
-  Pebble's heart rate is keyed `beats/minute` — a separate series from heart
-  rate stored as `/min`, since nothing converts between units.
-- **Nothing disappears silently.** `observationsToSeries` returns `undated` and
-  `dropped` counts alongside the series, and every input moves at most one of
-  them, so the UI can say what it could not plot.
-- **This package is a `fhir-r4` consumer**, so both
-  [consumer gotchas](../emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
-  apply. The `value[x]` / `effective[x]` choice slots type as `any` on a
-  decoded resource, and a decoded `Coding.system` is a `URL` while the wire
-  form is a string — so the adapter reads the resource as `unknown` through a
-  permissive local schema that accepts both shapes. And `vp pack` (not `vp check`) is the gate for
-  the TS2883 dts trap: run `vp run -F health-viewer-core build` when the
-  adapter's inferred types change.
-- **Search tokenizes locally rather than reusing `medication-core`'s
-  `normalizeName`.** That one drops numbers and dosage units as matching noise,
-  which is right for drug names and wrong here: `a1c`, `24h` and `mmol` are
-  exactly what a reader types into a catalogue.
-- **`AXIS_CAP` is a rendering limit.** `assignAxes` throws past it rather than
-  truncating, so a selection UI caps against the constant instead of
-  discovering a series vanished.
+- **Nothing disappears silently.** Every source's `read` returns `undated` and
+  `dropped` counts alongside its series, every input moves at most one of them,
+  and `readRecord` carries them up, so the UI can say what it could not plot.
+- **`ValueAxis.CAP` is a rendering limit.** `ValueAxis.assign` throws past it
+  rather than truncating, so a selection UI caps against the constant instead
+  of discovering a series vanished.
 
 ## References
 
 - [Architecture / slice layering](../AGENTS.md)
+- [http-extraction AGENTS.md](../http-extraction/AGENTS.md) — the structure
+  this slice mirrors.
 - [fhir-r4 Consumer Gotchas Reference](../emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
 - [Property Testing Reference](../../docs/Testing/Property%20Testing%20Reference.md) — property tests are the default here

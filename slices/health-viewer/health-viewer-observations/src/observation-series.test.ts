@@ -5,8 +5,8 @@ import { Observation } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { observationSeriesIdOf } from './observation-series-key.ts'
 import { EXCLUDED_STATUSES, LOINC_SYSTEM, observationsToSeries } from './observation-series.ts'
-import { seriesId } from './series.ts'
 
 const RUNS = numRunsFor({ base: 100 })
 
@@ -191,9 +191,7 @@ describe('observationsToSeries', () => {
             }))
             const { series } = observationsToSeries(observations)
             expect(series).toHaveLength(codeSet.length)
-            expect(
-              series.map((entry) => entry.key.kind === 'observation' && entry.key.code)
-            ).toEqual(codeSet)
+            expect(series.map((entry) => entry.key.code)).toEqual(codeSet)
             for (const entry of series) expect(entry.points).toHaveLength(times.length)
           }
         ),
@@ -248,8 +246,9 @@ describe('observationsToSeries', () => {
               valueQuantity: quantity(spec.value, spec.unit, null),
             }))
           )
-          const ids = series.map((entry) => seriesId(entry.key))
+          const ids = series.map((entry) => entry.id)
           expect(new Set(ids).size).toBe(ids.length)
+          expect(ids).toEqual(series.map((entry) => observationSeriesIdOf(entry.key)))
         }),
         { numRuns: RUNS }
       )
@@ -292,7 +291,6 @@ describe('observationsToSeries', () => {
         },
       ])
       expect(series[0].key).toEqual({
-        kind: 'observation',
         system: LOINC_SYSTEM,
         code: '2339-0',
         unit: 'mmol/L',
@@ -309,7 +307,6 @@ describe('observationsToSeries', () => {
         },
       ])
       expect(series[0].key).toEqual({
-        kind: 'observation',
         system: null,
         code: 'Home glucose',
         unit: null,
@@ -327,10 +324,11 @@ describe('observationsToSeries', () => {
         },
       ])
       expect(series[0].unit).toBe('mmol/L')
-      expect(series[0].kind).toBe('quantity')
+      expect(series[0].interpolation).toBe('linear')
+      expect(series[0].valueScale).toBe('fitted')
     })
 
-    test('an integer and a boolean plot as numbers, with their own kinds', () => {
+    test('an integer plots as a line, a boolean as a 0 / 1 step', () => {
       const { series } = observationsToSeries([
         {
           ...shell,
@@ -351,12 +349,16 @@ describe('observationsToSeries', () => {
           valueBoolean: false,
         },
       ])
-      expect(series.map((entry) => [entry.kind, entry.points.map((point) => point.value)])).toEqual(
-        [
-          ['integer', [4200]],
-          ['boolean', [1, 0]],
-        ]
-      )
+      expect(
+        series.map((entry) => [
+          entry.interpolation,
+          entry.valueScale,
+          entry.points.map((point) => point.value),
+        ])
+      ).toEqual([
+        ['linear', 'fitted', [4200]],
+        ['step', 'zero-to-one', [1, 0]],
+      ])
     })
 
     test('a non-numeric value contributes nothing and is counted as dropped', () => {
@@ -681,7 +683,7 @@ describe('observationsToSeries', () => {
       ])
 
       expect({ dropped, undated }).toEqual({ dropped: 0, undated: 0 })
-      expect(series.map((entry) => [seriesId(entry.key), entry.label, entry.unit])).toEqual([
+      expect(series.map((entry) => [entry.id, entry.label, entry.unit])).toEqual([
         ['o:http://loinc.org|8867-4|beats/minute', 'Heart rate', 'beats/minute'],
         [
           `o:${HEALTH_SERVICE_SYSTEM.replace(/\/$/, '')}|HealthMinuteData.orientation.yaw|degrees`,
@@ -694,10 +696,10 @@ describe('observationsToSeries', () => {
           'degrees',
         ],
       ])
-      expect(series.map((entry) => [entry.kind, entry.category])).toEqual([
-        ['quantity', 'vital-signs'],
-        ['quantity', 'activity'],
-        ['quantity', 'activity'],
+      expect(series.map((entry) => [entry.interpolation, entry.category])).toEqual([
+        ['linear', 'vital-signs'],
+        ['linear', 'activity'],
+        ['linear', 'activity'],
       ])
 
       const [heart, yaw] = series

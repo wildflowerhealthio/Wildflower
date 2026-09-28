@@ -1,55 +1,17 @@
-import type { DateTime } from 'effect'
+import { Series, type TimeDomain } from 'health-viewer-fundamentals'
 
-import { type Series, isObservationSeries, seriesId } from './series.ts'
-import type { TimeDomain } from './time-range.ts'
-
-/**
- * `Observation.category` codes in panel order — roughly how often a reader
- * looks for them. A category outside this list falls into `other`, never out.
- */
-const CATEGORY_ORDER: readonly string[] = [
-  'vital-signs',
-  'laboratory',
-  'exam',
-  'survey',
-  'imaging',
-  'procedure',
-  'social-history',
-  'therapy',
-  'activity',
-]
-
-/** Group id for observations whose category is absent or outside {@link CATEGORY_ORDER}. */
-const OTHER_GROUP = 'other'
-
-/** Group id for the medication dose series, listed after every observation group. */
-const MEDICATIONS_GROUP = 'medications'
-
-/** Human labels for the group ids, for a panel that renders headings. */
-const GROUP_LABELS: Readonly<Record<string, string>> = {
-  'vital-signs': 'Vital signs',
-  laboratory: 'Laboratory',
-  exam: 'Exam',
-  survey: 'Survey',
-  imaging: 'Imaging',
-  procedure: 'Procedure',
-  'social-history': 'Social history',
-  therapy: 'Therapy',
-  activity: 'Activity',
-  [OTHER_GROUP]: 'Other',
-  [MEDICATIONS_GROUP]: 'Medications',
-}
+import { CATALOG_GROUPS, type FiledSeries } from './series-sources.ts'
 
 /** One selectable line in the catalogue panel. */
 interface CatalogRow {
-  /** {@link seriesId} of the series this row selects. */
+  /** The id of the series this row selects. */
   readonly id: string
   readonly label: string
   readonly unit: string | null
-  /** How many points (or dose segments) the series holds. */
+  /** How many readings (or levels) the series holds. */
   readonly count: number
   /** The `[first, last]` instants the series spans, or `null` when it is empty. */
-  readonly span: TimeDomain | null
+  readonly span: TimeDomain.TimeDomain | null
 }
 
 /** One heading in the catalogue panel and the rows under it. */
@@ -59,65 +21,40 @@ interface CatalogGroup {
   readonly rows: readonly CatalogRow[]
 }
 
-/** The instants a series covers, for a row's `span`. */
-const spanOf = (series: Series): TimeDomain | null => {
-  const instants: DateTime.Utc[] = isObservationSeries(series)
-    ? series.points.map((point) => point.time)
-    : series.segments.flatMap((segment) => [
-        segment.start,
-        ...(segment.end === null ? [] : [segment.end]),
-      ])
-  const first = instants[0]
-  if (first === undefined) return null
-  let low = first
-  let high = first
-  for (const instant of instants) {
-    if (instant.epochMillis < low.epochMillis) low = instant
-    if (instant.epochMillis > high.epochMillis) high = instant
-  }
-  return [low, high]
-}
-
 /** The row a series contributes to the panel. */
-const rowFor = (series: Series): CatalogRow => ({
-  id: seriesId(series.key),
+const rowFor = (series: Series.Series): CatalogRow => ({
+  id: series.id,
   label: series.label,
   unit: series.unit,
-  count: isObservationSeries(series) ? series.points.length : series.segments.length,
-  span: spanOf(series),
+  count: Series.sizeOf(series),
+  span: Series.extentOf(series),
 })
 
-/** The group id a series belongs under. */
-const groupIdFor = (series: Series): string => {
-  if (!isObservationSeries(series)) return MEDICATIONS_GROUP
-  const category = series.category
-  return category !== null && CATEGORY_ORDER.includes(category) ? category : OTHER_GROUP
-}
-
 /**
- * Lay the selectable series out as the catalogue panel's groups.
+ * Lay the record's series out as the catalogue panel's groups.
  *
- * @returns Non-empty groups only, in {@link CATEGORY_ORDER} with `other` then
- *   `medications` last; rows keep input order within a group
+ * @param filed - Each series with the group its source filed it under
+ * @returns Non-empty groups only, in `CATALOG_GROUPS` order — each source's
+ *   groups, source by source; rows keep input order within a group
+ * @throws When a series is filed under a group no source declares — a source
+ *   breaking its own contract, which must not cost the series its row silently
  *
  * @remarks
- * Empty groups are omitted: the headings map what this record holds, not what
- * FHIR defines.
+ * Empty groups are omitted: the headings map what this record holds, not
+ * everything a source could file.
  */
-const groupForPanel = (series: readonly Series[]): readonly CatalogGroup[] => {
-  const order = [...CATEGORY_ORDER, OTHER_GROUP, MEDICATIONS_GROUP]
-  const rows = new Map<string, CatalogRow[]>()
-  for (const entry of series) {
-    const id = groupIdFor(entry)
-    const existing = rows.get(id)
-    if (existing === undefined) rows.set(id, [rowFor(entry)])
-    else existing.push(rowFor(entry))
+const groupForPanel = (filed: readonly FiledSeries[]): readonly CatalogGroup[] => {
+  const rows = new Map<string, CatalogRow[]>(CATALOG_GROUPS.map((group) => [group.id, []]))
+  for (const { groupId, series } of filed) {
+    const groupRows = rows.get(groupId)
+    if (groupRows === undefined) {
+      throw new Error(`Series ${series.id} is filed under undeclared catalogue group ${groupId}`)
+    }
+    groupRows.push(rowFor(series))
   }
-  return order.flatMap((id): readonly CatalogGroup[] => {
-    const groupRows = rows.get(id)
-    return groupRows === undefined || groupRows.length === 0
-      ? []
-      : [{ id, label: GROUP_LABELS[id] ?? id, rows: groupRows }]
+  return CATALOG_GROUPS.flatMap((group): readonly CatalogGroup[] => {
+    const groupRows = rows.get(group.id) ?? []
+    return groupRows.length === 0 ? [] : [{ id: group.id, label: group.label, rows: groupRows }]
   })
 }
 
@@ -154,12 +91,4 @@ const matchesSearch = (row: CatalogRow, query: string): boolean => {
 }
 
 export type { CatalogGroup, CatalogRow }
-export {
-  CATEGORY_ORDER,
-  GROUP_LABELS,
-  MEDICATIONS_GROUP,
-  OTHER_GROUP,
-  groupForPanel,
-  matchesSearch,
-  normaliseForSearch,
-}
+export { groupForPanel, matchesSearch, normaliseForSearch }

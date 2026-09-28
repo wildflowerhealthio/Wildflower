@@ -1,97 +1,84 @@
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
+import type { LevelSeries, PointSeries } from 'health-viewer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import {
-  CATEGORY_ORDER,
-  type CatalogRow,
-  MEDICATIONS_GROUP,
-  OTHER_GROUP,
-  groupForPanel,
-  matchesSearch,
-} from './catalog.ts'
-import type { MedicationSeries, ObservationSeries, Series } from './series.ts'
+import { type CatalogRow, groupForPanel, matchesSearch } from './catalog.ts'
+import { CATALOG_GROUPS, type FiledSeries } from './series-sources.ts'
 
 const RUNS = numRunsFor({ base: 200 })
 
 const instant = fc.integer({ min: 0, max: 4e12 }).map((millis) => DateTime.unsafeMake(millis))
 
-const observationSeries = (
-  code: string,
-  category: string | null,
-  times: readonly DateTime.Utc[]
-): ObservationSeries => ({
-  key: { kind: 'observation', system: null, code, unit: 'u' },
-  label: code,
+const pointSeries = (id: string, times: readonly DateTime.Utc[]): PointSeries.PointSeries => ({
+  kind: 'points',
+  id,
+  label: id,
   unit: 'u',
-  category,
+  valueScale: 'fitted',
+  interpolation: 'linear',
   points: times
     .toSorted((left, right) => left.epochMillis - right.epochMillis)
     .map((time) => ({ time, value: 1 })),
-  kind: 'quantity',
 })
 
-const medicationSeries = (name: string): MedicationSeries => ({
-  key: { kind: 'medication', name, unit: 'mg' },
-  label: name,
+const levelSeries = (id: string): LevelSeries.LevelSeries => ({
+  kind: 'levels',
+  id,
+  label: id,
   unit: 'mg',
-  segments: [
+  valueScale: 'from-zero',
+  levels: [
     {
       start: DateTime.unsafeMake(0),
       end: DateTime.unsafeMake(86_400_000),
-      dose: 5,
-      perDay: true,
-      status: 'active',
-      dashed: false,
-      requestId: 'req',
+      value: 5,
+      lineStyle: 'solid',
     },
   ],
 })
 
-const categoryArb = fc.option(
-  fc.oneof(fc.constantFrom(...CATEGORY_ORDER), fc.constantFrom('unheard-of', 'vitals')),
-  { nil: null }
-)
+const groupIdArb = fc.constantFrom(...CATALOG_GROUPS.map((group) => group.id))
 
-const seriesArb: fc.Arbitrary<Series> = fc.oneof(
-  fc
-    .record({
-      code: fc.stringMatching(/^[a-z]{1,6}$/),
-      category: categoryArb,
-      times: fc.array(instant, { maxLength: 5 }),
-    })
-    .map(({ code, category, times }) => observationSeries(code, category, times)),
-  fc.stringMatching(/^[a-z]{1,6}$/).map(medicationSeries)
-)
+const filedArb: fc.Arbitrary<FiledSeries> = fc.record({
+  groupId: groupIdArb,
+  series: fc.oneof(
+    fc
+      .record({ id: fc.stringMatching(/^[a-z]{1,6}$/), times: fc.array(instant, { maxLength: 5 }) })
+      .map(({ id, times }) => pointSeries(id, times)),
+    fc.stringMatching(/^[a-z]{1,6}$/).map(levelSeries)
+  ),
+})
 
-/** Unique by series id, since two identical keys would collapse in a real catalogue. */
-const uniqueSeries = fc.uniqueArray(seriesArb, {
+/** Unique by series id, since two identical ids would collapse in a real catalogue. */
+const uniqueFiled = fc.uniqueArray(filedArb, {
   maxLength: 10,
-  selector: (series) =>
-    series.key.kind === 'observation' ? `o:${series.key.code}` : `m:${series.key.name}`,
+  selector: (filed) => filed.series.id,
 })
 
 describe('groupForPanel', () => {
-  test('every series lands in exactly one group, none invented, none lost', () => {
+  test('every series lands in exactly one group — the one it was filed under', () => {
     fc.assert(
-      fc.property(uniqueSeries, (series) => {
-        const rows = groupForPanel(series).flatMap((group) => group.rows)
-        expect(rows).toHaveLength(series.length)
-        expect(rows.map((row) => row.label).toSorted()).toEqual(
-          series.map((entry) => entry.label).toSorted()
-        )
+      fc.property(uniqueFiled, (filed) => {
+        const groups = groupForPanel(filed)
+        const rows = groups.flatMap((group) => group.rows)
+        expect(rows).toHaveLength(filed.length)
+        for (const { groupId, series } of filed) {
+          const holding = groups.filter((group) => group.rows.some((row) => row.id === series.id))
+          expect(holding.map((group) => group.id)).toEqual([groupId])
+        }
       }),
       { numRuns: RUNS }
     )
   })
 
-  test('groups follow the declared order, with other then medications last', () => {
+  test('groups follow the sources’ declared order, labelled as declared', () => {
     fc.assert(
-      fc.property(uniqueSeries, (series) => {
-        const expected = [...CATEGORY_ORDER, OTHER_GROUP, MEDICATIONS_GROUP]
-        const ids = groupForPanel(series).map((group) => group.id)
-        expect(ids).toEqual(expected.filter((id) => ids.includes(id)))
+      fc.property(uniqueFiled, (filed) => {
+        const headings = groupForPanel(filed).map((group) => ({ id: group.id, label: group.label }))
+        const shownIds = headings.map((heading) => heading.id)
+        expect(headings).toEqual(CATALOG_GROUPS.filter((group) => shownIds.includes(group.id)))
       }),
       { numRuns: RUNS }
     )
@@ -99,26 +86,23 @@ describe('groupForPanel', () => {
 
   test('no group is rendered empty', () => {
     fc.assert(
-      fc.property(uniqueSeries, (series) => {
-        for (const group of groupForPanel(series)) expect(group.rows.length).toBeGreaterThan(0)
+      fc.property(uniqueFiled, (filed) => {
+        for (const group of groupForPanel(filed)) expect(group.rows.length).toBeGreaterThan(0)
       }),
       { numRuns: RUNS }
     )
   })
 
-  test('an unknown or absent category files under other, never under medications', () => {
-    const groups = groupForPanel([
-      observationSeries('a', 'unheard-of', [DateTime.unsafeMake(0)]),
-      observationSeries('b', null, [DateTime.unsafeMake(0)]),
-    ])
-    expect(groups.map((group) => group.id)).toEqual([OTHER_GROUP])
-    expect(groups[0].rows).toHaveLength(2)
+  test('a series filed under a group no source declares is an error, not a lost row', () => {
+    expect(() => groupForPanel([{ groupId: 'unheard-of', series: pointSeries('a', []) }])).toThrow(
+      /unheard-of/
+    )
   })
 
   test("a row's count and span describe its series", () => {
     fc.assert(
-      fc.property(fc.array(instant, { maxLength: 6 }), (times) => {
-        const row = groupForPanel([observationSeries('a', 'laboratory', times)])[0].rows[0]
+      fc.property(fc.array(instant, { maxLength: 6 }), groupIdArb, (times, groupId) => {
+        const row = groupForPanel([{ groupId, series: pointSeries('a', times) }])[0].rows[0]
         expect(row.count).toBe(times.length)
         if (times.length === 0) {
           expect(row.span).toBeNull()
@@ -132,8 +116,9 @@ describe('groupForPanel', () => {
     )
   })
 
-  test("a medication row's span covers its segments", () => {
-    const row = groupForPanel([medicationSeries('insulin')])[0].rows[0]
+  test("a level series' span covers its levels", () => {
+    const [groupId] = CATALOG_GROUPS.map((group) => group.id)
+    const row = groupForPanel([{ groupId, series: levelSeries('insulin') }])[0].rows[0]
     expect(row.count).toBe(1)
     expect(row.span).toEqual([DateTime.unsafeMake(0), DateTime.unsafeMake(86_400_000)])
   })

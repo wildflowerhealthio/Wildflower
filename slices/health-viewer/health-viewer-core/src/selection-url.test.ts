@@ -2,6 +2,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { observationSource } from 'health-viewer-observations'
 import {
   DEFAULT_RANGE,
   RANGE_PARAM,
@@ -10,7 +11,7 @@ import {
   decodeSelection,
   encodeSelection,
 } from './selection-url.ts'
-import { type SeriesKey, seriesId } from './series.ts'
+
 import { RANGE_PRESETS } from './time-range.ts'
 
 const RUNS = numRunsFor({ base: 200 })
@@ -18,18 +19,13 @@ const RUNS = numRunsFor({ base: 200 })
 const field = fc.oneof(fc.stringMatching(/^[|\\~a-z ]{0,10}$/), fc.string({ maxLength: 10 }))
 const nullableField = fc.option(field, { nil: null })
 
-const seriesKey: fc.Arbitrary<SeriesKey> = fc.oneof(
-  fc.record({
-    kind: fc.constant('observation' as const),
-    system: nullableField,
-    code: field,
-    unit: nullableField,
-  }),
-  fc.record({ kind: fc.constant('medication' as const), name: field, unit: nullableField })
-)
+/** An id some assembled source can read — every source the viewer has is an observation one. */
+const seriesIdArb: fc.Arbitrary<string> = fc
+  .record({ system: nullableField, code: field, unit: nullableField })
+  .map(observationSource.seriesIdOf)
 
 const selection: fc.Arbitrary<Selection> = fc.record({
-  series: fc.array(seriesKey, { maxLength: 4 }),
+  series: fc.array(seriesIdArb, { maxLength: 4 }),
   range: fc.constantFrom(...RANGE_PRESETS),
   patient: fc.option(fc.string({ maxLength: 12 }), { nil: null }),
 })
@@ -56,11 +52,11 @@ describe('encodeSelection / decodeSelection', () => {
 
   test('series order is preserved — it is what decides axis sides', () => {
     fc.assert(
-      fc.property(fc.array(seriesKey, { minLength: 2, maxLength: 4 }), (keys) => {
+      fc.property(fc.array(seriesIdArb, { minLength: 2, maxLength: 4 }), (ids) => {
         const decoded = decodeSelection(
-          encodeSelection({ series: keys, range: 'all', patient: null })
+          encodeSelection({ series: ids, range: 'all', patient: null })
         )
-        expect(decoded.series).toEqual(keys)
+        expect(decoded.series).toEqual(ids)
       }),
       { numRuns: RUNS }
     )
@@ -81,17 +77,25 @@ describe('encodeSelection / decodeSelection', () => {
   describe('malformed input is dropped, never thrown', () => {
     test('unparseable series entries are skipped and the rest survive', () => {
       fc.assert(
-        fc.property(seriesKey, fc.string(), (key, junk) => {
+        fc.property(seriesIdArb, fc.string(), (id, junk) => {
           const params = new URLSearchParams()
           params.append(SERIES_PARAM, junk)
-          params.append(SERIES_PARAM, seriesId(key))
+          params.append(SERIES_PARAM, id)
           const decoded = decodeSelection(params)
           // `junk` may happen to be a valid id, in which case it is kept too;
-          // what must hold is that the good key is never lost.
-          expect(decoded.series).toContainEqual(key)
+          // what must hold is that the good id is never lost.
+          expect(decoded.series).toContain(id)
         }),
         { numRuns: RUNS }
       )
+    })
+
+    test('an id no assembled source reads is dropped — a medication id included, for now', () => {
+      const params = new URLSearchParams()
+      for (const id of ['m:insulin|mg', 'x:a|b|c', 'o:a|b', 'o:a\\x|b|c']) {
+        params.append(SERIES_PARAM, id)
+      }
+      expect(decodeSelection(params).series).toEqual([])
     })
 
     test('an absent or unrecognised range falls back to the default', () => {

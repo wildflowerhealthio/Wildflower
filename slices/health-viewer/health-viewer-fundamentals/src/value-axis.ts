@@ -1,21 +1,21 @@
-import { type Series, isObservationSeries } from './series.ts'
+import type { Series } from './series.ts'
 
 /**
- * How many series the chart plots at once.
+ * How many series the chart plots at once, which is how many value axes it has.
  *
  * @remarks
  * A rendering limit: each series needs its own value axis, and two per side is
- * as many as fit without the gutters swallowing the plot. {@link assignAxes}
+ * as many as fit without the gutters swallowing the plot. {@link assign}
  * throws past it rather than dropping one silently, so a selection UI caps
  * against this constant.
  */
-const AXIS_CAP = 4
+const CAP = 4
 
 /** A closed numeric interval, `[low, high]`, with `low <= high`. */
 type Domain = readonly [number, number]
 
 /** One series' value axis: which side it hangs on, and the scale it draws. */
-interface AxisSlot {
+interface ValueAxis {
   readonly series: Series
   readonly side: 'left' | 'right'
   /** Position among the axes on this same `side`, `0` being the one nearest the plot. */
@@ -114,7 +114,9 @@ const ticksFor = (domain: Domain, count: number = DEFAULT_TICK_COUNT): readonly 
     return [low, high]
   }
   const ticks: number[] = []
-  for (let index = first; index <= last; index += 1) ticks.push(index * step)
+  // `+ 0` turns the `-0` a zero tick gets from a negative `first` (`-0 * step`)
+  // into `0`, so no formatter downstream prints a signed zero.
+  for (let index = first; index <= last; index += 1) ticks.push(index * step + 0)
   return ticks.length >= 2 ? ticks : [low, high]
 }
 
@@ -130,29 +132,32 @@ const denormalise = (fraction: number, domain: Domain): number => {
   return low + fraction * (high - low)
 }
 
+/** Every value and band bound `series` plots, which its axis must contain. */
+const plottedValuesOf = (series: Series): readonly number[] =>
+  (series.kind === 'points' ? series.points : series.levels).flatMap((mark) => [
+    mark.value,
+    ...(mark.low === undefined ? [] : [mark.low]),
+    ...(mark.high === undefined ? [] : [mark.high]),
+  ])
+
 /**
- * The domain a series' own values — and its reference ranges — need.
+ * The domain a series' own values — and its bands — need, fitted as its
+ * `valueScale` says.
  *
  * @remarks
- * Range bounds join the extent so a point inside its normal range still shows
- * the band around it. A dose axis starts at zero because a dose is a
- * non-negative magnitude and a zoomed-in baseline would overstate a change.
- * Nothing to plot yields `[0, 1]`, so the axis draws empty rather than not at
- * all.
+ * Band bounds join the extent so a value inside its normal range still shows
+ * the band around it. A `'from-zero'` axis starts at zero whatever the values
+ * are, and a `'zero-to-one'` axis is pinned. Nothing to plot yields `[0, 1]`,
+ * so the axis draws empty rather than not at all.
  */
 const domainFor = (series: Series): Domain => {
-  if (!isObservationSeries(series)) {
-    const doses = series.segments.map((segment) => segment.dose)
-    const top = doses.length === 0 ? 0 : Math.max(...doses)
+  if (series.valueScale === 'zero-to-one') return [0, 1]
+  const values = plottedValuesOf(series)
+  if (values.length === 0) return [0, 1]
+  if (series.valueScale === 'from-zero') {
+    const top = Math.max(...values)
     return top <= 0 ? [0, 1] : [0, niceDomain(0, top, DEFAULT_TICK_COUNT)[1]]
   }
-  if (series.kind === 'boolean') return [0, 1]
-  const values = series.points.flatMap((point) => [
-    point.value,
-    ...(point.low === undefined ? [] : [point.low]),
-    ...(point.high === undefined ? [] : [point.high]),
-  ])
-  if (values.length === 0) return [0, 1]
   return niceDomain(Math.min(...values), Math.max(...values), DEFAULT_TICK_COUNT)
 }
 
@@ -161,20 +166,18 @@ const domainFor = (series: Series): Domain => {
  *
  * @param selected - The series to plot, in selection order
  * @returns One slot per input, in the same order
- * @throws When `selected` holds more than {@link AXIS_CAP} series
+ * @throws When `selected` holds more than {@link CAP} series
  *
  * @remarks
  * Sides alternate in selection order, so the two most recently added series
  * never crowd the same gutter and a series keeps its side as long as nothing
  * before it is removed.
  */
-const assignAxes = (selected: readonly Series[]): readonly AxisSlot[] => {
-  if (selected.length > AXIS_CAP) {
-    throw new Error(
-      `The health viewer plots at most ${AXIS_CAP} series at once; got ${selected.length}`
-    )
+const assign = (selected: readonly Series[]): readonly ValueAxis[] => {
+  if (selected.length > CAP) {
+    throw new Error(`The health viewer plots at most ${CAP} series at once; got ${selected.length}`)
   }
-  return selected.map((series, position): AxisSlot => {
+  return selected.map((series, position): ValueAxis => {
     const domain = domainFor(series)
     return {
       series,
@@ -186,5 +189,5 @@ const assignAxes = (selected: readonly Series[]): readonly AxisSlot[] => {
   })
 }
 
-export type { AxisSlot, Domain }
-export { AXIS_CAP, assignAxes, denormalise, domainFor, niceDomain, normalise, ticksFor }
+export type { Domain, ValueAxis }
+export { CAP, assign, denormalise, domainFor, niceDomain, normalise, ticksFor }
