@@ -56,7 +56,7 @@ describe('App', () => {
     render(<App />)
 
     // Assert — every "call to action" on the page is a link into an app;
-    // the header carries all five routes.
+    // the header carries all six routes.
     const nav = screen.getByRole('navigation', { name: 'Apps' })
     const hrefs = within(nav)
       .getAllByRole('link')
@@ -65,6 +65,7 @@ describe('App', () => {
     // deploy under a sub-path resolves these into sibling preview builds.
     expect(hrefs).toStrictEqual([
       './medications-app',
+      './health-viewer-app',
       './importer-app',
       './web-trace-app',
       './wildflower-server-docs',
