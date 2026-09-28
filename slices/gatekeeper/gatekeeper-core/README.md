@@ -135,8 +135,9 @@ S256 implementation here, and a property test pins the two together.
 
 ### Deriving the redirect URI
 
-`redirectUriForPage(href)` returns the page's own directory URL — the same
-`new URL('.', href)` derivation the fhirclient-based apps use — or `undefined`
+`redirectUriForPage(href)` returns the page's own directory URL — the
+derivation the fhirclient-based apps use through `fhir-r4-react/smart`'s
+`appRootRedirectUri` — or `undefined`
 when the page is served somewhere a sign-in must not return to (a non-http(s)
 origin, or plaintext http off loopback).
 

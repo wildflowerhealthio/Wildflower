@@ -4,6 +4,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
+  appRootRedirectUri,
   authorizeSmartLaunch,
   readySmartClient,
   shouldCompleteSmartLaunch,
@@ -176,6 +177,53 @@ describe('shouldCompleteSmartLaunch', () => {
         // Act / Assert — no code/state/error at all → the connect menu.
         expect(shouldCompleteSmartLaunch(searchFrom(noise))).toBe(false)
       }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('appRootRedirectUri', () => {
+  it('should name the app root from the launch page it sits in', () => {
+    // Act / Assert — the EHR launch starts at `launch.html`, beside `index.html`
+    expect(
+      appRootRedirectUri(
+        'https://wildflowerhealth.io/web-trace-app/launch.html?iss=https%3A%2F%2Fehr.example&launch=xyz'
+      )
+    ).toBe('https://wildflowerhealth.io/web-trace-app/')
+  })
+
+  it('should name the app root itself from a page at the root, dropping its query and fragment', () => {
+    // Act / Assert — the connect menu, and a callback carrying code/state
+    expect(appRootRedirectUri('https://wildflowerhealth.io/importer-app/')).toBe(
+      'https://wildflowerhealth.io/importer-app/'
+    )
+    expect(
+      appRootRedirectUri('https://wildflowerhealth.io/importer-app/?code=abc&state=xyz#x')
+    ).toBe('https://wildflowerhealth.io/importer-app/')
+  })
+
+  it('should keep a dev server’s origin, over plain http off loopback too', () => {
+    // Act / Assert — no scheme screen: a LAN dev server derives its own root
+    expect(appRootRedirectUri('http://127.0.0.1:5191/launch.html?iss=x')).toBe(
+      'http://127.0.0.1:5191/'
+    )
+    expect(appRootRedirectUri('http://192.168.1.20:5191/')).toBe('http://192.168.1.20:5191/')
+  })
+
+  it('should give every page in one directory, whatever it carries, the same root', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('', 'index.html', 'launch.html'),
+        nonCallbackParams(),
+        fc.string(),
+        (page, params, fragment) => {
+          // Arrange
+          const href = `https://apps.example/some/app/${page}${searchFrom(params)}#${encodeURIComponent(fragment)}`
+
+          // Act / Assert
+          expect(appRootRedirectUri(href)).toBe('https://apps.example/some/app/')
+        }
+      ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })

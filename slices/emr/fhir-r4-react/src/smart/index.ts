@@ -1,4 +1,5 @@
 export {
+  appRootRedirectUri,
   authorizeOpenServer,
   authorizeSmartLaunch,
   readySmartClient,

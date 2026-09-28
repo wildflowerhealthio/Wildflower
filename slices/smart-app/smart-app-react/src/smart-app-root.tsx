@@ -4,6 +4,7 @@ import { AppLandingPage, BrandBar } from 'branding-react'
 import { useState, type JSX, type ReactNode } from 'react'
 
 import {
+  appRootRedirectUri,
   buildSmartQueryClient,
   launchErrorFrom,
   shouldCompleteSmartLaunch,
@@ -69,7 +70,7 @@ function SmartAppRoot({ app, standalone, launched, children }: SmartAppRootProps
 
   // The page root is also the OAuth redirect target. Derived in render, not at
   // module load, so importing this module never reads `window`.
-  const redirectUri = new URL('.', window.location.href).href
+  const redirectUri = appRootRedirectUri(window.location.href)
 
   return (
     <QueryClientProvider client={queryClient}>

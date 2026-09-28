@@ -55,10 +55,11 @@ import `branding-react/styles.css` itself.
   `useSmartHandshake` runs; the app hands that same instance to
   `buildSmartRouterContext`. See the `useSmartHandshake` guardrail in
   [slices/emr/AGENTS.md](../emr/AGENTS.md) for why the exchange must run once.
-- **Redirect targets are derived from the page URL, in render.** Both the
-  shell's `ConnectMenu` redirect and the launch page's are `new URL('.', href)`,
-  so the bundle works at whatever origin and path it is served from, and no
-  module reads `window` as a side effect of being imported.
+- **Redirect targets are derived from the page URL, in render.** The shell's
+  `ConnectMenu` redirect, the launch page's, and a failed handshake's return
+  are all `fhir-r4-react/smart`'s `appRootRedirectUri(href)` (the page's
+  directory), so the bundle works at whatever origin and path it is served
+  from, and no module reads `window` as a side effect of being imported.
 - **A failed launch goes to the app root, never a dead end.** A rejected
   `authorizeSmartLaunch` on the launch page is handed to the app root through
   `launchErrorRedirect`, where `SmartAppRoot` latches it and hands it to the

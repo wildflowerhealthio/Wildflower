@@ -36,7 +36,8 @@ interface FhirR4ConnectMenuProps {
   readonly scope: string
   /**
    * The OAuth redirect target — the app root that serves `index.html` and runs
-   * `readySmartClient()`. Shared with the EHR launch's callback.
+   * `readySmartClient()` (`appRootRedirectUri`). Shared with the EHR launch's
+   * callback.
    */
   readonly redirectUri: string
   /** The one-click choices, grouped by server; defaults to {@link DEFAULT_SERVER_PRESET_GROUPS}. */

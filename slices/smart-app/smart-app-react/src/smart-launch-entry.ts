@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { addOsColorSchemeListener } from 'react-tundraish'
 
 import {
+  appRootRedirectUri,
   authorizeSmartLaunch,
   launchErrorBodyFor,
   launchErrorRedirect,
@@ -31,19 +32,18 @@ interface SmartLaunchEntryConfig {
  *   carrying the failure as `?launchError` when `authorizeSmartLaunch` rejects.
  *
  * @remarks
- * The OAuth redirect target is the app's root, which serves `index.html`,
- * derived from the launch page URL so it works at whatever origin and path the
- * bundle is served from. A launch that never reaches the authorization server
+ * The OAuth redirect target is the app's root (`appRootRedirectUri`), derived
+ * from the launch page URL. A launch that never reaches the authorization server
  * fails here — an unreachable or CORS-blocked `iss`, a server that serves no
  * SMART config, a client id or redirect URI the server does not know. The
  * launch page has no UI to report that in, so the failure goes to the app root,
- * whose `ErrorBanner` does.
+ * which hands it to `ConnectMenu` as its `arrivalProblem`.
  */
 const authorizeFromLaunchPage = async (
   launch: SmartLaunchEntryConfig['launch'],
   launchPageHref: string
 ): Promise<string | null> => {
-  const redirectUri = new URL('.', launchPageHref).href
+  const redirectUri = appRootRedirectUri(launchPageHref)
   const search = new URL(launchPageHref).search
   try {
     await authorizeSmartLaunch({ ...launch, redirectUri })

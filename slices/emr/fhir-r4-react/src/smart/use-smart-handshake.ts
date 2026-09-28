@@ -3,7 +3,7 @@ import type Client from 'fhirclient/lib/Client'
 import { useEffect } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
-import { readySmartClient } from './smart-launch.ts'
+import { appRootRedirectUri, readySmartClient } from './smart-launch.ts'
 
 /**
  * The state of completing the SMART handshake on the redirect page: still
@@ -78,7 +78,7 @@ const useLaunchFailureRedirect = (handshake: SmartHandshake): void => {
   const error = handshake.kind === 'error' ? handshake.error : undefined
   useEffect(() => {
     if (!failed) return
-    const appRoot = new URL('.', window.location.href).href
+    const appRoot = appRootRedirectUri(window.location.href)
     window.location.replace(
       launchErrorRedirect(appRoot, launchErrorBodyFor('HandshakeFailed', error))
     )
