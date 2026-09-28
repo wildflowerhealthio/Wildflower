@@ -39,6 +39,21 @@ tests and `pebble build`, and uploads the `.pbw` as a workflow artifact named
 after the app, ready to sideload. The pebble-tool and SDK versions it builds
 with are pinned in `.github/actions/setup-pebble-sdk`.
 
+## Releases
+
+This app and `apps/fhir-sync-pebble` ship with the Tauri app's releases, not on
+their own. **Tauri Release — Prepare** (`.github/workflows/tauri-release-prepare.yml`)
+writes the release version into both apps' `package.json` `version`, so don't
+bump it by hand. `pebble build` accepts only `MAJOR.MINOR.PATCH` with major and
+minor in 0–255, so a prerelease is dropped: release `1.2.3-beta.1` builds as
+`1.2.3`, and Prepare fails on a major or minor over 255. The watch itself sees
+only `MAJOR.MINOR` (`PebbleProcessInfo.process_version`); the `.pbw` and the
+app store keep the patch. Once the release PR merges, **Tauri Release — Publish**
+builds both apps from the tag and attaches `watch-lifts-<version>.pbw` and
+`fhir-sync-pebble-<version>.pbw`, named with the full release version, to the
+draft GitHub Release. Its `platforms` input takes `pebble` to rebuild just
+these.
+
 ## Target platforms
 
 `targetPlatforms` in `package.json` controls which watches you build for. This

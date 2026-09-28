@@ -47,7 +47,9 @@ base branch saved, and its own saves land in its own scope. `ci-pebble.yml` runs
 on pull requests only, so each pull request's first run installs cold and its
 later runs hit. Unlike the TypeScript and Rust caches, nothing warms `main`: a
 cold install costs less than a warm job would on every push, and the entry has
-no partial hit to restore.
+no partial hit to restore. The same goes for `tauri-release-publish.yml`, whose
+`build-pebble` job builds the release `.pbw`s through the same action: a release
+runs rarely enough that it installs cold.
 
 ## See Also
 

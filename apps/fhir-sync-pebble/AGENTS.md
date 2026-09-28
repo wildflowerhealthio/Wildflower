@@ -334,3 +334,10 @@ version `ci-pebble.yml` pins: other releases format differently.
 or `apps/watch-lifts`, runs `fmt:c:check`, both test packages above and
 `pebble build`, and uploads `fhir-sync-pebble.pbw` as a workflow artifact. See
 [`apps/watch-lifts`'s README](../watch-lifts/README.md#ci).
+
+## Releases
+
+The `version` in `package.json` comes from the Tauri release: Tauri Release —
+Prepare writes it, less any prerelease suffix, and Publish attaches
+`fhir-sync-pebble-<version>.pbw` to the GitHub Release. Don't bump it by hand.
+See [`apps/watch-lifts`'s README](../watch-lifts/README.md#releases).
