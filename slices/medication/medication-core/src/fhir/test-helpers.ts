@@ -64,4 +64,90 @@ const shoppersRequest = {
   dosageInstruction: [{ text: 'Take 1 tablet by mouth once daily' }],
 }
 
-export { base, CAREBOOK_DIN_SYSTEM, decode, rexallRequest, shoppersRequest }
+const SHOPPERS_DIN_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din'
+
+const CAREBOOK_EXTENSION_BASE = 'http://schemas.carebook.com/v1/fhir'
+const CAREBOOK_DESCRIPTION_EXTENSION = `${CAREBOOK_EXTENSION_BASE}/medication/extension/description`
+const CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS = [
+  `${CAREBOOK_EXTENSION_BASE}/medicationrequest/extension/number-of-repeats-available`,
+  'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available',
+] as const
+
+// A Rexall request in the carebook shape `rexall-be-well-source` promotes: a
+// vendor-only DIN coding on both the contained Medication and
+// `medicationCodeableConcept`, the description on the carebook extension beside
+// the dialect's own narrative (a copy of the drug name), the store as two
+// top-level extensions beside an identifier-only performer, and the remaining
+// repeats as `modifierExtension` copies. The adapter reads none of the vendor
+// shapes; such a resource is re-imported, not read around.
+const prePromotionRexallRequest = {
+  ...base,
+  id: 'mr-pre-rexall',
+  medicationCodeableConcept: {
+    text: 'Atorvastatin 20 mg tablet',
+    coding: [{ system: CAREBOOK_DIN_SYSTEM, code: '02241497' }],
+  },
+  contained: [
+    {
+      resourceType: 'Medication',
+      id: 'med-1',
+      text: {
+        status: 'generated',
+        div: '<div xmlns="http://www.w3.org/1999/xhtml">Atorvastatin 20 mg tablet</div>',
+      },
+      code: {
+        text: 'Atorvastatin 20 mg tablet',
+        coding: [{ system: CAREBOOK_DIN_SYSTEM, code: '02241497' }],
+      },
+      extension: [{ url: CAREBOOK_DESCRIPTION_EXTENSION, valueString: '20 mg - Tablet' }],
+    },
+  ],
+  extension: [
+    {
+      url: `${CAREBOOK_EXTENSION_BASE}/common/extension/external-system-source`,
+      valueString: 'RexallPharmacy',
+    },
+    {
+      url: `${CAREBOOK_EXTENSION_BASE}/medicationrequest/extension/external-store-id`,
+      valueString: '8174',
+    },
+  ],
+  dispenseRequest: {
+    numberOfRepeatsAllowed: 3,
+    performer: {
+      identifier: { system: 'http://schema.carebook.com/identifier/pharmacy', value: 'ph-1' },
+    },
+    modifierExtension: [
+      { url: CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS[0], valuePositiveInt: 2 },
+      { url: CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS[1], valueDecimal: 2 },
+    ],
+  },
+}
+
+// A Shoppers Drug Mart request in the shape `shoppers-drugmart-source` no longer
+// writes: the DIN under a Shoppers-hosted system only, and the store-locator
+// page as a `supportingInformation` reference.
+const prePromotionShoppersRequest = {
+  ...base,
+  id: 'mr-pre-sdm',
+  medicationCodeableConcept: {
+    text: 'LIPITOR',
+    coding: [{ system: SHOPPERS_DIN_SYSTEM, code: '02241497' }],
+  },
+  supportingInformation: [
+    { reference: 'https://www.shoppersdrugmart.ca/store-locator/store/1234' },
+  ],
+}
+
+export {
+  base,
+  CAREBOOK_DESCRIPTION_EXTENSION,
+  CAREBOOK_DIN_SYSTEM,
+  CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS,
+  decode,
+  prePromotionRexallRequest,
+  prePromotionShoppersRequest,
+  rexallRequest,
+  SHOPPERS_DIN_SYSTEM,
+  shoppersRequest,
+}

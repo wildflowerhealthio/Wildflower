@@ -56,7 +56,7 @@ catalog onto it.
   unchanged, so adapters keep mapping onto this package's `Medication`.
 - `medication-sponsorship-react` — browser UI: the province picker, the flat
   medications view (active first, newest-authored first; name, DIN/description,
-  repeats, prescriber, pharmacy links — fill timing and eligibility chips live
+  repeats, prescriber, the dispensing store's link — fill timing and eligibility chips live
   on the calendar and savings views), the savings view (`SavingsView`: one
   section per program with its site-sourced description in
   `program-descriptions.ts`, eligible medications chipped per the selected
@@ -131,6 +131,15 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
   goes through the full `Medication.Schema`. And `vp pack` is the
   gate for the TS2883 dts trap, not `vp check` — when the adapter's inferred
   types change, run `vp run -F medication-core build`.
+- **The adapter is dialect-free, and stored data is not read around.** A
+  resource in a pharmacy's pre-promotion shape — a vendor-only DIN coding, the
+  carebook description extension, the store as `external-*` extensions or a
+  `supportingInformation` reference, remaining repeats as a `modifierExtension`
+  — shows no DIN, store link or remaining repeats, and its description is only
+  what its narrative holds (for carebook, a copy of the drug name), never the
+  carebook extension. The fix is to re-import it through the source, never a
+  fallback reader here. The `prePromotion*` fixtures in
+  `src/fhir/test-helpers.ts` pin that none of these vendor shapes is read.
 - The adapter depends on `medication-calendar-core` for `nextFillDate`, so the
   matching base imports one feature core. Keep it that way round: nothing in
   `medication-calendar-core` may import `medication-core`.
