@@ -1,4 +1,5 @@
 import type { Effect, Schema } from 'effect'
+import { withMandatoryId } from 'fhir-r4/data-types'
 import { MedicationRequest } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 
@@ -11,8 +12,15 @@ import {
   type ResourcePage,
 } from './resource-page.ts'
 
-/** The decoded FHIR R4 `MedicationRequest` resource. */
-type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Schema>
+/**
+ * The schema every `MedicationRequest` entry decodes through: the R4 resource
+ * with its `id` required, as the FHIR server always returns one. An entry
+ * without an `id` fails the decode.
+ */
+const MedicationRequestWithIdSchema = withMandatoryId(MedicationRequest.Schema)
+
+/** The decoded FHIR R4 `MedicationRequest` resource, `id` present. */
+type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequestWithIdSchema>
 
 /**
  * One page of a `MedicationRequest` read: the decoded resources on this page and
@@ -40,11 +48,11 @@ const ALWAYS_PRESENT_PARAMS = `_count=${RESOURCE_PAGE_SIZE}&_sort=-authoredon`
  */
 const medicationRequestRead: PagedResourceRead<
   MedicationRequestResource,
-  Schema.Schema.Encoded<typeof MedicationRequest.Schema>,
+  Schema.Schema.Encoded<typeof MedicationRequestWithIdSchema>,
   string | null
 > = {
   resourceType: 'MedicationRequest',
-  schema: MedicationRequest.Schema,
+  schema: MedicationRequestWithIdSchema,
   firstPageQuery: (patientId: string | null): string =>
     patientId === null
       ? ALWAYS_PRESENT_PARAMS
@@ -62,9 +70,10 @@ const medicationRequestRead: PagedResourceRead<
  *
  * @remarks
  * A thin patient-scoped wrapper over {@link fetchResourcePage}, which owns the
- * paging, the permissive bundle decode and the per-entry decode-or-drop. Pages
- * arrive newest-authored first ({@link ALWAYS_PRESENT_PARAMS}), which is what lets a caller
- * append them without reordering earlier rows.
+ * paging, the permissive bundle decode and the per-entry decode-or-drop — an
+ * entry without an `id` is dropped and counted like any other that fails to
+ * decode. Pages arrive newest-authored first ({@link ALWAYS_PRESENT_PARAMS}),
+ * which is what lets a caller append them without reordering earlier rows.
  */
 const fetchMedicationRequestPage = (
   client: Client,

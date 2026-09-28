@@ -130,6 +130,19 @@ describe('fetchMedicationRequestPage', () => {
     expect(page.droppedEntryCount).toBe(1)
   })
 
+  test('drops an entry without an id, counting it', async () => {
+    const withoutId = Schema.encodeSync(MedicationRequest.Schema)({
+      ...sampleMedicationRequest,
+      id: null,
+    })
+    const { client } = stubClient(bundle([sampleWire, withoutId]))
+
+    const page = await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
+
+    expect(page.items.map((request) => request.id)).toEqual(['medreq-id'])
+    expect(page.droppedEntryCount).toBe(1)
+  })
+
   test('reports the next-page cursor from the bundle `next` link', async () => {
     const nextUrl = 'https://fhir.example/MedicationRequest?_getpages=abc&_getpagesoffset=20'
     const { client } = stubClient(bundle([sampleWire], nextUrl))
