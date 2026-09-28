@@ -53,31 +53,6 @@ const normalizeServerUrl = (candidate: string): string | undefined => {
 }
 
 /**
- * The FHIR base — the SMART `iss` — a sign-in to `serverUrl` discovers its
- * endpoints at and names as its `aud`, read from the URL's shape:
- *
- * - **no path** (an origin, as {@link normalizeServerUrl} leaves the local
- *   server or a hosted subdomain): a Wildflower server, whose FHIR base is
- *   where `emr-rust` is mounted, `{serverUrl}/fhir-r4`;
- * - **a path**: already a FHIR base — a plain SMART server's
- *   (`https://launch.smarthealthit.org/v/r4/sim/…/fhir`), or a Wildflower
- *   server's own `…/fhir-r4` — and used as it is.
- *
- * The one shape this misreads is a Wildflower server published behind a path
- * prefix (`https://example.org/wildflower`): its FHIR base has to be entered
- * in full, `https://example.org/wildflower/fhir-r4`.
- *
- * Read in canonical form, so a trailing slash does not make an origin look
- * like a path. A value {@link normalizeServerUrl} rejects is returned as it
- * is, for discovery to fail on with its own reason.
- */
-const fhirBaseFor = (serverUrl: string): string => {
-  const canonical = normalizeServerUrl(serverUrl)
-  if (canonical === undefined) return serverUrl
-  return new URL(canonical).pathname === '/' ? `${canonical}/fhir-r4` : canonical
-}
-
-/**
  * The API origin `search` names, or `undefined` when it names none this page
  * would accept — the parameter absent, empty, or rejected by
  * {@link normalizeServerUrl}. The caller substitutes its own default.
@@ -106,10 +81,4 @@ const searchWithServerUrl = (search: string, serverUrl: string): string => {
   return query === '' ? '' : `?${query}`
 }
 
-export {
-  fhirBaseFor,
-  normalizeServerUrl,
-  searchWithServerUrl,
-  SERVER_QUERY_PARAM,
-  serverUrlFromSearch,
-}
+export { normalizeServerUrl, searchWithServerUrl, SERVER_QUERY_PARAM, serverUrlFromSearch }

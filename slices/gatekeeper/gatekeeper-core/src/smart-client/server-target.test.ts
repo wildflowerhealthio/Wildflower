@@ -3,7 +3,6 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  fhirBaseFor,
   normalizeServerUrl,
   SERVER_QUERY_PARAM,
   searchWithServerUrl,
@@ -103,48 +102,6 @@ describe('normalizeServerUrl', () => {
         expect(normalizeServerUrl(value)).toBe(value)
       }),
       { numRuns: numRunsFor({ base: 200 }) }
-    )
-  })
-})
-
-describe('fhirBaseFor', () => {
-  it('reads an origin as a Wildflower server, whose FHIR base is its /fhir-r4 mount', () => {
-    fc.assert(
-      fc.property(fc.webUrl({ size: 'small' }), (candidate) => {
-        const origin = new URL(candidate).origin
-        expect(fhirBaseFor(origin)).toBe(`${origin}/fhir-r4`)
-        // A trailing slash is not a path.
-        expect(fhirBaseFor(`${origin}/`)).toBe(`${origin}/fhir-r4`)
-      }),
-      { numRuns: numRunsFor({ base: 50 }) }
-    )
-  })
-
-  it('uses a URL with a path as the FHIR base it already is', () => {
-    // A plain SMART server's base, and a Wildflower server's own, entered in full.
-    const demo = 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiJd/fhir'
-    expect(fhirBaseFor(demo)).toBe(demo)
-    expect(fhirBaseFor('https://ruth.wildflowerhealth.io/fhir-r4')).toBe(
-      'https://ruth.wildflowerhealth.io/fhir-r4'
-    )
-    expect(fhirBaseFor('https://ruth.wildflowerhealth.io/fhir-r4/')).toBe(
-      'https://ruth.wildflowerhealth.io/fhir-r4'
-    )
-  })
-
-  it('never appends /fhir-r4 to a URL that has a path', () => {
-    fc.assert(
-      fc.property(
-        fc.webUrl({ size: 'small' }),
-        fc.webSegment().filter((segment) => segment !== ''),
-        (candidate, segment) => {
-          const withPath = `${new URL(candidate).origin}/${segment}`
-          const canonical = normalizeServerUrl(withPath)
-          fc.pre(canonical !== undefined && new URL(canonical).pathname !== '/')
-          expect(fhirBaseFor(withPath)).toBe(canonical)
-        }
-      ),
-      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 })

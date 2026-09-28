@@ -1,10 +1,13 @@
 /**
- * SMART discovery: turning a FHIR base — the SMART `iss` — into the OAuth
- * endpoints the page must send the reader to.
+ * SMART discovery: finding the FHIR base — the SMART `iss` — a server URL
+ * signs in through, and the OAuth endpoints it advertises.
  *
- * Nothing about the server's URL layout is hardcoded here beyond the one
- * well-known path SMART itself defines; which FHIR base a server URL names is
- * `server-target.ts`'s `fhirBaseFor`, not this module's.
+ * A server URL is either a Wildflower server's API base, whose FHIR base is
+ * `{serverUrl}/fhir-r4`, or a plain SMART server's FHIR base itself (the
+ * SmartHealthIT demo's `…/fhir`). Nothing in the URL says which, so
+ * {@link discoverSmartEndpoints} asks: the Wildflower location first, and the
+ * URL itself only when that answers 404. A path-prefixed Wildflower server
+ * (`https://example.org/wildflower`) is found at the first, like any other.
  * A Wildflower server answers it from `slices/emr/emr-rust/src/smart_configuration.rs`
  * (mounted at `/fhir-r4/.well-known/smart-configuration`, and exempt from the
  * bearer gate — `gatekeeper-rust`'s `require_valid_bearer_token`), advertising
@@ -19,7 +22,7 @@
  * whose `reason` the header bar renders verbatim.
  */
 
-import { Data, Effect, Either, Schema } from 'effect'
+import { Data, Effect, Either, Option, Schema } from 'effect'
 
 /** Raised when the chosen target cannot be signed in to, with the reason why. */
 class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
@@ -37,6 +40,19 @@ const smartConfigurationUrl = (fhirBaseUrl: string): string =>
 interface SmartEndpoints {
   readonly authorizationEndpoint: string
   readonly tokenEndpoint: string
+}
+
+/** Where a Wildflower server's FHIR API is mounted under its API base (`emr-rust`). */
+const WILDFLOWER_FHIR_PATH = '/fhir-r4'
+
+/**
+ * A server's SMART issuer as discovery found it: the FHIR base that served the
+ * configuration — the `iss`, and the `aud` a sign-in names — and the endpoints
+ * it advertised.
+ */
+interface SmartIssuer {
+  readonly fhirBaseUrl: string
+  readonly endpoints: SmartEndpoints
 }
 
 /**
@@ -168,17 +184,20 @@ const smartEndpointsFrom = (
 }
 
 /**
- * Fetch and validate the SMART configuration of the FHIR base `fhirBaseUrl`.
+ * Fetch the SMART configuration document under the FHIR base `fhirBaseUrl`:
+ * `Some` with the body when it answered, `None` when it answered 404 — there
+ * is no configuration there, which {@link discoverSmartEndpoints} may try
+ * elsewhere.
  *
- * The three ways the request itself can fail — unreachable, error status,
- * non-JSON body — each become a {@link DiscoveryFailed} naming the URL, and the
- * body is then handed to {@link smartEndpointsFrom}, whose `Either` is lifted
- * into the same failure channel.
+ * Every other way the request can fail — unreachable, another error status, a
+ * non-JSON body — is a {@link DiscoveryFailed} naming the URL. An unreachable
+ * server is never a 404: a network or CORS failure says nothing about where
+ * the configuration is, so it must not send discovery on to a second URL.
  */
-const discoverSmartEndpoints = (
+const fetchSmartConfiguration = (
   fhirBaseUrl: string,
-  options: { readonly fetch: typeof globalThis.fetch; readonly pageIsSecure: boolean }
-): Effect.Effect<SmartEndpoints, DiscoveryFailed> =>
+  options: { readonly fetch: typeof globalThis.fetch }
+): Effect.Effect<Option.Option<unknown>, DiscoveryFailed> =>
   Effect.gen(function* () {
     const url = smartConfigurationUrl(fhirBaseUrl)
     const response = yield* Effect.tryPromise({
@@ -190,6 +209,7 @@ const discoverSmartEndpoints = (
           reason: `Could not reach ${url}. The server may be down, or the browser may have blocked the request.`,
         }),
     })
+    if (response.status === 404) return Option.none()
     if (!response.ok) {
       return yield* new DiscoveryFailed({
         reason: `${url} answered ${String(response.status)}. Is this a Wildflower server?`,
@@ -202,7 +222,42 @@ const discoverSmartEndpoints = (
           reason: `${url} did not answer with JSON. Is this a Wildflower server?`,
         }),
     })
-    return yield* smartEndpointsFrom(document, { pageIsSecure: options.pageIsSecure })
+    return Option.some(document)
+  })
+
+/**
+ * Find `serverUrl`'s SMART issuer and validate what it advertises.
+ *
+ * `serverUrl` (canonical: no trailing slash) is read as a Wildflower server's
+ * API base first, so the configuration is asked for under
+ * `{serverUrl}/fhir-r4`. Only if that answers 404 is `serverUrl` read as a
+ * plain FHIR base and asked directly. The FHIR base that answered is returned
+ * with the endpoints, for the sign-in to name as its `aud`. Two 404s fail with
+ * one reason naming both URLs; any other failure at the first URL fails
+ * without trying the second.
+ */
+const discoverSmartEndpoints = (
+  serverUrl: string,
+  options: { readonly fetch: typeof globalThis.fetch; readonly pageIsSecure: boolean }
+): Effect.Effect<SmartIssuer, DiscoveryFailed> =>
+  Effect.gen(function* () {
+    const wildflowerFhirBaseUrl = `${serverUrl}${WILDFLOWER_FHIR_PATH}`
+    const candidates = [wildflowerFhirBaseUrl, serverUrl]
+    for (const fhirBaseUrl of candidates) {
+      const document = yield* fetchSmartConfiguration(fhirBaseUrl, options)
+      if (Option.isSome(document)) {
+        const endpoints = yield* smartEndpointsFrom(document.value, {
+          pageIsSecure: options.pageIsSecure,
+        })
+        return { fhirBaseUrl, endpoints }
+      }
+    }
+    return yield* new DiscoveryFailed({
+      reason:
+        `Neither ${smartConfigurationUrl(wildflowerFhirBaseUrl)} nor ` +
+        `${smartConfigurationUrl(serverUrl)} was found (both answered 404). ` +
+        'Enter a Wildflower server’s address, or a SMART on FHIR server’s FHIR base URL.',
+    })
   })
 
 export {
@@ -215,4 +270,4 @@ export {
   smartEndpointsFrom,
   discoverSmartEndpoints,
 }
-export type { SmartEndpoints }
+export type { SmartEndpoints, SmartIssuer }

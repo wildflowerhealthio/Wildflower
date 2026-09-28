@@ -338,6 +338,21 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     expect(connectMock).toHaveBeenCalledWith('https://my-server.example.com')
   })
 
+  // `?server=` is the API base; the sign-in finds `/fhir-r4` under it.
+  it.each(['https://example.org/wildflower/fhir-r4', 'https://example.org/wildflower/fhir-r4/'])(
+    'signs in to a Wildflower server entered by its FHIR base (%s) at its API base',
+    async (entered) => {
+      const user = userEvent.setup()
+      render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+      const freeEntry = within(screen.getByRole('form', { name: 'Another Wildflower server' }))
+      await user.type(freeEntry.getByLabelText('Server URL'), entered)
+      await user.click(freeEntry.getByRole('button', { name: 'Connect' }))
+
+      expect(connectMock).toHaveBeenCalledWith('https://example.org/wildflower')
+    }
+  )
+
   it('shows a validation message worded for a server URL on an invalid free entry', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)

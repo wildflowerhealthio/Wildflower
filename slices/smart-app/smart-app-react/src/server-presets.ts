@@ -48,6 +48,14 @@ const wildflowerServerUrlFor = (target: ConnectTarget, origin: string): string =
   target === 'fhir-r4' ? `${origin}/fhir-r4` : origin
 
 /**
+ * `serverUrl` without a trailing `/fhir-r4` (or `/fhir-r4/`): the API base of a
+ * Wildflower server entered by its FHIR base. The owner UI talks to the API
+ * base, and its sign-in finds the FHIR base under it, so the entry is turned
+ * back into the address the rest of the page uses.
+ */
+const withoutFhirR4Mount = (serverUrl: string): string => serverUrl.replace(/\/fhir-r4\/?$/, '')
+
+/**
  * One or more dot-separated DNS labels: letters, digits and hyphens, no label
  * starting or ending with a hyphen — so `ruth` and `medication.ruth` pass, and
  * `-ruth`, `ruth.` and `ru..th` do not.
@@ -156,6 +164,7 @@ export {
   DEFAULT_SERVER_PRESETS,
   hostedServerUrlFor,
   serverPresetGroupsFor,
+  withoutFhirR4Mount,
   wildflowerServerUrlFor,
   WILDFLOWER_DOMAIN,
 }

@@ -87,7 +87,7 @@ describe('beginSignIn', () => {
     )
   })
 
-  it('discovers at, and names as its aud, a Wildflower origin’s /fhir-r4 base', async () => {
+  it('discovers at, and names as its aud, a Wildflower server’s /fhir-r4 base', async () => {
     // Arrange
     const requested: string[] = []
     const discovery = discoveryOnly()
@@ -110,8 +110,8 @@ describe('beginSignIn', () => {
 
   it('discovers at, and names as its aud, a server URL that is already a FHIR base, and redeems there', async () => {
     // A plain SMART server (the SmartHealthIT demo) is addressed by its FHIR
-    // base alone: its URL has a path, there is no `/fhir-r4` under it, and its
-    // endpoints are its own.
+    // base alone: `/fhir-r4` under it answers 404, so discovery reads the URL
+    // itself, and its endpoints are its own.
     // Arrange
     const store = memoryStore()
     const discovery = discoveryAt(DEMO_FHIR_BASE, DEMO_AUTH_ORIGIN)
@@ -627,7 +627,8 @@ const discoveryOnly =
 
 /**
  * A `fetch` that answers the SMART discovery request under `fhirBaseUrl`, with
- * endpoints under `authOrigin`, and nothing else.
+ * endpoints under `authOrigin`, a 404 for a discovery request anywhere else
+ * (as a plain SMART server answers the Wildflower location), and nothing else.
  */
 const discoveryAt =
   (fhirBaseUrl: string, authOrigin: string): typeof globalThis.fetch =>
@@ -640,6 +641,9 @@ const discoveryAt =
           token_endpoint: `${authOrigin}/auth/token`,
         })
       )
+    }
+    if (url.endsWith('/.well-known/smart-configuration')) {
+      return Promise.resolve(new Response('not here', { status: 404 }))
     }
     throw new Error(`unexpected request to ${url}`)
   }

@@ -111,8 +111,8 @@ interface AuthorizationRequestParameters {
   readonly codeChallenge: string
   /**
    * SMART's `aud`: the FHIR base the resulting token is meant for. Sent because
-   * a standalone launch is specified to send it. `beginSignIn` reads that base
-   * off the server URL (`fhirBaseFor`), and discovers the endpoints at it too.
+   * a standalone launch is specified to send it: the FHIR base whose SMART
+   * configuration `beginSignIn`'s discovery found.
    */
   readonly audience: string
 }

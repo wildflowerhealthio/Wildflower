@@ -36,7 +36,6 @@ export {
 export type { DigestSource, RandomBytesSource } from './pkce.ts'
 
 export {
-  fhirBaseFor,
   normalizeServerUrl,
   searchWithServerUrl,
   SERVER_QUERY_PARAM,
@@ -66,4 +65,4 @@ export {
   smartEndpointsFrom,
   usableEndpointUrl,
 } from './smart-discovery.ts'
-export type { SmartEndpoints } from './smart-discovery.ts'
+export type { SmartEndpoints, SmartIssuer } from './smart-discovery.ts'

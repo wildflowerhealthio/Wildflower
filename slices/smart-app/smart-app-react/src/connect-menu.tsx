@@ -12,6 +12,7 @@ import {
   hostedServerUrlFor,
   serverPresetGroupsFor,
   wildflowerServerUrlFor,
+  withoutFhirR4Mount,
   WILDFLOWER_DOMAIN,
   type ConnectTarget,
   type ServerPresetGroup,
@@ -58,9 +59,9 @@ interface WildflowerConnectMenuProps {
   /**
    * Sign in to the server at `url`, in `normalizeServerUrl`'s canonical form:
    * the server's origin for the local and hosted picks, whatever the reader
-   * typed for the free entry, and the FHIR base for the demo server. Which of
-   * those it is shows in the URL's shape (an origin, or a FHIR base with a
-   * path), so the sign-in reads its FHIR base off the URL (`fhirBaseFor`).
+   * typed for the free entry (less a trailing `/fhir-r4`, so it is an API
+   * base), and the FHIR base for the demo server. The sign-in finds which by
+   * discovery: `{url}/fhir-r4` first, the URL itself on a 404.
    * Resolves to a problem to show in the menu's error banner, or `undefined`
    * once the page is leaving for the authorization server; a rejection is
    * shown as its message.
@@ -318,7 +319,9 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
       setFreeEntryProblem(copy.invalidFreeEntry)
       return
     }
-    connectTo(normalized)
+    // The owner UI's `?server=` is a Wildflower server's API base, never its
+    // FHIR base, so an entry of the latter is taken back to the former.
+    connectTo(props.target === 'wildflower' ? withoutFhirR4Mount(normalized) : normalized)
   }
 
   const presetGroup = (group: ServerPresetGroup): JSX.Element => (

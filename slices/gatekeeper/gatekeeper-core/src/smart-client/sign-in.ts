@@ -52,7 +52,6 @@ import {
 } from './authorization-flow.ts'
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
 import type { DigestSource, PkceUnavailable, RandomBytesSource } from './pkce.ts'
-import { fhirBaseFor } from './server-target.ts'
 import { discoverSmartEndpoints, type DiscoveryFailed } from './smart-discovery.ts'
 
 /**
@@ -110,14 +109,13 @@ interface SignInEnvironment {
  * pair and the `state`, stash what the return leg needs, and yield the
  * authorization URL to navigate to.
  *
- * The SMART `iss` — the FHIR base discovery reads
- * `.well-known/smart-configuration` under, and the `aud` the authorization
- * request names — is `fhirBaseFor(serverUrl)`: `{serverUrl}/fhir-r4` for a
- * Wildflower server's origin, `serverUrl` itself when it already has a path
- * (a plain SMART server's FHIR base). Derived from `serverUrl`, it is always
- * on the server the pending record and the {@link Session} name. Only the
- * endpoints discovered there ride the pending record, so the return leg needs
- * nothing more.
+ * The SMART `iss` — the FHIR base whose `.well-known/smart-configuration`
+ * answered, and the `aud` the authorization request names — is found by
+ * `discoverSmartEndpoints`: `{serverUrl}/fhir-r4` for a Wildflower server,
+ * or `serverUrl` itself for a plain SMART server's FHIR base, tried only when
+ * the first answers 404. Either way it is on the server the pending record and
+ * the {@link Session} name. Only the endpoints discovered there ride the
+ * pending record, so the return leg needs nothing more.
  *
  * `returnTo` is the in-app path the app wants to land on once signed in; it
  * rides the pending record and comes back as {@link Session.returnTo}, because
@@ -133,8 +131,7 @@ const beginSignIn = (
   environment: SignInEnvironment
 ): Effect.Effect<string, SignInError> =>
   Effect.gen(function* () {
-    const fhirBaseUrl = fhirBaseFor(serverUrl)
-    const endpoints = yield* discoverSmartEndpoints(fhirBaseUrl, {
+    const { fhirBaseUrl, endpoints } = yield* discoverSmartEndpoints(serverUrl, {
       fetch: environment.fetch,
       pageIsSecure: environment.pageIsSecure,
     })

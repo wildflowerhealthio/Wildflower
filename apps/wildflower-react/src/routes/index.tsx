@@ -176,8 +176,8 @@ function Landing({
   /**
    * The menu's `connect`, for a pick and for the chosen server alike: point the
    * page at the server and leave for the authorization endpoint discovered at
-   * its FHIR base (its `/fhir-r4` for a Wildflower origin, the URL itself for a
-   * plain SMART server's base) — the SMART standalone launch, the same flow the
+   * its FHIR base (its `/fhir-r4` for a Wildflower server; the URL itself, on a
+   * 404 there, for a plain SMART server's base) — the SMART standalone launch, the same flow the
    * server-docs console runs. Resolves to the problem to show if it could not
    * start, or `undefined` once the page is leaving. The reader comes back to
    * the app root with a code, which `main-web`'s boot redeems before the router
