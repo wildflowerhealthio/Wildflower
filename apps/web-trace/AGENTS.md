@@ -21,9 +21,9 @@ listener, and renders `<AppRoot />`. `launch-main.tsx` imports the same module
 and makes one `runSmartLaunchEntry` call. `AppRoot` (from `app-root.tsx`) is
 `<SmartAppRoot app="webTrace" standalone={standaloneSmartConfig}>` around
 `<App />`; `SmartAppRoot` owns the one `QueryClientProvider` and picks between
-the launched viewer (slim `BrandBar` + `App`) and the standalone landing
-(`SiteHeader`, the Web Trace Viewer's `AppLanding` beside `ConnectMenu`,
-`SiteFooter`). The decision is latched on mount inside `SmartAppRoot`; the
+the launched viewer (slim `BrandBar` + `App`) and the standalone landing,
+`branding-react`'s `AppLandingPage` (`SiteHeader`, the Web Trace Viewer's
+`AppLanding` beside `ConnectMenu`, `SiteFooter`). The decision is latched on mount inside `SmartAppRoot`; the
 shell's
 [`smart-app-root.test.tsx`](../../slices/smart-app/smart-app-react/src/smart-app-root.test.tsx)
 pins it along with the rest of the shell's behaviour. The package exports

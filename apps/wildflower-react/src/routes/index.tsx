@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { basenameOf } from 'branding-core'
-import { AppLanding, fromApp, SiteFooter, SiteHeader } from 'branding-react'
+import { AppLandingPage } from 'branding-react'
 import { withLocalNetworkAccessHint } from 'fhir-r4-react/smart'
 import { insecureTargetReason, searchWithServerUrl } from 'gatekeeper-core/smart-client'
 import { type JSX, useEffect } from 'react'
@@ -16,8 +16,6 @@ import {
   type SignInStep,
 } from '../sign-in.ts'
 import { apiServerUrl, chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
-
-import styles from './index.module.css'
 
 /**
  * Record `serverUrl` as this page's target without reloading.
@@ -216,38 +214,32 @@ function Landing({
   }
 
   return (
-    <div className={styles['landing-page']}>
-      <SiteHeader nav={fromApp} />
-      <main className={styles['connect-page']}>
-        <AppLanding app="app">
-          <ConnectMenu
-            target="wildflower"
-            localOrigin={DEFAULT_SERVER_URL}
-            connect={connect}
-            // The boot failure was about the server that sign-in was to, which
-            // a failed redemption leaves the address bar no longer naming, so
-            // its Local Network Access hint is for that server; the menu adds
-            // it to the problems of the sign-ins it runs itself.
-            arrivalProblem={
-              bootSignInProblem === undefined ? undefined : arrivalProblemFor(bootSignInProblem)
-            }
-            // Only when one is chosen: the sign-in on arrival is for it, and
-            // this is the way back in when that couldn't run or failed.
-            // Picking a server signs in on its own, so this would be a dead
-            // second step otherwise.
-            chosenServer={hasChosenServer ? { url: serverUrl, blockedReason } : undefined}
-            // Read once, when the menu mounts: a pick's `?server=` must not
-            // make this page look newly arrived and start a second sign-in.
-            autoConnect={shouldSignInOnArrival({
-              hasChosenServer,
-              blockedReason,
-              bootSignInProblem: bootSignInProblem?.reason,
-            })}
-          />
-        </AppLanding>
-      </main>
-      <SiteFooter />
-    </div>
+    <AppLandingPage app="app">
+      <ConnectMenu
+        target="wildflower"
+        localOrigin={DEFAULT_SERVER_URL}
+        connect={connect}
+        // The boot failure was about the server that sign-in was to, which
+        // a failed redemption leaves the address bar no longer naming, so
+        // its Local Network Access hint is for that server; the menu adds
+        // it to the problems of the sign-ins it runs itself.
+        arrivalProblem={
+          bootSignInProblem === undefined ? undefined : arrivalProblemFor(bootSignInProblem)
+        }
+        // Only when one is chosen: the sign-in on arrival is for it, and
+        // this is the way back in when that couldn't run or failed.
+        // Picking a server signs in on its own, so this would be a dead
+        // second step otherwise.
+        chosenServer={hasChosenServer ? { url: serverUrl, blockedReason } : undefined}
+        // Read once, when the menu mounts: a pick's `?server=` must not
+        // make this page look newly arrived and start a second sign-in.
+        autoConnect={shouldSignInOnArrival({
+          hasChosenServer,
+          blockedReason,
+          bootSignInProblem: bootSignInProblem?.reason,
+        })}
+      />
+    </AppLandingPage>
   )
 }
 

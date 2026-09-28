@@ -20,7 +20,7 @@ the homepage and absolute from an app.
   both render. It also owns `restoreRedirectedUrl` — the app half of the GitHub
   Pages 404 contract (see "The 404 redirect" below).
 - **`branding-react`** — the browser UI adapter: `SiteHeader`, `SiteFooter`,
-  `BrandBar`, `AppIcon`, `AppLanding`, and the `branding-react/styles.css`
+  `BrandBar`, `AppIcon`, `AppLanding`, `AppLandingPage`, and the `branding-react/styles.css`
   layout tokens (`--content-max-width`, `--page-padding-x`, `--header-height`,
   `--radius-pill`, `--prose-max-width`, and the `--shadow-float-panel` used by
   the header's collapsed nav dropdown).
@@ -55,10 +55,14 @@ the same `?redirect=` detour as the published site.
 
 A SMART app visited without a launch (`apps/medications-app`,
 `apps/importer-web`, `apps/fhir-sync-pebble-web` and `apps/web-trace`, all
-through `smart-app-react`'s `SmartAppRoot`) renders `SiteHeader`, then `AppLanding`
-inside `main`, then `SiteFooter`. So does the hosted owner UI's landing
-(`apps/wildflower-react`'s `routes/index.tsx`, `app="app"`), whose connect
-menu also carries its "Sign in to …" row for a server already chosen. `AppLanding` takes the app's `AppSectionId`
+through `smart-app-react`'s `SmartAppRoot`) renders `AppLandingPage`. So does
+the hosted owner UI's landing (`apps/wildflower-react`'s `routes/index.tsx`,
+`app="app"`), whose connect menu also carries its "Sign in to …" row for a
+server already chosen. `AppLandingPage` is the one page shell: `SiteHeader`
+(links resolved `fromApp`), then `AppLanding` inside `main`, then
+`SiteFooter`, in a full-height column that keeps the footer at the bottom of
+the viewport. A surface passes it the app and its connect menu, and keeps no
+page CSS of its own. `AppLanding` takes the app's `AppSectionId`
 and its connect menu as children: it lays out the introduction from
 `APP_DESCRIPTIONS` on the left (the app name as the page's `h1`, the tagline,
 the paragraphs, and a "Read about the rest of the project" link to the app's

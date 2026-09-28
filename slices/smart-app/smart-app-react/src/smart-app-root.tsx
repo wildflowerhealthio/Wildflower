@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import type { AppSectionId } from 'branding-core'
-import { AppLanding, BrandBar, fromApp, SiteFooter, SiteHeader } from 'branding-react'
+import { AppLandingPage, BrandBar } from 'branding-react'
 import { useState, type JSX, type ReactNode } from 'react'
 
 import {
@@ -11,8 +11,6 @@ import {
 } from 'fhir-r4-react/smart'
 
 import { ConnectMenu } from './connect-menu.tsx'
-
-import styles from './smart-app-root.module.css'
 
 /** Props for {@link SmartAppRoot}. */
 interface SmartAppRootProps {
@@ -42,9 +40,9 @@ interface SmartAppRootProps {
  * - **Launched** (the URL carries an OAuth callback): `BrandBar` over
  *   `children`, which complete the handshake as a query on the shared client
  *   (via `useSmartHandshake`).
- * - **Standalone** (a bare visit): the full `SiteHeader` / `AppLanding` /
- *   `SiteFooter` page, the app's introduction beside the `ConnectMenu`, which
- *   shows a launch that failed and landed back here as its `arrivalProblem`.
+ * - **Standalone** (a bare visit): `branding-react`'s `AppLandingPage`, the
+ *   app's introduction beside the `ConnectMenu`, which shows a launch that
+ *   failed and landed back here as its `arrivalProblem`.
  *
  * @remarks
  * The branch is latched on mount: fhirclient's `oauth2.ready()` strips
@@ -81,21 +79,15 @@ function SmartAppRoot({ app, standalone, launched, children }: SmartAppRootProps
           {children}
         </>
       ) : (
-        <div className={styles['standalone-page']}>
-          <SiteHeader nav={fromApp} />
-          <main className={styles['connect-page']}>
-            <AppLanding app={app}>
-              <ConnectMenu
-                target="fhir-r4"
-                clientId={standalone.clientId}
-                scope={standalone.scope}
-                redirectUri={redirectUri}
-                arrivalProblem={launchFailure ?? undefined}
-              />
-            </AppLanding>
-          </main>
-          <SiteFooter />
-        </div>
+        <AppLandingPage app={app}>
+          <ConnectMenu
+            target="fhir-r4"
+            clientId={standalone.clientId}
+            scope={standalone.scope}
+            redirectUri={redirectUri}
+            arrivalProblem={launchFailure ?? undefined}
+          />
+        </AppLandingPage>
       )}
     </QueryClientProvider>
   )
