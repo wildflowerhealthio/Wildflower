@@ -44,7 +44,8 @@ describe('xDomain', () => {
     )
   })
 
-  const DAY_MILLIS = 86_400_000
+  const HOUR_MILLIS = 3_600_000
+  const DAY_MILLIS = 24 * HOUR_MILLIS
 
   /**
    * The days a lookback can span, read off the declared table and the
@@ -54,7 +55,7 @@ describe('xDomain', () => {
   const spanDays = (
     lookback: Partial<DateTime.DateTime.PartsForMath>
   ): { readonly min: number; readonly max: number } => {
-    const days = lookback.days ?? 0
+    const days = (lookback.days ?? 0) + (lookback.hours ?? 0) / 24
     const years = lookback.years ?? 0
     return { min: days + years * 365, max: days + years * 366 }
   }
@@ -79,6 +80,15 @@ describe('xDomain', () => {
     // days for exactly this reason.
     const [start] = xDomain('1y', DateTime.unsafeMake('2016-02-29T00:00:00Z'), null)
     expect(DateTime.formatIso(start)).toBe('2015-02-28T00:00:00.000Z')
+  })
+
+  test.each([
+    ['24h', HOUR_MILLIS * 24],
+    ['7d', DAY_MILLIS * 7],
+  ] as const)('%s reaches back exactly %i ms, sub-day parts included', (preset, millis) => {
+    const now = DateTime.unsafeMake('2024-03-10T09:30:15.250Z')
+    const [start, end] = xDomain(preset, now, null)
+    expect(end.epochMillis - start.epochMillis).toBe(millis)
   })
 
   test('a bounded preset ignores the data extent entirely', () => {

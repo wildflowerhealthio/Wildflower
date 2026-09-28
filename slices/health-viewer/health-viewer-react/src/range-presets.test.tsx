@@ -41,6 +41,22 @@ describe('RangePresets', () => {
     expect(onPresetChange).toHaveBeenCalledExactlyOnceWith(preset)
   })
 
+  it('should list the windows longest first, down to the device-scale ones', () => {
+    // Act
+    render(<RangePresets selectedPreset="all" onPresetChange={vi.fn()} />)
+
+    // Assert
+    expect(presetButtons().map((button) => button.textContent)).toEqual([
+      'All',
+      '5y',
+      '1y',
+      '90d',
+      '28d',
+      '7d',
+      '24h',
+    ])
+  })
+
   it('should label the default preset "All" and name the group for assistive tech', () => {
     // Act
     render(<RangePresets selectedPreset="all" onPresetChange={vi.fn()} />)

@@ -19,8 +19,8 @@ lives in each domain package.
 - `src/selection-url.ts` — `encodeSelection` / `decodeSelection`: series ids
   (opaque here, in selection order), the range preset and the patient as query
   parameters.
-- `src/time-range.ts` — the range presets (`all`, `5y`, `1y`, `90d`) and
-  `xDomain`, the window a preset selects.
+- `src/time-range.ts` — the range presets (`all`, `5y`, `1y`, `90d`, `28d`,
+  `7d`, `24h`) and `xDomain`, the window a preset selects.
 
 ## Rules
 

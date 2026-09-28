@@ -9,6 +9,9 @@ const PRESET_LABELS: Readonly<Record<RangePreset, string>> = {
   '5y': '5y',
   '1y': '1y',
   '90d': '90d',
+  '28d': '28d',
+  '7d': '7d',
+  '24h': '24h',
 }
 
 /** The buttons, in core's picker order. */

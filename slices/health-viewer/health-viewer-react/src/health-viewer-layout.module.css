@@ -55,11 +55,19 @@
   min-width: 0;
 }
 
+/*
+ * The seven presets outgrow a small phone's column, so the row scrolls
+ * sideways there rather than overflowing the page. The padding, cancelled by
+ * the negative margin, leaves room for the buttons' focus rings.
+ */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-5);
+  overflow-x: auto;
+  padding: var(--space-1);
+  margin: calc(-1 * var(--space-1));
 }
 
 .status {
