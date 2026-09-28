@@ -105,6 +105,9 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^6.1.1
       version: 6.1.1
+    acorn:
+      specifier: ^8.18.0
+      version: 8.18.0
     ajv:
       specifier: ^8.20.0
       version: 8.20.0
@@ -141,6 +144,9 @@ catalogs:
     tundra-css:
       specifier: ^0.14.0
       version: 0.14.0
+    typescript-es5:
+      specifier: npm:typescript@5.9.3
+      version: 5.9.3
     vite:
       specifier: npm:@voidzero-dev/vite-plus-core@0.3.2
       version: 0.3.2
@@ -246,6 +252,8 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
 
+  apps/fhir-sync-pebble: {}
+
   apps/fhir-sync-pebble-web:
     dependencies:
       '@effect/platform':
@@ -333,6 +341,42 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.3.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
+  apps/fhir-sync-pebble/pkjs:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      acorn:
+        specifier: 'catalog:'
+        version: 8.18.0
+      fhir-sync-pebble-core:
+        specifier: workspace:*
+        version: link:../../../slices/fhir-sync-pebble/fhir-sync-pebble-core
+      typescript-es5:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
+  apps/fhir-sync-pebble/test:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-sync-pebble-core:
+        specifier: workspace:*
+        version: link:../../../slices/fhir-sync-pebble/fhir-sync-pebble-core
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
 
   apps/github-pages:
     devDependencies:

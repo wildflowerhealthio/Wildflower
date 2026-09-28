@@ -1,0 +1,5 @@
+build/
+# waf names its lock file after the host OS (.lock-waf_darwin_build, .lock-waf_linux_build).
+.lock-waf*
+# The PebbleKit JS bundle, built from pkjs/ by the wscript (`vp pack`).
+src/pkjs/index.js

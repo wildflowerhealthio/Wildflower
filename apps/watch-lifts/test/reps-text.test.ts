@@ -1,60 +1,39 @@
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 // reps-text.c is the watch's pure formatting code. The Pebble SDK isn't
-// needed to test it: build it with the host C compiler (in C99, as the SDK
-// compiles apps), under AddressSanitizer and UBSan so an overflow fails the
-// test rather than passing by luck, and drive it through reps-text-driver.c.
+// needed to test it: buildHostCDriver compiles it with the host C compiler
+// under the sanitizers, driven through reps-text-driver.c.
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 
-let buildDir: string
-let driverPath: string
+let driver: HostCDriver
 /** MAX_SETS from src/c/state.h, read from the driver in beforeAll. */
 let maxSets: number
 /** REPS_TEXT_SIZE from reps-text.h less the NUL: the longest reps text. */
 let maxRepsTextLength: number
 
 beforeAll(() => {
-  buildDir = mkdtempSync(join(tmpdir(), 'watch-lifts-reps-text-'))
-  driverPath = join(buildDir, 'reps-text-driver')
-  execFileSync(
-    'cc',
-    [
-      '-std=c99',
-      '-Wall',
-      '-Wextra',
-      '-Werror',
-      '-g',
-      '-fsanitize=address,undefined',
-      '-fno-sanitize-recover=all',
-      '-o',
-      driverPath,
+  driver = buildHostCDriver({
+    name: 'watch-lifts-reps-text',
+    sources: [
       join(packageDir, 'test/reps-text-driver.c'),
       join(packageDir, 'src/c/windows/exercise-detail-window/reps-text.c'),
     ],
-    { stdio: 'inherit' }
-  )
-  const [sets, repsTextSize] = run('sizes').split(' ').map(Number)
+  })
+  const [sets, repsTextSize] = driver.run('sizes').split(' ').map(Number)
   maxSets = sets
   maxRepsTextLength = repsTextSize - 1
 })
 
 afterAll(() => {
-  rmSync(buildDir, { recursive: true, force: true })
+  driver.dispose()
 })
 
-/** Runs one driver command and returns its output line, trailing spaces kept. */
-const run = (command: string): string =>
-  execFileSync(driverPath, { input: `${command}\n`, encoding: 'utf8' }).replace(/\n$/, '')
-
-const formatReps = (reps: ReadonlyArray<number>): string => run(['reps', ...reps].join(' '))
-const formatWeight = (weight: number): string => run(`weight ${weight}`)
+const formatReps = (reps: ReadonlyArray<number>): string => driver.run(['reps', ...reps].join(' '))
+const formatWeight = (weight: number): string => driver.run(`weight ${weight}`)
 
 /** What the watch should show for reps that fit: each count followed by two spaces. */
 const expectedReps = (reps: ReadonlyArray<number>): string =>

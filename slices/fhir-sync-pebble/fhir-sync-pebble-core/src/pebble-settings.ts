@@ -3,6 +3,7 @@ import { trimTrailingSlashes } from 'fhir-r4/clients'
 import { HumanName } from 'fhir-r4/data-types'
 
 import type * as PatientSummary from './patient-summary.ts'
+import type * as PhoneSettings from './phone-settings.ts'
 
 /**
  * What the watch receives: everything its PebbleKit JS needs to sync the data
@@ -17,8 +18,12 @@ import type * as PatientSummary from './patient-summary.ts'
  * {@link Connection}), and the patient the user then picks on the settings page
  * supplies the id, name and birth date ({@link withPatient}).
  *
- * The JSON {@link toJson} writes is the wire shape the watchapp's
- * `webviewclosed` handler parses; change the two together.
+ * The JSON {@link toJson} writes is the wire shape the watchapp's PebbleKit JS
+ * parses with `PhoneSettings.decodeResponse`, which can't use this Schema (the
+ * phone's runtime is ES5, and Effect needs ES2015). The Schema is pinned to
+ * `PhoneSettings.Settings`, so a field changed on one side and not the other
+ * fails to compile, and `phone-settings.test.ts` round-trips one through the
+ * other.
  *
  * @packageDocumentation
  */
@@ -28,7 +33,7 @@ const ConnectionSchema = Schema.Struct({
   accessToken: Schema.NonEmptyString,
   /**
    * The FHIR base URL the token was granted for, without trailing slashes;
-   * Observations are POSTed under it.
+   * the sync's transaction Bundle is POSTed to it.
    */
   fhirBaseUrl: Schema.NonEmptyString,
 })
@@ -36,15 +41,14 @@ const ConnectionSchema = Schema.Struct({
 /** What the SMART grant carries: the token and the server it was granted for. */
 type Connection = typeof ConnectionSchema.Type
 
-const PebbleSettingsSchema = Schema.Struct({
-  /** The logical id of the patient the user picked. */
+/**
+ * The settings as the watchapp receives them. Pinned to
+ * `PhoneSettings.Settings`, where the fields are documented: `Schema.Schema`
+ * is invariant in its type, so the two must match exactly.
+ */
+const PebbleSettingsSchema: Schema.Schema<PhoneSettings.Settings> = Schema.Struct({
   patientId: Schema.NonEmptyString,
-  /** The patient's display name, `fhir-r4`'s `HumanName.displayName`; `null` when the record has none. */
   patientName: Schema.NullOr(Schema.String),
-  /**
-   * The patient's birth date as the server wrote it (`YYYY-MM-DD`, or a partial
-   * `YYYY-MM` / `YYYY`); `null` when the record has none.
-   */
   patientBirthDate: Schema.NullOr(Schema.String),
   accessToken: Schema.NonEmptyString,
   fhirBaseUrl: Schema.NonEmptyString,
@@ -75,9 +79,8 @@ const decodeConnection = Schema.decodeUnknownEither(ConnectionSchema)
  * @remarks
  * The base URL is the one the handshake named, trimmed by `fhir-r4`'s
  * `trimTrailingSlashes` — the rule the page's own reads go through — so the
- * watch, which appends `/Observation` to it, addresses the server as the page
- * did. A server entered as `https://fhir.example/r4/` would otherwise have it
- * POST to `…/r4//Observation`.
+ * watch, which POSTs its transaction Bundle to it, addresses the server as the
+ * page did.
  */
 const fromGrant = (grant: Grant): Either.Either<Connection, MissingGrantError> =>
   Either.mapLeft(

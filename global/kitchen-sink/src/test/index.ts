@@ -1,3 +1,5 @@
+export { buildHostCDriver } from './host-c-driver.ts'
+export type { HostCDriver, HostCDriverSources } from './host-c-driver.ts'
 export * as LoggingLayerTest from './logging-layer-test.ts'
 export { numRunsFor } from './num-runs-for.ts'
 export { utilityExpectations } from './utility-expectations.ts'
