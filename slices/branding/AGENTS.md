@@ -132,7 +132,7 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
   the chrome — header, footer, brand bar, icon, layout tokens — is made once, in
   this slice, and every surface picks it up. Both the homepage and the apps show
-  `HEADER_NAV_LINKS` (direct links into the four apps); only href resolution
+  `HEADER_NAV_LINKS` (direct links into the six apps); only href resolution
   differs by `NavContext`. The `SiteFooter` is the minimal "not a company"
   footer (paragraph + contact + mono stamp) carrying `id="note"`; the homepage's
   `app.test.tsx` asserts an element exists for every `MARKETING_ANCHORS` id
