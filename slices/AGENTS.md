@@ -30,7 +30,8 @@ axis — see [health-viewer/AGENTS.md](./health-viewer/AGENTS.md). Like
 `http-extraction`, it layers a domain-free vocabulary under per-domain packages:
 `health-viewer-fundamentals` holds the plot vocabulary and chart math (point and
 level series, value axes, the crosshair), `health-viewer-observations` reads FHIR
-`Observation`s into it, and `health-viewer-core` assembles the sources with the
+`Observation`s into it, `health-viewer-medications` reads `medication-core`'s
+dose regimens into it, and `health-viewer-core` assembles the sources with the
 catalogue, range presets and the URL codec a shared link round-trips through —
 all pure functions, property-tested without a DOM.
 

@@ -8,8 +8,8 @@ lives in each domain package.
 
 ## Shape
 
-- `src/series-sources.ts` — `SERIES_SOURCES` (the closed list: only
-  `observationSource` today), `readRecord` (hands each source its resources and
+- `src/series-sources.ts` — `SERIES_SOURCES` (the closed list:
+  `observationSource`, then `medicationSource`), `readRecord` (hands each source its resources and
   files every series under the group the source names, summing the `undated` /
   `dropped` accounting), `CATALOG_GROUPS` (each source's groups, source by
   source) and `isKnownSeriesId` (some source can read the id).
@@ -29,9 +29,8 @@ lives in each domain package.
   stay distinct across sources — `series-sources.test.ts` checks both.
 - **Ids are opaque here.** The codec keeps an `s` parameter only when some
   source's `parseSeriesId` reads it, and each parser only reads the spelling
-  its own `seriesIdOf` writes. An id whose source is not assembled — a
-  medication `m:` id until the medication source lands — is dropped like any
-  other stale entry, never raised.
+  its own `seriesIdOf` writes. An id whose source is not assembled — an
+  unknown prefix — is dropped like any other stale entry, never raised.
 - **Range presets stay here, not in fundamentals.** Which windows the viewer
   offers is a product choice the URL codec validates against, not plot
   vocabulary; the `TimeDomain` they produce is fundamentals'.
@@ -48,3 +47,4 @@ lives in each domain package.
 - [slices/health-viewer/AGENTS.md](../AGENTS.md) — the slice and its packages.
 - [health-viewer-fundamentals AGENTS.md](../health-viewer-fundamentals/AGENTS.md)
 - [health-viewer-observations AGENTS.md](../health-viewer-observations/AGENTS.md)
+- [health-viewer-medications AGENTS.md](../health-viewer-medications/AGENTS.md)

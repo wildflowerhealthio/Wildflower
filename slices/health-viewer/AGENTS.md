@@ -13,6 +13,7 @@ package per kind of record, and an assembly on top.
 health-viewer-fundamentals   plot vocabulary and chart math; imports no slice
       ▲
 health-viewer-observations   FHIR R4 Observation → PointSeries
+health-viewer-medications    medication-core DoseRegimen → LevelSeries
       ▲
 health-viewer-core           closed list of sources, catalogue, URL codec, range presets
 ```
@@ -27,15 +28,20 @@ health-viewer-core           closed list of sources, catalogue, URL codec, range
   `observationSource`: FHIR R4 `Observation`s read into point series, the `o:`
   id grammar, and the catalogue grouping by `Observation.category`. See its
   [AGENTS.md](./health-viewer-observations/AGENTS.md).
+- **`health-viewer-medications`** — the medication source,
+  `medicationSource`: `MedicationRequest`s read through `medication-core`'s
+  dose regimens into level series — one per medication, dose unit and dose
+  basis, each level ending where the next request starts — the `m:` id
+  grammar, and the Medications catalogue group. See its
+  [AGENTS.md](./health-viewer-medications/AGENTS.md).
 - **`health-viewer-core`** — the assembly: `SERIES_SOURCES` and `readRecord`,
   the catalogue panel's grouping and search, the range presets, and the URL
   codec a shared link round-trips through. See its
   [AGENTS.md](./health-viewer-core/AGENTS.md).
 
-The medication source (dose regimens read into level series under `m:`), the
-React layer, and the app route are not built yet. A medication source is a new
-package beside `health-viewer-observations` that exports a `SeriesSource` and
-joins `SERIES_SOURCES`.
+The React layer and the app route are not built yet. A new kind of record is
+a new package beside `health-viewer-observations` that exports a
+`SeriesSource` and joins `SERIES_SOURCES`.
 
 ## Rules
 
@@ -49,15 +55,17 @@ joins `SERIES_SOURCES`.
   not re-derive any of it, and it never reads a domain field.
 - **Fundamentals imports from no slice**, and depends only on `effect` and
   `kitchen-sink`. A domain package adds the resource package it reads
-  (`health-viewer-observations` → `fhir-r4`).
+  (`health-viewer-observations` → `fhir-r4`; `health-viewer-medications` →
+  `medication-core`, which owns reading a regimen off a request).
 - **Series ids are external contract.** They are what a shared URL carries, so
   changing a domain's key grammar, its prefix, or `SeriesId`'s escaping
   invalidates every link a patient has already saved. Each source's
   `parseSeriesId` is the exact inverse of its `seriesIdOf` and never throws — a
   URL is user-editable, so a malformed entry is dropped, not raised.
 - **The unit is part of a series' identity.** The same LOINC code reported in
-  `mmol/L` and in `mg/dL` is two series. One line that silently changes scale
-  mid-plot is a clinical hazard, not a convenience.
+  `mmol/L` and in `mg/dL` is two series, and so are one drug's doses per
+  administration and per day. One line that silently changes scale mid-plot is
+  a clinical hazard, not a convenience.
 - **Nothing disappears silently.** Every source's `read` returns `undated` and
   `dropped` counts alongside its series, every input moves at most one of them,
   and `readRecord` carries them up, so the UI can say what it could not plot.

@@ -1,8 +1,8 @@
 {
-  "name": "health-viewer-core",
+  "name": "health-viewer-medications",
   "version": "0.0.0",
   "private": true,
-  "description": "The health viewer's assembly: the closed list of domain sources a record is read through (observations, medications), the catalogue panel's grouping and search, the x-axis range presets, and the URL codec a shared link round-trips through. Chart math lives in health-viewer-fundamentals; what a record means lives in each domain package. No DOM, no platform imports.",
+  "description": "The health viewer's medication source: FHIR R4 `MedicationRequest`s read through medication-core's dose regimens into health-viewer-fundamentals `LevelSeries` (one step line per medication, dose unit and dose basis), the `m:` series-id grammar, and the Medications catalogue group — exported as one `SeriesSource` value. No DOM, no React.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -25,8 +25,6 @@
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "health-viewer-fundamentals": "workspace:*",
-    "health-viewer-medications": "workspace:*",
-    "health-viewer-observations": "workspace:*",
     "kitchen-sink": "workspace:*",
     "medication-core": "workspace:*",
     "typescript": "catalog:",
@@ -35,10 +33,8 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "fhir-r4": "workspace:*",
     "health-viewer-fundamentals": "workspace:*",
-    "health-viewer-medications": "workspace:*",
-    "health-viewer-observations": "workspace:*",
+    "kitchen-sink": "workspace:*",
     "medication-core": "workspace:*"
   }
 }

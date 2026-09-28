@@ -45,7 +45,7 @@ const encodeSelection = (selection: Selection): URLSearchParams => {
  * outlives the series it names, so one stale `s` must not cost the reader the
  * rest of their link. An `s` survives when some source can read it
  * (`isKnownSeriesId`) — so an id whose source the viewer does not assemble,
- * such as a medication id before the medication source exists, is dropped.
+ * or that its source would not have written, is dropped.
  * An absent or bad `r` means {@link DEFAULT_RANGE}.
  */
 const decodeSelection = (params: URLSearchParams): Selection => {

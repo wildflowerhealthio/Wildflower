@@ -2,6 +2,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { medicationSource } from 'health-viewer-medications'
 import { observationSource } from 'health-viewer-observations'
 import {
   DEFAULT_RANGE,
@@ -19,10 +20,19 @@ const RUNS = numRunsFor({ base: 200 })
 const field = fc.oneof(fc.stringMatching(/^[|\\~a-z ]{0,10}$/), fc.string({ maxLength: 10 }))
 const nullableField = fc.option(field, { nil: null })
 
-/** An id some assembled source can read — every source the viewer has is an observation one. */
-const seriesIdArb: fc.Arbitrary<string> = fc
-  .record({ system: nullableField, code: field, unit: nullableField })
-  .map(observationSource.seriesIdOf)
+/** An id some assembled source can read: an observation's or a medication's. */
+const seriesIdArb: fc.Arbitrary<string> = fc.oneof(
+  fc
+    .record({ system: nullableField, code: field, unit: nullableField })
+    .map(observationSource.seriesIdOf),
+  fc
+    .record({
+      medication: field,
+      doseUnit: nullableField,
+      doseBasis: fc.constantFrom('administration' as const, 'd' as const),
+    })
+    .map(medicationSource.seriesIdOf)
+)
 
 const selection: fc.Arbitrary<Selection> = fc.record({
   series: fc.array(seriesIdArb, { maxLength: 4 }),
@@ -90,9 +100,9 @@ describe('encodeSelection / decodeSelection', () => {
       )
     })
 
-    test('an id no assembled source reads is dropped — a medication id included, for now', () => {
+    test('an id no assembled source reads is dropped', () => {
       const params = new URLSearchParams()
-      for (const id of ['m:insulin|mg', 'x:a|b|c', 'o:a|b', 'o:a\\x|b|c']) {
+      for (const id of ['m:insulin|mg', 'm:insulin|mg|day', 'x:a|b|c', 'o:a|b', 'o:a\\x|b|c']) {
         params.append(SERIES_PARAM, id)
       }
       expect(decodeSelection(params).series).toEqual([])
