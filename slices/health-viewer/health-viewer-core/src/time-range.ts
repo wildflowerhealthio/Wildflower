@@ -1,4 +1,5 @@
 import { DateTime } from 'effect'
+import type { TimeDomain } from 'health-viewer-fundamentals'
 
 /** The time windows the viewer offers along the x axis. */
 type RangePreset = 'all' | '5y' | '1y' | '90d'
@@ -23,9 +24,6 @@ const PRESET_LOOKBACK: Readonly<
   '90d': { days: 90 },
 }
 
-/** A closed time interval, `[start, end]`, with `start <= end`. */
-type TimeDomain = readonly [DateTime.Utc, DateTime.Utc]
-
 /**
  * The x-axis window a preset selects.
  *
@@ -40,25 +38,13 @@ type TimeDomain = readonly [DateTime.Utc, DateTime.Utc]
 const xDomain = (
   preset: RangePreset,
   now: DateTime.Utc,
-  dataExtent: TimeDomain | null
-): TimeDomain => {
+  dataExtent: TimeDomain.TimeDomain | null
+): TimeDomain.TimeDomain => {
   if (preset === 'all') {
     return dataExtent ?? [DateTime.subtract(now, PRESET_LOOKBACK['1y']), now]
   }
   return [DateTime.subtract(now, PRESET_LOOKBACK[preset]), now]
 }
 
-/** The points inside `domain`, endpoints included, in input order. */
-const pointsWithin = <A extends { readonly time: DateTime.Utc }>(
-  points: readonly A[],
-  domain: TimeDomain
-): readonly A[] => {
-  const [start, end] = domain
-  return points.filter(
-    (point) =>
-      point.time.epochMillis >= start.epochMillis && point.time.epochMillis <= end.epochMillis
-  )
-}
-
-export type { RangePreset, TimeDomain }
-export { PRESET_LOOKBACK, RANGE_PRESETS, isRangePreset, pointsWithin, xDomain }
+export type { RangePreset }
+export { PRESET_LOOKBACK, RANGE_PRESETS, isRangePreset, xDomain }

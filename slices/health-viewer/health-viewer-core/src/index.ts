@@ -1,63 +1,23 @@
 /**
- * The pure logic behind the synthesized health viewer: the plottable series
- * model, the FHIR R4 `Observation` → series adapter, axis assignment and value
- * domains, the x-axis range presets, the catalogue panel's grouping and
- * search, the URL codec a shared link round-trips through, and the crosshair
- * lookup. No DOM, no React, no platform imports — the React layer renders what
- * this package computes.
+ * The health viewer's assembly: the closed list of domain sources a patient's
+ * record is read through, the catalogue panel's grouping and search, the
+ * x-axis range presets, and the URL codec a shared link round-trips through.
+ * No DOM, no React, no platform imports.
  *
- * The dose-regimen → {@link MedicationSeries} mapping is not here: the segment
- * shape it produces is defined in this package so the mapping only has to
- * build it.
+ * The chart's vocabulary and math — series, levels, value axes, the
+ * crosshair — are `health-viewer-fundamentals`'; what a record means is each
+ * domain package's (`health-viewer-observations`).
  *
  * @packageDocumentation
  */
-export type {
-  DoseSegment,
-  MedicationSeries,
-  MedicationSeriesKey,
-  ObservationSeries,
-  ObservationSeriesKey,
-  Series,
-  SeriesKey,
-  SeriesKind,
-  SeriesPoint,
-} from './series.ts'
-export { isMedicationSeries, isObservationSeries, parseSeriesId, seriesId } from './series.ts'
+export type { FiledSeries, RecordReading, RecordResources } from './series-sources.ts'
+export { CATALOG_GROUPS, SERIES_SOURCES, isKnownSeriesId, readRecord } from './series-sources.ts'
 
-export type { ObservationResource, ObservationSeriesResult } from './observation-series.ts'
-export { EXCLUDED_STATUSES, LOINC_SYSTEM, observationsToSeries } from './observation-series.ts'
-
-export type { AxisSlot, Domain } from './axis-assignment.ts'
-export {
-  AXIS_CAP,
-  assignAxes,
-  denormalise,
-  domainFor,
-  niceDomain,
-  normalise,
-  ticksFor,
-} from './axis-assignment.ts'
-
-export type { RangePreset, TimeDomain } from './time-range.ts'
-export {
-  PRESET_LOOKBACK,
-  RANGE_PRESETS,
-  isRangePreset,
-  pointsWithin,
-  xDomain,
-} from './time-range.ts'
+export type { RangePreset } from './time-range.ts'
+export { PRESET_LOOKBACK, RANGE_PRESETS, isRangePreset, xDomain } from './time-range.ts'
 
 export type { CatalogGroup, CatalogRow } from './catalog.ts'
-export {
-  CATEGORY_ORDER,
-  GROUP_LABELS,
-  MEDICATIONS_GROUP,
-  OTHER_GROUP,
-  groupForPanel,
-  matchesSearch,
-  normaliseForSearch,
-} from './catalog.ts'
+export { groupForPanel, matchesSearch, normaliseForSearch } from './catalog.ts'
 
 export type { Selection } from './selection-url.ts'
 export {
@@ -68,6 +28,3 @@ export {
   decodeSelection,
   encodeSelection,
 } from './selection-url.ts'
-
-export type { ValueAt } from './values-at.ts'
-export { pointAt, segmentAt, valueAt } from './values-at.ts'
