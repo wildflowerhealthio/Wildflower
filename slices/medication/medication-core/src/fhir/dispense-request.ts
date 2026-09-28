@@ -1,4 +1,4 @@
-import { Array as Arr, DateTime, Option, pipe } from 'effect'
+import { Array as Arr, DateTime, Option, pipe, Record as EffectRecord } from 'effect'
 import { Extension, WildflowerExtension } from 'fhir-r4/data-types'
 import type { MedicationRequest } from 'fhir-r4/resources'
 import { supplyDurationToParts } from 'fhir-utility'
@@ -6,7 +6,8 @@ import { nextFillDate } from 'medication-calendar-core'
 
 /**
  * What `dispenseRequest` says about supply: repeats, when the next fill falls
- * due, and when the whole authorized supply runs out.
+ * due, how many days one fill lasts, and when the whole authorized supply runs
+ * out.
  */
 
 /** `dispenseRequest.numberOfRepeatsAllowed` — the total repeats authorized. */
@@ -75,4 +76,52 @@ const authorizedSupplyEndOf = (
   return Number.isFinite(supplyEnd.epochMillis) ? supplyEnd : null
 }
 
-export { authorizedSupplyEndOf, nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf }
+/**
+ * Days per `DateTime.add` part, for converting a supply duration read by
+ * `supplyDurationToParts` to days. A month is taken as 30 days, as
+ * `timing.ts`'s `DAYS_PER_PERIOD_UNIT` takes it, and a year as 365.
+ */
+const DAYS_PER_SUPPLY_PART: Readonly<Record<keyof DateTime.DateTime.PartsForMath, number>> = {
+  millis: 1 / 86_400_000,
+  seconds: 1 / 86_400,
+  minutes: 1 / 1440,
+  hours: 1 / 24,
+  days: 1,
+  weeks: 7,
+  months: 30,
+  years: 365,
+}
+
+/** The number of days a set of `DateTime.add` parts spans, by {@link DAYS_PER_SUPPLY_PART}. */
+const supplyPartsToDays = (supplyParts: Partial<DateTime.DateTime.PartsForMath>): number =>
+  EffectRecord.reduce(
+    DAYS_PER_SUPPLY_PART,
+    0,
+    (days, daysPerPart, part) => days + (supplyParts[part] ?? 0) * daysPerPart
+  )
+
+/**
+ * How many days one fill's supply lasts: `dispenseRequest.expectedSupplyDuration`
+ * read by `fhir-utility`'s `supplyDurationToParts` — the parser
+ * {@link authorizedSupplyEndOf} advances by — and converted to days by
+ * {@link DAYS_PER_SUPPLY_PART}.
+ *
+ * @returns `null` when there is no usable supply duration, or it comes to no
+ *   positive, finite number of days
+ */
+const supplyDaysPerFillOf = (request: MedicationRequest.Type): number | null => {
+  const expectedSupplyDuration = request.dispenseRequest?.expectedSupplyDuration ?? null
+  if (expectedSupplyDuration === null) return null
+  const supplyParts = supplyDurationToParts(expectedSupplyDuration)
+  if (supplyParts === null) return null
+  const supplyDays = supplyPartsToDays(supplyParts)
+  return supplyDays > 0 && Number.isFinite(supplyDays) ? supplyDays : null
+}
+
+export {
+  authorizedSupplyEndOf,
+  nextFillDateOf,
+  repeatsAllowedOf,
+  repeatsAvailableOf,
+  supplyDaysPerFillOf,
+}
