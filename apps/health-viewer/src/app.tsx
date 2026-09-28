@@ -9,15 +9,7 @@ import {
   useLaunchFailureRedirect,
   useSmartHandshake,
 } from 'fhir-r4-react/smart'
-import {
-  type RangePreset,
-  type Selection,
-  decodeSelection,
-  encodeSelection,
-  groupForPanel,
-  readRecord,
-  xDomain,
-} from 'health-viewer-core'
+import { type RangePreset, groupForPanel, readRecord, xDomain } from 'health-viewer-core'
 import { Series, ValueAxis } from 'health-viewer-fundamentals'
 import { HealthViewerLayout, MultiAxisChart, RangePresets, SeriesPanel } from 'health-viewer-react'
 import type { JSX } from 'react'
@@ -26,6 +18,7 @@ import { ErrorBanner } from 'react-tundraish'
 
 import { patientLineOf } from './patient-line.ts'
 import { PatientPicker, type SmartClient } from './patient-picker.tsx'
+import { useUrlSelection } from './use-url-selection.ts'
 import styles from './app.module.css'
 
 /** A failed read, as one line: what could not be loaded, and why. */
@@ -40,13 +33,6 @@ const ErrorLine = ({
     Could not load {subject}: {error instanceof Error ? error.message : String(error)}
   </p>
 )
-
-/** Put `selection` in the address bar, replacing the current entry's query. */
-const writeSelectionToUrl = (selection: Selection): void => {
-  const url = new URL(window.location.href)
-  url.search = encodeSelection(selection).toString()
-  window.history.replaceState(window.history.state, '', url)
-}
 
 /** `amount` with its noun, pluralised with a plain `s`. */
 const formatCount = (amount: number, noun: string): string =>
@@ -123,12 +109,12 @@ const PatientLine = ({
  * the page only composes: `groupForPanel` for the panel, `ValueAxis.assign`
  * for the chart's axes, `xDomain` for its window.
  *
- * The selection and the range live only in the URL: read once with
- * `decodeSelection`, written back with `encodeSelection` through
- * `history.replaceState` on every change. Once both reads have finished
- * paging, selected ids this record holds no series for — a link shared from
- * another patient's record — are dropped from the selection and the URL; not
- * before, or a series on a later page would be lost.
+ * The selection lives only in the URL ({@link useUrlSelection}); every change
+ * — a series, a range, a pick — is an updater over the latest selection, so
+ * changes made in one tick compose. Once both reads have finished paging,
+ * selected ids this record holds no series for — a link shared from another
+ * patient's record — are dropped from the selection and the URL; not before,
+ * or a series on a later page would be lost.
  */
 export const App = (): JSX.Element => {
   const handshake = useSmartHandshake()
@@ -137,20 +123,12 @@ export const App = (): JSX.Element => {
   useLaunchFailureRedirect(handshake)
   const client = handshake.kind === 'ready' ? handshake.client : undefined
 
-  // The selection as the URL last carried it. What the page reads is
-  // `selection`, below: this, reconciled against the record once it is whole.
-  const [urlSelection, setUrlSelection] = useState<Selection>(() =>
-    decodeSelection(new URLSearchParams(window.location.search))
-  )
-  const commitSelection = useCallback((next: Selection) => {
-    setUrlSelection(next)
-    writeSelectionToUrl(next)
-  }, [])
+  const { selection, updateSelection } = useUrlSelection()
   // The instant the page opened: the right edge of every bounded range, held
   // still so the chart's window does not move on each render.
   const [openedAt] = useState(() => DateTime.unsafeNow())
 
-  const patientId = client?.patient.id ?? urlSelection.patient
+  const patientId = client?.patient.id ?? selection.patient
 
   const observations = useInfiniteQuery({
     queryKey: ['observations', patientId],
@@ -226,21 +204,18 @@ export const App = (): JSX.Element => {
     !observations.hasNextPage &&
     !medicationRequests.hasNextPage
 
-  // The selection reconciled against the whole record, once there is one:
-  // ids this record holds no series for are dropped. The same object as
-  // `urlSelection` whenever nothing is dropped.
-  const selection = useMemo((): Selection => {
-    if (!recordIsComplete) return urlSelection
-    const heldSeriesIds = urlSelection.series.filter((seriesId) => seriesById.has(seriesId))
-    return heldSeriesIds.length === urlSelection.series.length
-      ? urlSelection
-      : { ...urlSelection, series: heldSeriesIds }
-  }, [recordIsComplete, urlSelection, seriesById])
-  // Carry a reconciliation into the address bar. Inert on mount, when the two
-  // are one object — the URL may still hold the OAuth callback then.
+  // Once the record is whole, drop selected ids it holds no series for. An
+  // updater over the latest selection that returns it unchanged when nothing
+  // is dropped, so it re-renders and writes the URL only when it must.
   useEffect(() => {
-    if (selection !== urlSelection) writeSelectionToUrl(selection)
-  }, [selection, urlSelection])
+    if (!recordIsComplete) return
+    updateSelection((latestSelection) => {
+      const heldSeriesIds = latestSelection.series.filter((seriesId) => seriesById.has(seriesId))
+      return heldSeriesIds.length === latestSelection.series.length
+        ? latestSelection
+        : { ...latestSelection, series: heldSeriesIds }
+    })
+  }, [recordIsComplete, seriesById, updateSelection])
 
   const selectedSeries = useMemo(
     () =>
@@ -258,21 +233,21 @@ export const App = (): JSX.Element => {
 
   const changeSelectedSeries = useCallback(
     (selectedSeriesIds: readonly string[]) => {
-      commitSelection({ ...selection, series: selectedSeriesIds })
+      updateSelection((latestSelection) => ({ ...latestSelection, series: selectedSeriesIds }))
     },
-    [selection, commitSelection]
+    [updateSelection]
   )
   const changeRange = useCallback(
     (range: RangePreset) => {
-      commitSelection({ ...selection, range })
+      updateSelection((latestSelection) => ({ ...latestSelection, range }))
     },
-    [selection, commitSelection]
+    [updateSelection]
   )
   const pickPatient = useCallback(
     (pickedPatientId: string) => {
-      commitSelection({ ...selection, patient: pickedPatientId })
+      updateSelection((latestSelection) => ({ ...latestSelection, patient: pickedPatientId }))
     },
-    [selection, commitSelection]
+    [updateSelection]
   )
 
   const observationsArePaging = observations.hasNextPage && !observations.isFetchNextPageError

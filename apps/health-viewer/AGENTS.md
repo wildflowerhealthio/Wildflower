@@ -18,12 +18,15 @@ same paged-read wiring and status vocabulary.
   `readRecord`, `groupForPanel`, `ValueAxis.assign`, `Series.extentOfAll`,
   `xDomain`. No domain package is imported here: `health-viewer-observations`
   and `health-viewer-medications` arrive through core.
-- **The URL is the selection's only home.** State is initialised from
-  `decodeSelection` and every change is written straight back with
-  `encodeSelection` through `history.replaceState` (never `pushState` — a
-  checkbox is not a navigation). Nothing writes the URL on mount: before the
+- **The URL is the selection's only home.** `useUrlSelection` initialises from
+  `decodeSelection` and writes every change back with `encodeSelection`
+  through `history.replaceState` (never `pushState` — a checkbox is not a
+  navigation). Nothing writes the URL on mount: before the
   handshake completes the URL still carries the OAuth `code` / `state`
   fhirclient reads, and replacing the query would lose them.
+- **Every selection change is an updater.** Series, range, patient and the
+  reconciliation all go through `updateSelection((latest) => …)`, never a
+  copy of the selection a render saw, so changes made in one tick compose.
 - **Reconcile only a complete record.** Selected ids with no series are
   dropped once both reads have no next page — never while either is paging,
   where the series could be on a later page, and never after a failed later
@@ -37,6 +40,8 @@ same paged-read wiring and status vocabulary.
 
 ## Testing
 
+- `use-url-selection.test.ts` — the URL is left alone on mount, and two
+  updates issued from one render both land.
 - `app.test.tsx` stubs only the handshake. The page reads are the real
   `fhir-r4-react/smart` ones over a stub client whose `request` answers from a
   table of FHIR JSON by URL prefix, so decoding is exercised end to end. Series

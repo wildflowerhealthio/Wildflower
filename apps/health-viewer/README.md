@@ -55,9 +55,11 @@ then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call.
   lays them out for `SeriesPanel` (observation categories first, Medications
   last); the selected series, in selection order, go through `ValueAxis.assign`
   to `MultiAxisChart`, over `xDomain(range, now, Series.extentOfAll(selected))`.
-- **URL state.** The selection and the range live only in the URL: read once
-  with `decodeSelection`, written back with `encodeSelection` through
-  `history.replaceState` on every change. Once both reads have finished paging,
+- **URL state** (`src/use-url-selection.ts`). The selection, the range and
+  the patient live only in the URL: read once with `decodeSelection`, written
+  back with `encodeSelection` through `history.replaceState` after every
+  change. Every change is an updater over the latest selection, so two made
+  in one tick both land. Once both reads have finished paging,
   selected ids with no series in this record are dropped from the selection and
   the URL.
 - **Status**, in the medications app's vocabulary: `Loading…` until the first
