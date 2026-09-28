@@ -262,7 +262,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             "fhir-sync-pebble-dev",
             "FHIR Sync for Pebble (Dev)",
             // Mirrors the production `fhir-sync-pebble` client (migration
-            // `0017_seed_fhir_sync_pebble_client`, the `scope` in
+            // `0017_seed_fhir_sync_pebble_client`, widened by `0018`, the `scope` in
             // `apps/fhir-sync-pebble-web/src/config.ts`). Standalone-only, so
             // there is no `apps_rust::dev_seed` row: the app-relative entry
             // resolves to nothing and the absolute loopback root carries the
@@ -271,7 +271,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
                 "openid",
                 "fhirUser",
                 "system/Patient.rs",
-                "system/Observation.c",
+                "system/Observation.cu",
             ]
             .as_slice(),
             ports.fhir_sync_pebble_dev,

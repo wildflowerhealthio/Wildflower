@@ -300,7 +300,7 @@ mod tests {
     /// their published-site redirect by `0006`), the server-docs API console by
     /// `0007`, the Importer by `0008`, the OHIF imaging viewer by `0009`
     /// (re-seeded by `0016` on an install that skipped it), and FHIR Sync for
-    /// Pebble by `0017` — so a
+    /// Pebble by `0017` (its Observation scope widened by `0018`) — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -598,7 +598,7 @@ mod tests {
                 "openid".to_string(),
                 "fhirUser".to_string(),
                 "system/Patient.rs".to_string(),
-                "system/Observation.c".to_string(),
+                "system/Observation.cu".to_string(),
             ],
         );
     }
