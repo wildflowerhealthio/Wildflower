@@ -14,6 +14,7 @@ const SECTION_PATHS = {
   serverDocs: 'wildflower-server-docs',
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',
+  healthViewer: 'health-viewer-app',
   // The hosted copy of the wildflower-react owner UI, published cross-origin to
   // the API. `/app/` was chosen over `/wildflower-react/` and `/wildflower/`.
   app: 'app',
