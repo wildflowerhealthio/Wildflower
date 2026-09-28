@@ -12,6 +12,14 @@ import { scaleToDailyTotal } from './timing.ts'
 type DoseBasis = 'administration' | Extract<Timing.UnitOfTime, 'd'>
 
 /**
+ * How a {@link Dose} was obtained: `stated` by the first `dosageInstruction`'s
+ * `doseAndRate` (see {@link firstDoseOf}), or `amortized` — the dispensed
+ * supply spread evenly over the days it lasts, for a request that states no
+ * dose (see `amortized-dose.ts`).
+ */
+type DoseDerivation = 'stated' | 'amortized'
+
+/**
  * The dose one request prescribes. `amount` is the value a chart plots and
  * `rangeLow` the bottom of a `doseRange` band; both are stated on the basis
  * `per` names.
@@ -23,6 +31,8 @@ interface Dose {
   readonly unit: string | null
   /** Whether `amount` and `rangeLow` are per administration or a daily total. */
   readonly per: DoseBasis
+  /** Whether the dose is stated by the request or amortized over its dispensed supply. */
+  readonly derivation: DoseDerivation
 }
 
 /** A quantity's `unit`, else its UCUM `code`. */
@@ -61,6 +71,7 @@ const doseAndRateToDose = (
       rangeLow: null,
       unit: unitOrCodeOf(doseQuantity),
       per: 'administration',
+      derivation: 'stated',
     }
   }
   const rangeHigh = doseRange?.high ?? null
@@ -71,11 +82,12 @@ const doseAndRateToDose = (
     rangeLow: rangeLowAmountOf(doseRange?.low ?? null, rangeHighUnit),
     unit: rangeHighUnit,
     per: 'administration',
+    derivation: 'stated',
   }
 }
 
 /**
- * The dose the first `dosageInstruction`'s first `doseAndRate` prescribes, as
+ * The dose the first `dosageInstruction`'s first `doseAndRate` states, as
  * a daily total when the instruction's timing states a frequency per period
  * (see {@link scaleToDailyTotal}), else per administration.
  *
@@ -102,7 +114,8 @@ const firstDoseOf = (request: MedicationRequest.Type): Dose | null => {
         : scaleToDailyTotal(perAdministrationDose.rangeLow, timing),
     unit: perAdministrationDose.unit,
     per: 'd',
+    derivation: 'stated',
   }
 }
 
-export { firstDoseOf, type Dose, type DoseBasis }
+export { firstDoseOf, unitOrCodeOf, type Dose, type DoseBasis, type DoseDerivation }
