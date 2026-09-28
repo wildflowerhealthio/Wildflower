@@ -52,7 +52,9 @@ health-viewer-react          the Plot chart, series panel, range presets and pag
   It imports no domain package. See its
   [AGENTS.md](./health-viewer-react/AGENTS.md).
 
-The app route is not built yet. A new kind of record is a new package beside
+The app is [`apps/health-viewer`](../../apps/health-viewer/AGENTS.md)
+(`health-viewer-app`), which composes core and react around a SMART shell. A
+new kind of record is a new package beside
 `health-viewer-observations` that exports a
 `SeriesSource` and joins `SERIES_SOURCES`.
 

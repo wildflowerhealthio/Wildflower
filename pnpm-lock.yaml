@@ -426,6 +426,91 @@ importers:
         specifier: workspace:*
         version: link:../web-trace
 
+  apps/health-viewer:
+    dependencies:
+      '@fontsource-variable/atkinson-hyperlegible-mono':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/atkinson-hyperlegible-next':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.102.8(react@19.3.0)
+      branding-core:
+        specifier: workspace:*
+        version: link:../../slices/branding/branding-core
+      branding-react:
+        specifier: workspace:*
+        version: link:../../slices/branding/branding-react
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../slices/emr/fhir-r4
+      fhir-r4-react:
+        specifier: workspace:*
+        version: link:../../slices/emr/fhir-r4-react
+      health-viewer-core:
+        specifier: workspace:*
+        version: link:../../slices/health-viewer/health-viewer-core
+      health-viewer-fundamentals:
+        specifier: workspace:*
+        version: link:../../slices/health-viewer/health-viewer-fundamentals
+      health-viewer-react:
+        specifier: workspace:*
+        version: link:../../slices/health-viewer/health-viewer-react
+      medication-core:
+        specifier: workspace:*
+        version: link:../../slices/medication/medication-core
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../global/react-tundraish
+      smart-app-react:
+        specifier: workspace:*
+        version: link:../../slices/smart-app/smart-app-react
+      tundra-css:
+        specifier: 'catalog:'
+        version: 0.14.0
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.1.1(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(babel-plugin-react-compiler@1.0.0)
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
   apps/importer-web:
     dependencies:
       '@effect/platform':
