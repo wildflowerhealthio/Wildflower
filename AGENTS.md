@@ -117,6 +117,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md) — The Rust cache keys CI jobs share, and what forks them
 - [TypeScript CI Build Cache Explanation](./docs/TypeScript/CI%20Build%20Cache%20Explanation.md) — The `vp run pack` cache `ci-typescript.yml` restores and `ts-cache-warm.yml` warms on `main`
 - [Pebble CI Build Cache Explanation](./docs/Pebble/CI%20Build%20Cache%20Explanation.md) — The Pebble SDK install `ci-pebble.yml` caches through `.github/actions/setup-pebble-sdk`
+- [Pebble App Store Release Explanation](./docs/Pebble/App%20Store%20Release%20Explanation.md) — How a release reaches the Pebble app store unpublished, and the `PEBBLE_APPSTORE_REFRESH_TOKEN` secret
 
 ## Commands
 

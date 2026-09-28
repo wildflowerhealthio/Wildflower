@@ -341,4 +341,7 @@ README](../watch-lifts/README.md#ci).
 The `version` in `package.json` comes from the Tauri release: Tauri Release —
 Prepare writes it, less any prerelease suffix, and Publish attaches
 `fhir-sync-pebble-<version>.pbw` to the GitHub Release. Don't bump it by hand.
-See [`apps/watch-lifts`'s README](../watch-lifts/README.md#releases).
+For a non-prerelease Publish also uploads it to the app's Pebble app store
+listing as an unpublished release; it never creates the listing, and never
+publishes. See [`apps/watch-lifts`'s README](../watch-lifts/README.md#releases)
+and the [App Store Release Explanation](../../docs/Pebble/App%20Store%20Release%20Explanation.md).

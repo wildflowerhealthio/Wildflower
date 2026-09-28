@@ -53,7 +53,10 @@ app store keep the patch. Once the release PR merges, **Tauri Release — Publis
 builds both apps from the tag and attaches `watch-lifts-<version>.pbw` and
 `fhir-sync-pebble-<version>.pbw`, named with the full release version, to the
 draft GitHub Release. Its `platforms` input takes `pebble` to rebuild just
-these.
+these. For a non-prerelease it then uploads both to their Pebble app store
+listings as unpublished releases, which you publish from the store dashboard;
+the first release of each app is uploaded by hand. The secret it needs and why:
+[App Store Release Explanation](../../docs/Pebble/App%20Store%20Release%20Explanation.md).
 
 ## Target platforms
 

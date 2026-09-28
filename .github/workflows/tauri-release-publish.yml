@@ -8,11 +8,14 @@ name: Tauri Release — Publish
 # runners. `tauri-apps/tauri-action` uploads platform bundles to that release —
 # publish it manually once the assets look right. A Pebble job builds
 # `apps/watch-lifts` and `apps/fhir-sync-pebble`, one after the other on one
-# runner, and attaches their `.pbw`s to the same release. Two TestFlight
-# builds run in parallel with them, one iOS and one macOS, each signed with an
-# Apple Distribution certificate and uploaded via `altool`. The macOS
-# TestFlight build is a separate channel from the notarized Developer ID
-# bundle above: it is sandboxed and signed with different certificates — see
+# runner, and attaches their `.pbw`s to the same release; for a non-prerelease,
+# another then uploads each `.pbw` to its Pebble app store listing as an
+# unpublished release, to be published by hand from the store dashboard — see
+# docs/Pebble/App Store Release Explanation.md. Two TestFlight builds run in
+# parallel with them, one iOS and one macOS, each signed with an Apple
+# Distribution certificate and uploaded via `altool`. The macOS TestFlight
+# build is a separate channel from the notarized Developer ID bundle above: it
+# is sandboxed and signed with different certificates — see
 # docs/Rust/Apple Release Signing Explanation.md.
 #
 # Also exposes `workflow_dispatch` for two manual cases:
@@ -29,7 +32,9 @@ name: Tauri Release — Publish
 #     comma-separated list (e.g. `macos,ios`) to skip the ones that already
 #     succeeded. Tags cut before the Pebble apps were versioned with the
 #     release carry `0.0.0` in their manifests, which the Pebble job rejects,
-#     so leave `pebble` out when rebuilding one.
+#     so leave `pebble` out when rebuilding one. Including `pebble` also
+#     uploads both apps to the Pebble app store again, as another unpublished
+#     release of the same version; delete whichever one you don't want.
 
 on:
   pull_request:
@@ -785,3 +790,76 @@ jobs:
           gh release upload '${{ needs.prepare.outputs.tag }}' \
             '${{ steps.pbw-fhir-sync-pebble.outputs.path }}' \
             --clobber
+
+  publish-pebble-appstore:
+    name: Upload ${{ matrix.app }} to the Pebble app store
+    needs: [prepare, build-pebble]
+    # Prereleases stay out of the store. `pebble build` drops the suffix, so
+    # every beta of 1.2.3 is a `1.2.3` .pbw, and each would add another store
+    # release of 1.2.3 ahead of the real one.
+    if: ${{ !contains(needs.prepare.outputs.version, '-') }}
+    # build-pebble builds both apps in one job, so a failed build of either
+    # holds back both apps' uploads; re-running the failed jobs runs this one
+    # too.
+    strategy:
+      # One app's upload failing shouldn't stop the other's.
+      fail-fast: false
+      matrix:
+        app: [watch-lifts, fhir-sync-pebble]
+    runs-on: ubuntu-latest
+    # Only reads the tag; the workflow-wide `contents: write` isn't needed
+    # beside the store secret.
+    permissions:
+      contents: read
+    steps:
+      - name: Check for the app store token
+        id: gate
+        # Optional: without the secret the job passes and says why, so a
+        # fork or a release before the store is set up still goes green.
+        env:
+          PEBBLE_APPSTORE_REFRESH_TOKEN: ${{ secrets.PEBBLE_APPSTORE_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$PEBBLE_APPSTORE_REFRESH_TOKEN" ]]; then
+            echo "::notice::PEBBLE_APPSTORE_REFRESH_TOKEN is not set, so ${{ matrix.app }} was not uploaded to the Pebble app store. See docs/Pebble/App Store Release Explanation.md."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.gate.outputs.upload == 'true'
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+          # The upload script is all this job runs from the repository.
+          sparse-checkout: scripts/ci/pebble-appstore-upload.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      # The .pbw build-pebble attached to the GitHub Release, byte for byte,
+      # rather than a second build: `pebble publish` always rebuilds, one
+      # reason this job doesn't use it.
+      - name: Download .pbw artifact
+        if: steps.gate.outputs.upload == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: pebble-${{ matrix.app }}
+          path: ${{ runner.temp }}/pbw
+
+      - name: Upload to the Pebble app store, unpublished
+        # Adds a release to the app's existing listing and leaves it
+        # unpublished for a person to publish from the store dashboard. It
+        # never creates a listing: an app the store doesn't know fails here
+        # until its first release is uploaded by hand. Auth, and why not
+        # `pebble publish`: docs/Pebble/App Store Release Explanation.md.
+        if: steps.gate.outputs.upload == 'true'
+        env:
+          PEBBLE_APPSTORE_REFRESH_TOKEN: ${{ secrets.PEBBLE_APPSTORE_REFRESH_TOKEN }}
+          # The GitHub Release body: the release's CHANGELOG section.
+          RELEASE_NOTES: ${{ needs.prepare.outputs.release_body }}
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          ./scripts/ci/pebble-appstore-upload.sh \
+            "$RUNNER_TEMP/pbw/${{ matrix.app }}-$version.pbw" \
+            "$version"
