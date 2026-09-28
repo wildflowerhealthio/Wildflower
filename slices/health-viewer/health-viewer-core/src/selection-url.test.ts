@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { ValueAxis } from 'health-viewer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -35,7 +36,7 @@ const seriesIdArb: fc.Arbitrary<string> = fc.oneof(
 )
 
 const selection: fc.Arbitrary<Selection> = fc.record({
-  series: fc.array(seriesIdArb, { maxLength: 4 }),
+  series: fc.uniqueArray(seriesIdArb, { maxLength: ValueAxis.CAP }),
   range: fc.constantFrom(...RANGE_PRESETS),
   patient: fc.option(fc.string({ maxLength: 12 }), { nil: null }),
 })
@@ -62,12 +63,15 @@ describe('encodeSelection / decodeSelection', () => {
 
   test('series order is preserved — it is what decides axis sides', () => {
     fc.assert(
-      fc.property(fc.array(seriesIdArb, { minLength: 2, maxLength: 4 }), (ids) => {
-        const decoded = decodeSelection(
-          encodeSelection({ series: ids, range: 'all', patient: null })
-        )
-        expect(decoded.series).toEqual(ids)
-      }),
+      fc.property(
+        fc.uniqueArray(seriesIdArb, { minLength: 2, maxLength: ValueAxis.CAP }),
+        (ids) => {
+          const decoded = decodeSelection(
+            encodeSelection({ series: ids, range: 'all', patient: null })
+          )
+          expect(decoded.series).toEqual(ids)
+        }
+      ),
       { numRuns: RUNS }
     )
   })
@@ -102,6 +106,37 @@ describe('encodeSelection / decodeSelection', () => {
           // what must hold is that the good id is never lost.
           expect(decoded.series).toContain(id)
         }),
+        { numRuns: RUNS }
+      )
+    })
+
+    test('a repeated id keeps its first place and nothing else', () => {
+      fc.assert(
+        fc.property(
+          fc.uniqueArray(seriesIdArb, { minLength: 1, maxLength: ValueAxis.CAP }),
+          (ids) => {
+            const params = new URLSearchParams()
+            for (const id of [...ids, ...ids.toReversed()]) params.append(SERIES_PARAM, id)
+            expect(decodeSelection(params).series).toEqual(ids)
+          }
+        ),
+        { numRuns: RUNS }
+      )
+    })
+
+    test('only the first ValueAxis.CAP ids are kept', () => {
+      fc.assert(
+        fc.property(
+          fc.uniqueArray(seriesIdArb, {
+            minLength: ValueAxis.CAP + 1,
+            maxLength: ValueAxis.CAP + 4,
+          }),
+          (ids) => {
+            const params = new URLSearchParams()
+            for (const id of ids) params.append(SERIES_PARAM, id)
+            expect(decodeSelection(params).series).toEqual(ids.slice(0, ValueAxis.CAP))
+          }
+        ),
         { numRuns: RUNS }
       )
     })

@@ -1,3 +1,5 @@
+import { ValueAxis } from 'health-viewer-fundamentals'
+
 import { isKnownSeriesId } from './series-sources.ts'
 import { type RangePreset, isRangePreset } from './time-range.ts'
 
@@ -5,7 +7,8 @@ import { type RangePreset, isRangePreset } from './time-range.ts'
 interface Selection {
   /**
    * The plotted series' ids, in selection order — the order that decides axis
-   * sides. Opaque here: each id belongs to the source whose prefix it carries.
+   * sides. Distinct, and at most `ValueAxis.CAP` of them. Opaque here: each id
+   * belongs to the source whose prefix it carries.
    */
   readonly series: readonly string[]
   readonly range: RangePreset
@@ -46,10 +49,16 @@ const encodeSelection = (selection: Selection): URLSearchParams => {
  * rest of their link. An `s` survives when some source can read it
  * (`isKnownSeriesId`) — so an id whose source the viewer does not assemble,
  * or that its source would not have written, is dropped.
+ * A repeated `s` keeps its first place, and only the first `ValueAxis.CAP`
+ * survivors are kept — the chart draws no more, and `ValueAxis.assign` throws
+ * past the cap rather than truncating, so a hand-edited link is cut here.
  * An absent or bad `r` means {@link DEFAULT_RANGE}.
  */
 const decodeSelection = (params: URLSearchParams): Selection => {
-  const series = params.getAll(SERIES_PARAM).filter(isKnownSeriesId)
+  const series = [...new Set(params.getAll(SERIES_PARAM).filter(isKnownSeriesId))].slice(
+    0,
+    ValueAxis.CAP
+  )
   const range = params.get(RANGE_PARAM)
   return {
     series,
