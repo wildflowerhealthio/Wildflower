@@ -454,3 +454,81 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     expect(localConnectButton().hasAttribute('disabled')).toBe(false)
   })
 })
+
+describe('ConnectMenu, the Local Network Access hint', () => {
+  // The published site is served over https; jsdom's own page is plain http.
+  const onPublishedSite = (): void => {
+    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications-app/'))
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('follows an unreachable loopback server’s reason on the published site', async () => {
+    onPublishedSite()
+    startStandaloneLaunchMock.mockResolvedValue({ kind: 'unreachable', message: 'Failed to fetch' })
+    const user = userEvent.setup()
+    render(<ConnectMenu {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: 'Launch' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080\/fhir-r4/)).toBeDefined()
+    })
+    expect(screen.getByText(/Local Network Access/)).toBeDefined()
+  })
+
+  it('follows the problem a Wildflower sign-in reports for the local server on the published site', async () => {
+    onPublishedSite()
+    connectMock.mockResolvedValue('Could not reach the server.')
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+    await user.click(localConnectButton())
+
+    await waitFor(() => {
+      expect(screen.getByText(/Could not reach the server\. .*Local Network Access/)).toBeDefined()
+    })
+  })
+
+  it('follows a rejected Wildflower sign-in’s message for the local server on the published site', async () => {
+    onPublishedSite()
+    connectMock.mockRejectedValue(new Error('discovery failed'))
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+    await user.click(localConnectButton())
+
+    await waitFor(() => {
+      expect(screen.getByText(/discovery failed .*Local Network Access/)).toBeDefined()
+    })
+  })
+
+  it('is left out for a remote server, which has no such prompt', async () => {
+    onPublishedSite()
+    connectMock.mockResolvedValue('Could not reach the server.')
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+    await connectToSubdomain(user, 'ruth')
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not reach the server.')).toBeDefined()
+    })
+    expect(screen.queryByText(/Local Network Access/)).toBeNull()
+  })
+
+  it('is left out on a plain-http page, which is not reaching from public into local', async () => {
+    connectMock.mockResolvedValue('Could not reach the server.')
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+    await user.click(localConnectButton())
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not reach the server.')).toBeDefined()
+    })
+    expect(screen.queryByText(/Local Network Access/)).toBeNull()
+  })
+})

@@ -15,6 +15,8 @@ export {
   type StandaloneLaunchConfig,
 } from './standalone-launch.ts'
 
+export { localNetworkAccessHint, withLocalNetworkAccessHint } from './local-network-hint.ts'
+
 export {
   BundleDecodeError,
   RESOURCE_PAGE_SIZE,

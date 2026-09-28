@@ -1,7 +1,11 @@
 import { useEffect, useState, type JSX, type SubmitEvent } from 'react'
 import { ErrorBanner, TextField } from 'react-tundraish'
 
-import { normalizeServerUrl, startStandaloneLaunch } from 'fhir-r4-react/smart'
+import {
+  normalizeServerUrl,
+  startStandaloneLaunch,
+  withLocalNetworkAccessHint,
+} from 'fhir-r4-react/smart'
 import {
   DEFAULT_SERVER_PRESET_GROUPS,
   hostedServerUrlFor,
@@ -144,6 +148,9 @@ const hostedGroupIndexIn = (presetGroups: readonly ServerPresetGroup[]): number 
  * validation that blocks the submit handler before it runs, which would mask our
  * own message. An `unreachable` probe (CORS/network) surfaces as an error with
  * the menu still available to retry — never a silent open-access connection.
+ * Whatever the problem, on the published (https) site a loopback pick's reason
+ * is followed by the Local Network Access hint (`withLocalNetworkAccessHint`),
+ * since Chrome's prompt for it looks like any other network failure.
  *
  * A connect that settles with nothing to show leaves the menu `launching`,
  * its controls disabled: the page is on its way to the authorization server,
@@ -217,15 +224,22 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
     setHostedProblem(undefined)
     setFreeEntryProblem(undefined)
     setState({ kind: 'launching' })
+    // Read when the pick is made, not at import: whether this page is the
+    // published (https) one decides if a loopback failure needs the Local
+    // Network Access hint after its reason.
+    const pageIsSecure = window.location.protocol === 'https:'
+    const reportProblem = (reason: string): void => {
+      setState({
+        kind: 'error',
+        message: withLocalNetworkAccessHint(reason, serverUrl, { pageIsSecure }),
+      })
+    }
     startConnecting(serverUrl, wildflowerServer)
       .then((problem) => {
-        if (problem !== undefined) setState({ kind: 'error', message: problem })
+        if (problem !== undefined) reportProblem(problem)
       })
       .catch((error: unknown) => {
-        setState({
-          kind: 'error',
-          message: error instanceof Error ? error.message : String(error),
-        })
+        reportProblem(error instanceof Error ? error.message : String(error))
       })
   }
 

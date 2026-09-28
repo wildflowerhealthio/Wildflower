@@ -1,13 +1,13 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { basenameOf } from 'branding-core'
 import { AppLanding, fromApp, SiteFooter, SiteHeader } from 'branding-react'
+import { withLocalNetworkAccessHint } from 'fhir-r4-react/smart'
 import { insecureTargetReason, searchWithServerUrl } from 'gatekeeper-core/smart-client'
 import { type JSX, useEffect, useRef, useState } from 'react'
 import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitchen-sink'
 import { ErrorBanner } from 'react-tundraish'
 import { ConnectMenu } from 'smart-app-react'
 
-import { localNetworkAccessHint } from '../local-network-hint.ts'
 import type { RouterContext } from '../router-context.ts'
 import { returnToOnPage, signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
 import { apiServerUrl, chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
@@ -157,18 +157,15 @@ function Landing({
   const pageIsSecure = window.location.protocol === 'https:'
 
   /**
-   * `reason` with the Local Network Access hint after it, when `target` is a
-   * loopback server this secure page reached for: a network/CORS failure there
-   * is most often Chrome holding the request behind its prompt, which the
-   * reason on its own cannot name. See `local-network-hint.ts`.
+   * A problem for the page's banner: `reason`, followed by the Local Network
+   * Access hint when `target` is a loopback server this secure page reached
+   * for. The menu adds the same hint to the problems it shows itself.
    */
-  const withLocalNetworkHint = (reason: string, target: string): string => {
-    const hint = localNetworkAccessHint(target, { pageIsSecure })
-    return hint === undefined ? reason : `${reason} ${hint}`
-  }
+  const pageProblem = (reason: string, target: string): string =>
+    withLocalNetworkAccessHint(reason, target, { pageIsSecure })
 
   const [signInProblem, setSignInProblem] = useState(() =>
-    bootSignInProblem === undefined ? undefined : withLocalNetworkHint(bootSignInProblem, serverUrl)
+    bootSignInProblem === undefined ? undefined : pageProblem(bootSignInProblem, serverUrl)
   )
   const [leavingToSignIn, setLeavingToSignIn] = useState(false)
   // Whether this page has started a sign-in: set by every attempt, read by the
@@ -212,7 +209,7 @@ function Landing({
         return undefined
       }
       setLeavingToSignIn(false)
-      return withLocalNetworkHint(started.reason, target)
+      return started.reason
     })
   }
 
@@ -220,7 +217,9 @@ function Landing({
   const signInTo = (target: string): void => {
     setSignInProblem(undefined)
     setPageSignInAttempt((attempt) => attempt + 1)
-    void leaveToSignIn(target).then(setSignInProblem)
+    void leaveToSignIn(target).then((problem) => {
+      setSignInProblem(problem === undefined ? undefined : pageProblem(problem, target))
+    })
   }
 
   /**
@@ -229,7 +228,8 @@ function Landing({
    * wants to be signed in to it, not handed a second button. A plain SMART
    * server (the demo one) is picked by its FHIR base, so that is the base its
    * sign-in discovers at, and what `?server=` names. The problem goes back to
-   * the menu, which shows it.
+   * the menu, which shows it with the Local Network Access hint when that
+   * applies, so it is returned without one.
    */
   const connect = (
     pickedUrl: string,

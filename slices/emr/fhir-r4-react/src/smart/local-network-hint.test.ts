@@ -2,7 +2,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { localNetworkAccessHint } from './local-network-hint.ts'
+import { localNetworkAccessHint, withLocalNetworkAccessHint } from './local-network-hint.ts'
 
 describe('localNetworkAccessHint', () => {
   it('names Chrome’s Local Network Access prompt for a loopback target from a secure page', () => {
@@ -43,5 +43,31 @@ describe('localNetworkAccessHint', () => {
 
   it('is silent for a target that is not a URL at all', () => {
     expect(localNetworkAccessHint('not a url', { pageIsSecure: true })).toBeUndefined()
+  })
+})
+
+describe('withLocalNetworkAccessHint', () => {
+  it('puts the hint after the reason when it applies', () => {
+    const hint = localNetworkAccessHint('http://127.0.0.1:8080', { pageIsSecure: true })
+
+    expect(
+      withLocalNetworkAccessHint('Could not reach the server.', 'http://127.0.0.1:8080', {
+        pageIsSecure: true,
+      })
+    ).toBe(`Could not reach the server. ${hint}`)
+  })
+
+  it('leaves the reason alone when the hint does not apply', () => {
+    fc.assert(
+      fc.property(fc.string(), fc.domain(), (reason, host) => {
+        expect(withLocalNetworkAccessHint(reason, `https://${host}`, { pageIsSecure: true })).toBe(
+          reason
+        )
+        expect(
+          withLocalNetworkAccessHint(reason, 'http://127.0.0.1:8080', { pageIsSecure: false })
+        ).toBe(reason)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
   })
 })

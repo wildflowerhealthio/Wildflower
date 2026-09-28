@@ -11,7 +11,7 @@ import { serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import { makeBearerAuthStateStore, type BearerAuthStateStore } from 'gatekeeper-react'
 import { numRunsFor } from 'kitchen-sink/test'
 import { AuthedUntil, AuthStateProvider } from 'react-kitchen-sink'
-import { afterEach, describe, expect, test } from 'vite-plus/test'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import type { SignInStep } from '../sign-in.ts'
 import { DEFAULT_SERVER_URL, rememberSignedInServer } from '../web-entry.ts'
@@ -31,6 +31,7 @@ describe('Landing', () => {
   afterEach(() => {
     cleanup()
     window.sessionStorage.clear()
+    vi.unstubAllGlobals()
   })
 
   test('offers the server picker but no sign-in until a server is chosen', async () => {
@@ -138,8 +139,8 @@ describe('Landing', () => {
     // default jsdom origin). That page is not making the public→local jump
     // Chrome guards, so the reason shows but the prompt hint does not — this
     // pins that the surface passes the page's own security through, rather than
-    // hard-coding it. The secure-page positive is covered by
-    // `local-network-hint.test.ts`.
+    // hard-coding it. The secure-page positive is below, and the hint's own
+    // rule is `fhir-r4-react/smart`'s `local-network-hint.test.ts`.
     await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', {
       bootSignInProblem: 'Could not reach the server.',
     })
@@ -149,6 +150,47 @@ describe('Landing', () => {
       expect(screen.getByText(/Could not reach the server\./)).toBeDefined()
     })
     expect(screen.queryByText(/Local Network Access/)).toBeNull()
+  })
+
+  test('names the Local Network Access prompt once for a failed sign-in on arrival', async () => {
+    // Arrange — the published (https) page, signing in to a loopback server
+    // that the browser held back.
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
+    )
+
+    // Act
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', {
+      signIn: signIn.stub,
+      secure: true,
+    })
+
+    // Assert — the page's banner carries it after the reason, and only once.
+    await waitFor(() => {
+      expect(screen.getByText(/Could not reach the server\. .*Local Network Access/)).toBeDefined()
+    })
+    expect(hintCount()).toBe(1)
+  })
+
+  test('names the Local Network Access prompt once for a failed pick of the local server', async () => {
+    // Arrange — the menu adds the hint to the problems it shows, so the page's
+    // `connect` must hand it the bare reason.
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
+    )
+    await mountLanding('/', { signIn: signIn.stub, secure: true })
+    await waitFor(() => {
+      expect(localServerButton()).toBeDefined()
+    })
+
+    // Act
+    fireEvent.click(localServerButton())
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText(/Could not reach the server\. .*Local Network Access/)).toBeDefined()
+    })
+    expect(hintCount()).toBe(1)
   })
 
   test('sends an already-signed-in reader on to the app', async () => {
@@ -353,9 +395,17 @@ const mountLanding = async (
     readonly basepath?: string
     /** The sign-in stand-in; a never-settling one by default, so no test reaches the network. */
     readonly signIn?: LandingSignIn
+    /**
+     * Whether the page is the published one, served over https. jsdom's own
+     * page is plain http, so `location` is stubbed with the same `url` there.
+     */
+    readonly secure?: boolean
   } = {}
 ): Promise<{ readonly pathname: () => string }> => {
   window.history.replaceState(null, '', url)
+  if (options.secure === true) {
+    vi.stubGlobal('location', new URL(url, 'https://wildflowerhealth.io'))
+  }
 
   const rootRoute = createRootRoute()
   const indexRoute = createRoute({
@@ -394,6 +444,13 @@ const mountLanding = async (
 const LOCAL_GROUP_NAME = 'Local Wildflower Server'
 const HOSTED_GROUP_NAME = 'Wildflower Health hosted server'
 const DEMO_GROUP_NAME = 'Smart Health IT Demo Server'
+
+/**
+ * How many times the page names the Local Network Access prompt, counted in its
+ * text rather than by element: a hint added twice lands in one banner.
+ */
+const hintCount = (): number =>
+  (document.body.textContent ?? '').match(/Local Network Access/g)?.length ?? 0
 
 /** The menu's one-click sign-in to the local Wildflower server. */
 const localServerButton = (): HTMLElement =>

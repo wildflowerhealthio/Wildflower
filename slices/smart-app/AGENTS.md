@@ -75,7 +75,11 @@ import `branding-react/styles.css` itself.
   message shows inside its own form, beside the field. `startStandaloneLaunch`'s
   `unreachable` outcome, like a problem the `wildflower` caller's `connect`
   reports, is shown as a retryable error banner at the bottom rather than
-  connecting, and a page restored from the back-forward cache mid-launch comes
+  connecting. For either target, a loopback pick's problem on an https page is
+  followed by `fhir-r4-react/smart`'s Local Network Access hint
+  (`withLocalNetworkAccessHint`, the page's scheme read when the pick is made),
+  so every app on the published site names Chrome's prompt; a caller's
+  `connect` returns its problem without the hint. A page restored from the back-forward cache mid-launch comes
   back idle rather than disabled; why an `unreachable` probe must never degrade
   to `open` is the standalone-launch guardrail in
   [slices/emr/AGENTS.md](../emr/AGENTS.md).
