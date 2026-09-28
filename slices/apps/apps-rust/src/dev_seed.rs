@@ -2,7 +2,7 @@
 //! apps' local vite dev servers.
 //!
 //! The first-party apps (Medications, Web Trace, Importer, the OHIF imaging
-//! viewer, Server Docs) ship as **cloud** rows served from
+//! viewer, Server Docs, the Synthesized Health Viewer) ship as **cloud** rows served from
 //! <https://wildflowerhealth.io> (apps migration
 //! `0005_first_party_apps_to_cloud`). That is the right production target and
 //! the wrong development one: a developer editing `apps/medications-app` wants
@@ -94,6 +94,8 @@ struct DevAppPorts {
     importer_app_dev: i32,
     #[serde(rename = "ohif-viewer-dev")]
     ohif_viewer_dev: i32,
+    #[serde(rename = "health-viewer-app-dev")]
+    health_viewer_app_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -104,7 +106,7 @@ struct DevAppPorts {
 /// a compile-time-embedded, version-controlled file, so a failure here is a
 /// broken build, not a runtime condition, and only ever reachable in a debug
 /// build.
-fn dev_apps() -> [DevApp; 5] {
+fn dev_apps() -> [DevApp; 6] {
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
@@ -142,6 +144,13 @@ fn dev_apps() -> [DevApp; 5] {
             subtitle: "Local preview server for apps/ohif-viewer",
             port: ports.ohif_viewer_dev,
             url: ohif_viewer_dev_url(ports.ohif_viewer_dev),
+        },
+        DevApp {
+            id: "health-viewer-app-dev",
+            name: "Health Viewer (Dev)",
+            subtitle: "Local vite dev server for apps/health-viewer",
+            port: ports.health_viewer_app_dev,
+            url: dev_launch_url(ports.health_viewer_app_dev),
         },
     ]
 }
@@ -382,6 +391,29 @@ mod tests {
                 "http://localhost:{port}/fhir-viewer\
                  ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId=ohif-viewer-dev"
             ),
+        );
+    }
+
+    #[test]
+    fn the_health_viewer_dev_row_launches_its_dev_server() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        seed_dev_apps(pool.clone()).unwrap();
+        let store = SqliteAppsStore::new(pool).unwrap();
+
+        let port = dev_apps()
+            .iter()
+            .find(|app| app.id == "health-viewer-app-dev")
+            .expect("the health viewer dev row")
+            .port;
+        let (registration, config) = dev_cloud(&store, "health-viewer-app-dev");
+        assert_eq!(registration.name, "Health Viewer (Dev)");
+        assert_eq!(
+            registration.subtitle.as_deref(),
+            Some("Local vite dev server for apps/health-viewer"),
+        );
+        assert_eq!(
+            config.url.to_string(),
+            format!("http://localhost:{port}/launch.html?launch={{launch}}&iss={{origin}}/fhir-r4"),
         );
     }
 

@@ -105,7 +105,7 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
     "/../../apps/dev-app-ports.json"
 ));
 
-/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the five first-party
+/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the six first-party
 /// apps that register an OAuth client. The file also carries `web-server-docs-dev`,
 /// which is not a SMART app and so has no client here; serde ignores it.
 #[cfg(debug_assertions)]
@@ -121,7 +121,25 @@ struct DevAppPorts {
     ohif_viewer_dev: u16,
     #[serde(rename = "fhir-sync-pebble-dev")]
     fhir_sync_pebble_dev: u16,
+    #[serde(rename = "health-viewer-app-dev")]
+    health_viewer_app_dev: u16,
 }
+
+/// The `health-viewer-app-dev` client's scopes: exactly the scope string in
+/// `apps/health-viewer/src/config.ts`, which requests the same set for an EHR
+/// launch and a standalone connect. A test below reads that file and pins the
+/// two together, so a scope added on one side alone fails the test rather than
+/// `/authorize` on a real device.
+#[cfg(debug_assertions)]
+const HEALTH_VIEWER_DEV_SCOPES: &[&str] = &[
+    "launch",
+    "launch/patient",
+    "openid",
+    "fhirUser",
+    "system/Observation.rs",
+    "system/MedicationRequest.rs",
+    "system/Patient.rs",
+];
 
 /// The loopback redirect route for a dev app served at its origin root — every
 /// first-party app but the OHIF viewer, whose launch targets a sub-route.
@@ -277,6 +295,15 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ports.fhir_sync_pebble_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
+        (
+            "health-viewer-app-dev",
+            "Health Viewer (Dev)",
+            // `apps/health-viewer/src/config.ts`'s scope string — see
+            // [`HEALTH_VIEWER_DEV_SCOPES`].
+            HEALTH_VIEWER_DEV_SCOPES,
+            ports.health_viewer_app_dev,
+            DEV_ROOT_REDIRECT_PATH,
+        ),
     ];
     for (client_id, name, scopes, port, redirect_path) in dev_clients {
         use url::Url;
@@ -355,6 +382,47 @@ pub(crate) fn mint_host_owner_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The health viewer's dev client is seeded on its dev server's loopback
+    /// root with exactly the scopes the app requests. The app's scope string
+    /// is read out of `config.ts` itself, the one place it is written, so the
+    /// TS and Rust halves cannot drift apart unnoticed.
+    #[test]
+    fn seeds_the_health_viewer_dev_client_with_the_apps_own_scopes() {
+        use crate::domain::client::RegisteredRedirectUri;
+
+        const HEALTH_VIEWER_CONFIG_TS: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../apps/health-viewer/src/config.ts"
+        ));
+        let scope_string = format!("'{}'", HEALTH_VIEWER_DEV_SCOPES.join(" "));
+        assert!(
+            HEALTH_VIEWER_CONFIG_TS.contains(&scope_string),
+            "apps/health-viewer/src/config.ts must request exactly {scope_string}",
+        );
+
+        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+        seed_dev_app_clients(pool.clone()).expect("seed dev clients");
+        let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
+        let client = store
+            .client_by_id("health-viewer-app-dev")
+            .expect("query client")
+            .expect("health viewer dev client seeded");
+        let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
+        assert_eq!(client.kind, ClientKind::Public);
+        assert_eq!(client.allowed_scopes, HEALTH_VIEWER_DEV_SCOPES);
+        assert_eq!(
+            client.redirect_uris,
+            vec![
+                RegisteredRedirectUri::AppRelative("/".to_owned()),
+                RegisteredRedirectUri::Absolute(
+                    format!("http://localhost:{}/", ports.health_viewer_app_dev)
+                        .parse()
+                        .expect("a valid absolute redirect"),
+                ),
+            ],
+        );
+    }
 
     /// The first-party client is seeded under the `client_id` threaded through
     /// `open_and_seed_store` (from `GatekeeperConfig::first_party_client_id`,
