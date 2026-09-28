@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as fc from 'fast-check'
@@ -84,6 +84,34 @@ describe('buildHostCDriver', () => {
         sources: [writeSource('broken-driver.c', 'int main(void) { return missing; }')],
       })
     ).toThrow()
+  })
+
+  it('finds <headers> in the include directories', () => {
+    // Arrange: a header only an include directory holds, included with <>.
+    const includeDir = join(sourceDir, 'include')
+    mkdirSync(includeDir, { recursive: true })
+    writeFileSync(join(includeDir, 'sdk-stand-in.h'), '#define STAND_IN_ANSWER "stand-in"\n')
+    const including = buildHostCDriver({
+      name: 'including-driver',
+      sources: [
+        writeSource(
+          'including-driver.c',
+          '#include <stdio.h>\n#include <sdk-stand-in.h>\n' +
+            'int main(void) { printf("%s\\n", STAND_IN_ANSWER); return 0; }\n'
+        ),
+      ],
+      includeDirectories: [includeDir],
+    })
+
+    try {
+      // Act
+      const output = including.run('')
+
+      // Assert
+      expect(output).toBe('stand-in')
+    } finally {
+      including.dispose()
+    }
   })
 
   it('fails a run that writes past a buffer', () => {

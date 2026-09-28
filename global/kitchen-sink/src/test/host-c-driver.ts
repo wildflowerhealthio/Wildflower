@@ -20,6 +20,12 @@ interface HostCDriverSources {
   readonly name: string
   /** Absolute paths of the C files to compile together: the driver and the code under test. */
   readonly sources: ReadonlyArray<string>
+  /**
+   * Absolute paths searched for `#include <...>` headers before the system's,
+   * as `-I`: where a test puts host stand-ins for an SDK header (say a fake
+   * `pebble.h`) so code that includes it builds on the host. None by default.
+   */
+  readonly includeDirectories?: ReadonlyArray<string>
 }
 
 /**
@@ -28,12 +34,17 @@ interface HostCDriverSources {
  *
  * @remarks
  * For the Pebble watchapps' pure C (code kept free of `pebble.h`), which needs
- * no SDK to test. It compiles as C99, as the SDK compiles apps, under
+ * no SDK to test, and for code that includes an SDK header a test stands in for
+ * through `includeDirectories`. It compiles as C99, as the SDK compiles apps, under
  * AddressSanitizer and UBSan with recovery off, so an overflow fails the test
  * rather than passing by luck. Call it in `beforeAll` and `dispose` in
  * `afterAll`; a compile error throws, with the compiler's output on stderr.
  */
-const buildHostCDriver = ({ name, sources }: HostCDriverSources): HostCDriver => {
+const buildHostCDriver = ({
+  name,
+  sources,
+  includeDirectories = [],
+}: HostCDriverSources): HostCDriver => {
   const buildDir = mkdtempSync(join(tmpdir(), `${name}-`))
   const driverPath = join(buildDir, name)
   try {
@@ -47,6 +58,7 @@ const buildHostCDriver = ({ name, sources }: HostCDriverSources): HostCDriver =>
         '-g',
         '-fsanitize=address,undefined',
         '-fno-sanitize-recover=all',
+        ...includeDirectories.map((directory) => `-I${directory}`),
         '-o',
         driverPath,
         ...sources,
