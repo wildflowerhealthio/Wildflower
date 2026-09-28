@@ -104,8 +104,8 @@ const insecureTargetReason = (
   if (url.protocol !== 'http:' || isLoopbackHost(url.hostname)) return undefined
   return (
     `This page is served over https, so the browser will block its requests to ` +
-    `${serverUrl}. Use an https address for the server, or open this console ` +
-    `from the server itself.`
+    `${serverUrl}. Use an https address for the server, or a server running on ` +
+    `this computer.`
   )
 }
 

@@ -187,7 +187,10 @@ re-rooted under `basePath`. The hosted owner UI (`apps/wildflower-react`'s
 `insecureTargetReason` in `smart-discovery.ts` states the same scheme rule about
 the _target_ that `usableEndpointUrl` enforces about the discovered endpoints, so
 a page can explain up front that a secure page cannot reach a plaintext server
-instead of surfacing it as a discovery failure. Loopback is exempt in both:
+instead of surfacing it as a discovery failure. Its wording names no kind of
+page, since the server-docs console, the hosted owner UI and every SMART app's
+connect menu (through `fhir-r4-react/smart`'s re-export) show it. Loopback is
+exempt in both:
 browsers treat `http://127.0.0.1` as trustworthy, which is what lets an HTTPS
 page drive a desktop host.
 

@@ -68,9 +68,12 @@ const hostedForm = (): HTMLElement => screen.getByRole('form', { name: HOSTED_GR
  * The local server's one button. Under `wildflower` it reads "Connect", like
  * the entries' own, so it is found inside its group.
  */
-const localConnectButton = (): HTMLElement =>
+const localConnectButton = (): HTMLElement => localConnectButtonFor('Connect')
+
+/** The local server's one button, labelled `name` for the menu's target. */
+const localConnectButtonFor = (name: 'Launch' | 'Connect'): HTMLElement =>
   within(screen.getByRole('region', { name: 'Local Wildflower Server' })).getByRole('button', {
-    name: 'Connect',
+    name,
   })
 
 /** Type `subdomain` into the hosted group and submit it. */
@@ -521,5 +524,73 @@ describe('ConnectMenu, the Local Network Access hint', () => {
       expect(screen.getByText('Could not reach the server.')).toBeDefined()
     })
     expect(screen.queryByText(/Local Network Access/)).toBeNull()
+  })
+})
+
+describe('ConnectMenu, a plain-http server from an https page', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  /** Submit `url` through the free entry `formName`, whose field is `fieldLabel`. */
+  const enterFreeUrl = async (
+    user: ReturnType<typeof userEvent.setup>,
+    formName: string,
+    fieldLabel: string,
+    url: string
+  ): Promise<void> => {
+    const freeEntry = within(screen.getByRole('form', { name: formName }))
+    await user.type(freeEntry.getByLabelText(fieldLabel), url)
+    await user.click(freeEntry.getByRole('button', { name: 'Connect' }))
+  }
+
+  it('refuses a SMART launch against it, saying why, on the published site', async () => {
+    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications-app/'))
+    const user = userEvent.setup()
+    render(<ConnectMenu {...PROPS} />)
+
+    await enterFreeUrl(user, 'Another FHIR R4 server', 'FHIR base URL', 'http://fhir.example/r4')
+
+    expect(screen.getByText(/served over https.*http:\/\/fhir\.example\/r4/)).toBeDefined()
+    expect(startStandaloneLaunchMock).not.toHaveBeenCalled()
+    // Refused, not launching: the menu is ready for another pick.
+    expect(localConnectButtonFor('Launch').hasAttribute('disabled')).toBe(false)
+  })
+
+  it('refuses a Wildflower sign-in to it, saying why, on the published site', async () => {
+    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/app/'))
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+    await enterFreeUrl(
+      user,
+      'Another Wildflower server',
+      'Server URL',
+      'http://my-server.example.com'
+    )
+
+    expect(screen.getByText(/served over https.*http:\/\/my-server\.example\.com/)).toBeDefined()
+    expect(connectMock).not.toHaveBeenCalled()
+  })
+
+  it('still connects to a loopback server, which the browser allows', async () => {
+    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/app/'))
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+    await user.click(localConnectButton())
+
+    expect(connectMock).toHaveBeenCalledWith(LOCAL_ORIGIN)
+  })
+
+  it('connects to it from a plain-http page, which is not blocked', async () => {
+    const user = userEvent.setup()
+    render(<ConnectMenu {...PROPS} />)
+
+    await enterFreeUrl(user, 'Another FHIR R4 server', 'FHIR base URL', 'http://fhir.example/r4')
+
+    expect(startStandaloneLaunchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ iss: 'http://fhir.example/r4' })
+    )
   })
 })

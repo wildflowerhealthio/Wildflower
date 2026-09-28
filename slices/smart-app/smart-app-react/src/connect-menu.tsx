@@ -2,6 +2,7 @@ import { useEffect, useState, type JSX, type SubmitEvent } from 'react'
 import { ErrorBanner, TextField } from 'react-tundraish'
 
 import {
+  insecureTargetReason,
   normalizeServerUrl,
   startStandaloneLaunch,
   withLocalNetworkAccessHint,
@@ -144,6 +145,9 @@ const hostedGroupIndexIn = (presetGroups: readonly ServerPresetGroup[]): number 
  * validation that blocks the submit handler before it runs, which would mask our
  * own message. An `unreachable` probe (CORS/network) surfaces as an error with
  * the menu still available to retry — never a silent open-access connection.
+ * On an https page, a pick of a plain-http server that is not loopback is
+ * refused before connecting, with `insecureTargetReason`'s explanation in the
+ * banner: the browser would block every request to it.
  * Whatever the problem, on the published (https) site a loopback pick's reason
  * is followed by the Local Network Access hint (`withLocalNetworkAccessHint`),
  * since Chrome's prompt for it looks like any other network failure.
@@ -215,11 +219,19 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
   const connectTo = (serverUrl: string): void => {
     setHostedProblem(undefined)
     setFreeEntryProblem(undefined)
-    setState({ kind: 'launching' })
     // Read when the pick is made, not at import: whether this page is the
-    // published (https) one decides if a loopback failure needs the Local
-    // Network Access hint after its reason.
+    // published (https) one decides whether a plain-http server is reachable
+    // at all, and whether a loopback failure needs the Local Network Access
+    // hint after its reason.
     const pageIsSecure = window.location.protocol === 'https:'
+    // Said before connecting, rather than left to surface as a probe or
+    // discovery failure that reads as "the server is down".
+    const blocked = insecureTargetReason(serverUrl, { pageIsSecure })
+    if (blocked !== undefined) {
+      setState({ kind: 'error', message: blocked })
+      return
+    }
+    setState({ kind: 'launching' })
     const reportProblem = (reason: string): void => {
       setState({
         kind: 'error',

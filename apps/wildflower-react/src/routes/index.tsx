@@ -226,12 +226,11 @@ function Landing({
    * names and, having a path, the base its sign-in discovers at — on a retry
    * or a reload as much as on the pick. The problem goes back to
    * the menu, which shows it with the Local Network Access hint when that
-   * applies, so it is returned without one.
+   * applies, so it is returned without one. The menu has already refused a
+   * plain-http pick this https page could not reach.
    */
   const connect = (pickedUrl: string): Promise<string | undefined> => {
     setSignInProblem(undefined)
-    const blocked = insecureTargetReason(pickedUrl, { pageIsSecure })
-    if (blocked !== undefined) return Promise.resolve(blocked)
     rememberServer(pickedUrl)
     return leaveToSignIn(pickedUrl)
   }

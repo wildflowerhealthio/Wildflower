@@ -77,7 +77,11 @@ import `branding-react/styles.css` itself.
   URL, and it and the free entry are validated with `normalizeServerUrl` in
   plain `type="text"` inputs, never `type="url"` — HTML5 constraint validation
   would block the submit handler and mask the message. An entry's validation
-  message shows inside its own form, beside the field. `startStandaloneLaunch`'s
+  message shows inside its own form, beside the field. On an https page, a pick
+  of a plain-http server off loopback is refused before connecting, for either
+  target, with `insecureTargetReason`'s explanation in the bottom banner
+  (re-exported by `fhir-r4-react/smart`, like `normalizeServerUrl`; the scheme
+  read when the pick is made). `startStandaloneLaunch`'s
   `unreachable` outcome, like a problem the `wildflower` caller's `connect`
   reports, is shown as a retryable error banner at the bottom rather than
   connecting. For either target, a loopback pick's problem on an https page is

@@ -9,6 +9,7 @@ export {
 
 export {
   detectSmartSupport,
+  insecureTargetReason,
   normalizeServerUrl,
   startStandaloneLaunch,
   type SmartSupport,
