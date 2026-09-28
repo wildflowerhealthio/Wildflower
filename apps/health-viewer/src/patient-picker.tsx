@@ -1,14 +1,14 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Effect } from 'effect'
-import { fetchPatientPage, type PatientPageCursor, type SmartHandshake } from 'fhir-r4-react/smart'
+import { Effect, Match } from 'effect'
+import { fetchPatientPage, type PatientPageCursor } from 'fhir-r4-react/smart'
 import type { JSX } from 'react'
+import { pagedQueryStatusOf } from 'react-kitchen-sink'
 import { ItemList } from 'react-tundraish'
+import { LoadingLine, LoadingMoreLine, ReadFailureLine } from 'smart-app-react'
 
 import { birthLineOf, patientNameOf } from './patient-line.ts'
+import type { SmartClient } from './smart-client.ts'
 import styles from './app.module.css'
-
-/** The SMART client a completed handshake hands the app. */
-type SmartClient = Extract<SmartHandshake, { readonly kind: 'ready' }>['client']
 
 const FIRST_PATIENT_PAGE: PatientPageCursor = { first: null }
 
@@ -26,6 +26,7 @@ interface PatientPickerProps {
  *
  * @remarks
  * A patient without an `id` has nothing to be chosen by, so it gets no row.
+ * After a failed page the button stays, as the retry.
  */
 const PatientPicker = ({ client, onPatientPick }: PatientPickerProps): JSX.Element => {
   const patients = useInfiniteQuery({
@@ -37,18 +38,7 @@ const PatientPicker = ({ client, onPatientPick }: PatientPickerProps): JSX.Eleme
       lastPage.nextPageUrl === null ? undefined : { pageUrl: lastPage.nextPageUrl },
   })
 
-  if (patients.data === undefined) {
-    return patients.isError ? (
-      <p className={styles.error}>
-        Could not load patients:{' '}
-        {patients.error instanceof Error ? patients.error.message : String(patients.error)}
-      </p>
-    ) : (
-      <p className={styles.status}>Loading…</p>
-    )
-  }
-
-  const rows = patients.data.pages.flatMap((page) =>
+  const rows = (patients.data?.pages ?? []).flatMap((page) =>
     page.items.flatMap((patient) => {
       const patientId = patient.id ?? null
       if (patientId === null) return []
@@ -64,8 +54,18 @@ const PatientPicker = ({ client, onPatientPick }: PatientPickerProps): JSX.Eleme
       ]
     })
   )
-
-  return (
+  const morePatientsButton = (
+    <button
+      type="button"
+      className={styles['more-patients']}
+      onClick={() => {
+        void patients.fetchNextPage()
+      }}
+    >
+      More patients
+    </button>
+  )
+  const patientList = (footer: JSX.Element | null): JSX.Element => (
     <section className={styles.picker}>
       <h2 className="text-heading-5">Choose a patient</h2>
       {rows.length === 0 ? (
@@ -73,26 +73,30 @@ const PatientPicker = ({ client, onPatientPick }: PatientPickerProps): JSX.Eleme
       ) : (
         <ItemList items={rows} />
       )}
-      {patients.isFetchingNextPage && <p className={styles.status}>Loading more…</p>}
-      {patients.isFetchNextPageError && (
-        <p className={styles.error}>
-          Could not load patients:{' '}
-          {patients.error instanceof Error ? patients.error.message : String(patients.error)}
-        </p>
-      )}
-      {patients.hasNextPage && !patients.isFetchingNextPage && (
-        <button
-          type="button"
-          className={styles['more-patients']}
-          onClick={() => {
-            void patients.fetchNextPage()
-          }}
-        >
-          More patients
-        </button>
-      )}
+      {footer}
     </section>
+  )
+
+  return Match.value(pagedQueryStatusOf(patients)).pipe(
+    Match.when({ kind: 'loading' }, () => <LoadingLine />),
+    Match.when({ kind: 'failed' }, ({ error }) => (
+      <ReadFailureLine subject="patients" error={error} />
+    )),
+    Match.when({ kind: 'paging', isFetchingNextPage: true }, () =>
+      patientList(<LoadingMoreLine />)
+    ),
+    Match.when({ kind: 'paging' }, () => patientList(morePatientsButton)),
+    Match.when({ kind: 'page-failed' }, ({ error }) =>
+      patientList(
+        <>
+          <ReadFailureLine subject="patients" error={error} />
+          {morePatientsButton}
+        </>
+      )
+    ),
+    Match.when({ kind: 'complete' }, () => patientList(null)),
+    Match.exhaustive
   )
 }
 
-export { PatientPicker, type SmartClient }
+export { PatientPicker }

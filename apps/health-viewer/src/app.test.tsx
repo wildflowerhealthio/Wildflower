@@ -9,7 +9,7 @@ import { SERIES_PARAM, decodeSelection, readRecord } from 'health-viewer-core'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type { SmartClient } from './patient-picker.tsx'
+import type { SmartClient } from './smart-client.ts'
 
 // Only the handshake is stubbed: the page reads are the real `fhir-r4-react/smart`
 // ones, issued through a stub client whose `request` answers from a table of

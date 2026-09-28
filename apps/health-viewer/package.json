@@ -28,6 +28,7 @@
     "health-viewer-core": "workspace:*",
     "health-viewer-fundamentals": "workspace:*",
     "health-viewer-react": "workspace:*",
+    "kitchen-sink": "workspace:*",
     "medication-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",

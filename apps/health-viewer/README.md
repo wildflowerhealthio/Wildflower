@@ -39,38 +39,54 @@ then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call.
 
 ## The page
 
-`src/app.tsx`'s `App`:
+The page is three steps, one component or hook each: settle on a patient, read
+their record, lay it out.
 
-- **Patient.** The launch's `client.patient.id`, else the URL's `?patient=`.
-  With neither, the page is a patient picker (`src/patient-picker.tsx`,
-  `fetchPatientPage`: name and birth date per row); choosing one writes
+- **Patient** (`src/app.tsx`'s `App`). The launch's `client.patient.id`, else
+  the URL's `?patient=`. With neither, the page is a patient picker
+  (`src/patient-picker.tsx`, `fetchPatientPage`: name and birth date per row,
+  a "More patients" button while the server has more); choosing one writes
   `?patient=` to the URL. The title's subtitle is the patient from one
   `fetchPatient` read, as `Name · born YYYY-MM-DD`.
-- **Loading.** Two `useInfiniteQuery`s side by side — `fetchObservationPage`
-  and `fetchMedicationRequestPage` (MedicationRequests decode with a required
-  `id`) — each drained by an effect that requests the next page until the last
-  one lands, so both kinds page concurrently and the chart re-renders as pages
-  arrive. There is no scroll sentinel.
-- **Reading.** `readRecord` turns what has landed into series; `groupForPanel`
-  lays them out for `SeriesPanel` (observation categories first, Medications
-  last); the selected series, in selection order, go through `ValueAxis.assign`
-  to `MultiAxisChart`, over `xDomain(range, now, Series.extentOfAll(selected))`.
-- **URL state** (`src/use-url-selection.ts`). The selection, the range and
-  the patient live only in the URL: read once with `decodeSelection`, written
-  back with `encodeSelection` through `history.replaceState` after every
-  change. Every change is an updater over the latest selection, so two made
-  in one tick both land. Once both reads have finished paging,
-  selected ids with no series in this record are dropped from the selection and
-  the URL.
-- **Status**, in the medications app's vocabulary: `Loading…` until the first
-  page of each read has landed; `Loading more…` in the layout's status slot
-  while either still pages; a failed later page of either is an inline
-  `Could not load …` line that keeps every series already listed; a failed
-  handshake or first page replaces the body.
+- **Record read** (`src/use-record-read.ts`'s `useRecordRead`). One
+  `useInfiniteQuery` per record source — `fetchObservationPage` and
+  `fetchMedicationRequestPage` (MedicationRequests decode with a required
+  `id`) — each drained to its last page by `react-kitchen-sink`'s
+  `useFetchEveryPage`, so the sources page concurrently and the chart
+  re-renders as pages arrive. There is no scroll sentinel. Each read's
+  `pagedQueryStatusOf` is folded into one `RecordRead` — `loading`, `failed`
+  (a first page failed) or `read` — with `readRecord` over what has landed,
+  whether the record is complete, whether more is loading, which reads a later
+  page halted, and what the chart leaves out.
+- **Layout** (`src/patient-record.tsx`). `groupForPanel` lays the series out
+  for `SeriesPanel` (observation categories first, Medications last); the
+  selected series, in selection order, go through `ValueAxis.assign` to
+  `MultiAxisChart`, over `xDomain(range, now, Series.extentOfAll(selected))`.
+- **URL state** (`src/use-url-selection.ts`). The selection, the range and the
+  patient live only in the URL: read once with `decodeSelection`, written back
+  with `encodeSelection` through `history.replaceState` after every change.
+  Every change is an updater over the latest selection, so two made in one
+  tick both land. Once every read has its last page, selected ids with no
+  series in this record are dropped from the selection and the URL.
+- **Status**, in `smart-app-react`'s read-status lines, shared with the
+  medications app: `Loading…` until every read has its first page;
+  `Loading more…` in the layout's status slot while any still pages; a failed
+  later page is an inline `Could not load …` line that keeps every series
+  already listed; a failed handshake or first page replaces the body.
 - **What the chart left out**, under it: `n undated records skipped` and
   `n records couldn't be read` — the latter counts both what the sources could
   not read and page entries that did not decode (a MedicationRequest without an
   `id` among them).
+
+### Adding a record source
+
+When `health-viewer-core` adds a source to `SERIES_SOURCES` and
+`RecordResources`, `useRecordRead` stops compiling until the source's read is
+wired: a `RecordSourceRead` (its query name, its status-line subject, and how
+to fetch a page from the patient or a `next` link), its line in
+`sourceReadings`, and its resources in the `readRecord` call. Status,
+completeness, failures and the left-out counts are folded over every source
+alike; the page components do not change.
 
 ## Where the bundle is served
 

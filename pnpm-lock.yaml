@@ -464,6 +464,9 @@ importers:
       health-viewer-react:
         specifier: workspace:*
         version: link:../../slices/health-viewer/health-viewer-react
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/kitchen-sink
       medication-core:
         specifier: workspace:*
         version: link:../../slices/medication/medication-core

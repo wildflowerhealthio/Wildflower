@@ -56,7 +56,8 @@ The app is [`apps/health-viewer`](../../apps/health-viewer/AGENTS.md)
 (`health-viewer-app`), which composes core and react around a SMART shell. A
 new kind of record is a new package beside
 `health-viewer-observations` that exports a
-`SeriesSource` and joins `SERIES_SOURCES`.
+`SeriesSource` and joins `SERIES_SOURCES` (and `RecordResources`), plus
+the app's paged read for it in `useRecordRead`.
 
 ## Rules
 

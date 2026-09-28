@@ -7,7 +7,7 @@ for the boot structure, the page and how to run it.
 
 `apps/medications-app` is the template: the same two HTML entries, relative
 `base`, build into the package's own `dist/`, `SmartAppRoot` shell, and the
-same paged-read wiring and status vocabulary.
+same paged-read drain (`useFetchEveryPage`) and read-status lines.
 
 ## Rules
 
@@ -18,21 +18,29 @@ same paged-read wiring and status vocabulary.
   `readRecord`, `groupForPanel`, `ValueAxis.assign`, `Series.extentOfAll`,
   `xDomain`. No domain package is imported here: `health-viewer-observations`
   and `health-viewer-medications` arrive through core.
+- **The page is patient → record read → layout.** `App` settles on the
+  patient; `useRecordRead` owns every record read and folds them into one
+  `RecordRead`; `PatientRecord` renders from it. A new record source is a
+  `RecordSourceRead` and its lines in `useRecordRead` — never a branch in a
+  component. See the README's "Adding a record source".
 - **The URL is the selection's only home.** `useUrlSelection` initialises from
   `decodeSelection` and writes every change back with `encodeSelection`
   through `history.replaceState` (never `pushState` — a checkbox is not a
-  navigation). Nothing writes the URL on mount: before the
-  handshake completes the URL still carries the OAuth `code` / `state`
-  fhirclient reads, and replacing the query would lose them.
+  navigation). Nothing writes the URL on mount: before the handshake completes
+  the URL still carries the OAuth `code` / `state` fhirclient reads, and
+  replacing the query would lose them.
 - **Every selection change is an updater.** Series, range, patient and the
   reconciliation all go through `updateSelection((latest) => …)`, never a
   copy of the selection a render saw, so changes made in one tick compose.
 - **Reconcile only a complete record.** Selected ids with no series are
-  dropped once both reads have no next page — never while either is paging,
+  dropped once every read has no next page — never while one is paging,
   where the series could be on a later page, and never after a failed later
   page, which leaves the record incomplete.
-- **Both reads page to the end, concurrently.** One draining effect per
-  `useInfiniteQuery`; it halts on a failed page rather than retrying it.
+- **Every read pages to the end, concurrently.** Each is drained by
+  `react-kitchen-sink`'s `useFetchEveryPage`, which halts on a failed page
+  rather than retrying it. The patient picker's read is the exception: it
+  pages on its "More patients" button. Every paged read's status is
+  `pagedQueryStatusOf`, rendered with `smart-app-react`'s read-status lines.
 - **A MedicationRequest's `id` is required.** `fetchMedicationRequestPage`
   decodes through `withMandatoryId(MedicationRequest.Schema)`, so an entry
   without one is dropped and counted in the page's `droppedEntryCount`, which
