@@ -1,20 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-// Design-system stylesheets: tundra-css supplies the base tokens/reset, then
-// react-tundraish re-points them to the Wildflower palette + type scale, and
-// branding-react adds the page-composition layout tokens (--content-max-width,
-// --page-padding-x, --header-height). Loaded before the app's own CSS module
-// so app styles win on tied specificity.
-import 'tundra-css'
-import 'react-tundraish/styles.css'
-import 'branding-react/styles.css'
-// Self-hosted UI font (Atkinson Hyperlegible Next) that `--font-sans` resolves
-// to; the italic cut carries emphasis. Mono is reserved for machine strings —
-// which this app is full of, so it earns its place here.
-import '@fontsource-variable/atkinson-hyperlegible-next/wght.css'
-import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css'
-import '@fontsource-variable/atkinson-hyperlegible-mono/wght.css'
+// The design-system stylesheet stack (tundra-css, the Wildflower palette and
+// type scale, the self-hosted fonts) in its load-bearing order. Imported before
+// the app's own CSS modules so app styles win on tied specificity.
+import 'react-tundraish/styles'
 
 import { restoreRedirectedUrl } from 'branding-core'
 import { addOsColorSchemeListener } from 'react-tundraish'

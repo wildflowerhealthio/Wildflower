@@ -54,9 +54,8 @@ the same `?redirect=` detour as the published site.
 ## The app landing page
 
 A SMART app visited without a launch (`apps/medications-app`,
-`apps/importer-web` and `apps/fhir-sync-pebble-web` through `smart-app-react`'s
-`SmartAppRoot`, and
-`apps/web-trace`) renders `SiteHeader`, then `AppLanding`
+`apps/importer-web`, `apps/fhir-sync-pebble-web` and `apps/web-trace`, all
+through `smart-app-react`'s `SmartAppRoot`) renders `SiteHeader`, then `AppLanding`
 inside `main`, then `SiteFooter`. So does the hosted owner UI's landing
 (`apps/wildflower-react`'s `routes/index.tsx`, `app="app"`), whose connect
 menu also carries its "Sign in to …" row for a server already chosen. `AppLanding` takes the app's `AppSectionId`

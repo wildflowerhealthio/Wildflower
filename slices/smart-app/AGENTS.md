@@ -22,11 +22,11 @@ slice is where the two meet, so neither has to know about the other.
     (`autoConnect`). Either target shows the problem the page arrived with
     (`arrivalProblem`).
 
-Consumers: `apps/medications-app` and `apps/importer-web` mount `SmartAppRoot`
-and `runSmartLaunchEntry`; `apps/fhir-sync-pebble-web` is standalone-only, so it
-mounts `SmartAppRoot` with no launch entry; `apps/web-trace` still carries its
-own root and uses only `ConnectMenu`; `apps/wildflower-react`'s landing uses
-only `ConnectMenu`, with `target: 'wildflower'`.
+Consumers: `apps/medications-app`, `apps/importer-web` and `apps/web-trace`
+mount `SmartAppRoot` and `runSmartLaunchEntry`; `apps/fhir-sync-pebble-web` is
+standalone-only, so it mounts `SmartAppRoot` with no launch entry;
+`apps/wildflower-react`'s landing uses only `ConnectMenu`, with
+`target: 'wildflower'`.
 
 ## Booting an app
 
