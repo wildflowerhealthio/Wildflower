@@ -34,12 +34,12 @@
  * `?returnTo=` survives the round trip (see {@link returnToOnPage}).
  */
 
-import type { Option } from 'effect'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import {
   beginSignIn,
   browserSignInEnvironment,
   completeSignIn,
+  parsePendingAuthorization,
   redirectUriForRoute,
   SERVER_QUERY_PARAM,
   standaloneLaunchScopeParameter,
@@ -175,14 +175,56 @@ const startSignIn = (
 ): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment))
 
 /**
+ * A sign-in that failed on its way back, before the page's tree existed: why,
+ * and the server it was signing in to, when this tab's pending record still
+ * named one. The server is what the landing's Local Network Access hint is
+ * about — not the page's fallback server, which a failed redemption leaves the
+ * address bar pointing at.
+ */
+interface SignInProblem {
+  readonly reason: string
+  readonly serverUrl: string | undefined
+}
+
+/** The outcome of {@link finishSignIn}: a {@link SignInStep} whose failure names its server. */
+type FinishedSignIn =
+  | { readonly tag: 'Ok'; readonly value: Option.Option<Session> }
+  | { readonly tag: 'Failed'; readonly problem: SignInProblem }
+
+/**
+ * The server the pending record in `environment`'s store names, if any. An
+ * unreadable store is treated as an empty one, as `completeSignIn` treats it:
+ * either way there is no server to name.
+ */
+const pendingServerUrlIn = (environment: SignInEnvironment): string | undefined => {
+  try {
+    return Option.getOrUndefined(
+      Option.map(
+        parsePendingAuthorization(environment.store.getItem(environment.pendingKey)),
+        (pending) => pending.serverUrl
+      )
+    )
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Finish a sign-in from the query string this page load arrived on: `None` when
  * the load is not a return from the authorization server (the common case), a
- * {@link Session} when it is and the code redeemed.
+ * {@link Session} when it is and the code redeemed, and a {@link SignInProblem}
+ * naming the server when it failed. The server is read before `completeSignIn`
+ * runs, since it drops the pending record as soon as it knows this is a return
+ * leg.
  */
-const finishSignIn = (
+const finishSignIn = async (
   search: string,
   environment: SignInEnvironment
-): Promise<SignInStep<Option.Option<Session>>> => runStep(completeSignIn(search, environment))
+): Promise<FinishedSignIn> => {
+  const serverUrl = pendingServerUrlIn(environment)
+  const step = await runStep(completeSignIn(search, environment))
+  return step.tag === 'Ok' ? step : { tag: 'Failed', problem: { reason: step.reason, serverUrl } }
+}
 
 /**
  * The auth signal a redeemed `session` publishes, given the current time in unix
@@ -277,4 +319,4 @@ export {
   signInEnvironment,
   startSignIn,
 }
-export type { SignInStep }
+export type { FinishedSignIn, SignInProblem, SignInStep }

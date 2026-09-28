@@ -8,7 +8,13 @@ import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitch
 import { ConnectMenu } from 'smart-app-react'
 
 import type { RouterContext } from '../router-context.ts'
-import { returnToOnPage, signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
+import {
+  returnToOnPage,
+  signInEnvironment,
+  startSignIn,
+  type SignInProblem,
+  type SignInStep,
+} from '../sign-in.ts'
 import { apiServerUrl, chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
 
 import styles from './index.module.css'
@@ -117,9 +123,10 @@ const shouldSignInOnArrival = (arrival: {
  * away (see {@link shouldSignInOnArrival}).
  *
  * @param bootSignInProblem - Why a sign-in failed on the *previous* page load,
- *   before this tree existed. `main-web` redeems the authorization code
- *   ahead of mounting the router, so that failure has to be carried in rather
- *   than raised here. The menu shows it until a fresh attempt starts.
+ *   before this tree existed, and the server it was to. `main-web` redeems the
+ *   authorization code ahead of mounting the router, so that failure has to be
+ *   carried in rather than raised here. The menu shows it until a fresh
+ *   attempt starts.
  * @param signIn - How to start a sign-in and leave for it; the browser's own by
  *   default.
  *
@@ -136,7 +143,7 @@ function Landing({
   bootSignInProblem,
   signIn = browserSignIn,
 }: {
-  readonly bootSignInProblem?: string
+  readonly bootSignInProblem?: SignInProblem
   readonly signIn?: LandingSignIn
 }): JSX.Element {
   const navigate = useNavigate()
@@ -164,6 +171,16 @@ function Landing({
   // entered, rather than later as a discovery failure: an https page cannot
   // reach a plaintext server unless it is loopback.
   const blockedReason = insecureTargetReason(serverUrl, { pageIsSecure })
+
+  /**
+   * `problem`'s reason, followed by the Local Network Access hint when the
+   * server the failed sign-in was to is a loopback one and this page is
+   * secure.
+   */
+  const arrivalProblemFor = (problem: SignInProblem): string =>
+    problem.serverUrl === undefined
+      ? problem.reason
+      : withLocalNetworkAccessHint(problem.reason, problem.serverUrl, { pageIsSecure })
 
   // Keyed on a server the page can actually use, not on a `?server=`'s bare
   // presence: a junk value falls back to the loopback default, and offering
@@ -207,13 +224,12 @@ function Landing({
             target="wildflower"
             localOrigin={DEFAULT_SERVER_URL}
             connect={connect}
-            // The boot failure was about the server this page is pointed at,
-            // so it takes that server's Local Network Access hint here; the
-            // menu adds it to the problems of the sign-ins it runs itself.
+            // The boot failure was about the server that sign-in was to, which
+            // a failed redemption leaves the address bar no longer naming, so
+            // its Local Network Access hint is for that server; the menu adds
+            // it to the problems of the sign-ins it runs itself.
             arrivalProblem={
-              bootSignInProblem === undefined
-                ? undefined
-                : withLocalNetworkAccessHint(bootSignInProblem, serverUrl, { pageIsSecure })
+              bootSignInProblem === undefined ? undefined : arrivalProblemFor(bootSignInProblem)
             }
             // Only when one is chosen: the sign-in on arrival is for it, and
             // this is the way back in when that couldn't run or failed.
@@ -225,7 +241,7 @@ function Landing({
             autoConnect={shouldSignInOnArrival({
               hasChosenServer,
               blockedReason,
-              bootSignInProblem,
+              bootSignInProblem: bootSignInProblem?.reason,
             })}
           />
         </AppLanding>

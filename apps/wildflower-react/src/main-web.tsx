@@ -148,7 +148,7 @@ const boot = async (): Promise<void> => {
     basepath,
     ...entryOptions,
     tokenResponseHandler,
-    ...(completed.tag === 'Failed' ? { signInProblem: completed.reason } : {}),
+    ...(completed.tag === 'Failed' ? { signInProblem: completed.problem } : {}),
   })
 }
 

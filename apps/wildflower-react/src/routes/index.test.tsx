@@ -13,7 +13,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { AuthedUntil, AuthStateProvider } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import { signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
+import { signInEnvironment, startSignIn, type SignInProblem, type SignInStep } from '../sign-in.ts'
 import { DEFAULT_SERVER_URL, rememberSignedInServer } from '../web-entry.ts'
 import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
 
@@ -111,7 +111,10 @@ describe('Landing', () => {
     // Act
     await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', {
       signIn: signIn.stub,
-      bootSignInProblem: 'The authorization request was denied.',
+      bootSignInProblem: {
+        reason: 'The authorization request was denied.',
+        serverUrl: 'http://127.0.0.1:8080',
+      },
     })
 
     // Assert
@@ -125,7 +128,10 @@ describe('Landing', () => {
     // Arrange / Act — the boot-time redemption failed, so `main-web` threaded
     // the reason in rather than leaving the reader with a silent bounce.
     await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', {
-      bootSignInProblem: 'The token request was rejected: invalid_grant.',
+      bootSignInProblem: {
+        reason: 'The token request was rejected: invalid_grant.',
+        serverUrl: 'http://127.0.0.1:8080',
+      },
     })
 
     // Assert
@@ -142,7 +148,10 @@ describe('Landing', () => {
     // hard-coding it. The secure-page positive is below, and the hint's own
     // rule is `fhir-r4-react/smart`'s `local-network-hint.test.ts`.
     await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', {
-      bootSignInProblem: 'Could not reach the server.',
+      bootSignInProblem: {
+        reason: 'Could not reach the server.',
+        serverUrl: 'http://127.0.0.1:8080',
+      },
     })
 
     // Assert
@@ -191,6 +200,42 @@ describe('Landing', () => {
       expect(screen.getByText(/Could not reach the server\. .*Local Network Access/)).toBeDefined()
     })
     expect(hintCount()).toBe(1)
+  })
+
+  test('names the Local Network Access prompt for a failed boot sign-in to a loopback server', async () => {
+    // Arrange / Act — the redemption failed, so the bare landing names no
+    // server; the problem still carries the one the sign-in was to.
+    await mountLanding('/', {
+      secure: true,
+      bootSignInProblem: {
+        reason: 'Could not reach the server.',
+        serverUrl: 'http://127.0.0.1:8080',
+      },
+    })
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText(/Could not reach the server\. .*Local Network Access/)).toBeDefined()
+    })
+    expect(hintCount()).toBe(1)
+  })
+
+  test('leaves the prompt out for a failed boot sign-in to a remote server', async () => {
+    // Arrange / Act — the bare landing falls back to the loopback default, but
+    // the sign-in that failed was to a hosted server, which has no such prompt.
+    await mountLanding('/', {
+      secure: true,
+      bootSignInProblem: {
+        reason: 'Could not reach the server.',
+        serverUrl: 'https://ruth.wildflowerhealth.io',
+      },
+    })
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText('Could not reach the server.')).toBeDefined()
+    })
+    expect(hintCount()).toBe(0)
   })
 
   test('sends an already-signed-in reader on to the app', async () => {
@@ -356,7 +401,12 @@ describe('Landing', () => {
 
   test('drops a sign-in that failed before the page loaded once a pick starts another', async () => {
     // Arrange
-    await mountLanding('/', { bootSignInProblem: 'The token request was rejected: invalid_grant.' })
+    await mountLanding('/', {
+      bootSignInProblem: {
+        reason: 'The token request was rejected: invalid_grant.',
+        serverUrl: undefined,
+      },
+    })
     await waitFor(() => {
       expect(screen.getByText(/invalid_grant/)).toBeDefined()
     })
@@ -457,7 +507,7 @@ const mountLanding = async (
   url: string,
   options: {
     readonly store?: BearerAuthStateStore
-    readonly bootSignInProblem?: string
+    readonly bootSignInProblem?: SignInProblem
     /**
      * Router basepath, when `url` is under a subpath rather than the origin
      * root — mirrors what `main-web` passes so `/` still resolves the landing
