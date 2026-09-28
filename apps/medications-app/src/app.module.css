@@ -39,12 +39,8 @@
   gap: var(--space-5);
 }
 
-/* Loading / error lines share the body size; only the colour differs. */
-.status {
-  font-size: var(--font-size-3);
-  color: var(--color-neutral-5);
-}
-
+/* The interaction catalogue's failure line, sized and coloured like
+ * `smart-app-react`'s read-status lines. */
 .error {
   font-size: var(--font-size-3);
   color: var(--color-red-3);

@@ -713,6 +713,9 @@ importers:
       fhir-r4-react:
         specifier: workspace:*
         version: link:../../slices/emr/fhir-r4-react
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/kitchen-sink
       medication-calendar-core:
         specifier: workspace:*
         version: link:../../slices/medication/medication-calendar-core
@@ -740,6 +743,9 @@ importers:
       react-dom:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/react-kitchen-sink
       react-tundraish:
         specifier: workspace:*
         version: link:../../global/react-tundraish
