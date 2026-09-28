@@ -3852,6 +3852,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      fhir-utility:
+        specifier: workspace:*
+        version: link:../../emr/fhir-utility
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink

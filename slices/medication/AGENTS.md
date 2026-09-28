@@ -25,7 +25,16 @@ catalog onto it.
   `CanadianCodingSystem.Din`, `WildflowerExtension.RepeatsAvailable`,
   `WildflowerExtension.MedicationDescription`,
   `dispenseRequest.performer.reference`) — no pre-promotion fallbacks and no
-  vendor urls. No DOM, no platform imports.
+  vendor urls. The same subpath reads a request that carries its server `id`
+  (`MedicationRequestWithId`) as a `DoseRegimen`
+  (`medicationRequestToDoseRegimen`, or `medicationRequestsToDoseRegimens` with
+  `undated` / `dropped` counts), one file per area: `dosage.ts` reads the first
+  instruction's first dose, `per` administration or as a daily total (`d`)
+  when `timing.ts` can scale it — `timing.repeat` states frequency per `h` /
+  `d` / `wk` / `mo`, a month being 30 days; `regimen-period.ts` places it from
+  `validityPeriod.start` or `authoredOn` to the validity end or
+  `dispense-request.ts`'s authorized-supply end; `dose-regimen.ts` assembles
+  the regimen for the health viewer's dose lines. No DOM, no platform imports.
 - `medication-interaction-core` — the pure interaction layer. The compact
   bundled-file schema (`DdinterFile`: a drug table plus
   `[indexA, indexB, severityCode]` triples) and its decoder to an
@@ -143,6 +152,14 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
 - The adapter depends on `medication-calendar-core` for `nextFillDate`, so the
   matching base imports one feature core. Keep it that way round: nothing in
   `medication-calendar-core` may import `medication-core`.
+- The authorized-supply end (`authorizedSupplyEndOf`) advances by
+  `fhir-utility`'s `supplyDurationToParts`, the parser `nextFillDate` uses, so
+  a supply duration's units read one way everywhere. The daily-total
+  conversion (`DAYS_PER_PERIOD_UNIT`, keyed by `fhir-r4`'s `Timing.UnitOfTime`)
+  is this package's own table: `Timing.repeat` units are normalised to a rate,
+  not added to a date.
+- The dose-regimen readers take `MedicationRequestWithId` — the FHIR server
+  always returns an `id`, so there is no fallback key on this path.
 
 ### Interactions (`medication-interaction-*`)
 

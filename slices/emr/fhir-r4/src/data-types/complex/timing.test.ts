@@ -16,4 +16,14 @@ describe('FhirR4Timing', () => {
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
+
+  test('UnitOfTimeSchema accepts exactly the UnitsOfTime codes', () => {
+    const isUnitOfTime = Schema.is(Timing.UnitOfTimeSchema)
+    for (const code of ['s', 'min', 'h', 'd', 'wk', 'mo', 'a']) {
+      expect(isUnitOfTime(code)).toBe(true)
+    }
+    for (const code of ['day', 'D', 'y', '']) {
+      expect(isUnitOfTime(code)).toBe(false)
+    }
+  })
 })

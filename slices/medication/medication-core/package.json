@@ -29,6 +29,7 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
+    "fhir-utility": "workspace:*",
     "kitchen-sink": "workspace:*",
     "medication-calendar-core": "workspace:*",
     "typescript": "catalog:",
@@ -38,6 +39,7 @@
   "peerDependencies": {
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
+    "fhir-utility": "workspace:*",
     "kitchen-sink": "workspace:*",
     "medication-calendar-core": "workspace:*"
   }
