@@ -6,7 +6,8 @@
  *
  * The chart's vocabulary and math — series, levels, value axes, the
  * crosshair — are `health-viewer-fundamentals`'; what a record means is each
- * domain package's (`health-viewer-observations`).
+ * domain package's (`health-viewer-observations`,
+ * `health-viewer-medications`).
  *
  * @packageDocumentation
  */

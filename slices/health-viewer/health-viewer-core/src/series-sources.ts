@@ -1,10 +1,16 @@
 import type { Series, SeriesSource } from 'health-viewer-fundamentals'
 import {
+  type MedicationSeries,
+  type MedicationSeriesKey,
+  medicationSource,
+} from 'health-viewer-medications'
+import {
   type ObservationResource,
   type ObservationSeries,
   type ObservationSeriesKey,
   observationSource,
 } from 'health-viewer-observations'
+import type { MedicationRequestWithId } from 'medication-core/fhir'
 
 /**
  * The domain sources the viewer plots, in the order their catalogue groups
@@ -12,8 +18,8 @@ import {
  * source here and to {@link RecordResources} / {@link readRecord}.
  *
  * @remarks
- * Only observations so far. A medication id (`m:`) therefore reads as unknown
- * until the medication source joins this list.
+ * Observations first and medications last, so the catalogue lists a reader's
+ * results above the doses they are read against.
  */
 const SERIES_SOURCES: readonly [
   SeriesSource.SeriesSource<
@@ -21,11 +27,17 @@ const SERIES_SOURCES: readonly [
     ObservationSeriesKey,
     ObservationSeries
   >,
-] = [observationSource]
+  SeriesSource.SeriesSource<
+    readonly MedicationRequestWithId[],
+    MedicationSeriesKey,
+    MedicationSeries
+  >,
+] = [observationSource, medicationSource]
 
 /** The resources of a patient's record each source is handed, by source. */
 interface RecordResources {
   readonly observations: readonly ObservationResource[]
+  readonly medicationRequests: readonly MedicationRequestWithId[]
 }
 
 /** A series and the catalogue group its source files it under. */
@@ -61,7 +73,10 @@ const readSource = <TResources, TKey, TSeries extends Series.Series>(
 
 /** Read a patient's record through every source in {@link SERIES_SOURCES}. */
 const readRecord = (resources: RecordResources): RecordReading => {
-  const readings = [readSource(observationSource, resources.observations)]
+  const readings = [
+    readSource(observationSource, resources.observations),
+    readSource(medicationSource, resources.medicationRequests),
+  ]
   return {
     filed: readings.flatMap((reading) => reading.filed),
     undated: readings.reduce((total, reading) => total + reading.undated, 0),
