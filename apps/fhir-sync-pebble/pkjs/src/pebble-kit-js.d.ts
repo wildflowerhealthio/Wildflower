@@ -17,6 +17,8 @@ interface WebviewClosedEvent {
 }
 
 interface PebbleKitJs {
+  /** PebbleKit JS has started with the watchapp and can send it messages. */
+  addEventListener(type: 'ready', listener: () => void): void
   addEventListener(type: 'showConfiguration', listener: () => void): void
   addEventListener(type: 'webviewclosed', listener: (event: WebviewClosedEvent) => void): void
   addEventListener(type: 'appmessage', listener: (event: AppMessageEvent) => void): void

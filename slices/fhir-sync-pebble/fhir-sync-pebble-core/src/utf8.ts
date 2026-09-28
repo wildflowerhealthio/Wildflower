@@ -12,9 +12,6 @@
  * @packageDocumentation
  */
 
-/** U+FFFD's UTF-8, which a lone surrogate encodes as. */
-const REPLACEMENT_CHARACTER_BYTES: ReadonlyArray<number> = [0xef, 0xbf, 0xbd]
-
 const isHighSurrogate = (codeUnit: number): boolean => codeUnit >= 0xd800 && codeUnit <= 0xdbff
 const isLowSurrogate = (codeUnit: number): boolean => codeUnit >= 0xdc00 && codeUnit <= 0xdfff
 
@@ -46,9 +43,6 @@ const encodeCodePoint = (codePoint: number): Array<number> => {
   }
   if (codePoint < 0x800) {
     return [0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f)]
-  }
-  if (codePoint === 0xfffd) {
-    return REPLACEMENT_CHARACTER_BYTES.slice()
   }
   if (codePoint < 0x10000) {
     return [0xe0 | (codePoint >> 12), 0x80 | ((codePoint >> 6) & 0x3f), 0x80 | (codePoint & 0x3f)]

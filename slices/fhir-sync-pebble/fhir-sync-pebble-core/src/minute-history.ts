@@ -39,7 +39,10 @@ const VITAL_SIGNS_CATEGORY_CODING: Coding = {
   display: 'Vital Signs',
 }
 
-/** A menu data type the minute history carries. */
+/**
+ * A menu data type the minute history carries. Each name is part of its
+ * Observations' ids (see {@link toObservations}): never change one.
+ */
 type DataType = 'heartRate' | 'steps' | 'orientation' | 'movement' | 'ambientLight'
 
 /**
@@ -326,7 +329,10 @@ const samplesOf = (
  * The Observations for one hour: one per minute type the watch asked for,
  * except a type with no sample that hour, which gets none. Each one's id is the
  * watch's for its type and hour (`WatchDevice.observationId`), so an hour sent
- * again overwrites what it sent before.
+ * again overwrites what it sent before. The record key (`'MinuteHistory'`, the
+ * {@link DataType} name, the hour's start) is persisted wire format: never
+ * change it, or the `DataType` names; changing either re-keys every
+ * minute-history Observation.
  *
  * @param device - `WatchDevice.toReference`'s reference
  */

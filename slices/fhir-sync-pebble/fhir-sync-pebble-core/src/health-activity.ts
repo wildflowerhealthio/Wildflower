@@ -46,6 +46,8 @@ const ACTIVITY_CATEGORY_CODING: Coding = {
 /**
  * The value coding for each `HealthActivity`, keyed by its value in pebble.h
  * (one bit each). `HealthActivityNone` (0) is never recorded, so it has none.
+ * Each code is part of its Observations' ids (see {@link toObservation}):
+ * never change one.
  */
 const ACTIVITY_CODINGS: Readonly<Record<number, Coding>> = {
   1: { system: HEALTH_SERVICE_SYSTEM, code: 'HealthActivitySleep', display: 'Sleeping' },
@@ -129,7 +131,10 @@ const toDateTime = (seconds: number): string => new Date(seconds * 1000).toISOSt
  * watch `device`. Its id is the watch's for the activity's type and start
  * (`WatchDevice.observationId`), not its end: HealthService reports an activity
  * under way, or one it later refines, again with a later end, and that
- * overwrites the Observation rather than adding a second.
+ * overwrites the Observation rather than adding a second. The record key
+ * (`'HealthActivity'`, the activity's code from {@link ACTIVITY_CODINGS}, its
+ * start) is persisted wire format: never change it, or the codes; changing
+ * either re-keys every activity Observation.
  *
  * @param device - `WatchDevice.toReference`'s reference
  */

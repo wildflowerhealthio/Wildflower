@@ -19,6 +19,10 @@ import { joinIdComponents, localResourceId } from './local-resource-id.ts'
  * The identifier system for Pebble watch tokens: the PebbleKit JS docs for
  * `Pebble.getWatchToken()`, which returns a token unique to one watch and one
  * app (a watch gives each app a different one).
+ *
+ * Persisted wire format: every Observation's id derives from it
+ * ({@link observationId}). Never change it; changing it re-keys every
+ * Observation, and the next sync duplicates everything already synced.
  */
 const WATCH_TOKEN_SYSTEM = 'https://developer.repebble.com/docs/pebblekit-js/Pebble/#getWatchToken'
 
@@ -82,6 +86,10 @@ const toReference = (watchInfo: unknown, watchToken: unknown): Reference => {
  * record is one resource per watch and patient however often it is sent. The
  * patient is part of it so that syncing the same watch to another patient
  * writes new Observations rather than moving the first patient's.
+ *
+ * Persisted wire format, like {@link WATCH_TOKEN_SYSTEM} and every
+ * `recordKey` a caller passes: never change any of them; changing one re-keys
+ * every Observation it names, and the next sync duplicates them.
  *
  * @param recordKey - What identifies the record among the watch's, e.g. its
  *   kind, type and start

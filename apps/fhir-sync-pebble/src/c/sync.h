@@ -14,7 +14,9 @@ typedef struct {
 
 // A sync to the FHIR server, run through PebbleKit JS. The watch sends, one
 // AppMessage each and one at a time:
-//   - SyncStart, the sync's id, so the phone starts collecting afresh;
+//   - SyncStart, the sync's id, so the phone starts collecting afresh, and
+//     ConnectionId, the connection the last-sync times belong to, which the
+//     phone checks against its settings before writing;
 //   - each Health activity that ended since that type's last sync, less
 //     SYNC_ACTIVITY_LOOKBACK_SECONDS (ActivityType, ActivityStart, ActivityEnd);
 //   - each whole clock hour of minute history some checked minute type (every

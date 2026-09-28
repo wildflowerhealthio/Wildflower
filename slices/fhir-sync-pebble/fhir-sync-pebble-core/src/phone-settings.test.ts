@@ -10,6 +10,14 @@ import * as PhoneSettings from './phone-settings.ts'
 
 const settingsArbitrary = Arbitrary.make(PebbleSettings.Schema)
 
+const SETTINGS: PhoneSettings.Settings = {
+  patientId: 'ada-lovelace',
+  patientName: 'Ada Lovelace',
+  patientBirthDate: '1815-12-10',
+  accessToken: 'token',
+  fhirBaseUrl: 'https://fhir.example/r4',
+}
+
 /** The `webviewclosed` response for `json`, as the configuration page hands it back. */
 const responseFor = (json: string): string => encodeURIComponent(json)
 
@@ -94,16 +102,21 @@ describe('decodeResponse', () => {
 })
 
 describe('decodeStored', () => {
-  // PebbleKit JS stores what decodeResponse returns, as JSON, and the sync reads
-  // it back.
-  it('should decode the settings webviewclosed stored', () => {
+  // PebbleKit JS stores what decodeResponse returns with when it arrived, and
+  // the sync and every later settings message read it back.
+  it('should decode the settings webviewclosed stored and when they arrived', () => {
     fc.assert(
-      fc.property(settingsArbitrary, (settings) => {
-        const stored = JSON.stringify(
-          PhoneSettings.decodeResponse(responseFor(PebbleSettings.toJson(settings)))
-        )
-        expect(PhoneSettings.decodeStored(stored)).toEqual(settings)
-      }),
+      fc.property(
+        settingsArbitrary,
+        fc.nat({ max: 4_102_444_800_000 }),
+        (settings, receivedAtMs) => {
+          const stored = PhoneSettings.toStored(
+            PhoneSettings.decodeResponse(responseFor(PebbleSettings.toJson(settings))),
+            receivedAtMs
+          )
+          expect(PhoneSettings.decodeStored(stored)).toEqual({ settings, receivedAtMs })
+        }
+      ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
@@ -116,11 +129,20 @@ describe('decodeStored', () => {
     fc.assert(
       fc.property(settingsArbitrary, (settings) => {
         expect(() =>
-          PhoneSettings.decodeStored(JSON.stringify({ ...settings, [key]: '' }))
+          PhoneSettings.decodeStored(PhoneSettings.toStored({ ...settings, [key]: '' }, 0))
         ).toThrow(key)
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
+  })
+
+  it.each([
+    ['no receivedAtMs', JSON.stringify({ settings: SETTINGS })],
+    ['a fractional receivedAtMs', JSON.stringify({ settings: SETTINGS, receivedAtMs: 0.5 })],
+    ['bare settings', JSON.stringify(SETTINGS)],
+    ['not an object', '42'],
+  ])('should reject stored settings with %s', (_, stored) => {
+    expect(() => PhoneSettings.decodeStored(stored)).toThrow()
   })
 })
 
@@ -227,14 +249,6 @@ describe('connectionId', () => {
 })
 
 // Helpers
-
-const SETTINGS: PhoneSettings.Settings = {
-  patientId: 'ada-lovelace',
-  patientName: 'Ada Lovelace',
-  patientBirthDate: '1815-12-10',
-  accessToken: 'token',
-  fhirBaseUrl: 'https://fhir.example/r4',
-}
 
 /** `text`'s length in UTF-8 bytes, 0 for none. */
 const byteLength = (text: string | null): number => (text === null ? 0 : utf8Bytes(text).length)

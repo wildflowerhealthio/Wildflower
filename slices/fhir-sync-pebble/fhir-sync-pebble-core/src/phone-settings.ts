@@ -9,7 +9,8 @@ import { truncateUtf8 } from './utf8.ts'
  *
  * @remarks
  * A namespace module — consumers speak `PhoneSettings.decodeResponse`,
- * `PhoneSettings.decodeStored`, `PhoneSettings.toWatchMessage`.
+ * `PhoneSettings.toStored`, `PhoneSettings.decodeStored`,
+ * `PhoneSettings.toWatchMessage`.
  *
  * {@link Settings} is the shape the settings page's `PebbleSettings.toJson`
  * writes: `PebbleSettings.Schema` is pinned to it. The decode is hand-written
@@ -44,6 +45,16 @@ interface Settings {
    * the sync's transaction Bundle is POSTed to it.
    */
   readonly fhirBaseUrl: string
+}
+
+/**
+ * What the phone keeps in `localStorage`: the settings, and when they arrived
+ * (`Date.now()` milliseconds), so the watch message sent again later carries
+ * the same `AuthTime`.
+ */
+interface Stored {
+  readonly settings: Settings
+  readonly receivedAtMs: number
 }
 
 /** The AppMessage dictionary the watch receives, keyed by `messageKeys` name. */
@@ -110,17 +121,29 @@ const decodeSettings = (settings: unknown): Settings => {
 const decodeResponse = (response: string): Settings =>
   decodeSettings(JSON.parse(decodeURIComponent(response)))
 
+/** The `localStorage` text keeping `settings`, received at `receivedAtMs`. */
+const toStored = (settings: Settings, receivedAtMs: number): string =>
+  JSON.stringify({ settings, receivedAtMs })
+
 /**
- * Decodes the settings `webviewclosed` last stored, or throws when the settings
- * page has never saved any.
+ * Decodes what {@link toStored} last wrote, or throws when the settings page
+ * has never saved any or it is not that shape.
  *
- * @param stored - What `localStorage.getItem` returns for them
+ * @param stored - What `localStorage.getItem` returns for it
  */
-const decodeStored = (stored: string | null): Settings => {
+const decodeStored = (stored: string | null): Stored => {
   if (stored === null) {
     throw new Error('No settings stored; open the settings page first')
   }
-  return decodeSettings(JSON.parse(stored))
+  const parsed: unknown = JSON.parse(stored)
+  if (!isFields(parsed)) {
+    throw new Error('Stored settings must be a JSON object')
+  }
+  const receivedAtMs = parsed['receivedAtMs']
+  if (typeof receivedAtMs !== 'number' || receivedAtMs % 1 !== 0) {
+    throw new Error('Stored settings field receivedAtMs must be an integer')
+  }
+  return { settings: decodeSettings(parsed['settings']), receivedAtMs }
 }
 
 /**
@@ -128,6 +151,8 @@ const decodeStored = (stored: string | null): Settings => {
  * connections: `fhir-r4`'s `localResourceId` for the patient on the FHIR base
  * URL, `wf-` and 32 hex digits. The watch starts its last-sync times over when
  * it changes, and keeps them across a sign-in again to the same patient.
+ * Never change the derivation: every watch would start its last-sync times
+ * over at its next settings.
  */
 const connectionId = (settings: Settings): string =>
   localResourceId(settings.fhirBaseUrl, 'Patient', settings.patientId)
@@ -142,10 +167,12 @@ const connectionId = (settings: Settings): string =>
  * The name and birth date are cut to what the watch keeps
  * ({@link PATIENT_NAME_MAX_BYTES}, {@link BIRTH_DATE_MAX_BYTES}) between code
  * points, so the watch neither cuts a character in half nor drops a message
- * too long for its inbox. At those lengths the message is at most 144 bytes of
- * the watch's 256-byte inbox: a count byte, then four tuples of a 7-byte header
- * and their values, 64 and 11 bytes for the name and birth date with their
- * NULs, 4 for the time and 36 for the connection id.
+ * too long for its inbox. At those lengths the message is at most 144 bytes, the
+ * largest the phone sends the watch: a count byte, then four tuples of a
+ * 7-byte header and their values, 64 and 11 bytes for the name and birth date
+ * with their NULs, 4 for the time and 36 for the connection id. The watch's
+ * inbox is `APP_MESSAGE_INBOX_SIZE` (src/c/state.h), and the app's
+ * `test/state.test.ts` checks the message against it and `state.h`'s sizes.
  */
 const toWatchMessage = (settings: Settings, receivedAtMs: number): WatchMessage => ({
   PatientName: truncateUtf8(settings.patientName ?? '', PATIENT_NAME_MAX_BYTES),
@@ -154,5 +181,5 @@ const toWatchMessage = (settings: Settings, receivedAtMs: number): WatchMessage 
   ConnectionId: connectionId(settings),
 })
 
-export { connectionId, decodeResponse, decodeStored, toWatchMessage }
-export type { Settings, WatchMessage }
+export { connectionId, decodeResponse, decodeStored, toStored, toWatchMessage }
+export type { Settings, Stored, WatchMessage }

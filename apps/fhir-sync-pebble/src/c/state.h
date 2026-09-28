@@ -16,8 +16,8 @@
 #define CONNECTION_ID_SIZE 36
 
 // The AppMessage inbox main opens. The largest message the phone sends is the
-// settings, at most 144 bytes with every field at its longest (see the core's
-// PhoneSettings.toWatchMessage).
+// settings; the core's PhoneSettings.toWatchMessage works out its size with
+// every field at its longest, and test/state.test.ts checks it fits.
 #define APP_MESSAGE_INBOX_SIZE 256
 
 // Who the watch records for, as the configuration page last sent it. The

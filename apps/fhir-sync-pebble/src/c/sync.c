@@ -197,6 +197,7 @@ static void prv_send_next(Sync *sync) {
     int due_types;
     if (!sync->start_sent) {
       dict_write_int32(iterator, MESSAGE_KEY_SyncStart, sync->id);
+      dict_write_cstring(iterator, MESSAGE_KEY_ConnectionId, sync->state->connection.connection_id);
       sync->start_sent = true;
     } else if (sync->next_activity < sync->activity_count) {
       const RecordedActivity *recorded = &sync->activities[sync->next_activity++];

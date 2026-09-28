@@ -23,9 +23,11 @@ the PebbleKit JS glue is [`apps/fhir-sync-pebble`](../../apps/fhir-sync-pebble/A
   `MinuteHistory` (the watch's activity and hour messages decoded, and the
   Observations each becomes), `WatchDevice` (the watch as the Observations'
   `device`, and the deterministic id each Observation is PUT under), and
-  `WatchSync` (a sync's messages collected from its `SyncStart`, checked
-  against the watch's counts, PUT as one transaction Bundle, and the answer to
-  the watch). No DOM, no React, no platform imports.
+  `WatchSync` (the phone's side of a sync as a pure reducer, `receive`: each
+  message folded into the sync under way from its `SyncStart`, checked against
+  the watch's counts, and what to do next; then `planWrite`, which checks the
+  watch's connection against the settings and builds the transaction Bundle of
+  PUTs; and the answer to the watch). No DOM, no React, no platform imports.
 
 ## Rules
 
