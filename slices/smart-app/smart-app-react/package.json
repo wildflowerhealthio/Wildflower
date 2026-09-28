@@ -2,7 +2,7 @@
   "name": "smart-app-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The Wildflower chrome every self-hosted SMART app boots through: `SmartAppRoot` (one QueryClient, the launched/standalone branch latched on mount, the launch-failure banner), `runSmartLaunchEntry` (the whole launch.html entry), and `ConnectMenu` (the standalone connect flow over `fhir-r4-react/smart`'s launch primitives). Built on `fhir-r4-react/smart` for the SMART wiring and `branding-react` for the Wildflower chrome, so neither of those has to know about the other.",
+  "description": "The Wildflower chrome every self-hosted SMART app boots through: `SmartAppRoot` (one QueryClient, the launched/standalone branch latched on mount, the launch-failure banner), `runSmartLaunchEntry` (the whole launch.html entry), and `ConnectMenu` (the standalone connect flow: over `fhir-r4-react/smart`'s launch primitives for a SMART app, or through the caller's own sign-in for the Wildflower owner UI). Built on `fhir-r4-react/smart` for the SMART wiring and `branding-react` for the Wildflower chrome, so neither of those has to know about the other.",
   "type": "module",
   "exports": {
     ".": {

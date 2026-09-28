@@ -5,7 +5,7 @@ import { APP_DESCRIPTIONS, anchorHref, fromApp, type AppSectionId } from 'brandi
 import styles from './app-landing.module.css'
 
 /**
- * The standalone landing content for one SMART app: its `APP_DESCRIPTIONS`
+ * The standalone landing content for one app: its `APP_DESCRIPTIONS`
  * introduction (the name as the page's `h1`, the tagline, the paragraphs, the
  * landing-only numbered `guide` when the app has one, and a link to the rest
  * of the homepage; no status line — an app someone has reached is usable)

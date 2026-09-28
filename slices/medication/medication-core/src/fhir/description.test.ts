@@ -1,7 +1,16 @@
-import { describe, expect, test } from 'vite-plus/test'
+import * as fc from 'fast-check'
+import { WildflowerExtension } from 'fhir-r4/data-types'
+import { numRunsFor } from 'kitchen-sink/test'
+import { describe, expect, it, test } from 'vite-plus/test'
 
 import { descriptionOf } from './description.ts'
-import { decode, rexallRequest, shoppersRequest } from './test-helpers.ts'
+import {
+  base,
+  CAREBOOK_DESCRIPTION_EXTENSION,
+  decode,
+  rexallRequest,
+  shoppersRequest,
+} from './test-helpers.ts'
 
 describe('descriptionOf', () => {
   test('reads the description out of the narrative a source wrote it into', () => {
@@ -45,5 +54,33 @@ describe('descriptionOf', () => {
       dosageInstruction: [{ text: 'do-not-use sig' }],
     })
     expect(descriptionOf(request)).toBe('20 mg - Tablet')
+  })
+
+  it('should never read a description off any extension but the Wildflower one', () => {
+    // The carebook description extension included: a contained Medication with
+    // neither the Wildflower extension nor a narrative has no description.
+    fc.assert(
+      fc.property(
+        fc.oneof(
+          fc.constant(CAREBOOK_DESCRIPTION_EXTENSION),
+          fc.webUrl().filter((url) => url !== WildflowerExtension.MedicationDescription)
+        ),
+        fc.string({ minLength: 1 }),
+        (url, description) => {
+          const request = decode({
+            ...base,
+            contained: [
+              {
+                resourceType: 'Medication',
+                id: 'm',
+                extension: [{ url, valueString: description }],
+              },
+            ],
+          })
+          expect(descriptionOf(request)).toBeNull()
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })

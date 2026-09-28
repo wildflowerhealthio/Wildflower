@@ -10,6 +10,40 @@ add prose above or below them if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.3.0 — 2026-09-28
+
+- medication-core: pin the carebook-free adapter and document the re-import clean break (2D #583) (#766) (ce2cadc8)
+- SMART apps: web-trace on SmartAppRoot, AppLandingPage, appRootRedirectUri (#771) (1cb89404)
+- Ruthmarks/add fhir sync pebble app (#759) (93015a84)
+- Add FHIR sync settings web app (#758) (46c5caf1)
+- watch lifts project ui starter (#754) (a4bfe4e1)
+- gatekeeper: repair installs that skipped one of the two 0009 migrations (#757) (d971d97d)
+- rexall-be-well-source, shoppers-drugmart-source: DIN, store link and remaining repeats in conventional slots (#747) (da08962b)
+- gatekeeper: Owner can list and disable trusted OAuth clients (#736) (fa3f23ce)
+- gatekeeper: send first-party clients back to the owner UI copy they launched from (#745) (2a126945)
+- Remove cookie auth — the server is bearer-only (#742) (a40c56f6)
+- docs(agents): add code-style review cues to AGENTS.md (#749) (cbe8a725)
+- smart-app slice: SmartAppRoot + launch entry + ConnectMenu; react-tundraish/styles; migrate medications-app and importer-web (#746) (48872ead)
+- fhir-r4: reject more than one populated slot per choice element (#748) (dba7c705)
+- First-party apps build to their own dist; retire the vendored outDir (#744) (8810c0ce)
+- fix(fhir-r4): drop spurious 'MetaDataTypes' datatype name (#743) (cc161d1b)
+- github-pages, branding-core: send the 404 redirect site-absolute (#741) (6eda2ac3)
+- tauri: drop the embedded owner UI; unmatched routes 404 with a link to the hosted app (#735) (033acff2)
+- gatekeeper + Tauri: native owner dialog for loopback wildflower-react logins (#733) (6ea540c3)
+- fix(github-pages): paint 404 redirect page with theme canvas color (#740) (cdf055f7)
+- chore(deps): bump the cargo-minor-patch group with 3 updates (#738) (b8a6c31a)
+- chore(deps): bump taiki-e/install-action (#737) (a53683b4)
+- ci: warm the vp pack cache on main for TypeScript CI (#734) (38c6b31f)
+- gatekeeper: cache-suppress /access and the authorize-status poll (#732) (f34a0ae8)
+- gatekeeper: authority proofs, privileged writers, and capability-only handlers (#730) (422a19bb)
+- wildflower-react: finish the hosted SMART login — expiry, returnTo, local-network hint (#695) (#721) (e9b170eb)
+- github-pages: publish the hosted wildflower-react at /app/ (#719) (b7205c6f)
+- chore(deps): combine Dependabot bumps (#725, #726, #727) (#729) (98ff3894)
+- wildflower-react: web entry with in-memory bearer auth and server picker (#716) (5d8a982d)
+- D6: dicom-importer — study-level import, many .dcm files as one ImagingStudy (#712) (b122255f)
+- gatekeeper-core: shared SMART standalone-launch client, extracted from wildflower-server-docs (#713) (ff7b7d9b)
+- 1G: health-viewer-core — series model, Observation adapter, axis assignment, range presets, URL codec (#711) (b9681b92)
+
 ## v0.2.8 — 2026-09-21
 
 - gatekeeper: raise the consent popup for /oauth/authorize too (#707) (927123f9)

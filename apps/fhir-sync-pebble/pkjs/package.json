@@ -1,0 +1,19 @@
+{
+  "name": "fhir-sync-pebble-pkjs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The FHIR Sync for Pebble watchapp's PebbleKit JS, in TypeScript: the glue from Pebble's events, AppMessage, localStorage and XMLHttpRequest to fhir-sync-pebble-core, bundled to ES5 as ../src/pkjs/index.js for the Pebble SDK.",
+  "type": "module",
+  "scripts": {
+    "build": "vp pack",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "acorn": "catalog:",
+    "fhir-sync-pebble-core": "workspace:*",
+    "typescript-es5": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

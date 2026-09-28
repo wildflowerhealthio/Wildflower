@@ -12,7 +12,9 @@ import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { AppLanding } from './app-landing.tsx'
 
-const appSectionIdArb = fc.constantFrom<AppSectionId>(...APP_SECTION_IDS)
+// The homepage's SMART apps, and the owner UI, which has a landing page but no
+// homepage row.
+const appSectionIdArb = fc.constantFrom<AppSectionId>(...APP_SECTION_IDS, 'app')
 
 afterEach(() => {
   cleanup()

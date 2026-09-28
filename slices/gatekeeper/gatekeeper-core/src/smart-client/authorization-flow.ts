@@ -111,8 +111,8 @@ interface AuthorizationRequestParameters {
   readonly codeChallenge: string
   /**
    * SMART's `aud`: the FHIR base the resulting token is meant for. Sent because
-   * a standalone launch is specified to send it; the target's own FHIR base, so
-   * it is derived from the server URL rather than configured.
+   * a standalone launch is specified to send it: the FHIR base whose SMART
+   * configuration `beginSignIn`'s discovery found.
    */
   readonly audience: string
 }
@@ -138,9 +138,6 @@ const authorizationRequestUrl = (
   url.searchParams.set('aud', parameters.audience)
   return url.toString()
 }
-
-/** The FHIR base of `serverUrl` — the `aud` a standalone launch names. */
-const fhirAudienceFor = (serverUrl: string): string => `${serverUrl}/fhir-r4`
 
 /** A code the authorization server redirected back with (RFC 6749 §4.1.2). */
 const ReturnedCode = Schema.Struct({
@@ -310,7 +307,6 @@ export {
   serializePendingAuthorization,
   parsePendingAuthorization,
   authorizationRequestUrl,
-  fhirAudienceFor,
   authorizationRedirectOutcome,
   searchWithoutAuthorizationResponse,
   isAuthorizationResponse,

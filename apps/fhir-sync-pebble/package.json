@@ -1,0 +1,57 @@
+{
+  "name": "fhir-sync-pebble",
+  "version": "0.0.0",
+  "private": true,
+  "keywords": [
+    "pebble-app"
+  ],
+  "author": "Wildflower Health Project",
+  "scripts": {
+    "fmt:c": "clang-format -i $(find src test -name '*.[ch]')",
+    "fmt:c:check": "clang-format --dry-run -Werror $(find src test -name '*.[ch]')"
+  },
+  "dependencies": {},
+  "pebble": {
+    "displayName": "FHIR Sync",
+    "uuid": "d5ea686b-f615-48fc-844e-2ff3e5a57751",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "capabilities": [
+      "configurable",
+      "health"
+    ],
+    "targetPlatforms": [
+      "emery"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "PatientName",
+      "PatientBirthDate",
+      "AuthTime",
+      "ActivityType",
+      "ActivityStart",
+      "ActivityEnd",
+      "ActivityCount",
+      "SyncSucceeded",
+      "MinuteHourStart",
+      "MinuteTypes",
+      "MinuteData",
+      "MinuteHourCount",
+      "SyncStart",
+      "SyncId",
+      "ConnectionId"
+    ],
+    "resources": {
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "IMAGE_MENU_ICON",
+          "file": "images/menu_icon.png",
+          "menuIcon": true
+        }
+      ]
+    }
+  }
+}

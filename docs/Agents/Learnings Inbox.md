@@ -147,7 +147,7 @@ The homepage's per-app rows and each SMART app's standalone landing page render
 the same `APP_DESCRIPTIONS` entry from `branding-core`, so a copy edit in one
 place changes both. `branding-react`'s `AppLanding` takes the app's
 `AppSectionId` and the connect menu as children; it owns the page's `h1` (the
-app name), which is why `fhir-r4-react`'s `ConnectMenu` heading is an `h2`. A
+app name), which is why `smart-app-react`'s `ConnectMenu` heading is an `h2`. A
 test that looks for the connect page's heading by level should use level 2.
 
 ## A design handoff's "`--radius-5` = 18px" is `--card-border-radius`, not tundra's ramp
@@ -454,3 +454,27 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: fhir-sync-pebble-web (the consent page's patient picker vanished on Tauri and the hosted owner UI)
 **Learning**: `HttpClient.mapRequest(client, f)` is `(request) => Effect.map(client.preprocess(request), f)`: the client being wrapped rewrites the request first, and the wrapper's `f` sees the result. `apps/wildflower-react` built its FHIR transport as a `/fhir-r4` `prependApiBaseUrl` wrapper around a layer that had already prefixed the API origin, so the origin went on first and the `/fhir-r4` wrapper saw an absolute URL and skipped it. Every owner-UI FHIR request went to `{origin}/Patient` wherever `apiBaseUrl` is set, from #535 until the fix. The fix joins the mount path onto the origin in one prefix (`apiTransportAt`), and `app-query-runtime.test.ts` pins the URLs. Only same-origin setups (no `apiBaseUrl`) and the SMART apps worked: `smartHttpClientLayer` prepends the whole FHIR base in one step. The existing runtime tests missed it because they only used a single-transport `/fixture` request.
 **Suggested destination**: slices/emr/AGENTS.md (the "provider names the base" guardrail) and apps/wildflower-react's bridge docs
+
+## Pebble's libc has no `struct tm`, and PebbleKit JS won't load through Vitest's transform
+
+**Discovered during**: ruthmarks/add-fhir-sync-pebble-settings (`apps/fhir-sync-pebble`)
+**Learning**: The Pebble SDK's newlib `time.h` doesn't declare `struct tm`; `pebble.h` does. A formatter kept off `pebble.h` for host tests fails to build for the watch if it takes a `struct tm *` and includes only `<time.h>` ("declared inside parameter list"). Guard the include on `PBL_SDK_3` (`pebble.h` on the watch, `<time.h>` on the host). On the JS side, PebbleKit JS modules are ES5 CommonJS in a package without `"type": "module"`, and Vitest's ESM transform can't evaluate `module.exports`: load them from the test with `createRequire(import.meta.url)`, typed by a sibling `.d.ts` (the SDK bundles only `src/pkjs/**/*.js` and `*.json`, so the `.d.ts` never ships). Host-C driver tests spawn one sanitized process per call (~50 ms), so a property that calls the driver twice per case at 100 runs blows Vitest's 5 s timeout; compute expectations in TS and run fewer cases.
+**Suggested destination**: apps/watch-lifts/README.md, or a shared Pebble watchapp How-To once there are two
+
+## A Pebble app with no `.bss` gets a too-small `virtual_size` and silently never starts
+
+**Discovered during**: ruthmarks/add-fhir-sync-pebble-app (Health Activity sync in `apps/fhir-sync-pebble`)
+**Learning**: The SDK's `inject_metadata.py` (`get_virtual_size`) writes the app header's `virtual_size` as the end of `.bss`, falling back to the end of `.data` when the ELF has no `.bss`. The linker places the orphan `.got`/`.got.plt` sections after `.data` and before `.bss`, so an app with no zero-initialized global gets `virtual_size` < load size, and the firmware refuses to start it. It shows in the launcher, but selecting it produces no log line, not even the process manager's exit "Heap Usage" line. To diagnose, compare `arm-none-eabi-readelf -S build/<platform>/pebble-app.elf` (is `.bss` present and last?) with the header's load and virtual sizes (little-endian `uint16` at offsets 14 and 128 of `pebble-app.bin`). `apps/fhir-sync-pebble` keeps a one-byte `static volatile` anchor that `main` reads, because `--gc-sections` drops an unreferenced one. `apps/watch-lifts` only works because it happens to have an 8-byte `.bss`.
+**Suggested destination**: a shared Pebble watchapp How-To once there are two (with the `struct tm` entry above)
+
+## Pebble minute history: apps get a light enum, not lux, and the angles are 22.5° bins
+
+**Discovered during**: ruthmarks/add-fhir-sync-pebble-app (minute-history sync in `apps/fhir-sync-pebble`)
+**Learning**: In Core Devices' PebbleOS the activity service stores each minute's light as screen-compensated lux ÷ 16 (`light_get_ambient_lux`, `ALG_RAW_LIGHT_SENSOR_DIVIDE_BY`). `health_service_get_minute_history` only returns `ambient_light_level_to_enum(stored × 16)`, which compares against the board's `ambient_light_dark_threshold` ± `ambient_k_delta_threshold`, both in lux. On the Pebble Time 2 (`board_obelix.c`: 800 ± 100, raw → lux = raw × 100 / 483) that means VeryDark < 700, Dark 700–800, Light 800–900, VeryLight ≥ 900 lux. The QEMU boards are uncalibrated, so the emulator's levels don't map to lux. Orientation (`kalg_minute_stats`) is yaw, atan2(y, x), in 16 rounded bins in the low nibble; the high nibble is the angle from the watch's +z axis, which only spans bins 0–8 (0–180°), with 0 or 8 meaning flat. VMC is ActiGraph-scaled counts per minute. `pebble build` also doesn't regenerate `message_keys.auto.h` when `messageKeys` grows; `pebble clean` first.
+**Suggested destination**: a shared Pebble watchapp How-To once there are two
+
+## Nothing in the Vite+ toolchain emits ES5; lower the finished bundle with TypeScript 5
+
+**Discovered during**: ruthmarks/add-fhir-sync-pebble-app (PebbleKit JS moved to TypeScript in `apps/fhir-sync-pebble/pkjs`)
+**Learning**: Rolldown (so `vp pack`/tsdown) refuses `target: 'es5'` ("Rolldown only supports ES2015 (ES6) and later"), and at ES2015 oxc lowers object spread through Babel-style helpers that read `Symbol`; a namespace used as a value (`const { a } = Namespace`) also pulls in rolldown's `__exportAll`, which writes `Symbol.toStringTag`. What works: `target: false`, then `ts.transpileModule` at `ScriptTarget.ES5` over the whole chunk. Do it in `generateBundle` (mutating `chunk.code`), not `renderChunk`: rolldown reprints `renderChunk`'s result and turns `{ a: a }` back into the ES2015 shorthand `{ a }`. Parse the written file with acorn at `ecmaVersion: 5` to prove it. Library methods don't lower, so type-check the bundled sources with `lib: ["es5"]` too; a type-only import of an Effect module drags ~550 files into that program (8 s), so keep the bundled modules from importing, even as types, anything Effect-based. TypeScript 7 (and `vp check`'s tsgolint) has no ES5 target, so the tsconfig says ES2015 and the check overrides it.
+**Suggested destination**: apps/fhir-sync-pebble/AGENTS.md already carries the rule; a shared Pebble watchapp How-To once there are two

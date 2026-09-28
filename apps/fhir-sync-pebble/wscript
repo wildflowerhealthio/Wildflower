@@ -1,0 +1,79 @@
+#
+# This file is the default set of rules to compile a Pebble application.
+#
+# Feel free to customize this to your needs.
+#
+import os.path
+import shutil
+
+top = '.'
+out = 'build'
+
+
+def options(ctx):
+    ctx.load('pebble_sdk')
+
+
+def configure(ctx):
+    """
+    This method is used to configure your build. ctx.load(`pebble_sdk`) automatically configures
+    a build for each valid platform in `targetPlatforms`. Platform-specific configuration: add your
+    change after calling ctx.load('pebble_sdk') and make sure to set the correct environment first.
+    Universal configuration: add your change prior to calling ctx.load('pebble_sdk').
+    """
+    ctx.load('pebble_sdk')
+
+
+def find_vp(ctx):
+    """The repo's own `vp` (node_modules/.bin, which `vp install` fills), else the one on PATH."""
+    repo_vp = ctx.path.find_node('../../node_modules/.bin/vp')
+    if repo_vp is not None:
+        return repo_vp.abspath()
+    return shutil.which('vp')
+
+
+def bundle_pkjs(ctx):
+    """
+    The PebbleKit JS is TypeScript in pkjs/, bundled to ES5 as src/pkjs/index.js,
+    which the bundle step in build() reads. Build it first so a plain
+    `pebble build` never packs a stale or missing bundle.
+    """
+    vp = find_vp(ctx)
+    if vp is None:
+        ctx.fatal('Bundling the PebbleKit JS needs Vite+ (`vp`): run `vp install` at the '
+                  'repository root, or put `vp` on the PATH')
+    if ctx.exec_command([vp, 'pack'], cwd=ctx.path.find_dir('pkjs').abspath()) != 0:
+        ctx.fatal('Bundling the PebbleKit JS (`vp pack` in pkjs/) failed')
+
+
+def build(ctx):
+    ctx.load('pebble_sdk')
+
+    bundle_pkjs(ctx)
+
+    build_worker = os.path.exists('worker_src')
+    binaries = []
+
+    cached_env = ctx.env
+    for platform in ctx.env.TARGET_PLATFORMS:
+        ctx.env = ctx.all_envs[platform]
+        ctx.set_group(ctx.env.PLATFORM_NAME)
+        app_elf = '{}/pebble-app.elf'.format(ctx.env.BUILD_DIR)
+        ctx.pbl_build(source=ctx.path.ant_glob('src/c/**/*.c'), target=app_elf, bin_type='app')
+
+        if build_worker:
+            worker_elf = '{}/pebble-worker.elf'.format(ctx.env.BUILD_DIR)
+            binaries.append({'platform': platform, 'app_elf': app_elf, 'worker_elf': worker_elf})
+            ctx.pbl_build(source=ctx.path.ant_glob('worker_src/c/**/*.c'),
+                          target=worker_elf,
+                          bin_type='worker')
+        else:
+            binaries.append({'platform': platform, 'app_elf': app_elf})
+    ctx.env = cached_env
+
+    ctx.set_group('bundle')
+    ctx.pbl_bundle(binaries=binaries,
+                   js=ctx.path.ant_glob(['src/pkjs/**/*.js',
+                                         'src/pkjs/**/*.json',
+                                         'src/common/**/*.js']),
+                   js_entry_file='src/pkjs/index.js')

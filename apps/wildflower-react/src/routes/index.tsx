@@ -1,20 +1,21 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { basenameOf } from 'branding-core'
-import {
-  insecureTargetReason,
-  normalizeServerUrl,
-  searchWithServerUrl,
-} from 'gatekeeper-core/smart-client'
-import { type JSX, type SubmitEvent, useEffect, useRef, useState } from 'react'
+import { AppLandingPage } from 'branding-react'
+import { withLocalNetworkAccessHint } from 'fhir-r4-react/smart'
+import { insecureTargetReason, searchWithServerUrl } from 'gatekeeper-core/smart-client'
+import { type JSX, useEffect } from 'react'
 import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitchen-sink'
-import { TextField, pageLayoutStyles } from 'react-tundraish'
+import { ConnectMenu } from 'smart-app-react'
 
-import { localNetworkAccessHint } from '../local-network-hint.ts'
 import type { RouterContext } from '../router-context.ts'
-import { returnToOnPage, signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
+import {
+  returnToOnPage,
+  signInEnvironment,
+  startSignIn,
+  type SignInProblem,
+  type SignInStep,
+} from '../sign-in.ts'
 import { apiServerUrl, chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
-
-const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
 
 /**
  * Record `serverUrl` as this page's target without reloading.
@@ -39,9 +40,10 @@ const rememberServer = (serverUrl: string): void => {
 /**
  * Root index. Behavior varies by entry:
  *
- * - **`main-web` + unauthed**: renders the server picker landing page, which
- *   signs in by SMART standalone launch — see `../sign-in.ts` for the flow and
- *   why this entry uses it rather than the device-code screen.
+ * - **`main-web` + unauthed**: renders the landing page (the owner UI's
+ *   introduction beside the server picker), which signs in by SMART standalone
+ *   launch — see `../sign-in.ts` for the flow and why this entry uses it
+ *   rather than the device-code screen.
  * - **`main-web` + authed**: redirects to `/home`.
  * - **`main-tauri`**: redirects to `/home` unconditionally. The host webview
  *   talks to its own loopback server, so there is no server to pick, and the
@@ -113,30 +115,37 @@ const shouldSignInOnArrival = (arrival: {
   arrival.bootSignInProblem === undefined
 
 /**
- * The web entry's landing page: pick a server, then sign in to it. Opened
- * already naming a server, it signs in straight away (see
- * {@link shouldSignInOnArrival}).
+ * The web entry's landing page, in the shared Wildflower chrome: the owner
+ * UI's `APP_DESCRIPTIONS` introduction beside the `ConnectMenu`, where picking
+ * a server signs in to it. Opened already naming a server, it signs in straight
+ * away (see {@link shouldSignInOnArrival}).
  *
  * @param bootSignInProblem - Why a sign-in failed on the *previous* page load,
- *   before this tree existed. `main-web` redeems the authorization code
- *   ahead of mounting the router, so that failure has to be carried in rather
- *   than raised here. Seeds the state once; a fresh attempt replaces it.
+ *   before this tree existed, and the server it was to. `main-web` redeems the
+ *   authorization code ahead of mounting the router, so that failure has to be
+ *   carried in rather than raised here. The menu shows it until a fresh
+ *   attempt starts.
  * @param signIn - How to start a sign-in and leave for it; the browser's own by
  *   default.
+ *
+ * @remarks
+ * The page keeps only the policy: which server it is pointed at, whether to
+ * sign in to it on arrival, what failed before it loaded, and what signing in
+ * means (`connect`). The menu runs every sign-in — a pick, the "Sign in to …"
+ * row for the chosen server, and the sign-in on arrival (`autoConnect`) —
+ * through one in-flight state, so a problem shows once, beside where it
+ * started, a second PKCE flow cannot start over the first, and Back from the
+ * authorization server (a back-forward cache restore) leaves nothing disabled.
  */
 function Landing({
   bootSignInProblem,
   signIn = browserSignIn,
 }: {
-  readonly bootSignInProblem?: string
+  readonly bootSignInProblem?: SignInProblem
   readonly signIn?: LandingSignIn
 }): JSX.Element {
   const navigate = useNavigate()
   const authSignal = useSubscribable(useAuthStateSubscribable())
-  const [subdomain, setSubdomain] = useState('')
-  const [freeText, setFreeText] = useState('')
-  const [signInProblem, setSignInProblem] = useState(bootSignInProblem)
-  const [leavingToSignIn, setLeavingToSignIn] = useState(false)
 
   // Bounce an already-signed-in reader on to the app. In an effect, not in the
   // render body: `navigate` schedules a router state update, and calling it
@@ -147,6 +156,8 @@ function Landing({
   useEffect(() => {
     if (authed) void navigate({ to: '/home' })
   }, [authed, navigate])
+
+  if (authed) return <></>
 
   // The server this page is pointed at — the same resolution `web-entry.ts`
   // gives the transport, so the token is asked of whichever server the requests
@@ -160,63 +171,14 @@ function Landing({
   const blockedReason = insecureTargetReason(serverUrl, { pageIsSecure })
 
   /**
-   * Leave for `target`'s `/oauth/authorize` — the SMART standalone launch, the
-   * same flow the server-docs console runs. The reader comes back to the app
-   * root with a code, which `main-web`'s boot redeems before the router mounts,
-   * then settles on the gate's `returnTo` (`/home` by default). Nothing is held
-   * here across the redirect but the pending record in `sessionStorage`, which
-   * carries no credential.
+   * `problem`'s reason, followed by the Local Network Access hint when the
+   * server the failed sign-in was to is a loopback one and this page is
+   * secure.
    */
-  const signInTo = (target: string): void => {
-    setLeavingToSignIn(true)
-    setSignInProblem(undefined)
-    void signIn.start(target).then((started) => {
-      if (started.tag === 'Ok') {
-        signIn.leave(started.value)
-        return
-      }
-      setLeavingToSignIn(false)
-      setSignInProblem(started.reason)
-    })
-  }
-
-  /**
-   * Point the page at `candidate` and start signing in to it, which is what
-   * choosing a server means — a reader who picks one wants to be signed in to
-   * it, not handed a second button further down the page.
-   */
-  const connectToServer = (candidate: string): void => {
-    const normalized = normalizeServerUrl(candidate)
-    if (normalized === undefined) {
-      setSignInProblem(`“${candidate}” is not an address this page can reach.`)
-      return
-    }
-    const blocked = insecureTargetReason(normalized, { pageIsSecure })
-    if (blocked !== undefined) {
-      setSignInProblem(blocked)
-      return
-    }
-    rememberServer(normalized)
-    signInTo(normalized)
-  }
-
-  const handleLocal = (): void => {
-    connectToServer(DEFAULT_SERVER_URL)
-  }
-
-  const handleSubdomain = (e: SubmitEvent<HTMLFormElement>): void => {
-    e.preventDefault()
-    const trimmed = subdomain.trim()
-    if (trimmed === '') return
-    connectToServer(`https://${trimmed}${WILDFLOWER_DOMAIN}`)
-  }
-
-  const handleFreeText = (e: SubmitEvent<HTMLFormElement>): void => {
-    e.preventDefault()
-    const trimmed = freeText.trim()
-    if (trimmed === '') return
-    connectToServer(trimmed)
-  }
+  const arrivalProblemFor = (problem: SignInProblem): string =>
+    problem.serverUrl === undefined
+      ? problem.reason
+      : withLocalNetworkAccessHint(problem.reason, problem.serverUrl, { pageIsSecure })
 
   // Keyed on a server the page can actually use, not on a `?server=`'s bare
   // presence: a junk value falls back to the loopback default, and offering
@@ -226,108 +188,58 @@ function Landing({
   const hasChosenServer =
     chosenServerUrl(window.location.search, window.sessionStorage) !== undefined
 
-  // Sign in on arrival, once. The ref keeps a re-render (or StrictMode's double
-  // effect) from starting a second flow while the first is still in hand.
-  const signedInOnArrival = useRef(false)
-  const signInOnArrival =
-    !authed && shouldSignInOnArrival({ hasChosenServer, blockedReason, bootSignInProblem })
-  useEffect(() => {
-    if (!signInOnArrival || signedInOnArrival.current) return
-    signedInOnArrival.current = true
-    signInTo(serverUrl)
-    // `signInTo` is rebuilt every render; the ref, not the deps, is the guard.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [signInOnArrival, serverUrl])
-
-  if (authed) return <></>
-
-  // A failed attempt outranks the up-front warning: the reader has already
-  // acted, so what went wrong is the more useful thing to read.
-  const status = signInProblem ?? blockedReason
-
-  // Only alongside an actual failure, and only for a loopback target from the
-  // published page: a network/CORS failure there is most often Chrome holding
-  // the request behind its Local Network Access prompt, which the reason on its
-  // own cannot name. See `local-network-hint.ts`.
-  const localNetworkHint =
-    status === undefined ? undefined : localNetworkAccessHint(serverUrl, { pageIsSecure })
+  /**
+   * The menu's `connect`, for a pick and for the chosen server alike: point the
+   * page at the server and leave for the authorization endpoint discovered at
+   * its FHIR base (its `/fhir-r4` for a Wildflower server; the URL itself, on a
+   * 404 there, for a plain SMART server's base) — the SMART standalone launch, the same flow the
+   * server-docs console runs. Resolves to the problem to show if it could not
+   * start, or `undefined` once the page is leaving. The reader comes back to
+   * the app root with a code, which `main-web`'s boot redeems before the router
+   * mounts, then settles on the gate's `returnTo` (`/home` by default). Nothing
+   * is held here across the redirect but the pending record in
+   * `sessionStorage`, which carries no credential.
+   *
+   * The problem goes back bare: the menu adds the Local Network Access hint
+   * when it applies, and has already refused a plain-http server this https
+   * page could not reach.
+   */
+  const connect = (targetUrl: string): Promise<string | undefined> => {
+    rememberServer(targetUrl)
+    return signIn.start(targetUrl).then((started) => {
+      if (started.tag === 'Failed') return started.reason
+      signIn.leave(started.value)
+      return undefined
+    })
+  }
 
   return (
-    <div className={pageLayoutStyles['page']}>
-      <h1 className="text-heading-6">Wildflower</h1>
-      <p className="text-body-2">
-        Connect to a Wildflower server to manage devices, apps, and health data.
-      </p>
-
-      <section>
-        <h2 className="text-heading-7">Connect to a server</h2>
-
-        <div style={{ display: 'grid', gap: 'var(--space-7)', marginTop: 'var(--space-7)' }}>
-          <button type="button" className="button-2 filled" onClick={handleLocal}>
-            Local server ({new URL(DEFAULT_SERVER_URL).host})
-          </button>
-
-          <form
-            onSubmit={handleSubdomain}
-            style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'end' }}
-          >
-            <span className="text-body-3" style={{ marginBottom: 8 }}>
-              https://
-            </span>
-            <TextField
-              label="Subdomain"
-              value={subdomain}
-              onChange={setSubdomain}
-              placeholder="my-server"
-            />
-            <span className="text-body-3" style={{ marginBottom: 8 }}>
-              {WILDFLOWER_DOMAIN}
-            </span>
-            <button type="submit" className="button-3 outlined">
-              Connect
-            </button>
-          </form>
-
-          <form
-            onSubmit={handleFreeText}
-            style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'end' }}
-          >
-            <TextField
-              label="Custom server URL"
-              value={freeText}
-              onChange={setFreeText}
-              placeholder="https://my-server.example.com"
-            />
-            <button type="submit" className="button-3 outlined">
-              Connect
-            </button>
-          </form>
-        </div>
-
-        <div style={{ marginTop: 'var(--space-9)', display: 'grid', gap: 'var(--space-5)' }}>
-          {/* Shown only when a server is already chosen. Such a page signs in
-              on arrival, so this is the way back in when that couldn't run or
-              failed (the reason shows below). Picking a server above signs in
-              on its own, so this would be a dead second step otherwise. */}
-          {hasChosenServer ? (
-            <button
-              type="button"
-              className="button-2 filled"
-              onClick={() => {
-                signInTo(serverUrl)
-              }}
-              disabled={leavingToSignIn || blockedReason !== undefined}
-            >
-              {leavingToSignIn ? 'Taking you to sign in…' : `Sign in to ${serverUrl}`}
-            </button>
-          ) : null}
-          {status === undefined ? null : <p className="text-body-3">{status}</p>}
-          {localNetworkHint === undefined ? null : (
-            <p className="text-body-3">{localNetworkHint}</p>
-          )}
-        </div>
-      </section>
-    </div>
+    <AppLandingPage app="app">
+      <ConnectMenu
+        target="wildflower"
+        localOrigin={DEFAULT_SERVER_URL}
+        connect={connect}
+        // The boot failure was about the server that sign-in was to, which
+        // a failed redemption leaves the address bar no longer naming, so
+        // its Local Network Access hint is for that server; the menu adds
+        // it to the problems of the sign-ins it runs itself.
+        arrivalProblem={
+          bootSignInProblem === undefined ? undefined : arrivalProblemFor(bootSignInProblem)
+        }
+        // Only when one is chosen: the sign-in on arrival is for it, and
+        // this is the way back in when that couldn't run or failed.
+        // Picking a server signs in on its own, so this would be a dead
+        // second step otherwise.
+        chosenServer={hasChosenServer ? { url: serverUrl, blockedReason } : undefined}
+        // Read once, when the menu mounts: a pick's `?server=` must not
+        // make this page look newly arrived and start a second sign-in.
+        autoConnect={shouldSignInOnArrival({
+          hasChosenServer,
+          blockedReason,
+          bootSignInProblem: bootSignInProblem?.reason,
+        })}
+      />
+    </AppLandingPage>
   )
 }
 

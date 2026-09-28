@@ -1,6 +1,8 @@
 /**
- * The extra line the landing shows beneath a sign-in failure when the chosen
- * server is a loopback address reached from the published (secure) page.
+ * The sentence a page adds after a connection failure's reason when the server
+ * it connected to is a loopback address and the page itself is secure: any
+ * page on the published site (`smart-app-react`'s `ConnectMenu`, the hosted
+ * owner UI's own sign-in) reaching a server on the reader's own machine.
  *
  * A hosted `https://` page fetching a `http://127.0.0.1` server is exactly the
  * case Chrome guards with its **Local Network Access** prompt (formerly Private
@@ -43,4 +45,18 @@ const localNetworkAccessHint = (
   )
 }
 
-export { localNetworkAccessHint }
+/**
+ * `reason` with the {@link localNetworkAccessHint} for `serverUrl` after it,
+ * when the hint applies; `reason` alone otherwise. The one way a page joins the
+ * two, so the hint reads the same wherever it is shown.
+ */
+const withLocalNetworkAccessHint = (
+  reason: string,
+  serverUrl: string,
+  options: { readonly pageIsSecure: boolean }
+): string => {
+  const hint = localNetworkAccessHint(serverUrl, options)
+  return hint === undefined ? reason : `${reason} ${hint}`
+}
+
+export { localNetworkAccessHint, withLocalNetworkAccessHint }

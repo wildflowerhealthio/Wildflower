@@ -8,6 +8,7 @@ import type { BaseRouterContext } from 'shared-structures-react'
 import type { TunnelRouterContext } from 'tunnel-react'
 
 import type { ReactTransport } from './bridges/transport-context.ts'
+import type { SignInProblem } from './sign-in.ts'
 
 /**
  * The router context threaded through every route in `apps/wildflower-react`:
@@ -77,12 +78,13 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
   readonly externalLinkRoot: () => string
   /**
    * Why the web entry's boot-time SMART sign-in failed, when it did — the
-   * `reason` off a `SignInError`, already written for a reader. `main-web`
+   * `reason` off a `SignInError`, already written for a reader, and the server
+   * the failed sign-in was to. `main-web`
    * redeems the authorization code before it mounts the router, so a failed
    * return leg has no tree to render itself into; the landing route shows this
    * instead. Omitted on every other entry and on an ordinary load.
    */
-  readonly signInProblem?: string
+  readonly signInProblem?: SignInProblem
 }
 
 export type { RouterContext, RunAuthed, RuntimeLayer }

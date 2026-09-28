@@ -1,5 +1,5 @@
 import { trimTrailingSlashes } from 'fhir-r4/clients'
-import { normalizeServerUrl } from 'gatekeeper-core/smart-client'
+import { insecureTargetReason, normalizeServerUrl } from 'gatekeeper-core/smart-client'
 
 import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
 
@@ -122,6 +122,12 @@ const startStandaloneLaunch = async (
 
 export {
   detectSmartSupport,
+  /**
+   * Re-exported from `gatekeeper-core/smart-client`, like `normalizeServerUrl`:
+   * why an https page cannot reach a plain-http, non-loopback server, which
+   * `connect-menu.tsx` checks a pick against before it connects.
+   */
+  insecureTargetReason,
   /**
    * Re-exported from `gatekeeper-core/smart-client`, which owns the one
    * implementation. This module used to carry a byte-identical copy, because the

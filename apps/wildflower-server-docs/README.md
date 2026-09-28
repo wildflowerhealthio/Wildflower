@@ -84,17 +84,21 @@ in by hand.
 
 ### The flow
 
-1. **Discovery.** The `?server=` target is treated as the SMART `iss`: the
-   console fetches `{server}/fhir-r4/.well-known/smart-configuration` and reads
-   `authorization_endpoint` and `token_endpoint` out of it. Nothing about the
-   server's URL layout is assumed — a Wildflower server answers that path from
-   `slices/emr/emr-rust/src/smart_configuration.rs` (unauthenticated, exempt
-   from the bearer gate) and points it at its own gatekeeper. A target that
-   answers with something else, or not at all, fails here and the reason is
-   shown in the header bar.
+1. **Discovery.** The console fetches
+   `{server}/fhir-r4/.well-known/smart-configuration` for the `?server=` target
+   and reads `authorization_endpoint` and `token_endpoint` out of it; the FHIR
+   base that answered, `{server}/fhir-r4`, is the SMART `iss`. A Wildflower
+   server answers that path from `slices/emr/emr-rust/src/smart_configuration.rs`
+   (unauthenticated, exempt from the bearer gate) and points it at its own
+   gatekeeper, whether it is served at an origin or behind a path prefix. Only
+   if that answers 404 does the console try
+   `{server}/.well-known/smart-configuration`, reading the target as a plain
+   FHIR base. A target that is unreachable, answers with something else, or
+   answers 404 at both fails here, and the reason is shown in the header bar.
 2. **Authorization.** The console redirects to the `authorization_endpoint` as
    the public PKCE client `wildflower-server-docs` — S256 challenge, random
-   `state`, `aud={server}/fhir-r4`, and the whole scope set the client is
+   `state`, `aud` the FHIR base discovery found (`{server}/fhir-r4` for a
+   Wildflower server), and the whole scope set the client is
    allowed to request. The Owner approves (or narrows) it on the server's own
    consent page; `allowed_scopes` is only the ceiling, so the grant is whatever
    they agree to.

@@ -10,7 +10,6 @@ export {
   AuthorizationRejected,
   authorizationRedirectOutcome,
   authorizationRequestUrl,
-  fhirAudienceFor,
   isAuthorizationResponse,
   parsePendingAuthorization,
   parseTokenResponse,
@@ -66,4 +65,4 @@ export {
   smartEndpointsFrom,
   usableEndpointUrl,
 } from './smart-discovery.ts'
-export type { SmartEndpoints } from './smart-discovery.ts'
+export type { SmartEndpoints, SmartIssuer } from './smart-discovery.ts'

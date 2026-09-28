@@ -229,7 +229,50 @@ describe('finishSignIn', () => {
     // Assert
     expect(completed.tag).toBe('Failed')
     if (completed.tag !== 'Failed') return
-    expect(completed.reason.length).toBeGreaterThan(0)
+    expect(completed.problem.reason.length).toBeGreaterThan(0)
+  })
+
+  it('names the server a failed return leg was signing in to', async () => {
+    // Arrange — a sign-in this tab started, whose code the token endpoint
+    // then refuses. The landing's hint is about that server, not the page's
+    // fallback one.
+    const store = memoryStore()
+    const refusingToken: typeof globalThis.fetch = (input, init) =>
+      requestUrl(input).endsWith('/oauth/token')
+        ? Promise.resolve(
+            new Response(JSON.stringify({ error: 'invalid_grant' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          )
+        : discoveryAndToken()(input, init)
+    const environment = signInEnvironment(
+      pageAt('https://wildflowerhealth.io/', { fetch: refusingToken, sessionStorage: store })
+    )
+    const started = await startSignIn(SERVER_URL, undefined, environment)
+    if (started.tag !== 'Ok') throw new Error(started.reason)
+    const state = new URL(started.value).searchParams.get('state') ?? ''
+
+    // Act
+    const completed = await finishSignIn(`?code=the-code&state=${state}`, environment)
+
+    // Assert
+    expect(completed.tag).toBe('Failed')
+    if (completed.tag !== 'Failed') return
+    expect(completed.problem.serverUrl).toBe(SERVER_URL)
+  })
+
+  it('names no server when there was no sign-in to fail', async () => {
+    // Arrange — an error return with no pending record in this tab.
+    const page = pageAt('https://wildflowerhealth.io/', { fetch: neverCalled })
+
+    // Act
+    const completed = await finishSignIn('?error=access_denied&state=x', signInEnvironment(page))
+
+    // Assert
+    expect(completed.tag).toBe('Failed')
+    if (completed.tag !== 'Failed') return
+    expect(completed.problem.serverUrl).toBeUndefined()
   })
 })
 

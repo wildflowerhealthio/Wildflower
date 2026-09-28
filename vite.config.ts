@@ -49,6 +49,8 @@ export default defineConfig({
     // settings (e.g. `environment: 'jsdom'` in react-tundraish) instead of
     // running everything under a single root config.
     projects: [
+      'apps/fhir-sync-pebble/pkjs/vite.config.ts',
+      'apps/fhir-sync-pebble/test/vite.config.ts',
       'apps/fhir-sync-pebble-web/vite.config.ts',
       'apps/github-pages/vite.config.ts',
       'apps/importer-web/vite.config.ts',

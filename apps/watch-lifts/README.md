@@ -14,21 +14,30 @@ pebble install --phone <ip>           # install to a paired phone
 
 The reps and weight text (`reps-text.c`) is plain C, so the `watch-lifts-test`
 package in `test/` builds it with the host `cc` under AddressSanitizer and tests
-it, with no Pebble SDK needed. Run it with `vp test --project watch-lifts-test`;
+it, with no Pebble SDK needed. The build is `kitchen-sink/test`'s
+`buildHostCDriver`, which `apps/fhir-sync-pebble` shares. Run it with `vp test --project watch-lifts-test`;
 the root `vp test` includes it. It is a separate package because this
 `package.json` is also the Pebble manifest, and `pebble build` runs
 `npm install` if it lists any dependencies.
 
 C is formatted with clang-format (`.clang-format`, set up to match the repo's
-Prettier-style TypeScript formatting). Install it with `brew install clang-format`,
-`apt install clang-format` or `pipx install clang-format`, then:
+Prettier-style TypeScript formatting). Its output moves between releases, so
+install the version `.github/workflows/ci-pebble.yml` pins, with
+`pipx install clang-format==<version>` or `uv tool install clang-format==<version>`,
+then:
 
 ```sh
 vp run -F watch-lifts fmt:c         # format src/ and test/
 vp run -F watch-lifts fmt:c:check   # fail if anything isn't formatted
 ```
 
-CI doesn't run `fmt:c:check` yet, so run it before pushing C changes.
+## CI
+
+`.github/workflows/ci-pebble.yml` runs on pull requests that touch this app or
+`apps/fhir-sync-pebble`. For each app it runs `fmt:c:check`, the host-side
+tests and `pebble build`, and uploads the `.pbw` as a workflow artifact named
+after the app, ready to sideload. The pebble-tool and SDK versions it builds
+with are pinned in `.github/actions/setup-pebble-sdk`.
 
 ## Target platforms
 
