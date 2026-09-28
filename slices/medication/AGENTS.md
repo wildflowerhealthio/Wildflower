@@ -15,18 +15,19 @@ catalog onto it.
   — the exact / strong / partial containment scoring every consumer's matcher is
   built from — and `dedupeMedicationsByName`, which collapses exact-name
   duplicates to the most recent (`authoredOn`) instance. The `medication-core/fhir`
-  subpath is the `MedicationRequest → Medication` / `MedicationView` adapter (the
-  core `Medication` for matching, plus the display fields — DIN, description,
-  prescriber, notes, repeat counts, the dispensing store's link, estimated
-  next-fill date) and the `hasRefill` rule the calendar shares. Each field is
+  subpath is the `MedicationRequest → Medication` / `MedicationView` adapter over
+  a request that carries its server `id` (`MedicationRequestWithId`, whose `id`
+  is the `Medication.id`): the core `Medication` for matching, plus the
+  display fields (DIN, description, prescriber, notes, repeat counts, the
+  dispensing store's link, estimated next-fill date), and the `hasRefill`
+  rule the calendar shares. Each field is
   one small exported accessor (`dinOf`, `descriptionOf`, `repeatsAvailableOf`,
   `storeLinkOf`, …) over the decoded `fhir-r4` `MedicationRequest.Type`,
   reading only the conventional slots the pharmacy sources write (canonical
   `CanadianCodingSystem.Din`, `WildflowerExtension.RepeatsAvailable`,
   `WildflowerExtension.MedicationDescription`,
   `dispenseRequest.performer.reference`) — no pre-promotion fallbacks and no
-  vendor urls. The same subpath reads a request that carries its server `id`
-  (`MedicationRequestWithId`) as a `DoseRegimen`
+  vendor urls. The same subpath reads that request as a `DoseRegimen`
   (`medicationRequestToDoseRegimen`, or `medicationRequestsToDoseRegimens` with
   `undated` / `dropped` counts), one file per area: `dosage.ts` reads the first
   instruction's first dose, `per` administration or as a daily total (`d`)
@@ -158,8 +159,13 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
   conversion (`DAYS_PER_PERIOD_UNIT`, keyed by `fhir-r4`'s `Timing.UnitOfTime`)
   is this package's own table: `Timing.repeat` units are normalised to a rate,
   not added to a date.
-- The dose-regimen readers take `MedicationRequestWithId` — the FHIR server
-  always returns an `id`, so there is no fallback key on this path.
+- The medication-view and dose-regimen readers take `MedicationRequestWithId`
+  (`medication-request-with-id.ts`) — the FHIR server always returns an `id`,
+  so there is no fallback or positional key: `Medication.id` is `request.id`,
+  stable however a page is ordered. A caller decodes through `fhir-r4`'s
+  `withMandatoryId(MedicationRequest.Schema)`, as `fhir-r4-react/smart`'s
+  `fetchMedicationRequestPage` does, so a request without an `id` fails its
+  decode rather than reaching the adapter.
 
 ### Interactions (`medication-interaction-*`)
 

@@ -4,6 +4,7 @@ import type { MedicationRequest } from 'fhir-r4/resources'
 import { normalizeName } from '../normalize.ts'
 import { displayNameOf } from './display-name.ts'
 import { firstDoseOf, type Dose } from './dosage.ts'
+import type { MedicationRequestWithId } from './medication-request-with-id.ts'
 import { regimenEndOf, regimenStartOf } from './regimen-period.ts'
 
 /**
@@ -11,12 +12,6 @@ import { regimenEndOf, regimenStartOf } from './regimen-period.ts'
  * medication's dose line: its first dose ({@link firstDoseOf}) over the period
  * it was in effect ({@link regimenStartOf} to {@link regimenEndOf}).
  */
-
-/**
- * A decoded `MedicationRequest` as the FHIR server returns it: `id` is always
- * present. The same shape `fhir-r4`'s `withMandatoryId` decodes to.
- */
-type MedicationRequestWithId = Omit<MedicationRequest.Type, 'id'> & { readonly id: string }
 
 /**
  * `MedicationRequest.status` codes that never yield a regimen: the order was
@@ -137,5 +132,4 @@ export {
   medicationRequestToDoseRegimen,
   type DoseRegimen,
   type DoseRegimenBatch,
-  type MedicationRequestWithId,
 }

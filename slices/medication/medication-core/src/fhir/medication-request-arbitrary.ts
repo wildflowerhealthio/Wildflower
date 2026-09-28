@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { Dosage, Duration, Period, SimpleQuantity, Timing } from 'fhir-r4/data-types'
 import { MedicationRequest, MedicationRequestDispenseRequest } from 'fhir-r4/resources'
 
-import type { MedicationRequestWithId } from './dose-regimen.ts'
+import type { MedicationRequestWithId } from './medication-request-with-id.ts'
 
 /**
  * Whole generated requests, as the base every dose-regimen property overlays.

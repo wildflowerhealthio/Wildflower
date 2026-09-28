@@ -1,5 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Schema } from 'effect'
+import { withMandatoryId } from 'fhir-r4/data-types'
+import { MedicationRequest } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 import type { InteractionCatalog } from 'medication-interaction-core'
 import { StrictMode } from 'react'
@@ -48,6 +51,20 @@ const pageTo = (next: number): MedicationRequestPage => ({
   nextPageUrl: `https://fhir.example/MedicationRequest?p=${next}`,
   droppedEntryCount: 0,
 })
+
+/** Decode a request the way the paged read does: with its server `id` required. */
+const decodeRequest = Schema.decodeUnknownSync(withMandatoryId(MedicationRequest.Schema))
+
+/** An active atorvastatin request under the given server `id`. */
+const atorvastatin = (id: string): MedicationRequestPage['items'][number] =>
+  decodeRequest({
+    resourceType: 'MedicationRequest',
+    id,
+    status: 'active',
+    intent: 'order',
+    subject: { reference: 'Patient/1' },
+    medicationCodeableConcept: { text: 'Atorvastatin 20 mg tablet' },
+  })
 
 /** A valid, empty DDInter catalog — enough for the report shell to render. */
 const emptyCatalog: InteractionCatalog = {
@@ -119,6 +136,26 @@ describe('App', () => {
     await awaitFirstPage()
     expect(screen.queryByText(/Could not load medications/)).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('should render one row per request, keyed by its server id', async () => {
+    // Arrange: two same-named requests, told apart only by their ids.
+    const consoleError = vi.spyOn(console, 'error')
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue({
+      items: [atorvastatin('mr-1'), atorvastatin('mr-2')],
+      nextPageUrl: null,
+      droppedEntryCount: 0,
+    })
+
+    // Act
+    renderApp()
+
+    // Assert: both rows render, and React reports no duplicate key.
+    await awaitFirstPage()
+    expect(screen.getAllByText('Atorvastatin 20 mg tablet')).toHaveLength(2)
+    expect(consoleError).not.toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it('should not read MedicationRequests until the handshake resolves', () => {

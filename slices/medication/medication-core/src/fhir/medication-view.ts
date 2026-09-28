@@ -1,5 +1,4 @@
-import { DateTime, Option, pipe, String as Str } from 'effect'
-import type { MedicationRequest } from 'fhir-r4/resources'
+import { DateTime, Option, pipe } from 'effect'
 
 import type { Medication } from '../medication.ts'
 import { descriptionOf } from './description.ts'
@@ -7,25 +6,16 @@ import { dinOf } from './din.ts'
 import { nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf } from './dispense-request.ts'
 import { displayNameOf } from './display-name.ts'
 import { noteOf, requesterOf } from './free-text.ts'
+import type { MedicationRequestWithId } from './medication-request-with-id.ts'
 import { storeLinkOf, type StoreLink } from './store-link.ts'
-
-/** The decoded FHIR R4 `MedicationRequest` resource. */
-type MedicationRequestResource = MedicationRequest.Type
 
 /**
  * Map a decoded FHIR `MedicationRequest` onto this package's
- * {@link Medication} value the matchers consume. `fallbackId`
- * supplies a stable React key when the resource carries no `id`.
+ * {@link Medication} value the matchers consume. The medication's `id` is the
+ * request's server `id`, so it stays the same key however a page is ordered.
  */
-const medicationRequestToMedication = (
-  request: MedicationRequestResource,
-  fallbackId: string
-): Medication => ({
-  id: pipe(
-    Option.fromNullable(request.id),
-    Option.filter(Str.isNonEmpty),
-    Option.getOrElse(() => fallbackId)
-  ),
+const medicationRequestToMedication = (request: MedicationRequestWithId): Medication => ({
+  id: request.id,
   displayName: displayNameOf(request),
   status: request.status,
   authoredOn: pipe(
@@ -70,11 +60,8 @@ const hasRefill = (view: MedicationView): boolean =>
   view.repeatsAllowed !== null && view.repeatsAllowed > 0 && (view.repeatsAvailable ?? 0) > 0
 
 /** Build the rich {@link MedicationView} for one request. */
-const medicationRequestToMedicationView = (
-  request: MedicationRequestResource,
-  fallbackId: string
-): MedicationView => ({
-  medication: medicationRequestToMedication(request, fallbackId),
+const medicationRequestToMedicationView = (request: MedicationRequestWithId): MedicationView => ({
+  medication: medicationRequestToMedication(request),
   din: dinOf(request),
   description: descriptionOf(request),
   requester: requesterOf(request),
@@ -85,21 +72,15 @@ const medicationRequestToMedicationView = (
   storeLink: storeLinkOf(request),
 })
 
-/** Map a bundle's worth of requests, deriving fallback keys from position. */
+/** Map a bundle's worth of requests to {@link Medication}s, in order. */
 const medicationRequestsToMedications = (
-  requests: readonly MedicationRequestResource[]
-): readonly Medication[] =>
-  requests.map((request, index) =>
-    medicationRequestToMedication(request, `medication-request-${index}`)
-  )
+  requests: readonly MedicationRequestWithId[]
+): readonly Medication[] => requests.map(medicationRequestToMedication)
 
-/** Map a bundle's worth of requests to rich {@link MedicationView}s. */
+/** Map a bundle's worth of requests to rich {@link MedicationView}s, in order. */
 const medicationRequestsToMedicationViews = (
-  requests: readonly MedicationRequestResource[]
-): readonly MedicationView[] =>
-  requests.map((request, index) =>
-    medicationRequestToMedicationView(request, `medication-request-${index}`)
-  )
+  requests: readonly MedicationRequestWithId[]
+): readonly MedicationView[] => requests.map(medicationRequestToMedicationView)
 
 export {
   hasRefill,
@@ -107,6 +88,5 @@ export {
   medicationRequestsToMedications,
   medicationRequestToMedicationView,
   medicationRequestsToMedicationViews,
-  type MedicationRequestResource,
   type MedicationView,
 }
