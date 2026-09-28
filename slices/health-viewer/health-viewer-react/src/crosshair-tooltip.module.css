@@ -1,0 +1,74 @@
+/*
+ * The crosshair readout, floated over the figure beside the rule. One row per
+ * series: a short line key in the series' token, then the value (the strong
+ * element), the series label, and the reading's date or the level's span
+ * beneath. All text wears the text tokens. It hangs right of the rule
+ * and flips left only when it would overflow the figure; the chart's
+ * `TOOLTIP_ROOM` mirrors `max-width` + `margin-left` here.
+ */
+.tooltip {
+  position: absolute;
+  top: var(--space-4);
+  z-index: 1;
+  min-width: 180px;
+  max-width: 280px;
+  margin-left: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  background: var(--color-raised);
+  box-shadow: var(--card-box-shadow);
+  pointer-events: none;
+}
+
+.flipped {
+  margin-left: 0;
+  transform: translateX(calc(-100% - var(--space-5)));
+}
+
+.time {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-5);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  column-gap: var(--space-3);
+  align-items: center;
+}
+
+.key {
+  display: block;
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.value {
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-neutral-1);
+}
+
+.label,
+.detail {
+  grid-column: 2;
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-4);
+}
+
+.detail {
+  color: var(--color-neutral-5);
+}
