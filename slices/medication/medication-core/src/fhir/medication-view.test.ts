@@ -9,7 +9,13 @@ import {
   medicationRequestToMedication,
   medicationRequestToMedicationView,
 } from './medication-view.ts'
-import { base, decode, rexallRequest } from './test-helpers.ts'
+import {
+  base,
+  decode,
+  prePromotionRexallRequest,
+  prePromotionShoppersRequest,
+  rexallRequest,
+} from './test-helpers.ts'
 
 describe('medicationRequestToMedication', () => {
   test('prefers the codeableConcept text', () => {
@@ -66,6 +72,25 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.repeatsAvailable).toBeNull()
     expect(view.nextFillDate).toBeNull()
     expect(view.storeLink).toBeNull()
+  })
+
+  test('reads no DIN, description, store link or remaining repeats from a pre-promotion resource', () => {
+    // A resource stored before its source wrote the conventional slots keeps
+    // only what R4 itself carries; the vendor shapes are not read around.
+    const rexall = medicationRequestToMedicationView(decode(prePromotionRexallRequest), 'fallback')
+    expect(rexall.din).toBeNull()
+    expect(rexall.description).toBeNull()
+    expect(rexall.storeLink).toBeNull()
+    expect(rexall.repeatsAvailable).toBeNull()
+    expect(rexall.repeatsAllowed).toBe(3)
+
+    const shoppers = medicationRequestToMedicationView(
+      decode(prePromotionShoppersRequest),
+      'fallback'
+    )
+    expect(shoppers.medication.displayName).toBe('LIPITOR')
+    expect(shoppers.din).toBeNull()
+    expect(shoppers.storeLink).toBeNull()
   })
 })
 

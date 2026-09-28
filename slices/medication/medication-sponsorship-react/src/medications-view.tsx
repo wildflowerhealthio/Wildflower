@@ -47,10 +47,10 @@ const repeatsSummary = (
 /**
  * Renders the patient's medications split into an "Active Medications" section
  * and a "Completed" section (shown only when non-empty), each newest-authored
- * first. Every row shows the medication name, pharmacy-location links, DIN +
+ * first. Every row shows the medication name, the dispensing store's link, DIN +
  * description, the repeats summary, prescriber and notes. The layout is a
  * mobile-first vertical stack that wraps on narrow screens and right-aligns
- * the pharmacy actions on wider ones. Savings-program eligibility and fill
+ * the store link on wider ones. Savings-program eligibility and fill
  * timing live on their own pages (the savings and calendar views).
  */
 export const MedicationsView = ({ medications }: MedicationsViewProps): JSX.Element => {

@@ -4,7 +4,12 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { storeLinkOf } from './store-link.ts'
-import { base, decode } from './test-helpers.ts'
+import {
+  base,
+  decode,
+  prePromotionRexallRequest,
+  prePromotionShoppersRequest,
+} from './test-helpers.ts'
 
 describe('storeLinkOf', () => {
   it('should link to the performer page, read as its display', () => {
@@ -46,6 +51,13 @@ describe('storeLinkOf', () => {
 
     // Assert
     expect(storeLink).toBeNull()
+  })
+
+  it('should read no store link from the store extensions or supportingInformation', () => {
+    // Where the Rexall and Shoppers stores sat before their sources promoted
+    // them onto `dispenseRequest.performer`.
+    expect(storeLinkOf(decode(prePromotionRexallRequest))).toBeNull()
+    expect(storeLinkOf(decode(prePromotionShoppersRequest))).toBeNull()
   })
 
   it('should never link a performer reference that is not an http(s) web page', () => {

@@ -4,7 +4,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import { nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf } from './dispense-request.ts'
-import { base, decode } from './test-helpers.ts'
+import { base, CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS, decode } from './test-helpers.ts'
 
 describe('repeatsAllowedOf / repeatsAvailableOf', () => {
   it('should read the total and the Wildflower remaining-repeats extension', () => {
@@ -37,6 +37,43 @@ describe('repeatsAllowedOf / repeatsAvailableOf', () => {
         })
         expect(repeatsAvailableOf(request)).toBeNull()
       }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should read no remaining repeats unless the Wildflower extension carries an integer', () => {
+    // The carebook `modifierExtension` copies, and the Wildflower URL carrying
+    // any other value type or sitting in `modifierExtension`, all read as
+    // absent: a resource stored in one of those shapes is re-imported.
+    fc.assert(
+      fc.property(
+        fc.nat(99),
+        fc.oneof(
+          fc.constantFrom(...CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS).map((url) => ({
+            slot: 'modifierExtension',
+            url,
+            valueKey: 'valueDecimal',
+          })),
+          fc.constant({
+            slot: 'modifierExtension',
+            url: WildflowerExtension.RepeatsAvailable,
+            valueKey: 'valueInteger',
+          }),
+          fc.constantFrom('valueDecimal', 'valueString').map((valueKey) => ({
+            slot: 'extension',
+            url: WildflowerExtension.RepeatsAvailable,
+            valueKey,
+          }))
+        ),
+        (count, { slot, url, valueKey }) => {
+          const value = valueKey === 'valueString' ? String(count) : count
+          const request = decode({
+            ...base,
+            dispenseRequest: { [slot]: [{ url, [valueKey]: value }] },
+          })
+          expect(repeatsAvailableOf(request)).toBeNull()
+        }
+      ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })

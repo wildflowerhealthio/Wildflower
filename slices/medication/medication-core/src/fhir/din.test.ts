@@ -9,6 +9,7 @@ import {
   CAREBOOK_DIN_SYSTEM,
   decode,
   rexallRequest,
+  SHOPPERS_DIN_SYSTEM,
   shoppersRequest,
 } from './test-helpers.ts'
 
@@ -54,7 +55,7 @@ describe('dinOf', () => {
   })
 
   it('should read nothing when no coding is under the canonical DIN system', () => {
-    // The vendor carebook DIN system, RxNorm and SNOMED CT alike: a vendor
+    // The vendor carebook and Shoppers DIN systems, RxNorm and SNOMED CT alike: a vendor
     // coding always has a canonical twin beside it, and printing a non-DIN code
     // as "DIN …" would be a confidently wrong identifier.
     fc.assert(
@@ -89,6 +90,7 @@ const codeArbitrary = fc.stringMatching(/^[0-9A-Za-z]{1,12}$/)
 /** Coding systems that are *not* the canonical DIN system. */
 const otherSystemArbitrary = fc.constantFrom(
   CAREBOOK_DIN_SYSTEM,
+  SHOPPERS_DIN_SYSTEM,
   'http://www.nlm.nih.gov/research/umls/rxnorm',
   'http://snomed.info/sct'
 )
