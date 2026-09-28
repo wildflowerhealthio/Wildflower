@@ -1,4 +1,4 @@
-import { type DateTime, Option, Schema } from 'effect'
+import { DateTime, Option, Schema } from 'effect'
 import type { Observation } from 'fhir-r4/resources'
 
 import {
@@ -46,16 +46,29 @@ const QuantityView = Schema.Struct({
   unit: nullableString,
   code: nullableString,
 })
+/**
+ * A `SampledData` as the viewer reads it: every field nullable, so a sample
+ * set missing its `origin` or `period` decodes and is then skipped rather than
+ * failing the whole observation.
+ */
+const SampledDataView = Schema.Struct({
+  origin: Schema.optional(Schema.NullOr(QuantityView)),
+  period: nullableNumber,
+  factor: nullableNumber,
+  dimensions: nullableNumber,
+  data: nullableString,
+})
 const ReferenceRangeView = Schema.Struct({
   low: Schema.optional(Schema.NullOr(QuantityView)),
   high: Schema.optional(Schema.NullOr(QuantityView)),
 })
 
-/** The three `value[x]` slots the viewer can plot, shared by a resource and a component. */
+/** The four `value[x]` slots the viewer can plot, shared by a resource and a component. */
 const valueFields = {
   valueQuantity: Schema.optional(Schema.NullOr(QuantityView)),
   valueInteger: nullableNumber,
   valueBoolean: nullableBoolean,
+  valueSampledData: Schema.optional(Schema.NullOr(SampledDataView)),
 }
 
 const ComponentView = Schema.Struct({
@@ -81,6 +94,7 @@ const ObservationView = Schema.Struct({
 
 type ConceptValue = Schema.Schema.Type<typeof ConceptView>
 type ReferenceRangeValue = Schema.Schema.Type<typeof ReferenceRangeView>
+type SampledDataValue = Schema.Schema.Type<typeof SampledDataView>
 type ValueSlots = Schema.Schema.Type<typeof ComponentView>
 
 const decodeObservationView = Schema.decodeUnknownOption(ObservationView)
@@ -141,7 +155,8 @@ const conceptLabel = (concept: ConceptValue, code: string): string => {
 type ObservationValue = Schema.Schema.Type<typeof ObservationView>
 
 /**
- * The instant a reading is plotted at, in FHIR's own order of specificity.
+ * The instant a scalar reading is plotted at, in FHIR's own order of
+ * specificity.
  *
  * @returns `null` when the resource dates itself in none of the slots
  *
@@ -156,24 +171,96 @@ const effectiveTime = (observation: ObservationValue): DateTime.Utc | null =>
   observation.issued ??
   null
 
-/** The numeric value and its unit / kind, read off a `value[x]` slot set. */
+/**
+ * The instant a `valueSampledData`'s first sample was taken, which every later
+ * sample is offset from.
+ *
+ * @returns `null` when the resource states no effective time
+ *
+ * @remarks
+ * `effectivePeriod.start` leads because a period is how a run of samples says
+ * when it ran. `issued` is never used: a sample's time is an offset from a
+ * stated start, and a release time is not one — a SampledData dated only by
+ * `issued` is `undated`.
+ */
+const sampledDataStart = (observation: ObservationValue): DateTime.Utc | null =>
+  observation.effectivePeriod?.start ??
+  observation.effectiveDateTime ??
+  observation.effectiveInstant ??
+  null
+
+/**
+ * A quantity's unit: its `unit`, falling back to its UCUM `code`, so
+ * `{ code: 'mmol/L' }` and `{ unit: 'mmol/L' }` land in the same series.
+ */
+const quantityUnit = (
+  quantity: Schema.Schema.Type<typeof QuantityView> | null | undefined
+): string | null => quantity?.unit ?? quantity?.code ?? null
+
+/** A plottable number, its unit / kind, and the instant it was taken. */
 interface NumericValue {
   readonly value: number
   readonly unit: string | null
   readonly kind: SeriesKind
+  /** `null` when the observation states no time this value can be placed at. */
+  readonly time: DateTime.Utc | null
 }
 
 /**
- * The plottable number a `value[x]` slot set carries.
- *
- * @returns `null` for anything the viewer cannot plot — a string, a concept, a
- *   range, or no value at all
+ * A FHIR `decimal`, the only numeric token a `SampledData.data` carries.
  *
  * @remarks
- * A quantity's unit falls back to its UCUM `code`, so `{ code: 'mmol/L' }` and
- * `{ unit: 'mmol/L' }` land in the same series.
+ * Matched whole rather than handed to `Number`, which would read `''` as `0`
+ * and accept `Infinity` or `0x1F` — none of which the grammar allows.
  */
-const numericValue = (slots: ValueSlots): NumericValue | null => {
+const DECIMAL_TOKEN = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/
+
+/**
+ * One value per numeric sample in a `SampledData`, each at its start + index ×
+ * `period` and worth `origin + factor × sample`.
+ *
+ * @param start - The instant sample 0 was taken, or `null` when the
+ *   observation states none — the values still come back, undated, so the
+ *   caller can count the observation as `undated` rather than `dropped`
+ * @returns No values when the set cannot be read as one timed series — no
+ *   `origin.value`, a missing or non-positive `period`, or a `dimensions`
+ *   other than 1 (an absent one reads as 1)
+ *
+ * @remarks
+ * `E` (error), `L` / `U` (beyond the detection limits) and any other token
+ * that is not a finite decimal are skipped but still counted, so every later
+ * sample keeps its own time. Interleaved multi-dimension data is not read: no
+ * source produces it, and plotting only its first dimension would mislabel it.
+ * The unit is {@link quantityUnit} of `origin`, as for a quantity.
+ */
+const sampledValues = (
+  sampledData: SampledDataValue,
+  start: DateTime.Utc | null
+): readonly NumericValue[] => {
+  const origin = sampledData.origin?.value ?? null
+  const period = sampledData.period ?? null
+  // `!(period > 0)` also rejects `NaN`: a zero or negative period would stack
+  // every sample on one instant or run them backwards from the start.
+  if (origin === null || period === null || !(period > 0) || (sampledData.dimensions ?? 1) !== 1) {
+    return []
+  }
+  const factor = sampledData.factor ?? 1
+  const unit = quantityUnit(sampledData.origin)
+  const tokens = (sampledData.data ?? '').trim().split(/\s+/)
+  return tokens.flatMap((token, index): NumericValue[] => {
+    if (!DECIMAL_TOKEN.test(token)) return []
+    const value = origin + factor * Number(token)
+    if (!Number.isFinite(value)) return []
+    // An offset past the representable range leaves the sample undated, which
+    // counts its observation as `undated` rather than plotting it somewhere wrong.
+    const time =
+      start === null ? null : Option.getOrNull(DateTime.make(start.epochMillis + index * period))
+    return [{ value, unit, kind: 'quantity', time }]
+  })
+}
+
+/** The single number a scalar `value[x]` slot carries, or `null` when there is none. */
+const scalarValue = (slots: ValueSlots): Omit<NumericValue, 'time'> | null => {
   const quantity = slots.valueQuantity
   if (
     quantity !== null &&
@@ -183,7 +270,7 @@ const numericValue = (slots: ValueSlots): NumericValue | null => {
   ) {
     return {
       value: quantity.value,
-      unit: quantity.unit ?? quantity.code ?? null,
+      unit: quantityUnit(quantity),
       kind: 'quantity',
     }
   }
@@ -197,6 +284,30 @@ const numericValue = (slots: ValueSlots): NumericValue | null => {
   return null
 }
 
+/**
+ * The plottable numbers a `value[x]` slot set carries: one for a scalar, one
+ * per numeric sample for a `valueSampledData`.
+ *
+ * @param times - Where a scalar value and sample 0 are placed, from
+ *   {@link effectiveTime} and {@link sampledDataStart}
+ * @returns No values for anything the viewer cannot plot — a string, a
+ *   concept, a range, or no value at all
+ *
+ * @remarks
+ * Units come from {@link quantityUnit}, for a quantity and a sample set alike.
+ */
+const numericValues = (
+  slots: ValueSlots,
+  times: { readonly scalar: DateTime.Utc | null; readonly sampled: DateTime.Utc | null }
+): readonly NumericValue[] => {
+  const scalar = scalarValue(slots)
+  if (scalar !== null) return [{ ...scalar, time: times.scalar }]
+  const sampledData = slots.valueSampledData
+  return sampledData === null || sampledData === undefined
+    ? []
+    : sampledValues(sampledData, times.sampled)
+}
+
 /** The reference-range bounds to bracket a point with: the first range's `low` / `high`. */
 const rangeBounds = (
   ranges: readonly ReferenceRangeValue[] | null | undefined
@@ -208,53 +319,61 @@ const rangeBounds = (
   return { ...(low === null ? {} : { low }), ...(high === null ? {} : { high }) }
 }
 
-/** A plottable reading, less the instant — attached once the caller knows it is dated. */
+/** A plottable reading, with the instant it is plotted at when the observation states one. */
 interface Reading {
   readonly key: ObservationSeriesKey
   readonly label: string
   readonly unit: string | null
   readonly kind: SeriesKind
   readonly value: number
+  readonly time: DateTime.Utc | null
   readonly bounds: { readonly low?: number; readonly high?: number }
 }
 
 /**
- * The readings one observation contributes: one per component, plus one for
- * its own `value[x]` when it carries one.
+ * The readings one observation contributes: those of each component, plus
+ * those of its own `value[x]` — one for a scalar, one per numeric sample for a
+ * `valueSampledData`.
  *
  * @returns Zero readings when nothing plottable is present
  *
  * @remarks
  * A component reads its own code, unit and range, under a label naming both
  * levels (`"Blood pressure · Systolic"`). A panel carrying both a summary
- * value and components yields both — neither is silently lost.
+ * value and components yields both — neither is silently lost. Every sample
+ * of a SampledData takes its slot's first reference range, as a scalar does.
  */
 const readingsOf = (observation: ObservationValue): readonly Reading[] => {
   const concept = observation.code ?? null
   const outerKey = concept === null ? null : conceptKey(concept)
   const outerLabel =
     concept === null || outerKey === null ? null : conceptLabel(concept, outerKey.code)
+  const times = { scalar: effectiveTime(observation), sampled: sampledDataStart(observation) }
   const readings: Reading[] = []
 
   const push = (
     key: { system: string | null; code: string } | null,
     label: string,
-    numeric: NumericValue | null,
+    numerics: readonly NumericValue[],
     ranges: readonly ReferenceRangeValue[] | null | undefined
   ): void => {
-    if (key === null || numeric === null) return
-    readings.push({
-      key: { kind: 'observation', system: key.system, code: key.code, unit: numeric.unit },
-      label,
-      unit: numeric.unit,
-      kind: numeric.kind,
-      value: numeric.value,
-      bounds: rangeBounds(ranges),
-    })
+    if (key === null) return
+    const bounds = rangeBounds(ranges)
+    for (const numeric of numerics) {
+      readings.push({
+        key: { kind: 'observation', system: key.system, code: key.code, unit: numeric.unit },
+        label,
+        unit: numeric.unit,
+        kind: numeric.kind,
+        value: numeric.value,
+        time: numeric.time,
+        bounds,
+      })
+    }
   }
 
   if (outerKey !== null && outerLabel !== null) {
-    push(outerKey, outerLabel, numericValue(observation), observation.referenceRange)
+    push(outerKey, outerLabel, numericValues(observation, times), observation.referenceRange)
   }
 
   for (const component of observation.component ?? []) {
@@ -263,11 +382,15 @@ const readingsOf = (observation: ObservationValue): readonly Reading[] => {
     if (componentConcept === null || key === null) continue
     const componentLabel = conceptLabel(componentConcept, key.code)
     const label = outerLabel === null ? componentLabel : `${outerLabel} · ${componentLabel}`
-    push(key, label, numericValue(component), component.referenceRange)
+    push(key, label, numericValues(component, times), component.referenceRange)
   }
 
   return readings
 }
+
+/** Whether a reading states the instant it is plotted at. */
+const isDated = (reading: Reading): reading is Reading & { readonly time: DateTime.Utc } =>
+  reading.time !== null
 
 /** The `Observation.category` code a series is filed under. */
 const categoryOf = (observation: ObservationValue): string | null => {
@@ -280,7 +403,10 @@ const categoryOf = (observation: ObservationValue): string | null => {
 interface ObservationSeriesResult {
   /** One entry per distinct series key, in first-appearance order. */
   readonly series: readonly ObservationSeries[]
-  /** Observations that carried a plottable value but no resolvable effective time. */
+  /**
+   * Observations that carried a plottable value but no resolvable effective
+   * time — for a `valueSampledData`, no stated start to offset samples from.
+   */
   readonly undated: number
   /** Observations that contributed nothing: an excluded status, or no plottable value. */
   readonly dropped: number
@@ -296,7 +422,9 @@ interface ObservationSeriesResult {
  * @remarks
  * Readings group by {@link seriesId}, so one code in two units is two series
  * rather than one line that jumps scale. A series takes its metadata from its
- * first reading in input order. Every observation moves at most one counter.
+ * first reading in input order. A `valueSampledData` contributes one point per
+ * numeric sample, so one observation can add many points, but every
+ * observation still moves at most one counter.
  */
 const observationsToSeries = (
   observations: readonly ObservationResource[]
@@ -322,16 +450,17 @@ const observationsToSeries = (
       continue
     }
     // Extraction comes first so "has a value but no date" is `undated` and
-    // "has neither" is `dropped` — two different things for the UI to say.
-    const time = effectiveTime(observation)
-    if (time === null) {
+    // "has neither" is `dropped` — two different things for the UI to say. An
+    // observation plots whole or not at all, so one undated reading leaves the
+    // rest unplotted too rather than splitting it across two outcomes.
+    if (!readings.every(isDated)) {
       undated += 1
       continue
     }
     const category = categoryOf(observation)
     for (const reading of readings) {
       const id = seriesId(reading.key)
-      const point: SeriesPoint = { time, value: reading.value, ...reading.bounds }
+      const point: SeriesPoint = { time: reading.time, value: reading.value, ...reading.bounds }
       const existing = byId.get(id)
       if (existing === undefined) {
         byId.set(id, { meta: reading, points: [point], category })
