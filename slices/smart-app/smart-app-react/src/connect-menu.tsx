@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX, type SubmitEvent } from 'react'
+import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 import { ErrorBanner, TextField } from 'react-tundraish'
 
 import {
@@ -40,6 +40,12 @@ interface FhirR4ConnectMenuProps {
   readonly redirectUri: string
   /** The one-click choices, grouped by server; defaults to {@link DEFAULT_SERVER_PRESET_GROUPS}. */
   readonly presetGroups?: readonly ServerPresetGroup[]
+  /**
+   * Why the last launch failed, when the page was reached by failing one — the
+   * app root's latched `launchErrorFrom()`. Shown at the top of the menu until
+   * the reader starts another connect.
+   */
+  readonly arrivalProblem?: string | Error
 }
 
 /**
@@ -66,16 +72,34 @@ interface WildflowerConnectMenuProps {
    */
   readonly localOrigin: string
   /**
-   * Whether the page has a sign-in of its own in flight (one it started on
-   * arrival, or from a control outside the menu). The menu is disabled while it
-   * is, as it is during its own, so a click cannot start a second sign-in over
-   * the first.
+   * Why a sign-in failed before the page loaded (the redemption the page ran
+   * at boot). Shown at the top of the menu until the reader starts another
+   * connect.
    */
-  readonly busy?: boolean
+  readonly arrivalProblem?: string
+  /**
+   * The server the page is already pointed at, if any: the menu offers a
+   * "Sign in to …" row for it at the top, through the same `connect` as a
+   * pick. `blockedReason` is why this page cannot reach it (a plain-http server
+   * from an https page), shown in the row with the button disabled.
+   */
+  readonly chosenServer?: { readonly url: string; readonly blockedReason?: string }
+  /**
+   * Connect to `chosenServer` as soon as the menu mounts, once. Read on mount
+   * only, so a later render that points the page somewhere else (a pick writes
+   * `?server=`) does not start a second sign-in.
+   */
+  readonly autoConnect?: boolean
 }
 
 /** Props for {@link ConnectMenu}, discriminated by what it connects: see {@link ConnectTarget}. */
 type ConnectMenuProps = FhirR4ConnectMenuProps | WildflowerConnectMenuProps
+
+/**
+ * Which control a connect started from: the chosen server's row at the top
+ * (its "Sign in to …" button, or `autoConnect`), or a pick further down.
+ */
+type ConnectOrigin = 'chosen-server' | 'pick'
 
 /**
  * Where the connect flow is: idle, redirecting to a picked server, or showing an
@@ -87,12 +111,14 @@ type ConnectMenuProps = FhirR4ConnectMenuProps | WildflowerConnectMenuProps
  * `unreachable` probe, a failed connect and a problem the caller's sign-in
  * reports; all stay retryable because the menu is still rendered underneath
  * the banner. A rejected entry is not a connect state: it is the entry's own,
- * shown beside its form.
+ * shown beside its form. `from` places the error beside the control it came
+ * from, and names the button "Taking you to sign in…" while its own connect
+ * is in flight.
  */
 type ConnectState =
   | { readonly kind: 'idle' }
-  | { readonly kind: 'launching' }
-  | { readonly kind: 'error'; readonly message: string }
+  | { readonly kind: 'launching'; readonly from: ConnectOrigin }
+  | { readonly kind: 'error'; readonly message: string; readonly from: ConnectOrigin }
 
 /** The words that differ between a SMART app's menu and the owner UI's. */
 const MENU_COPY = {
@@ -157,8 +183,14 @@ const hostedGroupIndexIn = (presetGroups: readonly ServerPresetGroup[]): number 
  * and a second click in the meantime would start a second sign-in over the
  * first. A page the browser restores from its back-forward cache (the reader
  * pressed Back at the authorization server) comes back `idle`, so the menu
- * is usable again rather than frozen mid-launch. A `wildflower` caller's `busy` disables the menu the same way while a
- * sign-in the page started itself is in flight.
+ * is usable again rather than frozen mid-launch.
+ *
+ * Every connect goes through that one state: a pick, the `wildflower` chosen
+ * server's "Sign in to …" row, and its `autoConnect` on mount. So there is one
+ * busy flag, one reset on Back, and no second sign-in started over a first.
+ * The `arrivalProblem` shows at the top until any connect starts; a connect's
+ * own problem shows beside where it started, at the top for the chosen server
+ * and at the bottom for a pick.
  *
  * Each entry's validation message sits in its own form, beside the field it
  * is about; the banner at the bottom is for what happens after a connect
@@ -173,6 +205,8 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
   const [freeEntryUrl, setFreeEntryUrl] = useState('')
   const [hostedProblem, setHostedProblem] = useState<string | undefined>(undefined)
   const [freeEntryProblem, setFreeEntryProblem] = useState<string | undefined>(undefined)
+  const [arrivalProblemShown, setArrivalProblemShown] = useState(true)
+  const autoConnected = useRef(false)
 
   // A launch leaves the page `launching`; Back from the authorization server
   // can restore it from the back-forward cache exactly as it was, controls
@@ -187,8 +221,8 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
     }
   }, [])
 
-  const launching =
-    state.kind === 'launching' || (props.target === 'wildflower' && props.busy === true)
+  const launching = state.kind === 'launching'
+  const chosenServer = props.target === 'wildflower' ? props.chosenServer : undefined
   const copy = MENU_COPY[props.target]
   const presetGroups =
     props.target === 'fhir-r4'
@@ -216,7 +250,8 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         )
       : props.connect(serverUrl)
 
-  const connectTo = (serverUrl: string): void => {
+  const connectTo = (serverUrl: string, from: ConnectOrigin = 'pick'): void => {
+    setArrivalProblemShown(false)
     setHostedProblem(undefined)
     setFreeEntryProblem(undefined)
     // Read when the pick is made, not at import: whether this page is the
@@ -228,14 +263,15 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
     // discovery failure that reads as "the server is down".
     const blocked = insecureTargetReason(serverUrl, { pageIsSecure })
     if (blocked !== undefined) {
-      setState({ kind: 'error', message: blocked })
+      setState({ kind: 'error', message: blocked, from })
       return
     }
-    setState({ kind: 'launching' })
+    setState({ kind: 'launching', from })
     const reportProblem = (reason: string): void => {
       setState({
         kind: 'error',
         message: withLocalNetworkAccessHint(reason, serverUrl, { pageIsSecure }),
+        from,
       })
     }
     startConnecting(serverUrl)
@@ -246,6 +282,22 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         reportProblem(error instanceof Error ? error.message : String(error))
       })
   }
+
+  // Connect to the chosen server on mount, once: the ref holds under
+  // StrictMode's second effect run, and props read later are ignored.
+  useEffect(() => {
+    if (autoConnected.current) return
+    autoConnected.current = true
+    if (props.target === 'wildflower' && props.autoConnect === true && chosenServer !== undefined) {
+      connectTo(chosenServer.url, 'chosen-server')
+    }
+    // Mount only, by design: see `autoConnect`.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const arrivalProblem = arrivalProblemShown ? props.arrivalProblem : undefined
+  const problemFrom = (from: ConnectOrigin): string | undefined =>
+    state.kind === 'error' && state.from === from ? state.message : undefined
 
   const onHostedSubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -297,6 +349,28 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
   return (
     <section className={styles['connect']}>
       <h2 className={styles['connect__heading']}>{copy.heading}</h2>
+
+      {arrivalProblem === undefined && chosenServer === undefined ? null : (
+        <div className={styles['arrival']}>
+          <ErrorBanner
+            error={problemFrom('chosen-server') ?? arrivalProblem ?? chosenServer?.blockedReason}
+          />
+          {chosenServer === undefined ? null : (
+            <button
+              type="button"
+              className={`button-2 filled ${styles['arrival__button']}`}
+              disabled={launching || chosenServer.blockedReason !== undefined}
+              onClick={(): void => {
+                connectTo(chosenServer.url, 'chosen-server')
+              }}
+            >
+              {state.kind === 'launching' && state.from === 'chosen-server'
+                ? 'Taking you to sign in…'
+                : `Sign in to ${chosenServer.url}`}
+            </button>
+          )}
+        </div>
+      )}
 
       {presetGroups.slice(0, hostedGroupIndex).map(presetGroup)}
 
@@ -352,9 +426,9 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         </div>
       </form>
 
-      {state.kind === 'error' && (
+      {problemFrom('pick') === undefined ? null : (
         <div className={styles['error']}>
-          <ErrorBanner error={state.message} />
+          <ErrorBanner error={problemFrom('pick')} />
         </div>
       )}
     </section>

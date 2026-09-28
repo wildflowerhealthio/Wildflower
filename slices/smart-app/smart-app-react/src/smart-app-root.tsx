@@ -2,7 +2,6 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import type { AppSectionId } from 'branding-core'
 import { AppLanding, BrandBar, fromApp, SiteFooter, SiteHeader } from 'branding-react'
 import { useState, type JSX, type ReactNode } from 'react'
-import { ErrorBanner } from 'react-tundraish'
 
 import {
   buildSmartQueryClient,
@@ -44,8 +43,8 @@ interface SmartAppRootProps {
  *   `children`, which complete the handshake as a query on the shared client
  *   (via `useSmartHandshake`).
  * - **Standalone** (a bare visit): the full `SiteHeader` / `AppLanding` /
- *   `SiteFooter` page, the app's introduction beside the `ConnectMenu`, with an
- *   `ErrorBanner` for a launch that failed and landed back here.
+ *   `SiteFooter` page, the app's introduction beside the `ConnectMenu`, which
+ *   shows a launch that failed and landed back here as its `arrivalProblem`.
  *
  * @remarks
  * The branch is latched on mount: fhirclient's `oauth2.ready()` strips
@@ -59,8 +58,9 @@ function SmartAppRoot({ app, standalone, launched, children }: SmartAppRootProps
   // A failed launch lands back here carrying its reason — our own `?launchError`
   // from the launch page or the token exchange, or the authorization server's
   // own OAuth `?error`. Latched on mount for the same reason as `isLaunched`:
-  // completing a handshake rewrites the URL, and the banner must not vanish
-  // because of it.
+  // completing a handshake rewrites the URL, and the menu's banner must not
+  // vanish because of it. The menu drops it once the reader starts another
+  // connect.
   const [launchFailure] = useState(() => launchErrorFrom())
 
   // One QueryClient for the whole page: the app completes the SMART handshake
@@ -85,12 +85,12 @@ function SmartAppRoot({ app, standalone, launched, children }: SmartAppRootProps
           <SiteHeader nav={fromApp} />
           <main className={styles['connect-page']}>
             <AppLanding app={app}>
-              <ErrorBanner error={launchFailure} />
               <ConnectMenu
                 target="fhir-r4"
                 clientId={standalone.clientId}
                 scope={standalone.scope}
                 redirectUri={redirectUri}
+                arrivalProblem={launchFailure ?? undefined}
               />
             </AppLanding>
           </main>

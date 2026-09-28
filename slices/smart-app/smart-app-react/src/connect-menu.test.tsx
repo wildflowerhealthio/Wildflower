@@ -1,5 +1,6 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type * as Smart from 'fhir-r4-react/smart'
@@ -432,19 +433,128 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     })
     expect(localConnectButton().hasAttribute('disabled')).toBe(false)
   })
+})
 
-  it('is disabled while the page has a sign-in of its own in flight, and re-enabled after', () => {
-    const { rerender } = render(<ConnectMenu {...WILDFLOWER_PROPS} busy />)
+describe('ConnectMenu, what the page arrived with', () => {
+  const CHOSEN = { url: 'https://ruth.wildflowerhealth.io' }
 
-    expect(localConnectButton().hasAttribute('disabled')).toBe(true)
+  /** The chosen server's "Sign in to …" button, whatever it reads right now. */
+  const chosenServerButton = (): HTMLElement =>
+    screen.getByRole('button', { name: /^(Sign in to |Taking you to sign in)/ })
+
+  it('shows a SMART app’s arrival problem until a pick starts another launch', async () => {
+    const user = userEvent.setup()
+    render(<ConnectMenu {...PROPS} arrivalProblem={new Error('Failed to fetch')} />)
+
+    expect(screen.getByRole('alert').textContent).toContain('Failed to fetch')
+
+    await user.click(localConnectButtonFor('Launch'))
+
+    expect(screen.queryByText(/Failed to fetch/)).toBeNull()
+  })
+
+  it('shows a Wildflower arrival problem until a pick starts another sign-in', async () => {
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} arrivalProblem="The token request was rejected." />)
+
+    expect(screen.getByText('The token request was rejected.')).toBeDefined()
+
+    await user.click(localConnectButton())
+
+    expect(screen.queryByText('The token request was rejected.')).toBeNull()
+  })
+
+  it('signs in to the chosen server from its row, through the same connect', async () => {
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} chosenServer={CHOSEN} />)
+
+    await user.click(screen.getByRole('button', { name: `Sign in to ${CHOSEN.url}` }))
+
+    expect(connectMock).toHaveBeenCalledWith(CHOSEN.url)
+    expect(chosenServerButton().textContent).toBe('Taking you to sign in…')
+  })
+
+  it('shows why the chosen server cannot be reached, with its row disabled', () => {
+    render(
+      <ConnectMenu
+        {...WILDFLOWER_PROPS}
+        chosenServer={{ ...CHOSEN, blockedReason: 'The browser will block it.' }}
+      />
+    )
+
+    expect(screen.getByText('The browser will block it.')).toBeDefined()
+    expect(chosenServerButton().hasAttribute('disabled')).toBe(true)
+  })
+
+  it('shows a failed sign-in to the chosen server beside its row, once', async () => {
+    connectMock.mockResolvedValue('Could not reach the server.')
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} chosenServer={CHOSEN} />)
+
+    await user.click(chosenServerButton())
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Could not reach the server.')).toHaveLength(1)
+    })
+    // Beside the row: the first thing after the heading, ahead of every group.
+    const [firstAlert] = screen.getAllByRole('alert')
     expect(
-      within(screen.getByRole('form', { name: HOSTED_GROUP_NAME }))
-        .getByRole('button', { name: 'Connect' })
-        .hasAttribute('disabled')
-    ).toBe(true)
+      firstAlert?.compareDocumentPosition(localConnectButton()) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(chosenServerButton().hasAttribute('disabled')).toBe(false)
+  })
 
-    rerender(<ConnectMenu {...WILDFLOWER_PROPS} busy={false} />)
+  it('disables the chosen server’s row while any connect is in flight', async () => {
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} chosenServer={CHOSEN} />)
 
+    await user.click(localConnectButton())
+
+    expect(chosenServerButton().hasAttribute('disabled')).toBe(true)
+    // The row names its own server: the connect in flight is the pick's.
+    expect(chosenServerButton().textContent).toBe(`Sign in to ${CHOSEN.url}`)
+  })
+
+  it('connects to the chosen server once on mount, under StrictMode too', async () => {
+    render(
+      <StrictMode>
+        <ConnectMenu {...WILDFLOWER_PROPS} chosenServer={CHOSEN} autoConnect />
+      </StrictMode>
+    )
+
+    await waitFor(() => {
+      expect(connectMock).toHaveBeenCalledTimes(1)
+    })
+    expect(connectMock).toHaveBeenCalledWith(CHOSEN.url)
+    expect(localConnectButton().hasAttribute('disabled')).toBe(true)
+  })
+
+  it('does not connect on a later render that names another server', async () => {
+    const { rerender } = render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+    rerender(<ConnectMenu {...WILDFLOWER_PROPS} chosenServer={CHOSEN} autoConnect />)
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(connectMock).not.toHaveBeenCalled()
+  })
+
+  it('comes back usable, chosen server’s row included, when restored from the back-forward cache', async () => {
+    render(<ConnectMenu {...WILDFLOWER_PROPS} chosenServer={CHOSEN} autoConnect />)
+    await act(async () => {
+      await connectMock.mock.results[0]?.value
+    })
+    // Leaving for the authorization server: everything is disabled.
+    expect(chosenServerButton().hasAttribute('disabled')).toBe(true)
+    expect(localConnectButton().hasAttribute('disabled')).toBe(true)
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    })
+
+    expect(chosenServerButton().hasAttribute('disabled')).toBe(false)
+    expect(chosenServerButton().textContent).toBe(`Sign in to ${CHOSEN.url}`)
     expect(localConnectButton().hasAttribute('disabled')).toBe(false)
   })
 })

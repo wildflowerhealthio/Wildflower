@@ -116,3 +116,22 @@
 .error {
   margin-top: var(--space-9);
 }
+
+/*
+ * What the page arrived with, under the heading: the problem it arrived with,
+ * or one about the server it is already pointed at (why that server cannot be
+ * reached, or why its sign-in failed), above that server's "Sign in to …"
+ * button. The one track is `minmax(0, 1fr)`, not `auto`, so a
+ * long server address cannot widen the column past a phone's viewport.
+ */
+.arrival {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  margin-top: var(--space-10);
+}
+
+/* The button names the server, and a FHIR base can be long: let it wrap. */
+.arrival__button {
+  overflow-wrap: anywhere;
+}

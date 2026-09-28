@@ -58,8 +58,8 @@ A SMART app visited without a launch (`apps/medications-app`,
 `SmartAppRoot`, and
 `apps/web-trace`) renders `SiteHeader`, then `AppLanding`
 inside `main`, then `SiteFooter`. So does the hosted owner UI's landing
-(`apps/wildflower-react`'s `routes/index.tsx`, `app="app"`), with its own
-sign-in above the connect menu. `AppLanding` takes the app's `AppSectionId`
+(`apps/wildflower-react`'s `routes/index.tsx`, `app="app"`), whose connect
+menu also carries its "Sign in to …" row for a server already chosen. `AppLanding` takes the app's `AppSectionId`
 and its connect menu as children: it lays out the introduction from
 `APP_DESCRIPTIONS` on the left (the app name as the page's `h1`, the tagline,
 the paragraphs, and a "Read about the rest of the project" link to the app's

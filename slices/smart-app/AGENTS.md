@@ -16,8 +16,10 @@ slice is where the two meet, so neither has to know about the other.
   - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
     standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
     base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
-    owner UI's own sign-in (`connect`) a server origin, and is disabled while
-    `busy` says a sign-in the page started itself is in flight.
+    owner UI's own sign-in (`connect`) a server origin, and also runs the
+    page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
+    (`autoConnect`). Either target shows the problem the page arrived with
+    (`arrivalProblem`).
 
 Consumers: `apps/medications-app` and `apps/importer-web` mount `SmartAppRoot`
 and `runSmartLaunchEntry`; `apps/fhir-sync-pebble-web` is standalone-only, so it
@@ -58,8 +60,9 @@ import `branding-react/styles.css` itself.
   module reads `window` as a side effect of being imported.
 - **A failed launch goes to the app root, never a dead end.** A rejected
   `authorizeSmartLaunch` on the launch page is handed to the app root through
-  `launchErrorRedirect`, where `SmartAppRoot`'s `ErrorBanner` renders it; the
-  contract is `fhir-r4-react/smart`'s `launch-error.ts`.
+  `launchErrorRedirect`, where `SmartAppRoot` latches it and hands it to the
+  `ConnectMenu` as its `arrivalProblem`; the contract is `fhir-r4-react/smart`'s
+  `launch-error.ts`.
 - **`ConnectMenu` probes before it connects, and `unreachable` ≠ `open`.** It
   renders inside `AppLanding` on the standalone branch: launch buttons grouped
   under each known server's name and address (`server-presets.ts`'s
@@ -92,6 +95,20 @@ import `branding-react/styles.css` itself.
   back idle rather than disabled; why an `unreachable` probe must never degrade
   to `open` is the standalone-launch guardrail in
   [slices/emr/AGENTS.md](../emr/AGENTS.md).
+- **`ConnectMenu` runs every sign-in on its page, through one state.** A pick,
+  the `wildflower` target's "Sign in to {url}" row for the server the page is
+  already pointed at (`chosenServer`, with its `blockedReason` shown and the
+  button disabled when the page cannot reach it), and the sign-in on arrival
+  (`autoConnect`, read on mount only and guarded by a ref, so StrictMode and a
+  later render that points the page elsewhere cannot start a second one) all go
+  through the same `connect` and the same `launching` state. There is one busy
+  flag, one problem at a time, and one `pageshow` reset, so Back from the
+  authorization server leaves nothing disabled. The page's `arrivalProblem`
+  (the latched launch error, or the owner UI's boot redemption failure) shows
+  at the top until any connect starts; a connect's own problem shows beside
+  where it started, at the top for the chosen server and at the bottom for a
+  pick. A page keeps only the policy (which server, whether to sign in on
+  arrival, what `connect` means) and holds no sign-in state of its own.
 
 ## References
 

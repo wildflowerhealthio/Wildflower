@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import * as fc from 'fast-check'
 import { serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import { makeBearerAuthStateStore, type BearerAuthStateStore } from 'gatekeeper-react'
@@ -165,7 +165,7 @@ describe('Landing', () => {
       secure: true,
     })
 
-    // Assert — the page's banner carries it after the reason, and only once.
+    // Assert — the menu's banner carries it after the reason, and only once.
     await waitFor(() => {
       expect(screen.getByText(/Could not reach the server\. .*Local Network Access/)).toBeDefined()
     })
@@ -321,17 +321,12 @@ describe('Landing', () => {
     expect(localServerButton().hasAttribute('disabled')).toBe(false)
   })
 
-  test('moves a failure to the page’s banner when the page’s own sign-in retries a pick', async () => {
-    // Arrange — a pick that failed, reported by the menu; the picked server is
-    // now the page's, with its "Sign in to …" button.
+  test('shows a retried sign-in’s failure once, in place of the one on arrival', async () => {
+    // Arrange — the sign-in on arrival failed, and its reason is showing.
     const signIn = recordingSignIn(() =>
       Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
     )
-    await mountLanding('/', { signIn: signIn.stub })
-    await waitFor(() => {
-      expect(localServerButton()).toBeDefined()
-    })
-    fireEvent.click(localServerButton())
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', { signIn: signIn.stub })
     const retry = await screen.findByRole('button', {
       name: /sign in to http:\/\/127\.0\.0\.1:8080/i,
     })
@@ -342,14 +337,55 @@ describe('Landing', () => {
     // Act
     fireEvent.click(retry)
 
-    // Assert — the retry's failure shows, and the menu's report of the earlier
-    // pick is gone rather than repeated beside it.
+    // Assert — the retry's failure replaces the first, rather than joining it.
     await waitFor(() => {
       expect(signIn.started).toHaveLength(2)
     })
     await waitFor(() => {
-      expect(screen.getAllByText(/Could not reach the server\./)).toHaveLength(1)
+      expect(retry.hasAttribute('disabled')).toBe(false)
     })
+    expect(screen.getAllByText(/Could not reach the server\./)).toHaveLength(1)
+  })
+
+  test('drops a sign-in that failed before the page loaded once a pick starts another', async () => {
+    // Arrange
+    await mountLanding('/', { bootSignInProblem: 'The token request was rejected: invalid_grant.' })
+    await waitFor(() => {
+      expect(screen.getByText(/invalid_grant/)).toBeDefined()
+    })
+
+    // Act
+    fireEvent.click(localServerButton())
+
+    // Assert
+    expect(screen.queryByText(/invalid_grant/)).toBeNull()
+  })
+
+  test('comes back usable when Back restores the page from the back-forward cache', async () => {
+    // Arrange — the sign-in on arrival is leaving for the authorization server,
+    // so the "Sign in to …" row and the menu are disabled.
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Ok', value: 'http://127.0.0.1:8080/oauth/authorize?x=1' })
+    )
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', { signIn: signIn.stub })
+    await waitFor(() => {
+      expect(signIn.left).toHaveLength(1)
+    })
+    const retry = screen.getByRole('button', { name: /taking you to sign in/i })
+    expect(retry.hasAttribute('disabled')).toBe(true)
+
+    // Act — the reader pressed Back at the authorization server.
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    })
+
+    // Assert
+    expect(
+      screen
+        .getByRole('button', { name: /sign in to http:\/\/127\.0\.0\.1:8080/i })
+        .hasAttribute('disabled')
+    ).toBe(false)
+    expect(localServerButton().hasAttribute('disabled')).toBe(false)
   })
 
   test('keeps the menu disabled while the sign-in on arrival is in flight', async () => {
