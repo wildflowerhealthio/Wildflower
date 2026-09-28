@@ -189,6 +189,14 @@ const sampledDataStart = (observation: ObservationValue): DateTime.Utc | null =>
   observation.effectiveInstant ??
   null
 
+/**
+ * A quantity's unit: its `unit`, falling back to its UCUM `code`, so
+ * `{ code: 'mmol/L' }` and `{ unit: 'mmol/L' }` land in the same series.
+ */
+const quantityUnit = (
+  quantity: Schema.Schema.Type<typeof QuantityView> | null | undefined
+): string | null => quantity?.unit ?? quantity?.code ?? null
+
 /** A plottable number, its unit / kind, and the instant it was taken. */
 interface NumericValue {
   readonly value: number
@@ -215,14 +223,15 @@ const DECIMAL_TOKEN = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/
  *   observation states none — the values still come back, undated, so the
  *   caller can count the observation as `undated` rather than `dropped`
  * @returns No values when the set cannot be read as one timed series — no
- *   `origin.value`, no `period`, or more than one dimension
+ *   `origin.value`, a missing or non-positive `period`, or a `dimensions`
+ *   other than 1 (an absent one reads as 1)
  *
  * @remarks
  * `E` (error), `L` / `U` (beyond the detection limits) and any other token
  * that is not a finite decimal are skipped but still counted, so every later
  * sample keeps its own time. Interleaved multi-dimension data is not read: no
  * source produces it, and plotting only its first dimension would mislabel it.
- * The unit is `origin.unit`, falling back to its `code` as a quantity's does.
+ * The unit is {@link quantityUnit} of `origin`, as for a quantity.
  */
 const sampledValues = (
   sampledData: SampledDataValue,
@@ -230,9 +239,13 @@ const sampledValues = (
 ): readonly NumericValue[] => {
   const origin = sampledData.origin?.value ?? null
   const period = sampledData.period ?? null
-  if (origin === null || period === null || (sampledData.dimensions ?? 1) !== 1) return []
+  // `!(period > 0)` also rejects `NaN`: a zero or negative period would stack
+  // every sample on one instant or run them backwards from the start.
+  if (origin === null || period === null || !(period > 0) || (sampledData.dimensions ?? 1) !== 1) {
+    return []
+  }
   const factor = sampledData.factor ?? 1
-  const unit = sampledData.origin?.unit ?? sampledData.origin?.code ?? null
+  const unit = quantityUnit(sampledData.origin)
   const tokens = (sampledData.data ?? '').trim().split(/\s+/)
   return tokens.flatMap((token, index): NumericValue[] => {
     if (!DECIMAL_TOKEN.test(token)) return []
@@ -257,7 +270,7 @@ const scalarValue = (slots: ValueSlots): Omit<NumericValue, 'time'> | null => {
   ) {
     return {
       value: quantity.value,
-      unit: quantity.unit ?? quantity.code ?? null,
+      unit: quantityUnit(quantity),
       kind: 'quantity',
     }
   }
@@ -281,8 +294,7 @@ const scalarValue = (slots: ValueSlots): Omit<NumericValue, 'time'> | null => {
  *   concept, a range, or no value at all
  *
  * @remarks
- * A quantity's unit falls back to its UCUM `code`, so `{ code: 'mmol/L' }` and
- * `{ unit: 'mmol/L' }` land in the same series.
+ * Units come from {@link quantityUnit}, for a quantity and a sample set alike.
  */
 const numericValues = (
   slots: ValueSlots,
@@ -376,6 +388,10 @@ const readingsOf = (observation: ObservationValue): readonly Reading[] => {
   return readings
 }
 
+/** Whether a reading states the instant it is plotted at. */
+const isDated = (reading: Reading): reading is Reading & { readonly time: DateTime.Utc } =>
+  reading.time !== null
+
 /** The `Observation.category` code a series is filed under. */
 const categoryOf = (observation: ObservationValue): string | null => {
   const first = (observation.category ?? [])[0]
@@ -413,10 +429,7 @@ interface ObservationSeriesResult {
 const observationsToSeries = (
   observations: readonly ObservationResource[]
 ): ObservationSeriesResult => {
-  const byId = new Map<
-    string,
-    { meta: Omit<Reading, 'time'>; points: SeriesPoint[]; category: string | null }
-  >()
+  const byId = new Map<string, { meta: Reading; points: SeriesPoint[]; category: string | null }>()
   let undated = 0
   let dropped = 0
 
@@ -440,17 +453,14 @@ const observationsToSeries = (
     // "has neither" is `dropped` — two different things for the UI to say. An
     // observation plots whole or not at all, so one undated reading leaves the
     // rest unplotted too rather than splitting it across two outcomes.
-    const dated = readings.flatMap(({ time, ...reading }) =>
-      time === null ? [] : [{ reading, time }]
-    )
-    if (dated.length < readings.length) {
+    if (!readings.every(isDated)) {
       undated += 1
       continue
     }
     const category = categoryOf(observation)
-    for (const { reading, time } of dated) {
+    for (const reading of readings) {
       const id = seriesId(reading.key)
-      const point: SeriesPoint = { time, value: reading.value, ...reading.bounds }
+      const point: SeriesPoint = { time: reading.time, value: reading.value, ...reading.bounds }
       const existing = byId.get(id)
       if (existing === undefined) {
         byId.set(id, { meta: reading, points: [point], category })

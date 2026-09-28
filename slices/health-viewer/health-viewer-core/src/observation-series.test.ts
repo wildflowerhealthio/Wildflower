@@ -763,6 +763,21 @@ describe('observationsToSeries', () => {
       expect({ series, dropped, undated }).toEqual({ series: [], dropped: 1, undated: 0 })
     })
 
+    test('a zero or negative period is dropped rather than stacked or run backwards', () => {
+      fc.assert(
+        fc.property(fc.integer({ min: -3_600_000, max: 0 }), (period) => {
+          const { series, dropped, undated } = observationsToSeries([
+            sampledObservation(
+              { data: '72 73 74', dimensions: 1, period },
+              { effectivePeriod: { start: '2026-09-27T10:00:00Z' } }
+            ),
+          ])
+          expect({ series, dropped, undated }).toEqual({ series: [], dropped: 1, undated: 0 })
+        }),
+        { numRuns: RUNS }
+      )
+    })
+
     test('samples with no stated start are undated, even when the resource was issued', () => {
       const { series, dropped, undated } = observationsToSeries([
         sampledObservation({ data: '72 73', dimensions: 1 }),
