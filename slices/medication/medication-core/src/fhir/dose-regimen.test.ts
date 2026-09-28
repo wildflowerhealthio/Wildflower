@@ -7,9 +7,9 @@ import {
   EXCLUDED_REGIMEN_STATUSES,
   medicationRequestsToDoseRegimens,
   medicationRequestToDoseRegimen,
-  type MedicationRequestWithId,
 } from './dose-regimen.ts'
 import { medicationRequestWithIdArb } from './medication-request-arbitrary.ts'
+import type { MedicationRequestWithId } from './medication-request-with-id.ts'
 import { base, decodeWithId } from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 50 })
