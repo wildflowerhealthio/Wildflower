@@ -26,11 +26,13 @@ Current slices: `anonymizer`, `apps`, `branding`, `browser-sniffer`, `collector`
 `medication` owns a patient's medication list end-to-end — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values; two features build on it, neither owning the base: `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
 
 `health-viewer` plots a patient's own observations and medications on one time
-axis — see [health-viewer/AGENTS.md](./health-viewer/AGENTS.md). Its
-`health-viewer-core` holds the whole chart's logic as pure functions (the series
-model, the FHIR `Observation` adapter, axis domains, range presets, the
-catalogue's grouping and search, and the URL codec a shared link round-trips
-through), so it can be property-tested without a DOM.
+axis — see [health-viewer/AGENTS.md](./health-viewer/AGENTS.md). Like
+`http-extraction`, it layers a domain-free vocabulary under per-domain packages:
+`health-viewer-fundamentals` holds the plot vocabulary and chart math (point and
+level series, value axes, the crosshair), `health-viewer-observations` reads FHIR
+`Observation`s into it, and `health-viewer-core` assembles the sources with the
+catalogue, range presets and the URL codec a shared link round-trips through —
+all pure functions, property-tested without a DOM.
 
 `fhir-sync-pebble` holds what the Pebble watchapp's settings page decides — see
 [fhir-sync-pebble/AGENTS.md](./fhir-sync-pebble/AGENTS.md). Its
