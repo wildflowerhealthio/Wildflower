@@ -121,6 +121,7 @@ jobs:
           sed -i '/<key>CFBundleVersion<\/key>/{n;s/<string>[^<]*<\/string>/<string>'"$version"'<\/string>/;}' "$plist"
 
       - name: Bump Pebble app versions
+        id: pebble
         # `apps/watch-lifts` and `apps/fhir-sync-pebble` ship on the same
         # release: Publish builds their .pbws from the tag. `pebble build`
         # takes MAJOR.MINOR.PATCH only, with MAJOR and MINOR in 0-255, and
@@ -144,6 +145,7 @@ jobs:
             jq --arg v "$pebble_version" '.version = $v' "$manifest" > "$tmp"
             mv "$tmp" "$manifest"
           done
+          echo "version=$pebble_version" >> "$GITHUB_OUTPUT"
 
       - name: Write marketing versions.json
         # Marketing site's `public/` is served at the site root, so this lands
@@ -285,7 +287,7 @@ jobs:
           set -euo pipefail
           tag='${{ steps.vars.outputs.tag }}'
           branch='${{ steps.vars.outputs.branch }}'
-          version='${{ steps.vars.outputs.version }}'
+          pebble_version='${{ steps.pebble.outputs.version }}'
           base='${{ github.ref_name }}'
           # Multi-part body: header, machine-generated commit list from the
           # "Generate changelog" step above, then footer explaining what merge
@@ -297,7 +299,7 @@ jobs:
             printf -- '- `apps/wildflower-tauri/src-tauri/tauri.conf.json`\n'
             printf -- '- `apps/wildflower-tauri/src-tauri/Cargo.toml` (+ `Cargo.lock`)\n'
             printf -- '- `apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist`\n'
-            printf -- '- `apps/watch-lifts/package.json` and `apps/fhir-sync-pebble/package.json` (Pebble version `%s`)\n' "${version%%-*}"
+            printf -- '- `apps/watch-lifts/package.json` and `apps/fhir-sync-pebble/package.json` (Pebble version `%s`)\n' "$pebble_version"
             printf -- '- `apps/marketing-website/public/versions.json`\n'
             printf -- '- `apps/wildflower-tauri/CHANGELOG.md` (prepended with the section below)\n\n'
             printf '## Changes since previous release\n\n'

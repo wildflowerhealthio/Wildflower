@@ -211,39 +211,6 @@ jobs:
             echo 'CHANGENOTES_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create draft release (idempotent)
-        # Created here, once, before the fan-out, so every build job uploads
-        # to the one release instead of racing to create it: tauri-action
-        # looks a draft up by tag and creates one only when it finds none,
-        # so two bundles finishing together could each create one, and the
-        # Pebble job would finish long before any of them. Name, body,
-        # draft and prerelease match tauri-action's inputs below; it never
-        # updates a draft it finds, so these are what the release shows. An
-        # existing release for the tag (a re-run or a tag rebuild) is left
-        # as it is. `gh release view` finds drafts by tag too.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_BODY: ${{ steps.notes.outputs.body }}
-        run: |
-          set -euo pipefail
-          tag='${{ steps.vars.outputs.tag }}'
-          if err="$(gh release view "$tag" --json tagName 2>&1 >/dev/null)"; then
-            echo "Release for $tag already exists; uploading to it."
-            exit 0
-          fi
-          if [[ "$err" != *'release not found'* ]]; then
-            echo "::error::Could not look up the release for $tag: $err"
-            exit 1
-          fi
-          body="$(mktemp)"
-          printf '%s\n' "$RELEASE_BODY" > "$body"
-          gh release create "$tag" \
-            --verify-tag \
-            --draft \
-            --prerelease \
-            --title "Wildflower $tag" \
-            --notes-file "$body"
-
       - name: Select platform matrix
         id: matrix
         # The build fan-out lives here (not as a static `strategy.matrix`) so
@@ -278,11 +245,45 @@ jobs:
               ] | map(. as $entry | select(($selected | index("all")) or ($selected | index($entry.key))))
             }' > /tmp/matrix.json
           if [[ "$(jq '.include | length' /tmp/matrix.json)" == 0 ]] && \
-             ! echo "$platforms" | tr ',' '\n' | grep -qxE 'ios|pebble'; then
+             ! echo "$platforms" | tr -d '[:space:]' | tr ',' '\n' | grep -qxE 'ios|macos-testflight|pebble'; then
             echo "::error::platforms='$platforms' selected no build."
             exit 1
           fi
           echo "matrix=$(cat /tmp/matrix.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release (idempotent)
+        # Created here, once, before the fan-out, so every build job uploads
+        # to the one release instead of racing to create it: tauri-action
+        # looks a draft up by tag and creates one only when it finds none,
+        # so two bundles finishing together could each create one, and the
+        # Pebble job would finish long before any of them. Name, body,
+        # draft and prerelease match tauri-action's inputs below; it never
+        # updates a draft it finds, so these are what the release shows. An
+        # existing release for the tag (a re-run or a tag rebuild) is left
+        # as it is. `gh release view` finds drafts by tag too. After the
+        # platform check, so a dispatch that selects no build leaves no draft.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ steps.notes.outputs.body }}
+        run: |
+          set -euo pipefail
+          tag='${{ steps.vars.outputs.tag }}'
+          if err="$(gh release view "$tag" --json tagName 2>&1 >/dev/null)"; then
+            echo "Release for $tag already exists; uploading to it."
+            exit 0
+          fi
+          if [[ "$err" != *'release not found'* ]]; then
+            echo "::error::Could not look up the release for $tag: $err"
+            exit 1
+          fi
+          body="$(mktemp)"
+          printf '%s\n' "$RELEASE_BODY" > "$body"
+          gh release create "$tag" \
+            --verify-tag \
+            --draft \
+            --prerelease \
+            --title "Wildflower $tag" \
+            --notes-file "$body"
 
   build:
     name: Build ${{ matrix.name }}
@@ -701,14 +702,17 @@ jobs:
             exit 1
           fi
 
+      # Only fhir-sync-pebble needs the workspace: its wscript runs `vp pack`
+      # in pkjs/ through the node_modules/.bin/vp that `vp install` puts
+      # there. watch-lifts is C alone.
       - name: Setup Vite+
+        if: matrix.app == 'fhir-sync-pebble'
         uses: voidzero-dev/setup-vp@v1.21.0
         with:
           cache: true
 
       - name: Install workspace dependencies
-        # fhir-sync-pebble's wscript runs `vp pack` in pkjs/ through the
-        # node_modules/.bin/vp that this installs.
+        if: matrix.app == 'fhir-sync-pebble'
         run: vp install
 
       # The same pinned pebble-tool and SDK as ci-pebble.yml.
