@@ -69,12 +69,8 @@ function LandingRoute(): JSX.Element {
 
 /** How the landing page starts a sign-in and leaves for it — injected by tests. */
 interface LandingSignIn {
-  /**
-   * Begin a SMART sign-in against `target`, yielding the authorization URL.
-   * `fhirBaseUrl` is the FHIR base to discover at when `target` is not a
-   * Wildflower server; left out, it is the Wildflower server's own.
-   */
-  readonly start: (target: string, fhirBaseUrl?: string) => Promise<SignInStep<string>>
+  /** Begin a SMART sign-in against `target`, yielding the authorization URL. */
+  readonly start: (target: string) => Promise<SignInStep<string>>
   /** Leave for the authorization server at `authorizationUrl`. */
   readonly leave: (authorizationUrl: string) => void
 }
@@ -87,12 +83,11 @@ interface LandingSignIn {
  * registered redirect URI drops it.
  */
 const browserSignIn: LandingSignIn = {
-  start: (target, fhirBaseUrl) =>
+  start: (target) =>
     startSignIn(
       target,
       returnToOnPage(window.location.href),
-      signInEnvironment(window, basenameOf(window.location.pathname)),
-      fhirBaseUrl
+      signInEnvironment(window, basenameOf(window.location.pathname))
     ),
   leave: (authorizationUrl) => {
     window.location.assign(authorizationUrl)
@@ -191,19 +186,20 @@ function Landing({
   const blockedReason = insecureTargetReason(serverUrl, { pageIsSecure })
 
   /**
-   * Leave for the authorization endpoint discovered at the FHIR base
-   * (`fhirBaseUrl`, else `target`'s own Wildflower one) — the SMART standalone
-   * launch, the same flow the server-docs console runs — resolving to the problem to show
+   * Leave for the authorization endpoint discovered at `target`'s FHIR base
+   * (its `/fhir-r4` for a Wildflower origin, the URL itself for a plain SMART
+   * server's base) — the SMART standalone launch, the same flow the
+   * server-docs console runs — resolving to the problem to show
    * if it could not start, or `undefined` once the page is leaving. The reader
    * comes back to the app root with a code, which `main-web`'s boot redeems
    * before the router mounts, then settles on the gate's `returnTo` (`/home` by
    * default). Nothing is held here across the redirect but the pending record
    * in `sessionStorage`, which carries no credential.
    */
-  const leaveToSignIn = (target: string, fhirBaseUrl?: string): Promise<string | undefined> => {
+  const leaveToSignIn = (target: string): Promise<string | undefined> => {
     signInStarted.current = true
     setLeavingToSignIn(true)
-    return signIn.start(target, fhirBaseUrl).then((started) => {
+    return signIn.start(target).then((started) => {
       if (started.tag === 'Ok') {
         signIn.leave(started.value)
         return undefined
@@ -226,20 +222,18 @@ function Landing({
    * The menu's `connect`: point the page at the picked server and start signing
    * in to it, which is what choosing a server means — a reader who picks one
    * wants to be signed in to it, not handed a second button. A plain SMART
-   * server (the demo one) is picked by its FHIR base, so that is the base its
-   * sign-in discovers at, and what `?server=` names. The problem goes back to
+   * server (the demo one) is picked by its FHIR base, which is what `?server=`
+   * names and, having a path, the base its sign-in discovers at — on a retry
+   * or a reload as much as on the pick. The problem goes back to
    * the menu, which shows it with the Local Network Access hint when that
    * applies, so it is returned without one.
    */
-  const connect = (
-    pickedUrl: string,
-    { wildflowerServer }: { readonly wildflowerServer: boolean }
-  ): Promise<string | undefined> => {
+  const connect = (pickedUrl: string): Promise<string | undefined> => {
     setSignInProblem(undefined)
     const blocked = insecureTargetReason(pickedUrl, { pageIsSecure })
     if (blocked !== undefined) return Promise.resolve(blocked)
     rememberServer(pickedUrl)
-    return leaveToSignIn(pickedUrl, wildflowerServer ? undefined : pickedUrl)
+    return leaveToSignIn(pickedUrl)
   }
 
   // Keyed on a server the page can actually use, not on a `?server=`'s bare

@@ -116,15 +116,15 @@ object instead of a `Window`. `STANDALONE_LAUNCH_SCOPES` is the requested
 identical `allowed_scopes`, with a `db/clients.rs` test that fails if they
 drift, so the browser side is one list rather than a copy per app.
 
-The server a sign-in targets and the FHIR base it discovers at are two values.
-`beginSignIn(serverUrl, returnTo, environment, fhirBaseUrl?)` reads
-`.well-known/smart-configuration` under `fhirBaseUrl` — the SMART `iss` — and
-names it as the authorization request's `aud`; left out, it is the Wildflower
-server's own, `wildflowerFhirBaseFor(serverUrl)` (`{serverUrl}/fhir-r4`), which
-is what the server-docs console signs in against. The hosted owner UI passes a
-plain SMART server's FHIR base (the SmartHealthIT demo) as both. Only the
-discovered token endpoint and `serverUrl` ride the pending record, so the return
-leg is the same either way.
+The FHIR base a sign-in discovers at — the SMART `iss`, which the authorization
+request also names as its `aud` — is read off the server URL's shape by
+`fhirBaseFor(serverUrl)` (`server-target.ts`). An origin with no path is a
+Wildflower server, whose base is `{serverUrl}/fhir-r4`; a URL with a path is
+already a FHIR base (a plain SMART server's, like the SmartHealthIT demo's, or a
+Wildflower server's own `…/fhir-r4`) and is used as it is. The one shape this
+misreads is a Wildflower server behind a path prefix, whose full `…/fhir-r4`
+base has to be entered instead. Only the discovered token endpoint and
+`serverUrl` ride the pending record, so the return leg is the same either way.
 
 `internal/pkce.ts`'s `computeCodeChallenge` is a thin wrapper that binds
 `codeChallengeS256`'s digest argument to the ambient Web Crypto; there is one

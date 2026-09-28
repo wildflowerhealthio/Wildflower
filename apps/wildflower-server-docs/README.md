@@ -84,8 +84,9 @@ in by hand.
 
 ### The flow
 
-1. **Discovery.** The `?server=` target's FHIR base, `{server}/fhir-r4`
-   (`beginSignIn`'s default), is treated as the SMART `iss`: the console fetches
+1. **Discovery.** The `?server=` target's FHIR base, `{server}/fhir-r4` for an
+   origin (`gatekeeper-core`'s `fhirBaseFor`; a URL with a path is taken as the
+   base itself), is treated as the SMART `iss`: the console fetches
    `{server}/fhir-r4/.well-known/smart-configuration` and reads
    `authorization_endpoint` and `token_endpoint` out of it. Beyond that mount,
    nothing about the server's URL layout is assumed — a Wildflower server

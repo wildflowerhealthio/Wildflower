@@ -164,17 +164,15 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
  * pending record is written before the URL comes back, so a caller cannot leave
  * on a flow whose verifier was never saved.
  *
- * `fhirBaseUrl` is the FHIR base to discover at when `serverUrl` is a plain
- * SMART server rather than a Wildflower one; left out, `beginSignIn` uses the
- * Wildflower server's own.
+ * The FHIR base it discovers at is read off `serverUrl`'s shape
+ * (`gatekeeper-core`'s `fhirBaseFor`): a Wildflower server's origin, or a
+ * plain SMART server's FHIR base as it is.
  */
 const startSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
-  environment: SignInEnvironment,
-  fhirBaseUrl?: string
-): Promise<SignInStep<string>> =>
-  runStep(beginSignIn(serverUrl, returnTo, environment, fhirBaseUrl))
+  environment: SignInEnvironment
+): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment))
 
 /**
  * Finish a sign-in from the query string this page load arrived on: `None` when

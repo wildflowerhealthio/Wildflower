@@ -67,7 +67,12 @@ import `branding-react/styles.css` itself.
   vocabulary, with a Wildflower-hosted group — `https://` [subdomain]
   `.wildflowerhealth.io` — after the leading run of `wildflowerServer` groups,
   then a free-URL form. Every URL is built for the `target`: a FHIR base
-  (`…/fhir-r4`) for `fhir-r4`, the server's origin for `wildflower`. The
+  (`…/fhir-r4`) for `fhir-r4`, the server's origin for `wildflower` — except
+  the demo server's, a FHIR base under either target. The `wildflower`
+  caller's `connect` gets only the URL: `gatekeeper-core`'s `fhirBaseFor` reads
+  an origin as a Wildflower server (`/fhir-r4` under it) and a URL with a path
+  as a FHIR base already, so a Wildflower server behind a path prefix is
+  entered with its full `…/fhir-r4` base. The
   subdomain is checked as dot-separated DNS labels before it is spliced into a
   URL, and it and the free entry are validated with `normalizeServerUrl` in
   plain `type="text"` inputs, never `type="url"` — HTML5 constraint validation

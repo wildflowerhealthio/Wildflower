@@ -51,18 +51,14 @@ interface WildflowerConnectMenuProps {
   /**
    * Sign in to the server at `url`, in `normalizeServerUrl`'s canonical form:
    * the server's origin for the local and hosted picks, whatever the reader
-   * typed for the free entry, and the FHIR base for the demo server.
-   * `wildflowerServer` says whether the pick was a Wildflower server — true for
-   * the local server, a hosted subdomain and a free entry, false for the demo
-   * server.
+   * typed for the free entry, and the FHIR base for the demo server. Which of
+   * those it is shows in the URL's shape (an origin, or a FHIR base with a
+   * path), so the sign-in reads its FHIR base off the URL (`fhirBaseFor`).
    * Resolves to a problem to show in the menu's error banner, or `undefined`
    * once the page is leaving for the authorization server; a rejection is
    * shown as its message.
    */
-  readonly connect: (
-    url: string,
-    server: { readonly wildflowerServer: boolean }
-  ) => Promise<string | undefined>
+  readonly connect: (url: string) => Promise<string | undefined>
   /**
    * The local Wildflower server's origin, e.g. `http://127.0.0.1:8080` — read
    * from the caller's config rather than assumed here.
@@ -198,13 +194,9 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
 
   /**
    * Connect to `serverUrl` the target's way, resolving to a problem to show or
-   * `undefined` once the page is leaving. The SMART launch has no use for
-   * `wildflowerServer`: fhirclient finds out what the server is by probing it.
+   * `undefined` once the page is leaving.
    */
-  const startConnecting = (
-    serverUrl: string,
-    wildflowerServer: boolean
-  ): Promise<string | undefined> =>
+  const startConnecting = (serverUrl: string): Promise<string | undefined> =>
     props.target === 'fhir-r4'
       ? startStandaloneLaunch({
           iss: serverUrl,
@@ -218,9 +210,9 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
             ? `Could not reach ${serverUrl}. Check the URL and that the server allows this app. (${support.message})`
             : undefined
         )
-      : props.connect(serverUrl, { wildflowerServer })
+      : props.connect(serverUrl)
 
-  const connectTo = (serverUrl: string, wildflowerServer: boolean): void => {
+  const connectTo = (serverUrl: string): void => {
     setHostedProblem(undefined)
     setFreeEntryProblem(undefined)
     setState({ kind: 'launching' })
@@ -234,7 +226,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         message: withLocalNetworkAccessHint(reason, serverUrl, { pageIsSecure }),
       })
     }
-    startConnecting(serverUrl, wildflowerServer)
+    startConnecting(serverUrl)
       .then((problem) => {
         if (problem !== undefined) reportProblem(problem)
       })
@@ -252,7 +244,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
       )
       return
     }
-    connectTo(hostedUrl, true)
+    connectTo(hostedUrl)
   }
 
   const onFreeEntrySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
@@ -262,7 +254,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
       setFreeEntryProblem(copy.invalidFreeEntry)
       return
     }
-    connectTo(normalized, true)
+    connectTo(normalized)
   }
 
   const presetGroup = (group: ServerPresetGroup): JSX.Element => (
@@ -280,7 +272,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
             className="button-2"
             disabled={launching}
             onClick={(): void => {
-              connectTo(preset.url, group.wildflowerServer)
+              connectTo(preset.url)
             }}
           >
             {preset.label}

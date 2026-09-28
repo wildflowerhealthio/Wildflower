@@ -87,7 +87,7 @@ describe('beginSignIn', () => {
     )
   })
 
-  it('discovers at, and names as its aud, the Wildflower server’s FHIR base by default', async () => {
+  it('discovers at, and names as its aud, a Wildflower origin’s /fhir-r4 base', async () => {
     // Arrange
     const requested: string[] = []
     const discovery = discoveryOnly()
@@ -108,9 +108,10 @@ describe('beginSignIn', () => {
     expect(new URL(result.right).searchParams.get('aud')).toBe(`${SERVER}/fhir-r4`)
   })
 
-  it('discovers at, and names as its aud, the FHIR base the caller passes, and redeems there', async () => {
+  it('discovers at, and names as its aud, a server URL that is already a FHIR base, and redeems there', async () => {
     // A plain SMART server (the SmartHealthIT demo) is addressed by its FHIR
-    // base alone: there is no `/fhir-r4` under it, and its endpoints are its own.
+    // base alone: its URL has a path, there is no `/fhir-r4` under it, and its
+    // endpoints are its own.
     // Arrange
     const store = memoryStore()
     const discovery = discoveryAt(DEMO_FHIR_BASE, DEMO_AUTH_ORIGIN)
@@ -121,9 +122,7 @@ describe('beginSignIn', () => {
     const environment = testEnvironment({ store, fetch: fetchStub })
 
     // Act
-    const started = await runToEither(
-      beginSignIn(DEMO_FHIR_BASE, undefined, environment, DEMO_FHIR_BASE)
-    )
+    const started = await runToEither(beginSignIn(DEMO_FHIR_BASE, undefined, environment))
     if (Either.isLeft(started)) throw new Error(started.left.reason)
     const url = new URL(started.right)
     const completed = await runToEither(

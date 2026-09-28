@@ -12,7 +12,6 @@ import {
   searchWithoutAuthorizationResponse,
   serializePendingAuthorization,
   tokenRequestBody,
-  wildflowerFhirBaseFor,
   type PendingAuthorization,
 } from './authorization-flow.ts'
 
@@ -166,13 +165,6 @@ describe('authorizationRequestUrl', () => {
     // Assert
     expect(url.searchParams.get('tenant')).toBe('acme')
     expect(url.searchParams.get('response_type')).toBe('code')
-  })
-})
-
-describe('wildflowerFhirBaseFor', () => {
-  it('names the Wildflower server’s FHIR base, which a standalone launch discovers at and audits against', () => {
-    // Act / Assert
-    expect(wildflowerFhirBaseFor('http://127.0.0.1:8080')).toBe('http://127.0.0.1:8080/fhir-r4')
   })
 })
 

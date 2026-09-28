@@ -13,7 +13,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { AuthedUntil, AuthStateProvider } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import type { SignInStep } from '../sign-in.ts'
+import { signInEnvironment, startSignIn, type SignInStep } from '../sign-in.ts'
 import { DEFAULT_SERVER_URL, rememberSignedInServer } from '../web-entry.ts'
 import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
 
@@ -232,7 +232,8 @@ describe('Landing', () => {
 
   test('signs in to a hosted subdomain’s origin, as a Wildflower server', async () => {
     // Arrange
-    const signIn = recordingSignIn(pendingStart)
+    const discovery = discoveringStart()
+    const signIn = recordingSignIn(discovery.start)
     await mountLanding('/', { signIn: signIn.stub })
     const hosted = within(await screen.findByRole('form', { name: HOSTED_GROUP_NAME }))
 
@@ -242,19 +243,23 @@ describe('Landing', () => {
     })
     fireEvent.click(hosted.getByRole('button', { name: 'Connect' }))
 
-    // Assert — the Wildflower server's own FHIR base is `beginSignIn`'s
-    // default, so none is passed.
+    // Assert — an origin, so its sign-in discovers at its `/fhir-r4` base.
     await waitFor(() => {
       expect(signIn.started).toEqual(['https://ruth.wildflowerhealth.io'])
     })
-    expect(signIn.fhirBaseUrls).toEqual([undefined])
+    await waitFor(() => {
+      expect(discovery.requested).toEqual([
+        'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration',
+      ])
+    })
     expect(serverUrlFromSearch(window.location.search)).toBe('https://ruth.wildflowerhealth.io')
   })
 
   test('signs in to the demo server at its FHIR base, under its notice', async () => {
     // Arrange — the SmartHealthIT demo is a plain SMART server: it has no
     // `/fhir-r4` of its own, so its preset is its FHIR base.
-    const signIn = recordingSignIn(pendingStart)
+    const discovery = discoveringStart()
+    const signIn = recordingSignIn(discovery.start)
     await mountLanding('/', { signIn: signIn.stub })
     const demo = within(await screen.findByRole('region', { name: DEMO_GROUP_NAME }))
 
@@ -269,8 +274,31 @@ describe('Landing', () => {
     })
     const [demoFhirBase] = signIn.started
     expect(demoFhirBase).toMatch(/^https:\/\/launch\.smarthealthit\.org\/.*\/fhir$/)
-    expect(signIn.fhirBaseUrls).toEqual([demoFhirBase])
+    expect(discovery.requested).toEqual([`${demoFhirBase}/.well-known/smart-configuration`])
     expect(serverUrlFromSearch(window.location.search)).toBe(demoFhirBase)
+  })
+
+  test('signs in to a demo server named by ?server= at its FHIR base, on arrival and on a retry', async () => {
+    // Arrange — the page a failed demo pick, or a reload of a demo session,
+    // leaves: `?server=` names the demo server's FHIR base. Its URL has a
+    // path, so the base is used as it is, with no `/fhir-r4` put under it.
+    const discovery = discoveringStart()
+    const signIn = recordingSignIn(discovery.start)
+    const demoDiscovery = `${DEMO_FHIR_BASE}/.well-known/smart-configuration`
+
+    // Act — the sign-in on arrival fails (the stub server is unreachable), and
+    // the reader retries from the "Sign in to …" button.
+    await mountLanding(`/?server=${encodeURIComponent(DEMO_FHIR_BASE)}`, { signIn: signIn.stub })
+    const retry = await screen.findByRole('button', { name: `Sign in to ${DEMO_FHIR_BASE}` })
+    await waitFor(() => {
+      expect(retry.hasAttribute('disabled')).toBe(false)
+    })
+    fireEvent.click(retry)
+
+    // Assert
+    await waitFor(() => {
+      expect(discovery.requested).toEqual([demoDiscovery, demoDiscovery])
+    })
   })
 
   test('shows why a pick failed once, in the menu, with the menu ready for a retry', async () => {
@@ -445,6 +473,9 @@ const LOCAL_GROUP_NAME = 'Local Wildflower Server'
 const HOSTED_GROUP_NAME = 'Wildflower Health hosted server'
 const DEMO_GROUP_NAME = 'Smart Health IT Demo Server'
 
+/** A SmartHealthIT demo FHIR base, the shape the demo group's presets have. */
+const DEMO_FHIR_BASE = 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiJd/fhir'
+
 /**
  * How many times the page names the Local Network Access prompt, counted in its
  * text rather than by element: a hint added twice lands in one banner.
@@ -462,29 +493,48 @@ const localServerButton = (): HTMLElement =>
 const pendingStart = (): Promise<SignInStep<string>> => new Promise(() => {})
 
 /**
- * A {@link LandingSignIn} stand-in that records each target, the FHIR base each
- * was started with (`undefined` for a Wildflower server's own), and each
- * departure.
+ * The real sign-in start, `startSignIn`, run against a published page whose
+ * `fetch` records each URL asked for and fails it — so a test sees where
+ * discovery went, and the start fails as an unreachable server would.
  */
+const discoveringStart = (): {
+  readonly start: (target: string) => Promise<SignInStep<string>>
+  readonly requested: string[]
+} => {
+  const requested: string[] = []
+  const pending = new Map<string, string>()
+  const environment = signInEnvironment({
+    fetch: (input) => {
+      requested.push(input instanceof Request ? input.url : String(input))
+      return Promise.reject(new TypeError('Failed to fetch'))
+    },
+    crypto: globalThis.crypto,
+    sessionStorage: {
+      getItem: (key) => pending.get(key) ?? null,
+      setItem: (key, value) => {
+        pending.set(key, value)
+      },
+      removeItem: (key) => {
+        pending.delete(key)
+      },
+    },
+    location: { href: 'https://wildflowerhealth.io/app/', protocol: 'https:' },
+  })
+  return { start: (target) => startSignIn(target, undefined, environment), requested }
+}
+
+/** A {@link LandingSignIn} stand-in that records each target and departure. */
 const recordingSignIn = (
   start: (target: string) => Promise<SignInStep<string>>
-): {
-  readonly stub: LandingSignIn
-  readonly started: string[]
-  readonly fhirBaseUrls: (string | undefined)[]
-  readonly left: string[]
-} => {
+): { readonly stub: LandingSignIn; readonly started: string[]; readonly left: string[] } => {
   const started: string[] = []
-  const fhirBaseUrls: (string | undefined)[] = []
   const left: string[] = []
   return {
     started,
-    fhirBaseUrls,
     left,
     stub: {
-      start: (target, fhirBaseUrl) => {
+      start: (target) => {
         started.push(target)
-        fhirBaseUrls.push(fhirBaseUrl)
         return start(target)
       },
       leave: (authorizationUrl) => {

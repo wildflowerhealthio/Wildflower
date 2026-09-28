@@ -30,10 +30,7 @@ const LOCAL_ORIGIN = 'http://127.0.0.1:8123'
 
 // The owner UI's sign-in, which the menu hands every pick to. Default: the page
 // is leaving for the authorization server, so there is nothing to show.
-const connectMock =
-  vi.fn<
-    (url: string, server: { readonly wildflowerServer: boolean }) => Promise<string | undefined>
-  >()
+const connectMock = vi.fn<(url: string) => Promise<string | undefined>>()
 
 const WILDFLOWER_PROPS = {
   target: 'wildflower',
@@ -286,7 +283,7 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     expect(within(hostedForm()).queryByText(/\/fhir-r4/)).toBeNull()
   })
 
-  it('signs in to the local server’s origin, as a Wildflower server', async () => {
+  it('signs in to the local server’s origin', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
@@ -295,22 +292,20 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     await user.click(local.getByRole('button', { name: 'Connect' }))
 
     expect(connectMock).toHaveBeenCalledTimes(1)
-    expect(connectMock).toHaveBeenCalledWith(LOCAL_ORIGIN, { wildflowerServer: true })
+    expect(connectMock).toHaveBeenCalledWith(LOCAL_ORIGIN)
     expect(startStandaloneLaunchMock).not.toHaveBeenCalled()
   })
 
-  it('signs in to a hosted subdomain’s origin, as a Wildflower server', async () => {
+  it('signs in to a hosted subdomain’s origin', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
     await connectToSubdomain(user, 'ruth')
 
-    expect(connectMock).toHaveBeenCalledWith('https://ruth.wildflowerhealth.io', {
-      wildflowerServer: true,
-    })
+    expect(connectMock).toHaveBeenCalledWith('https://ruth.wildflowerhealth.io')
   })
 
-  it('signs in to the demo server as a plain SMART server, under its notice', async () => {
+  it('signs in to the demo server at its FHIR base, under its notice', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
@@ -325,10 +320,10 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     if (picked === undefined) throw new Error('expected a demo server preset to click')
     await user.click(within(demo).getByRole('button', { name: picked.label }))
 
-    expect(connectMock).toHaveBeenCalledWith(picked.url, { wildflowerServer: false })
+    expect(connectMock).toHaveBeenCalledWith(picked.url)
   })
 
-  it('signs in to the normalized form of a free-entry URL, as a Wildflower server', async () => {
+  it('signs in to the normalized form of a free-entry URL', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
@@ -336,9 +331,7 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     await user.type(freeEntry.getByLabelText('Server URL'), 'https://my-server.example.com/')
     await user.click(freeEntry.getByRole('button', { name: 'Connect' }))
 
-    expect(connectMock).toHaveBeenCalledWith('https://my-server.example.com', {
-      wildflowerServer: true,
-    })
+    expect(connectMock).toHaveBeenCalledWith('https://my-server.example.com')
   })
 
   it('shows a validation message worded for a server URL on an invalid free entry', async () => {
@@ -375,9 +368,7 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
 
     expect(within(hostedForm()).queryByText(/Enter your server's subdomain/)).toBeNull()
     expect(connectMock).toHaveBeenCalledTimes(1)
-    expect(connectMock).toHaveBeenCalledWith('https://ruth.wildflowerhealth.io', {
-      wildflowerServer: true,
-    })
+    expect(connectMock).toHaveBeenCalledWith('https://ruth.wildflowerhealth.io')
   })
 
   it('shows the problem the sign-in reports, with the menu re-enabled for a retry', async () => {

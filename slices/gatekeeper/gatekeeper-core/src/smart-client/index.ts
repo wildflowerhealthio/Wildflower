@@ -17,7 +17,6 @@ export {
   serializePendingAuthorization,
   TokenExchangeFailed,
   tokenRequestBody,
-  wildflowerFhirBaseFor,
 } from './authorization-flow.ts'
 export type {
   AccessGrant,
@@ -37,6 +36,7 @@ export {
 export type { DigestSource, RandomBytesSource } from './pkce.ts'
 
 export {
+  fhirBaseFor,
   normalizeServerUrl,
   searchWithServerUrl,
   SERVER_QUERY_PARAM,

@@ -3,8 +3,8 @@
  * endpoints the page must send the reader to.
  *
  * Nothing about the server's URL layout is hardcoded here beyond the one
- * well-known path SMART itself defines; where a Wildflower server's FHIR base
- * sits is `beginSignIn`'s default (`wildflowerFhirBaseFor`), not this module's.
+ * well-known path SMART itself defines; which FHIR base a server URL names is
+ * `server-target.ts`'s `fhirBaseFor`, not this module's.
  * A Wildflower server answers it from `slices/emr/emr-rust/src/smart_configuration.rs`
  * (mounted at `/fhir-r4/.well-known/smart-configuration`, and exempt from the
  * bearer gate — `gatekeeper-rust`'s `require_valid_bearer_token`), advertising

@@ -45,7 +45,6 @@ import {
   parseTokenResponse,
   serializePendingAuthorization,
   tokenRequestBody,
-  wildflowerFhirBaseFor,
   type AccessGrant,
   type AuthorizationRejected,
   type PendingAuthorization,
@@ -53,6 +52,7 @@ import {
 } from './authorization-flow.ts'
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
 import type { DigestSource, PkceUnavailable, RandomBytesSource } from './pkce.ts'
+import { fhirBaseFor } from './server-target.ts'
 import { discoverSmartEndpoints, type DiscoveryFailed } from './smart-discovery.ts'
 
 /**
@@ -110,18 +110,14 @@ interface SignInEnvironment {
  * pair and the `state`, stash what the return leg needs, and yield the
  * authorization URL to navigate to.
  *
- * `fhirBaseUrl` is the SMART `iss`: the FHIR base discovery reads
+ * The SMART `iss` — the FHIR base discovery reads
  * `.well-known/smart-configuration` under, and the `aud` the authorization
- * request names. It defaults to the Wildflower server's own
- * (`wildflowerFhirBaseFor(serverUrl)`); a page signing in to a plain SMART
- * server passes that server's FHIR base, usually `serverUrl` itself. Only the
+ * request names — is `fhirBaseFor(serverUrl)`: `{serverUrl}/fhir-r4` for a
+ * Wildflower server's origin, `serverUrl` itself when it already has a path
+ * (a plain SMART server's FHIR base). Derived from `serverUrl`, it is always
+ * on the server the pending record and the {@link Session} name. Only the
  * endpoints discovered there ride the pending record, so the return leg needs
  * nothing more.
- *
- * `fhirBaseUrl` must be served by the same server as `serverUrl`. The pending
- * record and the resulting {@link Session} name `serverUrl` as the server the
- * token is for, while discovery and `aud` use `fhirBaseUrl`, so a base on
- * another server would issue a token for one server and send it to the other.
  *
  * `returnTo` is the in-app path the app wants to land on once signed in; it
  * rides the pending record and comes back as {@link Session.returnTo}, because
@@ -134,10 +130,10 @@ interface SignInEnvironment {
 const beginSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
-  environment: SignInEnvironment,
-  fhirBaseUrl: string = wildflowerFhirBaseFor(serverUrl)
+  environment: SignInEnvironment
 ): Effect.Effect<string, SignInError> =>
   Effect.gen(function* () {
+    const fhirBaseUrl = fhirBaseFor(serverUrl)
     const endpoints = yield* discoverSmartEndpoints(fhirBaseUrl, {
       fetch: environment.fetch,
       pageIsSecure: environment.pageIsSecure,
