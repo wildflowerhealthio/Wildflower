@@ -1,0 +1,116 @@
+/*
+ * Viewer page. Narrow (the default): one column — the panel folded behind a
+ * "Series (n selected)" disclosure, then the presets row, then the chart.
+ * From 900px: a `[panel 18rem] [chart 1fr]` grid, the disclosure hidden and
+ * the panel always shown, sticky so it stays beside a tall chart.
+ * This file is the only place the breakpoint lives.
+ */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.panel {
+  min-width: 0;
+}
+
+.disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  background: var(--color-background);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.disclosure:hover {
+  background: var(--color-raised);
+}
+
+.disclosure:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.panel-body {
+  padding-top: var(--space-5);
+}
+
+.panel-body-folded {
+  display: none;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.status {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+.chart {
+  min-width: 0;
+}
+
+/* Disclosure triangles: pure CSS borders on a zero-size box; state is on `aria-expanded`. */
+.triangle-closed,
+.triangle-open {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin: 0 1px;
+}
+
+.triangle-closed {
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid var(--color-neutral-5);
+}
+
+.triangle-open {
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--color-neutral-3);
+}
+
+@media (min-width: 900px) {
+  .layout {
+    grid-template-columns: 18rem minmax(0, 1fr);
+  }
+
+  .panel {
+    position: sticky;
+    top: var(--space-6);
+    max-height: calc(100vh - 2 * var(--space-6));
+    overflow-y: auto;
+  }
+
+  .disclosure {
+    display: none;
+  }
+
+  .panel-body,
+  .panel-body-folded {
+    display: block;
+    padding-top: 0;
+  }
+}
