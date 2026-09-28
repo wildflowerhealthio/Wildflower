@@ -29,12 +29,6 @@ interface ServerPresetGroup {
   readonly name: string
   /** The server's address as shown under the heading, e.g. its origin; a mono side-note. */
   readonly address: string
-  /**
-   * Whether the server is a Wildflower server. It places the Wildflower-hosted
-   * group, which the connect menu lists after the leading run of Wildflower
-   * groups; a sign-in reads what kind of server it is off the URL instead.
-   */
-  readonly wildflowerServer: boolean
   /** A quiet line under the address saying what to expect of this server, if anything. */
   readonly notice?: string
   readonly presets: readonly ServerPreset[]
@@ -122,14 +116,12 @@ const serverPresetGroupsFor = (
   const smartHealthIt: ServerPresetGroup = {
     name: 'Smart Health IT Demo Server',
     address: 'https://launch.smarthealthit.org',
-    wildflowerServer: false,
     presets: SMART_HEALTH_IT_PRESETS,
   }
   return [
     {
       name: 'Local Wildflower Server',
       address: localOrigin,
-      wildflowerServer: true,
       presets: [
         {
           // The owner UI signs in rather than launching an app.

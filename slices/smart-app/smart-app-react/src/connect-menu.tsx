@@ -150,21 +150,20 @@ const HOSTED_GROUP_NAME = 'Wildflower Health hosted server'
 const HOSTED_SUBDOMAIN_LABEL = `Subdomain of ${WILDFLOWER_DOMAIN.slice(1)}`
 
 /**
- * Where the hosted group sits in `presetGroups`: after the leading run of
- * Wildflower servers, so it joins the local server ahead of any other kind.
+ * Where the hosted group sits among the preset groups: after the first, which
+ * in the default groups is the local Wildflower server, so the two ways to
+ * reach your own server come before any other kind.
  */
-const hostedGroupIndexIn = (presetGroups: readonly ServerPresetGroup[]): number => {
-  const firstOtherServer = presetGroups.findIndex((group) => !group.wildflowerServer)
-  return firstOtherServer === -1 ? presetGroups.length : firstOtherServer
-}
+const HOSTED_GROUP_INDEX = 1
 
 /**
  * The standalone connect menu: buttons grouped under each known server's name
  * and address, with a subdomain entry for a Wildflower-hosted server slotted
- * in after the Wildflower groups, then, last, a free-entry URL for any other
- * server. What picking one does is the `target`'s: a Standalone SMART App
- * Launch against a FHIR base for `fhir-r4`, the caller's sign-in to an origin
- * for `wildflower`.
+ * in after the first group (the local server), then, last, a free-entry URL for
+ * any other server. What picking one does is the `target`'s: a Standalone SMART
+ * App Launch against a FHIR base for `fhir-r4`, the caller's sign-in to the
+ * picked URL for `wildflower` (a server's API base, or the demo server's FHIR
+ * base).
  *
  * @remarks
  * The free-entry input is a plain `type="text"` with its own validation via
@@ -174,7 +173,7 @@ const hostedGroupIndexIn = (presetGroups: readonly ServerPresetGroup[]): number 
  * the menu still available to retry — never a silent open-access connection.
  * On an https page, a pick of a plain-http server that is not loopback is
  * refused before connecting, with `insecureTargetReason`'s explanation in the
- * banner: the browser would block every request to it.
+ * banner beside it: the browser would block every request to it.
  * Whatever the problem, on the published (https) site a loopback pick's reason
  * is followed by the Local Network Access hint (`withLocalNetworkAccessHint`),
  * since Chrome's prompt for it looks like any other network failure.
@@ -194,8 +193,8 @@ const hostedGroupIndexIn = (presetGroups: readonly ServerPresetGroup[]): number 
  * and at the bottom for a pick.
  *
  * Each entry's validation message sits in its own form, beside the field it
- * is about; the banner at the bottom is for what happens after a connect
- * starts.
+ * is about; what happens once a connect starts shows in a banner beside
+ * where it started, as above.
  *
  * The heading is an `h2`: the menu sits inside an app's landing page, whose
  * `h1` is the app's name.
@@ -229,7 +228,6 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
     props.target === 'fhir-r4'
       ? (props.presetGroups ?? DEFAULT_SERVER_PRESET_GROUPS)
       : serverPresetGroupsFor('wildflower', props.localOrigin)
-  const hostedGroupIndex = hostedGroupIndexIn(presetGroups)
 
   /**
    * Connect to `serverUrl` the target's way, resolving to a problem to show or
@@ -275,7 +273,10 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         from,
       })
     }
-    startConnecting(serverUrl)
+    // Started inside a promise chain, so a `connect` that throws rather than
+    // rejecting is reported like a rejection, not left `launching`.
+    Promise.resolve()
+      .then(() => startConnecting(serverUrl))
       .then((problem) => {
         if (problem !== undefined) reportProblem(problem)
       })
@@ -375,7 +376,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         </div>
       )}
 
-      {presetGroups.slice(0, hostedGroupIndex).map(presetGroup)}
+      {presetGroups.slice(0, HOSTED_GROUP_INDEX).map(presetGroup)}
 
       <form className={styles['group']} onSubmit={onHostedSubmit} aria-label={HOSTED_GROUP_NAME}>
         <h3 className={styles['group__name']}>{HOSTED_GROUP_NAME}</h3>
@@ -405,7 +406,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         </div>
       </form>
 
-      {presetGroups.slice(hostedGroupIndex).map(presetGroup)}
+      {presetGroups.slice(HOSTED_GROUP_INDEX).map(presetGroup)}
 
       <form
         className={styles['group']}

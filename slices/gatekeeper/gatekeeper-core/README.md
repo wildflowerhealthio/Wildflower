@@ -192,7 +192,9 @@ the _target_ that `usableEndpointUrl` enforces about the discovered endpoints, s
 a page can explain up front that a secure page cannot reach a plaintext server
 instead of surfacing it as a discovery failure. Its wording names no kind of
 page, since the server-docs console, the hosted owner UI and every SMART app's
-connect menu (through `fhir-r4-react/smart`'s re-export) show it. Loopback is
+connect menu (through `fhir-r4-react/smart`'s re-export) show it, and offers
+all three ways out: an https address, the page opened over http from the
+server itself, or a server on this computer. Loopback is
 exempt in both:
 browsers treat `http://127.0.0.1` as trustworthy, which is what lets an HTTPS
 page drive a desktop host.

@@ -16,7 +16,8 @@ slice is where the two meet, so neither has to know about the other.
   - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
     standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
     base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
-    owner UI's own sign-in (`connect`) a server origin, and also runs the
+    owner UI's own sign-in (`connect`) the picked URL (a Wildflower server's
+    API base, or the demo server's FHIR base), and also runs the
     page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
     (`autoConnect`). Either target shows the problem the page arrived with
     (`arrivalProblem`).
@@ -68,8 +69,8 @@ import `branding-react/styles.css` itself.
   under each known server's name and address (`server-presets.ts`'s
   `serverPresetGroupsFor`) as hairline-separated blocks in the landing page's
   vocabulary, with a Wildflower-hosted group — `https://` [subdomain]
-  `.wildflowerhealth.io` — after the leading run of `wildflowerServer` groups,
-  then a free-URL form. Every URL is built for the `target`: a FHIR base
+  `.wildflowerhealth.io` — after the first group (the local server in the
+  default groups), then a free-URL form. Every URL is built for the `target`: a FHIR base
   (`…/fhir-r4`) for `fhir-r4`, the server's origin for `wildflower` — except
   the demo server's, a FHIR base under either target. The `wildflower`
   caller's `connect` gets only the URL, a Wildflower server's API base or a
@@ -83,12 +84,13 @@ import `branding-react/styles.css` itself.
   would block the submit handler and mask the message. An entry's validation
   message shows inside its own form, beside the field. On an https page, a pick
   of a plain-http server off loopback is refused before connecting, for either
-  target, with `insecureTargetReason`'s explanation in the bottom banner
-  (re-exported by `fhir-r4-react/smart`, like `normalizeServerUrl`; the scheme
+  target, with `insecureTargetReason`'s explanation in the banner beside where
+  the connect started (re-exported by `fhir-r4-react/smart`, like `normalizeServerUrl`; the scheme
   read when the pick is made). `startStandaloneLaunch`'s
   `unreachable` outcome, like a problem the `wildflower` caller's `connect`
-  reports, is shown as a retryable error banner at the bottom rather than
-  connecting. For either target, a loopback pick's problem on an https page is
+  reports, is shown as a retryable error banner beside where the connect
+  started (the bottom for a pick) rather than connecting. A `connect` that
+  throws synchronously is reported like one that rejects. For either target, a loopback pick's problem on an https page is
   followed by `fhir-r4-react/smart`'s Local Network Access hint
   (`withLocalNetworkAccessHint`, the page's scheme read when the pick is made),
   so every app on the published site names Chrome's prompt; a caller's

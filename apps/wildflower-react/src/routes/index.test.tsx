@@ -261,8 +261,8 @@ describe('Landing', () => {
     const appBase = '/staging/pr-719/app/'
     await mountLanding(appBase, { basepath: appBase, signIn: recordingSignIn(pendingStart).stub })
 
-    // Act — picking the local server records `?server=` in the address bar. The
-    // record is written synchronously, before the sign-in redirect leaves.
+    // Act — picking the local server records `?server=` in the address bar,
+    // before the sign-in starts, so before the redirect leaves.
     await waitFor(() => {
       expect(localServerButton()).toBeDefined()
     })
@@ -271,8 +271,10 @@ describe('Landing', () => {
     // Assert — the reader stays on the app's own subpath (not moved to `/`), and
     // `?server=` is now set there. A root path would point the parameter at a
     // page that is not this app.
+    await waitFor(() => {
+      expect(serverUrlFromSearch(window.location.search)).toBe(DEFAULT_SERVER_URL)
+    })
     expect(window.location.pathname).toBe(appBase)
-    expect(serverUrlFromSearch(window.location.search)).toBe(DEFAULT_SERVER_URL)
   })
 
   test('signs in to a hosted subdomain’s origin, as a Wildflower server', async () => {

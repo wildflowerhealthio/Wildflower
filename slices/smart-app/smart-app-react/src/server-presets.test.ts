@@ -20,14 +20,6 @@ describe('serverPresetGroupsFor', () => {
     expect(wildflowerLocal?.presets.map((preset) => preset.url)).toEqual([LOCAL_ORIGIN])
   })
 
-  it('marks only the local server as a Wildflower server', () => {
-    for (const target of ['fhir-r4', 'wildflower'] as const) {
-      expect(
-        serverPresetGroupsFor(target, LOCAL_ORIGIN).map((group) => group.wildflowerServer)
-      ).toEqual([true, false])
-    }
-  })
-
   it('launches the demo server at the same URLs for both targets, with a notice only for the owner UI', () => {
     const fhirDemo = serverPresetGroupsFor('fhir-r4', LOCAL_ORIGIN)[1]
     const wildflowerDemo = serverPresetGroupsFor('wildflower', LOCAL_ORIGIN)[1]

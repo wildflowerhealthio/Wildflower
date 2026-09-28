@@ -139,7 +139,7 @@ describe('ConnectMenu', () => {
     }
   )
 
-  it('slots the hosted server in after the leading run of Wildflower servers in custom presets', () => {
+  it('slots the hosted server in after the first group of custom presets', () => {
     const [local, smartHealthIt] = DEFAULT_SERVER_PRESET_GROUPS
     if (local === undefined || smartHealthIt === undefined) {
       throw new Error('expected the local and demo default groups')
@@ -147,40 +147,31 @@ describe('ConnectMenu', () => {
     const secondLocal = { ...local, name: 'Second Wildflower Server' }
     render(<ConnectMenu {...PROPS} presetGroups={[smartHealthIt, local, secondLocal]} />)
 
-    // A non-Wildflower group first leaves no leading run, so the hosted group leads.
     expect(groupNames()).toEqual([
-      HOSTED_GROUP_NAME,
       'Smart Health IT Demo Server',
+      HOSTED_GROUP_NAME,
       'Local Wildflower Server',
       'Second Wildflower Server',
       'Another FHIR R4 server',
     ])
   })
 
-  it('leads with the hosted server when custom presets hold no Wildflower server', () => {
-    const smartHealthIt = DEFAULT_SERVER_PRESET_GROUPS.find((group) => !group.wildflowerServer)
-    if (smartHealthIt === undefined) throw new Error('expected a non-Wildflower default group')
+  it('follows a lone custom group with the hosted server', () => {
+    const [, smartHealthIt] = DEFAULT_SERVER_PRESET_GROUPS
+    if (smartHealthIt === undefined) throw new Error('expected the demo default group')
     render(<ConnectMenu {...PROPS} presetGroups={[smartHealthIt]} />)
 
     expect(groupNames()).toEqual([
-      HOSTED_GROUP_NAME,
       'Smart Health IT Demo Server',
+      HOSTED_GROUP_NAME,
       'Another FHIR R4 server',
     ])
   })
 
-  it('follows every preset with the hosted server when custom presets hold only Wildflower servers', () => {
-    const local = DEFAULT_SERVER_PRESET_GROUPS.find((group) => group.wildflowerServer)
-    if (local === undefined) throw new Error('expected a Wildflower default group')
-    const secondLocal = { ...local, name: 'Second Wildflower Server' }
-    render(<ConnectMenu {...PROPS} presetGroups={[local, secondLocal]} />)
+  it('leads with the hosted server when there are no custom presets at all', () => {
+    render(<ConnectMenu {...PROPS} presetGroups={[]} />)
 
-    expect(groupNames()).toEqual([
-      'Local Wildflower Server',
-      'Second Wildflower Server',
-      HOSTED_GROUP_NAME,
-      'Another FHIR R4 server',
-    ])
+    expect(groupNames()).toEqual([HOSTED_GROUP_NAME, 'Another FHIR R4 server'])
   })
 
   it('launches against the normalized form of a valid free-entry URL', async () => {
@@ -399,6 +390,21 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
 
     await waitFor(() => {
       expect(screen.getByText('This server does not allow sign-in from this page.')).toBeDefined()
+    })
+    expect(localConnectButton().hasAttribute('disabled')).toBe(false)
+  })
+
+  it('shows the message of a sign-in that throws instead of rejecting, re-enabled for a retry', async () => {
+    connectMock.mockImplementation(() => {
+      throw new Error('connect threw')
+    })
+    const user = userEvent.setup()
+    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
+
+    await user.click(localConnectButton())
+
+    await waitFor(() => {
+      expect(screen.getByText('connect threw')).toBeDefined()
     })
     expect(localConnectButton().hasAttribute('disabled')).toBe(false)
   })
