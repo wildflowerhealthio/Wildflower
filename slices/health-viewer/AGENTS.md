@@ -16,6 +16,8 @@ health-viewer-observations   FHIR R4 Observation → PointSeries
 health-viewer-medications    medication-core DoseRegimen → LevelSeries
       ▲
 health-viewer-core           closed list of sources, catalogue, URL codec, range presets
+
+health-viewer-react          the Plot chart; imports fundamentals only
 ```
 
 - **`health-viewer-fundamentals`** — the plot vocabulary, as `effect`-style
@@ -38,9 +40,16 @@ health-viewer-core           closed list of sources, catalogue, URL codec, range
   the catalogue panel's grouping and search, the range presets, and the URL
   codec a shared link round-trips through. See its
   [AGENTS.md](./health-viewer-core/AGENTS.md).
+- **`health-viewer-react`** — the browser layer: `MultiAxisChart` draws the
+  axes `ValueAxis.assign` returns as one Observable Plot figure — a
+  colour-matched value axis per series, point series as lines with dots, level
+  series as step lines broken at gaps and dashed where the domain says, `low` /
+  `high` bands, a legend, and a crosshair readout of `Series.levelAt` per
+  series. It imports no domain package. See its
+  [AGENTS.md](./health-viewer-react/AGENTS.md).
 
-The React layer and the app route are not built yet. A new kind of record is
-a new package beside `health-viewer-observations` that exports a
+The series panel and layout, and the app route, are not built yet. A new kind
+of record is a new package beside `health-viewer-observations` that exports a
 `SeriesSource` and joins `SERIES_SOURCES`.
 
 ## Rules
@@ -51,8 +60,8 @@ a new package beside `health-viewer-observations` that exports a
   `health-viewer-fundamentals`, property-tested exhaustively. Which series a
   record holds, what each is labelled, how it is drawn (`Interpolation`,
   `ValueScale`, `LineStyle`, `note`) and which catalogue group it files under
-  — the domain package's. A React adapter renders what these return; it does
-  not re-derive any of it, and it never reads a domain field.
+  — the domain package's. `health-viewer-react` renders what these return; it
+  does not re-derive any of it, and it never reads a domain field.
 - **Fundamentals imports from no slice**, and depends only on `effect` and
   `kitchen-sink`. A domain package adds the resource package it reads
   (`health-viewer-observations` → `fhir-r4`; `health-viewer-medications` →

@@ -1,0 +1,39 @@
+/*
+ * Legend row above the chart: one entry per series, wrapping on narrow
+ * screens. The key is a short line in the series' token (it mirrors the
+ * line mark); the label and its axis side wear the text tokens, never the
+ * series colour.
+ */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-7);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-2);
+}
+
+.key {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.label {
+  color: var(--color-neutral-2);
+}
+
+.side {
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-5);
+}

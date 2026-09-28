@@ -33,7 +33,8 @@ level series, value axes, the crosshair), `health-viewer-observations` reads FHI
 `Observation`s into it, `health-viewer-medications` reads `medication-core`'s
 dose regimens into it, and `health-viewer-core` assembles the sources with the
 catalogue, range presets and the URL codec a shared link round-trips through —
-all pure functions, property-tested without a DOM.
+all pure functions, property-tested without a DOM. `health-viewer-react` draws
+the fundamentals' series with Observable Plot, importing no domain package.
 
 `fhir-sync-pebble` holds what the Pebble watchapp's settings page decides — see
 [fhir-sync-pebble/AGENTS.md](./fhir-sync-pebble/AGENTS.md). Its

@@ -1,0 +1,52 @@
+/*
+ * The chart: the legend row, then the figure with the crosshair tooltip
+ * floated over it. Plot's SVG takes its text colour from here (`currentColor`
+ * for tick labels and the grid; the HTML crosshair rule wears the same
+ * token), so every piece of chart text wears a text token; series colour
+ * reaches only the marks and the axis lines, through the categorical tokens
+ * the marks name directly.
+ */
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.plot-area {
+  position: relative;
+  touch-action: pan-y;
+}
+
+.figure {
+  color: var(--color-neutral-4);
+}
+
+.figure svg {
+  display: block;
+  overflow: visible;
+  font-family: inherit;
+  font-size: var(--font-size-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The crosshair rule, laid over the figure rather than drawn in it, so a
+ * pointer move never redraws the figure.
+ */
+.crosshair {
+  position: absolute;
+  width: 0;
+  border-left: 1px solid currentColor;
+  color: var(--color-neutral-4);
+  opacity: 0.5;
+  transform: translateX(-0.5px);
+  pointer-events: none;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-10) var(--space-5);
+  text-align: center;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
