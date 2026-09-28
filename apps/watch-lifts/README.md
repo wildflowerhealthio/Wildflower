@@ -34,10 +34,11 @@ vp run -F watch-lifts fmt:c:check   # fail if anything isn't formatted
 ## CI
 
 `.github/workflows/ci-pebble.yml` runs on pull requests that touch this app or
-`apps/fhir-sync-pebble`. For each app it runs `fmt:c:check`, the host-side
-tests and `pebble build`, and uploads the `.pbw` as a workflow artifact named
-after the app, ready to sideload. The pebble-tool and SDK versions it builds
-with are pinned in `.github/actions/setup-pebble-sdk`.
+`apps/fhir-sync-pebble`, as two jobs covering both apps: **Lint + Test** runs
+`fmt:c:check` and the host-side tests, and **Build** runs `pebble build` and
+uploads each `.pbw` as a workflow artifact named after its app, ready to
+sideload. The pebble-tool and SDK versions it builds with are pinned in
+`.github/actions/setup-pebble-sdk`.
 
 ## Releases
 

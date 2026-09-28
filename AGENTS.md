@@ -144,7 +144,7 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
   `cache-shared-key`, and `rust-cache-warm.yml` warms the shared entry on `main`
   (a PR run can only restore its base branch's cache). Keys and constraints:
   [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md).
-- **Pebble apps** (`ci-pebble.yml`) — for `apps/watch-lifts` and `apps/fhir-sync-pebble`: `fmt:c:check` with a pinned clang-format, the host-side C tests and `pebble build`, uploading each `.pbw` as an artifact. The SDK install is cached: [Pebble CI Build Cache Explanation](./docs/Pebble/CI%20Build%20Cache%20Explanation.md).
+- **Pebble apps** (`ci-pebble.yml`) — for `apps/watch-lifts` and `apps/fhir-sync-pebble`, two parallel jobs: **Lint + Test** runs `fmt:c:check` with a pinned clang-format and the host-side C tests; **Build** runs `pebble build` for both apps, uploading each `.pbw` as an artifact. The SDK install is cached: [Pebble CI Build Cache Explanation](./docs/Pebble/CI%20Build%20Cache%20Explanation.md).
 - **markdownlint-cli2** on all `.md` — run locally via `vp run lint:docs`.
 - **OpenAPI Rust↔TS drift** (`api-sync.yml`) — a committed snapshot per slice. Regenerate a stale one with `UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date`; the TS half is `vp test openapi-drift`.
 

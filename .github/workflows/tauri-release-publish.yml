@@ -7,8 +7,8 @@ name: Tauri Release — Publish
 # a draft prerelease, then fans out to macOS (universal), Windows and Linux
 # runners. `tauri-apps/tauri-action` uploads platform bundles to that release —
 # publish it manually once the assets look right. A Pebble job builds
-# `apps/watch-lifts` and `apps/fhir-sync-pebble` and attaches their `.pbw`s to
-# the same release. Two TestFlight builds run in parallel with them, one
+# `apps/watch-lifts` and `apps/fhir-sync-pebble`, one after the other on one
+# runner, and attaches their `.pbw`s to the same release. Two TestFlight builds run in parallel with them, one
 # iOS and one macOS, each signed with an Apple Distribution certificate and
 # uploaded via `altool`. The macOS TestFlight build is a separate channel
 # from the notarized Developer ID bundle above: it is sandboxed and signed
@@ -669,84 +669,119 @@ jobs:
             security delete-keychain "$KEYCHAIN"
           fi
 
+  # Both watch apps in one job, so the Pebble SDK is installed once. The job id
+  # and the `pebble-<app>` artifact names are what jobs downstream download.
   build-pebble:
-    name: Build ${{ matrix.app }} (Pebble)
+    name: Build Pebble
     needs: prepare
     if: >-
       github.event_name != 'workflow_dispatch' ||
       contains(inputs.platforms, 'all') ||
       contains(inputs.platforms, 'pebble')
-    strategy:
-      # One app failing shouldn't stop the other's upload.
-      fail-fast: false
-      matrix:
-        app: [watch-lifts, fhir-sync-pebble]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ needs.prepare.outputs.tag }}
 
-      - name: Verify Pebble app version
+      - name: Verify Pebble app versions
         # Prepare writes the release version, less any prerelease suffix
-        # (`pebble build` rejects one), into the manifest. Like tauri.conf.json
-        # in the prepare job, the manifest is what the .pbw carries, so a
-        # mismatch fails rather than attaching a wrongly-versioned app.
+        # (`pebble build` rejects one), into both manifests. Like
+        # tauri.conf.json in the prepare job, the manifest is what the .pbw
+        # carries, so a mismatch in either fails before anything is built
+        # rather than attaching a wrongly-versioned app.
         run: |
           set -euo pipefail
           version='${{ needs.prepare.outputs.version }}'
-          manifest='apps/${{ matrix.app }}/package.json'
-          manifest_version="$(jq -r '.version' "$manifest")"
-          if [[ "$manifest_version" != "${version%%-*}" ]]; then
-            echo "::error::$manifest at ${{ needs.prepare.outputs.tag }} says $manifest_version, but release $version needs ${version%%-*}."
-            exit 1
-          fi
+          status=0
+          for app in watch-lifts fhir-sync-pebble; do
+            manifest="apps/$app/package.json"
+            manifest_version="$(jq -r '.version' "$manifest")"
+            if [[ "$manifest_version" != "${version%%-*}" ]]; then
+              echo "::error::$manifest at ${{ needs.prepare.outputs.tag }} says $manifest_version, but release $version needs ${version%%-*}."
+              status=1
+            fi
+          done
+          exit "$status"
 
-      # Only fhir-sync-pebble needs the workspace: its wscript runs `vp pack`
-      # in pkjs/ through the node_modules/.bin/vp that `vp install` puts
-      # there. watch-lifts is C alone.
+      # fhir-sync-pebble's wscript runs `vp pack` in pkjs/ through the
+      # node_modules/.bin/vp that `vp install` puts there. watch-lifts is C
+      # alone.
       - name: Setup Vite+
-        if: matrix.app == 'fhir-sync-pebble'
         uses: voidzero-dev/setup-vp@v1.21.0
         with:
           cache: true
 
       - name: Install workspace dependencies
-        if: matrix.app == 'fhir-sync-pebble'
         run: vp install
 
       # The same pinned pebble-tool and SDK as ci-pebble.yml.
       - name: Setup Pebble SDK
+        id: sdk
         uses: ./.github/actions/setup-pebble-sdk
 
-      - name: Build .pbw
-        id: pbw
-        working-directory: apps/${{ matrix.app }}
-        # `pebble build` names the .pbw after the app directory; the release
-        # asset adds the release version so every asset on it carries one.
+      # One build + two uploads per app. The fhir-sync-pebble steps run even
+      # when watch-lifts' fail (`!cancelled()`), so one app failing doesn't
+      # stop the other's upload, but not without an SDK. `pebble build` names
+      # the .pbw after the app directory; the release asset adds the release
+      # version so every asset on it carries one. The workflow artifact is
+      # kept for jobs that ship the .pbw onwards without fetching it back from
+      # the draft release. The prepare job created the release; `--clobber`
+      # replaces a same-named asset, so a re-run or tag rebuild re-uploads
+      # cleanly.
+      - name: Build watch-lifts .pbw
+        id: pbw-watch-lifts
+        working-directory: apps/watch-lifts
         run: |
           set -euo pipefail
           pebble build
-          asset="$RUNNER_TEMP/${{ matrix.app }}-${{ needs.prepare.outputs.version }}.pbw"
-          cp 'build/${{ matrix.app }}.pbw' "$asset"
+          asset="$RUNNER_TEMP/watch-lifts-${{ needs.prepare.outputs.version }}.pbw"
+          cp build/watch-lifts.pbw "$asset"
           echo "path=$asset" >> "$GITHUB_OUTPUT"
 
-      # Kept as a workflow artifact too, for jobs that ship the .pbw onwards
-      # without fetching it back from the draft release.
-      - name: Upload .pbw artifact
+      - name: Upload watch-lifts .pbw artifact
+        if: ${{ !cancelled() && steps.pbw-watch-lifts.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: pebble-${{ matrix.app }}
-          path: ${{ steps.pbw.outputs.path }}
+          name: pebble-watch-lifts
+          path: ${{ steps.pbw-watch-lifts.outputs.path }}
           if-no-files-found: error
 
-      - name: Upload .pbw to the GitHub Release
-        # The prepare job created the release. `--clobber` replaces a
-        # same-named asset, so a re-run or tag rebuild re-uploads cleanly.
+      - name: Upload watch-lifts .pbw to the GitHub Release
+        if: ${{ !cancelled() && steps.pbw-watch-lifts.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           gh release upload '${{ needs.prepare.outputs.tag }}' \
-            '${{ steps.pbw.outputs.path }}' \
+            '${{ steps.pbw-watch-lifts.outputs.path }}' \
+            --clobber
+
+      - name: Build fhir-sync-pebble .pbw
+        id: pbw-fhir-sync-pebble
+        if: ${{ !cancelled() && steps.sdk.outcome == 'success' }}
+        working-directory: apps/fhir-sync-pebble
+        run: |
+          set -euo pipefail
+          pebble build
+          asset="$RUNNER_TEMP/fhir-sync-pebble-${{ needs.prepare.outputs.version }}.pbw"
+          cp build/fhir-sync-pebble.pbw "$asset"
+          echo "path=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Upload fhir-sync-pebble .pbw artifact
+        if: ${{ !cancelled() && steps.pbw-fhir-sync-pebble.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: pebble-fhir-sync-pebble
+          path: ${{ steps.pbw-fhir-sync-pebble.outputs.path }}
+          if-no-files-found: error
+
+      - name: Upload fhir-sync-pebble .pbw to the GitHub Release
+        if: ${{ !cancelled() && steps.pbw-fhir-sync-pebble.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload '${{ needs.prepare.outputs.tag }}' \
+            '${{ steps.pbw-fhir-sync-pebble.outputs.path }}' \
             --clobber

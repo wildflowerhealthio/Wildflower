@@ -37,8 +37,10 @@ entry itself (`actions/cache/restore` and `actions/cache/save`) straight after a
 cold install, so a later failing step, such as `pebble build`, doesn't lose it.
 
 The pins default in the action so every workflow that builds a `.pbw` builds it
-with the same SDK. A cold install takes under a minute; the cache is as much
-about not depending on the SDK's download server on every run as about time.
+with the same SDK. Each workflow sets the SDK up once, in one job that builds
+both apps, so a run never has two jobs installing cold and racing to save the
+same key. A cold install takes under a minute; the cache is as much about not
+depending on the SDK's download server on every run as about time.
 
 ## Why the default branch doesn't warm it
 
