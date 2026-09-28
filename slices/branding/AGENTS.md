@@ -20,7 +20,7 @@ the homepage and absolute from an app.
   both render. It also owns `restoreRedirectedUrl` — the app half of the GitHub
   Pages 404 contract (see "The 404 redirect" below).
 - **`branding-react`** — the browser UI adapter: `SiteHeader`, `SiteFooter`,
-  `BrandBar`, `AppIcon`, `AppLanding`, and the `branding-react/styles.css`
+  `BrandBar`, `AppIcon`, `AppLanding`, `AppLandingPage`, and the `branding-react/styles.css`
   layout tokens (`--content-max-width`, `--page-padding-x`, `--header-height`,
   `--radius-pill`, `--prose-max-width`, and the `--shadow-float-panel` used by
   the header's collapsed nav dropdown).
@@ -54,10 +54,15 @@ the same `?redirect=` detour as the published site.
 ## The app landing page
 
 A SMART app visited without a launch (`apps/medications-app`,
-`apps/importer-web` and `apps/fhir-sync-pebble-web` through `smart-app-react`'s
-`SmartAppRoot`, and
-`apps/web-trace`) renders `SiteHeader`, then `AppLanding`
-inside `main`, then `SiteFooter`. `AppLanding` takes the app's `AppSectionId`
+`apps/importer-web`, `apps/fhir-sync-pebble-web` and `apps/web-trace`, all
+through `smart-app-react`'s `SmartAppRoot`) renders `AppLandingPage`. So does
+the hosted owner UI's landing (`apps/wildflower-react`'s `routes/index.tsx`,
+`app="app"`), whose connect menu also carries its "Sign in to …" row for a
+server already chosen. `AppLandingPage` is the one page shell: `SiteHeader`
+(links resolved `fromApp`), then `AppLanding` inside `main`, then
+`SiteFooter`, in a full-height column that keeps the footer at the bottom of
+the viewport. A surface passes it the app and its connect menu, and keeps no
+page CSS of its own. `AppLanding` takes the app's `AppSectionId`
 and its connect menu as children: it lays out the introduction from
 `APP_DESCRIPTIONS` on the left (the app name as the page's `h1`, the tagline,
 the paragraphs, and a "Read about the rest of the project" link to the app's
@@ -116,7 +121,10 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   rows (`built`, `possible-today`, `dev-tools`) and the apps' landing pages
   render the same entries; editing the copy in one component would fork the
   story. The Synthesized Health Viewer and the server-docs row are not SMART
-  apps with a landing page, so their copy stays inline on the homepage.
+  apps with a landing page, so their copy stays inline on the homepage. The
+  owner UI's entry (`app`) is the reverse: it has a landing page but no
+  homepage row, so it is described but left out of `APP_SECTION_IDS`, the
+  homepage's list.
 - **`SiteHeader`/`SiteFooter` are the one chrome, used by the homepage and the
   apps.** `apps/marketing-website` consumes them just like the apps do (passing
   `onMarketingSite`); it no longer keeps a page-local header/footer. A change to

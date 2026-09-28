@@ -2,6 +2,7 @@ import './styles.css'
 
 export { AppIcon } from './app-icon.tsx'
 export { AppLanding } from './app-landing.tsx'
+export { AppLandingPage } from './app-landing-page.tsx'
 export { BrandBar } from './brand-bar.tsx'
 export { SiteFooter } from './site-footer.tsx'
 export { SiteHeader } from './site-header.tsx'

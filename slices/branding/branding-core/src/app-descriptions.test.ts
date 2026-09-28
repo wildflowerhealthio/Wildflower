@@ -6,15 +6,21 @@ import { APP_DESCRIPTIONS, APP_SECTION_IDS, type AppSectionId } from './app-desc
 import { MARKETING_ANCHORS } from './nav.ts'
 import { SECTION_PATHS } from './site.ts'
 
-const appSectionIdArb = fc.constantFrom<AppSectionId>(...APP_SECTION_IDS)
+/**
+ * Every described app: the homepage's SMART apps, and the owner UI, which has a
+ * landing page but no homepage row.
+ */
+const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'app']
+
+const appSectionIdArb = fc.constantFrom<AppSectionId>(...DESCRIBED_APP_IDS)
 
 describe('APP_SECTION_IDS', () => {
-  it('should list every described app exactly once, and nothing else', () => {
-    expect(APP_SECTION_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
+  it('should list every described app but the owner UI exactly once, and nothing else', () => {
+    expect(DESCRIBED_APP_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
   })
 
-  it('should only name sections that exist in the deploy contract', () => {
-    for (const id of APP_SECTION_IDS) {
+  it('should only describe sections that exist in the deploy contract', () => {
+    for (const id of DESCRIBED_APP_IDS) {
       expect(Object.keys(SECTION_PATHS)).toContain(id)
     }
   })
@@ -47,7 +53,7 @@ describe('APP_DESCRIPTIONS', () => {
 
   it('should name the app in its launch label, so the homepage link reads as a link into it', () => {
     fc.assert(
-      fc.property(appSectionIdArb, (id) => {
+      fc.property(fc.constantFrom(...APP_SECTION_IDS), (id) => {
         const { name, launch } = APP_DESCRIPTIONS[id]
         expect(launch.label).toContain(name)
         expect(launch.label.endsWith('→')).toBe(false)

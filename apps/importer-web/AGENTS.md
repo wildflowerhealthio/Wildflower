@@ -236,8 +236,9 @@ package's `"."` export as a `source`-only seam) is
 - **launched** (`shouldCompleteSmartLaunch()` or the prop) → `<BrandBar />` +
   `<App />`.
 - **not launched** → `<SiteHeader nav={fromApp} />` + `<main>` wrapping the
-  Importer's `<AppLanding>` introduction beside an `ErrorBanner` and
-  `<ConnectMenu …/>` + `<SiteFooter />`.
+  Importer's `<AppLanding>` introduction beside `<ConnectMenu …/>` +
+  `<SiteFooter />`. A launch that failed and landed back here is handed to
+  the `ConnectMenu` as its `arrivalProblem`.
 
 The decision is **latched on mount** inside `SmartAppRoot`; the shell's
 [`smart-app-root.test.tsx`](../../slices/smart-app/smart-app-react/src/smart-app-root.test.tsx)

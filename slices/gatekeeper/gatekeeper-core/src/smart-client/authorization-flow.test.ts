@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
-  fhirAudienceFor,
   isAuthorizationResponse,
   parsePendingAuthorization,
   parseTokenResponse,
@@ -166,13 +165,6 @@ describe('authorizationRequestUrl', () => {
     // Assert
     expect(url.searchParams.get('tenant')).toBe('acme')
     expect(url.searchParams.get('response_type')).toBe('code')
-  })
-})
-
-describe('fhirAudienceFor', () => {
-  it('names the target’s FHIR base, which is what a standalone launch audits against', () => {
-    // Act / Assert
-    expect(fhirAudienceFor('http://127.0.0.1:8080')).toBe('http://127.0.0.1:8080/fhir-r4')
   })
 })
 

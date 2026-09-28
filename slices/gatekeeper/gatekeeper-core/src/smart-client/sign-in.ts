@@ -41,7 +41,6 @@ import { Data, Effect, Either, Option } from 'effect'
 import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
-  fhirAudienceFor,
   parsePendingAuthorization,
   parseTokenResponse,
   serializePendingAuthorization,
@@ -110,6 +109,14 @@ interface SignInEnvironment {
  * pair and the `state`, stash what the return leg needs, and yield the
  * authorization URL to navigate to.
  *
+ * The SMART `iss` — the FHIR base whose `.well-known/smart-configuration`
+ * answered, and the `aud` the authorization request names — is found by
+ * `discoverSmartEndpoints`: `{serverUrl}/fhir-r4` for a Wildflower server,
+ * or `serverUrl` itself for a plain SMART server's FHIR base, tried only when
+ * the first answers 404. Either way it is on the server the pending record and
+ * the {@link Session} name. Only the endpoints discovered there ride the
+ * pending record, so the return leg needs nothing more.
+ *
  * `returnTo` is the in-app path the app wants to land on once signed in; it
  * rides the pending record and comes back as {@link Session.returnTo}, because
  * the registered redirect URI can't carry it. `undefined` when the app has
@@ -124,7 +131,7 @@ const beginSignIn = (
   environment: SignInEnvironment
 ): Effect.Effect<string, SignInError> =>
   Effect.gen(function* () {
-    const endpoints = yield* discoverSmartEndpoints(serverUrl, {
+    const { fhirBaseUrl, endpoints } = yield* discoverSmartEndpoints(serverUrl, {
       fetch: environment.fetch,
       pageIsSecure: environment.pageIsSecure,
     })
@@ -158,7 +165,7 @@ const beginSignIn = (
       scope: environment.scope,
       state,
       codeChallenge,
-      audience: fhirAudienceFor(serverUrl),
+      audience: fhirBaseUrl,
     })
   })
 

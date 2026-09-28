@@ -116,14 +116,28 @@ object instead of a `Window`. `STANDALONE_LAUNCH_SCOPES` is the requested
 identical `allowed_scopes`, with a `db/clients.rs` test that fails if they
 drift, so the browser side is one list rather than a copy per app.
 
+The FHIR base a sign-in discovers at — the SMART `iss`, which the authorization
+request also names as its `aud` — is found by asking, not read off the URL.
+`discoverSmartEndpoints(serverUrl, …)` tries the Wildflower location first,
+`{serverUrl}/fhir-r4/.well-known/smart-configuration`, which finds a Wildflower
+server at its origin or behind a path prefix alike. Only if that answers **404**
+does it try `{serverUrl}/.well-known/smart-configuration`, reading `serverUrl`
+as a plain SMART server's FHIR base (the SmartHealthIT demo's). Any other
+failure — unreachable, blocked by CORS, another status — is reported as it is,
+never sent on to the second URL, and two 404s fail naming both. It returns the
+base that answered with the endpoints, and `beginSignIn` names that base as the
+`aud`. Only the discovered token endpoint and `serverUrl` ride the pending
+record, so the return leg is the same either way.
+
 `internal/pkce.ts`'s `computeCodeChallenge` is a thin wrapper that binds
 `codeChallengeS256`'s digest argument to the ambient Web Crypto; there is one
 S256 implementation here, and a property test pins the two together.
 
 ### Deriving the redirect URI
 
-`redirectUriForPage(href)` returns the page's own directory URL — the same
-`new URL('.', href)` derivation the fhirclient-based apps use — or `undefined`
+`redirectUriForPage(href)` returns the page's own directory URL — the
+derivation the fhirclient-based apps use through `fhir-r4-react/smart`'s
+`appRootRedirectUri` — or `undefined`
 when the page is served somewhere a sign-in must not return to (a non-http(s)
 origin, or plaintext http off loopback).
 
@@ -177,7 +191,12 @@ re-rooted under `basePath`. The hosted owner UI (`apps/wildflower-react`'s
 `insecureTargetReason` in `smart-discovery.ts` states the same scheme rule about
 the _target_ that `usableEndpointUrl` enforces about the discovered endpoints, so
 a page can explain up front that a secure page cannot reach a plaintext server
-instead of surfacing it as a discovery failure. Loopback is exempt in both:
+instead of surfacing it as a discovery failure. Its wording names no kind of
+page, since the server-docs console, the hosted owner UI and every SMART app's
+connect menu (through `fhir-r4-react/smart`'s re-export) show it, and offers
+all three ways out: an https address, the page opened over http from the
+server itself, or a server on this computer. Loopback is
+exempt in both:
 browsers treat `http://127.0.0.1` as trustworthy, which is what lets an HTTPS
 page drive a desktop host.
 

@@ -103,7 +103,30 @@ const shouldCompleteSmartLaunch = (search: string = window.location.search): boo
   return params.has('code') || params.has('state')
 }
 
+/**
+ * The OAuth redirect URI for a self-hosted SMART app, from the URL of any page
+ * served at its root: `href`'s directory (`new URL('.', href)`), without the
+ * page's query or fragment.
+ *
+ * @remarks
+ * The app root, which serves `index.html`, is the one redirect target for every
+ * way in: the EHR launch from `launch.html`, a standalone launch from the
+ * connect menu, and a failed launch sent back with `launchErrorRedirect`. It is
+ * the page that completes the handshake ({@link readySmartClient}) and the page
+ * that can show a failure, so a launch always returns there. Every such page
+ * sits in that directory, so each derives the same value, and the value is the
+ * same on the way out and on the callback whatever query the page carries.
+ *
+ * Derived from the page URL rather than configured, so the bundle works at
+ * whatever origin and path it is served from. It is not `gatekeeper-core`'s
+ * `redirectUriForPage`: there is no plaintext screen, because the registered
+ * client's redirect URIs decide where a launch may return, and any userinfo the
+ * page URL carries is kept.
+ */
+const appRootRedirectUri = (href: string): string => new URL('.', href).href
+
 export {
+  appRootRedirectUri,
   authorizeOpenServer,
   authorizeSmartLaunch,
   readySmartClient,

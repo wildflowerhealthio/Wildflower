@@ -1,4 +1,5 @@
 export {
+  appRootRedirectUri,
   authorizeOpenServer,
   authorizeSmartLaunch,
   readySmartClient,
@@ -9,11 +10,14 @@ export {
 
 export {
   detectSmartSupport,
+  insecureTargetReason,
   normalizeServerUrl,
   startStandaloneLaunch,
   type SmartSupport,
   type StandaloneLaunchConfig,
 } from './standalone-launch.ts'
+
+export { withLocalNetworkAccessHint } from './local-network-hint.ts'
 
 export {
   BundleDecodeError,

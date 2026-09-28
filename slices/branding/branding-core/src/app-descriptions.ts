@@ -1,11 +1,24 @@
 import type { MarketingAnchor } from './nav.ts'
 import type { SectionId } from './site.ts'
 
-/** The site sections that are SMART on FHIR apps with a standalone landing page. */
-type AppSectionId = Extract<SectionId, 'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace'>
+/**
+ * The site sections with a standalone app landing page: the SMART on FHIR apps,
+ * and the hosted Wildflower owner UI (`app`).
+ */
+type AppSectionId = Extract<
+  SectionId,
+  'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace' | 'app'
+>
 
-/** The four SMART app sections, in the order the marketing homepage presents them. */
-const APP_SECTION_IDS: readonly AppSectionId[] = [
+/** The app sections the marketing homepage has a row for: all but the owner UI. */
+type HomepageAppSectionId = Exclude<AppSectionId, 'app'>
+
+/**
+ * The four SMART app sections, in the order the marketing homepage presents
+ * them. The owner UI (`app`) has a landing page but no homepage row, so it is
+ * not among them.
+ */
+const APP_SECTION_IDS: readonly HomepageAppSectionId[] = [
   'medications',
   'fhirSyncPebble',
   'importer',
@@ -13,7 +26,7 @@ const APP_SECTION_IDS: readonly AppSectionId[] = [
 ]
 
 /**
- * The copy that introduces one SMART app: what it is, why it exists, and
+ * The copy that introduces one app: what it is, why it exists, and
  * how the reader can try it. Rendered on the marketing homepage's app rows
  * and on the app's own standalone landing page, so both surfaces tell the
  * same story from one source.
@@ -46,8 +59,11 @@ interface AppDescription {
   }
   /** The homepage section the app's row sits in, where the rest of the project is. */
   readonly anchor: MarketingAnchor
-  /** The homepage's text-link call to action into the app. */
-  readonly launch: {
+  /**
+   * The homepage's text-link call to action into the app. Absent for an app
+   * with no homepage row, which has nowhere to show it.
+   */
+  readonly launch?: {
     /** Link text, without the trailing arrow the homepage adds. */
     readonly label: string
     /** The quiet mono note under the link, about the demo or live server. */
@@ -56,15 +72,20 @@ interface AppDescription {
 }
 
 /**
- * The introduction for each SMART app, keyed by its site section.
+ * The introduction for each app with a landing page, keyed by its site section.
  *
  * @remarks
  * The homepage is a first-person essay, and this copy keeps that voice: the
  * `paragraphs` explain why the app was built, not what it sells. The
  * `tagline` is the one sentence that says what the app is, for a reader who
  * arrived at the app's landing page without reading the homepage first.
+ * Every app with a homepage row has a `launch`, since the row links into it.
  */
-const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
+const APP_DESCRIPTIONS: {
+  readonly [Id in AppSectionId]: Id extends HomepageAppSectionId
+    ? AppDescription & Pick<Required<AppDescription>, 'launch'>
+    : AppDescription
+} = {
   medications: {
     name: 'Medication Viewer',
     tagline:
@@ -169,6 +190,19 @@ const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
       label: 'Open the Web Trace Viewer',
       note: 'Load a capture against the demo server — no account, nothing uploaded',
     },
+  },
+  app: {
+    name: 'Wildflower',
+    tagline: 'Manages the devices, apps and health data on your own Wildflower server.',
+    paragraphs: [
+      'I want my health records on a server I control, not split across every clinic ' +
+        "and pharmacy's portal. Wildflower is that server. It runs on your own computer, " +
+        'or it can be hosted at your own wildflowerhealth.io address.',
+      'This is where you look after it: connect the devices that record data for you, ' +
+        'add apps and decide what each one can see. ' +
+        'SMART on FHIR apps, like the ones on this site, launch against your own records.',
+    ],
+    anchor: 'try',
   },
 }
 

@@ -203,9 +203,11 @@ interface RenderAppOptions {
    * the time the tree exists. Threaded into router context for the landing
    * route to show, the same way `localGrantedScopes` and `firstPartyClientId`
    * reach `NeedsAuthMessage`. Omitted on every other entry and on an ordinary
-   * load.
+   * load. `sign-in.ts`'s `SignInProblem`, written out rather than imported:
+   * this module is shared with the Tauri entry, which never signs in this way,
+   * and `main-web` hands it the real type, so a drift fails to compile there.
    */
-  readonly signInProblem?: string
+  readonly signInProblem?: { readonly reason: string; readonly serverUrl: string | undefined }
   /**
    * The directory this build is served from, as a router `basepath`, when the
    * copy is published under a subpath rather than at the origin root.

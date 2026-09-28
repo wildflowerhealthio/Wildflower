@@ -12,15 +12,21 @@ What is _not_ shared with it is the auth wiring below.
 
 ## Boot and branding
 
-`main.tsx` loads design-system stylesheets (tundra-css → react-tundraish →
-branding-react), installs the OS colour-scheme listener, and renders `<AppRoot />`
-from `app-root.tsx`. `AppRoot` is the page-level seam: it picks between the
-launched viewer (slim `BrandBar` + `App`) and the standalone connect page (full
-`SiteHeader` + `ConnectMenu` + `SiteFooter`), with a single `QueryClientProvider`
-wrapping both branches. The `launched` prop is read once, on mount: it defaults
-to `shouldCompleteSmartLaunch()` but accepts an explicit boolean so each branch
-is testable without URL games, and it is latched because fhirclient strips
-`code`/`state` from the URL once the exchange completes. The package exports
+Both entries run on `smart-app-react`, the chrome every self-hosted SMART app
+boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
+`main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
+tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
+JS entry), completes a GitHub Pages 404 redirect, installs the OS colour-scheme
+listener, and renders `<AppRoot />`. `launch-main.tsx` imports the same module
+and makes one `runSmartLaunchEntry` call. `AppRoot` (from `app-root.tsx`) is
+`<SmartAppRoot app="webTrace" standalone={standaloneSmartConfig}>` around
+`<App />`; `SmartAppRoot` owns the one `QueryClientProvider` and picks between
+the launched viewer (slim `BrandBar` + `App`) and the standalone landing,
+`branding-react`'s `AppLandingPage` (`SiteHeader`, the Web Trace Viewer's
+`AppLanding` beside `ConnectMenu`, `SiteFooter`). The decision is latched on mount inside `SmartAppRoot`; the
+shell's
+[`smart-app-root.test.tsx`](../../slices/smart-app/smart-app-react/src/smart-app-root.test.tsx)
+pins it along with the rest of the shell's behaviour. The package exports
 `AppRoot` via a source-only `exports` map (`"source": "./src/app-root.tsx"`) with no `default` — a future
 aggregator shell resolves the workspace `source` condition.
 
@@ -172,13 +178,11 @@ than adopting it — you get no dev tile until that app is renamed.
   `Bearer` with nothing after it — is
   [`fhir-r4-react`'s `self-hosted-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.test.ts),
   moved there with the code it covers.
-- `app-root.test.tsx` — chrome-level tests for `AppRoot`. Mocks `App` and
-  `ConnectMenu` with lightweight stubs (via `vi.mock`) and passes `launched`
-  explicitly so each branch is exercised without URL games. The `launched: true`
-  case asserts the slim `BrandBar` (a link with `aria-label="Wildflower, home"`
-  pointing at `https://wildflowerhealth.io/`) and the absence of full chrome;
-  `launched: false` asserts `SiteHeader`, `ConnectMenu`, `SiteFooter` with
-  absolute nav hrefs.
+- `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the Web
+  Trace Viewer (the landing `h1` is `APP_DESCRIPTIONS.webTrace.name`). The
+  chrome gate itself — both branches, the latch, the `ConnectMenu` wiring, the
+  launch-failure banner, the one shared `QueryClient` — is tested once, in
+  `smart-app-react`'s `smart-app-root.test.tsx`.
 - `app.test.tsx` — the whole tree over a stub transport. It asserts the URL and
   the `Authorization` header that actually went on the wire, so the two
   self-hosted-origin facts above are pinned rather than assumed. It also walks

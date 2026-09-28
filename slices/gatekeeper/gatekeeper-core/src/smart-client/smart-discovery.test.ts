@@ -29,13 +29,13 @@ const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> =>
 const onSecurePage = { pageIsSecure: true }
 
 describe('smartConfigurationUrl', () => {
-  it('appends the SMART well-known path to the canonical target', () => {
+  it('appends the SMART well-known path to the canonical FHIR base', () => {
     // Act / Assert
-    expect(smartConfigurationUrl('https://ruth.wildflowerhealth.io')).toBe(
+    expect(smartConfigurationUrl('https://ruth.wildflowerhealth.io/fhir-r4')).toBe(
       'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration'
     )
-    expect(smartConfigurationUrl('http://127.0.0.1:8080')).toBe(
-      `http://127.0.0.1:8080${SMART_CONFIGURATION_PATH}`
+    expect(smartConfigurationUrl('https://launch.smarthealthit.org/v/r4/fhir')).toBe(
+      `https://launch.smarthealthit.org/v/r4/fhir${SMART_CONFIGURATION_PATH}`
     )
   })
 })
@@ -220,7 +220,7 @@ describe('smartEndpointsFrom', () => {
 })
 
 describe('discoverSmartEndpoints', () => {
-  it('fetches the well-known document from the chosen server', async () => {
+  it('finds a Wildflower server’s configuration under its /fhir-r4 mount, and names that base', async () => {
     // Arrange
     const requested: string[] = []
     const fetchStub = respondingWith((url) => {
@@ -236,11 +236,98 @@ describe('discoverSmartEndpoints', () => {
       })
     )
 
-    // Assert
+    // Assert — found at the first place asked, so nothing else was.
     expect(requested).toEqual([
       'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration',
     ])
-    expect(Either.isRight(result)).toBe(true)
+    expect(Either.map(result, (issuer) => issuer.fhirBaseUrl)).toEqual(
+      Either.right('https://ruth.wildflowerhealth.io/fhir-r4')
+    )
+  })
+
+  it('finds a Wildflower server published behind a path prefix the same way', async () => {
+    // Arrange
+    const fetchStub = respondingWith((url) =>
+      url === 'https://example.org/wildflower/fhir-r4/.well-known/smart-configuration'
+        ? jsonResponse(wildflowerDiscoveryDocument('https://example.org/wildflower'))
+        : new Response('not here', { status: 404 })
+    )
+
+    // Act
+    const result = await runToEither(
+      discoverSmartEndpoints('https://example.org/wildflower', {
+        fetch: fetchStub,
+        pageIsSecure: true,
+      })
+    )
+
+    // Assert
+    expect(Either.map(result, (issuer) => issuer.fhirBaseUrl)).toEqual(
+      Either.right('https://example.org/wildflower/fhir-r4')
+    )
+  })
+
+  it('reads the URL as a plain FHIR base when there is nothing under /fhir-r4', async () => {
+    // Arrange — the SmartHealthIT demo: its base is the URL itself.
+    const demo = 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiJd/fhir'
+    const requested: string[] = []
+    const fetchStub = respondingWith((url) => {
+      requested.push(url)
+      return url === `${demo}/.well-known/smart-configuration`
+        ? jsonResponse(wildflowerDiscoveryDocument('https://launch.smarthealthit.org'))
+        : new Response('not here', { status: 404 })
+    })
+
+    // Act
+    const result = await runToEither(
+      discoverSmartEndpoints(demo, { fetch: fetchStub, pageIsSecure: true })
+    )
+
+    // Assert — the Wildflower location first, then the URL itself.
+    expect(requested).toEqual([
+      `${demo}/fhir-r4/.well-known/smart-configuration`,
+      `${demo}/.well-known/smart-configuration`,
+    ])
+    expect(Either.map(result, (issuer) => issuer.fhirBaseUrl)).toEqual(Either.right(demo))
+  })
+
+  it('does not look anywhere else when the server cannot be reached', async () => {
+    // A network or CORS failure says nothing about where the configuration is.
+    // Arrange
+    const requested: string[] = []
+    const fetchStub: typeof globalThis.fetch = (input) => {
+      requested.push(requestUrl(input))
+      return Promise.reject(new TypeError('Failed to fetch'))
+    }
+
+    // Act
+    const result = await runToEither(
+      discoverSmartEndpoints('https://down.test', { fetch: fetchStub, pageIsSecure: true })
+    )
+
+    // Assert
+    expect(requested).toEqual(['https://down.test/fhir-r4/.well-known/smart-configuration'])
+    if (Either.isRight(result)) throw new Error('expected an unreachable server to be reported')
+    expect(result.left.reason).toContain('Could not reach')
+  })
+
+  it('names both places it looked when neither has a configuration', async () => {
+    // Arrange
+    const fetchStub = respondingWith(() => new Response('not here', { status: 404 }))
+
+    // Act
+    const result = await runToEither(
+      discoverSmartEndpoints('https://nothing.test/base', { fetch: fetchStub, pageIsSecure: true })
+    )
+
+    // Assert
+    if (Either.isRight(result)) throw new Error('expected two 404s to be reported')
+    expect(result.left.reason).toContain(
+      'https://nothing.test/base/fhir-r4/.well-known/smart-configuration'
+    )
+    expect(result.left.reason).toContain(
+      'https://nothing.test/base/.well-known/smart-configuration'
+    )
   })
 
   it('reports an unreachable server rather than throwing', async () => {
@@ -262,22 +349,26 @@ describe('discoverSmartEndpoints', () => {
 
   it('reports a target that answers with an error status', async () => {
     await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 400, max: 599 }), async (status) => {
-        // Arrange
-        const fetchStub = respondingWith(() => new Response('nope', { status }))
+      // Anything but 404, the one status that sends discovery on to the URL itself.
+      fc.asyncProperty(
+        fc.integer({ min: 400, max: 599 }).filter((status) => status !== 404),
+        async (status) => {
+          // Arrange
+          const fetchStub = respondingWith(() => new Response('nope', { status }))
 
-        // Act
-        const result = await runToEither(
-          discoverSmartEndpoints('https://not-wildflower.test', {
-            fetch: fetchStub,
-            pageIsSecure: true,
-          })
-        )
+          // Act
+          const result = await runToEither(
+            discoverSmartEndpoints('https://not-wildflower.test', {
+              fetch: fetchStub,
+              pageIsSecure: true,
+            })
+          )
 
-        // Assert
-        if (Either.isRight(result)) throw new Error('expected an error status to be reported')
-        expect(result.left.reason).toContain(String(status))
-      }),
+          // Assert
+          if (Either.isRight(result)) throw new Error('expected an error status to be reported')
+          expect(result.left.reason).toContain(String(status))
+        }
+      ),
       { numRuns: numRunsFor({ base: 50 }) }
     )
   })

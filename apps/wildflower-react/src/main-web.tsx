@@ -1,6 +1,11 @@
 import './instrument.ts'
 import { createBrowserHistory } from '@tanstack/react-router'
 import 'react-tundraish/styles'
+// The shared chrome's layout tokens, which the landing page's header, footer
+// and `AppLanding` read. `branding-react`'s entry imports this stylesheet
+// itself; naming it here too (one module, so one copy) puts it ahead of this
+// app's own `global.css`, after the design system it builds on.
+import 'branding-react/styles.css'
 import { basenameOf, restoreRedirectedUrl } from 'branding-core'
 import { Option } from 'effect'
 import {
@@ -143,7 +148,7 @@ const boot = async (): Promise<void> => {
     basepath,
     ...entryOptions,
     tokenResponseHandler,
-    ...(completed.tag === 'Failed' ? { signInProblem: completed.reason } : {}),
+    ...(completed.tag === 'Failed' ? { signInProblem: completed.problem } : {}),
   })
 }
 

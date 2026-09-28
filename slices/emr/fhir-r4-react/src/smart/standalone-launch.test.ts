@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { Match } from 'effect'
-import { normalizeServerUrl as sharedNormalizeServerUrl } from 'gatekeeper-core/smart-client'
+import {
+  insecureTargetReason as sharedInsecureTargetReason,
+  normalizeServerUrl as sharedNormalizeServerUrl,
+} from 'gatekeeper-core/smart-client'
 import {
   detectSmartSupport,
+  insecureTargetReason,
   normalizeServerUrl,
   startStandaloneLaunch,
 } from './standalone-launch.ts'
@@ -162,6 +166,12 @@ describe('startStandaloneLaunch', () => {
 describe('normalizeServerUrl', () => {
   it('is the one implementation gatekeeper-core owns, not a local copy', () => {
     expect(normalizeServerUrl).toBe(sharedNormalizeServerUrl)
+  })
+})
+
+describe('insecureTargetReason', () => {
+  it('is the one implementation gatekeeper-core owns, not a local copy', () => {
+    expect(insecureTargetReason).toBe(sharedInsecureTargetReason)
   })
 })
 
