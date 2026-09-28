@@ -8,12 +8,12 @@ name: Tauri Release — Publish
 # runners. `tauri-apps/tauri-action` uploads platform bundles to that release —
 # publish it manually once the assets look right. A Pebble job builds
 # `apps/watch-lifts` and `apps/fhir-sync-pebble`, one after the other on one
-# runner, and attaches their `.pbw`s to the same release. Two TestFlight builds run in parallel with them, one
-# iOS and one macOS, each signed with an Apple Distribution certificate and
-# uploaded via `altool`. The macOS TestFlight build is a separate channel
-# from the notarized Developer ID bundle above: it is sandboxed and signed
-# with different certificates — see docs/Rust/Apple Release Signing
-# Explanation.md.
+# runner, and attaches their `.pbw`s to the same release. Two TestFlight
+# builds run in parallel with them, one iOS and one macOS, each signed with an
+# Apple Distribution certificate and uploaded via `altool`. The macOS
+# TestFlight build is a separate channel from the notarized Developer ID
+# bundle above: it is sandboxed and signed with different certificates — see
+# docs/Rust/Apple Release Signing Explanation.md.
 #
 # Also exposes `workflow_dispatch` for two manual cases:
 #   - Re-trigger a merge that never ran (e.g. a runner outage ate the original
