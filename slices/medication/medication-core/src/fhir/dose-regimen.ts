@@ -2,6 +2,7 @@ import type { DateTime } from 'effect'
 import type { MedicationRequest } from 'fhir-r4/resources'
 
 import { normalizeName } from '../normalize.ts'
+import { amortizedDoseOf } from './amortized-dose.ts'
 import { displayNameOf } from './display-name.ts'
 import { firstDoseOf, type Dose } from './dosage.ts'
 import type { MedicationRequestWithId } from './medication-request-with-id.ts'
@@ -9,8 +10,8 @@ import { regimenEndOf, regimenStartOf } from './regimen-period.ts'
 
 /**
  * A `MedicationRequest` read as the regimen a chart draws as one step of a
- * medication's dose line: its first dose ({@link firstDoseOf}) over the period
- * it was in effect ({@link regimenStartOf} to {@link regimenEndOf}).
+ * medication's dose line: its dose ({@link regimenDoseOf}) over the period it
+ * was in effect ({@link regimenStartOf} to {@link regimenEndOf}).
  */
 
 /**
@@ -24,6 +25,17 @@ const EXCLUDED_REGIMEN_STATUSES: ReadonlySet<MedicationRequest.Type['status']> =
   'draft',
   'unknown',
 ])
+
+/**
+ * The dose a request's regimen plots: the dose its first dosage instruction
+ * states ({@link firstDoseOf}), else its dispensed supply amortized into a
+ * daily dose ({@link amortizedDoseOf}). A stated dose always wins.
+ *
+ * @returns `null` when the request states no dose and its supply cannot be
+ *   amortized
+ */
+const regimenDoseOf = (request: MedicationRequest.Type): Dose | null =>
+  firstDoseOf(request) ?? amortizedDoseOf(request)
 
 /**
  * One request's dose over the period it was in effect.
@@ -57,15 +69,15 @@ type RegimenDisposition =
 /** Sort one request into a regimen or the counter it moves — see {@link RegimenDisposition}. */
 const regimenDispositionOf = (request: MedicationRequestWithId): RegimenDisposition => {
   if (EXCLUDED_REGIMEN_STATUSES.has(request.status)) return { _tag: 'Dropped' }
-  const firstDose = firstDoseOf(request)
-  if (firstDose === null) return { _tag: 'Dropped' }
+  const regimenDose = regimenDoseOf(request)
+  if (regimenDose === null) return { _tag: 'Dropped' }
   const regimenStart = regimenStartOf(request)
   if (regimenStart === null) return { _tag: 'Undated' }
   const displayName = displayNameOf(request)
   return {
     _tag: 'Regimen',
     regimen: {
-      ...firstDose,
+      ...regimenDose,
       requestId: request.id,
       name: displayName,
       normalizedName: normalizeName(displayName),
@@ -80,7 +92,7 @@ const regimenDispositionOf = (request: MedicationRequestWithId): RegimenDisposit
  * Read one decoded `MedicationRequest` as a {@link DoseRegimen}.
  *
  * @returns `null` for a status in {@link EXCLUDED_REGIMEN_STATUSES}, a request
- *   with no readable dose ({@link firstDoseOf}), or one with no start
+ *   with no readable dose ({@link regimenDoseOf}), or one with no start
  *   ({@link regimenStartOf})
  */
 const medicationRequestToDoseRegimen = (request: MedicationRequestWithId): DoseRegimen | null => {
@@ -94,7 +106,10 @@ interface DoseRegimenBatch {
   readonly regimens: readonly DoseRegimen[]
   /** Requests with a plottable status and dose but no start to place them at. */
   readonly undated: number
-  /** Requests that contribute nothing: an excluded status, or no readable dose. */
+  /**
+   * Requests that contribute nothing: an excluded status, or no readable dose —
+   * none stated and no supply to amortize.
+   */
   readonly dropped: number
 }
 
@@ -130,6 +145,7 @@ export {
   EXCLUDED_REGIMEN_STATUSES,
   medicationRequestsToDoseRegimens,
   medicationRequestToDoseRegimen,
+  regimenDoseOf,
   type DoseRegimen,
   type DoseRegimenBatch,
 }

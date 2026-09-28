@@ -19,11 +19,12 @@ const requestWithDosage = (dosageInstruction: unknown[]): MedicationRequest.Type
   decode({ ...base, dosageInstruction })
 
 describe('firstDoseOf', () => {
-  test("is per 'd' exactly when frequency, a positive period and a known unit are stated, and scales the amount to a day", () => {
+  test("is stated, and per 'd' exactly when frequency, a positive period and a known unit are stated, and scales the amount to a day", () => {
     fc.assert(
       fc.property(medicationRequestWithIdArb, (request) => {
         const firstDose = firstDoseOf(request)
         if (firstDose === null) return
+        expect(firstDose.derivation).toBe('stated')
         const timingRepeat = request.dosageInstruction[0].timing?.repeat ?? null
         const daysPerPeriodUnit =
           timingRepeat === null || timingRepeat.periodUnit === null
@@ -57,7 +58,13 @@ describe('firstDoseOf', () => {
       firstDoseOf(
         requestWithDosage([{ doseAndRate: [{ doseQuantity: { value: 500, unit: 'mg' } }] }])
       )
-    ).toEqual({ amount: 500, rangeLow: null, unit: 'mg', per: 'administration' })
+    ).toEqual({
+      amount: 500,
+      rangeLow: null,
+      unit: 'mg',
+      per: 'administration',
+      derivation: 'stated',
+    })
     expect(
       firstDoseOf(
         requestWithDosage([{ doseAndRate: [{ doseQuantity: { value: 500, code: 'mg' } }] }])
@@ -76,7 +83,13 @@ describe('firstDoseOf', () => {
         },
       ])
     )
-    expect(firstDose).toEqual({ amount: 1000, rangeLow: 500, unit: 'mg', per: 'd' })
+    expect(firstDose).toEqual({
+      amount: 1000,
+      rangeLow: 500,
+      unit: 'mg',
+      per: 'd',
+      derivation: 'stated',
+    })
   })
 
   test("drops a dose range's floor stated in a different unit than its high", () => {
@@ -89,7 +102,13 @@ describe('firstDoseOf', () => {
         },
       ])
     )
-    expect(firstDose).toEqual({ amount: 500, rangeLow: null, unit: 'mg', per: 'administration' })
+    expect(firstDose).toEqual({
+      amount: 500,
+      rangeLow: null,
+      unit: 'mg',
+      per: 'administration',
+      derivation: 'stated',
+    })
   })
 
   test('reads only the first instruction and its first doseAndRate', () => {

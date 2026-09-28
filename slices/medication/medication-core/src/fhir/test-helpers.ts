@@ -67,6 +67,43 @@ const shoppersRequest = {
   dosageInstruction: [{ text: 'Take 1 tablet by mouth once daily' }],
 }
 
+// A Rexall request as a real carebook import reads once promoted: no dosage
+// instruction at all, a contained Medication whose promoted strength is 10 mg
+// per one capsule, and a dispensed supply of 30 capsules over 30 days — enough
+// to amortize into 10 mg/day, and nothing else to read a dose from.
+const amortizableRexallRequest = {
+  ...base,
+  id: 'mr-vyvanse',
+  status: 'completed',
+  authoredOn: '2026-03-02T00:00:00Z',
+  medicationReference: { reference: '#med-vyvanse' },
+  contained: [
+    {
+      resourceType: 'Medication',
+      id: 'med-vyvanse',
+      code: { text: 'VYVANSE 10 mg capsule' },
+      ingredient: [
+        {
+          itemCodeableConcept: { text: 'VYVANSE 10 mg capsule' },
+          strength: { numerator: { unit: 'mg', value: 10 }, denominator: { value: 1 } },
+        },
+      ],
+    },
+  ],
+  dosageInstruction: [],
+  dispenseRequest: {
+    numberOfRepeatsAllowed: 2,
+    quantity: { value: 30, unit: 'capsule' },
+    expectedSupplyDuration: {
+      value: 30,
+      unit: 'day',
+      system: 'http://unitsofmeasure.org',
+      code: 'd',
+    },
+    extension: [{ url: WildflowerExtension.RepeatsAvailable, valueInteger: 1 }],
+  },
+}
+
 const SHOPPERS_DIN_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din'
 
 const CAREBOOK_EXTENSION_BASE = 'http://schemas.carebook.com/v1/fhir'
@@ -143,6 +180,7 @@ const prePromotionShoppersRequest = {
 }
 
 export {
+  amortizableRexallRequest,
   base,
   CAREBOOK_DESCRIPTION_EXTENSION,
   CAREBOOK_DIN_SYSTEM,

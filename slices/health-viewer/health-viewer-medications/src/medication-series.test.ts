@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { medicationSeriesIdOf } from './medication-series-key.ts'
 import {
+  AMORTIZED_DOSE_NOTE,
   DOSE_BASIS_NOTES,
   type MedicationSeries,
   displayUnitOf,
@@ -26,7 +27,12 @@ const regimenArb: fc.Arbitrary<DoseRegimen> = fc
     // `''` is a name that normalised to nothing, which must not merge.
     normalizedName: fc.constantFrom('metformin', 'insulin glargine', ''),
     unit: fc.constantFrom('mg', 'mL', null),
-    per: fc.constantFrom<DoseRegimen['per']>('administration', 'd'),
+    // An amortized dose is always per day.
+    doseBasisAndDerivation: fc.constantFrom<Pick<DoseRegimen, 'per' | 'derivation'>>(
+      { per: 'administration', derivation: 'stated' },
+      { per: 'd', derivation: 'stated' },
+      { per: 'd', derivation: 'amortized' }
+    ),
     start: fc.integer({ min: 0, max: 1_000 }),
     length: fc.option(fc.integer({ min: 0, max: 400 }), { nil: null }),
     amount: fc.double({ min: 0, max: 1e4, noNaN: true }),
@@ -34,8 +40,9 @@ const regimenArb: fc.Arbitrary<DoseRegimen> = fc
     status: fc.constantFrom<DoseRegimen['status']>('active', 'completed', 'stopped', 'on-hold'),
     name: fc.string({ maxLength: 12 }),
   })
-  .map(({ start, length, ...rest }) => ({
+  .map(({ start, length, doseBasisAndDerivation, ...rest }) => ({
     ...rest,
+    ...doseBasisAndDerivation,
     requestId: '',
     start: at(start),
     end: length === null ? null : at(start + length),
@@ -163,7 +170,7 @@ describe('doseRegimensToSeries', () => {
     )
   })
 
-  test("each level carries its regimen's dose, band, basis note and hold style", () => {
+  test("each level carries its regimen's dose, band, basis or amortized note, and hold style", () => {
     fc.assert(
       fc.property(regimensArb, (regimens) => {
         for (const series of doseRegimensToSeries(regimens)) {
@@ -171,7 +178,11 @@ describe('doseRegimensToSeries', () => {
           series.levels.forEach((doseLevel, index) => {
             const regimen = seriesRegimens[index]
             expect(doseLevel.value).toBe(regimen.amount)
-            expect(doseLevel.note).toBe(DOSE_BASIS_NOTES[regimen.per])
+            expect(doseLevel.note).toBe(
+              regimen.derivation === 'amortized'
+                ? AMORTIZED_DOSE_NOTE
+                : DOSE_BASIS_NOTES[regimen.per]
+            )
             expect(doseLevel.lineStyle === 'dashed').toBe(regimen.status === 'on-hold')
             if (regimen.rangeLow === null) {
               expect('low' in doseLevel).toBe(false)
@@ -213,6 +224,7 @@ describe('doseRegimensToSeries', () => {
       rangeLow: null,
       unit: 'mg',
       per: 'administration',
+      derivation: 'stated',
       start: at(0),
       end: null,
       ...overrides,
@@ -263,6 +275,23 @@ describe('doseRegimensToSeries', () => {
       expect(series.map((one) => [one.id, one.unit, one.levels[0].note])).toEqual([
         ['m:metformin|mg|administration', 'mg', 'per dose'],
         ['m:metformin|mg|d', 'mg/d', 'per day'],
+      ])
+    })
+
+    test('a stated and an amortized daily dose of one drug share a series, told apart by note', () => {
+      const march = DateTime.unsafeMake('2026-03-01T00:00:00Z')
+      const series = doseRegimensToSeries([
+        regimen({ requestId: 'mr-stated', amount: 1000, per: 'd' }),
+        regimen({
+          requestId: 'mr-amortized',
+          amount: 1000,
+          per: 'd',
+          derivation: 'amortized',
+          start: march,
+        }),
+      ])
+      expect(series.map((one) => [one.id, one.levels.map((doseLevel) => doseLevel.note)])).toEqual([
+        ['m:metformin|mg|d', ['per day', 'per day, amortized over the supply']],
       ])
     })
 

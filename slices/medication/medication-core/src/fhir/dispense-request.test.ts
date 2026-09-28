@@ -9,6 +9,7 @@ import {
   nextFillDateOf,
   repeatsAllowedOf,
   repeatsAvailableOf,
+  supplyDaysPerFillOf,
 } from './dispense-request.ts'
 import { base, CAREBOOK_REPEATS_AVAILABLE_EXTENSIONS, decode } from './test-helpers.ts'
 
@@ -165,5 +166,41 @@ describe('authorizedSupplyEndOf', () => {
 
   test('treats a supply end past the representable dates as no estimate', () => {
     expect(supplyEndFromJanuary({ expectedSupplyDuration: { value: 1e300, code: 'd' } })).toBeNull()
+  })
+})
+
+describe('supplyDaysPerFillOf', () => {
+  const supplyDaysOf = (expectedSupplyDuration: Record<string, unknown>): number | null =>
+    supplyDaysPerFillOf(decode({ ...base, dispenseRequest: { expectedSupplyDuration } }))
+
+  test('reads a supply in days as that many days, whatever the repeats', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 365 }), fc.nat(12), (supplyDays, repeats) => {
+        const request = decode({
+          ...base,
+          dispenseRequest: {
+            numberOfRepeatsAllowed: repeats,
+            expectedSupplyDuration: { value: supplyDays, unit: 'days', code: 'd' },
+          },
+        })
+        expect(supplyDaysPerFillOf(request)).toBe(supplyDays)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  test('converts weeks and months to days, a month being 30, and reads a bare value as days', () => {
+    expect(supplyDaysOf({ value: 2, code: 'wk' })).toBe(14)
+    expect(supplyDaysOf({ value: 3, unit: 'months' })).toBe(90)
+    expect(supplyDaysOf({ value: 30 })).toBe(30)
+  })
+
+  test('is null without a positive supply duration', () => {
+    expect(supplyDaysPerFillOf(decode(base))).toBeNull()
+    expect(supplyDaysOf({ code: 'd' })).toBeNull()
+    expect(supplyDaysOf({ value: 0, code: 'd' })).toBeNull()
+    expect(supplyDaysOf({ value: -30, code: 'd' })).toBeNull()
+    // Rounded to whole days by `supplyDurationToParts`, a sliver of a day is none.
+    expect(supplyDaysOf({ value: 0.3, code: 'd' })).toBeNull()
   })
 })

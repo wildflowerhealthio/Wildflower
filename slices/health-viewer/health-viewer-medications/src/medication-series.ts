@@ -27,11 +27,25 @@ interface MedicationSeries extends LevelSeries.LevelSeries {
   readonly levels: readonly DoseLevel[]
 }
 
-/** The readout note each dose basis is shown with, beside the dose. */
+/** The readout note each stated dose basis is shown with, beside the dose. */
 const DOSE_BASIS_NOTES: Readonly<Record<DoseBasis, string>> = {
   administration: 'per dose',
   d: 'per day',
 }
+
+/**
+ * The readout note an amortized dose is shown with in place of its basis's:
+ * an amortized dose is always per day, and the note says it is the dispensed
+ * supply spread over the days it lasts rather than a dose the request states.
+ */
+const AMORTIZED_DOSE_NOTE = 'per day, amortized over the supply'
+
+/**
+ * The note a regimen's level is shown with: {@link AMORTIZED_DOSE_NOTE} for an
+ * amortized dose, else its basis's {@link DOSE_BASIS_NOTES} entry.
+ */
+const doseNoteOf = (regimen: DoseRegimen): string =>
+  regimen.derivation === 'amortized' ? AMORTIZED_DOSE_NOTE : DOSE_BASIS_NOTES[regimen.per]
 
 /**
  * The unit a medication series is shown in: the dose unit, with `/d` appended
@@ -58,15 +72,16 @@ const medicationSeriesKeyOf = (regimen: DoseRegimen): MedicationSeriesKey => ({
 
 /**
  * The level `regimen` plots as before a later regimen clips it: its dose over
- * its whole period, a dose range's floor as the band's `low`, the basis as the
- * note, and a dashed line while the request is on hold.
+ * its whole period, a dose range's floor as the band's `low`, the basis — or
+ * that the dose is amortized — as the note ({@link doseNoteOf}), and a dashed
+ * line while the request is on hold.
  */
 const doseLevelOf = (regimen: DoseRegimen): DoseLevel => ({
   start: regimen.start,
   end: regimen.end,
   value: regimen.amount,
   ...(regimen.rangeLow === null ? {} : { low: regimen.rangeLow }),
-  note: DOSE_BASIS_NOTES[regimen.per],
+  note: doseNoteOf(regimen),
   lineStyle: regimen.status === 'on-hold' ? 'dashed' : 'solid',
   requestId: regimen.requestId,
 })
@@ -97,7 +112,8 @@ const compareRegimensByStartThenEnd = (left: DoseRegimen, right: DoseRegimen): n
 
 /**
  * Merge dose regimens into the step lines the chart draws: one series per
- * medication, dose unit and dose basis.
+ * medication, dose unit and dose basis. A stated and an amortized daily dose
+ * of one drug in one unit share a series; each level's note says which it is.
  *
  * @param regimens - Read by `medication-core/fhir`'s
  *   `medicationRequestsToDoseRegimens`, in any order
@@ -165,5 +181,11 @@ const medicationRequestsToSeries = (
   return { series: doseRegimensToSeries(regimens), undated, dropped }
 }
 
-export { DOSE_BASIS_NOTES, displayUnitOf, doseRegimensToSeries, medicationRequestsToSeries }
+export {
+  AMORTIZED_DOSE_NOTE,
+  DOSE_BASIS_NOTES,
+  displayUnitOf,
+  doseRegimensToSeries,
+  medicationRequestsToSeries,
+}
 export type { DoseLevel, MedicationSeries }

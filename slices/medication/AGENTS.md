@@ -32,10 +32,17 @@ catalog onto it.
   `undated` / `dropped` counts), one file per area: `dosage.ts` reads the first
   instruction's first dose, `per` administration or as a daily total (`d`)
   when `timing.ts` can scale it — `timing.repeat` states frequency per `h` /
-  `d` / `wk` / `mo`, a month being 30 days; `regimen-period.ts` places it from
-  `validityPeriod.start` or `authoredOn` to the validity end or
-  `dispense-request.ts`'s authorized-supply end; `dose-regimen.ts` assembles
-  the regimen for the health viewer's dose lines. No DOM, no platform imports.
+  `d` / `wk` / `mo`, a month being 30 days; `amortized-dose.ts` reads a request
+  that states no dose (pharmacy imports carry an empty `dosageInstruction`) as
+  its dispensed supply amortized into a daily dose — `dispenseRequest.quantity`
+  over the days one fill lasts (`dispense-request.ts`'s `supplyDaysPerFillOf`),
+  scaled by the Medication's single per-unit ingredient strength when it has
+  one; `regimen-period.ts` places it from `validityPeriod.start` or
+  `authoredOn` to the validity end or `dispense-request.ts`'s authorized-supply
+  end; `dose-regimen.ts` assembles the regimen for the health viewer's dose
+  lines, a stated dose always winning over an amortized one. Every `Dose`
+  records its `derivation`: `stated` or `amortized`. No DOM, no platform
+  imports.
 - `medication-interaction-core` — the pure interaction layer. The compact
   bundled-file schema (`DdinterFile`: a drug table plus
   `[indexA, indexB, severityCode]` triples) and its decoder to an
@@ -159,6 +166,20 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
   conversion (`DAYS_PER_PERIOD_UNIT`, keyed by `fhir-r4`'s `Timing.UnitOfTime`)
   is this package's own table: `Timing.repeat` units are normalised to a rate,
   not added to a date.
+- **An amortized dose is a fallback, never a correction.** It is read only
+  when the first instruction states no dose, and it assumes the whole fill is
+  taken evenly over its supply — an as-needed drug reads as a steady daily
+  dose, which is why `derivation` flags it for the UI to say so. It is always
+  per day (`per: 'd'`) with no range floor. Repeats do not change it: every
+  fill is one `quantity` over one `expectedSupplyDuration`. It is scaled by
+  strength only when the contained Medication (the `#id` it references, else
+  the first) has exactly one ingredient whose `strength.denominator` is one
+  dispensed unit — value 1, in no unit or the dispensed quantity's — and is in
+  the numerator's unit; otherwise it stays in the dispensed unit (or none). No
+  positive quantity, or no positive supply duration, leaves the request
+  without a dose, dropped. The supply days go through the same
+  `supplyDurationToParts` as the authorized-supply end, converted to days by
+  `DAYS_PER_SUPPLY_PART` (a month 30 days, as `timing.ts` takes it; a year 365).
 - The medication-view and dose-regimen readers take `MedicationRequestWithId`
   (`medication-request-with-id.ts`) — the FHIR server always returns an `id`,
   so there is no fallback or positional key: `Medication.id` is `request.id`,

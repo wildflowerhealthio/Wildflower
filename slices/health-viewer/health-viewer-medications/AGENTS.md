@@ -15,9 +15,10 @@ viewer knowledge and lives here. The chart math it feeds lives in
   `DoseLevel`s naming the request each was read from) and
   `medicationRequestsToSeries` (the descriptor's `read`: requests → regimens →
   series, with `medication-core`'s `undated` / `dropped` counts passed
-  through). Also the presentation: the basis as each level's `note`, a dashed
-  line while a request is `on-hold`, `/d` on a daily total's unit, and a
-  `'from-zero'` axis.
+  through). Also the presentation: the basis as each level's `note` — or, for
+  a dose amortized over the dispensed supply, "per day, amortized over the
+  supply" (`AMORTIZED_DOSE_NOTE`) — a dashed line while a request is
+  `on-hold`, `/d` on a daily total's unit, and a `'from-zero'` axis.
 - `src/medication-series-key.ts` — `MedicationSeriesKey` (`medication`,
   `doseUnit`, `doseBasis`) and its id grammar under the `m` prefix:
   `m:<medication>|<doseUnit>|<doseBasis>`, written through `SeriesId`.
@@ -41,6 +42,12 @@ viewer knowledge and lives here. The chart math it feeds lives in
   one drug's doses in `mg` and in `mL`. Nothing converts between them. The
   series' `unit` shows the basis (`mg` per dose, `mg/d` per day, `/d` for a
   unitless daily total) so the catalogue can tell the two rows apart.
+- **A stated and an amortized dose share a series.** A request's
+  `derivation` is not part of the key: a stated 20 mg/day and a pharmacy
+  import's amortized 20 mg/day of one drug are the same quantity on the same
+  scale, so they draw as steps of one line (the later request taking over as
+  usual) and the id grammar stays as it is. Each level's note tells the two
+  apart.
 - **An unnamed request is its own series.** A regimen whose name normalises to
   nothing keys on `#<requestId>` — `normalizeName` writes only `[a-z0-9 ]`, so
   the fallback never collides with a real name, and unrelated unnamed requests

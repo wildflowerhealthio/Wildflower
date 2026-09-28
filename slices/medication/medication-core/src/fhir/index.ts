@@ -13,9 +13,11 @@
  *
  * {@link medicationRequestToDoseRegimen} reads the same request as a
  * {@link DoseRegimen} — its first instruction's dose, per administration or as
- * a daily total, over the period the request was in effect — for a chart to
- * draw as one step of a dose line; {@link medicationRequestsToDoseRegimens}
- * reads a bundle's worth and counts the requests that yield none.
+ * a daily total, or, when it states none, its dispensed supply amortized into
+ * a daily dose ({@link DoseDerivation}), over the period the request was in
+ * effect — for a chart to draw as one step of a dose line;
+ * {@link medicationRequestsToDoseRegimens} reads a bundle's worth and counts
+ * the requests that yield none.
  *
  * Kept behind the `medication-core/fhir` subpath so importing the pure matcher
  * from `medication-core` does not pull in `fhir-r4`'s schemas.
@@ -30,7 +32,7 @@ export {
   type DoseRegimen,
   type DoseRegimenBatch,
 } from './dose-regimen.ts'
-export type { Dose, DoseBasis } from './dosage.ts'
+export type { Dose, DoseBasis, DoseDerivation } from './dosage.ts'
 export { nextFillDateOf, repeatsAllowedOf, repeatsAvailableOf } from './dispense-request.ts'
 export { displayNameOf } from './display-name.ts'
 export { dosageTextOf, noteOf, requesterOf } from './free-text.ts'
