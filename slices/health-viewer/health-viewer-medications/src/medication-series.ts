@@ -114,19 +114,22 @@ const compareRegimensByStartThenEnd = (left: DoseRegimen, right: DoseRegimen): n
  * a zoomed-in baseline would overstate a change.
  */
 const doseRegimensToSeries = (regimens: readonly DoseRegimen[]): readonly MedicationSeries[] => {
-  const regimensById = new Map<string, { key: MedicationSeriesKey; regimens: DoseRegimen[] }>()
+  const regimensBySeriesId = new Map<
+    string,
+    { key: MedicationSeriesKey; regimens: DoseRegimen[] }
+  >()
   for (const regimen of regimens) {
     const key = medicationSeriesKeyOf(regimen)
     const id = medicationSeriesIdOf(key)
-    const existing = regimensById.get(id)
+    const existing = regimensBySeriesId.get(id)
     if (existing === undefined) {
-      regimensById.set(id, { key, regimens: [regimen] })
+      regimensBySeriesId.set(id, { key, regimens: [regimen] })
     } else {
       existing.regimens.push(regimen)
     }
   }
 
-  return [...regimensById.entries()].map(([id, { key, regimens: seriesRegimens }]) => {
+  return [...regimensBySeriesId.entries()].map(([id, { key, regimens: seriesRegimens }]) => {
     // `toSorted` is stable, so full ties keep input order.
     const sortedRegimens = seriesRegimens.toSorted(compareRegimensByStartThenEnd)
     const levels = sortedRegimens.map((regimen, index) => {
