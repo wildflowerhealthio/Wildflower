@@ -56,7 +56,7 @@ type SchemaRecord = ReadonlyRecord<string, AnyStringEncodedSchema>
  *
  * @remarks
  * The sole place a decoded-type `infer` survives the refactor, so
- * `SendableMessage`, `UrlParamableMessage`, and the transport all delegate
+ * `SendableMessage` and the transport both delegate
  * their extraction here instead of repeating it.
  *
  * Two extraction steps run, both load-bearing:
@@ -74,7 +74,7 @@ type SchemaRecord = ReadonlyRecord<string, AnyStringEncodedSchema>
  * the constrained `infer M` then pins the apparent type to
  * `{ readonly _tag: string }` rather than letting `any` leak — that's
  * what keeps `message._tag` a safe, non-`any` access in the pump and lets
- * the `callPageReady` sender variance type-check inside generic code.
+ * sender variance type-check inside generic code.
  */
 type Of<R extends SchemaRecord> = {
   readonly [Tag in keyof R]: R[Tag] extends Schema.Schema<infer A, string, never> ? A : never

@@ -3,16 +3,16 @@ import type * as Message from './message.ts'
 
 /**
  * Per-tag handler record for one bridge side's inbound messages, passed
- * to the transport via `BridgeTransport.makeHostTransport` /
- * `makeWebTransport`'s `handlers` tuple (or swapped later through
- * `registerHandlers`).
+ * to a transport as its inbound handlers — `BridgeTransport.makeHostTransport`'s
+ * `handlers` tuple (or swapped later through `registerHandlers`), or a
+ * `HandlerCoordinator` registration on the web side.
  *
  * @remarks
  * Each handler returns a pure `Effect<void>` — it acknowledges the
  * inbound message and has no requirements. Handlers never reply through
- * the bridge directly; a host slice that needs to send proactively
- * captures its transport sender via `HostBindings`' `onPageReady`
- * and dispatches through that captured ref.
+ * the bridge directly; a host that needs to send proactively captures
+ * its transport sender via `makeHostTransport`'s `onPageReady` and
+ * dispatches through that captured ref.
  *
  * This is the fully-typed end of the handler spectrum; {@link Handler}
  * is its routing-erased counterpart, reached once the dispatch fiber has

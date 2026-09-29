@@ -144,9 +144,9 @@ let activeRestore: (() => void) | null = null
  *   before re-installing.
  *
  * @remarks
- * Touching `globalThis.console` is universally available (Node, web,
- * RN, Hermes), so this helper stays in `-core` rather than a `-web`
- * package. The sender comes from the wired transport — typically:
+ * Touching `globalThis.console` is universally available (Node, web),
+ * so this helper stays in `-core` rather than a `-web` package. The
+ * sender comes from the wired transport — typically:
  *
  * ```ts
  * const transport = await Effect.runPromise(makeTransport(...))
@@ -179,7 +179,7 @@ const installConsoleInterceptor = (
   }
 
   // Capture originals so teardown can restore them. `globalThis.console`
-  // is the same object identity across web / node / RN — patching its
+  // is the same object identity across web / node — patching its
   // methods in place is the universal pattern.
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
   const target = globalThis.console as unknown as LogBridgeConsole

@@ -1,55 +1,37 @@
 # Web Handler Coordinator Explanation
 
-The page-side `BridgeTransport` is built **once at boot**, outside React (see `apps/wildflower-react/src/bridges/build-transport.ts`). But each slice's real inbound handlers only exist once its React subtree mounts (a sync starts, a tunnel request fires). This document explains how the web bridges that lifecycle gap with a **handler coordinator** instead of per-slice module-level forwarder cells.
+The page-side bridge transport is built **once at boot**, outside React: the Tauri entry (`apps/wildflower-tauri/src/main.tsx`) calls `makeTauriTransport` from its `makeTransport` factory, and the standalone web entry uses `stubTransport`. But each slice's real inbound handlers only exist once its React subtree mounts (a sync starts, a recording begins). This document explains how the web bridges that lifecycle gap with a **handler coordinator** instead of per-slice module-level forwarder cells.
 
 ## The mechanism
 
-`makeHandlerCoordinator` (in `effect-messaging-react`) holds one inbound handler record per bridge **name**. On every change it recomposes the full per-bridge tuple in `bridges` order and calls the transport's `registerHandlers` **once** — `registerHandlers` has replace-the-whole-tuple semantics, so recomposing centrally is what lets independent slices register without clobbering each other.
+The transport exposes a `HandlerCoordinator` (the contract lives in `effect-messaging-core`) that holds one inbound handler record per bridge **name**. `makeTauriTransport` implements it over a name-keyed map that its dispatch reads **at dispatch time**, so a `register` or `unregister` takes effect on the next inbound message without re-listening.
 
-Because the transport needs a complete initial tuple but the coordinator needs the transport's `registerHandlers`, the factory is two-phase:
-
-```ts
-const { initialHandlers, connect } = makeHandlerCoordinator({
-  bridges,
-  inboundDirection: 'HostToWeb',
-  initial,
-})
-// build the transport with `initialHandlers`, then:
-const coordinator = connect(transport.registerHandlers)
-```
-
-A React context (`HandlerCoordinatorContext`, provided in `AppRootTree`) surfaces the coordinator; slices read it with `useHandlerCoordinator()` and `Effect.runFork` its `register` / `unregister` Effects from their own lifecycle:
+A React context (`HandlerCoordinatorContext`, provided in `AppRootTree`) surfaces the coordinator. Each slice binds a typed accessor for its own bridge with `makeUseSliceRegister(bridge)` and `Effect.runFork`s its `register` / `unregister` Effects from its own lifecycle:
 
 - **collector** (`useSyncRunner`) registers its per-sync handler in the `Collector` slot when a sync starts and unregisters on unmount.
-- **apps** (`useRequestTunnel`) registers a per-request, resolver-bound handler in the `Apps` slot and unregisters when the request settles.
+- **har-recorder** (`useHarRecorder`) registers its records in the `Collector` and `HarRecorder` slots while a recording runs.
 
 ## Drop-all default
 
-`registerHandlers` requires a **complete** record per bridge. A bridge with nothing registered gets a generated **drop-all** record — every inbound tag maps to `HandlerHelpers.warnAboutDroppedTag` — so a message that arrives before (or after) a slice is mounted is log-and-dropped rather than crashing. This is the same observable behavior the old forwarder cells had on their `null` branch, now generated once by the coordinator.
+A bridge with nothing registered has no record, and every inbound tag for it is logged and dropped through `HandlerHelpers.warnAboutDroppedTag`. A message that arrives before (or after) a slice is mounted is therefore dropped rather than crashing.
 
-## Set-if-equal and supersede
+## Set-if-equal unregister
 
-- **Set-if-equal unregister.** `unregister(name, record)` only relinquishes the slot if it still holds that exact `record`. A successor mount (StrictMode double-mount, rapid remount) may already have taken the slot; unregistering unconditionally would drop the fresher handler. The set-if-equal check makes stale cleanups no-ops.
-- **Supersede (apps only).** `useRequestTunnel` tracks the in-flight request's `settle` in a module-level cell; a newer request settles the predecessor with a `superseded by newer request` error before registering its own handler, so the prior Promise never dangles and a stale host response can't resolve the new request.
+`unregister(bridge, record)` only relinquishes the slot if it still holds that exact `record`. A successor mount (StrictMode double-mount, rapid remount) may already have taken the slot; unregistering unconditionally would drop the fresher handler. The set-if-equal check makes stale cleanups no-ops, which is why a slice builds its record once and reuses that same object.
 
 ## The gatekeeper exception
 
-Gatekeeper does **not** register on mount. `makeGatekeeperWebHandlers` is a boot-stable handler that writes the auth token into a `SubscriptionRef` (`authTokenRef`); React **subscribes** to that ref rather than being a mounted handler. The token arrives over the bridge _before_ the `_auth` gate renders, so it's seeded into the coordinator's `initial` records at boot. (`authTokenRef` is observable state the handler writes — not a swappable handler cell, so it stays.)
-
-## Why a central coordinator, not a per-bridge merge API
-
-`registerHandlers` replaces the whole tuple. The coordinator owns _all_ slices' records and recomposes the whole tuple on every change — that's what makes independent slice registration safe without adding a per-bridge `registerHandlersFor` merge API (which would carry its own ordering/race questions). The bridges-tuple order is the single source of truth for tuple positions.
+Gatekeeper does **not** register on mount. `makeGatekeeperWebHandlers` is a boot-stable record, seeded through `makeTauriTransport`'s `initial` option, that writes into the entry's `AuthStateStore` and the in-app `ActivePendingConsentStore`. The host pushes `AuthTokenIssued` in response to the page's `__Ready`, _before_ the `_auth` gate renders, so the handler has to be in place from the start. React **subscribes** to those stores rather than being a mounted handler.
 
 ## Page lifetime and boot ordering
 
-The page-side `BridgeTransport` is intentionally never torn down. `apps/wildflower-react/src/bridges/build-transport.ts` creates a `pageLifetimeScope` via `Effect.runSync(Scope.make())` and never closes it — the transport, its dispatch fiber, and the console interceptor live as long as the page does. Tests that need teardown call `BridgeTransport.makeWebTransport` directly with their own scope (see `web-transport.integration.test.ts`).
+The page-side transport is intentionally never torn down: its `BRIDGE_EVENT` listener stays attached for the page's lifetime, and page teardown drops it with the document.
 
-The console interceptor is installed **immediately after the transport is built and before `signalReady` is awaited**, so any `console.*` emitted by Sentry init (`instrument.ts`), the transport's own internals, or the adapter's `drainInitial` rides the outbox-then-flush path. Installing later would silently drop those early lines.
-
-`navigate` is the only seam onto the router, captured behind a stable indirection (a router-instance ref the caller wires up) so the transport build can run before `createRouter` returns.
+`makeTauriTransport` emits `__Ready` only once its listener has attached, so the host's first push cannot race listener setup. The Tauri entry installs the console interceptor after the transport resolves; `console.*` output from before that point stays local.
 
 ## See also
 
 - [Effect Patterns Reference](./Patterns%20Reference.md)
-- `global/effect-messaging/effect-messaging-react/src/handler-coordinator.ts` — `makeHandlerCoordinator`, `useHandlerCoordinator`
-- `slices/gatekeeper/gatekeeper-react/src/client/auth-state-store.ts` — `authTokenRef` (the boot-stable `SubscriptionRef` exception)
+- [Bridge Explanation](../Messaging/Bridge%20Explanation.md)
+- `global/effect-messaging/effect-messaging-tauri/src/tauri-transport.ts` — `makeTauriTransport` and its coordinator
+- `global/effect-messaging/effect-messaging-react/src/handler-coordinator.ts` — `HandlerCoordinatorContext`, `useHandlerCoordinator`, `makeUseSliceRegister`

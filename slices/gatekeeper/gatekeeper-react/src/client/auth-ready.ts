@@ -65,15 +65,15 @@ const embeddedAuthReadyEffect = (
 /**
  * Tauri (`main-tauri`) auth-readiness factory. The host flips the
  * SPA's auth signal over the gatekeeper bridge once the page-side transport
- * calls `transport.signalReady`, so on first paint the embedded
+ * emits its `__Ready` handshake, so on first paint the embedded
  * `AuthStateStore.subscribable` is `Unauthed` AND the transport may not yet be
  * ready to even receive the host's `AuthTokenIssued` message.
  *
  * Closes over the entry-supplied `subscribable` and `transportReady`
  * promise and returns the actual `awaitAuthReady` function the
  * route's `beforeLoad` calls. The returned function awaits
- * `transportReady` first (so the bridge handshake has had a chance to
- * flush the host's URL-param-encoded token messages), then waits the
+ * `transportReady` first (so the host has received the bridge handshake
+ * and can push its token notify), then waits the
  * signal becoming authed for up to {@link EMBEDDED_TOKEN_TIMEOUT};
  * resolves on the first authed value, rejects with
  * {@link TokenTimeout} on timeout. Any `FiberFailure` wrapping is
@@ -82,7 +82,7 @@ const embeddedAuthReadyEffect = (
  *
  * @param subscribable - The entry's `AuthStateStore.subscribable`.
  * @param transportReady - Promise that resolves once the page-side
- *   `BridgeTransport` has signalled the host (`signalReady`). The
+ *   transport has signalled the host (`__Ready`). The
  *   factory shape is what lets the route-level gate stay
  *   environment-agnostic — `beforeLoad` only sees the resolved
  *   `() => Promise<void>` and doesn't have to know about the
