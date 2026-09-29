@@ -4,7 +4,7 @@
 // count, not reduce it.
 import { Ajv } from 'ajv'
 import draft06 from 'ajv/dist/refs/json-schema-draft-06.json' with { type: 'json' }
-import { DateTime, Duration, Schema } from 'effect'
+import { DateTime, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import afterRequestSchema from 'har-schema/lib/afterRequest.json' with { type: 'json' }
 import beforeRequestSchema from 'har-schema/lib/beforeRequest.json' with { type: 'json' }
@@ -30,7 +30,14 @@ import { describe, expect, test } from 'vite-plus/test'
 import { noTimings } from 'web-trace-core'
 import type { TraceExchange } from 'web-trace-core'
 import { arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
-import { CREATOR_NAME, DROPPED_REQUEST_ON_IMPORT_COMMENT, emitHar, emitHarFromLog } from './emit.ts'
+import {
+  CREATOR_NAME,
+  DROPPED_REQUEST_ON_IMPORT_COMMENT,
+  emitHar,
+  emitHarFromLog,
+  harToJson,
+  queryStringOf,
+} from './emit.ts'
 import { Har } from './har.ts'
 import type * as HttpArchive from './http-archive.ts'
 
@@ -263,5 +270,34 @@ describe('emitHarFromLog', () => {
       requestComment: 'The request side was never observed.',
     })
     expect(validateHar(encode(archive))).toBe(true)
+  })
+})
+
+describe('harToJson', () => {
+  const archive = (): Har => emit([traceExchange()])
+
+  test('writes one line by default', () => {
+    const text = Effect.runSync(harToJson(archive()))
+    expect(text).not.toContain('\n')
+    expect(JSON.parse(text)).toEqual(encode(archive()))
+  })
+
+  test('pretty writes the same archive indented by two spaces', () => {
+    const text = Effect.runSync(harToJson(archive(), { pretty: true }))
+    expect(text).toBe(JSON.stringify(encode(archive()), null, 2))
+  })
+})
+
+describe('queryStringOf', () => {
+  test('lists every parameter in order, repeats included', () => {
+    expect(queryStringOf('https://portal.example.org/search?code=a&code=b&page=2')).toEqual([
+      { name: 'code', value: 'a' },
+      { name: 'code', value: 'b' },
+      { name: 'page', value: '2' },
+    ])
+  })
+
+  test('a URL that does not parse has no query string', () => {
+    expect(queryStringOf('not a url?q=1')).toEqual([])
   })
 })

@@ -18,11 +18,13 @@ import { Schema } from 'effect'
  * shape; `emit.test.ts` validates against it.
  *
  * Decoding is deliberately forgiving. Fields the spec requires but an import
- * has no opinion about default rather than fail, and unknown keys are ignored —
- * which is what lets a Chrome DevTools export, with its `pages`, cookies,
- * `postData` and `_`-prefixed vendor extras, decode against this at all.
- * Encoding is canonical: it writes every field the spec requires, and a body
- * always goes out as base64.
+ * has no opinion about default rather than fail, fields the spec leaves
+ * optional stay optional, and unknown keys are ignored — which is what lets a
+ * Chrome DevTools export, with its `postData` and `_`-prefixed vendor extras,
+ * decode against this at all. Those extras are dropped here; `ChromeHar`
+ * (`chrome-har.ts`) is the same schema with them kept. Encoding is canonical:
+ * it writes every field the spec requires, and a body goes out as the
+ * {@link HarBody} case says it was stored.
  *
  * @packageDocumentation
  */
@@ -115,9 +117,9 @@ const storedTextOf = (
  * HAR `content` — the response body, or the record of one that was not stored.
  *
  * @remarks
- * Encoding always writes base64, so a text body read from a foreign archive
- * comes back out base64-encoded. That is the one place this codec normalizes
- * rather than preserves; the bytes are identical either way.
+ * Encoding writes the body the way the {@link HarBody} case says it was
+ * stored: a {@link HarBase64Body} with `encoding: 'base64'`, a
+ * {@link HarTextBody} as plain `text`, and a {@link HarNoBody} with neither.
  */
 const HarContent = Schema.transform(HarContentJson, HarContentDecoded, {
   strict: true,
@@ -160,16 +162,29 @@ const HarResponse = Schema.Struct({
   comment: Schema.optional(Schema.String),
 })
 
-/** HAR `timings`, in milliseconds. `-1` is the spec's "not applicable or not measured". */
+/**
+ * HAR `timings`, in milliseconds. `-1` is the spec's "not applicable or not measured".
+ *
+ * @remarks
+ * `send`, `wait` and `receive` are required by the spec, so they default to
+ * `-1`; the connection phases (`blocked`, `dns`, `connect`, `ssl`) are
+ * optional in the spec and stay absent when an archive does not state them.
+ */
 const HarTimings = Schema.Struct({
+  blocked: Schema.optional(Schema.Number),
+  dns: Schema.optional(Schema.Number),
+  connect: Schema.optional(Schema.Number),
   send: Schema.optionalWith(Schema.Number, { default: () => NOT_MEASURED }),
   wait: Schema.optionalWith(Schema.Number, { default: () => NOT_MEASURED }),
   receive: Schema.optionalWith(Schema.Number, { default: () => NOT_MEASURED }),
+  ssl: Schema.optional(Schema.Number),
   comment: Schema.optional(Schema.String),
 })
 
 /** HAR `entry` — one exchange. */
 const HarEntry = Schema.Struct({
+  /** The {@link HarPage} `id` this exchange belongs to. */
+  pageref: Schema.optional(Schema.String),
   startedDateTime: Schema.DateTimeUtc,
   time: Schema.optionalWith(Schema.Number, { default: () => NOT_MEASURED }),
   request: HarRequest,
@@ -178,6 +193,30 @@ const HarEntry = Schema.Struct({
   timings: Schema.optionalWith(HarTimings, {
     default: () => ({ send: NOT_MEASURED, wait: NOT_MEASURED, receive: NOT_MEASURED }),
   }),
+  /** The IP address of the server that answered. */
+  serverIPAddress: Schema.optional(Schema.String),
+  /** The id of the client–server connection, e.g. the TCP/IP port. */
+  connection: Schema.optional(Schema.String),
+  comment: Schema.optional(Schema.String),
+})
+
+/**
+ * HAR `pageTimings`, in milliseconds from the page's `startedDateTime`. Both
+ * are optional in the spec, so an archive that did not measure one leaves it
+ * out.
+ */
+const HarPageTimings = Schema.Struct({
+  onContentLoad: Schema.optional(Schema.Number),
+  onLoad: Schema.optional(Schema.Number),
+  comment: Schema.optional(Schema.String),
+})
+
+/** HAR `page` — one navigation, which entries point back to by `pageref`. */
+const HarPage = Schema.Struct({
+  startedDateTime: Schema.DateTimeUtc,
+  id: Schema.String,
+  title: Schema.optionalWith(Schema.String, { default: () => '' }),
+  pageTimings: Schema.optionalWith(HarPageTimings, { default: () => ({}) }),
   comment: Schema.optional(Schema.String),
 })
 
@@ -196,6 +235,7 @@ const HarLog = Schema.Struct({
   creator: Schema.optionalWith(HarCreator, {
     default: () => ({ name: 'unknown', version: '0' }),
   }),
+  pages: Schema.optional(Schema.Array(HarPage)),
   entries: Schema.Array(HarEntry),
   comment: Schema.optional(Schema.String),
 })
@@ -219,6 +259,8 @@ type HarCreator = typeof HarCreator.Type
 type HarEntry = typeof HarEntry.Type
 type HarLog = typeof HarLog.Type
 type HarNameValue = typeof HarNameValue.Type
+type HarPage = typeof HarPage.Type
+type HarPageTimings = typeof HarPageTimings.Type
 type HarRequest = typeof HarRequest.Type
 type HarResponse = typeof HarResponse.Type
 type HarTimings = typeof HarTimings.Type
@@ -235,6 +277,8 @@ export {
   HarLog,
   HarNameValue,
   HarNoBody,
+  HarPage,
+  HarPageTimings,
   HarRequest,
   HarResponse,
   HarTextBody,

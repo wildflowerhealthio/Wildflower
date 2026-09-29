@@ -10,9 +10,21 @@ anonymizer reaching sideways into the importer.
 
 ## Shape
 
-- `src/har.ts` — **the HAR 1.2 format** (`Har`, `HarFromJson`, `HarEntry`,
-  `HarResponse`, `HarBody` and friends, `NOT_MEASURED`), held to the published
-  spec by `har-schema` compiled through `ajv`.
+- `src/har.ts` — **the HAR 1.2 format** (`Har`, `HarFromJson`, `HarLog`,
+  `HarPage`, `HarEntry`, `HarResponse`, `HarTimings`, `HarBody` and friends,
+  `NOT_MEASURED`), held to the published spec by `har-schema` compiled
+  through `ajv`. Fields the spec requires default when absent (`-1` for an
+  unmeasured number); fields it leaves optional (`pages`, `pageref`,
+  `serverIPAddress`, `connection`, the `blocked`/`dns`/`connect`/`ssl`
+  phases, `pageTimings`) stay optional. Unknown keys are ignored, so the
+  `_`-prefixed vendor extras of a DevTools export are dropped on decode.
+- `src/chrome-har.ts` — **`ChromeHar`**: the same format with the Chrome
+  DevTools entry extras declared (`ChromeHarEntry` adds `_initiator`,
+  `_priority`, `_resourceType`; `ChromeHarLog`, `ChromeHarFromJson`,
+  `chromeHarToJson` / `chromeHarFromJson`), so a producer or reader of a
+  Chrome-shaped archive keeps them. Kept off the base schemas because they are
+  one browser's extension, not the format. A `ChromeHar` is structurally a
+  `Har`; writing one through `harToJson` drops the extras.
 - `src/emit.ts` — **`emitHar` / `emitHarFromLog`**: build an archive from
   captured `TraceExchange`es or from an `HttpArchive.Log`, plus the comment
   constants that annotate what an import did not carry through
@@ -20,11 +32,13 @@ anonymizer reaching sideways into the importer.
   than one producer, so `creatorName` and `requestComment` are options — the
   HAR recorder names itself and states that its request side was never
   observed, while the anonymizer takes the defaults (`CREATOR_NAME`,
-  `DROPPED_REQUEST_ON_IMPORT_COMMENT`).
+  `DROPPED_REQUEST_ON_IMPORT_COMMENT`). Also `harToJson` / `harFromJson`
+  (the `.har` file text; `{ pretty: true }` indents two spaces as DevTools
+  does) and `queryStringOf` (a URL's parameters as `request.queryString`).
 - `src/http-archive.ts` — the **`HttpArchive`** projection an importer and a
   replay consume (`Entry`, `Log`, `LogFromHarJson`): the response half of each
   archived exchange, a schema in both directions.
-- `src/index.ts` — re-exports the three modules; the package root is what was
+- `src/index.ts` — re-exports the four modules; the package root is what was
   the `har-importer-core/har` subpath.
 
 ## Layering
@@ -41,7 +55,11 @@ dissolves `slices/web-trace` — `web-trace-core` (`TraceExchange`,
 - `http-archive.test.ts` — the projection round-trips through
   `LogFromHarJson`; a foreign archive decodes to the response half it observed.
 - `emit.test.ts` — an emitted archive validates against the HAR spec and
-  round-trips the exchanges it was built from.
+  round-trips the exchanges it was built from; `harToJson` writes compact or
+  pretty text of the same archive.
+- `chrome-har.test.ts` — a `ChromeHar` round-trips pages, `pageref` and the
+  DevTools extras through its file text; the base `Har` reads the same export
+  with only the extras dropped.
 
 ## References
 
