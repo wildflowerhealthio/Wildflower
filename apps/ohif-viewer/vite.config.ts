@@ -19,14 +19,16 @@ export default defineConfig({
     tasks: {
       build: {
         command: 'node ./src/build.ts',
-        untrackedEnv: [
-          'HTTPS_PROXY',
-          'HTTP_PROXY',
-          'NO_PROXY',
-          'NODE_EXTRA_CA_CERTS',
-          'NODE_USE_ENV_PROXY',
-          'SSL_CERT_FILE',
-        ],
+        cache: {
+          untrackedEnv: [
+            'HTTPS_PROXY',
+            'HTTP_PROXY',
+            'NO_PROXY',
+            'NODE_EXTRA_CA_CERTS',
+            'NODE_USE_ENV_PROXY',
+            'SSL_CERT_FILE',
+          ],
+        },
       },
     },
   },
