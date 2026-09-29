@@ -29,6 +29,12 @@ names a person or tells a particular story.
   `DocumentReference`'s `attachment.url`), the `index.json` manifest schema,
   and `DataSet.assemble`, which gives every file to write. Writing them to
   disk is the data repo's.
+- **[`synthetic-data-react`](./synthetic-data-react/AGENTS.md)** — the
+  browser half of loading a published data set: `SyntheticDataScreen` reads
+  its `index.json` and the picked people's files (each source file's HAR or
+  DICOM inline again, checked against its hash) and writes them to a FHIR
+  server with `persistBatchBundle`, reporting each entry. The SMART app that
+  mounts it is [`apps/synthetic-data-app`](../../apps/synthetic-data-app/AGENTS.md).
 
 ## Rules
 

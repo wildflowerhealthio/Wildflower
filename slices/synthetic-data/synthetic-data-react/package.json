@@ -1,0 +1,68 @@
+{
+  "name": "synthetic-data-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser UI for loading a published synthetic data set into a FHIR server: reads the data set's index.json manifest from its static host, lists its people to pick from, fetches each picked person's fhir/<Type>/<id>.json files (every source file's HAR or DICOM carried inline again, checked against its size and hash), writes them in batch bundles through persistBatchBundle, and reports each entry's result.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/synthetic-data/synthetic-data-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "har-importer-core": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-tundraish": "workspace:*",
+    "smart-app-react": "workspace:*",
+    "synthetic-data-core": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-tundraish": "workspace:*",
+    "smart-app-react": "workspace:*",
+    "synthetic-data-core": "workspace:*"
+  }
+}

@@ -1,0 +1,87 @@
+/*
+ * A finished load's results, in the importer's results layout: the heading and
+ * tally, then one foldable section per echoed status.
+ */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--font-size-4);
+}
+
+.summary {
+  margin: 0;
+  font-size: var(--font-size-3);
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* One status — failures open, successes folded. */
+.statusSection {
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  padding: var(--space-3);
+}
+
+.statusSummary {
+  cursor: pointer;
+  font-weight: var(--font-weight-3);
+  color: var(--color-neutral-2);
+}
+
+.statusSummary[data-status-ok='true'] {
+  color: var(--color-neutral-4);
+}
+
+.outcomeList {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.outcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-2);
+}
+
+.target {
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-3);
+  word-break: break-all;
+}
+
+/* The server's own diagnostics for a resource: its OperationOutcome issues. */
+.issueList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.issue {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-2);
+  word-break: break-word;
+}
+
+.issueCode {
+  font-family: var(--font-mono);
+  color: var(--color-neutral-4);
+}

@@ -165,7 +165,12 @@ reidentification)`: an already de-identified Part 10 file (the data set
   not laid out with it; `ConflictingFiles` for two different files at one
   path, also across the sets `merge` joins. `ResourcePathSchema` and
   `StaticFilePathSchema` are the path grammars (allowlists: no separators,
-  no parent directories).
+  no parent directories). The reading half is the app's:
+  `ResourceJsonSchema` decodes a resource file's JSON without reading a
+  relative `url` as `fhir-r4`'s absolute `URL`, `staticFileLinkOf` finds the
+  static file a laid-out source file links to, and `withStaticFileData`, the
+  inverse of `withStaticFileUrl`, carries it inline again, so what the app
+  writes is what the import wrote.
 - **`DataSetManifest`** (`src/data-set/data-set-manifest.ts`) — `index.json`.
   `Schema` is its one definition, which the emit step encodes and the app
   decodes: `schemaVersion` (`1`), `asOf` (ISO instant), `generator` (`name`,
@@ -303,7 +308,11 @@ particular person's story.
   the static file's size and SHA-256, and nothing else changed; every
   `meta.source` resolving; a Shoppers import's last copy kept; determinism
   and input-order independence; and the failures (dangling `meta.source`,
-  two files at one path, unsafe titles, no id), plus the path grammars.
+  two files at one path, unsafe titles, no id), plus the path grammars; and
+  the reading half: every file read back through `ResourceJsonSchema`, with
+  each source file's static file inline again (`staticFileLinkOf`,
+  `withStaticFileData`), encodes as the import did, and only a lone
+  in-layout `url` with no `data` is a link.
 - `src/data-set/data-set-manifest.test.ts` — `manifestOf` over generated
   people and paths (sorted, distinct, totals, people's order kept, file order
   ignored); every manifest reads back from its JSON text as itself; the

@@ -37,6 +37,12 @@ const layOutError = (resources: readonly FhirResource[]): unknown =>
 
 const labelOf = (resource: FhirResource): string => `${resource.resourceType}/${resource.id}`
 
+const bytesOf = (bytesByPath: ReadonlyMap<string, Uint8Array>, path: string): Uint8Array => {
+  const bytes = bytesByPath.get(path)
+  if (bytes === undefined) throw new Error(`${path} is not laid out`)
+  return bytes
+}
+
 const isDocumentReference = (resource: FhirResource): resource is DocumentReference.Type =>
   resource.resourceType === 'DocumentReference'
 
@@ -126,6 +132,49 @@ describe('DataSetLayout.layOut', () => {
           for (const source of sources) {
             expect(files.resources.map(({ path }) => path)).toContain(`fhir/${source}.json`)
           }
+        }),
+        { numRuns: RUNS }
+      )
+    },
+    IMPORT_TIMEOUT_MILLIS
+  )
+
+  test(
+    'property: a reader of the files gets the import back, each source file carrying its static file inline again',
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(rexallPersonCaseArbitrary, async (personCase) => {
+          const { resources } = await importRexallPerson(personCase)
+          const files = layOut(resources)
+          const bytesByPath = new Map(files.staticFiles.map(({ path, bytes }) => [path, bytes]))
+
+          const importedByPath = new Map(
+            resources.map((resource) => [`fhir/${labelOf(resource)}.json`, resource])
+          )
+          for (const file of files.resources) {
+            // What a reader has: the file's text, parsed.
+            const json = Schema.decodeUnknownSync(DataSetLayout.ResourceJsonSchema)(
+              JSON.parse(JSON.stringify(file.json))
+            )
+            const link = DataSetLayout.staticFileLinkOf(json)
+            const readJson =
+              link === undefined
+                ? json
+                : DataSetLayout.withStaticFileData(
+                    link.documentReferenceJson,
+                    bytesOf(bytesByPath, link.staticFilePath)
+                  )
+            const read = Schema.decodeUnknownSync(FhirResourceSchema)(readJson)
+            const imported = importedByPath.get(file.path)
+            if (imported === undefined) throw new Error(`${file.path} was not imported`)
+            expect(Schema.encodeSync(FhirResourceSchema)(read)).toEqual(
+              Schema.encodeSync(FhirResourceSchema)(imported)
+            )
+          }
+          // Only the source files link to a static file.
+          expect(
+            files.resources.filter(({ json }) => DataSetLayout.staticFileLinkOf(json) !== undefined)
+          ).toHaveLength(files.staticFiles.length)
         }),
         { numRuns: RUNS }
       )
@@ -257,6 +306,33 @@ describe('DataSetLayout.layOut', () => {
       ],
       staticFiles: [],
     })
+  })
+})
+
+describe('DataSetLayout.staticFileLinkOf', () => {
+  const documentReferenceJson = (attachment: Record<string, unknown>): DataSetLayout.ResourceJson =>
+    Schema.decodeUnknownSync(DataSetLayout.ResourceJsonSchema)({
+      resourceType: 'DocumentReference',
+      id: 'source-1',
+      status: 'current',
+      content: [{ attachment: { contentType: 'application/json', title: 'a.har', ...attachment } }],
+    })
+
+  test('links a DocumentReference whose one attachment names a static file by url alone', () => {
+    const json = documentReferenceJson({ url: 'har/a.har' })
+    expect(DataSetLayout.staticFileLinkOf(json)).toEqual({
+      documentReferenceJson: json,
+      staticFilePath: 'har/a.har',
+    })
+  })
+
+  test.each([
+    ['carries its data inline', { data: 'aGVsbG8=' }],
+    ['carries its data beside a url', { url: 'har/a.har', data: 'aGVsbG8=' }],
+    ['links outside the data set', { url: 'https://example.com/a.har' }],
+    ['links to a parent directory', { url: 'har/../index.json' }],
+  ])('links nothing for a DocumentReference that %s', (_, attachment) => {
+    expect(DataSetLayout.staticFileLinkOf(documentReferenceJson(attachment))).toBeUndefined()
   })
 })
 

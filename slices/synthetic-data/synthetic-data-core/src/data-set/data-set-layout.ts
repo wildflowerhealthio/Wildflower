@@ -173,8 +173,9 @@ const staticFileOf = (
  *
  * @remarks
  * Rewritten on the JSON rather than the decoded resource because `fhir-r4`'s
- * `Attachment.url` decodes to an absolute `URL`: a reader resolves the
- * relative path against wherever it fetched the data set from.
+ * `Attachment.url` decodes to an absolute `URL`: a reader fetches the
+ * relative path from wherever it read the data set, and
+ * {@link withStaticFileData} carries the file inline again.
  */
 const withStaticFileUrl = (
   documentReferenceJson: DocumentReferenceJson,
@@ -184,6 +185,59 @@ const withStaticFileUrl = (
   content: documentReferenceJson.content.map((content) => ({
     ...content,
     attachment: { ...Struct.omit(content.attachment, 'data'), url: staticFilePath },
+  })),
+})
+
+/**
+ * A resource file's contents: FHIR R4 JSON, checked for shape but not read
+ * into `fhir-r4`'s decoded values, so a laid-out source file's relative `url`
+ * decodes (`FhirResourceSchema` reads a `url` as an absolute `URL`).
+ */
+const ResourceJsonSchema: Schema.Schema<ResourceJson> = Schema.encodedSchema(FhirResourceSchema)
+
+/** A laid-out source file and the path of the static file it links to. */
+interface StaticFileLink {
+  readonly documentReferenceJson: DocumentReferenceJson
+  /** Relative to the data set's root, as {@link StaticFilePathSchema} spells it. */
+  readonly staticFilePath: string
+}
+
+const isStaticFilePath = Schema.is(StaticFilePathSchema)
+
+/**
+ * The static file a resource file's JSON links to, or `undefined` when it is
+ * not a laid-out source file: a `DocumentReference` whose one attachment
+ * carries a {@link StaticFilePathSchema} `url` and no `data` — what
+ * {@link withStaticFileUrl} writes.
+ */
+const staticFileLinkOf = (json: ResourceJson): StaticFileLink | undefined => {
+  if (json.resourceType !== 'DocumentReference') return undefined
+  const [content, ...otherContent] = json.content
+  if (content === undefined || otherContent.length > 0) return undefined
+  const { url, data } = content.attachment
+  return url !== undefined && data === undefined && isStaticFilePath(url)
+    ? { documentReferenceJson: json, staticFilePath: url }
+    : undefined
+}
+
+/**
+ * A laid-out source file's JSON with its static file carried inline again:
+ * `url` is removed and `data` is `bytes`, base64-encoded, as the importer
+ * stored it. The inverse of {@link withStaticFileUrl}; `contentType`, `size`,
+ * `hash` and `title` are kept.
+ *
+ * @remarks
+ * Checking that `bytes` are the file the attachment describes (its `size` and
+ * `hash`) is the reader's, which has the bytes' digest to hand.
+ */
+const withStaticFileData = (
+  documentReferenceJson: DocumentReferenceJson,
+  bytes: Uint8Array
+): DocumentReferenceJson => ({
+  ...documentReferenceJson,
+  content: documentReferenceJson.content.map((content) => ({
+    ...content,
+    attachment: { ...Struct.omit(content.attachment, 'url'), data: Encoding.encodeBase64(bytes) },
   })),
 })
 
@@ -354,14 +408,17 @@ export {
   layOut,
   merge,
   ResourceIdSchema,
+  ResourceJsonSchema,
   ResourcePathSchema,
   resourcePathOf,
   sourceFileDirectoryOf,
   STATIC_FILE_DIRECTORIES,
   StaticFilePathSchema,
   staticFilePathOf,
+  staticFileLinkOf,
   staticFileOf,
   UnplaceableResource,
+  withStaticFileData,
   withStaticFileUrl,
 }
-export type { DocumentReferenceJson, Files, ResourceFile, ResourceJson, StaticFile }
+export type { DocumentReferenceJson, Files, ResourceFile, ResourceJson, StaticFile, StaticFileLink }
