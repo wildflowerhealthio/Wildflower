@@ -69,7 +69,7 @@ tower = { version = "0.5" }
 http-body-util = "0.1"
 # Code-first OpenAPI generation. `preserve_order` keeps schema properties in
 # declaration order so the committed spec snapshot is stable across runs.
-utoipa = { version = "5", features = ["preserve_order"] }
+utoipa = { version = "6", features = ["preserve_order"] }
 # axum integration: collects the OpenAPI spec from the real router so the spec
 # can't drift from the routes (axum 0.8-compatible).
 utoipa-axum = "0.2"
