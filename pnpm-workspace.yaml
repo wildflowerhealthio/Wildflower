@@ -18,22 +18,9 @@ packages:
   - '!**/node_modules/**'
 
 catalog:
-  '@effect/ai': 0.37.0
-  '@effect/cli': 0.77.2
-  '@effect/cluster': 0.60.2
-  '@effect/experimental': 0.61.1
   '@effect/language-service': ^0.87.2
   '@effect/opentelemetry': 0.64.1
   '@effect/platform': 0.97.2
-  '@effect/platform-browser': 0.77.1
-  '@effect/platform-bun': 0.91.2
-  '@effect/platform-node': 0.108.2
-  '@effect/printer': 0.51.0
-  '@effect/printer-ansi': 0.51.0
-  '@effect/rpc': 0.76.2
-  '@effect/sql': 0.52.1
-  '@effect/typeclass': 0.41.0
-  '@effect/workflow': 0.19.1
   '@cornerstonejs/core': 5.11.0
   '@cornerstonejs/dicom-image-loader': 5.11.0
   '@dnd-kit/core': ^6.3.1
@@ -108,12 +95,16 @@ catalog:
   react-dom: 19.3.0
   tundra-css: ^0.14.0
 
-  typescript: 7.0.2
+  # Held on 5.x: the `typescript` 7 npm package is the Go port and ships no
+  # JS compiler API (its main export is only a version string), and
+  # typescript-eslint peers on `<6.1.0`. Type-checking and `.d.ts` emit
+  # already run on TypeScript 7 via `@typescript/native-preview` (tsgolint,
+  # tsgo). Dependabot ignores `typescript` majors (.github/dependabot.yml).
+  typescript: 5.9.3
   # TypeScript 5 under its own name, for the one job TypeScript 7 can't do:
   # apps/fhir-sync-pebble/pkjs lowers its PebbleKit JS bundle to ES5, a target
   # TypeScript 7 dropped and rolldown/oxc never had. The alias keeps it 5.x
-  # whatever `typescript` resolves to: the `typescript` override below matches
-  # the bare name only, not this one.
+  # even once `typescript` above moves to 7.
   typescript-es5: npm:typescript@5.9.3
   vite: npm:@voidzero-dev/vite-plus-core@0.3.3
   vite-plus: 0.3.3
@@ -128,27 +119,5 @@ peerDependencyRules:
     vite: '*'
 overrides:
   '@types/node': ^26
-  typescript: 5.9.3
   react-dom: 19.3.0
-  '@effect/ai': 0.35.0
-  '@effect/cli': 0.75.1
-  '@effect/cluster': 0.58.2
-  '@effect/experimental': 0.60.0
-  '@effect/opentelemetry': 0.63.0
-  '@effect/platform': 0.96.1
-  '@effect/platform-browser': 0.76.0
-  '@effect/platform-bun': 0.89.0
-  '@effect/platform-node': 0.106.0
-  '@effect/printer': 0.49.0
-  '@effect/printer-ansi': 0.49.0
-  '@effect/rpc': 0.75.1
-  '@effect/sql': 0.51.1
-  '@effect/typeclass': 0.40.0
-  '@effect/workflow': 0.16.0
-  '@opentelemetry/api': 1.9.0
-  '@opentelemetry/resources': 2.2.0
-  '@standard-schema/spec': 1.1.0
-  effect: 3.21.4
   vite@*: 'catalog:'
-patchedDependencies:
-  effect@3.21.4: patches/effect@3.21.4.patch
