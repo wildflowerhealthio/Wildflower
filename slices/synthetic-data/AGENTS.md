@@ -18,18 +18,23 @@ Nothing here names a person or tells a particular story.
 The slice is layered like `health-viewer`: a source-free base, with one
 generator package per source on top of it.
 
-- **`synthetic-data-fundamentals`** (pure) — the source-free base, as three
-  sub-entries (its root exports nothing):
-  - `synthetic-data-fundamentals/story` — the story model as `effect`-style
-    namespaces: `Story`, `Person`, `Prescription`, `DrugProduct`, `LabDraw`,
-    `StoryDay` (days relative to the as-of date, and `instantOn` for the time
-    of day an event happens).
+- **`synthetic-data-fundamentals`** (pure) — the source-free base. Its root
+  exports nothing; it has one sub-entry per role:
+  - **Story model** — `synthetic-data-fundamentals/story`: the base domain
+    objects a data set's narrative is written in and a renderer reads, as
+    `effect`-style namespaces — `Story`, `Person`, `Prescription`,
+    `DrugProduct`, `LabDraw`, and `StoryDay` (days relative to the as-of
+    date, and `instantOn` for the time of day an event happens).
     `import { Prescription, StoryDay } from 'synthetic-data-fundamentals/story'`.
-  - `synthetic-data-fundamentals/seeding` — deterministic ids and numbers.
+  - **Deterministic values** — `synthetic-data-fundamentals/seeding`: ids and
+    numbers hashed from the keys naming what they belong to, with
+    `kitchen-sink`'s `fnv1a64` and `fmix64` over `fhir-r4`'s
+    `joinIdComponents`.
     `import * as Seeding from 'synthetic-data-fundamentals/seeding'`.
-  - `synthetic-data-fundamentals/chrome-har` — the synthetic defaults a
-    generated Chrome DevTools capture is built with, on `http-archive`'s
-    `ChromeHar`.
+  - **Chrome capture defaults** — `synthetic-data-fundamentals/chrome-har`:
+    the synthetic defaults a generated Chrome DevTools capture's entries are
+    written with; the format, the DevTools vocabulary and the page and archive
+    builders are `http-archive`'s.
     `import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'`.
 
   Its `./test-helpers` subpath holds the fast-check arbitraries every
@@ -53,8 +58,10 @@ that source package's constants.
   (`Seeding`, `StoryDay.instantOn`), and jitter never moves an event off the
   day its story sets.
 - **Formats are their own packages'.** A generator builds `http-archive`
-  values (through `synthetic-data-fundamentals/chrome-har`) and FHIR shapes
-  from `fhir-r4`; it declares no wire type another package already owns.
+  values (its entries through `synthetic-data-fundamentals/chrome-har`, its
+  pages and archive with `http-archive`'s `chromePageOf` / `chromeHarOf`) and
+  FHIR shapes from `fhir-r4`; it declares no wire type another package already
+  owns.
 - **Generate what the source sends, then import it.** A generator writes the
   source's own wire shape (modelled on that source package's anonymized
   fixtures, spelled from its constants), and a round-trip test runs generated
@@ -70,6 +77,6 @@ that source package's constants.
 - [health-viewer AGENTS.md](../health-viewer/AGENTS.md) — the structure this
   slice mirrors.
 - [http-archive AGENTS.md](../file-formats/http-archive/AGENTS.md) — the HAR
-  schema every capture is built on.
+  format and DevTools vocabulary every capture is built on.
 - [Property Testing Reference](../../docs/Testing/Property%20Testing%20Reference.md)
   — property tests are the default here.

@@ -6,8 +6,11 @@
  * same story renders on any as-of date without drifting.
  *
  * One namespace per module, in the `effect` style (`Prescription.statusOf`,
- * `StoryDay.instantOn`). The stories themselves — who the people are and what
- * they were prescribed — live in `wildflowerhealthio/synthetic-data`.
+ * `StoryDay.instantOn`). The model's types are its own; it borrows
+ * `AdministrativeGender` from `fhir-r4`, and `StoryDay.instantOn` draws its
+ * time of day through the package's `seeding` sub-entry. The stories
+ * themselves — who the people are and what they were prescribed — live in
+ * `wildflowerhealthio/synthetic-data`.
  *
  * @packageDocumentation
  */

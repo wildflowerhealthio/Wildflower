@@ -2,7 +2,7 @@
   "name": "synthetic-data-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "The base of the synthetic data generators, as three sub-entries: story (the story model — Story, Person, Prescription, DrugProduct, LabDraw — with every date a StoryDay relative to one as-of date), seeding (deterministic values hashed from what they belong to) and chrome-har (the synthetic defaults a generated Chrome DevTools capture is written with, on http-archive's ChromeHar). The root exports nothing. Per-source generator packages build on it. Pure — no DOM, no fs, no React.",
+  "description": "The base of the synthetic data generators, one sub-entry per role: story (the story model — Story, Person, Prescription, DrugProduct, LabDraw — with every date a StoryDay relative to one as-of date), seeding (deterministic values, hashed with kitchen-sink's FNV-1a and fmix64 over fhir-r4's id fold) and chrome-har (the synthetic defaults a generated Chrome DevTools capture's entries are written with; the format and DevTools vocabulary are http-archive's). The root exports nothing. Per-source generator packages build on it. Pure — no DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
