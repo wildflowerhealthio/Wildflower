@@ -2,7 +2,7 @@
 
 How a Wildflower web app decides what, if anything, it reports to Sentry, and why nothing is reported before the visitor says yes.
 
-The consent model, the URL anonymizer and the event scrubber are pure functions in `telemetry-core` (`consent.ts`, `anonymize-url.ts`, `scrub-event.ts`, `consented-config.ts`); `telemetry-web`'s `initConsentedTelemetry` (`consented.ts`) applies them to the Sentry browser SDK.
+The consent model, the URL anonymizer and the event scrubber are pure functions in `telemetry-core` (`consent.ts`, `anonymize-url.ts`, `scrub-event.ts`, `consented-config.ts`); `telemetry-web`'s `initConsentedTelemetry` (`consented.ts`) applies them to the Sentry browser SDK. `telemetry-react` asks the question: the consent dialog, the gate that holds an app behind it, and the status control that reopens it. The dialog's words are `TELEMETRY_CONSENT_COPY` in `branding-core`.
 
 ## Two switches, both off
 
@@ -29,6 +29,16 @@ A resource type is recognized by shape (an uppercase then a lowercase letter, le
 The answer is one versioned record in `localStorage` under `wildflower.telemetry-consent`, holding both switches, the copy version of the dialog that was answered, and when. Storage is per origin, so every app served from one origin shares one answer, and a dev server on its own port asks on its own.
 
 A record whose version is not the app's current copy version reads as undecided, as does a record that does not decode: changing what the dialog says re-asks everyone, and a corrupt record is replaced by the next answer rather than guessed at.
+
+## The dialog comes first
+
+`TelemetryConsentGate` wraps an app and renders nothing of it until the visitor has answered: while no answer for the current copy version is stored, the page is the consent dialog alone, so no app code runs, fetches or reports before the visitor has said what may be sent. A stored current answer skips the dialog and renders the app at once.
+
+The dialog is non-dismissable. It has no close button, and the backdrop and Escape do nothing; if the browser closes it anyway (Chrome does on a second Escape), it opens again. It leads with the synthetic-data warning, says where reports go, and offers the two switches, both off, and one **Continue** button. Continue with both switches off is an answer like any other and reveals the app.
+
+The gate reads and writes the answer through `useTelemetryConsent`, which reads storage once on mount and, on Continue, stamps the switches with the copy version and the time and writes them back. Either way the gate calls its `onDecided` with the answer, and the app passes that to `initConsentedTelemetry`. The words, and the copy version the answer is stored with, are `TELEMETRY_CONSENT_COPY` in `branding-core`, so rewording the dialog and raising its version are one edit.
+
+Inside the gate, `useTelemetryConsentControls` gives app chrome the answer and a `reopen` function. `TelemetryStatusControl` reads the answer out ("Telemetry: Crash reports on · Performance data off") and reopens the dialog when pressed; the dialog then opens over the mounted app with the switches set to the current answer, and Continue replaces it and calls `onDecided` again.
 
 ## Nothing starts before a yes
 

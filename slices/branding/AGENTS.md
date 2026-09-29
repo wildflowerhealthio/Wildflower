@@ -17,7 +17,10 @@ the homepage and absolute from an app.
   resolvers, and `APP_DESCRIPTIONS` — the per-app introduction copy
   (name, tagline, status, first-person "why" paragraphs, homepage anchor, and
   launch link text) that the homepage's app rows and each app's landing page
-  both render. It also owns `restoreRedirectedUrl` — the app half of the GitHub
+  both render. Beside it, `TELEMETRY_CONSENT_COPY` is the telemetry consent
+  dialog's words and the copy version a visitor's answer is stored with
+  (`telemetry-react` renders it; raising the version asks everyone again).
+  It also owns `restoreRedirectedUrl` — the app half of the GitHub
   Pages 404 contract (see "The 404 redirect" below).
 - **`branding-react`** — the browser UI adapter: `SiteHeader`, `SiteFooter`,
   `BrandBar`, `AppIcon`, `AppLanding`, `AppLandingPage`, and the `branding-react/styles.css`
