@@ -18,8 +18,8 @@ import type { Story } from './story.ts'
 
 /**
  * An as-of instant anywhere in 2000–2099, at any time of day: the range a
- * data set is plausibly dated from, wide enough to cross leap years and
- * century-free February 29ths.
+ * data set is plausibly dated from, wide enough that birthdays and fills
+ * cross February 29th.
  */
 const asOfArbitrary: fc.Arbitrary<DateTime.Utc> = fc
   .integer({ min: Date.UTC(2000, 0, 1), max: Date.UTC(2099, 11, 31) })
@@ -86,8 +86,15 @@ const MANUFACTURERS: readonly Manufacturer[] = [
   { prefix: 'Teva', company: 'Teva Canada Limited' },
 ]
 
-/** Strengths a tablet is marketed in, fractional ones included. */
-const STRENGTH_VALUES = [0.5, 1, 2.5, 5, 10, 12.5, 20, 25, 40, 50, 75, 88, 112, 250, 500, 850]
+/**
+ * Strengths a tablet is marketed in, ascending, by unit: milligram strengths
+ * (fractional ones included) and the microgram strengths of thyroid-style
+ * tablets. A dose change steps along its unit's list.
+ */
+const STRENGTH_VALUES: Readonly<Record<DrugProduct.Strength['unit'], readonly number[]>> = {
+  mg: [0.5, 1, 2.5, 5, 10, 12.5, 20, 25, 40, 50, 250, 500, 850],
+  mcg: [25, 50, 75, 88, 100, 112, 125, 150, 200],
+}
 
 /** A plausible DIN: eight digits, leading zeros kept, in the `00…` / `02…` ranges most carry. */
 const dinArbitrary: fc.Arbitrary<string> = fc
@@ -99,10 +106,23 @@ const genericNameArbitrary: fc.Arbitrary<string> = fc
   .tuple(fc.constantFrom(...GENERIC_STEMS), fc.constantFrom(...GENERIC_SUFFIXES))
   .map(([stem, suffix]) => `${stem}${suffix}`)
 
-const strengthArbitrary: fc.Arbitrary<DrugProduct.Strength> = fc.record({
-  value: fc.constantFrom(...STRENGTH_VALUES),
-  unit: fc.constantFrom('mg' as const, 'mcg' as const),
-})
+const strengthArbitrary: fc.Arbitrary<DrugProduct.Strength> = fc
+  .constantFrom<DrugProduct.Strength['unit']>('mg', 'mcg')
+  .chain((unit) => fc.constantFrom(...STRENGTH_VALUES[unit]).map((value) => ({ value, unit })))
+
+/**
+ * The strength one step up or down `strength`'s list — a titration, not a jump
+ * across the range. `pick` chooses the direction; at either end of the list
+ * the only neighbour is taken.
+ */
+const titratedStrength = (strength: DrugProduct.Strength, pick: number): DrugProduct.Strength => {
+  const ladder = STRENGTH_VALUES[strength.unit]
+  const index = ladder.indexOf(strength.value)
+  const up = ladder[index + 1]
+  const down = ladder[index - 1]
+  const value = (pick % 2 === 0 ? (up ?? down) : (down ?? up)) ?? strength.value
+  return { value, unit: strength.unit }
+}
 
 const productOf = (
   genericName: string,
@@ -140,7 +160,8 @@ const productArbitrary: fc.Arbitrary<DrugProduct.DrugProduct> = fc
 const dosingArbitrary: fc.Arbitrary<Prescription.Dosing> = fc.record({
   tabletsPerDose: fc.constantFrom(1 as const, 2 as const),
   dosesPerDay: fc.constantFrom(1 as const, 2 as const),
-  direction: fc.constantFrom(null, 'WITH MEALS', 'AT BEDTIME', 'FOR 10 DAYS'),
+  // No course length (`FOR 10 DAYS`): a story's prescriptions repeat and renew.
+  direction: fc.constantFrom(null, 'WITH MEALS', 'AT BEDTIME', 'ON AN EMPTY STOMACH'),
 })
 
 const prescriberArbitrary: fc.Arbitrary<Prescription.Prescriber> = fc
@@ -218,9 +239,13 @@ interface StepInputs {
   readonly holdDays: number
   /** How early a renewal is written before the last fill runs out. */
   readonly renewEarly: number
-  /** For a dose change: whether it moves to another strength, else only the dosing changes. */
+  /**
+   * For a dose change: whether it steps to a neighbouring strength, else it
+   * takes a different number of tablets a day of the same product (falling
+   * back to a new strength when the drawn dosing takes as many).
+   */
   readonly newStrength: boolean
-  /** Picks the new strength or manufacturer. */
+  /** Picks the new strength's direction or the new manufacturer. */
   readonly pick: number
   readonly din: string
   readonly drugCode: number
@@ -300,20 +325,27 @@ interface LaidOut {
 const newDinOf = (din: string, replaced: DrugProduct.DrugProduct): string =>
   din === replaced.din ? `${din.slice(0, 7)}${(Number(din.slice(7)) + 1) % 10}` : din
 
-/** The product a follow-up prescription is written for, from the one it follows. */
+/** Tablets a dosing takes each day. */
+const dailyTabletsOf = (dosing: Prescription.Dosing): number =>
+  dosing.tabletsPerDose * dosing.dosesPerDay
+
+/**
+ * The product a follow-up prescription is written for, from the one it
+ * follows: a new strength of it when `newStrength`, another manufacturer's for
+ * a generic switch, else the same product.
+ */
 const productAfter = (
   reason: Prescription.WrittenReason,
   previous: DrugProduct.DrugProduct,
-  step: StepInputs
+  step: StepInputs,
+  newStrength: boolean
 ): DrugProduct.DrugProduct => {
   const sameMaker =
     MANUFACTURERS.find(({ company }) => company === previous.company) ?? MANUFACTURERS[0]
-  if (reason === 'dose-change' && step.newStrength && sameMaker !== undefined) {
-    const strengths = STRENGTH_VALUES.filter((value) => value !== previous.strength.value)
-    const value = strengths[step.pick % strengths.length] ?? previous.strength.value
+  if (reason === 'dose-change' && newStrength && sameMaker !== undefined) {
     return productOf(
       previous.genericName,
-      { value, unit: previous.strength.unit },
+      titratedStrength(previous.strength, step.pick),
       sameMaker,
       newDinOf(step.din, previous),
       step.drugCode
@@ -373,7 +405,9 @@ const nextWrittenDay = (
  * next one's written day — from why the next was written. A renewal follows a
  * prescription whose repeats are all used; a resume follows a hold by a few
  * days; a dose change or generic switch is written the day the one it
- * replaces ends.
+ * replaces ends. A dose change always changes the daily dose: either the
+ * strength steps while the dosing stays, or the dosing's daily tablets change
+ * while the product stays.
  */
 const layOutEpisode = (episodeKey: string, episode: EpisodeInputs): readonly LaidOut[] => {
   const [first] = episode.steps
@@ -391,8 +425,12 @@ const layOutEpisode = (episodeKey: string, episode: EpisodeInputs): readonly Lai
   for (const [index, step] of episode.steps.entries()) {
     const reason = index === 0 ? 'start' : (episode.followUps[index - 1] ?? 'renewal')
     const nextReason = episode.followUps[index]
-    product = productAfter(reason, product, step)
-    if (reason === 'dose-change') dosing = step.dosing
+    const redosed =
+      reason === 'dose-change' &&
+      !step.newStrength &&
+      dailyTabletsOf(step.dosing) !== dailyTabletsOf(dosing)
+    product = productAfter(reason, product, step, reason === 'dose-change' && !redosed)
+    if (redosed) dosing = step.dosing
     const refills =
       nextReason === 'renewal' ? step.repeatsAllowed : step.refillsDraw % (step.repeatsAllowed + 1)
     const fillDays = step.refillDaysLate
