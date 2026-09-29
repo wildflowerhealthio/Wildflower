@@ -4685,6 +4685,9 @@ importers:
       http-archive:
         specifier: workspace:*
         version: link:../../file-formats/http-archive
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../http-extraction/http-extraction-fundamentals
       importer-fundamentals:
         specifier: workspace:*
         version: link:../../importer/importer-fundamentals

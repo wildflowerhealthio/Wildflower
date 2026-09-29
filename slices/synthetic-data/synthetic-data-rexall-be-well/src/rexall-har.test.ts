@@ -2,7 +2,7 @@ import { DateTime, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { HttpArchive } from 'http-archive'
 import { numRunsFor } from 'kitchen-sink/test'
-import { REXALL_PROFILE_URL, REXALL_STU3_BASE_URL } from 'rexall-be-well-source'
+import { medicationListUrlOf, REXALL_PROFILE_URL } from 'rexall-be-well-source'
 import type { Story } from 'synthetic-data-fundamentals'
 import { asOfArbitrary, storyCaseArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
@@ -99,7 +99,10 @@ describe('RexallHar.render', () => {
           'https://letsbewell.ca/sign-in',
           'https://app.letsbewell.ca/health/prescriptions',
           REXALL_PROFILE_URL,
-          `${REXALL_STU3_BASE_URL}/pharmacy/Location?subject=Patient/${account.uid}&_id=${account.pharmacyLocationId}&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_revinclude=MedicationDispense:extension.medicationrecord-processor&_revinclude=DocumentReference:extension.medicationrecord-processor&_revinclude=Immunization:extension.medicationrecord-processor&_count=2147483646`,
+          medicationListUrlOf({
+            profileUid: account.uid,
+            pharmacyLocationId: account.pharmacyLocationId,
+          }),
         ])
         expect(log.entries.every((entry) => !entry.bodyAbsent && entry.status === 200)).toBe(true)
         expect(

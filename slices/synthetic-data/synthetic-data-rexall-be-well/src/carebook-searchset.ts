@@ -354,11 +354,13 @@ const searchsetOf = (
   const carebookPrescriptions = prescriptions.map((prescription) =>
     carebookPrescriptionOf(asOf, account, prescription)
   )
-  const requests = carebookPrescriptions.map((each, index) =>
-    medicationRequestOf(account, each, index + 1)
+  const requests = carebookPrescriptions.map((carebookPrescription, index) =>
+    medicationRequestOf(account, carebookPrescription, index + 1)
   )
-  const dispenses = carebookPrescriptions.flatMap((each) =>
-    each.lastFill === null ? [] : [medicationDispenseOf(account, each, each.lastFill)]
+  const dispenses = carebookPrescriptions.flatMap((carebookPrescription) =>
+    carebookPrescription.lastFill === null
+      ? []
+      : [medicationDispenseOf(account, carebookPrescription, carebookPrescription.lastFill)]
   )
   const entry = [...requests, ...dispenses].map(entryOf)
   return {

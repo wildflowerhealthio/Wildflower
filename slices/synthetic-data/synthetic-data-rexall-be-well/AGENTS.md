@@ -54,7 +54,8 @@ dev dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
 - **The dialect is spelled once.** A URL, extension or system the source
   package names is imported from it. The literals written here (the
   `input-source` value `Sync`, the pharmacy's `America/Toronto` zone, the
-  `PrescriptionOrder/null` stub, the page URLs and addresses) are capture
+  `PrescriptionOrder/null` stub, the processor's `rexall-pharmacy-location/<id>`
+  reference, the page URLs and addresses) are capture
   values `rexall-be-well-source` never reads.
 - **The round trip is the proof.** `rexall-har.round-trip.test.ts` runs
   generated stories through `har-importer-core`'s `harImporter` and reads the

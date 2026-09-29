@@ -38,6 +38,7 @@
     "fhir-stu3-as-r4": "workspace:*",
     "har-importer-core": "workspace:*",
     "http-archive": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "medication-core": "workspace:*",
@@ -53,6 +54,8 @@
     "fhir-r4": "workspace:*",
     "fhir-stu3-as-r4": "workspace:*",
     "http-archive": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
     "rexall-be-well-source": "workspace:*",
     "synthetic-data-fundamentals": "workspace:*"
   }

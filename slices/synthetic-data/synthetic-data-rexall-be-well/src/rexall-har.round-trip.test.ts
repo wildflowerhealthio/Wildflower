@@ -189,6 +189,8 @@ describe(
           given: [story.person.givenName],
           family: story.person.familyName,
         })
+        expect(patient?.telecom[0]).toMatchObject({ system: 'email', value: story.person.email })
+        expect(patient?.address[0]?.postalCode).toBe(story.person.postalCode)
         const birthDate = patient?.birthDate
         expect(birthDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
         expect(ageOn(DateTime.unsafeMake(`${birthDate}T00:00:00Z`), asOf)).toBe(story.person.age)
