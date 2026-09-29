@@ -55,7 +55,7 @@ catalog:
   # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-node/web).
   '@sentry/node': 10.74.0
   '@sentry/opentelemetry': 10.74.0
-  '@sentry/react': 10.74.0
+  '@sentry/react': 11.0.0
   # The Scalar API reference, vendored through npm (never the CDN script) so the
   # static server-docs console at /wildflower-server-docs ships self-contained.
   '@scalar/api-reference': ^1.68.0
