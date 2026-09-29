@@ -56,23 +56,19 @@ const makeInboundDispatcher = <
   readonly inboundDirection: InDir
   readonly registry: HandlerRegistry<Bridges, InDir>
   readonly adapter: TransportAdapterService
-  readonly extraInboundSchemas: ReadonlyArray<AnyTaggedSchema>
+  readonly extraInboundSchemas: Array.NonEmptyReadonlyArray<AnyTaggedSchema>
 }): Effect.Effect<InboundDispatcher, never, Scope.Scope> =>
   Effect.gen(function* () {
     const { bridges, inboundDirection, registry, adapter, extraInboundSchemas } = config
 
     // The bridges' inbound schemas may be empty for a transport with no
-    // inbound traffic; appending `extraInboundSchemas` (the caller-injected
-    // control-message schemas — non-empty in practice) keeps the union
-    // non-empty even in that case. The cast re-imposes `NonEmptyArray`
-    // because `Array.appendAll` doesn't preserve non-emptiness when the
-    // left side's emptiness is unknown to the type system.
+    // inbound traffic; appending the non-empty `extraInboundSchemas` keeps
+    // the union non-empty even then.
     const innerSchemas = pipe(
       Array.flatMap(bridges, (bridge) => Record.values(bridge[inboundDirection])),
       Array.map(Schema.typeSchema),
       Array.appendAll(extraInboundSchemas)
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    ) as Array.NonEmptyArray<AnyTaggedSchema>
+    )
 
     /**
      * Single-pass decode for inbound dispatch. `Schema.parseJson` parses
