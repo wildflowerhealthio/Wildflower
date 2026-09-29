@@ -1,116 +1,12 @@
-import { Effect, Record } from 'effect'
-import {
-  type Bridge,
-  type BridgeHandlerRecord,
-  type BridgeTransport,
-  type HandlerCoordinator,
-  HandlerHelpers,
-  type MessageHandler,
+import type { Effect } from 'effect'
+import type {
+  Bridge,
+  BridgeTransport,
+  HandlerCoordinator,
+  MessageHandler,
 } from 'effect-messaging-core'
 import { createContext, useMemo } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
-
-/** The boot-composed handler tuple plus a way to bind the live transport. */
-interface UnconnectedCoordinator<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
-  /**
-   * The seed-composed handler tuple to pass as the transport's *initial*
-   * `handlers` — boot-stable records in place, every other bridge a
-   * drop-all. Lets the transport be built before {@link connect} binds
-   * its `registerHandlers` back.
-   */
-  readonly initialHandlers: Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
-  /** Bind the live transport's `registerHandlers` and start coordinating. */
-  readonly connect: (
-    registerHandlers: (
-      handlers: Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
-    ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
-  ) => HandlerCoordinator
-}
-
-// A complete record for a bridge with no installed handler: every
-// inbound tag warns-and-drops (the transport requires complete records).
-const dropAll = (bridge: Bridge.AnyBridge): BridgeHandlerRecord =>
-  Record.map(
-    bridge['HostToWeb'],
-    (_schema, tag) => () => HandlerHelpers.warnAboutDroppedTag(bridge.name, tag)
-  )
-
-/**
- * Build a {@link HandlerCoordinator} for a bridge tuple.
- *
- * @remarks
- * Two-phase to resolve the boot chicken-and-egg: the transport needs a
- * complete initial handler tuple, but the coordinator needs the
- * transport's `registerHandlers`. So the factory first exposes
- * {@link UnconnectedCoordinator.initialHandlers} (built from `initial` +
- * drop-all), the caller builds the transport with it, then
- * {@link UnconnectedCoordinator.connect} binds `registerHandlers`.
- *
- * `Bridges` is internal-only — it parameterises `initialHandlers` and
- * the `registerHandlers` binding (both need the tuple shape) but the
- * returned coordinator's outward API is the bridge-wide
- * {@link HandlerCoordinator}, so consumers (slice hooks, the React
- * context) don't have to know the app's full tuple.
- *
- * @param bridges - the wired bridge tuple; its order fixes tuple positions.
- * @param initial - boot-stable records keyed by bridge name (e.g. navigation,
- *   gatekeeper). Bridges absent here start as drop-all until a slice registers.
- */
-const makeHandlerCoordinator = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
-  readonly bridges: Bridges
-  readonly initial: Readonly<Record<string, BridgeHandlerRecord>>
-}): UnconnectedCoordinator<Bridges> => {
-  const active = new Map<string, BridgeHandlerRecord>(Object.entries(config.initial))
-
-  const recompose = (): Bridge.HandlersByBridge<Bridges, 'HostToWeb'> => {
-    const tuple = config.bridges.map((bridge) => active.get(bridge.name) ?? dropAll(bridge))
-    // The active map is string-keyed, so the recomposed tuple's element
-    // types erase to `AnyHandlers`; re-impose the positional
-    // `HandlersByBridge` shape. Sound because every slot is either a
-    // caller-supplied record for that bridge or a drop-all generated over
-    // that same bridge's inbound tags — the same erasure the transport's
-    // own registry performs internally.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return tuple as unknown as Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
-  }
-
-  const connect = (
-    registerHandlers: (
-      handlers: Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
-    ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
-  ): HandlerCoordinator => {
-    const apply: Effect.Effect<void, BridgeTransport.DuplicateTagError> = Effect.suspend(() =>
-      registerHandlers(recompose())
-    )
-
-    const register = <const B extends Bridge.AnyBridge>(
-      bridge: B,
-      handlers: MessageHandler.HandlersFor<B['HostToWeb']>
-    ): Effect.Effect<void, BridgeTransport.DuplicateTagError> =>
-      Effect.suspend(() => {
-        // The active map is string-keyed; the typed handler record erases
-        // to the structural `BridgeHandlerRecord` for storage and is
-        // re-narrowed in `recompose`.
-        active.set(bridge.name, handlers)
-        return apply
-      })
-
-    const unregister = <const B extends Bridge.AnyBridge>(
-      bridge: B,
-      handlers: MessageHandler.HandlersFor<B['HostToWeb']>
-    ): Effect.Effect<void, BridgeTransport.DuplicateTagError> =>
-      Effect.suspend(() => {
-        if (active.get(bridge.name) === handlers) {
-          active.delete(bridge.name)
-        }
-        return apply
-      })
-
-    return { register, unregister }
-  }
-
-  return { initialHandlers: recompose(), connect }
-}
 
 const HandlerCoordinatorContext = createContext<HandlerCoordinator | null>(null)
 HandlerCoordinatorContext.displayName = 'HandlerCoordinatorContext'
@@ -169,14 +65,9 @@ interface SliceRegister<B extends Bridge.AnyBridge> {
   ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
 }
 
-export {
-  HandlerCoordinatorContext,
-  makeHandlerCoordinator,
-  makeUseSliceRegister,
-  useHandlerCoordinator,
-}
+export { HandlerCoordinatorContext, makeUseSliceRegister, useHandlerCoordinator }
 // `BridgeHandlerRecord` and `HandlerCoordinator` now live in
 // effect-messaging-core (the contract is platform-agnostic); re-exported
 // here so existing React consumers keep importing them from this module.
 export type { BridgeHandlerRecord, HandlerCoordinator } from 'effect-messaging-core'
-export type { SliceRegister, UnconnectedCoordinator }
+export type { SliceRegister }

@@ -73,21 +73,31 @@ const encodeWebToHost = (m: WebToHostMessage): string => {
   }
 }
 
-// Drain sentinel: a side-neutral extra bridge whose lone message, appended
-// after the real inputs, rides the FIFO inbox behind them. Its handler
-// resolving proves every message ahead of it has been dispatched — the
-// deterministic drain signal the removed `registerHandlers` barrier (and
-// before it `transport.flushed`) used to provide. A distinct tag, so it never
-// collides with a real sniffer message or pollutes the collected payloads.
-const DrainToHost = Schema.parseJson(Schema.TaggedStruct('__DrainToHost__', {}))
-const DrainToWeb = Schema.parseJson(Schema.TaggedStruct('__DrainToWeb__', {}))
+// Drain sentinel: an extra bridge whose lone message, enqueued after the
+// real inputs, rides the FIFO inbox behind them. Its handler resolving
+// proves every message ahead of it has been dispatched. A distinct tag, so
+// it never collides with a real sniffer message or pollutes the collected
+// payloads.
+const Drain = Schema.parseJson(Schema.TaggedStruct('__Drain__', {}))
 const SentinelBridge = Bridge.make({
   name: 'DrainSentinel',
-  hostToWeb: [['__DrainToWeb__', DrainToWeb]] as const,
-  webToHost: [['__DrainToHost__', DrainToHost]] as const,
+  hostToWeb: [] as const,
+  webToHost: [['__Drain__', Drain]] as const,
 })
-const drainToHostEncoded = Schema.encodeSync(DrainToHost)({ _tag: '__DrainToHost__' })
-const drainToWebEncoded = Schema.encodeSync(DrainToWeb)({ _tag: '__DrainToWeb__' })
+const drainEncoded = Schema.encodeSync(Drain)({ _tag: '__Drain__' })
+
+// The sniffer's Host→Web messages are decoded page-side by the injected
+// bootstrap, not by a TS transport. To exercise them through the same
+// decode-and-route-by-`_tag` dispatch as the Web→Host side, this mirror
+// declares them as the inbound (`webToHost`) record of a host transport.
+const HostToWebMirrorBridge = Bridge.make({
+  name: 'BrowserSnifferHostToWebMirror',
+  hostToWeb: [] as const,
+  webToHost: [
+    ['CancelSnifferRequest', CancelSnifferRequestMessage],
+    ['PageAction', PageActionMessage],
+  ] as const,
+})
 
 /**
  * Build a Host-side handler record where every webToHost handler
@@ -120,9 +130,7 @@ const runHost = async (
   inputs: string[],
   handlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['WebToHost']>
 ): Promise<void> => {
-  const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
-    initialMessages: [...inputs, drainToHostEncoded],
-  })
+  const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
   // Negative-path tests below intentionally feed malformed wire input, which
   // the bridge logs at WARN. Capture (and discard) those logs so the test
   // output stays quiet.
@@ -131,16 +139,43 @@ const runHost = async (
     Effect.scoped(
       Effect.gen(function* () {
         const drained = yield* Deferred.make<void>()
-        yield* BridgeTransport.makeHostTransport({
+        const transport = yield* BridgeTransport.makeHostTransport({
           bridges: [BrowserSnifferBridge, SentinelBridge] as const,
           handlers: [
             handlers,
-            { __DrainToHost__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid) },
+            { __Drain__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid) },
           ] as const,
         })
-        // `make` offers every drained initial message to the inbox before
-        // returning; the sentinel rides the same FIFO inbox behind them, so
+        // The sentinel rides the same FIFO inbox behind the inputs, so
         // awaiting it proves they have all been dispatched.
+        yield* Effect.forEach([...inputs, drainEncoded], transport.enqueue, { discard: true })
+        yield* Deferred.await(drained)
+      }).pipe(Effect.provide(adapterLayer), Effect.provide(capturingLoggerLayer))
+    )
+  )
+}
+
+// Mirrors `runHost` for the Host→Web schemas, dispatched through
+// `HostToWebMirrorBridge` (drain sentinel rides the FIFO inbox behind the
+// inputs; the capturing logger swallows the negative-path WARNs).
+const runWeb = async (
+  inputs: string[],
+  handlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['HostToWeb']>
+): Promise<void> => {
+  const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+  const { layer: capturingLoggerLayer } = LoggingLayerTest.make()
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const drained = yield* Deferred.make<void>()
+        const transport = yield* BridgeTransport.makeHostTransport({
+          bridges: [HostToWebMirrorBridge, SentinelBridge] as const,
+          handlers: [
+            handlers,
+            { __Drain__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid) },
+          ] as const,
+        })
+        yield* Effect.forEach([...inputs, drainEncoded], transport.enqueue, { discard: true })
         yield* Deferred.await(drained)
       }).pipe(Effect.provide(adapterLayer), Effect.provide(capturingLoggerLayer))
     )
@@ -185,11 +220,11 @@ describe('BrowserSnifferBridge — Web→Host round-trip', () => {
 
 describe('BrowserSnifferBridge — Host→Web round-trip', () => {
   // Property: arbitrary CancelSnifferRequest / PageAction payloads dispatched
-  // on the Web side reproduce on the handler verbatim. Mirrors the
+  // through the Host→Web schemas reproduce on the handler verbatim. Mirrors the
   // Web→Host property — guards against the cancel / page-action contracts
   // drifting between host (typed sendMessage) and page (hand-decoded
   // `message`-event). PageAction spans both `action` kinds via the arbitrary.
-  test('every encoded Host→Web payload round-trips through Web-side dispatch', async () => {
+  test('every encoded Host→Web payload round-trips through dispatch', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(hostToWebArb), async (messages) => {
         const collected: HostToWebMessage[] = []
@@ -215,64 +250,13 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
             }
           }
         }
-        const inputs = messages.map(encodeHostToWeb)
-        const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
-          initialMessages: [...inputs, drainToWebEncoded],
-        })
-
-        await Effect.runPromise(
-          Effect.scoped(
-            Effect.gen(function* () {
-              const drained = yield* Deferred.make<void>()
-              yield* BridgeTransport.makeWebTransport({
-                bridges: [BrowserSnifferBridge, SentinelBridge] as const,
-                handlers: [
-                  webHandlers,
-                  {
-                    __DrainToWeb__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid),
-                  },
-                ] as const,
-              })
-              // The sentinel rides the FIFO inbox behind the drained initial
-              // messages, so awaiting it proves they have all been dispatched.
-              yield* Deferred.await(drained)
-            }).pipe(Effect.provide(adapterLayer))
-          )
-        )
+        await runWeb(messages.map(encodeHostToWeb), webHandlers)
 
         expect(collected).toEqual(messages)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
-
-  // Focused runner for the explicit PageAction cases below — mirrors
-  // `runHost` on the Web side (drain sentinel rides the FIFO inbox behind
-  // the inputs; the capturing logger swallows the negative-path WARNs).
-  const runWeb = async (
-    inputs: string[],
-    handlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['HostToWeb']>
-  ): Promise<void> => {
-    const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
-      initialMessages: [...inputs, drainToWebEncoded],
-    })
-    const { layer: capturingLoggerLayer } = LoggingLayerTest.make()
-    await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const drained = yield* Deferred.make<void>()
-          yield* BridgeTransport.makeWebTransport({
-            bridges: [BrowserSnifferBridge, SentinelBridge] as const,
-            handlers: [
-              handlers,
-              { __DrainToWeb__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid) },
-            ] as const,
-          })
-          yield* Deferred.await(drained)
-        }).pipe(Effect.provide(adapterLayer), Effect.provide(capturingLoggerLayer))
-      )
-    )
-  }
 
   test('dispatches a Click-kind and a Fill-kind PageAction with the inner action preserved', async () => {
     const collected: HostToWebMessage[] = []

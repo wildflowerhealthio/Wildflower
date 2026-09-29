@@ -88,10 +88,8 @@ type HarRecorderBridge = Bridge.Bridge<
  * Slice-level bridge between the HAR Recorder page and its Tauri host.
  *
  * @remarks
- * One request (`SaveHar`) and its two terminal answers. No `urlParams`: a
- * recording exists only inside a running page, so there is no initial message
- * to carry on a WebView source URL. The sniffer events it is built from arrive
- * on `CollectorBridge`, not here.
+ * One request (`SaveHar`) and its two terminal answers. The sniffer events it
+ * is built from arrive on `CollectorBridge`, not here.
  */
 const HarRecorderBridge: HarRecorderBridge = Bridge.make({
   name: 'HarRecorder',

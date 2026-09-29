@@ -2,7 +2,7 @@
   "name": "navigation-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React-side navigation contract: bridge handler that watches route changes and drains pre-mount navigations.",
+  "description": "React-side navigation contract: bridge handler that reports route changes to the host.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -33,7 +33,6 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "effect-messaging-react": "workspace:*",
     "fast-check": "catalog:",
     "navigation-core": "workspace:*",
@@ -48,7 +47,6 @@
   "peerDependencies": {
     "@tanstack/react-router": "catalog:",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "effect-messaging-react": "workspace:*",
     "navigation-core": "workspace:*",
     "react": "catalog:",

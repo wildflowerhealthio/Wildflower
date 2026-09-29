@@ -175,7 +175,7 @@ const isStartDisabled = (): boolean => startButton().hasAttribute('disabled')
  * @remarks
  * A `BridgeHandlerRecord`'s handlers take `never`, so calling one back needs
  * the shape the transport dispatches through re-imposed: the same erasure
- * `makeHandlerCoordinator`'s `recompose` performs.
+ * the Tauri transport's dispatch performs.
  */
 const erase = (handlers: object): MessageHandler.AnyHandlers =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion

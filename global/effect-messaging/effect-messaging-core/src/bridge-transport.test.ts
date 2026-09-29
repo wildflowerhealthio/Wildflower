@@ -17,13 +17,20 @@ const makeBridges = () => {
     hostToWeb: [['Ping', Ping]] as const,
     webToHost: [['Pong', Pong]] as const,
   })
-  return { NavigationLike }
+  // The mirror bridge: the host receives `Ping` and sends `Pong`, for
+  // tests that drive typed inbound dispatch.
+  const PingInbound = Bridge.make({
+    name: 'PingInbound',
+    hostToWeb: [['Pong', Pong]] as const,
+    webToHost: [['Ping', Ping]] as const,
+  })
+  return { NavigationLike, PingInbound }
 }
 
 const encodePing = (value: number): string => Schema.encodeSync(Ping)({ _tag: 'Ping', value })
 const encodeTick = (): string => Schema.encodeSync(Tick)({ _tag: 'Tick' })
 
-describe('BridgeTransport.make — duplicate outbound-tag throw', () => {
+describe('BridgeTransport.makeHostTransport — duplicate outbound-tag throw', () => {
   test('two bridges declaring the same outbound tag fail synchronously', async () => {
     const A = Bridge.make({
       name: 'A',
@@ -54,11 +61,11 @@ describe('BridgeTransport — unhandled-tag drop and decode resilience', () => {
     // it was already processed (and dropped).
     const TwoInbound = Bridge.make({
       name: 'TwoInbound',
-      hostToWeb: [
+      hostToWeb: [] as const,
+      webToHost: [
         ['Ping', Ping],
         ['Tick', Tick],
       ] as const,
-      webToHost: [] as const,
     })
     const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
     await Effect.runPromise(
@@ -70,8 +77,8 @@ describe('BridgeTransport — unhandled-tag drop and decode resilience', () => {
         const tickOnly = [
           { Tick: () => Queue.offer(ticked, undefined).pipe(Effect.asVoid) },
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        ] as unknown as Bridge.HandlersByBridge<readonly [typeof TwoInbound], 'HostToWeb'>
-        const transport = yield* BridgeTransport.makeWebTransport({
+        ] as unknown as Bridge.HandlersByBridge<readonly [typeof TwoInbound], 'WebToHost'>
+        const transport = yield* BridgeTransport.makeHostTransport({
           bridges: [TwoInbound] as const,
           handlers: tickOnly,
         }).pipe(Effect.provide(adapterLayer))
@@ -99,13 +106,13 @@ describe('BridgeTransport — unhandled-tag drop and decode resilience', () => {
   })
 
   test('a malformed inbound string logs a decode warning and the dispatch fiber survives', async () => {
-    const { NavigationLike } = makeBridges()
+    const { PingInbound } = makeBridges()
     const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
     await Effect.runPromise(
       Effect.gen(function* () {
         const results = yield* Queue.unbounded<number>()
-        const transport = yield* BridgeTransport.makeWebTransport({
-          bridges: [NavigationLike] as const,
+        const transport = yield* BridgeTransport.makeHostTransport({
+          bridges: [PingInbound] as const,
           handlers: [{ Ping: ({ value }) => Queue.offer(results, value).pipe(Effect.asVoid) }],
         }).pipe(Effect.provide(adapterLayer))
 
@@ -131,17 +138,17 @@ describe('BridgeTransport — unhandled-tag drop and decode resilience', () => {
   })
 })
 
-describe('BridgeTransport.make — live-attachment path', () => {
+describe('BridgeTransport.makeHostTransport — live-attachment path', () => {
   test('attachBareSender callback feeds the inbox and routes through the dispatch fiber', async () => {
-    const { NavigationLike } = makeBridges()
+    const { PingInbound } = makeBridges()
     const { layer: adapterLayer, liveBareSenderRef } = TestPlatformAdapterLayer.make({
       captureBareSenderLive: true,
     })
     await Effect.runPromise(
       Effect.gen(function* () {
         const results = yield* Queue.unbounded<number>()
-        yield* BridgeTransport.makeWebTransport({
-          bridges: [NavigationLike] as const,
+        yield* BridgeTransport.makeHostTransport({
+          bridges: [PingInbound] as const,
           handlers: [{ Ping: ({ value }) => Queue.offer(results, value).pipe(Effect.asVoid) }],
         }).pipe(Effect.provide(adapterLayer))
         if (liveBareSenderRef.current === null) throw new Error('liveBareSenderRef not captured')
@@ -152,14 +159,14 @@ describe('BridgeTransport.make — live-attachment path', () => {
   })
 
   test('scope close detaches the live enqueue', async () => {
-    const { NavigationLike } = makeBridges()
+    const { PingInbound } = makeBridges()
     const { layer: adapterLayer, liveBareSenderRef } = TestPlatformAdapterLayer.make({
       captureBareSenderLive: true,
     })
     await Effect.runPromise(
       Effect.gen(function* () {
-        yield* BridgeTransport.makeWebTransport({
-          bridges: [NavigationLike] as const,
+        yield* BridgeTransport.makeHostTransport({
+          bridges: [PingInbound] as const,
           handlers: [{ Ping: () => Effect.void }],
         }).pipe(Effect.provide(adapterLayer))
         expect(liveBareSenderRef.current).not.toBeNull()
@@ -172,19 +179,18 @@ describe('BridgeTransport.make — live-attachment path', () => {
 describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
   test('replaces per-tag handlers on the next inbound message without rebuilding the transport', async () => {
     // Cold-start regression guard: before in-place swaps, a fresh handler
-    // set on the host required `BridgeTransport.make` to re-run from
-    // scratch (queues, dispatch fiber, peerReadyGate — all torn down and
-    // recreated). The BridgedWebView consumer relied on that, which tore
-    // the WebView down with it and flashed the loader. `registerHandlers`
+    // set on the host required `BridgeTransport.makeHostTransport` to re-run
+    // from scratch (queues, dispatch fiber, peerReadyGate — all torn down
+    // and recreated), tearing the WebView down with it. `registerHandlers`
     // swaps the handler map in place via the internal `Ref`; the queues,
     // dispatch fiber, schemas, and outbound senders all persist.
-    const { NavigationLike } = makeBridges()
+    const { PingInbound } = makeBridges()
     const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
     await Effect.runPromise(
       Effect.gen(function* () {
         const results = yield* Queue.unbounded<{ via: 'first' | 'second'; value: number }>()
-        const transport = yield* BridgeTransport.makeWebTransport({
-          bridges: [NavigationLike] as const,
+        const transport = yield* BridgeTransport.makeHostTransport({
+          bridges: [PingInbound] as const,
           handlers: [
             {
               Ping: ({ value }) =>
@@ -249,13 +255,13 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
     // handler ran.
     await fc.assert(
       fc.asyncProperty(fc.integer({ min: 2, max: 8 }), async (n) => {
-        const { NavigationLike } = makeBridges()
+        const { PingInbound } = makeBridges()
         const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
         await Effect.runPromise(
           Effect.gen(function* () {
             const observed = yield* Queue.unbounded<number>()
-            const transport = yield* BridgeTransport.makeWebTransport({
-              bridges: [NavigationLike] as const,
+            const transport = yield* BridgeTransport.makeHostTransport({
+              bridges: [PingInbound] as const,
               handlers: [{ Ping: () => Queue.offer(observed, 0).pipe(Effect.asVoid) }],
             }).pipe(Effect.provide(adapterLayer))
 
@@ -285,26 +291,7 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
   })
 })
 
-describe('BridgeTransport.make — initial-message replay', () => {
-  test('drains and dispatches initial messages on construction', async () => {
-    const { NavigationLike } = makeBridges()
-    const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
-      initialMessages: [encodePing(7)],
-    })
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const results = yield* Queue.unbounded<number>()
-        yield* BridgeTransport.makeWebTransport({
-          bridges: [NavigationLike] as const,
-          handlers: [{ Ping: ({ value }) => Queue.offer(results, value).pipe(Effect.asVoid) }],
-        }).pipe(Effect.provide(adapterLayer))
-        expect(yield* Queue.take(results)).toBe(7)
-      }).pipe(Effect.scoped)
-    )
-  })
-})
-
-describe('BridgeTransport.make — __Ready handshake', () => {
+describe('BridgeTransport.makeHostTransport — __Ready handshake', () => {
   test('Host sends buffer in the outbox until __Ready, then flush in order', async () => {
     const { NavigationLike } = makeBridges()
     const { layer: adapterLayer, sentQueue } = TestPlatformAdapterLayer.make()
@@ -328,55 +315,9 @@ describe('BridgeTransport.make — __Ready handshake', () => {
       }).pipe(Effect.scoped)
     )
   })
-
-  test('Web sendMessage flows without an external Ready (its send gate is open from the start)', async () => {
-    const { NavigationLike } = makeBridges()
-    const { layer: adapterLayer, sentQueue } = TestPlatformAdapterLayer.make()
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const transport = yield* BridgeTransport.makeWebTransport({
-          bridges: [NavigationLike] as const,
-          handlers: [{ Ping: () => Effect.void }],
-        }).pipe(Effect.provide(adapterLayer))
-        yield* transport.sendMessage({ _tag: 'Pong', reply: 'hi' })
-        const sent = yield* Queue.take(sentQueue)
-        expect(JSON.parse(sent)).toEqual({ _tag: 'Pong', reply: 'hi' })
-      }).pipe(Effect.scoped)
-    )
-  })
-
-  test('Web signalReady posts __Ready via bareSender', async () => {
-    const { NavigationLike } = makeBridges()
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const transport = yield* BridgeTransport.makeWebTransport({
-          bridges: [NavigationLike] as const,
-          handlers: [{ Ping: () => Effect.void }],
-        }).pipe(Effect.provide(adapterLayer))
-        yield* transport.signalReady
-        expect(sentSink).toEqual(['{"_tag":"__Ready"}'])
-      }).pipe(Effect.scoped)
-    )
-  })
-
-  test('Host signalReady is a no-op', async () => {
-    const { NavigationLike } = makeBridges()
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const transport = yield* BridgeTransport.makeHostTransport({
-          bridges: [NavigationLike] as const,
-          handlers: [{ Pong: () => Effect.void }],
-        }).pipe(Effect.provide(adapterLayer))
-        yield* transport.signalReady
-        expect(sentSink).toHaveLength(0)
-      }).pipe(Effect.scoped)
-    )
-  })
 })
 
-describe('BridgeTransport.make — onPageReady re-fire', () => {
+describe('BridgeTransport.makeHostTransport — onPageReady re-fire', () => {
   // The host's `onPageReady` callback runs inside the inbound dispatcher's
   // `__Ready` control handler. The `peerReadyGate` Deferred itself is one-shot
   // (subsequent `Deferred.succeed` calls return `false` and are no-ops),
@@ -483,9 +424,9 @@ describe('BridgeTransport.make — onPageReady re-fire', () => {
   })
 })
 
-describe('BridgeTransport.make — queue lifecycle', () => {
+describe('BridgeTransport.makeHostTransport — queue lifecycle', () => {
   test('property: late enqueues after scope close drop without throwing', async () => {
-    const { NavigationLike } = makeBridges()
+    const { PingInbound } = makeBridges()
     await fc.assert(
       fc.asyncProperty(
         fc.array(fc.string(), { maxLength: 20 }),
@@ -496,8 +437,8 @@ describe('BridgeTransport.make — queue lifecycle', () => {
           // closed, which is exactly the post-close state under test.
           const capturedEnqueue = await Effect.runPromise(
             Effect.gen(function* () {
-              const transport = yield* BridgeTransport.makeWebTransport({
-                bridges: [NavigationLike] as const,
+              const transport = yield* BridgeTransport.makeHostTransport({
+                bridges: [PingInbound] as const,
                 handlers: [{ Ping: () => Effect.void }],
               }).pipe(Effect.provide(adapterLayer))
               return transport.enqueue
@@ -517,7 +458,7 @@ describe('BridgeTransport.make — queue lifecycle', () => {
   })
 
   test('property: late sendMessage after scope close drops without throwing', async () => {
-    const { NavigationLike } = makeBridges()
+    const { PingInbound } = makeBridges()
     await fc.assert(
       fc.asyncProperty(
         fc.array(fc.string(), { maxLength: 20 }),
@@ -527,8 +468,8 @@ describe('BridgeTransport.make — queue lifecycle', () => {
           // value lands the scope (and the outbox) has closed.
           const capturedSend = await Effect.runPromise(
             Effect.gen(function* () {
-              const transport = yield* BridgeTransport.makeWebTransport({
-                bridges: [NavigationLike] as const,
+              const transport = yield* BridgeTransport.makeHostTransport({
+                bridges: [PingInbound] as const,
                 handlers: [{ Ping: () => Effect.void }],
               }).pipe(Effect.provide(adapterLayer))
               return transport.sendMessage

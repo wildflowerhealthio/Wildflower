@@ -12,13 +12,4 @@ const READY_TAG = '__Ready' as const
  */
 const ReadyMessageSchema = Schema.TaggedStruct(READY_TAG, {})
 
-/** Wire-format schema for `__Ready`: encoded as a JSON tagged struct. */
-const ReadyMessageWireSchema = Schema.parseJson(ReadyMessageSchema)
-
-/**
- * Pre-encoded `__Ready` wire string. Schema-encoded so the wire form
- * stays in lockstep with the inbound dispatch's union member.
- */
-const READY_RAW = Schema.encodeSync(ReadyMessageWireSchema)({ _tag: READY_TAG })
-
-export { READY_TAG, ReadyMessageSchema, READY_RAW }
+export { READY_TAG, ReadyMessageSchema }

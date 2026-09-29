@@ -6,16 +6,9 @@ interface Service {
   /** Send one already-encoded string to the other process. */
   readonly bareSender: BareSenderFunction
   /**
-   * Encoded message strings the platform delivered at boot — e.g. the
-   * web side decodes them from `window.location.search` URL params,
-   * tests inject them inline. The dispatch core enqueues each into the
-   * same path live messages take.
-   */
-  readonly drainInitial: Effect.Effect<ReadonlyArray<string>>
-  /**
    * Wire the platform's live-message source into `enqueue`. Detaches on
-   * scope close. Optional — a host adapter may omit this and the
-   * consumer wires the WebView's `onMessage` prop manually.
+   * scope close. Optional — an adapter may omit this and the consumer
+   * feeds the transport's `enqueue` directly.
    */
   readonly attachBareSender?: (
     bareSender: BareSenderFunction
@@ -23,7 +16,7 @@ interface Service {
 }
 
 /**
- * `Context.Tag` for the platform adapter. Aggregators (web wrappers,
+ * `Context.Tag` for the platform adapter. Aggregators (host wrappers,
  * tests) provide it via `Layer.succeed(TransportAdapter, …)`.
  */
 class TransportAdapter extends Context.Tag('@effect-messaging/TransportAdapter')<
