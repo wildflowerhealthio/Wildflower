@@ -1,6 +1,7 @@
 import { type Effect, type ParseResult, Schema } from 'effect'
 import { IdentifierAndReference, type ReferenceType } from 'fhir-r4/data-types'
 import { localResourceId } from 'fhir-r4/identity'
+import type { FhirResource } from 'fhir-r4/resources'
 
 /**
  * A person's Patient as the importer of one source keys it: the source system
@@ -41,5 +42,36 @@ const referenceOf = (
     identifier: { system: sourcePatient.system, value: sourcePatient.originalId },
   })
 
-export { adoptedIdOf, referenceOf }
+/**
+ * The resource types an importer files on a patient through `subject` that a
+ * renderer retargets: LifeLabs' results and reports, and the DICOM import's
+ * study, order and source file.
+ */
+const SUBJECT_RESOURCE_TYPES = [
+  'Observation',
+  'DiagnosticReport',
+  'ImagingStudy',
+  'ServiceRequest',
+  'DocumentReference',
+] as const satisfies readonly FhirResource['resourceType'][]
+
+type FiledOnSubject = Extract<
+  FhirResource,
+  { readonly resourceType: (typeof SUBJECT_RESOURCE_TYPES)[number] }
+>
+
+const isFiledOnSubject = (resource: FhirResource): resource is FiledOnSubject =>
+  (SUBJECT_RESOURCE_TYPES as readonly string[]).includes(resource.resourceType)
+
+/**
+ * `resource` filed on `subject` (typically {@link referenceOf} a pharmacy
+ * Patient), if it is one of the resources that names its patient as
+ * `subject`; any other resource unchanged.
+ */
+const withSubject =
+  (subject: ReferenceType) =>
+  (resource: FhirResource): FhirResource =>
+    isFiledOnSubject(resource) ? { ...resource, subject } : resource
+
+export { adoptedIdOf, referenceOf, withSubject }
 export type { SourcePatient }

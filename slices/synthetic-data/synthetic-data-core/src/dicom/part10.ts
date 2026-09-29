@@ -361,6 +361,7 @@ const encodeElement = (element: DataElement): Uint8Array => {
   return bytes
 }
 
+/** `parts` end to end in one buffer. */
 const concat = (parts: readonly Uint8Array[]): Uint8Array => {
   const bytes = new Uint8Array(parts.reduce((total, part) => total + part.length, 0))
   let offset = 0
@@ -400,5 +401,5 @@ const encode = (file: Part10File): Uint8Array => {
 /** Ascending tag order, the order PS3.5 7.1 writes a data set in. */
 const byTag = (left: DataElement, right: DataElement): number => left.tag - right.tag
 
-export { byTag, decode, encode, isPrivate, tagLabelOf, UnsupportedDicomFile }
+export { byTag, concat, decode, encode, isPrivate, tagLabelOf, UnsupportedDicomFile }
 export type { DataElement, Part10File }

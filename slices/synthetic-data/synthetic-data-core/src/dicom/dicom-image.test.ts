@@ -2,15 +2,15 @@ import { DicomHeader } from 'dicom'
 import { detectDicom, dicomImporter } from 'dicom-importer-core'
 import { parseDicom } from 'dicom-parser'
 import { writeDicom } from 'dicom/test-helpers'
-import { DateTime, Effect, Either, Schema } from 'effect'
+import { DateTime, Effect, Either } from 'effect'
 import * as fc from 'fast-check'
-import { IdentifierAndReference } from 'fhir-r4/data-types'
 import type { FhirResource } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { ageOn, asOfArbitrary, personArbitrary } from '../arbitraries.test-helpers.ts'
 import type * as Person from '../person.ts'
+import * as SourcePatient from '../source-patient.ts'
 import {
   DEIDENTIFIED_EXPORT_ELEMENTS,
   deidentifiedFileArbitrary,
@@ -80,12 +80,10 @@ const dateOfDa = (da: string): DateTime.Utc =>
 const isValidUid = (uid: string): boolean =>
   uid.length <= 64 && /^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*$/.test(uid)
 
-const decodeReference = Schema.decodeSync(IdentifierAndReference.ReferenceSchema)
-
-const PHARMACY_PATIENT = decodeReference({
-  reference: 'Patient/pharmacy-patient-1',
-  identifier: { system: 'https://example.com/fhir/sid/pharmacy', value: 'P-1' },
-})
+/** A pharmacy Patient's reference, spelled as `LifeLabs.render` files its results. */
+const PHARMACY_PATIENT = Effect.runSync(
+  SourcePatient.referenceOf({ system: 'https://example.com/fhir/sid/pharmacy', originalId: 'P-1' })
+)
 
 describe('DicomImage.reidentify', () => {
   test('property: writes the patient, the story day and fresh UIDs into the header', () => {

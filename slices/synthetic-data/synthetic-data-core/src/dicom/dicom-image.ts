@@ -5,6 +5,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 
 import * as Person from '../person.ts'
 import * as Seeded from '../seeded.ts'
+import * as SourcePatient from '../source-patient.ts'
 import * as StoryDay from '../story-day.ts'
 import * as Part10 from './part10.ts'
 
@@ -357,16 +358,6 @@ const reidentify = (
     })
   })
 
-/** `resource` filed on `subject`, if it is one of the DICOM import's resources that names a patient. */
-const withSubject =
-  (subject: ReferenceType) =>
-  (resource: FhirResource): FhirResource => {
-    if (resource.resourceType === 'ImagingStudy') return { ...resource, subject }
-    if (resource.resourceType === 'ServiceRequest') return { ...resource, subject }
-    if (resource.resourceType === 'DocumentReference') return { ...resource, subject }
-    return resource
-  }
-
 /**
  * Read a re-identified file as the DICOM importer does, and file what it
  * makes on a Patient another source's import made for the person.
@@ -374,8 +365,9 @@ const withSubject =
  * @param reidentifiedFile - A file {@link reidentify} wrote
  * @param fileName - The name the file is picked under, which the source-file
  *   `DocumentReference` records
- * @param subject - The person's Patient, as a reference every resource files
- *   under
+ * @param subject - The person's Patient from another source's import, as
+ *   {@link SourcePatient.referenceOf} spells it (as `LifeLabs.render` files its
+ *   results); every resource files under it
  * @returns What `dicomImporter.decode` makes of the file — the source-file
  *   `DocumentReference` carrying its bytes, the `ImagingStudy` and, when an
  *   accession number was written, the `ServiceRequest` — adopted under
@@ -403,7 +395,7 @@ const importWithSubject = (
     return result.decoded.sections
       .flatMap((section) => section.resources.map((entry) => entry.resource))
       .filter((resource) => resource.resourceType !== 'Patient')
-      .map(withSubject(subject))
+      .map(SourcePatient.withSubject(subject))
   })
 
 export {

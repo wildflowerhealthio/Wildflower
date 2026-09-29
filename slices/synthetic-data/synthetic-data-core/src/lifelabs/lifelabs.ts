@@ -1,5 +1,4 @@
 import { Data, DateTime, Effect, type ParseResult } from 'effect'
-import type { ReferenceType } from 'fhir-r4/data-types'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import {
@@ -267,15 +266,6 @@ const reportsOf = (
 
 const adoptUnderLifeLabs = adoptResource({ system: LIFELABS_SYSTEM })
 
-/** `resource` with its subject replaced, if it is a result that has one. */
-const withSubject =
-  (subject: ReferenceType) =>
-  (resource: FhirResource): FhirResource => {
-    if (resource.resourceType === 'Observation') return { ...resource, subject }
-    if (resource.resourceType === 'DiagnosticReport') return { ...resource, subject }
-    return resource
-  }
-
 /**
  * The story's lab results as the LifeLabs import makes them, on the person's
  * pharmacy Patient.
@@ -309,7 +299,7 @@ const render = (
       .flatMap((group) => group.resources)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(adoptUnderLifeLabs)
-      .map(withSubject(subject))
+      .map(SourcePatient.withSubject(subject))
   })
 
 export { render, reportsOf, UncataloguedLabTest }

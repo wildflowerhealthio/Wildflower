@@ -38,16 +38,6 @@ const itemHeader = (element: number, length: number): Uint8Array => {
   return bytes
 }
 
-const concat = (parts: readonly Uint8Array[]): Uint8Array => {
-  const bytes = new Uint8Array(parts.reduce((total, part) => total + part.length, 0))
-  let offset = 0
-  for (const part of parts) {
-    bytes.set(part, offset)
-    offset += part.length
-  }
-  return bytes
-}
-
 /**
  * An undefined-length sequence holding one undefined-length item (itself
  * holding an undefined-length sequence) and one defined-length item: every
@@ -55,7 +45,7 @@ const concat = (parts: readonly Uint8Array[]): Uint8Array => {
  */
 const nestedSequenceValue = (): Uint8Array => {
   const codeValue = elementBytesOf({ tag: 0x0008_0100, vr: 'SH', value: 'CODE' })
-  const innerSequence = concat([
+  const innerSequence = Part10.concat([
     itemHeader(0xe000, codeValue.length),
     codeValue,
     itemHeader(0xe0dd, 0),
@@ -67,7 +57,7 @@ const nestedSequenceValue = (): Uint8Array => {
     undefinedLength: true,
   })
   const definedItemBody = elementBytesOf({ tag: 0x0008_0104, vr: 'LO', value: 'Meaning' })
-  return concat([
+  return Part10.concat([
     itemHeader(0xe000, 0xffff_ffff),
     inner,
     itemHeader(0xe00d, 0),
@@ -183,7 +173,7 @@ describe('Part10', () => {
     })
     // An Implicit VR element: tag, then a 4-byte length where the VR would be.
     const implicit = new Uint8Array([0x08, 0x00, 0x18, 0x00, 0x02, 0x00, 0x00, 0x00, 0x31, 0x00])
-    expect(reasonOf(concat([file, implicit]))).toMatch(
+    expect(reasonOf(Part10.concat([file, implicit]))).toMatch(
       /^\(0008,0018\) at byte \d+ has no explicit VR/
     )
   })

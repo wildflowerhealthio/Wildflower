@@ -2,6 +2,8 @@ import { parseDicom, type DataSet } from 'dicom-parser'
 import { type DicomTagMap, dicomHeaderArb, headerToTagMap, writeDicom } from 'dicom/test-helpers'
 import * as fc from 'fast-check'
 
+import * as Part10 from './part10.ts'
+
 /**
  * De-identified DICOM fixtures for the re-identification tests: a
  * `writeDicom` file with the elements a de-identified export carries and
@@ -11,7 +13,8 @@ import * as fc from 'fast-check'
  *
  * @remarks
  * Splicing is located with `dicom-parser`, not with the module under test, so
- * a fixture does not depend on the reader it is fed to.
+ * a fixture does not depend on the reader it is fed to (only on
+ * `Part10.concat`, to join the bytes).
  */
 
 /** One element written by hand: tag, VR and the value's text, or bytes for a sequence. */
@@ -92,13 +95,7 @@ const withElementsSpliced = (file: Uint8Array, extras: readonly ExtraElement[]):
     from = insertion.at
   }
   parts.push(file.slice(from))
-  const spliced = new Uint8Array(parts.reduce((total, part) => total + part.length, 0))
-  let offset = 0
-  for (const part of parts) {
-    spliced.set(part, offset)
-    offset += part.length
-  }
-  return spliced
+  return Part10.concat(parts)
 }
 
 const SOURCE_FRAME_OF_REFERENCE_UID = '1.3.6.1.4.1.14519.5.2.1.99.2'

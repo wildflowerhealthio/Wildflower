@@ -47,7 +47,10 @@ One namespace per module, in the `effect` style, from the flat root entry:
   importer of one source keys it (source system and the source's own id):
   `adoptedIdOf` and `referenceOf` spell the id and the `Reference` adoption
   writes for it, so a source with no Patient of its own files its resources on
-  that one. `RexallHar.sourcePatientOf(account)` and
+  that one; `withSubject(reference)` retargets a resource's `subject` (on an
+  `Observation`, `DiagnosticReport`, `ImagingStudy`, `ServiceRequest` or
+  `DocumentReference`) to it, for `LifeLabs.render` and
+  `DicomImage.importWithSubject` alike. `RexallHar.sourcePatientOf(account)` and
   `ShoppersHar.sourcePatientOf(patient)` name the pharmacy Patients (for
   Shoppers, the managed person's, not the `pcid` account Patient).
 - **`Story`** (`src/story.ts`) — one person's record: `person`,
@@ -136,7 +139,8 @@ reidentification)`: an already de-identified Part 10 file (the data set
   `importWithSubject(file, fileName, subject)` runs the result through
   `dicomImporter.decode` (the equipment clock read as `America/Toronto`),
   drops its `Patient` and files the `ImagingStudy`, `ServiceRequest` and
-  source-file `DocumentReference` on `subject`. `part10.ts` is the element
+  source-file `DocumentReference` on `subject` (`SourcePatient.referenceOf`,
+  through `SourcePatient.withSubject`). `part10.ts` is the element
   stream it edits: a reader and writer for Part 10 files whose data set is
   Explicit VR Little Endian (that syntax and the encapsulated ones), values
   kept as raw bytes, the meta group length counted on write.
