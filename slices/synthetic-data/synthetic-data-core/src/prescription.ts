@@ -30,7 +30,7 @@ interface Dosing {
 interface Prescriber {
   /** Stable handle the prescriber's ids are hashed from. */
   readonly key: string
-  /** The name as the pharmacy prints it (`'DR N OKAFOR'`). */
+  /** The name as the pharmacy prints it (`'DR A SMITH'`). */
   readonly display: string
 }
 

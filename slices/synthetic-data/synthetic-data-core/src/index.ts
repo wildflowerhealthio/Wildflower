@@ -1,17 +1,21 @@
 /**
- * The synthetic data set's pure core: the Ashford family's demographics and
- * dated stories, and one renderer per source that turns a story into the
- * bytes that source would produce — exposed as one namespace per module in the
- * `effect` style (`Prescription.statusOf`, `RexallHar.render`).
+ * The synthetic data set's pure tooling: the story model (people,
+ * prescriptions, lab draws, every date a `StoryDay`), and one renderer per
+ * source that turns a story into the bytes that source would produce —
+ * exposed as one namespace per module in the `effect` style
+ * (`Prescription.statusOf`, `RexallHar.render`).
  *
  * Every date is a `StoryDay` relative to an as-of date the caller passes, and
  * every id or time a real system would draw at random is hashed from the names
  * of what it belongs to (`Seeded`), so a render is deterministic: the same
  * as-of date gives byte-identical output.
  *
+ * The stories themselves — who the people are and what they were prescribed —
+ * live in `wildflowerhealthio/synthetic-data`, which renders them with this
+ * package.
+ *
  * @packageDocumentation
  */
-export * as Ashford from './ashford/index.ts'
 export * as ChromeHar from './har/chrome-har.ts'
 export * as DrugProduct from './drug-product.ts'
 export * as Person from './person.ts'

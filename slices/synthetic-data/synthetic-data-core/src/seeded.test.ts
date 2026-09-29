@@ -55,7 +55,7 @@ describe('Seeded.uuidOf', () => {
   test('is stable across runs', () => {
     // Pinned so a change to the derivation, which would re-key every
     // published resource, fails here rather than passing unnoticed.
-    expect(Seeded.uuidOf(['rexall', 'warren'])).toBe('212e69fd-7553-4dc2-b385-39b07e9c3da7')
+    expect(Seeded.uuidOf(['rexall', 'person-1'])).toBe('42094840-bbda-40f3-a253-df0424cbcba8')
   })
 })
 

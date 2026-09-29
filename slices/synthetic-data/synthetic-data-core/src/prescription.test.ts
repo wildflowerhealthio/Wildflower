@@ -2,7 +2,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import * as DrugProduct from './drug-product.ts'
+import { expectedSigOf, productArbitrary, dosingArbitrary } from './arbitraries.test-helpers.ts'
+import type * as DrugProduct from './drug-product.ts'
 import * as Prescription from './prescription.ts'
 
 const RUNS = numRunsFor({ base: 200 })
@@ -13,12 +14,8 @@ const refillDaysLateArbitrary = fc.array(fc.integer({ min: 0, max: 14 }), { maxL
 /** A prescription with every field the functions under test read left free. */
 const prescriptionArbitrary: fc.Arbitrary<Prescription.Prescription> = fc
   .record({
-    product: fc.constantFrom(...Object.values(DrugProduct.catalogue)),
-    dosing: fc.record({
-      tabletsPerDose: fc.constantFrom(1 as const, 2 as const),
-      dosesPerDay: fc.constantFrom(1 as const, 2 as const),
-      direction: fc.constantFrom(null, 'WITH MEALS'),
-    }),
+    product: productArbitrary,
+    dosing: dosingArbitrary,
     supplyDaysPerFill: supplyDaysArbitrary,
     repeatsAllowed: fc.integer({ min: 0, max: 12 }),
     firstFillDay: fc.integer({ min: -600, max: -1 }),
@@ -26,7 +23,12 @@ const prescriptionArbitrary: fc.Arbitrary<Prescription.Prescription> = fc
     ended: fc.option(
       fc.record({
         day: fc.integer({ min: -600, max: 0 }),
-        reason: fc.constantFrom('dose-change' as const, 'hold' as const, 'stop' as const),
+        reason: fc.constantFrom<Prescription.EndReason>(
+          'dose-change',
+          'hold',
+          'generic-switch',
+          'stop'
+        ),
       })
     ),
   })
@@ -122,9 +124,20 @@ describe('Prescription.quantityPerFillOf and dailyDoseOf', () => {
 })
 
 describe('Prescription.sigOf', () => {
-  const warfarin = {
+  /** A hand-written tablet, to read the sig's dialect off. */
+  const tablet: DrugProduct.DrugProduct = {
+    din: '02000017',
+    drugCode: 1,
+    brandName: 'Apo-Examplazole',
+    genericName: 'Examplazole',
+    strength: { value: 5, unit: 'mg' },
+    form: 'tablet',
+    company: 'Apotex Inc',
+  }
+
+  const onceDaily = {
     key: 'rx',
-    product: DrugProduct.catalogue.taroWarfarin5mg,
+    product: tablet,
     dosing: { tabletsPerDose: 1, dosesPerDay: 1, direction: null },
     supplyDaysPerFill: 30,
     repeatsAllowed: 5,
@@ -135,16 +148,27 @@ describe('Prescription.sigOf', () => {
   } satisfies Prescription.Prescription
 
   test('writes the dialect the capture shows for one tablet once daily', () => {
-    expect(Prescription.sigOf(warfarin)).toBe('TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY')
+    expect(Prescription.sigOf(onceDaily)).toBe('TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY')
   })
 
   test('multiplies the per-dose strength and pluralizes tablets, then appends the direction', () => {
     expect(
       Prescription.sigOf({
-        ...warfarin,
-        product: DrugProduct.catalogue.tevaMetformin500mg,
+        ...onceDaily,
+        product: { ...tablet, strength: { value: 500, unit: 'mg' } },
         dosing: { tabletsPerDose: 2, dosesPerDay: 2, direction: 'WITH MEALS' },
       })
     ).toBe('TAKE 2 TABLETS (=1000MG) BY MOUTH TWICE DAILY WITH MEALS')
+  })
+
+  test('property: names the tablets per dose, the dose, the frequency and the direction', () => {
+    fc.assert(
+      fc.property(prescriptionArbitrary, (prescription) => {
+        expect(Prescription.sigOf(prescription)).toBe(
+          expectedSigOf(prescription.dosing, prescription.product.strength)
+        )
+      }),
+      { numRuns: RUNS }
+    )
   })
 })

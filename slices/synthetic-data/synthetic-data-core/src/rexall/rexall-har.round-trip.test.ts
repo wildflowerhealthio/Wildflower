@@ -1,8 +1,10 @@
 import { DateTime, Effect, Option, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { CanadianCodingSystem, CodeableConcept, Coding } from 'fhir-r4/data-types'
 import type { FhirResource, MedicationDispense, Patient } from 'fhir-r4/resources'
 import { defaultHarSettings, harImporter } from 'har-importer-core'
 import type { PickedFile } from 'importer-fundamentals'
+import { numRunsFor } from 'kitchen-sink/test'
 import {
   dinOf,
   displayNameOf,
@@ -14,188 +16,114 @@ import {
 import { REXALL_CAREBOOK_SYSTEM } from 'rexall-be-well-source'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { warrenRexallAccount, warrenStory } from '../ashford/warren.ts'
-import * as StoryDay from '../story-day.ts'
+import {
+  ageOn,
+  asOfArbitrary,
+  type ExpectedPrescription,
+  rexallAccountArbitrary,
+  type StoryCase,
+  storyCaseArbitrary,
+} from '../arbitraries.test-helpers.ts'
+import type { RexallAccount } from './rexall-account.ts'
 import * as RexallHar from './rexall-har.ts'
 
 /**
- * Warren's Rexall HAR through the real HAR importer (`har-importer-core`'s
- * `harImporter.decode`, which recognizes the traffic through
- * `rexall-be-well-source`, decodes the carebook STU3 dialect to R4, promotes
- * its extensions and adopts the resources), then read the way the medication
- * views read it (`medication-core`).
+ * Generated stories' Rexall HARs through the real HAR importer
+ * (`har-importer-core`'s `harImporter.decode`, which recognizes the traffic
+ * through `rexall-be-well-source`, decodes the carebook STU3 dialect to R4,
+ * promotes its extensions and adopts the resources), then read the way the
+ * medication views read them (`medication-core`).
  *
  * @remarks
- * The expectations are Warren's story as the epic (#787) tells it, written
- * out — names, DINs, quantities, supply, repeats, statuses, the amortized
- * daily dose and each dispense's link to its request — not read back from
- * the story, so a renderer or model change that alters what an import shows
- * fails here.
+ * Every expectation — name, DIN, quantity, supply, repeats, status, sig, the
+ * most recent fill's day and the amortized daily dose — is
+ * `storyCaseArbitrary`'s own reckoning from the generated inputs, not the
+ * model functions the renderer calls, so a renderer or model change that
+ * alters what an import shows fails here.
  */
 
-/** An as-of date well inside the range the property tests sweep. */
-const AS_OF = DateTime.unsafeMake('2026-09-28T12:00:00Z')
+const RUNS = numRunsFor({ base: 20 })
 
-interface ExpectedPrescription {
-  /** The day it was written, relative to the as-of day: how the test finds it. */
-  readonly writtenDay: number
-  readonly name: string
-  readonly din: string
-  readonly quantity: number
-  readonly supplyDays: number
-  readonly repeatsAllowed: number
-  readonly repeatsAvailable: number
-  readonly status: 'active' | 'completed' | 'stopped'
-  readonly dailyDoseMg: number
-  /** The most recent fill: the day its dispense was handed over. */
-  readonly lastFillDay: number
-  readonly sig: string
+/** Each property imports every generated HAR: generous, so a slow runner or a scaled-up run count fits. */
+const ROUND_TRIP_TIMEOUT_MILLIS = 60_000
+
+/** What one import extracted, source file excluded. */
+interface Imported {
+  readonly notes: readonly string[]
+  readonly unreadableFiles: readonly unknown[]
+  readonly resources: readonly FhirResource[]
+  readonly requests: readonly MedicationRequestWithId[]
+  readonly dispenses: readonly MedicationDispense.Type[]
+  readonly patients: readonly Patient.Type[]
 }
 
-const WARFARIN_5 = 'TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY'
-const WARFARIN_4 = 'TAKE 1 TABLET (=4MG) BY MOUTH ONCE DAILY'
-const METFORMIN_500 = 'TAKE 1 TABLET (=500MG) BY MOUTH TWICE DAILY WITH MEALS'
-const METFORMIN_1000 = 'TAKE 2 TABLETS (=1000MG) BY MOUTH TWICE DAILY WITH MEALS'
-
-const EXPECTED: readonly ExpectedPrescription[] = [
-  // Metformin 500 mg twice daily, replaced by 1000 mg twice daily.
-  {
-    writtenDay: -510,
-    name: 'Metformin 500 mg tablet',
-    din: '02257726',
-    quantity: 180,
-    supplyDays: 90,
-    repeatsAllowed: 3,
-    repeatsAvailable: 1,
-    status: 'stopped',
-    dailyDoseMg: 1000,
-    lastFillDay: -324,
-    sig: METFORMIN_500,
-  },
-  // Warfarin 5 mg, cut to 4 mg after INR 3.8.
-  {
-    writtenDay: -480,
-    name: 'Warfarin 5 mg tablet',
-    din: '02242685',
-    quantity: 30,
-    supplyDays: 30,
-    repeatsAllowed: 5,
-    repeatsAvailable: 2,
-    status: 'stopped',
-    dailyDoseMg: 5,
-    lastFillDay: -387,
-    sig: WARFARIN_5,
-  },
-  // Warfarin 4 mg, every repeat used.
-  {
-    writtenDay: -384,
-    name: 'Warfarin 4 mg tablet',
-    din: '02242684',
-    quantity: 30,
-    supplyDays: 30,
-    repeatsAllowed: 5,
-    repeatsAvailable: 0,
-    status: 'completed',
-    dailyDoseMg: 4,
-    lastFillDay: -230,
-    sig: WARFARIN_4,
-  },
-  // Metformin 1000 mg twice daily as two 500 mg tablets (Teva).
-  {
-    writtenDay: -296,
-    name: 'Metformin 500 mg tablet',
-    din: '02257726',
-    quantity: 360,
-    supplyDays: 90,
-    repeatsAllowed: 3,
-    repeatsAvailable: 1,
-    status: 'stopped',
-    dailyDoseMg: 2000,
-    lastFillDay: -113,
-    sig: METFORMIN_1000,
-  },
-  // Warfarin 4 mg renewed, then held.
-  {
-    writtenDay: -201,
-    name: 'Warfarin 4 mg tablet',
-    din: '02242684',
-    quantity: 30,
-    supplyDays: 30,
-    repeatsAllowed: 5,
-    repeatsAvailable: 2,
-    status: 'stopped',
-    dailyDoseMg: 4,
-    lastFillDay: -109,
-    sig: WARFARIN_4,
-  },
-  // Clarithromycin 500 mg twice daily for 7 days.
-  {
-    writtenDay: -101,
-    name: 'Clarithromycin 500 mg tablet',
-    din: '02274752',
-    quantity: 14,
-    supplyDays: 7,
-    repeatsAllowed: 0,
-    repeatsAvailable: 0,
-    status: 'completed',
-    dailyDoseMg: 1000,
-    lastFillDay: -101,
-    sig: 'TAKE 1 TABLET (=500MG) BY MOUTH TWICE DAILY FOR 7 DAYS',
-  },
-  // Warfarin 4 mg resumed after the hold.
-  {
-    writtenDay: -91,
-    name: 'Warfarin 4 mg tablet',
-    din: '02242684',
-    quantity: 30,
-    supplyDays: 30,
-    repeatsAllowed: 5,
-    repeatsAvailable: 3,
-    status: 'active',
-    dailyDoseMg: 4,
-    lastFillDay: -16,
-    sig: WARFARIN_4,
-  },
-  // Metformin 1000 mg twice daily, switched to Sandoz.
-  {
-    writtenDay: -23,
-    name: 'Metformin 500 mg tablet',
-    din: '02246820',
-    quantity: 360,
-    supplyDays: 90,
-    repeatsAllowed: 1,
-    repeatsAvailable: 1,
-    status: 'active',
-    dailyDoseMg: 2000,
-    lastFillDay: -23,
-    sig: METFORMIN_1000,
-  },
-]
-
-const pickedHar: PickedFile.Type = {
-  id: '0:warren-rexall.har',
-  fileName: 'warren-rexall.har',
-  bytes: new TextEncoder().encode(RexallHar.render(AS_OF, warrenStory, warrenRexallAccount)),
+/** `har` through `harImporter.decode`, as one picked file. */
+const importHar = async (har: string): Promise<Imported> => {
+  const picked: PickedFile.Type = {
+    id: '0:rexall.har',
+    fileName: 'rexall.har',
+    bytes: new TextEncoder().encode(har),
+  }
+  const result = await Effect.runPromise(harImporter.decode([picked], defaultHarSettings))
+  const resources = result.decoded.sections
+    .filter((section) => section.title !== 'Source file')
+    .flatMap((section) => section.resources.map((entry) => entry.resource))
+  return {
+    notes: result.decoded.notes,
+    unreadableFiles: result.unreadableFiles,
+    resources,
+    requests: resources.flatMap((resource) =>
+      resource.resourceType === 'MedicationRequest' && resource.id !== null
+        ? [{ ...resource, id: resource.id }]
+        : []
+    ),
+    dispenses: resources.flatMap((resource) =>
+      resource.resourceType === 'MedicationDispense' ? [resource] : []
+    ),
+    patients: resources.flatMap((resource) =>
+      resource.resourceType === 'Patient' ? [resource] : []
+    ),
+  }
 }
 
-const decodeResult = await Effect.runPromise(harImporter.decode([pickedHar], defaultHarSettings))
+/** One generated case: an as-of date, a story, and the account it is filled under. */
+interface Run {
+  readonly asOf: DateTime.Utc
+  readonly storyCase: StoryCase
+  readonly account: RexallAccount
+}
 
-/** Every resource the import extracted, source file excluded. */
-const imported: readonly FhirResource[] = decodeResult.decoded.sections
-  .filter((section) => section.title !== 'Source file')
-  .flatMap((section) => section.resources.map((entry) => entry.resource))
+const runArbitrary: fc.Arbitrary<Run> = fc.record({
+  asOf: asOfArbitrary,
+  storyCase: storyCaseArbitrary('person-1'),
+  account: rexallAccountArbitrary,
+})
 
-const requests: readonly MedicationRequestWithId[] = imported.flatMap((resource) =>
-  resource.resourceType === 'MedicationRequest' && resource.id !== null
-    ? [{ ...resource, id: resource.id }]
-    : []
-)
-const dispenses: readonly MedicationDispense.Type[] = imported.flatMap((resource) =>
-  resource.resourceType === 'MedicationDispense' ? [resource] : []
-)
-const patients: readonly Patient.Type[] = imported.flatMap((resource) =>
-  resource.resourceType === 'Patient' ? [resource] : []
-)
+/** `check` over each generated case's rendered, then imported, HAR. */
+const assertRoundTrip = (check: (run: Run, imported: Imported) => void): Promise<void> =>
+  fc.assert(
+    fc.asyncProperty(runArbitrary, async (run) => {
+      check(run, await importHar(RexallHar.render(run.asOf, run.storyCase.story, run.account)))
+    }),
+    { numRuns: RUNS }
+  )
+
+/** The calendar day `days` from the as-of day, worked out here. */
+const isoDateOn = (asOf: DateTime.Utc, days: number): string =>
+  DateTime.formatIsoDate(DateTime.add(DateTime.startOf(asOf, 'day'), { days }))
+
+const isoDateOf = (instant: DateTime.Utc | null | undefined): string | null =>
+  instant === null || instant === undefined ? null : DateTime.formatIsoDate(instant)
+
+/** The imported request written on `expected`'s day: a generated story writes at most one a day. */
+const requestFor = (
+  asOf: DateTime.Utc,
+  imported: Imported,
+  expected: ExpectedPrescription
+): MedicationRequestWithId | undefined =>
+  imported.requests.find(
+    (request) => isoDateOf(request.authoredOn) === isoDateOn(asOf, expected.writtenDay)
+  )
 
 /**
  * A dispense's `medicationCodeableConcept`, decoded through fhir-r4's type
@@ -210,127 +138,138 @@ const dispenseConceptOf = (
   )
 }
 
-const isoDateOf = (instant: DateTime.Utc | null | undefined): string | null =>
-  instant === null || instant === undefined ? null : DateTime.formatIsoDate(instant)
-
-/** The imported request written on `writtenDay`. */
-const requestWrittenOn = (writtenDay: number): MedicationRequestWithId | undefined =>
-  requests.find(
-    (request) => isoDateOf(request.authoredOn) === StoryDay.toIsoDate(AS_OF, writtenDay)
+/** The dispenses whose `authorizingPrescription` names one of `request`'s carebook identifiers. */
+const dispensesAuthorizedBy = (
+  imported: Imported,
+  request: MedicationRequestWithId
+): readonly MedicationDispense.Type[] => {
+  const carebookIds = new Set(
+    request.identifier.flatMap((identifier) =>
+      identifier.system?.href === REXALL_CAREBOOK_SYSTEM && typeof identifier.value === 'string'
+        ? [identifier.value]
+        : []
+    )
   )
+  return imported.dispenses.filter((dispense) =>
+    dispense.authorizingPrescription.some((reference) => {
+      const value = reference.identifier?.value
+      return typeof value === 'string' && carebookIds.has(value)
+    })
+  )
+}
 
-describe("Warren's Rexall HAR through the HAR importer", () => {
-  test('reads, claiming both XHRs and neither page', () => {
-    expect(decodeResult.unreadableFiles).toEqual([])
-    expect(decodeResult.decoded.notes).toEqual([
-      'Matched no importer: https://letsbewell.ca/sign-in',
-      'Matched no importer: https://app.letsbewell.ca/health/prescriptions',
-    ])
-  })
-
-  test('yields his profile as one Patient', () => {
-    expect(patients).toHaveLength(1)
-    expect(patients[0]?.name?.[0]).toMatchObject({ given: ['Warren'], family: 'Ashford' })
-    expect(patients[0]?.birthDate).toBe('1948-05-08')
-  })
-
-  test('yields one MedicationRequest and one MedicationDispense per prescription', () => {
-    expect(requests).toHaveLength(EXPECTED.length)
-    expect(dispenses).toHaveLength(EXPECTED.length)
-    expect(imported).toHaveLength(1 + 2 * EXPECTED.length)
-  })
-
-  describe.each(EXPECTED.map((expected) => [expected.writtenDay, expected]))(
-    'the prescription written on day %i',
-    (_writtenDay, expected) => {
-      test('reads as the story tells it', () => {
-        const request = requestWrittenOn(expected.writtenDay)
-        expect(request).toBeDefined()
-        if (request === undefined) return
+describe(
+  'RexallHar.render through the HAR importer',
+  { timeout: ROUND_TRIP_TIMEOUT_MILLIS },
+  () => {
+    test('property: claims both XHRs and neither page: one Patient, and a request and dispense per prescription', async () => {
+      await assertRoundTrip(({ storyCase }, imported) => {
+        expect(imported.unreadableFiles).toEqual([])
+        expect(imported.notes).toEqual([
+          'Matched no importer: https://letsbewell.ca/sign-in',
+          'Matched no importer: https://app.letsbewell.ca/health/prescriptions',
+        ])
+        const count = storyCase.expected.length
         expect({
-          name: displayNameOf(request),
-          din: dinOf(request),
-          quantity: request.dispenseRequest?.quantity?.value,
-          supplyDays: request.dispenseRequest?.expectedSupplyDuration?.value,
-          repeatsAllowed: repeatsAllowedOf(request),
-          repeatsAvailable: repeatsAvailableOf(request),
-          status: request.status,
-          sig: request.note[0]?.text,
-        }).toEqual({
-          name: expected.name,
-          din: expected.din,
-          quantity: expected.quantity,
-          supplyDays: expected.supplyDays,
-          repeatsAllowed: expected.repeatsAllowed,
-          repeatsAvailable: expected.repeatsAvailable,
-          status: expected.status,
-          sig: expected.sig,
-        })
+          patients: imported.patients.length,
+          requests: imported.requests.length,
+          dispenses: imported.dispenses.length,
+          resources: imported.resources.length,
+        }).toEqual({ patients: 1, requests: count, dispenses: count, resources: 1 + 2 * count })
       })
+    })
 
-      test("amortizes to the story's daily dose", () => {
-        const request = requestWrittenOn(expected.writtenDay)
-        const [regimen] = medicationRequestsToDoseRegimens(
-          request === undefined ? [] : [request]
-        ).regimens
-        expect(regimen).toMatchObject({
-          amount: expected.dailyDoseMg,
-          unit: 'mg',
-          per: 'd',
-          derivation: 'amortized',
+    test('property: the Patient is the person, their age on the as-of day', async () => {
+      await assertRoundTrip(({ asOf, storyCase: { story } }, imported) => {
+        const [patient] = imported.patients
+        expect(patient?.name[0]).toMatchObject({
+          given: [story.person.givenName],
+          family: story.person.familyName,
         })
+        const birthDate = patient?.birthDate
+        expect(birthDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+        expect(ageOn(DateTime.unsafeMake(`${birthDate}T00:00:00Z`), asOf)).toBe(story.person.age)
       })
+    })
 
-      test('has its most recent fill as a completed dispense of the same product', () => {
-        const request = requestWrittenOn(expected.writtenDay)
-        const carebookIds = new Set(
-          (request?.identifier ?? []).flatMap((identifier) =>
-            identifier.system?.href === REXALL_CAREBOOK_SYSTEM &&
-            typeof identifier.value === 'string'
-              ? [identifier.value]
-              : []
-          )
-        )
-        const authorized = dispenses.filter((dispense) =>
-          dispense.authorizingPrescription.some((reference) => {
-            const value = reference.identifier?.value
-            return typeof value === 'string' && carebookIds.has(value)
+    test('property: every request reads as its generated inputs say', async () => {
+      await assertRoundTrip(({ asOf, storyCase }, imported) => {
+        for (const expected of storyCase.expected) {
+          const request = requestFor(asOf, imported, expected)
+          expect(request, expected.key).toBeDefined()
+          if (request === undefined) continue
+          expect({
+            name: displayNameOf(request),
+            din: dinOf(request),
+            quantity: request.dispenseRequest?.quantity?.value,
+            supplyDays: request.dispenseRequest?.expectedSupplyDuration?.value,
+            repeatsAllowed: repeatsAllowedOf(request),
+            repeatsAvailable: repeatsAvailableOf(request),
+            status: request.status,
+            sig: request.note[0]?.text,
+          }).toEqual({
+            name: expected.name,
+            din: expected.din,
+            quantity: expected.quantity,
+            supplyDays: expected.supplyDays,
+            repeatsAllowed: expected.repeatsAllowed,
+            repeatsAvailable: expected.repeatsAvailable,
+            status: expected.status,
+            sig: expected.sig,
           })
-        )
-        expect(authorized).toHaveLength(1)
-        const [dispense] = authorized
-        const concept = dispense === undefined ? null : dispenseConceptOf(dispense)
-        expect({
-          name: concept?.text,
-          din: concept?.coding.find(Coding.isInSystem(CanadianCodingSystem.Din))?.code,
-          handedOver: isoDateOf(dispense?.whenHandedOver),
-          quantity: dispense?.quantity?.value,
-          supplyDays: dispense?.daysSupply?.value,
-          status: dispense?.status,
-          subject: dispense?.subject?.reference,
-        }).toEqual({
-          name: expected.name,
-          din: expected.din,
-          handedOver: StoryDay.toIsoDate(AS_OF, expected.lastFillDay),
-          quantity: expected.quantity,
-          supplyDays: expected.supplyDays,
-          status: 'completed',
-          subject: `Patient/${patients[0]?.id}`,
-        })
+        }
       })
-    }
-  )
+    })
 
-  test('reads warfarin as 5 mg, then 4 mg a day, and metformin as 1000, then 2000 mg a day', () => {
-    const { regimens, undated, dropped } = medicationRequestsToDoseRegimens(requests)
-    expect({ undated, dropped }).toEqual({ undated: 0, dropped: 0 })
-    const dosesOf = (normalizedName: string): readonly number[] =>
-      regimens
-        .filter((regimen) => regimen.normalizedName === normalizedName)
-        .toSorted((left, right) => left.start.epochMillis - right.start.epochMillis)
-        .map((regimen) => regimen.amount)
-    expect(dosesOf('warfarin tablet')).toEqual([5, 4, 4, 4])
-    expect(dosesOf('metformin tablet')).toEqual([1000, 2000, 2000])
-    expect(dosesOf('clarithromycin tablet')).toEqual([1000])
-  })
-})
+    test('property: every request amortizes to its daily dose', async () => {
+      await assertRoundTrip(({ asOf, storyCase }, imported) => {
+        const { regimens, undated, dropped } = medicationRequestsToDoseRegimens(imported.requests)
+        expect({ regimens: regimens.length, undated, dropped }).toEqual({
+          regimens: storyCase.expected.length,
+          undated: 0,
+          dropped: 0,
+        })
+        for (const expected of storyCase.expected) {
+          const request = requestFor(asOf, imported, expected)
+          const regimen = regimens.find(({ requestId }) => requestId === request?.id)
+          expect(regimen, expected.key).toMatchObject({
+            unit: expected.dailyDose.unit,
+            per: 'd',
+            derivation: 'amortized',
+          })
+          expect(regimen?.amount).toBeCloseTo(expected.dailyDose.value, 9)
+        }
+      })
+    })
+
+    test('property: every request has its most recent fill as one completed dispense of its product', async () => {
+      await assertRoundTrip(({ asOf, storyCase }, imported) => {
+        const subject = `Patient/${imported.patients[0]?.id}`
+        for (const expected of storyCase.expected) {
+          const request = requestFor(asOf, imported, expected)
+          const authorized = request === undefined ? [] : dispensesAuthorizedBy(imported, request)
+          expect(authorized, expected.key).toHaveLength(1)
+          const [dispense] = authorized
+          const concept = dispense === undefined ? null : dispenseConceptOf(dispense)
+          expect({
+            name: concept?.text,
+            din: concept?.coding.find(Coding.isInSystem(CanadianCodingSystem.Din))?.code,
+            handedOver: isoDateOf(dispense?.whenHandedOver),
+            quantity: dispense?.quantity?.value,
+            supplyDays: dispense?.daysSupply?.value,
+            status: dispense?.status,
+            subject: dispense?.subject?.reference,
+          }).toEqual({
+            name: expected.name,
+            din: expected.din,
+            handedOver: isoDateOn(asOf, expected.lastFillDay),
+            quantity: expected.quantity,
+            supplyDays: expected.supplyDays,
+            status: 'completed',
+            subject,
+          })
+        }
+      })
+    })
+  }
+)

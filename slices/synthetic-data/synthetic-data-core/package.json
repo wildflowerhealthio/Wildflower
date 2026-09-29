@@ -2,7 +2,7 @@
   "name": "synthetic-data-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The synthetic data set's pure core: the Ashford family's demographics and dated timelines (prescriptions, fills, lab draws), every date derived from one as-of date, and one renderer per source — the Rexall Be Well HAR for Warren. No DOM, no fs, no React.",
+  "description": "Pure tooling for synthetic health data: a story model (people, prescriptions, fills, lab draws) with every date derived from one as-of date, deterministic seeded ids, and one renderer per source — the Rexall Be Well HAR. The stories themselves live in wildflowerhealthio/synthetic-data. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

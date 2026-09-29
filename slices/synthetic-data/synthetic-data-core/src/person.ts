@@ -3,7 +3,7 @@ import { DateTime } from 'effect'
 import * as StoryDay from './story-day.ts'
 
 /**
- * One member of a synthetic family, with the demographics every source
+ * One person in a synthetic data set, with the demographics every source
  * renders: name, administrative gender, and an age that holds at any as-of
  * date.
  */
@@ -20,7 +20,7 @@ type Gender = 'male' | 'female'
  * every regenerated data set.
  */
 interface Person {
-  /** Stable lower-case handle every derived id is hashed from (`'warren'`). */
+  /** Stable lower-case handle every derived id is hashed from (`'person-1'`). */
   readonly key: string
   readonly givenName: string
   readonly familyName: string
@@ -52,7 +52,7 @@ const birthDateOf = (person: Person, asOf: DateTime.Utc): DateTime.Utc => {
   return DateTime.subtract(lastBirthday, { years: person.age })
 }
 
-/** The person's full name, given name first (`'Warren Ashford'`). */
+/** The person's full name, given name first (`'Sam Okoye'`). */
 const fullNameOf = (person: Person): string => `${person.givenName} ${person.familyName}`
 
 export { birthDateOf, fullNameOf }

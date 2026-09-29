@@ -1,28 +1,24 @@
 # AGENTS.md — slices/synthetic-data
 
-The **synthetic data set**: one fictional family across three generations —
-the Ashfords — whose records tell stories where a dose change moves a lab
-level or a device reading, rendered as the files each real source would
-produce and read back through Wildflower's own importers, so the data looks
-exactly like an import would. Epic #787.
+The **synthetic data tooling**: a model for dated health stories — people,
+prescriptions and their fills, lab draws — and renderers that turn a story
+into the files each real source would produce, proven by reading them back
+through Wildflower's own importers, so rendered data looks exactly like an
+import would. Epic #787.
+
+This slice holds **tooling only**. The stories themselves — the fictional
+people, their narratives, the accounts they are filled under and the chosen,
+DPD-verified drug products — live in the data repo,
+[`wildflowerhealthio/synthetic-data`](https://github.com/wildflowerhealthio/synthetic-data),
+which renders them with this package and publishes the output. Nothing here
+names a person or tells a particular story.
 
 ## Packages
 
 - **[`synthetic-data-core`](./synthetic-data-core/AGENTS.md)** (pure) — the
-  family's demographics and dated stories (prescriptions, fills, lab draws),
-  and one renderer per source: the Rexall Be Well HAR today.
-
-## The family
-
-| Person                 | Name cue                  | Story                                                                                        | Sources                    |
-| ---------------------- | ------------------------- | -------------------------------------------------------------------------------------------- | -------------------------- |
-| **Warren Ashford**, 78 | **War**ren → **war**farin | Atrial fibrillation on warfarin (5 → 4 mg, held for clarithromycin); metformin 500 → 1000 mg | Rexall HAR, labs, DICOM    |
-| **Tyra Ashford**, 46   | **Ty**ra → **thy**roid    | Hypothyroidism with an overshoot on levothyroxine                                            | Shoppers HAR, labs, Pebble |
-| **Beau Hartman**, 48   | **Beau** → beta blocker   | Hypertension and high LDL: atorvastatin, bisoprolol                                          | Shoppers HAR, labs         |
-| **Fern Ashford**, 16   | **Fe**rn → Fe, iron       | Iron-deficiency anemia on ferrous sulfate                                                    | Shoppers HAR, labs         |
-
-Only Warren's story and his Rexall HAR are built so far; the others have their
-demographics.
+  story model (`Story`, `Person`, `Prescription`, `DrugProduct`, `LabDraw`,
+  `StoryDay`), deterministic seeded values (`Seeded`), the HAR envelope
+  (`ChromeHar`), and one renderer per source: the Rexall Be Well HAR today.
 
 ## Rules
 
@@ -36,8 +32,9 @@ demographics.
   jitter never moves an event off the day its story sets.
 - **Render what the source sends, then import it.** A renderer writes the
   source's own wire shape (modelled on that source package's anonymized
-  fixtures, spelled from its constants), and a round-trip test runs it through
-  the real importer and asserts the story comes out.
-- **DINs are real.** Every drug product is a marketed Canadian product whose
-  DIN, strength and form were verified against Health Canada's Drug Product
-  Database; see `DrugProduct.catalogue`.
+  fixtures, spelled from its constants), and a round-trip test runs generated
+  stories through the real importer and asserts each one comes out as its
+  generated inputs say.
+- **No narrative here.** Tests generate their stories (fast-check); a
+  hand-written example inside a test is fine, a named person or a chosen
+  product catalogue is not — those belong in the data repo.

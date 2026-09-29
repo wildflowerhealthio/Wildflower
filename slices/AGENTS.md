@@ -44,9 +44,11 @@ receives, the allow-listed
 the SMART login, as pure functions; `apps/fhir-sync-pebble-web` is the page
 that runs them.
 
-`synthetic-data` renders a fictional family's dated medication, lab and device
-stories as the files each real source would produce, and proves them through
-the real importers — see [synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md).
+`synthetic-data` is tooling for synthetic health data: a model for dated
+medication, lab and device stories, and renderers that write them as the files
+each real source would produce, proven through the real importers over
+generated stories. The stories themselves live in `wildflowerhealthio/synthetic-data`
+— see [synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md).
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
