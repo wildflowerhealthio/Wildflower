@@ -74,6 +74,14 @@ Recurring review cues — the reasoning and examples are in [Review Standards](.
 
 `username/description` (e.g., `ruthmarks/add-fhir-server`, `ruthmarks/migrate-claude-behaviour`)
 
+## Pull Requests: drafts and assignment
+
+- **Draft means not ready for review.** A draft PR is missing a dependency or sits above an unmerged base in a PR stack. A ready PR is up for review. CI runs on both.
+- **In a stack, only the bottom PR is ready.** That is the PR whose base is `main` and whose blockers are all closed. The PRs above it stay draft until their base merges.
+- **Assign `ruthmarks151` to request her review.** Every ready PR an agent opens or flips gets that assignment.
+- **An assignment to `ruths-machine` is a request for the machine to act.** If `ruthmarks151` has reviewed the PR since its last push, the machine addresses that review. If not, it reviews the PR with `/code-review high --comment`. When it finishes, it swaps its own assignment for `ruthmarks151`.
+- **Run the `/priorities` skill** to list the machine's assignments and the stacked PRs that are ready to flip, and to get backlog suggestions from the epics.
+
 ## Parallel Worktrees (devcontainer)
 
 When running multiple agents in parallel inside the devcontainer, **use the helper script — do not run `git worktree add` directly**:
