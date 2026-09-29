@@ -77,7 +77,7 @@ renderApp({
   // any pending-consent head before any slice mounts). Other
   // slices register on mount through the coordinator, exactly as on
   // embedded.
-  makeTransport: (_navigate, writeIssuedToken, setActivePendingConsent) =>
+  makeTransport: (writeIssuedToken, setActivePendingConsent) =>
     makeTauriTransport({
       bridges,
       initial: {

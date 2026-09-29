@@ -10,7 +10,6 @@ import {
   TokenResponseHandlerContext,
   type TokenResponseHandler,
 } from 'gatekeeper-react'
-import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { type AuthState, AuthStateProvider, type AuthStateStore } from 'react-kitchen-sink'
@@ -29,27 +28,24 @@ import { routeTree } from './routeTree.gen.ts'
 import 'react-tundraish/styles'
 
 /**
- * Per-entry transport factory. Receives a stable `navigate` closure
- * that delegates to the router instance (set after `createRouter`),
- * a `writeIssuedToken` writer threaded from the entry's
- * {@link AuthStateStore}, and a `setActivePendingConsent` writer
- * threaded from the in-app {@link ActivePendingConsentStore}; returns
- * the page's `BridgeTransport` (narrowed to the React-facing
- * `ReactTransport` surface). Web entries return a pre-resolved stub
- * and ignore both setters (no host bridge to receive `AuthTokenIssued`
- * or `PendingConsentRequested` from); embedded/Tauri wires both into
- * the gatekeeper page-bridge handler so host pushes land in the
- * corresponding stores.
+ * Per-entry transport factory. Receives a `writeIssuedToken` writer
+ * threaded from the entry's {@link AuthStateStore} and a
+ * `setActivePendingConsent` writer threaded from the in-app
+ * {@link ActivePendingConsentStore}; returns the page's transport
+ * (narrowed to the React-facing `ReactTransport` surface). Web entries
+ * return a pre-resolved stub and ignore both setters (no host bridge to
+ * receive `AuthTokenIssued` or `PendingConsentRequested` from); Tauri
+ * wires both into the gatekeeper page-bridge handler so host pushes land
+ * in the corresponding stores.
  */
 type MakeTransport = (
-  navigate: (to: NavTarget) => void,
   writeIssuedToken: AuthStateStore['setAuthState'],
   setActivePendingConsent: ActivePendingConsentStore['setActiveHead']
 ) => Promise<ReactTransport>
 
 /**
  * Per-entry `awaitAuthReady` factory. Receives a `transportReady`
- * promise (resolved once the transport's boot-time `signalReady` has
+ * promise (resolved once the transport's boot-time handshake has
  * settled) and returns the actual `awaitAuthReady` function the
  * `beforeLoad` gate calls. Web's implementation ignores the argument
  * (standalone has no host handshake to wait); embedded's awaits it
@@ -239,17 +235,11 @@ interface RenderAppOptions {
  * the cache is keyed on the query, not on the bearer.
  *
  * The transport is built *outside* React, before the router mounts.
- * Its boot-time `signalReady` settles into `transportReady`, which
+ * Its boot-time handshake settles into `transportReady`, which
  * `awaitAuthReady` (the embedded factory) waits on internally — so
  * the embedded ordering ("transport ready before host pushes token")
  * is encoded inside `awaitAuthReady` itself rather than in a separate
  * `transportReady` field on router context.
- *
- * `navigate` (used by the navigation bridge's web handlers to handle
- * `HostRequestedWebNavigation` / `HostBackRequested`) closes over a
- * `routerHandle` cell set immediately after `createRouter`. Host nav
- * messages can only arrive after `transport.signalReady`, by which
- * point the cell is populated.
  */
 const renderApp = ({
   history,
@@ -300,13 +290,6 @@ const renderApp = ({
   // sign-in flips the bearer store's signal and should flush the cache.
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
-  const navigate = (to: NavTarget): void => {
-    const router = routerHandle.current
-    if (router === null) return
-    if (typeof to === 'number') router.history.back()
-    else void router.navigate({ to })
-  }
-
   // Built once per renderApp. Only the Tauri host ever pushes
   // `PendingConsentRequested`, but the store and provider are wired in
   // every entry so the modal host's hook contract is identical
@@ -314,7 +297,6 @@ const renderApp = ({
   const activePendingConsentStore = makeActivePendingConsentStore()
 
   const transportPromise = makeTransport(
-    navigate,
     tokenStore.setAuthState,
     activePendingConsentStore.setActiveHead
   )

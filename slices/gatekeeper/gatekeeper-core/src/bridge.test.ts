@@ -10,11 +10,6 @@ describe('GatekeeperBridge', () => {
     ])
   })
 
-  test('no tags carry a URL-param schema — the bearer must not be embeddable in a URL', () => {
-    expect(GatekeeperBridge.UrlParamSchemas.AuthTokenIssued).toBeUndefined()
-    expect(GatekeeperBridge.UrlParamSchemas.PendingConsentRequested).toBeUndefined()
-  })
-
   test('AuthTokenIssued is a contentless notify — the wire shape carries no token', () => {
     const schema = GatekeeperBridge.HostToWeb.AuthTokenIssued
     expect(Schema.decodeSync(schema)('{"_tag":"AuthTokenIssued"}')).toEqual({

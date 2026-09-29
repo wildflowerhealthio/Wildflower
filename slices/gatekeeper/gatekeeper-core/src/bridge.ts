@@ -38,9 +38,8 @@ type PendingConsentHead = Schema.Schema.Type<typeof PendingConsentHead>
  * routes use) to hydrate the matching form, so there's one source of
  * truth per consent payload.
  *
- * Push-only: deliberately absent from `urlParams`. The standalone web
- * entries serve a stub transport and never see this message; the
- * Tauri host is the only emitter.
+ * Push-only: the standalone web entries serve a stub transport and never
+ * see this message; the Tauri host is the only emitter.
  *
  * @remarks
  * Wire: `{"_tag":"PendingConsentRequested","head":null}`,
@@ -70,9 +69,7 @@ type GatekeeperBridge = Bridge.Bridge<
  * `AuthTokenIssued` (a contentless notify — pull the bearer
  * out-of-band, the multiplexed channel never carries the secret) and
  * `PendingConsentRequested` (the pending-consent head). Both
- * messages are Tauri-emitted; no URL-param fallback (the bearer must
- * never be embeddable in a URL that could leak through history or
- * Referer headers).
+ * messages are Tauri-emitted.
  */
 const GatekeeperBridge: GatekeeperBridge = Bridge.make({
   name: 'Gatekeeper',

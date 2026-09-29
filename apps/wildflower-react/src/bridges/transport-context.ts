@@ -6,26 +6,20 @@ import { useContextOrThrow } from 'react-kitchen-sink'
 
 import type { Bridges } from './bridges.ts'
 
-type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'HostToWeb', 'WebToHost'>
-
 /**
- * Narrowed view of `BridgeTransport` that React-side consumers see —
- * `sendMessage` plus the {@link HandlerCoordinator} (so slices register
- * their inbound handlers on mount). `signalReady`/`enqueue`/the raw
- * `registerHandlers` stay boot-time / Effect-side concerns that
- * {@link AppRootTree} drives off the resolved transport; the coordinator
- * wraps `registerHandlers` with per-bridge recompose so React consumers
- * never touch it directly.
+ * The page-side transport surface React consumers see — `sendMessage`
+ * plus the {@link HandlerCoordinator} (so slices register their inbound
+ * handlers on mount).
  */
 interface ReactTransport {
-  readonly sendMessage: FullTransport['sendMessage']
+  readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'WebToHost'>
   readonly coordinator: HandlerCoordinator
 }
 
 /**
  * No-op transport used by standalone-web entries and as the
  * pre-resolution placeholder for `<TransportContext>` while the real
- * embedded transport's `signalReady` handshake is in flight. Its
+ * transport's `__Ready` handshake is in flight. Its
  * `sendMessage` is `Effect.void`, so emits during that window are
  * dropped (which is correct — the host isn't ready to receive yet).
  * The `_auth` gate's `awaitAuthReady` waits the bridge handshake before

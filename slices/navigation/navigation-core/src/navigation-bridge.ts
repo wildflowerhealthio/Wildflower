@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Bridge, UrlParamMessage } from 'effect-messaging-core'
+import { Bridge } from 'effect-messaging-core'
 
 /**
  * Host → Web: the native host detected a back-navigation gesture (header chevron,
@@ -9,10 +9,8 @@ import { Bridge, UrlParamMessage } from 'effect-messaging-core'
 const HostBackRequested = Schema.parseJson(Schema.TaggedStruct('HostBackRequested', {}))
 
 /**
- * Host → Web: navigate the embedded SPA to `path`. Carries both the
- * pre-injected initial route (read synchronously to seed the TanStack
- * router's `createMemoryHistory({ initialEntries: [path] })`) and
- * runtime host-driven deep links.
+ * Host → Web: navigate the embedded SPA to `path` (a host-driven deep
+ * link).
  */
 const HostRequestedWebNavigation = Schema.parseJson(
   Schema.TaggedStruct('HostRequestedWebNavigation', { path: Schema.String })
@@ -121,15 +119,6 @@ const NavigationBridge: NavigationBridge = Bridge.make({
     ['RouteChanged', RouteChanged],
     ['UIReady', UIReady],
   ] as const,
-  urlParams: {
-    HostRequestedWebNavigation: UrlParamMessage.singleStringMessageSchema(
-      'HostRequestedWebNavigation',
-      'path'
-    ),
-    // HostBackRequested, SafeAreaInsetsChanged, and HostColorSchemeChanged
-    // deliberately omitted — they're runtime-only signals pushed over the
-    // live channel, never seeded through the WebView URL.
-  },
 })
 
 export { NavigationBridge }

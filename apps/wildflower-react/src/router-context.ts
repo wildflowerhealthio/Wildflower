@@ -35,7 +35,7 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
   readonly entry: 'main-web' | 'main-tauri'
   /**
    * Resolves to the page-side `BridgeTransport` (narrowed to the React
-   * surface — only `sendMessage`) once the boot-time `signalReady`
+   * surface — only `sendMessage`) once the boot-time handshake
    * finishes. The `_auth` route loader awaits this
    * before emitting the embedded `UIReady` handshake; by the time the
    * loader runs the `beforeLoad` gate's `awaitAuthReady` has already

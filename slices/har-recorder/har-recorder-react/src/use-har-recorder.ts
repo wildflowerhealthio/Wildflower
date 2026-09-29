@@ -117,7 +117,7 @@ const useHarRecorder = (): HarRecorder => {
   const stopRef = useRef<() => void>(() => {})
 
   // One handler record per hook instance, built once: `unregister` is
-  // set-if-equal (see `makeHandlerCoordinator`), so a freshly-built object each
+  // set-if-equal (see `HandlerCoordinator.unregister`), so a freshly-built object each
   // render would leave the coordinator unable to evict the one it holds.
   const [handlers] = useState<{
     readonly collector: CollectorHandlers

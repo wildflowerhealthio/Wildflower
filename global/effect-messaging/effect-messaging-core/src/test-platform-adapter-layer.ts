@@ -31,13 +31,11 @@ import { TransportAdapter } from './transport-adapter.ts'
  * `Queue.take`/`takeN` blocks until the pump actually flushes, and
  * `Queue.poll` confirms nothing flushed without a sleep.
  *
- * `drainInitial` returns `initialMessages` (default `[]`); the optional
- * `attachBareSender` capture exposes the supplied `bareSender` callback
+ * The optional `attachBareSender` capture exposes the supplied `bareSender` callback
  * through `liveBareSenderRef` so core-level transport tests can exercise
  * the live-attachment path without standing up jsdom.
  */
 const make = (config?: {
-  readonly initialMessages?: ReadonlyArray<string>
   readonly captureBareSenderLive?: boolean
 }): {
   readonly layer: Layer.Layer<TransportAdapter>
@@ -47,7 +45,6 @@ const make = (config?: {
 } => {
   const sentSink: string[] = []
   const sentQueue = Effect.runSync(Queue.unbounded<string>())
-  const initialMessages = config?.initialMessages ?? []
   const liveBareSenderRef: { current: BareSenderFunction | null } = {
     current: null,
   }
@@ -71,7 +68,6 @@ const make = (config?: {
         sentSink.push(encoded)
         return Queue.offer(sentQueue, encoded).pipe(Effect.asVoid)
       }),
-    drainInitial: Effect.succeed(initialMessages),
     ...(config?.captureBareSenderLive === true ? { attachBareSender: attachBareSender } : {}),
   }
   return {
