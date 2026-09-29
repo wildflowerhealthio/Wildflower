@@ -49,7 +49,7 @@ type WrittenReason = 'start' | 'dose-change' | 'renewal' | 'resume' | 'generic-s
  */
 type EndReason = 'dose-change' | 'hold' | 'generic-switch' | 'stop'
 
-/** A prescription's status on the as-of day, in the STU3 `MedicationRequest.status` vocabulary. */
+/** A prescription's status on the as-of day, in FHIR's `MedicationRequest.status` vocabulary. */
 type Status = 'active' | 'completed' | 'stopped'
 
 /** See the module summary. */

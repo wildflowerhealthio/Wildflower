@@ -29,8 +29,7 @@ exported from the **flat root entry**:
 - **`Person`** (`src/person.ts`) — demographics as a story holds them: a key,
   given and family name, `fhir-r4`'s `AdministrativeGender`, an `age` and
   `daysSinceBirthday` rather than a birth date, a fictional email and postal
-  code. `birthDateOf(person, asOf)` keeps the person `age` on every as-of day;
-  `fullNameOf` is given name first.
+  code. `birthDateOf(person, asOf)` keeps the person `age` on every as-of day.
 - **`DrugProduct`** (`src/drug-product.ts`) — the type of a marketed product
   by DIN (DPD keys, brand, generic name, strength, form, company), and the
   labels a pharmacy prints for it (`labelOf`, `strengthLabelOf`). No products:

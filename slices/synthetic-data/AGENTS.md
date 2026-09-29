@@ -15,19 +15,8 @@ Nothing here names a person or tells a particular story.
 
 ## Packages
 
-The slice is layered like `health-viewer`: a source-free base, one generator
-package per source, and an assembly on top. The base is
-`synthetic-data-fundamentals`; the generators and the assembly are the planned
-layers above it.
-
-```text
-synthetic-data-fundamentals      story model, seeded values, HAR capture defaults
-      ▲
-synthetic-data-rexall-be-well    Story → a letsbewell.ca session HAR
-synthetic-data-shoppers-drugmart Story → a Shoppers Drug Mart session HAR
-      ▲
-synthetic-data-core              a whole data set from the per-source generators
-```
+The slice is layered like `health-viewer`: a source-free base, with one
+generator package per source on top of it.
 
 - **`synthetic-data-fundamentals`** (pure) — the story model as `effect`-style
   namespaces from one flat entry: `Story`, `Person`, `Prescription`,
@@ -38,12 +27,11 @@ synthetic-data-core              a whole data set from the per-source generators
   `./test-helpers` subpath holds the fast-check arbitraries every generator's
   tests draw stories from. See its
   [AGENTS.md](./synthetic-data-fundamentals/AGENTS.md).
-- **`synthetic-data-<source>`** (planned) — one generator per source
-  (`synthetic-data-rexall-be-well`, `synthetic-data-shoppers-drugmart`, …):
-  reads `Story` values, plus the person's account on that source, and writes
-  the source's own wire shape, spelled from that source package's constants.
-- **`synthetic-data-core`** (planned) — assembles a data set: one story rendered through
-  every source that holds it.
+
+A generator for a source is a `synthetic-data-<source>` package on top of
+`synthetic-data-fundamentals`: it reads `Story` values, plus the person's
+account on that source, and writes the source's own wire shape, spelled from
+that source package's constants.
 
 ## Rules
 

@@ -20,8 +20,7 @@ interface Strength {
  * @remarks
  * `din` and `drugCode` are the DPD's own keys; `brandName`, `company` and the
  * ingredient's strength are what the DPD prints for that DIN. `genericName` is
- * the name a pharmacy label leads with, and the one the interaction and
- * sponsorship matchers see.
+ * the name a pharmacy label leads with.
  */
 interface DrugProduct {
   /** Drug Identification Number: eight digits, leading zeros kept. */
