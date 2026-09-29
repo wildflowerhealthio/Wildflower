@@ -346,7 +346,7 @@ jobs:
       # Vite+ owns the toolchain (Node + package manager + `vp`), same as
       # every other workflow here — no separate setup-node / corepack / pnpm.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.0
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           cache: true
 
@@ -462,7 +462,7 @@ jobs:
           cache-on-failure: true
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.0
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           cache: true
 
@@ -581,7 +581,7 @@ jobs:
           cache-on-failure: true
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.0
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           cache: true
 
@@ -713,7 +713,7 @@ jobs:
       # node_modules/.bin/vp that `vp install` puts there. watch-lifts is C
       # alone.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.0
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           cache: true
 
