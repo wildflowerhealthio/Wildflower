@@ -3,19 +3,28 @@
  * `emitHar` builds an archive from captured exchanges, and an import reads one
  * — including a foreign one — as the entries a replay consumes
  * (`HttpArchive`). `ChromeHar` is the same format with the Chrome DevTools
- * entry extras kept.
+ * entry extras kept, and the vocabulary a producer of one writes with.
  *
  * @packageDocumentation
  */
 export * as HttpArchive from './http-archive.ts'
 export {
+  CHROME_CREATOR,
   ChromeHar,
   ChromeHarEntry,
+  type ChromeHarExtras,
   ChromeHarFromJson,
   ChromeHarInitiator,
   ChromeHarLog,
+  type ChromeInitiatorType,
+  type ChromePageSpec,
+  type ChromePriority,
+  type ChromeResourceType,
+  chromeExtrasOf,
   chromeHarFromJson,
+  chromeHarOf,
   chromeHarToJson,
+  chromePageOf,
 } from './chrome-har.ts'
 export {
   CREATOR_NAME,

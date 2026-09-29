@@ -21,7 +21,15 @@ const FNV_64_PRIME = 0x100000001b3n
  */
 const FNV_1A_64_OFFSET_BASIS = 0xcbf29ce484222325n
 
-/** 2^64 - 1; the modulus every FNV round is reduced by. */
+/**
+ * 2^64 - 1: the mask that reduces a `bigint` to its low 64 bits.
+ *
+ * @remarks
+ * `bigint` arithmetic never overflows, so 64-bit hashing written over it has to
+ * wrap explicitly: every FNV round here, and every multiply in `fmix64`, is
+ * `& MASK64`. Exported so a caller doing its own 64-bit arithmetic on these
+ * values reduces by the same constant.
+ */
 const MASK64 = 0xffffffffffffffffn
 
 /**
@@ -68,4 +76,4 @@ const fnv1a64 = (
   return hash
 }
 
-export { FNV_1A_64_OFFSET_BASIS, FNV_64_PRIME, fnv1a64 }
+export { FNV_1A_64_OFFSET_BASIS, FNV_64_PRIME, fnv1a64, MASK64 }

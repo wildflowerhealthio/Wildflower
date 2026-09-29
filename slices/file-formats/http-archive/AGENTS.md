@@ -24,7 +24,16 @@ anonymizer reaching sideways into the importer.
   `chromeHarToJson` / `chromeHarFromJson`), so a producer or reader of a
   Chrome-shaped archive keeps them. Kept off the base schemas because they are
   one browser's extension, not the format. A `ChromeHar` is structurally a
-  `Har`; writing one through `harToJson` drops the extras.
+  `Har`; writing one through `harToJson` drops the extras. Also the
+  vocabulary a producer of a DevTools-shaped archive writes with:
+  `CHROME_CREATOR` (`WebInspector` `537.36`, as "Save all as HAR" names
+  itself), the literal types `ChromeResourceType` (`document` | `xhr` |
+  `fetch`), `ChromePriority` and `ChromeInitiatorType`, `chromeExtrasOf`
+  (a resource type's `_initiator` / `_priority` / `_resourceType` as a
+  `ChromeHarExtras`), `chromePageOf` (a `ChromePageSpec` as a `HarPage`
+  titled with its URL) and `chromeHarOf` (pages and entries as a 1.2
+  archive under `CHROME_CREATOR`). The schemas stay open strings, so an
+  export carrying other values still reads.
 - `src/emit.ts` — **`emitHar` / `emitHarFromLog`**: build an archive from
   captured `TraceExchange`es or from an `HttpArchive.Log`, plus the comment
   constants that annotate what an import did not carry through
@@ -59,7 +68,9 @@ dissolves `slices/web-trace` — `web-trace-core` (`TraceExchange`,
   `serverIPAddress` and every timing phase validates and round-trips too;
   `harToJson` writes compact or pretty text of the same archive.
 - `chrome-har.test.ts` — a `ChromeHar` round-trips pages, `pageref` and the
-  DevTools extras through its file text; the base `Har` reads the same export
+  DevTools extras through its file text; an archive built with the producer
+  vocabulary round-trips with its creator and extras, and `chromeExtrasOf`
+  covers every `ChromeResourceType`; the base `Har` reads the same export
   with only the extras dropped.
 
 ## References
