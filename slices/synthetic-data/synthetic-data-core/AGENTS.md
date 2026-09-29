@@ -116,7 +116,8 @@ physiology)`: the Observations FHIR Sync for Pebble writes, built by
   from the story minute and the watch, so moving the as-of date moves only
   timestamps. It sends heart rate, steps and movement; an hour the watch spent
   wholly charging is not sent, a charging minute is `E`. An unlisted day has
-  no data.
+  no minute data; activities are not clipped to it or to charges, so a night
+  reaching back into an unlisted day still sends its Sleep activities.
 - **`PebbleWatch`** (`src/pebble/pebble-watch.ts`) — the watch as PebbleKit JS
   reports it (`token`, `info`): `watchOf(keys)` hashes a 32-hex-digit token
   and picks an `emery` Pebble Time 2 and firmware; `toReference` is

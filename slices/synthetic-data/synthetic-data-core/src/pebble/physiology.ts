@@ -69,7 +69,15 @@ interface Circadian {
 
 /**
  * What the watch measured over the days it was worn. A day not listed has no
- * data at all, as if the watch were not worn; at most one entry per day.
+ * minute data, as if the watch were not worn; at most one entry per day.
+ *
+ * @remarks
+ * Activities come from the listed days alone and are not clipped to the
+ * minutes that hold data: a night that falls asleep before its day's midnight
+ * sends its Sleep activities from that time even when the day before is not
+ * listed, and a charge overlapping a night blanks those minutes but not the
+ * night's activities. A story that wants them to agree lists the day before,
+ * and keeps charges out of its nights.
  */
 interface Physiology {
   /** The wearer's local clock, whole hours ahead of UTC (`-5` for Eastern Standard Time). */
