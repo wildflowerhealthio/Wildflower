@@ -375,7 +375,9 @@ impl utoipa::Modify for InsufficientScopeResponses {
                         );
                         response.content.insert(
                             "application/json".to_owned(),
-                            Content::new(Some(Ref::from_schema_name("InsufficientScopeBody"))),
+                            RefOr::T(Content::new(Some(Ref::from_schema_name(
+                                "InsufficientScopeBody",
+                            )))),
                         );
                         RefOr::T(response)
                     });

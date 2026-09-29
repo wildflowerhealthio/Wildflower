@@ -69,14 +69,14 @@ tower = { version = "0.5" }
 http-body-util = "0.1"
 # Code-first OpenAPI generation. `preserve_order` keeps schema properties in
 # declaration order so the committed spec snapshot is stable across runs.
-utoipa = { version = "5", features = ["preserve_order"] }
+utoipa = { version = "6", features = ["preserve_order"] }
 # axum integration: collects the OpenAPI spec from the real router so the spec
 # can't drift from the routes (axum 0.8-compatible).
-utoipa-axum = "0.2"
+utoipa-axum = "0.3"
 # Interactive Scalar API reference. The host merges each documented slice's
 # `openapi_spec()` into one document and serves it here at `/docs`. The `axum`
 # feature (0.8-compatible) mounts it as a plain `Router`.
-utoipa-scalar = { version = "0.3", features = ["axum"] }
+utoipa-scalar = { version = "0.4", features = ["axum"] }
 
 # Lints shared by every crate that opts in with `[lints] workspace = true`.
 # Forbidding unsafe makes any `unsafe` block a compile error (not just a lint),

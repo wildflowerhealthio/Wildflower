@@ -179,10 +179,10 @@
           "relay": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RelayInput"
               },
               {
-                "$ref": "#/components/schemas/RelayInput"
+                "type": "null"
               }
             ]
           }
@@ -243,11 +243,11 @@
           "relay": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RelayView",
                 "description": "The relay connection's non-secret fields, or `null` when no relay is\nconfigured. The `token` is never included."
+              },
+              {
+                "type": "null"
               }
             ]
           }

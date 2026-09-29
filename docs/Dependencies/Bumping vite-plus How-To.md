@@ -8,7 +8,7 @@ For _why_ the exact pins exist — the pnpm variant-split mechanism, the `vite`/
 
 A vite-plus bump moves three distinct version strings, each in more than one file:
 
-- **`vite-plus`** itself — the package that ships the `vp` binary (currently `0.3.2`).
+- **`vite-plus`** itself — the package that ships the `vp` binary (currently `0.3.3`).
 - **`@voidzero-dev/vite-plus-core`** — the `vite` alias vite-plus depends on. Must match the core that _this_ `vite-plus` depends on, **not** the newest core on npm (see the Explanation's "Re-pinning" section).
 - **`vitest`** — the real vitest vite-plus bundles (currently `4.1.11`). Read its target from `vp --version`, not by guessing.
 
@@ -16,13 +16,13 @@ A vite-plus bump moves three distinct version strings, each in more than one fil
 
 | #   | File                                                                             | Key                           | Current value                            | Holds     |
 | --- | -------------------------------------------------------------------------------- | ----------------------------- | ---------------------------------------- | --------- |
-| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite-plus:`          | `0.3.2`                                  | vite-plus |
-| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite:`               | `npm:@voidzero-dev/vite-plus-core@0.3.2` | core      |
+| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite-plus:`          | `0.3.3`                                  | vite-plus |
+| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite:`               | `npm:@voidzero-dev/vite-plus-core@0.3.3` | core      |
 | 3   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vitest:`             | `4.1.11`                                 | vitest    |
 | 4   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | overrides `vite@*:`           | `catalog:`                               | core      |
-| 5   | [.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh)           | `pnpm install -g vite-plus@…` | `0.3.2`                                  | vite-plus |
-| 6   | [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh)   | `pnpm install -g vite-plus@…` | `0.3.2`                                  | vite-plus |
-| 7   | [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh) | `pnpm install -g vite-plus@…` | `0.3.2`                                  | vite-plus |
+| 5   | [.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh)           | `pnpm install -g vite-plus@…` | `0.3.3`                                  | vite-plus |
+| 6   | [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh)   | `pnpm install -g vite-plus@…` | `0.3.3`                                  | vite-plus |
+| 7   | [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh) | `pnpm install -g vite-plus@…` | `0.3.3`                                  | vite-plus |
 
 Rows 1–3 are the catalog values; row 4 is the pnpm override that forces all `vite` deps to the catalog alias; rows 5–7 are exact pins in global-install scripts. The three bootstrap-script pins (rows 5–7) are hand-kept in lockstep because there is no way to reference the catalog from a global `pnpm install -g`; they must equal the version the lockfile resolves.
 
