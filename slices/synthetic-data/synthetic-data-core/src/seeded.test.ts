@@ -36,10 +36,26 @@ describe('Seeded.uuidOf', () => {
     expect(Seeded.uuidOf(['a\u001fb'])).not.toBe(Seeded.uuidOf(['a', 'b']))
   })
 
+  test('property: gives sibling keys uuids that differ in most hex positions', () => {
+    fc.assert(
+      fc.property(fc.string(), fc.nat({ max: 999 }), fc.nat({ max: 999 }), (stem, left, right) => {
+        fc.pre(left !== right)
+        const leftHex = Seeded.uuidOf(['rx', `${stem}-${left}`]).replaceAll('-', '')
+        const rightHex = Seeded.uuidOf(['rx', `${stem}-${right}`]).replaceAll('-', '')
+        const differing = leftHex
+          .split('')
+          .filter((digit, index) => digit !== rightHex[index]).length
+        // 30 free nibbles differ with probability 15/16 each: about 28 expected.
+        expect(differing).toBeGreaterThanOrEqual(20)
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
   test('is stable across runs', () => {
     // Pinned so a change to the derivation, which would re-key every
     // published resource, fails here rather than passing unnoticed.
-    expect(Seeded.uuidOf(['rexall', 'warren'])).toBe('a7854770-f3b4-4846-9223-b68c6dc36dc0')
+    expect(Seeded.uuidOf(['rexall', 'warren'])).toBe('212e69fd-7553-4dc2-b385-39b07e9c3da7')
   })
 })
 

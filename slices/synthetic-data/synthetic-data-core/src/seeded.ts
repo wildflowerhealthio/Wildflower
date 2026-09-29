@@ -13,7 +13,10 @@ import { fnv1a64, FNV_1A_64_OFFSET_BASIS } from 'kitchen-sink'
  * `kitchen-sink`'s FNV-1a 64-bit over the keys folded with `fhir-r4`'s
  * `joinIdComponents` (length-prefixed, so `['a', 'bc']` and `['ab', 'c']` hash
  * apart whatever the keys contain), which is deterministic across runs and
- * platforms.
+ * platforms, then passed through murmur3's 64-bit finalizer ({@link fmix64})
+ * so that keys differing in one character — `…-1` and `…-2` — give values that
+ * differ in about half their bits, as random draws would, rather than FNV's
+ * near-identical high bits.
  *
  * Nothing here decides a story. Jitter only moves a time within the day the
  * story put it on.
@@ -25,9 +28,25 @@ import { fnv1a64, FNV_1A_64_OFFSET_BASIS } from 'kitchen-sink'
  */
 const SECOND_LANE_BASIS = FNV_1A_64_OFFSET_BASIS ^ 0x77696c64666c7772n
 
-/** The 64-bit hash of `keys`, on the lane `offsetBasis` picks. */
+const UINT64_MASK = 0xffff_ffff_ffff_ffffn
+
+/**
+ * murmur3's 64-bit finalizer (`fmix64`): a bijection on 64-bit values in which
+ * every input bit flips each output bit with probability about one half.
+ */
+const fmix64 = (value: bigint): bigint => {
+  let mixed = value & UINT64_MASK
+  mixed ^= mixed >> 33n
+  mixed = (mixed * 0xff51afd7ed558ccdn) & UINT64_MASK
+  mixed ^= mixed >> 33n
+  mixed = (mixed * 0xc4ceb9fe1a85ec53n) & UINT64_MASK
+  mixed ^= mixed >> 33n
+  return mixed
+}
+
+/** The mixed 64-bit hash of `keys`, on the lane `offsetBasis` picks. */
 const hashOf = (keys: readonly string[], offsetBasis: bigint = FNV_1A_64_OFFSET_BASIS): bigint =>
-  fnv1a64(joinIdComponents(keys), offsetBasis)
+  fmix64(fnv1a64(joinIdComponents(keys), offsetBasis))
 
 /**
  * A UUID-shaped id (8-4-4-4-12 lowercase hex) derived from `keys`.
