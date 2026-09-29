@@ -33,7 +33,6 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
@@ -45,6 +44,7 @@
     "rexall-be-well-source": "workspace:*",
     "shoppers-drugmart-source": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"

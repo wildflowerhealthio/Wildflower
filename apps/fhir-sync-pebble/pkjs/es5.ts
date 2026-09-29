@@ -12,7 +12,7 @@
  * TypeScript 5 is the lowering tool because nothing else in the workspace emits
  * ES5: rolldown and oxc stop at ES2015, and lower some later syntax through
  * helpers that read `Symbol`. TypeScript 7 drops the ES5 target, so this
- * imports TypeScript 5 under the catalog alias `typescript-es5`.
+ * imports the bare `typescript` package, which the catalog holds on 5.x.
  *
  * @packageDocumentation
  */
@@ -20,7 +20,7 @@
 import { dirname, resolve } from 'node:path'
 
 import { parse, tokenizer, tokTypes } from 'acorn'
-import ts from 'typescript-es5'
+import ts from 'typescript'
 
 /**
  * `code`, bundled JavaScript of any later level, lowered to ES5 without its

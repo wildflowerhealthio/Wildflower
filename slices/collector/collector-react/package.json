@@ -34,7 +34,6 @@
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "collector-fundamentals": "workspace:*",
     "collector-registry": "workspace:*",
     "effect": "catalog:",
@@ -54,6 +53,7 @@
     "shoppers-drugmart-collector": "workspace:*",
     "telemetry-react": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-collector": "workspace:*"

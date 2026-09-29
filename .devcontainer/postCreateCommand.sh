@@ -49,7 +49,7 @@ fi
 # pins must be re-synced on every bump; the full list of places a vite-plus
 # version is recorded is in docs/Dependencies/Bumping vite-plus How-To.md.
 pnpm install -g vite-plus@1.0.0
-pnpm install -g @typescript/native-preview@7.0.0-dev.20260707.2
+pnpm install -g typescript@7.0.2
 pnpm install -g @tsdown/css@0.23.0
 vp install
 

@@ -28,7 +28,6 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "ajv": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
@@ -37,6 +36,7 @@
     "http-extraction-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"

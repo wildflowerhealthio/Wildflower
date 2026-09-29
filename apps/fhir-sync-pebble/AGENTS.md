@@ -296,8 +296,8 @@ than the stand-in has, so only `pebble build` compiles it.
   source, the core's included, against ES5's library, so
   `Array.prototype.includes` or `String.prototype.padStart` fails it, and a
   bundled module outside that check fails it too. TypeScript 7 has no ES5
-  target, so `es5.ts` imports TypeScript 5 as the catalog alias
-  `typescript-es5`; `pkjs/src/tsconfig.json` (the ES5 one) says ES2015 only
+  target, so `es5.ts` imports the bare `typescript` package, which the catalog
+  holds on 5.x; `pkjs/src/tsconfig.json` (the ES5 one) says ES2015 only
   because `vp check`'s TypeScript 7 refuses ES5, and `pkjs/tsconfig.json`
   covers the Node-side build files and tests.
 - **Nothing the phone bundles may import Effect.** Effect needs ES2015 at run

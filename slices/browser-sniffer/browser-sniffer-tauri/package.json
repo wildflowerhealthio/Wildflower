@@ -32,7 +32,6 @@
   "devDependencies": {
     "@tauri-apps/api": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
@@ -40,6 +39,7 @@
     "esbuild": "catalog:",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   }

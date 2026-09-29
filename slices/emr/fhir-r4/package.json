@@ -46,7 +46,6 @@
     "@effect/platform": "catalog:",
     "@types/fhir": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "bumpp": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
@@ -54,6 +53,7 @@
     "navigation-core": "workspace:*",
     "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

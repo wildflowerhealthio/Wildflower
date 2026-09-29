@@ -41,7 +41,6 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
@@ -53,6 +52,7 @@
     "shared-structures-core": "workspace:*",
     "shoppers-drugmart-collector": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-collector": "workspace:*"

@@ -52,7 +52,7 @@ Rows 1–2 are the catalog values. The `vite@*: 'catalog:'` override in [pnpm-wo
 ## Related, but versioned independently
 
 - **`voidzero-dev/setup-vp@vX.Y.Z`** in the [CI workflows](../../.github/workflows/) installs `vp` on the runners. It tracks its own release line (Dependabot bumps it separately) and is not the vite-plus version — it only needs to be new enough to run the pinned vite-plus. No manual sync with the rows above.
-- **`@typescript/native-preview` and `@tsdown/css`** are installed on the same `pnpm install -g` lines as vite-plus (rows 3–5) but are separate tools with their own catalog entries (`@typescript/native-preview`, `@tsdown/css` in [pnpm-workspace.yaml](../../pnpm-workspace.yaml)). The catalog carries a range; the scripts pin the exact version `pnpm-lock.yaml` resolves for it, so a caret in the script would let the global drift ahead of the lockfile. Re-sync those pins when the lockfile resolution moves, independently of a vite-plus bump.
+- **`typescript@7.0.2` and `@tsdown/css`** are installed on the same `pnpm install -g` lines as vite-plus (rows 3–5) but are separate tools with their own catalog entries (`typescript-7`, `@tsdown/css` in [pnpm-workspace.yaml](../../pnpm-workspace.yaml)). The catalog may carry a range; the scripts pin the exact version `pnpm-lock.yaml` resolves, so a caret in the script would let the global drift ahead of the lockfile. Re-sync those pins when the lockfile resolution moves, independently of a vite-plus bump.
 
 ## See Also
 

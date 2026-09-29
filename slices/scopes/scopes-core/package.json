@@ -21,9 +21,9 @@
     "kitchen-sink": "workspace:*"
   },
   "devDependencies": {
-    "@typescript/native-preview": "catalog:",
     "fast-check": "catalog:",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   }

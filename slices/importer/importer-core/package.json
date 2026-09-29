@@ -29,7 +29,6 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "dicom": "workspace:*",
     "dicom-importer-core": "workspace:*",
     "effect": "catalog:",
@@ -40,6 +39,7 @@
     "kitchen-sink": "workspace:*",
     "lifelabs-pdf-importer-core": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

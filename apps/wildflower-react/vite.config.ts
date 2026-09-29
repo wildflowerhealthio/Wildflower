@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
+import { tsgoDts } from '../../vite.config.base.ts'
 import baseConfig from './vite.config.base.ts'
 
 // Test-only config. The bundle build runs through `vite.config.web.ts`; this
@@ -14,7 +15,7 @@ export default defineConfig({
     // walking into each slice's `src/`. Without that override, tsgo treats
     // every transitively-imported slice source file as a project input and
     // writes `.d.ts` siblings next to them across the monorepo.
-    dts: { generator: 'tsgo', tsgo: {}, tsconfig: './tsconfig.pack.json' },
+    dts: { ...tsgoDts, tsconfig: './tsconfig.pack.json' },
     platform: 'browser',
     exports: false,
     entry: {

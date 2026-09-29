@@ -20,6 +20,7 @@
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   }

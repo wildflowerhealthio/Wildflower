@@ -34,7 +34,6 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "collector-react": "workspace:*",
@@ -51,6 +50,7 @@
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

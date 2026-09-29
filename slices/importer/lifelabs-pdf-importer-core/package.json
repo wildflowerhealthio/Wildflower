@@ -37,7 +37,6 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
@@ -46,6 +45,7 @@
     "positioned-text": "workspace:*",
     "positioned-text-web": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

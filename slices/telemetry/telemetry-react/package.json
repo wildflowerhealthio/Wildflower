@@ -29,10 +29,10 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "telemetry-web": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
