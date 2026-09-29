@@ -21,7 +21,8 @@ import type { RexallAccount } from './rexall-account.ts'
  * @remarks
  * Modelled on `rexall-be-well-source/src/fixtures/prescriptions-searchset.json`
  * and the capture notes in that package's AGENTS.md: each prescription is one
- * `MedicationRequest` carrying its product as a contained `Medication` (DIN,
+ * `MedicationRequest` carrying its product — the one on the label now, its
+ * most recent fill's (`Prescription.currentProductOf`) — as a contained `Medication` (DIN,
  * strength and description extensions), the sig in `note[0].text`, and the
  * repeats still available dual-written as `v1` / `v2` `modifierExtension`s; its
  * most recent fill is one `MedicationDispense` **sharing the request's `id`**
@@ -234,7 +235,7 @@ const medicationConceptOf = (product: DrugProduct.DrugProduct): CodeableConcept 
 })
 
 const containedMedicationOf = (carebookPrescription: CarebookPrescription): ContainedMedication => {
-  const { product } = carebookPrescription.prescription
+  const product = Prescription.currentProductOf(carebookPrescription.prescription)
   return {
     resourceType: 'Medication',
     id: carebookPrescription.medicationId,
@@ -330,7 +331,7 @@ const medicationRequestOf = (
     identifier: carebookPrescription.identifiers,
     status: Prescription.statusOf(prescription),
     intent: 'order',
-    medicationCodeableConcept: medicationConceptOf(prescription.product),
+    medicationCodeableConcept: medicationConceptOf(Prescription.currentProductOf(prescription)),
     subject: patientReferenceOf(account),
     authoredOn: carebookTimestampOf(carebookPrescription.authoredOn),
     requester: {
@@ -386,7 +387,7 @@ const medicationDispenseOf = (
     ],
     identifier: carebookPrescription.identifiers,
     status: 'completed',
-    medicationCodeableConcept: medicationConceptOf(prescription.product),
+    medicationCodeableConcept: medicationConceptOf(Prescription.currentProductOf(prescription)),
     subject: patientReferenceOf(account),
     authorizingPrescription: [
       CarebookIdentifierSystem.MedicationRequestTypeOrder,

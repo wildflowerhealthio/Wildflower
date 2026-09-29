@@ -38,14 +38,6 @@ const XHR_REQUEST_HEADERS: readonly ChromeHar.NameValue[] = [
   { name: 'referer', value: 'https://app.letsbewell.ca/' },
 ]
 
-const DOCUMENT_REQUEST_HEADERS: readonly ChromeHar.NameValue[] = [
-  { name: 'accept', value: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
-]
-
-/** A single-page app's shell document. */
-const appShellOf = (title: string): string =>
-  `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body><div id="root"></div></body></html>`
-
 /** Milliseconds from the sign-in navigation to each later request. */
 const PRESCRIPTIONS_PAGE_AFTER_MILLIS = 18_400
 const PROFILE_XHR_AFTER_MILLIS = 19_650
@@ -93,9 +85,9 @@ const render = (asOf: DateTime.Utc, story: Story, account: RexallAccount): strin
           resourceType: 'document',
           startedAt: captureStart,
           url: SIGN_IN_URL,
-          requestHeaders: DOCUMENT_REQUEST_HEADERS,
+          requestHeaders: ChromeHar.DOCUMENT_REQUEST_HEADERS,
           mimeType: HTML,
-          body: appShellOf('Sign in | Be Well'),
+          body: ChromeHar.appShellOf('Sign in | Be Well'),
           waitMillis: 88.4,
           serverIPAddress: SIGN_IN_IP,
         }),
@@ -104,9 +96,9 @@ const render = (asOf: DateTime.Utc, story: Story, account: RexallAccount): strin
           resourceType: 'document',
           startedAt: after(PRESCRIPTIONS_PAGE_AFTER_MILLIS),
           url: PRESCRIPTIONS_URL,
-          requestHeaders: DOCUMENT_REQUEST_HEADERS,
+          requestHeaders: ChromeHar.DOCUMENT_REQUEST_HEADERS,
           mimeType: HTML,
-          body: appShellOf('Prescriptions | Be Well'),
+          body: ChromeHar.appShellOf('Prescriptions | Be Well'),
           waitMillis: 64.9,
           serverIPAddress: APP_IP,
         }),

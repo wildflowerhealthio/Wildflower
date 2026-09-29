@@ -161,6 +161,15 @@ describe('Prescription.sigOf', () => {
     ).toBe('TAKE 2 TABLETS (=1000MG) BY MOUTH TWICE DAILY WITH MEALS')
   })
 
+  test('writes half a tablet as a fraction, with the half dose', () => {
+    expect(
+      Prescription.sigOf({
+        ...onceDaily,
+        dosing: { tabletsPerDose: 0.5, dosesPerDay: 1, direction: null },
+      })
+    ).toBe('TAKE 1/2 TABLET (=2.5MG) BY MOUTH ONCE DAILY')
+  })
+
   test('property: names the tablets per dose, the dose, the frequency and the direction', () => {
     fc.assert(
       fc.property(prescriptionArbitrary, (prescription) => {
@@ -170,5 +179,52 @@ describe('Prescription.sigOf', () => {
       }),
       { numRuns: RUNS }
     )
+  })
+})
+
+describe('Prescription.productOnFillOf', () => {
+  /** A hand-written brand tablet, and another manufacturer's at the same strength. */
+  const brand: DrugProduct.DrugProduct = {
+    din: '02000017',
+    drugCode: 1,
+    brandName: 'Examplex',
+    genericName: 'Examplazole',
+    strength: { value: 75, unit: 'mcg' },
+    form: 'tablet',
+    company: 'Example Pharma Inc',
+  }
+  const generic: DrugProduct.DrugProduct = {
+    ...brand,
+    din: '02000025',
+    drugCode: 2,
+    brandName: 'Apo-Examplazole',
+    company: 'Apotex Inc',
+  }
+
+  const filledThrice = {
+    key: 'rx',
+    product: brand,
+    dosing: { tabletsPerDose: 1, dosesPerDay: 1, direction: null },
+    supplyDaysPerFill: 30,
+    repeatsAllowed: 5,
+    prescriber: { key: 'doctor', display: 'DR A DOCTOR' },
+    written: { day: -90, reason: 'start' },
+    ended: null,
+    fillDays: [-90, -60, -30],
+  } satisfies Prescription.Prescription
+
+  test('is the prescribed product on every fill without an interchange', () => {
+    expect(
+      filledThrice.fillDays.map((day) => Prescription.productOnFillOf(filledThrice, day).din)
+    ).toEqual([brand.din, brand.din, brand.din])
+    expect(Prescription.currentProductOf(filledThrice).din).toBe(brand.din)
+  })
+
+  test('is the interchanged product from its first fill on', () => {
+    const interchanged = { ...filledThrice, interchange: { fromFillDay: -60, product: generic } }
+    expect(
+      interchanged.fillDays.map((day) => Prescription.productOnFillOf(interchanged, day).din)
+    ).toEqual([brand.din, generic.din, generic.din])
+    expect(Prescription.currentProductOf(interchanged).din).toBe(generic.din)
   })
 })

@@ -17,10 +17,12 @@ import type { StoryDay } from './story-day.ts'
 /** Doses per day, as the sig spells them. */
 type DosesPerDay = 1 | 2
 
+/** Tablets per dose: half a tablet (a strength no product is marketed in), one or two. */
+type TabletsPerDose = 0.5 | 1 | 2
+
 /** How the prescription is taken. */
 interface Dosing {
-  /** Tablets per dose. */
-  readonly tabletsPerDose: 1 | 2
+  readonly tabletsPerDose: TabletsPerDose
   readonly dosesPerDay: DosesPerDay
   /** Words the sig ends with (`'WITH MEALS'`), or `null` for none. */
   readonly direction: string | null
@@ -49,6 +51,22 @@ type WrittenReason = 'start' | 'dose-change' | 'renewal' | 'resume' | 'generic-s
  */
 type EndReason = 'dose-change' | 'hold' | 'generic-switch' | 'stop'
 
+/**
+ * The pharmacy's switch, from one fill on, to another manufacturer's
+ * interchangeable product at the same strength: the same prescription, a new
+ * DIN on the label.
+ *
+ * @remarks
+ * A pharmacy records a generic switch either way: as a new prescription
+ * (`written.reason: 'generic-switch'`) or, as here, on a refill of the one it
+ * has — the Shoppers history feed carries a DIN per dispense for exactly this.
+ */
+interface Interchange {
+  /** The first fill of `product`; one of the prescription's `fillDays`. */
+  readonly fromFillDay: StoryDay
+  readonly product: DrugProduct.DrugProduct
+}
+
 /** A prescription's status on the as-of day, in the STU3 `MedicationRequest.status` vocabulary. */
 type Status = 'active' | 'completed' | 'stopped'
 
@@ -68,11 +86,19 @@ interface Prescription {
   readonly ended: { readonly day: StoryDay; readonly reason: EndReason } | null
   /** The days it was filled, ascending; the first is the original fill, the rest repeats. */
   readonly fillDays: readonly StoryDay[]
+  /** A switch to another manufacturer's product partway through its fills, if there was one. */
+  readonly interchange?: Interchange
 }
 
 const SIG_FREQUENCY: Readonly<Record<DosesPerDay, string>> = {
   1: 'ONCE DAILY',
   2: 'TWICE DAILY',
+}
+
+const SIG_TABLETS: Readonly<Record<TabletsPerDose, string>> = {
+  0.5: '1/2 TABLET',
+  1: '1 TABLET',
+  2: '2 TABLETS',
 }
 
 /**
@@ -113,13 +139,30 @@ const dailyDoseOf = (prescription: Prescription): DrugProduct.Strength => ({
 
 /**
  * The directions as a pharmacy label prints them:
- * `'TAKE 2 TABLETS (=1000MG) BY MOUTH TWICE DAILY WITH MEALS'`.
+ * `'TAKE 2 TABLETS (=1000MG) BY MOUTH TWICE DAILY WITH MEALS'`, or
+ * `'TAKE 1/2 TABLET (=2.5MG) BY MOUTH ONCE DAILY'`.
  */
 const sigOf = ({ dosing, product }: Prescription): string => {
-  const tablets = `${dosing.tabletsPerDose} TABLET${dosing.tabletsPerDose === 1 ? '' : 'S'}`
   const perDose = `${dosing.tabletsPerDose * product.strength.value}${product.strength.unit.toUpperCase()}`
   const direction = dosing.direction === null ? '' : ` ${dosing.direction}`
-  return `TAKE ${tablets} (=${perDose}) BY MOUTH ${SIG_FREQUENCY[dosing.dosesPerDay]}${direction}`
+  return `TAKE ${SIG_TABLETS[dosing.tabletsPerDose]} (=${perDose}) BY MOUTH ${SIG_FREQUENCY[dosing.dosesPerDay]}${direction}`
+}
+
+/**
+ * The product dispensed on `fillDay`: the {@link Interchange}'s from its first
+ * fill on, the prescription's own before it (or without one).
+ */
+const productOnFillOf = (prescription: Prescription, fillDay: StoryDay): DrugProduct.DrugProduct =>
+  prescription.interchange !== undefined && fillDay >= prescription.interchange.fromFillDay
+    ? prescription.interchange.product
+    : prescription.product
+
+/** The product on the label now: the most recent fill's, or, never filled, the one prescribed. */
+const currentProductOf = (prescription: Prescription): DrugProduct.DrugProduct => {
+  const lastFillDay = prescription.fillDays.at(-1)
+  return lastFillDay === undefined
+    ? prescription.product
+    : productOnFillOf(prescription, lastFillDay)
 }
 
 /** Refills still available: those authorized less those used after the first fill. */
@@ -145,12 +188,24 @@ const statusOf = (prescription: Prescription): Status => {
 }
 
 export {
+  currentProductOf,
   dailyDoseOf,
   fillDaysOnCadence,
+  productOnFillOf,
   quantityPerFillOf,
   repeatsRemainingOf,
   sigOf,
   statusOf,
   suppliedUntilOf,
 }
-export type { Dosing, DosesPerDay, EndReason, Prescriber, Prescription, Status, WrittenReason }
+export type {
+  Dosing,
+  DosesPerDay,
+  EndReason,
+  Interchange,
+  Prescriber,
+  Prescription,
+  Status,
+  TabletsPerDose,
+  WrittenReason,
+}

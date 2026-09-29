@@ -5,6 +5,7 @@ import type * as DrugProduct from './drug-product.ts'
 import type * as Person from './person.ts'
 import type * as Prescription from './prescription.ts'
 import type { RexallAccount } from './rexall/rexall-account.ts'
+import type { ShoppersAccount } from './shoppers/shoppers-account.ts'
 import type { StoryDay } from './story-day.ts'
 import type { Story } from './story.ts'
 
@@ -124,33 +125,48 @@ const titratedStrength = (strength: DrugProduct.Strength, pick: number): DrugPro
   return { value, unit: strength.unit }
 }
 
+/**
+ * A product: listed in the DPD under `databaseKey` as its `drugCode`, or — a
+ * natural health product — licensed in the LNHPD under it as its `lnhpdId`.
+ */
 const productOf = (
   genericName: string,
   strength: DrugProduct.Strength,
   manufacturer: Manufacturer,
   din: string,
-  drugCode: number
-): DrugProduct.DrugProduct => ({
-  din,
-  drugCode,
-  brandName: `${manufacturer.prefix}-${genericName}`,
-  genericName,
-  strength,
-  form: 'tablet',
-  company: manufacturer.company,
-})
+  databaseKey: number,
+  naturalHealthProduct: boolean
+): DrugProduct.DrugProduct => {
+  const marketed = {
+    din,
+    brandName: `${manufacturer.prefix}-${genericName}`,
+    genericName,
+    strength,
+    form: 'tablet' as const,
+    company: manufacturer.company,
+  }
+  return naturalHealthProduct
+    ? { ...marketed, drugCode: null, lnhpdId: databaseKey }
+    : { ...marketed, drugCode: databaseKey }
+}
 
-/** Any tablet, of any strength, by any manufacturer. */
+/** Whether one in ten generated drugs is a natural health product. */
+const naturalHealthProductArbitrary: fc.Arbitrary<boolean> = fc
+  .integer({ min: 0, max: 9 })
+  .map((draw) => draw === 0)
+
+/** Any tablet, of any strength, by any manufacturer, now and then a natural health product. */
 const productArbitrary: fc.Arbitrary<DrugProduct.DrugProduct> = fc
   .record({
     genericName: genericNameArbitrary,
     strength: strengthArbitrary,
     manufacturer: fc.constantFrom(...MANUFACTURERS),
     din: dinArbitrary,
-    drugCode: fc.integer({ min: 1, max: 199_999 }),
+    databaseKey: fc.integer({ min: 1, max: 199_999 }),
+    naturalHealthProduct: naturalHealthProductArbitrary,
   })
-  .map(({ genericName, strength, manufacturer, din, drugCode }) =>
-    productOf(genericName, strength, manufacturer, din, drugCode)
+  .map(({ genericName, strength, manufacturer, din, databaseKey, naturalHealthProduct }) =>
+    productOf(genericName, strength, manufacturer, din, databaseKey, naturalHealthProduct)
   )
 
 // ---------------------------------------------------------------------------
@@ -158,7 +174,7 @@ const productArbitrary: fc.Arbitrary<DrugProduct.DrugProduct> = fc
 // ---------------------------------------------------------------------------
 
 const dosingArbitrary: fc.Arbitrary<Prescription.Dosing> = fc.record({
-  tabletsPerDose: fc.constantFrom(1 as const, 2 as const),
+  tabletsPerDose: fc.constantFrom<Prescription.TabletsPerDose>(0.5, 1, 2),
   dosesPerDay: fc.constantFrom(1 as const, 2 as const),
   // No course length (`FOR 10 DAYS`): a story's prescriptions repeat and renew.
   direction: fc.constantFrom(null, 'WITH MEALS', 'AT BEDTIME', 'ON AN EMPTY STOMACH'),
@@ -175,11 +191,17 @@ const prescriberArbitrary: fc.Arbitrary<Prescription.Prescriber> = fc
 const expectedNameOf = (product: DrugProduct.DrugProduct): string =>
   `${product.genericName} ${product.strength.value} ${product.strength.unit} tablet`
 
+const TABLETS_WRITTEN: Readonly<Record<Prescription.TabletsPerDose, string>> = {
+  0.5: '1/2 TABLET',
+  1: '1 TABLET',
+  2: '2 TABLETS',
+}
+
 /** The sig, written out: `'TAKE 2 TABLETS (=40MG) BY MOUTH TWICE DAILY WITH MEALS'`. */
 const expectedSigOf = (dosing: Prescription.Dosing, strength: DrugProduct.Strength): string =>
   [
     'TAKE',
-    dosing.tabletsPerDose === 1 ? '1 TABLET' : `${dosing.tabletsPerDose} TABLETS`,
+    TABLETS_WRITTEN[dosing.tabletsPerDose],
     `(=${dosing.tabletsPerDose * strength.value}${strength.unit.toUpperCase()})`,
     'BY MOUTH',
     dosing.dosesPerDay === 1 ? 'ONCE DAILY' : 'TWICE DAILY',
@@ -206,7 +228,15 @@ interface ExpectedPrescription {
   readonly lastFillDay: StoryDay
   /** Generic name, strength and form: `'Alvastatin 20 mg tablet'`. */
   readonly name: string
+  /** The product on the label now: the most recent fill's. */
+  readonly brandName: string
   readonly din: string
+  /** The DIN each fill dispensed, in fill order: an interchange changes it partway. */
+  readonly fillDins: readonly string[]
+  /** The prescription for the same drug this one continues, or `null` for the first. */
+  readonly previousKey: string | null
+  /** The prescription for the same drug that continues this one, or `null` for the last. */
+  readonly nextKey: string | null
   /** Tablets per fill. */
   readonly quantity: number
   readonly supplyDays: number
@@ -248,7 +278,13 @@ interface StepInputs {
   /** Picks the new strength's direction or the new manufacturer. */
   readonly pick: number
   readonly din: string
-  readonly drugCode: number
+  readonly databaseKey: number
+  /**
+   * Whether the pharmacy interchanges the product on a refill, and which: taken
+   * modulo the refills (a prescription filled once has none to switch on).
+   */
+  readonly interchangeDraw: number | null
+  readonly interchangeDin: string
   readonly prescriber: Prescription.Prescriber
 }
 
@@ -257,7 +293,8 @@ const MAX_REPEATS = 5
 
 const stepInputsArbitrary: fc.Arbitrary<StepInputs> = fc.record({
   dosing: dosingArbitrary,
-  supplyDays: fc.constantFrom(7, 14, 28, 30, 60, 90),
+  // Even, so half a tablet a day still fills whole tablets.
+  supplyDays: fc.constantFrom(10, 14, 28, 30, 60, 90),
   repeatsAllowed: fc.integer({ min: 0, max: MAX_REPEATS }),
   refillsDraw: fc.nat({ max: 60 }),
   refillDaysLate: fc.array(
@@ -275,7 +312,12 @@ const stepInputsArbitrary: fc.Arbitrary<StepInputs> = fc.record({
   newStrength: fc.boolean(),
   pick: fc.nat({ max: 1000 }),
   din: dinArbitrary,
-  drugCode: fc.integer({ min: 1, max: 199_999 }),
+  databaseKey: fc.integer({ min: 1, max: 199_999 }),
+  interchangeDraw: fc.oneof(
+    { weight: 4, arbitrary: fc.constant(null) },
+    { weight: 1, arbitrary: fc.nat({ max: 1000 }) }
+  ),
+  interchangeDin: dinArbitrary,
   prescriber: prescriberArbitrary,
 })
 
@@ -284,6 +326,7 @@ interface EpisodeInputs {
   readonly genericName: string
   readonly strength: DrugProduct.Strength
   readonly manufacturer: Manufacturer
+  readonly naturalHealthProduct: boolean
   readonly followUps: readonly FollowUpReason[]
   /** One per prescription: `followUps.length + 1`. */
   readonly steps: readonly StepInputs[]
@@ -298,6 +341,7 @@ const episodeInputsArbitrary: fc.Arbitrary<EpisodeInputs> = fc
     genericName: genericNameArbitrary,
     strength: strengthArbitrary,
     manufacturer: fc.constantFrom(...MANUFACTURERS),
+    naturalHealthProduct: naturalHealthProductArbitrary,
     followUps: fc.array(
       fc.constantFrom<FollowUpReason>('dose-change', 'renewal', 'resume', 'generic-switch'),
       { maxLength: 3 }
@@ -319,11 +363,34 @@ interface LaidOut {
   readonly prescription: Prescription.Prescription
   /** Repeats filled after the first fill. */
   readonly refills: number
+  readonly previousKey: string | null
+  readonly nextKey: string | null
 }
 
 /** A DIN for a new product that is never the one it replaces. */
 const newDinOf = (din: string, replaced: DrugProduct.DrugProduct): string =>
   din === replaced.din ? `${din.slice(0, 7)}${(Number(din.slice(7)) + 1) % 10}` : din
+
+/** Another manufacturer's product at `product`'s strength, picked by `pick`. */
+const interchangeableWith = (
+  product: DrugProduct.DrugProduct,
+  pick: number,
+  din: string,
+  databaseKey: number
+): DrugProduct.DrugProduct => {
+  const others = MANUFACTURERS.filter(({ company }) => company !== product.company)
+  const maker = others[pick % others.length] ?? MANUFACTURERS[0]
+  return maker === undefined
+    ? product
+    : productOf(
+        product.genericName,
+        product.strength,
+        maker,
+        newDinOf(din, product),
+        databaseKey,
+        product.drugCode === null
+      )
+}
 
 /** Tablets a dosing takes each day. */
 const dailyTabletsOf = (dosing: Prescription.Dosing): number =>
@@ -348,21 +415,12 @@ const productAfter = (
       titratedStrength(previous.strength, step.pick),
       sameMaker,
       newDinOf(step.din, previous),
-      step.drugCode
+      step.databaseKey,
+      previous.drugCode === null
     )
   }
   if (reason === 'generic-switch') {
-    const others = MANUFACTURERS.filter(({ company }) => company !== previous.company)
-    const maker = others[step.pick % others.length] ?? sameMaker
-    if (maker !== undefined) {
-      return productOf(
-        previous.genericName,
-        previous.strength,
-        maker,
-        newDinOf(step.din, previous),
-        step.drugCode
-      )
-    }
+    return interchangeableWith(previous, step.pick, step.din, step.databaseKey)
   }
   return previous
 }
@@ -419,7 +477,8 @@ const layOutEpisode = (episodeKey: string, episode: EpisodeInputs): readonly Lai
     episode.strength,
     episode.manufacturer,
     first.din,
-    first.drugCode
+    first.databaseKey,
+    episode.naturalHealthProduct
   )
   let dosing = first.dosing
   for (const [index, step] of episode.steps.entries()) {
@@ -442,10 +501,17 @@ const layOutEpisode = (episodeKey: string, episode: EpisodeInputs): readonly Lai
     const lastFillDay = fillDays.at(-1) ?? writtenDay
     const endDay = lastFillDay + 1 + (step.endAfterDraw % step.supplyDays)
     const ended = endedBefore(nextReason, episode.stoppedAtEnd, endDay)
+    const interchangeFillDay =
+      step.interchangeDraw === null || refills === 0
+        ? undefined
+        : fillDays[1 + (step.interchangeDraw % refills)]
+    const key = `${episodeKey}-${index + 1}`
     laidOut.push({
       refills,
+      previousKey: index === 0 ? null : `${episodeKey}-${index}`,
+      nextKey: nextReason === undefined ? null : `${episodeKey}-${index + 2}`,
       prescription: {
-        key: `${episodeKey}-${index + 1}`,
+        key,
         product,
         dosing,
         supplyDaysPerFill: step.supplyDays,
@@ -454,6 +520,19 @@ const layOutEpisode = (episodeKey: string, episode: EpisodeInputs): readonly Lai
         written: { day: writtenDay, reason },
         ended,
         fillDays,
+        ...(interchangeFillDay === undefined
+          ? {}
+          : {
+              interchange: {
+                fromFillDay: interchangeFillDay,
+                product: interchangeableWith(
+                  product,
+                  step.pick + 1,
+                  step.interchangeDin,
+                  step.databaseKey + 1
+                ),
+              },
+            }),
       },
     })
     writtenDay = nextWrittenDay(nextReason, step, lastFillDay, endDay)
@@ -480,13 +559,30 @@ const shifted = (laidOut: LaidOut, days: number): LaidOut => {
           ? null
           : { ...prescription.ended, day: prescription.ended.day + days },
       fillDays: prescription.fillDays.map((day) => day + days),
+      ...(prescription.interchange === undefined
+        ? {}
+        : {
+            interchange: {
+              ...prescription.interchange,
+              fromFillDay: prescription.interchange.fromFillDay + days,
+            },
+          }),
     },
   }
 }
 
 /** What a prescription's record must say, from its generated fields by this module's arithmetic. */
-const expectedOf = ({ prescription, refills }: LaidOut): ExpectedPrescription => {
-  const { product, dosing, supplyDaysPerFill, repeatsAllowed } = prescription
+const expectedOf = ({
+  prescription,
+  refills,
+  previousKey,
+  nextKey,
+}: LaidOut): ExpectedPrescription => {
+  const { product, dosing, supplyDaysPerFill, repeatsAllowed, interchange } = prescription
+  const fillProducts = prescription.fillDays.map((day) =>
+    interchange !== undefined && day >= interchange.fromFillDay ? interchange.product : product
+  )
+  const onLabel = fillProducts.at(-1) ?? product
   const tabletsPerDay = dosing.tabletsPerDose * dosing.dosesPerDay
   const lastFillDay = prescription.fillDays.at(-1) ?? prescription.written.day
   const repeatsAvailable = repeatsAllowed - refills
@@ -497,8 +593,12 @@ const expectedOf = ({ prescription, refills }: LaidOut): ExpectedPrescription =>
     writtenDay: prescription.written.day,
     fillDays: prescription.fillDays,
     lastFillDay,
-    name: expectedNameOf(product),
-    din: product.din,
+    name: expectedNameOf(onLabel),
+    brandName: onLabel.brandName,
+    din: onLabel.din,
+    fillDins: fillProducts.map(({ din }) => din),
+    previousKey,
+    nextKey,
     quantity: tabletsPerDay * supplyDaysPerFill,
     supplyDays: supplyDaysPerFill,
     repeatsAllowed,
@@ -519,15 +619,22 @@ const expectedOf = ({ prescription, refills }: LaidOut): ExpectedPrescription =>
  * @remarks
  * The whole story is shifted so its last event falls before the as-of day,
  * leaving some prescriptions running on it and some long done. Every
- * prescription is filled at least once, and no two are written on the same
- * day, so a test can find a record by its written date. Lab draws are left
- * empty: no source here renders them yet.
+ * prescription is filled at least once; no two are written, or last filled,
+ * on the same day, so a test can find a record by either date; and each drug
+ * has its own generic name, so a drug's prescriptions are one episode. Now
+ * and then a prescription is interchanged to another manufacturer's product
+ * on a refill, a dose is half a tablet, or a drug is a natural health
+ * product. Lab draws are left empty: no source here renders them yet.
  */
 const storyCaseArbitrary = (personKey: string): fc.Arbitrary<StoryCase> =>
   fc
     .record({
       person: personArbitrary(personKey),
-      episodes: fc.array(episodeInputsArbitrary, { minLength: 1, maxLength: 4 }),
+      episodes: fc.uniqueArray(episodeInputsArbitrary, {
+        minLength: 1,
+        maxLength: 4,
+        selector: ({ genericName }) => genericName,
+      }),
       tailGap: fc.integer({ min: 0, max: 120 }),
     })
     .map(({ person, episodes, tailGap }) => {
@@ -551,7 +658,8 @@ const storyCaseArbitrary = (personKey: string): fc.Arbitrary<StoryCase> =>
     })
     .filter(
       ({ expected }) =>
-        new Set(expected.map(({ writtenDay }) => writtenDay)).size === expected.length
+        new Set(expected.map(({ writtenDay }) => writtenDay)).size === expected.length &&
+        new Set(expected.map(({ lastFillDay }) => lastFillDay)).size === expected.length
     )
 
 /** A Rexall Be Well account, created and last updated before the as-of day. */
@@ -572,6 +680,74 @@ const rexallAccountArbitrary: fc.Arbitrary<RexallAccount> = fc
     updatedDay: createdDay + (updatedDraw % -createdDay),
   }))
 
+/** A generated Shoppers family account, and each managed person's story case in portal order. */
+interface ShoppersCase {
+  readonly account: ShoppersAccount
+  readonly patients: readonly StoryCase[]
+}
+
+/** A ten-digit phone number in the `555-01xx` range reserved for fiction. */
+const phoneNumberOf = (areaCode: number, line: number): string =>
+  `${areaCode}55501${String(line % 100).padStart(2, '0')}`
+
+/**
+ * A Shoppers Drug Mart family account managing one to four people, the
+ * holder listed first, each with a generated story; every prescription of
+ * theirs filled at one store.
+ */
+const shoppersCaseArbitrary: fc.Arbitrary<ShoppersCase> = fc
+  .integer({ min: 1, max: 4 })
+  .chain((count) =>
+    fc.record({
+      pcid: fc.uuid({ version: 4 }),
+      patientIds: fc.uniqueArray(fc.uuid({ version: 4 }), {
+        minLength: count,
+        maxLength: count,
+      }),
+      storyCases: fc.tuple(
+        ...Array.from({ length: count }, (_, index) => storyCaseArbitrary(`person-${index + 1}`))
+      ),
+      areaCode: fc.constantFrom(416, 519, 613, 705, 905),
+      phoneLines: fc.array(fc.nat({ max: 99 }), { minLength: count + 2, maxLength: count + 2 }),
+      store: fc.integer({ min: 100, max: 9999 }),
+      streetNumber: fc.integer({ min: 1, max: 999 }),
+    })
+  )
+  .map(({ pcid, patientIds, storyCases, areaCode, phoneLines, store, streetNumber }) => {
+    // The holder is listed first; `count` is at least one.
+    const holder = storyCases[0].story.person
+    return {
+      patients: storyCases,
+      account: {
+        pcid,
+        holder,
+        phoneNumber: phoneNumberOf(areaCode, phoneLines[0] ?? 0),
+        address: {
+          line1: `${streetNumber} Main St`,
+          city: 'Kingston',
+          province: 'ON',
+          postalCode: holder.postalCode,
+        },
+        store: {
+          id: store,
+          storeName: `Shoppers Drug Mart #${store}`,
+          phoneNumber: phoneNumberOf(areaCode, phoneLines[1] ?? 0),
+          address: {
+            line1: `${streetNumber + 100} King St`,
+            city: 'Kingston',
+            province: 'ON',
+            postalCode: 'K7L 1B3',
+          },
+        },
+        patients: storyCases.map((storyCase, index) => ({
+          patientId: patientIds[index] ?? pcid,
+          phoneNumber: phoneNumberOf(areaCode, phoneLines[index + 2] ?? 0),
+          story: storyCase.story,
+        })),
+      },
+    }
+  })
+
 export {
   ageOn,
   asOfArbitrary,
@@ -583,6 +759,7 @@ export {
   prescriberArbitrary,
   productArbitrary,
   rexallAccountArbitrary,
+  shoppersCaseArbitrary,
   storyCaseArbitrary,
 }
-export type { ExpectedPrescription, StoryCase }
+export type { ExpectedPrescription, ShoppersCase, StoryCase }

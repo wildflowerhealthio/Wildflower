@@ -197,5 +197,14 @@ const archiveOf = (pages: readonly Page[], entries: readonly Entry[]): ChromeHar
 /** The archive as `.har` file text: two-space-indented JSON, byte-identical for equal archives. */
 const toJson = (archive: ChromeHar): string => `${JSON.stringify(archive, null, 2)}\n`
 
-export { archiveOf, entryOf, pageOf, toJson }
+/** The headers a browser sends on a page navigation. */
+const DOCUMENT_REQUEST_HEADERS: readonly NameValue[] = [
+  { name: 'accept', value: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
+]
+
+/** A single-page app's shell document: the body a navigation records, which no importer claims. */
+const appShellOf = (title: string): string =>
+  `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body><div id="root"></div></body></html>`
+
+export { appShellOf, archiveOf, DOCUMENT_REQUEST_HEADERS, entryOf, pageOf, toJson }
 export type { ChromeHar, Entry, ExchangeSpec, NameValue, Page, PageSpec, ResourceType }
