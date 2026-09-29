@@ -16,7 +16,12 @@ never disagree on a decode.
 - `src/response-kinds/medication-list-response-kind.ts` —
   `https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?…`
   → R4 `MedicationRequest` + `MedicationDispense` resources.
-- `src/carebook.ts` — the carebook STU3 dialect decoder.
+- `src/carebook.ts` — the carebook STU3 dialect's extension, identifier and
+  coding-system catalogue. Exported from the root (`CarebookExtension`,
+  `CarebookIdentifierSystem`, `CarebookCodingSystem`, `RequestTypeCode`,
+  `REXALL_SYSTEM_SOURCE`) so a producer of the dialect —
+  `synthetic-data-core`'s Rexall renderer — spells it from this catalogue
+  rather than a copy.
 - `src/promote/` — extension promotion (see "Extension Promotion" below).
 - `src/bundle.ts` — searchset Bundle unwrapping.
 - `src/source-system.ts` — `REXALL_CAREBOOK_SYSTEM`, the Wildflower-minted

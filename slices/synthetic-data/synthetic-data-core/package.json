@@ -1,0 +1,50 @@
+{
+  "name": "synthetic-data-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The synthetic data set's pure core: the Ashford family's demographics and dated timelines (prescriptions, fills, lab draws), every date derived from one as-of date, and one renderer per source — the Rexall Be Well HAR for Warren. No DOM, no fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/synthetic-data/synthetic-data-core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "har-importer-core": "workspace:*",
+    "http-archive": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "medication-core": "workspace:*",
+    "rexall-be-well-source": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "rexall-be-well-source": "workspace:*"
+  }
+}
