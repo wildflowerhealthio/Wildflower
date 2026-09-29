@@ -217,8 +217,8 @@ describe('HostBindings.callPageReady', () => {
   // A no-op sender — `callPageReady` only forwards the sender to
   // each slot's callback; for these tests we don't exercise the sender
   // itself, only the dispatch behaviour.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const noopSender = ((): Effect.Effect<void> =>
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     Effect.void) as unknown as BridgeTransport.MessageSender<
     readonly [typeof AlphaBridge, typeof BetaBridge, typeof GammaBridge],
     'HostToWeb'

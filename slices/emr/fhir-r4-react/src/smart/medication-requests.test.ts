@@ -80,12 +80,12 @@ const bundle = (resources: readonly unknown[], nextUrl?: string): unknown => ({
 // `Client` surface is elided with a test-only cast.
 const stubClient = (response: unknown): { readonly client: Client; readonly queries: string[] } => {
   const queries: string[] = []
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
   const client = {
     request: (query: string): Promise<unknown> => {
       queries.push(query)
       return Promise.resolve(response)
     },
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
   } as unknown as Client
 
   return { client, queries }

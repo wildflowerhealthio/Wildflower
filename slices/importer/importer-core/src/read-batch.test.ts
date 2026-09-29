@@ -87,7 +87,6 @@ const fakeDecode =
         })),
     })
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
 const fakeRegistry: ReadRegistry = {
   har: {
     format: 'har',
@@ -104,6 +103,7 @@ const fakeRegistry: ReadRegistry = {
     detect: (_b: Uint8Array, name: string) => kindOf(name) === 'dicom',
     decode: fakeDecode('dicom'),
   },
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
 } as unknown as ReadRegistry
 
 describe('groupByFormat', () => {

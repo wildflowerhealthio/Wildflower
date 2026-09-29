@@ -67,11 +67,11 @@ const makeInboundDispatcher = <
     // non-empty even in that case. The cast re-imposes `NonEmptyArray`
     // because `Array.appendAll` doesn't preserve non-emptiness when the
     // left side's emptiness is unknown to the type system.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const innerSchemas = pipe(
       Array.flatMap(bridges, (bridge) => Record.values(bridge[inboundDirection])),
       Array.map(Schema.typeSchema),
       Array.appendAll(extraInboundSchemas)
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     ) as Array.NonEmptyArray<AnyTaggedSchema>
 
     /**
