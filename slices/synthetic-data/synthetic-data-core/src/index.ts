@@ -10,6 +10,11 @@
  * of what it belongs to (`Seeded`), so a render is deterministic: the same
  * as-of date gives byte-identical output.
  *
+ * The published data set's shape lives here too, shared by the step that
+ * emits it and the app that loads it: where each resource and source file sits
+ * (`DataSetLayout`), the `index.json` manifest schema (`DataSetManifest`), and
+ * every file to write (`DataSet.assemble`).
+ *
  * The stories themselves — who the people are and what they were prescribed —
  * live in `wildflowerhealthio/synthetic-data`, which renders them with this
  * package.
@@ -17,6 +22,9 @@
  * @packageDocumentation
  */
 export * as ChromeHar from './har/chrome-har.ts'
+export * as DataSet from './data-set/data-set.ts'
+export * as DataSetLayout from './data-set/data-set-layout.ts'
+export * as DataSetManifest from './data-set/data-set-manifest.ts'
 export * as DicomImage from './dicom/dicom-image.ts'
 export * as DrugProduct from './drug-product.ts'
 export * as LifeLabs from './lifelabs/lifelabs.ts'

@@ -22,7 +22,13 @@ names a person or tells a particular story.
   Shoppers Drug Mart family-account HAR, LifeLabs lab results, the
   Observations FHIR Sync for Pebble writes for a day-by-day physiology, and a
   real, de-identified DICOM image re-identified for a story (`DicomImage`) and
-  read back through the DICOM importer.
+  read back through the DICOM importer. It also holds the published data
+  set's shape, which the data repo's emit step and the synthetic data app
+  share: the layout (`fhir/<ResourceType>/<id>.json`, and each file an
+  importer read under `har/` or `dicom/`, linked from its source-file
+  `DocumentReference`'s `attachment.url`), the `index.json` manifest schema,
+  and `DataSet.assemble`, which gives every file to write. Writing them to
+  disk is the data repo's.
 
 ## Rules
 

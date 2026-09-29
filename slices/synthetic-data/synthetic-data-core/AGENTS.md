@@ -1,7 +1,8 @@
 # AGENTS.md — slices/synthetic-data/synthetic-data-core
 
-Pure tooling for synthetic health data: the story model, and one renderer per
-source that turns a story into the file that source would produce. No DOM, no
+Pure tooling for synthetic health data: the story model, one renderer per
+source that turns a story into the file that source would produce, and the
+layout and `index.json` manifest of a published data set. No DOM, no
 `fs`, no React. The stories themselves, and the products they prescribe, live
 in [`wildflowerhealthio/synthetic-data`](https://github.com/wildflowerhealthio/synthetic-data).
 
@@ -145,6 +146,43 @@ reidentification)`: an already de-identified Part 10 file (the data set
   Explicit VR Little Endian (that syntax and the encapsulated ones), values
   kept as raw bytes, the meta group length counted on write.
 
+- **`DataSetLayout`** (`src/data-set/data-set-layout.ts`) — where each
+  file of a published data set lives. `layOut(resources)` takes importer
+  output (source-file `DocumentReference`s included) and gives one
+  `ResourceFile` per `<ResourceType>/<id>` at `fhir/<ResourceType>/<id>.json`
+  (the JSON `fhir-r4`'s `FhirResourceSchema` encodes it to; a repeated id
+  keeps its last copy, as the Shoppers import's twice-held latest fill needs)
+  and one `StaticFile` per file an importer read. A source file is a
+  `DocumentReference` that `PickedFile.isSourceFile` claims for one of
+  `SOURCE_FILE_IMPORTERS` (`harImporter`, `dicomImporter`); its data becomes
+  `<format>/<title>` (`har/…`, `dicom/…`, the directory the importer's
+  `format`), and `withStaticFileUrl` rewrites its attachment to carry that
+  path, relative to the data set's root, as `url` instead of `data`, keeping
+  the importer's `contentType`, `size`, `hash` (SHA-256) and `title`. Ids are
+  kept, so every `meta.source` still resolves. Fails (`UnplaceableResource`)
+  for a resource with no FHIR id, a source file with no data or a title that
+  is not a plain file name, or a `meta.source` naming a `DocumentReference`
+  not laid out with it; `ConflictingFiles` for two different files at one
+  path, also across the sets `merge` joins. `ResourcePathSchema` and
+  `StaticFilePathSchema` are the path grammars (allowlists: no separators,
+  no parent directories).
+- **`DataSetManifest`** (`src/data-set/data-set-manifest.ts`) — `index.json`.
+  `Schema` is its one definition, which the emit step encodes and the app
+  decodes: `schemaVersion` (`1`), `asOf` (ISO instant), `generator` (`name`,
+  the caller's `wildflowerCommit`), `people` (each `key`, `displayName`,
+  `summary`, `patientIds`, and the paths of their `resources` and
+  `staticFiles`) and `totals` (people and distinct files), checked against
+  the people and for unique keys. `manifestOf(asOf, wildflowerCommit, people)`
+  builds it from laid-out `PersonFiles`: people in the order given, every
+  list sorted and distinct, Patient ids read off the person's Patient files.
+- **`DataSet`** (`src/data-set/data-set.ts`) — `assemble(asOf,
+wildflowerCommit, people)`: each person's records laid out, merged (a file
+  two people share, such as a family account's HAR, is written once and
+  listed under both), and `index.json` — every `File` (`path`, and `contents`
+  as JSON text, two-space indented with a trailing newline, or a static
+  file's bytes) in path order, so the data repo's emit script only writes
+  them.
+
 ## Adding a source
 
 A new source is a renderer module beside `rexall/`, `shoppers/` and `pebble/` that reads `Story` values
@@ -166,15 +204,16 @@ and coding catalogue — spelled once, there — and `REXALL_CAREBOOK_SYSTEM`),
 `lifelabs-pdf-importer-core/synthesis` (the `Report` model, `toFhirResources`,
 `LIFELABS_SYSTEM` and the default time zone, without the main entry's
 pdfjs-backed decode). `DicomImage` depends on `dicom-importer-core` (the
-importer it reads its output through). The Shoppers portal's JSON has no catalogue —
+importer it reads its output through); `DataSetLayout` on it, `har-importer-core`
+and `importer-fundamentals` (`PickedFile.isSourceFile`), to recognize the
+source files a data set carries and name their directories. The Shoppers portal's JSON has no catalogue —
 `shoppers-drugmart-source` exports only its descriptor and `sid` system; its
 identifier systems name the FHIR it writes, not the wire — so the Shoppers
 payloads are typed here, after that package's test fixtures. The Pebble
 renderer builds its Observations with `fhir-sync-pebble-core`, a peer
-dependency like `rexall-be-well-source`. The importers and
-readers the round-trip tests drive
-(`har-importer-core`, `importer-fundamentals`, `http-archive`,
-`medication-core`) are dev dependencies only. Never imports a
+dependency like `rexall-be-well-source`. The other readers the
+round-trip tests drive (`http-archive`, `medication-core`) are dev
+dependencies only. Never imports a
 `-react`, `-node` or `-tauri` package.
 
 ## Testing
@@ -253,6 +292,29 @@ particular person's story.
   UIDs; private elements are gone; Pixel Data is identical; the file is
   well formed for `dicom-parser` and `detectDicom`; as-of properties; and the
   importer reads it onto the given Patient with no `Patient` of its own.
+
+- `src/data-set/imports.test-helpers.ts` — generated records through the
+  real importers, whole: a person's Rexall HAR and a re-identified image
+  (`importRexallPerson`), and a Shoppers family account's HAR
+  (`importShoppersFamily`).
+- `src/data-set/data-set-layout.test.ts` — over those imports: one file per
+  resource at its path, each resource's JSON as imported; the HAR and image
+  as static files, their source files carrying a `url` to them, no `data`,
+  the static file's size and SHA-256, and nothing else changed; every
+  `meta.source` resolving; a Shoppers import's last copy kept; determinism
+  and input-order independence; and the failures (dangling `meta.source`,
+  two files at one path, unsafe titles, no id), plus the path grammars.
+- `src/data-set/data-set-manifest.test.ts` — `manifestOf` over generated
+  people and paths (sorted, distinct, totals, people's order kept, file order
+  ignored); every manifest reads back from its JSON text as itself; the
+  schema rejects other versions, miscounted totals, repeated keys and paths
+  outside the layout.
+- `src/data-set/data-set.test.ts` — whole data sets (a Rexall person with an
+  image, two people sharing a Shoppers HAR): unique sorted paths, every
+  resource once as pretty-printed JSON that decodes as FHIR once its `url` is
+  resolved, every `url` a written static file with its size and hash, an
+  `index.json` listing exactly what was written, byte-identical reassembly,
+  and the conflict and repeated-key failures.
 
 ## The Shoppers import, as it comes out
 
