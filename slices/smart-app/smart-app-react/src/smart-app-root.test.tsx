@@ -47,13 +47,19 @@ vi.mock('telemetry-web', async (importOriginal) => {
 })
 
 // fhirclient's `oauth2.ready()` is the token exchange the app's handshake runs;
-// it resolves to a client connected to `FHIR_SERVER_URL`.
+// by default it resolves to a client connected to `FHIR_SERVER_URL`, and the
+// spy counts how often the single-use code would have been posted.
 const FHIR_SERVER_URL = 'https://fhir.example:8443/r4'
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub; the root reads only `state.serverUrl`
-const readyClient = { state: { serverUrl: FHIR_SERVER_URL } } as unknown as Client
-vi.mock('fhirclient', () => ({
-  default: { oauth2: { ready: () => Promise.resolve(readyClient) } },
+const { tokenExchangeMock } = vi.hoisted(() => ({
+  tokenExchangeMock: vi.fn(() => Promise.resolve(clientConnectedTo(FHIR_SERVER_URL))),
 }))
+vi.mock('fhirclient', () => ({
+  default: { oauth2: { ready: tokenExchangeMock } },
+}))
+
+// The stubbed connect menu throws this from render when it is set, as a
+// crashing menu would.
+const connectMenuRenderFailure: { current: Error | undefined } = { current: undefined }
 
 // The stub echoes the props it was handed as data attributes so the wiring
 // (the SMART target, `clientId` / `scope` from the `standalone` prop,
@@ -61,18 +67,23 @@ vi.mock('fhirclient', () => ({
 // is observable. The branding chrome renders for real; the menu's own banner is
 // `connect-menu.test.tsx`'s.
 vi.mock('./connect-menu.tsx', () => ({
-  ConnectMenu: (props: ConnectMenuProps) => (
-    <div
-      data-testid="connect-menu-stub"
-      data-target={props.target}
-      data-client-id={props.target === 'fhir-r4' ? props.clientId : undefined}
-      data-scope={props.target === 'fhir-r4' ? props.scope : undefined}
-      data-redirect-uri={props.target === 'fhir-r4' ? props.redirectUri : undefined}
-      data-arrival-problem={
-        props.arrivalProblem instanceof Error ? props.arrivalProblem.message : props.arrivalProblem
-      }
-    />
-  ),
+  ConnectMenu: (props: ConnectMenuProps) => {
+    if (connectMenuRenderFailure.current !== undefined) throw connectMenuRenderFailure.current
+    return (
+      <div
+        data-testid="connect-menu-stub"
+        data-target={props.target}
+        data-client-id={props.target === 'fhir-r4' ? props.clientId : undefined}
+        data-scope={props.target === 'fhir-r4' ? props.scope : undefined}
+        data-redirect-uri={props.target === 'fhir-r4' ? props.redirectUri : undefined}
+        data-arrival-problem={
+          props.arrivalProblem instanceof Error
+            ? props.arrivalProblem.message
+            : props.arrivalProblem
+        }
+      />
+    )
+  },
 }))
 
 const STANDALONE = {
@@ -105,6 +116,8 @@ afterEach(() => {
   setUrl('/')
   window.localStorage.clear()
   restoreDialogModality()
+  connectMenuRenderFailure.current = undefined
+  vi.unstubAllEnvs()
   vi.resetAllMocks()
 })
 
@@ -468,6 +481,113 @@ describe('SmartAppRoot telemetry consent', () => {
     expect(screen.getByRole('button', { name: STATUS_CONTROL_NAME })).toBeDefined()
   })
 
+  it('should exchange the SMART code only after the visitor answers, and exactly once', async () => {
+    // Arrange — a first visit to the launched branch, under StrictMode
+    const seen: QueryClient[] = []
+    renderShell({ launched: true, children: <HandshakeProbe seen={seen} /> })
+    expect(tokenExchangeMock).not.toHaveBeenCalled()
+
+    // Act
+    answerDialog({ crashReports: true, performance: false })
+
+    // Assert
+    await waitFor(() => {
+      expect(seen[0].getQueryCache().getAll()[0]?.state.status).toBe('success')
+    })
+    expect(tokenExchangeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('should leave a failed handshake to be reported as the launch failure it redirects to', async () => {
+    // Arrange — the app sends a failed handshake back to the root as
+    // `?launchError`, where the page reports it; reporting it here as well
+    // would report it twice
+    initConsentedTelemetryMock.mockReturnValue(true)
+    storeConsent({ crashReports: true, performance: false })
+    tokenExchangeMock.mockRejectedValue(new Error('authorization code already redeemed'))
+    const seen: QueryClient[] = []
+
+    // Act
+    renderShell({ launched: true, children: <HandshakeProbe seen={seen} /> })
+
+    // Assert
+    await waitFor(() => {
+      expect(seen[0].getQueryCache().getAll()[0]?.state.status).toBe('error')
+    })
+    expect(captureExceptionMock).not.toHaveBeenCalled()
+  })
+
+  it('should report, not throw, a FHIR server URL that does not parse, and tag no host', async () => {
+    // Arrange
+    initConsentedTelemetryMock.mockReturnValue(true)
+    storeConsent({ crashReports: true, performance: false })
+    tokenExchangeMock.mockResolvedValue(clientConnectedTo('not a url'))
+
+    // Act
+    renderShell({ launched: true, children: <HandshakeProbe seen={[]} /> })
+
+    // Assert
+    await waitFor(() => {
+      expect(captureExceptionMock).toHaveBeenCalledTimes(1)
+    })
+    const [reported, hint] = captureExceptionMock.mock.calls[0]
+    expect(reported instanceof Error ? reported.message : reported).toContain('not a url')
+    expect(hint).toStrictEqual({ tags: { source: 'fhir-server-host' } })
+    expect(setFhirServerHostMock).not.toHaveBeenCalled()
+  })
+
+  it('should report a render error in the connect menu, keeping the page around it', () => {
+    // Arrange
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    storeConsent({ crashReports: true, performance: false })
+    const renderFailure = new Error('the connect menu failed to render')
+    connectMenuRenderFailure.current = renderFailure
+
+    // Act
+    renderShell({ launched: false })
+
+    // Assert — reported; the fallback sits under the app's h1, beside the
+    // status control and the footer
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1)
+    expect(captureExceptionMock.mock.calls[0][0]).toBe(renderFailure)
+    expect(
+      within(screen.getByRole('main')).getByRole('heading', {
+        level: 2,
+        name: 'Something went wrong',
+      })
+    ).toBeDefined()
+    expect(screen.getByRole('button', { name: STATUS_CONTROL_NAME })).toBeDefined()
+    expect(screen.queryByRole('contentinfo')).not.toBeNull()
+  })
+
+  describe('with a shared VITE_SENTRY_DSN in the build', () => {
+    const SHARED_DSN = 'https://shared@sentry.example/1'
+
+    it.each([
+      { case: 'its own DSN', appDsn: TELEMETRY.dsn },
+      { case: 'no DSN of its own', appDsn: '' },
+    ])('should hand telemetry the app’s DSN when the app has $case', ({ appDsn }) => {
+      // Arrange
+      vi.stubEnv('VITE_SENTRY_DSN', SHARED_DSN)
+      storeConsent({ crashReports: true, performance: true })
+
+      // Act
+      render(
+        <SmartAppRoot
+          app="medications"
+          standalone={STANDALONE}
+          telemetry={{ dsn: appDsn, app: TELEMETRY.app }}
+          launched={false}
+        >
+          <div data-testid="app" />
+        </SmartAppRoot>
+      )
+
+      // Assert — the per-app value wins, even empty
+      expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)
+      expect(initConsentedTelemetryMock.mock.calls[0][0].config.sentry.dsn).toBe(appDsn)
+    })
+  })
+
   it('should report a failed query on the client it provides', async () => {
     // Arrange
     storeConsent({ crashReports: true, performance: false })
@@ -589,6 +709,12 @@ function restoreDialogModality(): void {
     if (descriptor === undefined) Reflect.deleteProperty(HTMLDialogElement.prototype, method)
     else Object.defineProperty(HTMLDialogElement.prototype, method, descriptor)
   }
+}
+
+/** A ready fhirclient `Client` connected to `serverUrl`. */
+function clientConnectedTo(serverUrl: string): Client {
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub; the root reads only `state.serverUrl`
+  return { state: { serverUrl } } as unknown as Client
 }
 
 /** Starts the SMART handshake and records the client it was provided. */

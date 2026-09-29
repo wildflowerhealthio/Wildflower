@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { TELEMETRY_CONSENT_COPY, type AppSectionId } from 'branding-core'
 import { AppLandingPage, BrandBar } from 'branding-react'
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ErrorBoundary } from 'react-tundraish'
+import { ErrorBoundary, type ErrorBoundaryProps } from 'react-tundraish'
 import type { TelemetryConsent } from 'telemetry-core'
 import {
   TelemetryConsentGate,
@@ -14,6 +14,7 @@ import { configFromViteEnv, initConsentedTelemetry, Sentry, setFhirServerHost } 
 import {
   appRootRedirectUri,
   buildSmartQueryClient,
+  isSmartHandshakeQuery,
   launchErrorFrom,
   shouldCompleteSmartLaunch,
   whenSmartHandshakeReady,
@@ -73,18 +74,51 @@ function ConsentStatusControl(): JSX.Element {
 }
 
 /**
+ * A `react-tundraish` `ErrorBoundary` that reports what it catches, with its
+ * component stack, through `Sentry.captureException`: a no-op while Sentry
+ * has not been initialized, which it never is without a yes.
+ *
+ * @param app - The app's id, shown in the fallback's context pane
+ * @param headingLevel - The fallback title's heading level: 2 where the page
+ *   already has its h1
+ */
+function CrashReportingBoundary({
+  app,
+  headingLevel,
+  children,
+}: {
+  readonly app: string
+  readonly headingLevel?: ErrorBoundaryProps['headingLevel']
+  readonly children: ReactNode
+}): JSX.Element {
+  return (
+    <ErrorBoundary
+      headingLevel={headingLevel}
+      onError={(error, info) => {
+        Sentry.captureException(error, {
+          extra: { componentStack: info.componentStack ?? undefined },
+        })
+      }}
+      extraContext={{ mode: import.meta.env.MODE, app }}
+    >
+      {children}
+    </ErrorBoundary>
+  )
+}
+
+/**
  * The top-level root every self-hosted SMART app mounts: the telemetry consent
  * gate, then one `QueryClientProvider` around two branches in shared
  * Wildflower chrome.
  *
  * - **Launched** (the URL carries an OAuth callback): `BrandBar`, with the
- *   telemetry status control at its end, over `children` in an
- *   `ErrorBoundary`. The children complete the handshake as a query on the
- *   shared client (via `useSmartHandshake`).
+ *   telemetry status control at its end, over `children` in an error
+ *   boundary that reports what it catches. The children complete the
+ *   handshake as a query on the shared client (via `useSmartHandshake`).
  * - **Standalone** (a bare visit): `branding-react`'s `AppLandingPage`, the
- *   app's introduction beside the `ConnectMenu`, which shows a launch that
- *   failed and landed back here as its `arrivalProblem`, and the telemetry
- *   status control above the footer.
+ *   app's introduction beside the `ConnectMenu` (in the same kind of error
+ *   boundary), which shows a launch that failed and landed back here as its
+ *   `arrivalProblem`, and the telemetry status control above the footer.
  *
  * @remarks
  * **Nothing starts before the visitor answers the consent dialog.** Both
@@ -93,8 +127,9 @@ function ConsentStatusControl(): JSX.Element {
  * and no query runs. The answer goes to `initConsentedTelemetry` with
  * `telemetry`'s DSN and the tags `app` and `launch`, and the SDK starts only
  * if a switch is on. Once it runs, the root tags events with the FHIR server's
- * host when the handshake completes, reports every failed query on its client,
- * and reports the launch failure the page arrived with, once.
+ * host when the handshake completes, reports every failed read on its client,
+ * and reports the launch failure the page arrived with (a failed handshake
+ * among them), once.
  *
  * The branch is latched on mount: fhirclient's `oauth2.ready()` strips
  * `code`/`state` once the exchange completes, so re-reading the URL later
@@ -121,12 +156,15 @@ function SmartAppRoot({
   // One QueryClient for the whole page: the app completes the SMART handshake
   // as a query on it and runs its own reads on it too, so they share one cache
   // and the single-use code is exchanged exactly once even under StrictMode's
-  // double-mount. Every failed query is reported; `captureException` does
+  // double-mount. Every failed read is reported; `captureException` does
   // nothing while Sentry has not been initialized, which it never is without a
-  // yes, so the report needs no consent check of its own.
+  // yes, so the report needs no consent check of its own. A failed handshake
+  // is not reported here: the app sends it back to this root as `?launchError`,
+  // and it is reported there, once, as the launch failure the page arrived with.
   const [queryClient] = useState(() =>
     buildSmartQueryClient({
-      onQueryError: (queryError) => {
+      onQueryError: (queryError, failedQuery) => {
+        if (isSmartHandshakeQuery(failedQuery)) return
         Sentry.captureException(queryError, { tags: { source: 'query' } })
       },
     })
@@ -157,10 +195,22 @@ function SmartAppRoot({
 
   // Once Sentry runs, tag its events with the FHIR server the app's handshake
   // connected to, as soon as that handshake completes on the shared client.
+  // The callback runs inside the query cache's notification, so a server URL
+  // that does not parse is reported rather than thrown there.
   useEffect(() => {
     if (!telemetryStarted) return undefined
     return whenSmartHandshakeReady(queryClient, (readyClient) => {
-      setFhirServerHost(new URL(readyClient.state.serverUrl).host)
+      const fhirServerUrl = URL.parse(readyClient.state.serverUrl)
+      if (fhirServerUrl === null) {
+        Sentry.captureException(
+          new Error(
+            `The SMART handshake's FHIR server is not a URL: ${readyClient.state.serverUrl}`
+          ),
+          { tags: { source: 'fhir-server-host' } }
+        )
+        return
+      }
+      setFhirServerHost(fhirServerUrl.host)
     })
   }, [telemetryStarted, queryClient])
 
@@ -174,28 +224,19 @@ function SmartAppRoot({
         {isLaunched ? (
           <>
             <BrandBar trailing={<ConsentStatusControl />} />
-            <ErrorBoundary
-              onError={(error, info) => {
-                // A no-op while Sentry has not been initialized, as for the
-                // query failures above.
-                Sentry.captureException(error, {
-                  extra: { componentStack: info.componentStack ?? undefined },
-                })
-              }}
-              extraContext={{ mode: import.meta.env.MODE, app: telemetry.app }}
-            >
-              {children}
-            </ErrorBoundary>
+            <CrashReportingBoundary app={telemetry.app}>{children}</CrashReportingBoundary>
           </>
         ) : (
           <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
-            <ConnectMenu
-              target="fhir-r4"
-              clientId={standalone.clientId}
-              scope={standalone.scope}
-              redirectUri={redirectUri}
-              arrivalProblem={launchFailure ?? undefined}
-            />
+            <CrashReportingBoundary app={telemetry.app} headingLevel={2}>
+              <ConnectMenu
+                target="fhir-r4"
+                clientId={standalone.clientId}
+                scope={standalone.scope}
+                redirectUri={redirectUri}
+                arrivalProblem={launchFailure ?? undefined}
+              />
+            </CrashReportingBoundary>
           </AppLandingPage>
         )}
       </QueryClientProvider>

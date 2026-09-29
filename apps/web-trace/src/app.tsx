@@ -163,9 +163,10 @@ const App = (): JSX.Element => {
   // Plain `FetchHttpClient.layer`, not `telemetry-react`'s `webHttpClientLayer`:
   // the app's only outbound traffic is the FHIR server and, once the visitor
   // consents in `SmartAppRoot`'s dialog, Sentry; the telemetry layer would start
-  // reporting from the build's env without asking. The handshake's `serverUrl` is the FHIR base verbatim — the typed client emits
-  // base-relative paths, so there is no prefix to reconcile and no failure arm
-  // here beyond the handshake's own.
+  // reporting from the build's env without asking. The handshake's `serverUrl`
+  // is the FHIR base verbatim — the typed client emits base-relative paths, so
+  // there is no prefix to reconcile and no failure arm here beyond the
+  // handshake's own.
   const client = handshake.kind === 'ready' ? handshake.client : undefined
   const context = useMemo<RouterContext | undefined>(
     () =>

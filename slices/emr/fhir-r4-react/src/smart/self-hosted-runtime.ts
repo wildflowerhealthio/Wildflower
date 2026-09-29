@@ -1,5 +1,5 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
-import { QueryCache, QueryClient } from '@tanstack/react-query'
+import { QueryCache, QueryClient, type Query } from '@tanstack/react-query'
 import { Duration, Effect, Layer, pipe } from 'effect'
 import { trimTrailingSlashes } from 'fhir-r4/clients'
 
@@ -97,10 +97,14 @@ const smartHttpClientLayer = (
 /** Options for {@link buildSmartQueryClient}. */
 interface BuildSmartQueryClientOptions {
   /**
-   * Called with the error of every query that fails on the client, the SMART
-   * handshake's included; the app root reports it to its crash reporter here.
+   * Called with the error and the query of every query that fails on the
+   * client, the SMART handshake's included (`isSmartHandshakeQuery` tells it
+   * apart); the app root reports it to its crash reporter here.
    */
-  readonly onQueryError?: (queryError: unknown) => void
+  readonly onQueryError?: (
+    queryError: unknown,
+    failedQuery: Query<unknown, unknown, unknown>
+  ) => void
 }
 
 /**

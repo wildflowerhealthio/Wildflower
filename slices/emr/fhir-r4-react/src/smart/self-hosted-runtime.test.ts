@@ -1,4 +1,5 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import type { Query } from '@tanstack/react-query'
 import { Effect, Layer } from 'effect'
 import fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
@@ -148,8 +149,9 @@ describe('buildSmartRouterContext', () => {
 })
 
 describe('buildSmartQueryClient', () => {
-  test('reports each failed query to onQueryError with its error, once', async () => {
-    const onQueryError = vi.fn<(queryError: unknown) => void>()
+  test('reports each failed query to onQueryError with its error and query, once', async () => {
+    const onQueryError =
+      vi.fn<(queryError: unknown, failedQuery: Query<unknown, unknown, unknown>) => void>()
     const queryClient = buildSmartQueryClient({ onQueryError })
     const readFailure = new Error('401 Unauthorized')
 
@@ -162,11 +164,13 @@ describe('buildSmartQueryClient', () => {
     ).rejects.toBe(readFailure)
 
     expect(onQueryError).toHaveBeenCalledTimes(1)
-    expect(onQueryError).toHaveBeenCalledWith(readFailure, expect.anything())
+    const [reportedError, failedQuery] = onQueryError.mock.calls[0]
+    expect(reportedError).toBe(readFailure)
+    expect(failedQuery.queryKey).toStrictEqual(['failing-read'])
   })
 
   test('reports nothing for a query that succeeds', async () => {
-    const onQueryError = vi.fn<(queryError: unknown) => void>()
+    const onQueryError = vi.fn<() => void>()
     const queryClient = buildSmartQueryClient({ onQueryError })
 
     await queryClient.query({ queryKey: ['read'], queryFn: () => Promise.resolve('ok') })

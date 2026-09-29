@@ -32,4 +32,12 @@ describe('configFromViteEnv', () => {
     expect(config.otel.serviceName).toBe('medications-app')
     expect(config.sentry.environment).toBe('preview')
   })
+
+  test('keeps an empty DSN override rather than the build’s shared DSN', () => {
+    vi.stubEnv('VITE_SENTRY_DSN', 'https://key@sentry.example/1')
+
+    const config = configFromViteEnv({ sentry: { dsn: '' } })
+
+    expect(config.sentry.dsn).toBe('')
+  })
 })

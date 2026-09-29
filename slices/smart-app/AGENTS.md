@@ -63,9 +63,12 @@ import `branding-react/styles.css` itself.
   no query runs. The answer goes to `initConsentedTelemetry`, which starts
   Sentry only when a switch is on. The FHIR host tag waits for Sentry to run;
   the launch failure the page arrived with is reported once, after it starts.
-  The `ErrorBoundary` around the launched app and the `QueryClient`'s
-  `onQueryError` call `Sentry.captureException` unconditionally, which does
-  nothing on an SDK that was never initialized. An app keeps the plain
+  The error boundaries around the launched app and around the connect menu,
+  and the `QueryClient`'s `onQueryError`, call `Sentry.captureException`
+  unconditionally, which does nothing on an SDK that was never initialized.
+  `onQueryError` skips the handshake query (`isSmartHandshakeQuery`): a failed
+  handshake comes back to the root as its launch failure and is reported
+  there, so it is reported once. An app keeps the plain
   `FetchHttpClient.layer` and never provides `webHttpClientLayer` or calls
   `webTelemetryLayerFromEnv` / `initWebTelemetryFromEnv`: those start
   telemetry from the build's env without asking. Tests cover each branch

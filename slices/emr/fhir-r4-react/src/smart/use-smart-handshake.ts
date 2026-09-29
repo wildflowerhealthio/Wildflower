@@ -1,4 +1,10 @@
-import { queryOptions, useQuery, type QueryClient } from '@tanstack/react-query'
+import {
+  hashKey,
+  queryOptions,
+  useQuery,
+  type Query,
+  type QueryClient,
+} from '@tanstack/react-query'
 import type Client from 'fhirclient/lib/Client'
 import { useEffect } from 'react'
 
@@ -101,6 +107,18 @@ const whenSmartHandshakeReady = (
 }
 
 /**
+ * Whether `query` is the SMART handshake {@link useSmartHandshake} runs.
+ *
+ * @remarks
+ * For a client-wide query callback (`buildSmartQueryClient`'s `onQueryError`)
+ * that treats the handshake apart from the app's reads. A failed handshake is
+ * sent back to the app root by {@link useLaunchFailureRedirect}, and lands
+ * there as the launch failure the page arrived with.
+ */
+const isSmartHandshakeQuery = (query: Pick<Query, 'queryKey'>): boolean =>
+  hashKey(query.queryKey) === hashKey(smartHandshakeQuery.queryKey)
+
+/**
  * Send a failed handshake back to the app root, carrying its reason as
  * `?launchError` for the root's `ErrorBanner` to render.
  *
@@ -130,6 +148,7 @@ const useLaunchFailureRedirect = (handshake: SmartHandshake): void => {
 }
 
 export {
+  isSmartHandshakeQuery,
   SMART_HANDSHAKE_QUERY_KEY,
   useLaunchFailureRedirect,
   useSmartHandshake,

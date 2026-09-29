@@ -68,6 +68,7 @@ export {
 } from './self-hosted-runtime.ts'
 
 export {
+  isSmartHandshakeQuery,
   useLaunchFailureRedirect,
   useSmartHandshake,
   whenSmartHandshakeReady,

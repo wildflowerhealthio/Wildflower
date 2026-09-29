@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 const { readyMock } = vi.hoisted(() => ({ readyMock: vi.fn<() => Promise<Client>>() }))
 vi.mock('./smart-launch.ts', () => ({ readySmartClient: readyMock }))
 
-const { useSmartHandshake, whenSmartHandshakeReady } = await import('./use-smart-handshake.ts')
+const { isSmartHandshakeQuery, useSmartHandshake, whenSmartHandshakeReady } =
+  await import('./use-smart-handshake.ts')
 
 // A `Client` stub: the hook only ever hands it back, so nothing reads its shape.
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, never structurally read
@@ -142,5 +143,31 @@ describe('whenSmartHandshakeReady', () => {
       expect(screen.getByText('ready')).toBeDefined()
     })
     expect(onReady).not.toHaveBeenCalled()
+  })
+})
+
+describe('isSmartHandshakeQuery', () => {
+  it('should pick out the handshake query from the app’s own reads', async () => {
+    // Arrange — the handshake and one of the app's reads on one client
+    readyMock.mockResolvedValue(fakeClient)
+    const queryClient = new QueryClient()
+    mountUnderStrictMode(queryClient)
+    await queryClient.query({
+      queryKey: ['fhir-r4-react', 'smart-handshake', 'patient'],
+      queryFn: () => Promise.resolve('patient'),
+    })
+    await waitFor(() => {
+      expect(screen.getByText('ready')).toBeDefined()
+    })
+
+    // Act
+    const handshakeKeys = queryClient
+      .getQueryCache()
+      .getAll()
+      .filter(isSmartHandshakeQuery)
+      .map((query) => query.queryKey)
+
+    // Assert — the exact key only, not one it prefixes
+    expect(handshakeKeys).toStrictEqual([['fhir-r4-react', 'smart-handshake']])
   })
 })
