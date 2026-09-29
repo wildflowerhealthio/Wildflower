@@ -1,6 +1,6 @@
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { defineConfig } from 'vite-plus'
-import base from '../../../vite.config.base.ts'
+import base, { tsgoDts } from '../../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,
@@ -18,7 +18,7 @@ export default defineConfig({
   ],
   pack: {
     deps: { resolveDepSubpath: true },
-    dts: { generator: 'tsgo', tsgo: {} },
+    dts: tsgoDts,
     platform: 'neutral',
     exports: false,
     entry: {

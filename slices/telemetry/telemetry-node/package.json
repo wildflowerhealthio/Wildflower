@@ -40,11 +40,11 @@
     "@sentry/node": "catalog:",
     "@sentry/opentelemetry": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "bumpp": "catalog:",
     "effect": "catalog:",
     "telemetry-core": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

@@ -1,9 +1,12 @@
 /*
- * Two things every app's `vite.config.ts` pulls from the repo root: the shared
- * `base` config it spreads (below), and `devAppServer(id)` — the single
- * TypeScript reader of `slices/apps/dev-app-ports.json`.
+ * What every package's `vite.config.ts` pulls from the repo root: the shared
+ * `base` config it spreads (below), `tsgoDts` for its `pack.dts`, and — for
+ * apps — `devAppServer(id)`, the single TypeScript reader of
+ * `slices/apps/dev-app-ports.json`.
  */
 
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { defineConfig } from 'vite-plus'
@@ -97,6 +100,41 @@ const devAppServer = (id: DevAppId): DevAppServerOptions => ({
   host: DEV_APP_HOST,
 })
 
+/** The `getExePath` module `typescript@7` ships beside its `tsc` launcher. */
+interface TypeScript7GetExePath {
+  /** Absolute path of the native `tsc` binary for this platform. */
+  readonly default: () => string
+}
+
+/**
+ * Absolute path of TypeScript 7's native compiler, from the catalog's
+ * `typescript-7` alias.
+ *
+ * @remarks
+ * The package's export map hides `lib/getExePath.js`, so it is loaded by path.
+ * Bare `typescript` stays on 5.x for the tools that need its JS API, so the
+ * `.d.ts` generator's own lookup (bare `typescript` if it is 7.0, else
+ * `@typescript/native-preview`) would not find this copy.
+ */
+const typescript7Exe = (): string => {
+  const require = createRequire(import.meta.url)
+  const packageDir = dirname(require.resolve('typescript-7/package.json'))
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- typed by the package's lib/getExePath.d.ts
+  const getExePath = require(join(packageDir, 'lib', 'getExePath.js')) as TypeScript7GetExePath
+  return getExePath.default()
+}
+
+/**
+ * The `pack.dts` block every package uses: `.d.ts` emit through TypeScript 7's
+ * native compiler.
+ *
+ * @example
+ * ```ts
+ * export default defineConfig({ ...base, pack: { dts: tsgoDts, entry: 'src/index.ts' } })
+ * ```
+ */
+const tsgoDts = { generator: 'tsgo', tsgo: { path: typescript7Exe() } } as const
+
 /**
  * Shared defaults every per-package `vite.config.ts` in this monorepo
  * spreads into its own config. Lives at the repo root rather than under
@@ -174,5 +212,5 @@ const base = defineConfig({
 })
 
 export type { DevAppId, DevAppServerOptions }
-export { devAppIds, devAppPort, devAppPortsPath, devAppServer }
+export { devAppIds, devAppPort, devAppPortsPath, devAppServer, tsgoDts }
 export default base

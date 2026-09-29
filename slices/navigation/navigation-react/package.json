@@ -32,7 +32,6 @@
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "effect-messaging-react": "workspace:*",
@@ -42,6 +41,7 @@
     "react-dom": "catalog:",
     "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

@@ -28,10 +28,10 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "pdfjs-dist": "catalog:",
     "positioned-text": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

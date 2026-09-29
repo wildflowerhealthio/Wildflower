@@ -1,13 +1,13 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
-import base from '../../../vite.config.base.ts'
+import base, { tsgoDts } from '../../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,
   pack: {
     deps: { resolveDepSubpath: true },
-    dts: { generator: 'tsgo', tsgo: {} },
+    dts: tsgoDts,
     exports: false,
     // The package now ships a React config form alongside the pure dialect
     // schemas, so it packs for the browser (like fhir-r4-client-collector).

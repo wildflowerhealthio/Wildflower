@@ -1,49 +1,49 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
-import base from '../../../vite.config.base.ts'
+import base, { tsgoDts } from '../../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,
   pack: [
     {
       deps: { resolveDepSubpath: true },
-      dts: { generator: 'tsgo', tsgo: {} },
+      dts: tsgoDts,
       exports: false,
       platform: 'neutral',
       entry: { 'clients/index': 'src/clients/index.ts' },
     },
     {
       deps: { resolveDepSubpath: true },
-      dts: { generator: 'tsgo', tsgo: {} },
+      dts: tsgoDts,
       exports: false,
       platform: 'neutral',
       entry: { 'http-api-definition/index': 'src/http-api-definition/index.ts' },
     },
     {
       deps: { resolveDepSubpath: true },
-      dts: { generator: 'tsgo', tsgo: {} },
+      dts: tsgoDts,
       exports: false,
       platform: 'neutral',
       entry: { 'identity/index': 'src/identity/index.ts' },
     },
     {
       deps: { resolveDepSubpath: true },
-      dts: { generator: 'tsgo', tsgo: {} },
+      dts: tsgoDts,
       exports: false,
       platform: 'neutral',
       entry: { 'resources/index': 'src/resources/index.ts' },
     },
     {
       deps: { resolveDepSubpath: true },
-      dts: { generator: 'tsgo', tsgo: {} },
+      dts: tsgoDts,
       exports: false,
       platform: 'neutral',
       entry: { 'data-types/index': 'src/data-types/index.ts' },
     },
     {
       deps: { resolveDepSubpath: true },
-      dts: { generator: 'tsgo', tsgo: {} },
+      dts: tsgoDts,
       exports: false,
       platform: 'neutral',
       entry: { 'telemetry/index': 'src/telemetry/index.ts' },

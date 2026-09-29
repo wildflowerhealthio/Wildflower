@@ -73,7 +73,6 @@ catalog:
   '@types/node': ^26
   '@types/react': 19.3.0
   '@types/react-dom': 19.3.0
-  '@typescript/native-preview': 7.0.0-dev.20260707.2
   '@vitejs/plugin-react': ^6.1.1
   effect: 3.22.2
   esbuild: ^0.28.2
@@ -95,17 +94,19 @@ catalog:
   react-dom: 19.3.0
   tundra-css: ^0.14.0
 
-  # Held on 5.x: the `typescript` 7 npm package is the Go port and ships no
-  # JS compiler API (its main export is only a version string), and
-  # typescript-eslint peers on `<6.1.0`. Type-checking and `.d.ts` emit
-  # already run on TypeScript 7 via `@typescript/native-preview` (tsgolint,
-  # tsgo). Dependabot ignores `typescript` majors (.github/dependabot.yml).
+  # Two TypeScripts; docs/TypeScript/Versions Reference.md lists
+  # which tool uses which.
+  # Bare `typescript` is held on 5.x for the tools that need its JS compiler
+  # API, which the `typescript` 7 npm package (the Go port) doesn't ship:
+  # typescript-eslint (peers on `<6.1.0`), @effect/language-service and editor
+  # tsserver, and the ES5 lowering in apps/fhir-sync-pebble/pkjs (TypeScript 7
+  # has no ES5 target). Dependabot ignores its majors (.github/dependabot.yml).
   typescript: 5.9.3
-  # TypeScript 5 under its own name, for the one job TypeScript 7 can't do:
-  # apps/fhir-sync-pebble/pkjs lowers its PebbleKit JS bundle to ES5, a target
-  # TypeScript 7 dropped and rolldown/oxc never had. The alias keeps it 5.x
-  # even once `typescript` above moves to 7.
-  typescript-es5: npm:typescript@5.9.3
+  # TypeScript 7, the native compiler, for everything that only runs the
+  # binary: `.d.ts` emit (`tsgoDts` in vite.config.base.ts) and the apps'
+  # `tsc` build step. pnpm links the higher version into node_modules/.bin/tsc
+  # when two packages named `typescript` both ship it, so `tsc` is this copy.
+  typescript-7: npm:typescript@7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
   vite-plus: 1.0.0
   why-is-node-running: ^3.2.2

@@ -49,6 +49,7 @@
     "fhir-r4": "workspace:*",
     "jsdom": "catalog:",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   }

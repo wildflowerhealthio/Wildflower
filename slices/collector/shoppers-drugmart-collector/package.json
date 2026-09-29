@@ -33,7 +33,6 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
@@ -48,6 +47,7 @@
     "react-tundraish": "workspace:*",
     "shoppers-drugmart-source": "workspace:*",
     "typescript": "catalog:",
+    "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"

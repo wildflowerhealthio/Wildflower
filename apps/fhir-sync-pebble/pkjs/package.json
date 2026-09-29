@@ -12,7 +12,7 @@
     "@types/node": "catalog:",
     "acorn": "catalog:",
     "fhir-sync-pebble-core": "workspace:*",
-    "typescript-es5": "catalog:",
+    "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   }
