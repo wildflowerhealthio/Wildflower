@@ -108,12 +108,16 @@ catalog:
   react-dom: 19.3.0
   tundra-css: ^0.14.0
 
-  typescript: 7.0.2
+  # Held on 5.x: the `typescript` 7 npm package is the Go port and ships no
+  # JS compiler API (its main export is only a version string), and
+  # typescript-eslint peers on `<6.1.0`. Type-checking and `.d.ts` emit
+  # already run on TypeScript 7 via `@typescript/native-preview` (tsgolint,
+  # tsgo). Dependabot ignores `typescript` majors (.github/dependabot.yml).
+  typescript: 5.9.3
   # TypeScript 5 under its own name, for the one job TypeScript 7 can't do:
   # apps/fhir-sync-pebble/pkjs lowers its PebbleKit JS bundle to ES5, a target
   # TypeScript 7 dropped and rolldown/oxc never had. The alias keeps it 5.x
-  # whatever `typescript` resolves to: the `typescript` override below matches
-  # the bare name only, not this one.
+  # even once `typescript` above moves to 7.
   typescript-es5: npm:typescript@5.9.3
   vite: npm:@voidzero-dev/vite-plus-core@0.3.3
   vite-plus: 0.3.3
@@ -128,6 +132,5 @@ peerDependencyRules:
     vite: '*'
 overrides:
   '@types/node': ^26
-  typescript: 5.9.3
   react-dom: 19.3.0
   vite@*: 'catalog:'

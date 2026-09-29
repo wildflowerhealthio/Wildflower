@@ -24,6 +24,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    ignore:
+      # The `typescript` 7 npm package is the Go port with no JS compiler API,
+      # which typescript-eslint and the ES5 lowering in fhir-sync-pebble/pkjs
+      # need. See the catalog comment in pnpm-workspace.yaml.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
     groups:
       js-minor-patch:
         update-types:
