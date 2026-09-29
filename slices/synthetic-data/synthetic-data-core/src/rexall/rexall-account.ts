@@ -1,3 +1,6 @@
+import { REXALL_CAREBOOK_SYSTEM } from 'rexall-be-well-source'
+
+import type { SourcePatient } from '../source-patient.ts'
 import type { StoryDay } from '../story-day.ts'
 
 /**
@@ -20,4 +23,14 @@ interface RexallAccount {
   readonly updatedDay: StoryDay
 }
 
+/**
+ * The Patient the Rexall import makes of the account's profile: keyed by its
+ * `uid` under the carebook source system.
+ */
+const sourcePatientOf = (account: RexallAccount): SourcePatient => ({
+  system: REXALL_CAREBOOK_SYSTEM,
+  originalId: account.uid,
+})
+
+export { sourcePatientOf }
 export type { RexallAccount }

@@ -2,16 +2,21 @@ import { DateTime } from 'effect'
 import * as fc from 'fast-check'
 
 import type * as DrugProduct from './drug-product.ts'
+import type { LabDraw } from './lab-draw.ts'
+import type { LabRequisition } from './lifelabs/lab-requisition.ts'
+import type { Laboratory, LifeLabsTest, PrintedRange } from './lifelabs/laboratory.ts'
 import type * as Person from './person.ts'
 import type * as Prescription from './prescription.ts'
 import type { RexallAccount } from './rexall/rexall-account.ts'
 import type { ShoppersAccount } from './shoppers/shoppers-account.ts'
+import type { SourcePatient } from './source-patient.ts'
 import type { StoryDay } from './story-day.ts'
 import type { Story } from './story.ts'
 
 /**
  * Arbitraries for the story model: as-of instants, people, drug products,
- * prescriptions and whole stories. Each story comes paired with what a
+ * prescriptions and whole stories, and the LifeLabs laboratories, lab draws
+ * and requisitions their lab results are printed with. Each story comes paired with what a
  * pharmacy record of it must say, worked out here from the generated inputs
  * rather than by the model's own functions, so a round-trip test compares an
  * importer's output against an independent reckoning.
@@ -748,6 +753,183 @@ const shoppersCaseArbitrary: fc.Arbitrary<ShoppersCase> = fc
     }
   })
 
+// ---------------------------------------------------------------------------
+// Laboratories and lab draws
+// ---------------------------------------------------------------------------
+
+/*
+ * Drawn from the LifeLabs print's alphabet so that a report laid out and read
+ * back by the importer is the same report. A printable `Laboratory` keeps the
+ * print's constraints: section names are distinct, and within a section only
+ * the first group may be unnamed and group names are distinct.
+ */
+
+const ANALYTES = [
+  'Sodium',
+  'Potassium',
+  'Chloride',
+  'Glucose Random',
+  'ALT',
+  'Albumin',
+  'Calcium',
+  'Urea',
+  'Iron',
+  'Vitamin B12',
+  'CRP',
+  'Free T3',
+  'PSA',
+  'CK',
+  'Magnesium',
+  'Phosphate',
+] as const
+const LAB_SECTIONS = ['Hematology', 'Chemistry', 'Immunology', 'Endocrinology'] as const
+const LAB_GROUPS = ['Differential', 'Electrolytes', 'Liver Function', 'Thyroid'] as const
+const LAB_COMMENTS = ['Fasting specimen.', 'Repeat in 3 months.', 'Verified by repeat analysis.']
+const LAB_UNITS = [null, 'mmol/L', 'µmol/L', 'g/L', 'µg/L', 'x E9/L', '%', 'mIU/L', 'U/L', 'hours']
+const ORDERING_PRACTITIONERS = [
+  'ROY DR. ANNE',
+  'NGUYEN DR. LEE',
+  'LAVOIE DR. PAT',
+  'OSEI DR. KWAME',
+]
+const LAB_ADDRESSES = [
+  ['1 Example Blvd.', 'Toronto, Ontario', 'Canada M0M 0M0'],
+  ['2 Sample Way', 'Kingston, Ontario'],
+] as const
+
+/** A non-negative number with `decimals` places, as its printed text. */
+const printedNumberArbitrary = (decimals: number): fc.Arbitrary<string> =>
+  fc.integer({ min: 0, max: 99_999 }).map((scaled) => (scaled / 10 ** decimals).toFixed(decimals))
+
+const printedRangeArbitrary: fc.Arbitrary<PrintedRange> = fc
+  .integer({ min: 0, max: 3 })
+  .chain((decimals) =>
+    fc.oneof(
+      fc
+        .tuple(printedNumberArbitrary(decimals), printedNumberArbitrary(decimals))
+        .map(([one, other]): PrintedRange => {
+          const [low = one, high = other] = [one, other].toSorted(
+            (left, right) => Number(left) - Number(right)
+          )
+          return { _tag: 'between', low, high }
+        }),
+      printedNumberArbitrary(decimals).map((high): PrintedRange => ({ _tag: 'below', high })),
+      printedNumberArbitrary(decimals).map((low): PrintedRange => ({ _tag: 'atLeast', low }))
+    )
+  )
+
+/** One section's groups: an optional unnamed leading group, then distinct named ones. */
+const groupNamesArbitrary: fc.Arbitrary<readonly string[]> = fc
+  .tuple(fc.boolean(), fc.uniqueArray(fc.constantFrom(...LAB_GROUPS), { maxLength: 2 }))
+  .map(([leadingUnnamed, named]) => (leadingUnnamed || named.length === 0 ? ['', ...named] : named))
+
+/**
+ * A laboratory printing up to about a dozen tests, each with its own story
+ * name (`analyte-<n>`), under distinct sections.
+ */
+const laboratoryArbitrary: fc.Arbitrary<Laboratory> = fc
+  .record({
+    addressLines: fc.constantFrom(...LAB_ADDRESSES),
+    licence: fc.constantFrom('#5687', '#5407'),
+    headings: fc
+      .uniqueArray(fc.constantFrom(...LAB_SECTIONS), { minLength: 1, maxLength: 3 })
+      .chain((sections) =>
+        fc.tuple(
+          ...sections.map((section) =>
+            groupNamesArbitrary.map((groups) => groups.map((group) => ({ section, group })))
+          )
+        )
+      )
+      .map((perSection) => perSection.flat()),
+  })
+  .chain(({ addressLines, licence, headings }) =>
+    fc
+      .tuple(
+        ...headings.map((heading) =>
+          fc
+            .array(
+              fc.record({
+                name: fc.constantFrom(...ANALYTES),
+                decimals: fc.integer({ min: 0, max: 3 }),
+                male: printedRangeArbitrary,
+                female: printedRangeArbitrary,
+                comments: fc.subarray(LAB_COMMENTS, { maxLength: 2 }),
+              }),
+              { minLength: 1, maxLength: 3 }
+            )
+            .map((tests) => tests.map((test) => ({ ...heading, ...test })))
+        )
+      )
+      .map((perHeading): Laboratory => ({
+        addressLines,
+        licence,
+        tests: perHeading.flat().map((test, index): LifeLabsTest => ({
+          storyTest: `analyte-${index}`,
+          name: test.name,
+          section: test.section,
+          group: test.group,
+          decimals: test.decimals,
+          range: { male: test.male, female: test.female },
+          comments: test.comments,
+        })),
+      }))
+  )
+
+/**
+ * Draws on one to five distinct days before the as-of day, each on a distinct
+ * subset of the laboratory's tests, every value printable at its test's
+ * decimals.
+ */
+const labDrawsArbitrary = (laboratory: Laboratory): fc.Arbitrary<readonly LabDraw[]> =>
+  fc
+    .uniqueArray(fc.integer({ min: -1000, max: -1 }), { minLength: 1, maxLength: 5 })
+    .chain((days) =>
+      fc.tuple(
+        ...days
+          .toSorted((left, right) => left - right)
+          .map((day) =>
+            fc.subarray([...laboratory.tests], { minLength: 1 }).chain((tests) =>
+              fc.tuple(
+                ...tests.map((test) =>
+                  fc
+                    .record({
+                      value: printedNumberArbitrary(test.decimals).map(Number),
+                      unit: fc.constantFrom(...LAB_UNITS),
+                    })
+                    .map(({ value, unit }): LabDraw => ({ day, test: test.storyTest, value, unit }))
+                )
+              )
+            )
+          )
+      )
+    )
+    .map((perDay) => perDay.flat())
+
+/** A laboratory, and a person's story of lab draws it prints (no prescriptions). */
+const labStoryArbitrary: fc.Arbitrary<{
+  readonly laboratory: Laboratory
+  readonly story: Story
+}> = laboratoryArbitrary.chain((laboratory) =>
+  fc
+    .record({ person: personArbitrary('person-1'), labDraws: labDrawsArbitrary(laboratory) })
+    .map(({ person, labDraws }) => ({ laboratory, story: { person, prescriptions: [], labDraws } }))
+)
+
+/** Ordered by one practitioner, copied to at most one other (the print joins a longer list). */
+const requisitionArbitrary: fc.Arbitrary<LabRequisition> = fc.record({
+  orderedBy: fc.constantFrom(...ORDERING_PRACTITIONERS),
+  copyTo: fc.subarray(ORDERING_PRACTITIONERS, { maxLength: 1 }),
+})
+
+/** A Patient under one of the pharmacy source systems, keyed by a uuid. */
+const sourcePatientArbitrary: fc.Arbitrary<SourcePatient> = fc.record({
+  system: fc.constantFrom(
+    'https://wildflowerhealth.io/fhir/sid/rexall-carebook',
+    'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
+  ),
+  originalId: fc.uuid(),
+})
+
 export {
   ageOn,
   asOfArbitrary,
@@ -755,11 +937,16 @@ export {
   dosingArbitrary,
   expectedNameOf,
   expectedSigOf,
+  labDrawsArbitrary,
+  laboratoryArbitrary,
+  labStoryArbitrary,
   personArbitrary,
   prescriberArbitrary,
   productArbitrary,
+  requisitionArbitrary,
   rexallAccountArbitrary,
   shoppersCaseArbitrary,
+  sourcePatientArbitrary,
   storyCaseArbitrary,
 }
 export type { ExpectedPrescription, ShoppersCase, StoryCase }

@@ -1,0 +1,308 @@
+import { Data, DateTime, Effect, type ParseResult } from 'effect'
+import type { ReferenceType } from 'fhir-r4/data-types'
+import { adoptResource } from 'fhir-r4/identity'
+import type { FhirResource } from 'fhir-r4/resources'
+import {
+  defaultLifeLabsPdfSettings,
+  LIFELABS_SYSTEM,
+  type LifeLabsReport,
+  type ReportPatient,
+  type ReportRow,
+  type ReportSection,
+  toFhirResources,
+} from 'lifelabs-pdf-importer-core/synthesis'
+
+import type { LabDraw } from '../lab-draw.ts'
+import * as Person from '../person.ts'
+import * as Seeded from '../seeded.ts'
+import * as SourcePatient from '../source-patient.ts'
+import * as StoryDay from '../story-day.ts'
+import type { Story } from '../story.ts'
+import type { LabRequisition } from './lab-requisition.ts'
+import * as Laboratory from './laboratory.ts'
+
+/**
+ * The LifeLabs renderer: a story's lab draws as the FHIR resources the LifeLabs
+ * PDF import makes of them, filed on the person's pharmacy Patient.
+ *
+ * @remarks
+ * Each day's draws are one report ({@link reportsOf}) — a `Report` as
+ * `lifelabs-pdf-importer-core` reads one off a printed PDF: a `Lab No`, the
+ * date of service and report, the patient block, the requisition's clinicians,
+ * the laboratory's block, and the results grid with each test's printed name,
+ * result, `HI`/`LO` flag, reference range, unit, lab licence and comments, as
+ * the {@link Laboratory.Laboratory} prints them. Nothing here names a person or
+ * a value: the story, laboratory and requisition carry them.
+ * {@link render} runs those reports through the importer's own
+ * `toFhirResources` and adopts the output under `LIFELABS_SYSTEM`, as the
+ * importer's decode does, then:
+ *
+ * - drops the `Patient` the report's patient block makes — the person already
+ *   has one, from their pharmacy — and points every `Observation` and
+ *   `DiagnosticReport` `subject` at that pharmacy Patient instead
+ *   ({@link SourcePatient.referenceOf});
+ * - keeps the `Practitioner`s the requisition names.
+ *
+ * Nothing is PDF-shaped: the synthesis writes no source-file
+ * `DocumentReference` and no `meta.source`, and none is added.
+ *
+ * Specimens are collected in the morning (fasting) and reported the same
+ * evening, at minutes hashed from the person and day; the report's printed
+ * clock is Toronto time, as the importer's default settings read it.
+ */
+
+/** The printed clock's zone, as the importer reads a report by default. */
+const TIME_ZONE = defaultLifeLabsPdfSettings.timeZone
+
+const FINAL_RESULTS = 'FINAL RESULTS'
+
+const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const
+
+/** Minutes into the day a specimen may be collected: 07:15 to 10:45, fasting. */
+const EARLIEST_COLLECTION_MINUTE = 7 * 60 + 15
+const LATEST_COLLECTION_MINUTE = 10 * 60 + 45
+
+/** Minutes from collection to the report: five to ten hours, the same evening. */
+const EARLIEST_REPORT_AFTER_MINUTES = 5 * 60
+const LATEST_REPORT_AFTER_MINUTES = 10 * 60
+
+/** A story draws a test the laboratory prints no row for. */
+class UncataloguedLabTest extends Data.TaggedError('UncataloguedLabTest')<{
+  readonly test: string
+}> {
+  override get message(): string {
+    return `the laboratory prints no test for the story's "${this.test}"`
+  }
+}
+
+/** A calendar date as the report prints it (`Aug 3 2026`). */
+const printedDateOf = (date: DateTime.Utc): string => {
+  const { year, month, day } = DateTime.toPartsUtc(date)
+  return `${MONTHS[month - 1] ?? ''} ${day} ${year}`
+}
+
+/** A story day and a local clock time as the report prints them (`Aug 3 2026 08:41`). */
+const printedDateTimeOf = (asOf: DateTime.Utc, day: StoryDay.StoryDay, minute: number): string => {
+  const clock = [Math.floor(minute / 60), minute % 60]
+    .map((part) => String(part).padStart(2, '0'))
+    .join(':')
+  return `${printedDateOf(StoryDay.toDateTime(asOf, day))} ${clock}`
+}
+
+/** Whole years from `birthDate` to `date`. */
+const yearsBetween = (birthDate: DateTime.Utc, date: DateTime.Utc): number => {
+  const born = DateTime.toPartsUtc(birthDate)
+  const on = DateTime.toPartsUtc(date)
+  const beforeBirthday = on.month < born.month || (on.month === born.month && on.day < born.day)
+  return on.year - born.year - (beforeBirthday ? 1 : 0)
+}
+
+/** The patient block on the report of the draws on `day`. */
+const patientBlockOf = (
+  asOf: DateTime.Utc,
+  person: Person.Person,
+  day: StoryDay.StoryDay
+): ReportPatient => {
+  const birthDate = Person.birthDateOf(person, asOf)
+  return {
+    name: `${person.familyName.toUpperCase()}, ${person.givenName.toUpperCase()}`,
+    age: `${yearsBetween(birthDate, StoryDay.toDateTime(asOf, day))} years`,
+    sex: person.gender === 'male' ? 'M' : 'F',
+    dateOfBirth: printedDateOf(birthDate),
+    healthCardNumber: '',
+    phone: '',
+    patientId: '',
+  }
+}
+
+/** A story's unit as the report prints it: ASCII `u` for micro, `''` for none. */
+const printedUnitOf = (unit: string | null): string =>
+  unit === null ? '' : unit.replaceAll('µ', 'u')
+
+/** The `Lab No` of the draws on `day`: the year of service, two letters and seven digits. */
+const labNumberOf = (asOf: DateTime.Utc, person: Person.Person, day: StoryDay.StoryDay): string => {
+  const keys = [person.key, 'lifelabs', 'lab-no', String(day)]
+  const letters = Seeded.integerOf([...keys, 'letters'], 0, 26 * 26 - 1)
+  const prefix = String.fromCodePoint(65 + Math.floor(letters / 26), 65 + (letters % 26))
+  const { year } = DateTime.toPartsUtc(StoryDay.toDateTime(asOf, day))
+  return `${year}-${prefix}${Seeded.digitsOf(keys, 7)}`
+}
+
+/** One draw as its row of the results grid. */
+const rowOf = (
+  laboratory: Laboratory.Laboratory,
+  person: Person.Person,
+  test: Laboratory.LifeLabsTest,
+  draw: LabDraw
+): ReportRow => {
+  const range = test.range[person.gender]
+  return {
+    name: test.name,
+    flag: Laboratory.flagOf(draw.value, range),
+    result: draw.value.toFixed(test.decimals),
+    referenceRange: Laboratory.printRange(range),
+    unit: printedUnitOf(draw.unit),
+    labLicence: laboratory.licence,
+    comments: test.comments,
+  }
+}
+
+/**
+ * One day's draws as the report's sections: rows in the laboratory's order,
+ * under the section and group heading each test prints under.
+ */
+const sectionsOf = (
+  laboratory: Laboratory.Laboratory,
+  person: Person.Person,
+  draws: readonly LabDraw[]
+): Effect.Effect<readonly ReportSection[], UncataloguedLabTest> =>
+  Effect.gen(function* () {
+    const printed: { readonly test: Laboratory.LifeLabsTest; readonly draw: LabDraw }[] = []
+    for (const draw of draws) {
+      const test = Laboratory.testOf(laboratory, draw.test)
+      if (test === undefined) return yield* new UncataloguedLabTest({ test: draw.test })
+      printed.push({ test, draw })
+    }
+    const inPrintOrder = printed.toSorted(
+      (left, right) => laboratory.tests.indexOf(left.test) - laboratory.tests.indexOf(right.test)
+    )
+    const sections: {
+      name: string
+      comments: []
+      groups: { name: string; rows: ReportRow[] }[]
+    }[] = []
+    for (const { test, draw } of inPrintOrder) {
+      let section = sections.at(-1)
+      if (section?.name !== test.section) {
+        section = { name: test.section, comments: [], groups: [] }
+        sections.push(section)
+      }
+      let group = section.groups.at(-1)
+      if (group?.name !== test.group) {
+        group = { name: test.group, rows: [] }
+        section.groups.push(group)
+      }
+      group.rows.push(rowOf(laboratory, person, test, draw))
+    }
+    return sections
+  })
+
+/**
+ * The story's lab draws as LifeLabs reports, one per day drawn, in day order.
+ *
+ * @param asOf - The as-of instant every story day is dated from; only its UTC
+ *   calendar day matters
+ * @param story - Whose draws are reported
+ * @param laboratory - The lab the specimens go to, and how it prints each test
+ * @param requisition - The clinicians the reports name
+ * @returns The reports; fails with {@link UncataloguedLabTest} when a draw names
+ *   a test the laboratory does not print
+ */
+const reportsOf = (
+  asOf: DateTime.Utc,
+  story: Story,
+  laboratory: Laboratory.Laboratory,
+  requisition: LabRequisition
+): Effect.Effect<readonly LifeLabsReport[], UncataloguedLabTest> =>
+  Effect.forEach(
+    [...new Set(story.labDraws.map((draw) => draw.day))].toSorted((left, right) => left - right),
+    (day) =>
+      Effect.map(
+        sectionsOf(
+          laboratory,
+          story.person,
+          story.labDraws.filter((draw) => draw.day === day)
+        ),
+        (sections): LifeLabsReport => {
+          const keys = [story.person.key, 'lifelabs', String(day)]
+          const collectedMinute = Seeded.integerOf(
+            [...keys, 'collected'],
+            EARLIEST_COLLECTION_MINUTE,
+            LATEST_COLLECTION_MINUTE
+          )
+          const reportedMinute =
+            collectedMinute +
+            Seeded.integerOf(
+              [...keys, 'reported'],
+              EARLIEST_REPORT_AFTER_MINUTES,
+              LATEST_REPORT_AFTER_MINUTES
+            )
+          return {
+            labNo: labNumberOf(asOf, story.person, day),
+            referenceNumber: '',
+            referringSiteId: '',
+            patient: patientBlockOf(asOf, story.person, day),
+            orderedBy: requisition.orderedBy,
+            copyTo: requisition.copyTo,
+            dateOfService: printedDateTimeOf(asOf, day, collectedMinute),
+            reportedOn: printedDateTimeOf(asOf, day, reportedMinute),
+            lab: { addressLines: laboratory.addressLines, telephone: '', tollFree: '', fax: '' },
+            status: FINAL_RESULTS,
+            pageNumbers: [1],
+            sections,
+          }
+        }
+      )
+  )
+
+const adoptUnderLifeLabs = adoptResource({ system: LIFELABS_SYSTEM })
+
+/** `resource` with its subject replaced, if it is a result that has one. */
+const withSubject =
+  (subject: ReferenceType) =>
+  (resource: FhirResource): FhirResource => {
+    if (resource.resourceType === 'Observation') return { ...resource, subject }
+    if (resource.resourceType === 'DiagnosticReport') return { ...resource, subject }
+    return resource
+  }
+
+/**
+ * The story's lab results as the LifeLabs import makes them, on the person's
+ * pharmacy Patient.
+ *
+ * @param asOf - The as-of instant every story day is dated from; only its UTC
+ *   calendar day matters
+ * @param story - Whose draws are reported
+ * @param laboratory - The lab the specimens go to, and how it prints each test
+ * @param requisition - The clinicians the reports name
+ * @param pharmacyPatient - The Patient the person's pharmacy import makes, which
+ *   every result's `subject` names
+ * @returns The adopted resources in the order a writer persists them — each
+ *   report's newly named `Practitioner`s, then its `Observation`s and its
+ *   `DiagnosticReport` — with no `Patient`; the same for the same inputs.
+ *   Fails with {@link UncataloguedLabTest} when a draw names a test the
+ *   laboratory does not print, or a `ParseError` when the synthesis does not
+ *   satisfy its `fhir-r4` schema
+ */
+const render = (
+  asOf: DateTime.Utc,
+  story: Story,
+  laboratory: Laboratory.Laboratory,
+  requisition: LabRequisition,
+  pharmacyPatient: SourcePatient.SourcePatient
+): Effect.Effect<readonly FhirResource[], UncataloguedLabTest | ParseResult.ParseError> =>
+  Effect.gen(function* () {
+    const reports = yield* reportsOf(asOf, story, laboratory, requisition)
+    const groups = yield* toFhirResources(reports, { timeZone: TIME_ZONE })
+    return groups
+      .flatMap((group) => group.resources)
+      .filter((resource) => resource.resourceType !== 'Patient')
+      .map(adoptUnderLifeLabs)
+      .map(withSubject(SourcePatient.referenceOf(pharmacyPatient)))
+  })
+
+export { render, reportsOf, UncataloguedLabTest }
+export type { LabRequisition }

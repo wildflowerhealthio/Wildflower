@@ -2,7 +2,7 @@
   "name": "synthetic-data-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure tooling for synthetic health data: a story model (people, prescriptions, fills, lab draws) with every date derived from one as-of date, deterministic seeded ids, and one renderer per source — the Rexall Be Well HAR and the Shoppers Drug Mart family-account HAR. The stories themselves live in wildflowerhealthio/synthetic-data. No DOM, no fs, no React.",
+  "description": "Pure tooling for synthetic health data: a story model (people, prescriptions, fills, lab draws) with every date derived from one as-of date, deterministic seeded ids, and one renderer per source — the Rexall Be Well HAR, the Shoppers Drug Mart family-account HAR, and lab results as the LifeLabs import makes them, filed on the person's pharmacy Patient. The stories themselves live in wildflowerhealthio/synthetic-data. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -36,8 +36,10 @@
     "http-archive": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "lifelabs-pdf-importer-core": "workspace:*",
     "medication-core": "workspace:*",
     "rexall-be-well-source": "workspace:*",
+    "shoppers-drugmart-source": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
@@ -46,6 +48,8 @@
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "rexall-be-well-source": "workspace:*"
+    "lifelabs-pdf-importer-core": "workspace:*",
+    "rexall-be-well-source": "workspace:*",
+    "shoppers-drugmart-source": "workspace:*"
   }
 }

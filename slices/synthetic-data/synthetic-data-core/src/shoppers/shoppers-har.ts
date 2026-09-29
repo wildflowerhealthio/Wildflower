@@ -209,4 +209,5 @@ const render = (asOf: DateTime.Utc, account: ShoppersAccount): string => {
 }
 
 export { render }
+export { sourcePatientOf } from './shoppers-account.ts'
 export type { ShoppersAccount }

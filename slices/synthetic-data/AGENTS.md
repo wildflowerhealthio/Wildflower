@@ -18,8 +18,8 @@ names a person or tells a particular story.
 - **[`synthetic-data-core`](./synthetic-data-core/AGENTS.md)** (pure) — the
   story model (`Story`, `Person`, `Prescription`, `DrugProduct`, `LabDraw`,
   `StoryDay`), deterministic seeded values (`Seeded`), the HAR envelope
-  (`ChromeHar`), and one renderer per source: the Rexall Be Well HAR and the
-  Shoppers Drug Mart family-account HAR today.
+  (`ChromeHar`), and one renderer per source: the Rexall Be Well HAR, the
+  Shoppers Drug Mart family-account HAR, and LifeLabs lab results.
 
 ## Rules
 
@@ -38,7 +38,10 @@ names a person or tells a particular story.
   generated inputs say.
 - **One Patient record per person, except a Shoppers account holder.** The
   Shoppers importer always adds an account Patient keyed by `pcid` beside the
-  one per managed person, so the holder has two records.
+  one per managed person, so the holder has two records. A source with no
+  Patient of its own to offer (the lab results) drops the one its importer
+  makes and files its results on the person's pharmacy Patient
+  (`SourcePatient`).
 - **No narrative here.** Tests generate their stories (fast-check); a
   hand-written example inside a test is fine, a named person or a chosen
   product catalogue is not — those belong in the data repo.

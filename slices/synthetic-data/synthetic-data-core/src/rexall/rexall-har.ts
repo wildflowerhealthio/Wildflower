@@ -130,4 +130,5 @@ const render = (asOf: DateTime.Utc, story: Story, account: RexallAccount): strin
 }
 
 export { render }
+export { sourcePatientOf } from './rexall-account.ts'
 export type { RexallAccount }

@@ -8,7 +8,7 @@ in [`wildflowerhealthio/synthetic-data`](https://github.com/wildflowerhealthio/s
 ## Namespaces
 
 One namespace per module, in the `effect` style, from the flat root entry:
-`import { Prescription, RexallHar, ShoppersHar } from 'synthetic-data-core'`.
+`import { LifeLabs, Prescription, RexallHar, ShoppersHar } from 'synthetic-data-core'`.
 
 - **`StoryDay`** (`src/story-day.ts`) — a day relative to the as-of date
   (`0` is the as-of day, `-30` a month before). `toDateTime` / `toIsoDate`
@@ -41,7 +41,15 @@ One namespace per module, in the `effect` style, from the flat root entry:
   `repeatsRemainingOf`, `statusOf`), so a renderer never restates the story.
   A medication episode is a drug's prescriptions read in order.
 - **`LabDraw`** (`src/lab-draw.ts`) — a result a story's dose changes answer
-  to (test, value, unit, day). Rendering labs is the lab source's job.
+  to (test, value, unit, day). How it prints — name, range, flag — is the lab
+  source's (`LifeLabsLaboratory`).
+- **`SourcePatient`** (`src/source-patient.ts`) — a person's Patient as the
+  importer of one source keys it (source system and the source's own id):
+  `adoptedIdOf` and `referenceOf` spell the id and the `Reference` adoption
+  writes for it, so a source with no Patient of its own files its resources on
+  that one. `RexallHar.sourcePatientOf(account)` and
+  `ShoppersHar.sourcePatientOf(patient)` name the pharmacy Patients (for
+  Shoppers, the managed person's, not the `pcid` account Patient).
 - **`Story`** (`src/story.ts`) — one person's record: `person`,
   `prescriptions`, `labDraws`.
 - **`ChromeHar`** (`src/har/chrome-har.ts`) — the HAR 1.2 envelope a Chrome
@@ -75,20 +83,46 @@ One namespace per module, in the `effect` style, from the flat root entry:
   expired or archived its status body offers no fill (`Unable to renew
 online`, not renewable, no `nextFillDate`).
 
+- **`LifeLabsLaboratory`** (`src/lifelabs/laboratory.ts`) — a LifeLabs
+  laboratory as its reports print it: address, licence, and per test the
+  printed name, section and group heading, result decimals, reference range by
+  sex (`between` / `below` / `atLeast`, bounds as printed text) and comments;
+  `flagOf` reads `HI`/`LO` off the same range, `printRange` prints it. A
+  `LabRequisition` (`lab-requisition.ts`) is the `Ordered by` and `Copy To`
+  clinicians. Which laboratory and tests a data set uses is the data repo's.
+- **`LifeLabs`** (`src/lifelabs/lifelabs.ts`) — `reportsOf(asOf, story,
+laboratory, requisition)`: one `lifelabs-pdf-importer-core` `Report` per day
+  drawn (a hashed `Lab No`, Toronto morning collection and same-day report,
+  the patient block, the requisition's clinicians, the results grid).
+  `render(…, pharmacyPatient)` runs them through the importer's
+  `toFhirResources` and the adoption its decode applies (under
+  `LIFELABS_SYSTEM`), drops the importer's Patient, and points every
+  `Observation` and `DiagnosticReport` `subject` at `pharmacyPatient`
+  (`SourcePatient.referenceOf`). Practitioners stay as the importer makes
+  them; nothing is PDF-shaped (no source-file `DocumentReference`, no
+  `meta.source`).
+
 ## Adding a source
 
 A new source is a renderer module beside `rexall/` and `shoppers/` that reads `Story` values
 (and the person's account on that source), builds the source's wire shape from
 the source package's own constants, and — for HAR sources — wraps it with
 `ChromeHar`. It ships with a round-trip test through the real importer that
-asserts that generated stories, not the renderer's own output, come back.
+asserts that generated stories, not the renderer's own output, come back. A
+source whose importer is not a HAR (LifeLabs' PDF) builds the importer's own
+parsed model and runs its synthesis and adoption instead, and its property
+test checks the model survives the importer's print-and-read round trip.
 
 ## Layering
 
 Depends on `effect`, `kitchen-sink` (`fnv1a64`, `utf8Bytes`), `fhir-r4`
-(`joinIdComponents`, the key fold `Seeded` hashes) and `rexall-be-well-source`
-(the carebook extension, identifier and coding catalogue — spelled once,
-there). The Shoppers portal's JSON has no such catalogue —
+(`joinIdComponents`, the key fold `Seeded` hashes; `localResourceId`,
+`adoptResource`), `rexall-be-well-source` (the carebook extension, identifier
+and coding catalogue — spelled once, there — and `REXALL_CAREBOOK_SYSTEM`),
+`shoppers-drugmart-source` (`SHOPPERS_DRUGMART_SYSTEM`) and
+`lifelabs-pdf-importer-core/synthesis` (the `Report` model, `toFhirResources`,
+`LIFELABS_SYSTEM` and the default time zone, without the main entry's
+pdfjs-backed decode). The Shoppers portal's JSON has no catalogue —
 `shoppers-drugmart-source` exports only its descriptor and `sid` system; its
 identifier systems name the FHIR it writes, not the wire — so the Shoppers
 payloads are typed here, after that package's test fixtures. The importers and
@@ -125,6 +159,20 @@ particular person's story.
   Shoppers archive over generated accounts, plus the collector's page and XHR
   order, and that no expired or archived prescription's status body offers a
   fill.
+- `src/lifelabs/lifelabs.test.ts` — properties over generated laboratories,
+  lab draws, requisitions and pharmacy Patients (`labStoryArbitrary` and
+  friends in `arbitraries.test-helpers.ts`): only Practitioners, Observations
+  and DiagnosticReports, each decoding under its fhir-r4 schema, no `meta`;
+  every subject the pharmacy Patient's adopted reference; one report per day
+  and each draw's name, value, unit, range, flag, comments and date through;
+  determinism and as-of shifts; and the reports are what the importer reads
+  back off their print (`layoutDocument`, `decodeLifeLabsPdfDocument`),
+  `render` being that decode without its Patient.
+- `src/lifelabs/lifelabs.round-trip.test.ts` — generated Rexall and Shoppers
+  accounts' HARs through `harImporter.decode`, each person's generated labs
+  through `LifeLabs.render` on `sourcePatientOf` their record: every result's
+  subject is the Patient the import made for that person, spelled as its own
+  MedicationRequests spell it, and never the Shoppers `pcid` Patient.
 - `src/shoppers/shoppers-har.round-trip.test.ts` — generated accounts' HARs
   through `harImporter.decode`, then `medication-core`: the Patients (one per
   managed person, plus the account Patient), each request's brand, DIN, sig,

@@ -88,6 +88,11 @@ function.
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition
   is `decode`.
+- `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
+  exported as the `/synthesis` subpath: the `Report` model's types,
+  `toFhirResources`, `LIFELABS_SYSTEM` and `defaultLifeLabsPdfSettings`, none
+  of which reaches `positioned-text-web` (pdfjs). For callers that build
+  reports themselves (`synthetic-data-core`'s LifeLabs renderer).
 - `src/source-file.ts` — **the coding axis an uploaded LifeLabs report PDF is
   stored under**, exported as the `/source-file` subpath: a narrowing of
   `source-system.ts` to `LIFELABS_SYSTEM`, `LIFELABS_PDF_SOURCE_FILE_CODE`, and

@@ -1,4 +1,7 @@
+import { SHOPPERS_DRUGMART_SYSTEM } from 'shoppers-drugmart-source'
+
 import type { Person } from '../person.ts'
+import type { SourcePatient } from '../source-patient.ts'
 import type { Story } from '../story.ts'
 
 /**
@@ -53,4 +56,15 @@ interface ShoppersAccount {
   readonly patients: readonly ShoppersPatient[]
 }
 
+/**
+ * The Patient the Shoppers import makes of one person the account manages:
+ * keyed by their `patients[].id` under the Shoppers source system — not the
+ * account Patient keyed by `pcid`.
+ */
+const sourcePatientOf = (patient: ShoppersPatient): SourcePatient => ({
+  system: SHOPPERS_DRUGMART_SYSTEM,
+  originalId: patient.patientId,
+})
+
+export { sourcePatientOf }
 export type { ShoppersAccount, ShoppersAddress, ShoppersPatient, ShoppersStore }

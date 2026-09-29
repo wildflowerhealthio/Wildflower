@@ -11,6 +11,7 @@ export default defineConfig({
     entry: {
       index: 'src/index.ts',
       'source-file': 'src/source-file.ts',
+      synthesis: 'src/synthesis.ts',
       'test-helpers': 'src/test-helpers.ts',
     },
   },
