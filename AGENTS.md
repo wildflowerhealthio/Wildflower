@@ -155,7 +155,7 @@ Polyglot repo: a 15-member Cargo workspace (~207 `.rs` files) alongside the TS p
 
 ## Fresh container bootstrap
 
-`.devcontainer/postCreateCommand.sh` installs a **global** `vp` (latest/unpinned) then runs `vp install`. The workspace pins vite-plus lower via the catalog, so for `vp test` in jsdom packages use the workspace-local binary `node_modules/.bin/vp` — the global `vp`'s bundled vitest can't resolve jsdom. Re-run `vp install` after any `package.json` edit.
+`.devcontainer/postCreateCommand.sh` installs a **global** `vp`, pinned to the catalog's vite-plus version (see the [Bumping vite-plus How-To](./docs/Dependencies/Bumping%20vite-plus%20How-To.md)), then runs `vp install`. For `vp test` in jsdom packages use the workspace-local binary `node_modules/.bin/vp` — the global `vp`'s bundled vitest can't resolve jsdom. Re-run `vp install` after any `package.json` edit.
 
 Bootstrap installs but does **not** build, and typecheck resolves tests against the `default` (`dist/`) export condition — so a first `vp check` on an unpacked workspace reports errors that are only missing builds. `vp lint` is affected too (`lint.options.typeCheck` is on), and so is `vp run ready`, which runs `vp lint` four steps before it reaches `vp run pack`. Run `vp run pack` first (`vp run -F <pkg> build` for one package). A Claude PreToolUse hook (`.claude/hooks/pack-before-check-reminder.mjs`) holds the session's first typecheck — and its first workspace-wide `vp test` / `vp run test:all`, which fails the same way — to say so; retrying it proceeds.
 
