@@ -76,7 +76,7 @@ utoipa-axum = "0.2"
 # Interactive Scalar API reference. The host merges each documented slice's
 # `openapi_spec()` into one document and serves it here at `/docs`. The `axum`
 # feature (0.8-compatible) mounts it as a plain `Router`.
-utoipa-scalar = { version = "0.3", features = ["axum"] }
+utoipa-scalar = { version = "0.4", features = ["axum"] }
 
 # Lints shared by every crate that opts in with `[lints] workspace = true`.
 # Forbidding unsafe makes any `unsafe` block a compile error (not just a lint),
