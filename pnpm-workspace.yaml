@@ -53,7 +53,7 @@ catalog:
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
   # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-node/web).
-  '@sentry/node': 10.74.0
+  '@sentry/node': 11.0.0
   '@sentry/opentelemetry': 10.74.0
   '@sentry/react': 10.74.0
   # The Scalar API reference, vendored through npm (never the CDN script) so the
