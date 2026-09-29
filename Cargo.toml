@@ -72,7 +72,7 @@ http-body-util = "0.1"
 utoipa = { version = "5", features = ["preserve_order"] }
 # axum integration: collects the OpenAPI spec from the real router so the spec
 # can't drift from the routes (axum 0.8-compatible).
-utoipa-axum = "0.2"
+utoipa-axum = "0.3"
 # Interactive Scalar API reference. The host merges each documented slice's
 # `openapi_spec()` into one document and serves it here at `/docs`. The `axum`
 # feature (0.8-compatible) mounts it as a plain `Router`.
