@@ -89,7 +89,7 @@ jobs:
           mv "$tmp" "$conf"
 
       - name: Install cargo-edit (cargo set-version)
-        uses: taiki-e/install-action@v2.87.17
+        uses: taiki-e/install-action@v2.87.21
         with:
           tool: cargo-edit
 
@@ -238,7 +238,7 @@ jobs:
       # formatter rather than hand-sanitising subjects, so whatever oxfmt wants
       # is what lands.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.0
+        uses: voidzero-dev/setup-vp@v1.21.1
         with:
           cache: true
 
