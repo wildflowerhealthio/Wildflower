@@ -76,7 +76,7 @@ This places a constraint on the function: **no module-scope dependencies**. Ever
 
 ## What's deliberately not here
 
-- **Effect-Messaging Web side**: The sniffer runs in _arbitrary_ third-party pages — it can't depend on our SPA bundle's `WebPlatformAdapter`. So it speaks the wire format manually (`void eventBus.emit(BRIDGE_EVENT, msg)` with the message's `_tag` as the dispatch discriminator) and the host decodes it through `BridgeTransport`'s `Host` side only.
+- **Effect-Messaging Web side**: The sniffer runs in _arbitrary_ third-party pages — it can't depend on our SPA bundle's transport. So it speaks the wire format manually (`void eventBus.emit(BRIDGE_EVENT, msg)` with the message's `_tag` as the dispatch discriminator) and the host decodes it through `BridgeTransport`'s `Host` side only.
 
 - **A Tauri-shaped Web platform adapter inside the sniffer page**: the sniffer page is a _third-party_ origin; it can't import our SPA bundle or `@tauri-apps/api` runtime at build time. The bootstrap relies on `withGlobalTauri: true` to surface `window.__TAURI__.event`, then runs everything else as plain script — no SDK, no Effect runtime, no schema decoder. The structural `TauriEventApi` interface from `effect-messaging-tauri` is the only thing the sniffer body type-imports.
 
