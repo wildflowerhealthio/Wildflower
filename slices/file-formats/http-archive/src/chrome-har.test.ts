@@ -8,6 +8,7 @@ import {
   CHROME_CREATOR,
   type ChromeHar,
   type ChromeHarEntry,
+  type ChromePageSpec,
   type ChromeResourceType,
   chromeExtrasOf,
   chromeHarFromJson,
@@ -143,6 +144,14 @@ describe('ChromeHar', () => {
 
 const RESOURCE_TYPES: readonly ChromeResourceType[] = ['document', 'xhr', 'fetch']
 
+const PAGE_SPEC: ChromePageSpec = {
+  id: 'page_1',
+  url: 'https://portal.example.org/records',
+  startedAt: DateTime.unsafeMake('2026-05-04T15:22:31.104Z'),
+  onContentLoadMillis: 412.5,
+  onLoadMillis: 903.1,
+}
+
 describe('the ChromeHar producer vocabulary', () => {
   test('chromeExtrasOf gives every resource type its initiator and priority', () => {
     expect(RESOURCE_TYPES.map(chromeExtrasOf)).toEqual([
@@ -153,17 +162,8 @@ describe('the ChromeHar producer vocabulary', () => {
   })
 
   test('chromePageOf titles a page with its URL, as DevTools does', () => {
-    const startedAt = DateTime.unsafeMake('2026-05-04T15:22:31.104Z')
-    expect(
-      chromePageOf({
-        id: 'page_1',
-        url: 'https://portal.example.org/records',
-        startedAt,
-        onContentLoadMillis: 412.5,
-        onLoadMillis: 903.1,
-      })
-    ).toEqual({
-      startedDateTime: startedAt,
+    expect(chromePageOf(PAGE_SPEC)).toEqual({
+      startedDateTime: PAGE_SPEC.startedAt,
       id: 'page_1',
       title: 'https://portal.example.org/records',
       pageTimings: { onContentLoad: 412.5, onLoad: 903.1 },
@@ -177,15 +177,7 @@ describe('the ChromeHar producer vocabulary', () => {
         fc.boolean(),
         (resourceTypes, pretty) => {
           const archive = chromeHarOf(
-            [
-              chromePageOf({
-                id: 'page_1',
-                url: 'https://portal.example.org/records',
-                startedAt: DateTime.unsafeMake('2026-05-04T15:22:31.104Z'),
-                onContentLoadMillis: 412.5,
-                onLoadMillis: 903.1,
-              }),
-            ],
+            [chromePageOf(PAGE_SPEC)],
             resourceTypes.map((resourceType) => chromeEntry(chromeExtrasOf(resourceType)))
           )
           const read = Effect.runSync(

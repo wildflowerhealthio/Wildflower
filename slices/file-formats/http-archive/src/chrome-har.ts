@@ -32,8 +32,9 @@ import { type HarCreator, HarEntry, HarLog, type HarPage } from './har.ts'
  */
 
 /**
- * Chrome's `_initiator` — what caused the request, e.g. `{ type: 'parser' }`
- * for a navigation or `{ type: 'script', stack: … }` for a script's fetch.
+ * Chrome's `_initiator` — what caused the request, e.g. `{ type: 'other' }`
+ * for a navigation, `{ type: 'parser' }` for a resource the HTML parser found,
+ * or `{ type: 'script', stack: … }` for a script's fetch.
  *
  * @remarks
  * Only `type` is typed. The rest (`url`, `lineNumber`, a call `stack`) is

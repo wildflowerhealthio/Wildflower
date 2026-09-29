@@ -45,12 +45,14 @@ describe('fmix64', () => {
   })
 
   // The reason to mix at all: neighbouring inputs, like FNV hashes of keys that
-  // differ in their last character, come out looking unrelated. About 32 bits
-  // differ on average; 16 leaves a wide margin below that.
+  // differ in their last character, come out looking unrelated. The differing
+  // bits count like 64 fair coin flips (mean 32, standard deviation 4), so a
+  // bound near the mean is flaky: `16705n` and `16706n` differ in only 15.
+  // Fewer than 8 happens about once in 10^10 draws.
   test('property: inputs one apart differ in many output bits', () => {
     fc.assert(
       fc.property(fc.bigInt({ min: 0n, max: MASK64 - 1n }), (value) => {
-        expect(differingBits(fmix64(value), fmix64(value + 1n))).toBeGreaterThanOrEqual(16)
+        expect(differingBits(fmix64(value), fmix64(value + 1n))).toBeGreaterThanOrEqual(8)
       }),
       { numRuns: numRunsFor({ base: 200 }) }
     )
