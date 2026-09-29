@@ -1,7 +1,7 @@
 {
   "name": "telemetry-core",
   "version": "0.0.0",
-  "description": "Shared telemetry config shapes and OpenTelemetry init plumbing for the Wildflower monorepo.",
+  "description": "Shared telemetry config shapes, the telemetry consent model, the URL anonymizer and event scrubber, and OpenTelemetry init plumbing for the Wildflower monorepo.",
   "license": "MIT",
   "repository": {
     "type": "git",

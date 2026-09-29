@@ -1,7 +1,7 @@
 {
   "name": "telemetry-web",
   "version": "0.0.0",
-  "description": "Browser Effect OpenTelemetry layer wiring Sentry and OTLP exporters for Wildflower web apps.",
+  "description": "Browser Effect OpenTelemetry layer wiring Sentry and OTLP exporters for Wildflower web apps, and the consent-gated Sentry init that scrubs what it sends.",
   "license": "MIT",
   "repository": {
     "type": "git",
