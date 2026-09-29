@@ -119,8 +119,17 @@ const make = <TParsed>({
    * composition (the machine is built after the lifecycle).
    */
   readonly signalNoMoreResultsExpected: Effect.Effect<void, never, never>
-}): Effect.Effect<RunLifecycleState<TParsed>, never, never> =>
-  Effect.gen(function* () {
+}): Effect.Effect<RunLifecycleState<TParsed>, never, never> => {
+  // Unmount teardown: stop the scripted navigation, then ask the host to cancel
+  // the incomplete requests. Navigation-first is not load-bearing (the machines
+  // share no state) but is preserved so the externally visible outbound-message
+  // order is unchanged. Publishes nothing and leaves the stream open.
+  const cancelAllRequestSniffing = (
+    send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
+  ): Effect.Effect<void, never, never> =>
+    stopAutomaticNavigation().pipe(Effect.andThen(cancelIncompleteSniffedRequests(send)))
+
+  return Effect.gen(function* () {
     const requestSniffingResults = yield* Mailbox.make<SniffResult<TParsed>>()
     // Set true once the machine dispatches `SniffingComplete`. The stream closes
     // when this holds *and* no sniffed request is incomplete.
@@ -185,15 +194,6 @@ const make = <TParsed>({
       yield* requestSniffingResults.end
     })
 
-    // Unmount teardown: stop the scripted navigation, then ask the host to cancel
-    // the incomplete requests. Navigation-first is not load-bearing (the machines
-    // share no state) but is preserved so the externally visible outbound-message
-    // order is unchanged. Publishes nothing and leaves the stream open.
-    const cancelAllRequestSniffing = (
-      send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
-    ): Effect.Effect<void, never, never> =>
-      stopAutomaticNavigation().pipe(Effect.andThen(cancelIncompleteSniffedRequests(send)))
-
     return {
       requestSniffingResults,
       handleNewSniffResult,
@@ -203,6 +203,7 @@ const make = <TParsed>({
       cancelAllRequestSniffing,
     }
   })
+}
 
 export type { RunLifecycleState }
 export { make }

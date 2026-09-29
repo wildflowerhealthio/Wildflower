@@ -84,3 +84,4 @@ ds-bundle/
 # Local scratch: unzipped design handoff + the dev-only scopes-react preview
 # gallery (a Playwright screenshot harness). Not part of any package.
 scratchpad_design/
+.vitest/

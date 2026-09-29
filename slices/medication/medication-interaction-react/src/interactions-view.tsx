@@ -412,6 +412,13 @@ const Section = ({ title, summary, empty, children }: SectionProps): JSX.Element
 
 const interactions = (n: number): string => count(n, 'potential interaction')
 
+/**
+ * A section's collapsed summary — the entity and its interaction count — or
+ * nothing when the section has no groups.
+ */
+const sectionSummary = (groups: number, entity: string, rows: number): string | undefined =>
+  groups === 0 ? undefined : `${entity} · ${interactions(rows)}`
+
 const MedicationCard = ({
   group,
   open,
@@ -583,8 +590,6 @@ export const InteractionsView = ({
   const medicationRows = report.medications.reduce((sum, group) => sum + group.rows.length, 0)
   const nonDrugRows = report.nonDrugs.reduce((sum, group) => sum + group.rows.length, 0)
   const otcRows = report.otc.reduce((sum, group) => sum + tallyTotal(group.tally), 0)
-  const summaryFor = (groups: number, entity: string, rows: number): string | undefined =>
-    groups === 0 ? undefined : `${entity} · ${interactions(rows)}`
 
   return (
     <div className={styles.sections}>
@@ -601,7 +606,7 @@ export const InteractionsView = ({
       </div>
       <Section
         title="Between your medications"
-        summary={summaryFor(
+        summary={sectionSummary(
           report.medications.length,
           `${report.medications.length} of your medications`,
           medicationRows / 2
@@ -628,7 +633,7 @@ export const InteractionsView = ({
       </Section>
       <Section
         title="With food, alcohol and other non-drugs"
-        summary={summaryFor(
+        summary={sectionSummary(
           report.nonDrugs.length,
           count(report.nonDrugs.length, 'non-drug'),
           nonDrugRows
@@ -658,7 +663,7 @@ export const InteractionsView = ({
       </Section>
       <Section
         title="With common over-the-counter drugs"
-        summary={summaryFor(
+        summary={sectionSummary(
           report.otc.length,
           count(report.otc.length, 'category', 'categories'),
           otcRows

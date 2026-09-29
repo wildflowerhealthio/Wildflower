@@ -29,7 +29,7 @@ export default defineConfig({
     exports: false,
     clean: false,
     hash: false,
-    deps: { alwaysBundle: ['fhir-sync-pebble-core'] },
+    deps: { resolveDepSubpath: true, alwaysBundle: ['fhir-sync-pebble-core'] },
     plugins: [
       {
         name: 'fhir-sync-pebble:es5',

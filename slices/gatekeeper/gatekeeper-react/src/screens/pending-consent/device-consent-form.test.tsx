@@ -96,7 +96,6 @@ describe('DeviceConsentForm', () => {
     // scopes and have them granted as-is. With no one-patient subject to pick, the approve
     // payload carries the requested scope untouched and no `patient` claim.
     let capturedPayload: unknown
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
     const clientLayer = Layer.succeed(GatekeeperHttpApiClient, {
       devices: {
         ApproveDeviceConsent: (input: { readonly payload: unknown }) => {
@@ -104,6 +103,7 @@ describe('DeviceConsentForm', () => {
           return Effect.succeed({ status: 'approved' })
         },
       },
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
     } as unknown as GatekeeperHttpApiClient['Type'])
     runAuthedStub.mockImplementationOnce((effect) =>
       Effect.runPromise(

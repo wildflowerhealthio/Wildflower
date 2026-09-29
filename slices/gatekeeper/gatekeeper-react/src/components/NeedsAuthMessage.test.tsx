@@ -44,14 +44,11 @@ const makeClientLayer = (
   },
   accessManagement?: { readonly GetSession: () => Effect.Effect<unknown, unknown> }
 ): Layer.Layer<GatekeeperHttpApiClient> =>
-  Layer.succeed(
-    GatekeeperHttpApiClient,
+  Layer.succeed(GatekeeperHttpApiClient, {
+    oauth,
+    ...(accessManagement === undefined ? {} : { 'access-management': accessManagement }),
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `oauth.*` and `access-management.GetSession` are touched on these paths
-    {
-      oauth,
-      ...(accessManagement === undefined ? {} : { 'access-management': accessManagement }),
-    } as GatekeeperHttpApiClient['Type']
-  )
+  } as GatekeeperHttpApiClient['Type'])
 
 const layerHolder: { current: Layer.Layer<GatekeeperHttpApiClient> } = {
   current: Layer.die('no client layer set for test'),

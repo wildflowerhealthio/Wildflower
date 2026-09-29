@@ -106,8 +106,8 @@ catalog:
   # TypeScript 7 dropped and rolldown/oxc never had. The alias keeps it 5.x
   # even once `typescript` above moves to 7.
   typescript-es5: npm:typescript@5.9.3
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.3
-  vite-plus: 0.3.3
+  vite: npm:@voidzero-dev/vite-plus-core@1.0.0
+  vite-plus: 1.0.0
   why-is-node-running: ^3.2.2
 catalogMode: prefer
 

@@ -44,6 +44,11 @@ export default defineConfig({
     resolve: { conditions: ['source'] },
   },
   test: {
+    // Vitest v4 compatibility: preserve mock call history.
+    // Remove after tests no longer rely on calls from setup or earlier tests.
+    // https://viteplus.dev/guide/vitest-v5#remove-unneeded-compatibility-settings
+    // https://vitest.dev/guide/migration/#clearmocks-is-enabled-by-default
+    clearMocks: false,
     // Each Vitest package owns its own vite.config.ts; listing them as
     // projects lets `vp test` from the workspace root honor per-package
     // settings (e.g. `environment: 'jsdom'` in react-tundraish) instead of

@@ -350,7 +350,7 @@ const renderApp = (): void => {
 
 /** A ready fhirclient `Client` carrying what the server granted. */
 const grantedClient = ({ accessToken }: { readonly accessToken: string | undefined }): Client =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub: `App` reads only these fields
   ({
     state: { serverUrl: SERVER_URL, tokenResponse: { access_token: accessToken } },
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub: `App` reads only these fields
   }) as unknown as Client

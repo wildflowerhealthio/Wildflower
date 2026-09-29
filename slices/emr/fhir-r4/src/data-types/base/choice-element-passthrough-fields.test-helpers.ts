@@ -18,9 +18,9 @@ const atMostOnePopulatedSlot = <Fields extends Schema.Struct.Fields>(
     )
     .map(
       ([record, keep]) =>
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries widens to Record<string, unknown>; every key comes from `record` and each value is either its own or `null`, which every field schema accepts.
         Object.fromEntries(
           Object.entries(record).map(([key, value], index) => [key, index === keep ? value : null])
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries widens to Record<string, unknown>; every key comes from `record` and each value is either its own or `null`, which every field schema accepts.
         ) as Schema.Struct.Type<Fields>
     )
 

@@ -22,9 +22,9 @@ function empty<const Prefix extends string, const DatatypeNames extends readonly
   prefix: Prefix,
   datatypeNames: DatatypeNames
 ): Empty<Prefix, DatatypeNames> {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries returns Record<string, null>; the typed shape is recovered from the prefix/name pairs by construction.
   return Object.fromEntries(
     datatypeNames.map((name) => [`${prefix}${capitalize(name)}`, null])
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries returns Record<string, null>; the typed shape is recovered from the prefix/name pairs by construction.
   ) as unknown as Empty<Prefix, DatatypeNames>
 }
 
