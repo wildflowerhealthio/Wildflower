@@ -55,8 +55,8 @@ the noun, the principal type shares the namespace's name
 
 `import * as Seeding from 'synthetic-data-fundamentals/seeding'`
 (`src/seeding.ts`). `uuidOf`, `integerOf`, `digitsOf`: values hashed
-(FNV-1a over `fhir-r4`'s `joinIdComponents`, then murmur3's finalizer) from
-the keys naming what they belong to, so adding a prescription leaves every
+(`kitchen-sink`'s `fnv1a64` over `fhir-r4`'s `joinIdComponents`, then
+`kitchen-sink`'s `fmix64`) from the keys naming what they belong to, so adding a prescription leaves every
 other one's ids and times untouched.
 
 ### `synthetic-data-fundamentals/chrome-har` — Chrome capture defaults
@@ -86,7 +86,7 @@ test compares an importer's output against an independent reckoning.
 
 ## Layering
 
-Depends on `effect`, `kitchen-sink` (`fnv1a64`, `utf8Bytes`), `fhir-r4`
+Depends on `effect`, `kitchen-sink` (`fnv1a64`, `fmix64`, `utf8Bytes`), `fhir-r4`
 (`joinIdComponents`, the key fold `Seeding` hashes, and `AdministrativeGender`)
 and `http-archive` (the HAR schema `ChromeHar` builds). It imports no source
 package and no importer: which source a story is written for, and the round

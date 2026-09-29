@@ -1,5 +1,5 @@
 import { joinIdComponents } from 'fhir-r4/identity'
-import { fnv1a64, FNV_1A_64_OFFSET_BASIS } from 'kitchen-sink'
+import { fmix64, fnv1a64, FNV_1A_64_OFFSET_BASIS } from 'kitchen-sink'
 
 /**
  * Deterministic stand-ins for the values a real system would draw at random —
@@ -9,14 +9,26 @@ import { fnv1a64, FNV_1A_64_OFFSET_BASIS } from 'kitchen-sink'
  * @remarks
  * A hash of the owning keys rather than a seeded generator stepped in order:
  * a value depends only on what it names, so adding a prescription to a story
- * leaves every other prescription's ids and times untouched. The hash is
- * `kitchen-sink`'s FNV-1a 64-bit over the keys folded with `fhir-r4`'s
- * `joinIdComponents` (length-prefixed, so `['a', 'bc']` and `['ab', 'c']` hash
- * apart whatever the keys contain), which is deterministic across runs and
- * platforms, then passed through murmur3's 64-bit finalizer ({@link fmix64})
- * so that keys differing in one character — `…-1` and `…-2` — give values that
- * differ in about half their bits, as random draws would, rather than FNV's
- * near-identical high bits.
+ * leaves every other prescription's ids and times untouched.
+ *
+ * **Borrowed.** The keys are folded with `fhir-r4/identity`'s
+ * `joinIdComponents` — the length-prefixed fold `localResourceId` hashes, so
+ * `['a', 'bc']` and `['ab', 'c']` hash apart whatever the keys contain — and
+ * hashed with `kitchen-sink`'s `fnv1a64` from its `FNV_1A_64_OFFSET_BASIS`,
+ * which is deterministic across runs and platforms. Each lane then passes
+ * through `kitchen-sink`'s `fmix64` (murmur3's finalizer), so keys differing
+ * in one character — `…-1` and `…-2` — give values that differ in about half
+ * their bits, as random draws would, rather than FNV's near-identical ones.
+ *
+ * **This module's own.** The second-lane basis ({@link SECOND_LANE_BASIS}) and
+ * the shaping of the mixed hash into a version-4-shaped UUID, a bounded
+ * integer or a run of digits.
+ *
+ * `fhir-r4`'s `localResourceId` is the same two-lane FNV-1a scheme over the
+ * same fold, with a different second-lane constant. It is not called here:
+ * it returns a `wf-`-prefixed store key over exactly three components, and
+ * does not mix its lanes, where a generated id has to read like the GUID a
+ * vendor API hands out and differ throughout between sibling keys.
  *
  * Nothing here decides a story. Jitter only moves a time within the day the
  * story put it on.
@@ -27,22 +39,6 @@ import { fnv1a64, FNV_1A_64_OFFSET_BASIS } from 'kitchen-sink'
  * offset basis xored with a fixed constant (the ASCII of `"wildflwr"`).
  */
 const SECOND_LANE_BASIS = FNV_1A_64_OFFSET_BASIS ^ 0x77696c64666c7772n
-
-const UINT64_MASK = 0xffff_ffff_ffff_ffffn
-
-/**
- * murmur3's 64-bit finalizer (`fmix64`): a bijection on 64-bit values in which
- * every input bit flips each output bit with probability about one half.
- */
-const fmix64 = (value: bigint): bigint => {
-  let mixed = value & UINT64_MASK
-  mixed ^= mixed >> 33n
-  mixed = (mixed * 0xff51afd7ed558ccdn) & UINT64_MASK
-  mixed ^= mixed >> 33n
-  mixed = (mixed * 0xc4ceb9fe1a85ec53n) & UINT64_MASK
-  mixed ^= mixed >> 33n
-  return mixed
-}
 
 /** The mixed 64-bit hash of `keys`, on the lane `offsetBasis` picks. */
 const hashOf = (keys: readonly string[], offsetBasis: bigint = FNV_1A_64_OFFSET_BASIS): bigint =>
