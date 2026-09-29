@@ -4638,6 +4638,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      fhir-sync-pebble-core:
+        specifier: workspace:*
+        version: link:../../fhir-sync-pebble/fhir-sync-pebble-core
       har-importer-core:
         specifier: workspace:*
         version: link:../../importer/har-importer-core

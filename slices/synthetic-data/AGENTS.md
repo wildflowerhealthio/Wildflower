@@ -19,7 +19,8 @@ names a person or tells a particular story.
   story model (`Story`, `Person`, `Prescription`, `DrugProduct`, `LabDraw`,
   `StoryDay`), deterministic seeded values (`Seeded`), the HAR envelope
   (`ChromeHar`), and one renderer per source: the Rexall Be Well HAR, the
-  Shoppers Drug Mart family-account HAR, and LifeLabs lab results.
+  Shoppers Drug Mart family-account HAR, LifeLabs lab results, and the
+  Observations FHIR Sync for Pebble writes for a day-by-day physiology.
 
 ## Rules
 

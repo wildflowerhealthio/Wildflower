@@ -101,10 +101,30 @@ laboratory, requisition)`: one `lifelabs-pdf-importer-core` `Report` per day
   (`SourcePatient.referenceOf`). Practitioners stay as the importer makes
   them; nothing is PDF-shaped (no source-file `DocumentReference`, no
   `meta.source`).
+- **`PebbleObservations`** (`src/pebble/`) — `render(asOf, watch, patientId,
+physiology)`: the Observations FHIR Sync for Pebble writes, built by
+  `fhir-sync-pebble-core`'s `HealthActivity.toObservation` and
+  `MinuteHistory.toObservations` (activities first, then hours, as
+  `WatchSync.toObservations` orders a sync). A `Physiology`
+  (`physiology.ts`) is plain data: the wearer's whole-hour UTC offset, a
+  circadian rhythm (amplitude, nadir minute), and per worn `StoryDay` the
+  resting heart rate, the night ending that day (asleep, awake, wake-ups that
+  split it into Sleep stretches, RestfulSleep blocks), walks (cadence, heart
+  rate rise) and charging spans. `minute-timeline.ts` turns it into minutes —
+  heart rate from the rhythm, sleep stage and walk ramps; steps and vmc from
+  the walk cadence, stage and idle movement — with a per-minute wobble hashed
+  from the story minute and the watch, so moving the as-of date moves only
+  timestamps. It sends heart rate, steps and movement; an hour the watch spent
+  wholly charging is not sent, a charging minute is `E`. An unlisted day has
+  no data.
+- **`PebbleWatch`** (`src/pebble/pebble-watch.ts`) — the watch as PebbleKit JS
+  reports it (`token`, `info`): `watchOf(keys)` hashes a 32-hex-digit token
+  and picks an `emery` Pebble Time 2 and firmware; `toReference` is
+  `WatchDevice.toReference` over it.
 
 ## Adding a source
 
-A new source is a renderer module beside `rexall/` and `shoppers/` that reads `Story` values
+A new source is a renderer module beside `rexall/`, `shoppers/` and `pebble/` that reads `Story` values
 (and the person's account on that source), builds the source's wire shape from
 the source package's own constants, and — for HAR sources — wraps it with
 `ChromeHar`. It ships with a round-trip test through the real importer that
@@ -125,7 +145,9 @@ and coding catalogue — spelled once, there — and `REXALL_CAREBOOK_SYSTEM`),
 pdfjs-backed decode). The Shoppers portal's JSON has no catalogue —
 `shoppers-drugmart-source` exports only its descriptor and `sid` system; its
 identifier systems name the FHIR it writes, not the wire — so the Shoppers
-payloads are typed here, after that package's test fixtures. The importers and
+payloads are typed here, after that package's test fixtures. The Pebble
+renderer builds its Observations with `fhir-sync-pebble-core`, a peer
+dependency like `rexall-be-well-source`. The importers and
 readers the round-trip tests drive
 (`har-importer-core`, `importer-fundamentals`, `http-archive`,
 `medication-core`) are dev dependencies only. Never imports a
@@ -179,6 +201,22 @@ particular person's story.
   fills left, quantity, status, prescriber and prior-prescription link, every
   fill's dispense with the DIN dispensed that day, the status feed's latest
   fill, and that no dose regimen is read yet (#798).
+- `src/pebble/physiology-arbitraries.test-helpers.ts` — `physiologyCaseArbitrary`:
+  a few (or 28) days before the as-of day, now and then one unworn, each with
+  a resting heart rate, most with a night (up to three wake-ups, restful
+  blocks) and up to four non-overlapping daytime walks or charges, paired with
+  the Sleep and RestfulSleep stretches laid out as it built each night.
+- `src/pebble/pebble-observations.test.ts` — FHIR R4 Observations for the
+  given patient and watch, unique ids; one Observation per minute type per
+  hour worn with an `E` per charging minute; a resting heart rate raised by
+  `n` raises the median sampled heart rate by exactly `n`; sleeps, restful
+  sleeps and walks come back over their spans; walking steps near the
+  cadence; byte-identical within a day; an as-of shift moves every period and
+  keeps every value; the counts over 28 days. Minute data is large (28 days is
+  about 2,000 hourly Observations), so most properties run over one to three
+  days.
+- `src/pebble/pebble-watch.test.ts` — `watchOf`'s determinism and token shape,
+  and the device reference the phone writes.
 
 ## The Shoppers import, as it comes out
 
