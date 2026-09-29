@@ -1,7 +1,15 @@
 // oxlint-disable no-underscore-dangle -- `_initiator`, `_priority` and `_resourceType` are the exact keys a DevTools export writes; these tests read them back.
 import { DateTime, Effect } from 'effect'
 import * as fc from 'fast-check'
-import { chromeHarFromJson } from 'http-archive'
+import {
+  CHROME_CREATOR,
+  type ChromePageSpec,
+  type ChromeResourceType,
+  chromeHarFromJson,
+  chromeHarOf,
+  chromeHarToJson,
+  chromePageOf,
+} from 'http-archive'
 import { utf8Bytes } from 'kitchen-sink'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -24,7 +32,7 @@ const urlArbitrary: fc.Arbitrary<string> = fc
     return url.href
   })
 
-const pageSpecArbitrary = (id: string): fc.Arbitrary<ChromeHar.PageSpec> =>
+const pageSpecArbitrary = (id: string): fc.Arbitrary<ChromePageSpec> =>
   fc.record({
     id: fc.constant(id),
     url: urlArbitrary,
@@ -36,7 +44,7 @@ const pageSpecArbitrary = (id: string): fc.Arbitrary<ChromeHar.PageSpec> =>
 const exchangeSpecArbitrary = (pageref: string): fc.Arbitrary<ChromeHar.ExchangeSpec> =>
   fc.record({
     pageref: fc.constant(pageref),
-    resourceType: fc.constantFrom<ChromeHar.ResourceType>('document', 'xhr'),
+    resourceType: fc.constantFrom<ChromeResourceType>('document', 'xhr', 'fetch'),
     startedAt: asOfArbitrary,
     url: urlArbitrary,
     requestHeaders: fc.array(fc.tuple(nameArbitrary, fc.string()), { maxLength: 3 }),
@@ -63,18 +71,15 @@ describe('ChromeHar', () => {
   test('property: an archive writes to text that `http-archive` reads back unchanged', () => {
     fc.assert(
       fc.property(captureArbitrary, ({ pages, exchanges }) => {
-        const archive = ChromeHar.archiveOf(
-          pages.map(ChromeHar.pageOf),
-          exchanges.map(ChromeHar.entryOf)
-        )
-        const text = Effect.runSync(ChromeHar.toJson(archive))
+        const archive = chromeHarOf(pages.map(chromePageOf), exchanges.map(ChromeHar.entryOf))
+        const text = Effect.runSync(chromeHarToJson(archive, { pretty: true }))
         expect(Effect.runSync(chromeHarFromJson(text))).toEqual(archive)
       }),
       { numRuns: RUNS }
     )
   })
 
-  test('property: a navigation is initiated by the browser, an XHR by a script', () => {
+  test('property: a navigation is initiated by the browser, an XHR or fetch by a script', () => {
     fc.assert(
       fc.property(exchangeSpecArbitrary('page_1'), (spec) => {
         const entry = ChromeHar.entryOf(spec)
@@ -120,11 +125,28 @@ describe('ChromeHar', () => {
     )
   })
 
-  test('writes the archive as a DevTools export does: WebInspector, two-space indented', () => {
+  test('property: an entry is a 200 GET over a reused HTTP/2 connection', () => {
+    fc.assert(
+      fc.property(exchangeSpecArbitrary('page_1'), (spec) => {
+        const entry = ChromeHar.entryOf(spec)
+        expect(entry.request.method).toBe('GET')
+        expect(entry.response.status).toBe(200)
+        expect([entry.request.httpVersion, entry.response.httpVersion]).toEqual([
+          'http/2.0',
+          'http/2.0',
+        ])
+        expect(entry.connection).toBe('0')
+        expect([entry.timings.dns, entry.timings.connect, entry.timings.ssl]).toEqual([-1, -1, -1])
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('its entries write under the DevTools creator, two-space indented', () => {
     const startedAt = DateTime.unsafeMake('2026-03-11T16:54:30.000Z')
-    const archive = ChromeHar.archiveOf(
+    const archive = chromeHarOf(
       [
-        ChromeHar.pageOf({
+        chromePageOf({
           id: 'page_1',
           url: 'https://portal.example.org/',
           startedAt,
@@ -132,11 +154,22 @@ describe('ChromeHar', () => {
           onLoadMillis: 340,
         }),
       ],
-      []
+      [
+        ChromeHar.entryOf({
+          pageref: 'page_1',
+          resourceType: 'document',
+          startedAt,
+          url: 'https://portal.example.org/',
+          requestHeaders: [],
+          mimeType: 'text/html; charset=utf-8',
+          body: '<!doctype html>',
+          waitMillis: 80,
+          serverIPAddress: '203.0.113.7',
+        }),
+      ]
     )
-    const text = Effect.runSync(ChromeHar.toJson(archive))
+    const text = Effect.runSync(chromeHarToJson(archive, { pretty: true }))
     expect(text.startsWith('{\n  "log": {\n')).toBe(true)
-    expect(archive.log.creator).toEqual({ name: 'WebInspector', version: '537.36' })
-    expect(archive.log.pages?.[0]?.title).toBe('https://portal.example.org/')
+    expect(Effect.runSync(chromeHarFromJson(text)).log.creator).toEqual(CHROME_CREATOR)
   })
 })

@@ -62,14 +62,15 @@ other one's ids and times untouched.
 ### `synthetic-data-fundamentals/chrome-har` — Chrome capture defaults
 
 `import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'`
-(`src/chrome-har.ts`). A synthetic Chrome DevTools capture as `http-archive`
-values: `pageOf` → `HarPage`, `entryOf` → a `ChromeHarEntry` (always a `200`
-`GET`, the body as a `HarTextBody`, fixed phase timings around the chosen
-`wait`), `archiveOf` → a `ChromeHar` under the `WebInspector` creator, and
-`toJson` → the two-space-indented `.har` text through `chromeHarToJson`.
-`ResourceType` (`document` | `xhr`) decides each entry's `_initiator`
-(`other` / `script`) and `_priority` (`VeryHigh` / `High`), which `Entry`
-narrows to those literals.
+(`src/chrome-har.ts`). The synthetic defaults a generated Chrome DevTools
+capture is written with: `entryOf` turns an `ExchangeSpec` into a
+`ChromeHarEntry` that is always a `200` `GET` over a reused HTTP/2 connection
+(`connection: '0'`, no DNS, connect or TLS phases), with fixed phase timings
+around the chosen `wait` and the body as a `HarTextBody`; its `_initiator`,
+`_priority` and `_resourceType` are `http-archive`'s `chromeExtrasOf` for the
+spec's `ChromeResourceType`. Pages, the archive and its text come straight
+from `http-archive`: `chromePageOf`, `chromeHarOf` (under `CHROME_CREATOR`)
+and `chromeHarToJson(archive, { pretty: true })`.
 
 ### `synthetic-data-fundamentals/test-helpers`
 
