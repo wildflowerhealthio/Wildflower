@@ -14,7 +14,8 @@ import {
   REXALL_SYSTEM_SOURCE,
   RequestTypeCode,
 } from 'rexall-be-well-source'
-import { DrugProduct, Prescription, Seeded, StoryDay } from 'synthetic-data-fundamentals'
+import * as Seeding from 'synthetic-data-fundamentals/seeding'
+import { DrugProduct, Prescription, StoryDay } from 'synthetic-data-fundamentals/story'
 
 import type { RexallAccount } from './rexall-account.ts'
 
@@ -115,17 +116,17 @@ const carebookPrescriptionOf = (
     lastFillDay === undefined ? null : StoryDay.instantOn(asOf, lastFillDay, lastFillKeys, 15, 19)
   return {
     prescription,
-    resourceId: Seeded.uuidOf(keys),
-    medicationId: Seeded.uuidOf([...keys, 'medication']),
-    prescriptionOrderId: Seeded.uuidOf([...keys, 'order']),
+    resourceId: Seeding.uuidOf(keys),
+    medicationId: Seeding.uuidOf([...keys, 'medication']),
+    prescriptionOrderId: Seeding.uuidOf([...keys, 'order']),
     identifiers: [
       {
         system: CarebookIdentifierSystem.MedicationRequestExternalId,
-        value: Seeded.digitsOf([...keys, 'rx-number'], 7),
+        value: Seeding.digitsOf([...keys, 'rx-number'], 7),
       },
       {
         system: CarebookIdentifierSystem.MedicationRequestExternalAuthorizingId,
-        value: Seeded.digitsOf([...keys, 'authorizing-id'], 9),
+        value: Seeding.digitsOf([...keys, 'authorizing-id'], 9),
       },
     ],
     // Before 15:00 UTC, the earliest a fill is prepared, so a first fill on
@@ -137,7 +138,7 @@ const carebookPrescriptionOf = (
         : {
             whenPrepared,
             whenHandedOver: DateTime.add(whenPrepared, {
-              seconds: Seeded.integerOf([...lastFillKeys, 'handed-over'], 1800, 10_800),
+              seconds: Seeding.integerOf([...lastFillKeys, 'handed-over'], 1800, 10_800),
             }),
           },
   }
@@ -265,7 +266,7 @@ const medicationRequestOf = (
     authoredOn: carebookTimestampOf(carebookPrescription.authoredOn),
     requester: {
       agent: {
-        reference: `Practitioner/${Seeded.uuidOf(['rexall', 'practitioner', prescription.prescriber.key])}`,
+        reference: `Practitioner/${Seeding.uuidOf(['rexall', 'practitioner', prescription.prescriber.key])}`,
         display: prescription.prescriber.display,
       },
     },

@@ -1,5 +1,5 @@
 import type { CarebookProfile, medicationListUrlOf } from 'rexall-be-well-source'
-import type { StoryDay } from 'synthetic-data-fundamentals'
+import type { StoryDay } from 'synthetic-data-fundamentals/story'
 
 /** The profile's `identifiers`, as the carebook profile body spells them. */
 type ProfileIdentifiers = Required<(typeof CarebookProfile.Encoded)['data']['identifiers']>

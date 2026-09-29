@@ -1,6 +1,6 @@
 import { DateTime } from 'effect'
 import { type CarebookProfile, carebookTimestampOf } from 'rexall-be-well-source'
-import { Person, StoryDay } from 'synthetic-data-fundamentals'
+import { Person, StoryDay } from 'synthetic-data-fundamentals/story'
 
 import type { RexallAccount } from './rexall-account.ts'
 

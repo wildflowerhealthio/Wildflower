@@ -1,6 +1,6 @@
 # AGENTS.md — slices/synthetic-data/synthetic-data-rexall-be-well
 
-The **Rexall Be Well generator**: a `synthetic-data-fundamentals` `Story`,
+The **Rexall Be Well generator**: a `synthetic-data-fundamentals/story` `Story`,
 filled under a `RexallAccount`, as the HAR a Chrome DevTools export of a
 letsbewell.ca session would hold. The carebook dialect it writes is
 `rexall-be-well-source`'s: every URL, extension, identifier and coding system
@@ -27,8 +27,10 @@ The root entry exports `RexallHar` and the `RexallAccount` type:
   `medicationListUrlOf`.
 - `src/rexall-har.ts` — `RexallHar.render(asOf, story, account)`: the sign-in
   and prescriptions page navigations, then the profile and searchset XHRs, on
-  the as-of day, built with `HarCapture` and returned as an `Effect` of the
-  `.har` text.
+  the as-of day, built with `http-archive`'s `chromePageOf` / `chromeHarOf`
+  and `synthetic-data-fundamentals/chrome-har`'s `ChromeHar.entryOf`, and
+  returned as an `Effect` of the `.har` text (`chromeHarToJson`, pretty, as a
+  DevTools export writes it).
 
 `synthetic-data-rexall-be-well/test-helpers` (`src/test-helpers.ts`) holds
 `rexallAccountArbitrary`; the stories come from
@@ -36,8 +38,10 @@ The root entry exports `RexallHar` and the `RexallAccount` type:
 
 ## Layering
 
-Depends on `synthetic-data-fundamentals` (the story model, `StoryDay`,
-`Seeded`, `HarCapture`), `rexall-be-well-source` (the dialect's constants,
+Depends on `synthetic-data-fundamentals` (the story model and `StoryDay` from
+`/story`, `Seeding` from `/seeding`, `ChromeHar` from `/chrome-har`),
+`http-archive` (the Chrome HAR format: `chromePageOf`, `chromeHarOf`,
+`chromeHarToJson`), `rexall-be-well-source` (the dialect's constants,
 `carebookTimestampOf`, the tunnel URLs, and the `CarebookProfile` /
 `MedicationBundle` / `MedicationResource` schemas whose encoded types the
 bodies are written as), and `fhir-r4` / `fhir-stu3-as-r4` for the encoded
@@ -78,6 +82,6 @@ dev dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
 
 - [slices/synthetic-data/AGENTS.md](../AGENTS.md) — the slice and its packages.
 - [synthetic-data-fundamentals AGENTS.md](../synthetic-data-fundamentals/AGENTS.md)
-  — the story model and `HarCapture`.
+  — the story model, `Seeding` and `ChromeHar`.
 - [rexall-be-well-source AGENTS.md](../../http-extraction/rexall-be-well-source/AGENTS.md)
   — the carebook dialect and the capture this generator is modelled on.

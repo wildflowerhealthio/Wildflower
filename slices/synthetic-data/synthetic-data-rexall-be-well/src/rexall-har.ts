@@ -1,6 +1,8 @@
 import { DateTime, type Effect, type ParseResult } from 'effect'
+import { chromeHarOf, chromeHarToJson, chromePageOf } from 'http-archive'
 import { REXALL_PROFILE_URL } from 'rexall-be-well-source'
-import { HarCapture, type Story, StoryDay } from 'synthetic-data-fundamentals'
+import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'
+import { type Story, StoryDay } from 'synthetic-data-fundamentals/story'
 
 import { profileOf } from './carebook-profile.ts'
 import { medicationListUrlFor, searchsetOf } from './carebook-searchset.ts'
@@ -30,7 +32,7 @@ const TUNNEL_IP = '203.0.113.12'
 const HTML = 'text/html; charset=utf-8'
 const JSON_MIME = 'application/json; charset=utf-8'
 
-type RequestHeaders = HarCapture.ExchangeSpec['requestHeaders']
+type RequestHeaders = ChromeHar.ExchangeSpec['requestHeaders']
 
 /** The headers the single-page app sends on its API calls. */
 const XHR_REQUEST_HEADERS: RequestHeaders = [
@@ -75,17 +77,17 @@ const render = (
   const after = (millis: number): DateTime.Utc => DateTime.add(captureStart, { millis })
   const signInPage = 'page_1'
   const prescriptionsPage = 'page_2'
-  return HarCapture.toJson(
-    HarCapture.archiveOf(
+  return chromeHarToJson(
+    chromeHarOf(
       [
-        HarCapture.pageOf({
+        chromePageOf({
           id: signInPage,
           url: SIGN_IN_URL,
           startedAt: captureStart,
           onContentLoadMillis: 412.7,
           onLoadMillis: 988.3,
         }),
-        HarCapture.pageOf({
+        chromePageOf({
           id: prescriptionsPage,
           url: PRESCRIPTIONS_URL,
           startedAt: after(PRESCRIPTIONS_PAGE_AFTER_MILLIS),
@@ -94,7 +96,7 @@ const render = (
         }),
       ],
       [
-        HarCapture.entryOf({
+        ChromeHar.entryOf({
           pageref: signInPage,
           resourceType: 'document',
           startedAt: captureStart,
@@ -105,7 +107,7 @@ const render = (
           waitMillis: 88.4,
           serverIPAddress: SIGN_IN_IP,
         }),
-        HarCapture.entryOf({
+        ChromeHar.entryOf({
           pageref: prescriptionsPage,
           resourceType: 'document',
           startedAt: after(PRESCRIPTIONS_PAGE_AFTER_MILLIS),
@@ -116,7 +118,7 @@ const render = (
           waitMillis: 64.9,
           serverIPAddress: APP_IP,
         }),
-        HarCapture.entryOf({
+        ChromeHar.entryOf({
           pageref: prescriptionsPage,
           resourceType: 'xhr',
           startedAt: after(PROFILE_XHR_AFTER_MILLIS),
@@ -127,7 +129,7 @@ const render = (
           waitMillis: 142.6,
           serverIPAddress: TUNNEL_IP,
         }),
-        HarCapture.entryOf({
+        ChromeHar.entryOf({
           pageref: prescriptionsPage,
           resourceType: 'xhr',
           startedAt: after(LIST_XHR_AFTER_MILLIS),
@@ -139,7 +141,9 @@ const render = (
           serverIPAddress: TUNNEL_IP,
         }),
       ]
-    )
+    ),
+    // Indented, as a DevTools "Save all as HAR" export writes the file.
+    { pretty: true }
   )
 }
 

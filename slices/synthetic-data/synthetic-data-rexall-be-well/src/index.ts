@@ -1,5 +1,5 @@
 /**
- * The Rexall Be Well synthetic data generator: a `synthetic-data-fundamentals`
+ * The Rexall Be Well synthetic data generator: a `synthetic-data-fundamentals/story`
  * `Story`, filled under a `RexallAccount`, as the HAR a letsbewell.ca session
  * exports (`RexallHar.render`) — the carebook profile and the STU3
  * prescriptions searchset, in the dialect `rexall-be-well-source` reads.

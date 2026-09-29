@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { HttpArchive } from 'http-archive'
 import { numRunsFor } from 'kitchen-sink/test'
 import { medicationListUrlOf, REXALL_PROFILE_URL } from 'rexall-be-well-source'
-import type { Story } from 'synthetic-data-fundamentals'
+import type { Story } from 'synthetic-data-fundamentals/story'
 import { asOfArbitrary, storyCaseArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 

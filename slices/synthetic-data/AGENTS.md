@@ -40,6 +40,7 @@ generator package per source on top of it.
   Its `./test-helpers` subpath holds the fast-check arbitraries every
   generator's tests draw stories from. See its
   [AGENTS.md](./synthetic-data-fundamentals/AGENTS.md).
+
 - **`synthetic-data-rexall-be-well`** (pure) — `RexallHar.render`: a `Story`,
   filled under a `RexallAccount`, as the HAR a letsbewell.ca session exports
   (the carebook profile and the STU3 prescriptions searchset), written as
