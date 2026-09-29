@@ -167,6 +167,8 @@ interface CarebookPrescription {
   /** Shared by the request and its dispense, as the capture shows. */
   readonly resourceId: string
   readonly medicationId: string
+  /** The `PrescriptionOrder` a dispense's `authorizingPrescription` names. */
+  readonly prescriptionOrderId: string
   readonly identifiers: readonly Identifier[]
   readonly authoredOn: DateTime.Utc
   /** The most recent fill's times, or `null` for a prescription never filled. */
@@ -188,6 +190,7 @@ const carebookPrescriptionOf = (
     prescription,
     resourceId: Seeded.uuidOf(keys),
     medicationId: Seeded.uuidOf([...keys, 'medication']),
+    prescriptionOrderId: Seeded.uuidOf([...keys, 'order']),
     identifiers: [
       {
         system: CarebookIdentifierSystem.MedicationRequestExternalId,
@@ -355,7 +358,6 @@ const medicationDispenseOf = (
   lastFill: FillTimes
 ): CarebookMedicationDispense => {
   const { prescription } = carebookPrescription
-  const prescriptionOrder = `PrescriptionOrder/${Seeded.uuidOf(['rexall', account.uid, prescription.key, 'order'])}`
   return {
     resourceType: 'MedicationDispense',
     id: carebookPrescription.resourceId,
@@ -390,7 +392,7 @@ const medicationDispenseOf = (
       CarebookIdentifierSystem.MedicationRequestTypeOrder,
       CarebookIdentifierSystem.MedicationRequestTypeRefill,
     ].map((system) => ({
-      reference: prescriptionOrder,
+      reference: `PrescriptionOrder/${carebookPrescription.prescriptionOrderId}`,
       identifier: { system, value: carebookPrescription.resourceId },
     })),
     quantity: { value: Prescription.quantityPerFillOf(prescription) },

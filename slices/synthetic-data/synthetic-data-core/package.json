@@ -44,6 +44,7 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
+    "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",
     "rexall-be-well-source": "workspace:*"
   }

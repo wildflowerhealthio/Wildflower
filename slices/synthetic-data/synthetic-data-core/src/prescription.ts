@@ -98,18 +98,16 @@ const fillDaysOnCadence = (
     [firstFillDay]
   )
 
+/** Tablets taken each day. */
+const tabletsPerDayOf = (dosing: Dosing): number => dosing.tabletsPerDose * dosing.dosesPerDay
+
 /** Tablets dispensed per fill: the dosing's daily tablets over the fill's supply. */
 const quantityPerFillOf = (prescription: Prescription): number =>
-  prescription.dosing.tabletsPerDose *
-  prescription.dosing.dosesPerDay *
-  prescription.supplyDaysPerFill
+  tabletsPerDayOf(prescription.dosing) * prescription.supplyDaysPerFill
 
 /** The dose taken each day, in the product's strength unit. */
 const dailyDoseOf = (prescription: Prescription): DrugProduct.Strength => ({
-  value:
-    prescription.dosing.tabletsPerDose *
-    prescription.dosing.dosesPerDay *
-    prescription.product.strength.value,
+  value: tabletsPerDayOf(prescription.dosing) * prescription.product.strength.value,
   unit: prescription.product.strength.unit,
 })
 

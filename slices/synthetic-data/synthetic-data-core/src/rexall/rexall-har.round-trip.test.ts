@@ -1,4 +1,5 @@
-import { DateTime, Effect } from 'effect'
+import { DateTime, Effect, Option, Schema } from 'effect'
+import { CanadianCodingSystem, CodeableConcept, Coding } from 'fhir-r4/data-types'
 import type { FhirResource, MedicationDispense, Patient } from 'fhir-r4/resources'
 import { defaultHarSettings, harImporter } from 'har-importer-core'
 import type { PickedFile } from 'importer-fundamentals'
@@ -10,6 +11,7 @@ import {
   repeatsAvailableOf,
   type MedicationRequestWithId,
 } from 'medication-core/fhir'
+import { REXALL_CAREBOOK_SYSTEM } from 'rexall-be-well-source'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { warrenRexallAccount, warrenStory } from '../ashford/warren.ts'
@@ -25,9 +27,10 @@ import * as RexallHar from './rexall-har.ts'
  *
  * @remarks
  * The expectations are Warren's story as the epic (#787) tells it, written
- * out — names, DINs, quantities, supply, repeats, statuses and the amortized
- * daily dose — not read back from the story, so a renderer or model change
- * that alters what an import shows fails here.
+ * out — names, DINs, quantities, supply, repeats, statuses, the amortized
+ * daily dose and each dispense's link to its request — not read back from
+ * the story, so a renderer or model change that alters what an import shows
+ * fails here.
  */
 
 /** An as-of date well inside the range the property tests sweep. */
@@ -194,6 +197,19 @@ const patients: readonly Patient.Type[] = imported.flatMap((resource) =>
   resource.resourceType === 'Patient' ? [resource] : []
 )
 
+/**
+ * A dispense's `medicationCodeableConcept`, decoded through fhir-r4's type
+ * schema: the `medication[x]` choice is typed `any` on the decoded resource.
+ */
+const dispenseConceptOf = (
+  dispense: MedicationDispense.Type
+): typeof CodeableConcept.Schema.Type | null => {
+  const slot: unknown = dispense.medicationCodeableConcept
+  return Option.getOrNull(
+    Schema.decodeUnknownOption(Schema.typeSchema(CodeableConcept.Schema))(slot)
+  )
+}
+
 const isoDateOf = (instant: DateTime.Utc | null | undefined): string | null =>
   instant === null || instant === undefined ? null : DateTime.formatIsoDate(instant)
 
@@ -265,16 +281,42 @@ describe("Warren's Rexall HAR through the HAR importer", () => {
         })
       })
 
-      test('has its most recent fill as a completed dispense', () => {
-        const lastFillDate = StoryDay.toIsoDate(AS_OF, expected.lastFillDay)
-        const matching = dispenses.filter(
-          (dispense) =>
-            isoDateOf(dispense.whenHandedOver) === lastFillDate &&
-            dispense.quantity?.value === expected.quantity &&
-            dispense.daysSupply?.value === expected.supplyDays
+      test('has its most recent fill as a completed dispense of the same product', () => {
+        const request = requestWrittenOn(expected.writtenDay)
+        const carebookIds = new Set(
+          (request?.identifier ?? []).flatMap((identifier) =>
+            identifier.system?.href === REXALL_CAREBOOK_SYSTEM &&
+            typeof identifier.value === 'string'
+              ? [identifier.value]
+              : []
+          )
         )
-        expect(matching).toHaveLength(1)
-        expect(matching[0]?.status).toBe('completed')
+        const authorized = dispenses.filter((dispense) =>
+          dispense.authorizingPrescription.some((reference) => {
+            const value = reference.identifier?.value
+            return typeof value === 'string' && carebookIds.has(value)
+          })
+        )
+        expect(authorized).toHaveLength(1)
+        const [dispense] = authorized
+        const concept = dispense === undefined ? null : dispenseConceptOf(dispense)
+        expect({
+          name: concept?.text,
+          din: concept?.coding.find(Coding.isInSystem(CanadianCodingSystem.Din))?.code,
+          handedOver: isoDateOf(dispense?.whenHandedOver),
+          quantity: dispense?.quantity?.value,
+          supplyDays: dispense?.daysSupply?.value,
+          status: dispense?.status,
+          subject: dispense?.subject?.reference,
+        }).toEqual({
+          name: expected.name,
+          din: expected.din,
+          handedOver: StoryDay.toIsoDate(AS_OF, expected.lastFillDay),
+          quantity: expected.quantity,
+          supplyDays: expected.supplyDays,
+          status: 'completed',
+          subject: `Patient/${patients[0]?.id}`,
+        })
       })
     }
   )

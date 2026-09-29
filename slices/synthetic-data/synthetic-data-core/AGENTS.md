@@ -13,8 +13,9 @@ One namespace per module, in the `effect` style, from the flat root entry:
   (`0` is the as-of day, `-30` a month before). `toDateTime` / `toIsoDate`
   date one; only the as-of instant's UTC calendar day matters (`asOfDayOf`).
 - **`Seeded`** (`src/seeded.ts`) — `uuidOf`, `integerOf`, `digitsOf`: values
-  hashed (FNV-1a) from the keys naming what they belong to, so adding a
-  prescription leaves every other one's ids and times untouched.
+  hashed (FNV-1a over `joinIdComponents`) from the keys naming what they
+  belong to, so adding a prescription leaves every other one's ids and times
+  untouched.
 - **`Person`** (`src/person.ts`) — demographics; `birthDateOf(person, asOf)`
   keeps the person `age` on every as-of day.
 - **`DrugProduct`** (`src/drug-product.ts`) — a marketed product by DIN, and
@@ -57,11 +58,12 @@ asserts the story, not the renderer's own output, comes back.
 
 ## Layering
 
-Depends on `effect`, `kitchen-sink` (`fnv1a64`, `utf8Bytes`) and
-`rexall-be-well-source` (the carebook extension, identifier and coding
-catalogue — spelled once, there). The importers and readers the round-trip
-tests drive (`har-importer-core`, `importer-fundamentals`, `http-archive`,
-`medication-core`, `fhir-r4`) are dev dependencies only. Never imports a
+Depends on `effect`, `kitchen-sink` (`fnv1a64`, `utf8Bytes`), `fhir-r4`
+(`joinIdComponents`, the key fold `Seeded` hashes) and `rexall-be-well-source`
+(the carebook extension, identifier and coding catalogue — spelled once,
+there). The importers and readers the round-trip tests drive
+(`har-importer-core`, `importer-fundamentals`, `http-archive`,
+`medication-core`) are dev dependencies only. Never imports a
 `-react`, `-node` or `-tauri` package.
 
 ## Testing

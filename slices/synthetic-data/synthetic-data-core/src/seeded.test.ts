@@ -23,18 +23,23 @@ describe('Seeded.uuidOf', () => {
   })
 
   test('property: depends on how the keys are split, not only their concatenation', () => {
+    const keyArbitrary = fc.string({ unit: 'binary', minLength: 1 })
     fc.assert(
-      fc.property(fc.string({ minLength: 1 }), fc.string({ minLength: 1 }), (left, right) => {
+      fc.property(keyArbitrary, keyArbitrary, (left, right) => {
         expect(Seeded.uuidOf([left, right])).not.toBe(Seeded.uuidOf([left + right]))
       }),
       { numRuns: RUNS }
     )
   })
 
+  test('tells a key holding a control character from two keys', () => {
+    expect(Seeded.uuidOf(['a\u001fb'])).not.toBe(Seeded.uuidOf(['a', 'b']))
+  })
+
   test('is stable across runs', () => {
     // Pinned so a change to the derivation, which would re-key every
     // published resource, fails here rather than passing unnoticed.
-    expect(Seeded.uuidOf(['rexall', 'warren'])).toBe('23f445f7-3f03-42dd-be1f-5e5fc63c1a9f')
+    expect(Seeded.uuidOf(['rexall', 'warren'])).toBe('a7854770-f3b4-4846-9223-b68c6dc36dc0')
   })
 })
 
