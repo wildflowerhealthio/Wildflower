@@ -1,13 +1,59 @@
-import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
-import { APP_DESCRIPTIONS, APP_SECTION_IDS, type AppSectionId } from 'branding-core'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  APP_DESCRIPTIONS,
+  APP_SECTION_IDS,
+  TELEMETRY_CONSENT_COPY,
+  type AppSectionId,
+} from 'branding-core'
+import type Client from 'fhirclient/lib/Client'
 import { StrictMode, type JSX } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import { type TelemetryConsent, writeConsent } from 'telemetry-core'
+import type * as TelemetryWeb from 'telemetry-web'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { encodeLaunchError, useSmartHandshake } from 'fhir-r4-react/smart'
 
 import type { ConnectMenuProps } from './connect-menu.tsx'
-import { SmartAppRoot } from './smart-app-root.tsx'
+import { SmartAppRoot, type SmartAppTelemetry } from './smart-app-root.tsx'
+
+/** The part of Sentry's `captureException` hint the root sets. */
+interface CaptureHint {
+  readonly tags?: Readonly<Record<string, string>>
+  readonly extra?: { readonly componentStack?: string }
+}
+
+// The telemetry SDK is the collaborator whose every touch the gate controls, so
+// the module boundary is where it is stubbed: each test reads back whether, and
+// with what, the root started telemetry and reported. The rest of the module
+// stays real, so the config the root builds is the one an app would get.
+const { initConsentedTelemetryMock, setFhirServerHostMock, captureExceptionMock } = vi.hoisted(
+  () => ({
+    initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
+    setFhirServerHostMock: vi.fn<typeof TelemetryWeb.setFhirServerHost>(),
+    captureExceptionMock: vi.fn<(exception: unknown, hint?: CaptureHint) => string>(
+      () => 'event-id'
+    ),
+  })
+)
+vi.mock('telemetry-web', async (importOriginal) => {
+  const actual = await importOriginal<typeof TelemetryWeb>()
+  return {
+    ...actual,
+    initConsentedTelemetry: initConsentedTelemetryMock,
+    setFhirServerHost: setFhirServerHostMock,
+    Sentry: { captureException: captureExceptionMock },
+  }
+})
+
+// fhirclient's `oauth2.ready()` is the token exchange the app's handshake runs;
+// it resolves to a client connected to `FHIR_SERVER_URL`.
+const FHIR_SERVER_URL = 'https://fhir.example:8443/r4'
+// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub; the root reads only `state.serverUrl`
+const readyClient = { state: { serverUrl: FHIR_SERVER_URL } } as unknown as Client
+vi.mock('fhirclient', () => ({
+  default: { oauth2: { ready: () => Promise.resolve(readyClient) } },
+}))
 
 // The stub echoes the props it was handed as data attributes so the wiring
 // (the SMART target, `clientId` / `scope` from the `standalone` prop,
@@ -34,14 +80,41 @@ const STANDALONE = {
   scope: 'launch openid fhirUser system/MedicationRequest.rs',
 }
 
+const TELEMETRY: SmartAppTelemetry = {
+  dsn: 'https://key@sentry.example/42',
+  app: 'medications-app',
+}
+
 const MARKETING_ORIGIN = 'https://wildflowerhealth.io/'
+
+const STATUS_CONTROL_NAME = /change telemetry settings/
+
+/** A launch the launch page could not start, as it lands in `?launchError=`. */
+const FAILED_LAUNCH = encodeLaunchError({
+  error: 'AuthorizeFailed',
+  message: 'Failed to fetch',
+  iss: 'https://ruth.wildflowerhealth.io/fhir-r4',
+})
+
+beforeEach(() => {
+  stubDialogModality()
+})
 
 afterEach(() => {
   cleanup()
   setUrl('/')
+  window.localStorage.clear()
+  restoreDialogModality()
+  vi.resetAllMocks()
 })
 
 describe('SmartAppRoot', () => {
+  // The chrome and branch tests below run past the consent dialog, as a
+  // returning visitor who declined both switches does.
+  beforeEach(() => {
+    storeConsent({ crashReports: false, performance: false })
+  })
+
   it('should render the brand bar over its children when launched', () => {
     // Arrange / Act
     renderShell({ launched: true })
@@ -175,14 +248,14 @@ describe('SmartAppRoot', () => {
     // Act — rendered twice (StrictMode) and then re-rendered
     const { rerender } = render(
       <StrictMode>
-        <SmartAppRoot app="medications" standalone={STANDALONE} launched>
+        <SmartAppRoot app="medications" standalone={STANDALONE} telemetry={TELEMETRY} launched>
           <HandshakeProbe seen={seen} />
         </SmartAppRoot>
       </StrictMode>
     )
     rerender(
       <StrictMode>
-        <SmartAppRoot app="medications" standalone={STANDALONE} launched>
+        <SmartAppRoot app="medications" standalone={STANDALONE} telemetry={TELEMETRY} launched>
           <HandshakeProbe seen={seen} />
         </SmartAppRoot>
       </StrictMode>
@@ -233,6 +306,183 @@ describe('SmartAppRoot', () => {
   })
 })
 
+describe('SmartAppRoot telemetry consent', () => {
+  describe.each([
+    { branch: 'launched', launched: true },
+    { branch: 'standalone', launched: false },
+  ])('on the $branch branch', ({ launched }) => {
+    it('should show only the consent dialog, and start nothing, until the visitor answers', () => {
+      // Arrange — a failed launch to report, were anything allowed to report it
+      setUrl(`/?launchError=${FAILED_LAUNCH}`)
+
+      // Act
+      renderShell({ launched })
+
+      // Assert — the dialog alone: no app, no connect menu, no status control
+      expect(openDialog()).not.toBeNull()
+      expect(screen.queryByTestId('app')).toBeNull()
+      expect(screen.queryByTestId('connect-menu-stub')).toBeNull()
+      expect(screen.queryByRole('button', { name: STATUS_CONTROL_NAME })).toBeNull()
+      expect(initConsentedTelemetryMock).not.toHaveBeenCalled()
+      expect(captureExceptionMock).not.toHaveBeenCalled()
+      expect(setFhirServerHostMock).not.toHaveBeenCalled()
+    })
+
+    it('should start telemetry with the app’s DSN and tags once the visitor says yes', () => {
+      // Arrange
+      renderShell({ launched })
+
+      // Act
+      answerDialog({ crashReports: true, performance: false })
+
+      // Assert
+      expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)
+      const [{ consent, config, tags }] = initConsentedTelemetryMock.mock.calls[0]
+      expect(consent).toMatchObject({ crashReports: true, performance: false })
+      expect(config.sentry.dsn).toBe(TELEMETRY.dsn)
+      expect(config.otel.serviceName).toBe(TELEMETRY.app)
+      expect(tags).toStrictEqual({
+        app: TELEMETRY.app,
+        launch: launched ? 'launched' : 'standalone',
+      })
+    })
+
+    it('should show the status control, and reopen the dialog from it', () => {
+      // Arrange
+      storeConsent({ crashReports: false, performance: true })
+      renderShell({ launched })
+      expect(openDialog()).toBeNull()
+
+      // Act
+      fireEvent.click(screen.getByRole('button', { name: STATUS_CONTROL_NAME }))
+
+      // Assert
+      expect(openDialog()).not.toBeNull()
+    })
+  })
+
+  it('should put the status control at the end of the brand bar when launched', () => {
+    // Arrange
+    storeConsent({ crashReports: false, performance: false })
+
+    // Act
+    renderShell({ launched: true })
+
+    // Assert — in the banner, outside the link home
+    const banner = screen.getByRole('banner')
+    const control = within(banner).getByRole('button', { name: STATUS_CONTROL_NAME })
+    expect(within(banner).getByRole('link', { name: 'Wildflower, home' }).contains(control)).toBe(
+      false
+    )
+  })
+
+  it('should put the status control between the landing and the footer when standalone', () => {
+    // Arrange
+    storeConsent({ crashReports: false, performance: false })
+
+    // Act
+    renderShell({ launched: false })
+
+    // Assert
+    const control = screen.getByRole('button', { name: STATUS_CONTROL_NAME })
+    expect(screen.getByRole('main').contains(control)).toBe(false)
+    expect(screen.getByRole('contentinfo').contains(control)).toBe(false)
+  })
+
+  it('should report the launch failure the page arrived with once telemetry starts, and only once', () => {
+    // Arrange
+    initConsentedTelemetryMock.mockReturnValue(true)
+    setUrl(`/?launchError=${FAILED_LAUNCH}`)
+    renderShell({ launched: false })
+
+    // Act — answer, then reopen and answer again
+    answerDialog({ crashReports: true, performance: false })
+    fireEvent.click(screen.getByRole('button', { name: STATUS_CONTROL_NAME }))
+    answerDialog({ crashReports: true, performance: true })
+
+    // Assert
+    expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(2)
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1)
+    const [reported, hint] = captureExceptionMock.mock.calls[0]
+    expect(reported instanceof Error ? reported.message : reported).toContain('Failed to fetch')
+    expect(hint).toStrictEqual({ tags: { source: 'launch-error' } })
+  })
+
+  it('should not report the launch failure when the answer starts no telemetry', () => {
+    // Arrange — `initConsentedTelemetry` starts nothing (both switches off)
+    setUrl(`/?launchError=${FAILED_LAUNCH}`)
+    renderShell({ launched: false })
+
+    // Act
+    answerDialog({ crashReports: false, performance: false })
+
+    // Assert
+    expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)
+    expect(captureExceptionMock).not.toHaveBeenCalled()
+  })
+
+  it('should tag events with the FHIR server’s host once the handshake completes', async () => {
+    // Arrange
+    initConsentedTelemetryMock.mockReturnValue(true)
+    storeConsent({ crashReports: true, performance: false })
+
+    // Act
+    renderShell({ launched: true, children: <HandshakeProbe seen={[]} /> })
+
+    // Assert
+    await waitFor(() => {
+      expect(setFhirServerHostMock).toHaveBeenCalledWith('fhir.example:8443')
+    })
+    expect(setFhirServerHostMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('should not tag the FHIR server’s host when the answer starts no telemetry', async () => {
+    // Arrange
+    storeConsent({ crashReports: false, performance: false })
+    const seen: QueryClient[] = []
+
+    // Act
+    renderShell({ launched: true, children: <HandshakeProbe seen={seen} /> })
+
+    // Assert — the handshake completes, and still nothing is tagged
+    await waitFor(() => {
+      expect(seen[0].getQueryCache().getAll()[0]?.state.status).toBe('success')
+    })
+    expect(setFhirServerHostMock).not.toHaveBeenCalled()
+  })
+
+  it('should report a render error in the app, with its component stack', () => {
+    // Arrange
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    storeConsent({ crashReports: true, performance: false })
+    const renderFailure = new Error('the app failed to render')
+
+    // Act
+    renderShell({ launched: true, children: <Throws error={renderFailure} /> })
+
+    // Assert — reported, and the boundary's fallback shown under the brand bar
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1)
+    const [reported, hint] = captureExceptionMock.mock.calls[0]
+    expect(reported).toBe(renderFailure)
+    expect(hint?.extra?.componentStack).toContain('Throws')
+    expect(screen.getByRole('button', { name: STATUS_CONTROL_NAME })).toBeDefined()
+  })
+
+  it('should report a failed query on the client it provides', async () => {
+    // Arrange
+    storeConsent({ crashReports: true, performance: false })
+    const readFailure = new Error('401 Unauthorized')
+
+    // Act
+    renderShell({ launched: true, children: <FailingRead error={readFailure} /> })
+
+    // Assert
+    await waitFor(() => {
+      expect(captureExceptionMock).toHaveBeenCalledWith(readFailure, { tags: { source: 'query' } })
+    })
+  })
+})
+
 // Helpers
 
 /** The arrival problem the stubbed connect menu was handed, if any. */
@@ -248,7 +498,12 @@ function setUrl(url: string): void {
 /** The shell around a stub app, with the test's standalone config. */
 function Shell({ launched }: { readonly launched?: boolean }): JSX.Element {
   return (
-    <SmartAppRoot app="medications" standalone={STANDALONE} launched={launched}>
+    <SmartAppRoot
+      app="medications"
+      standalone={STANDALONE}
+      telemetry={TELEMETRY}
+      launched={launched}
+    >
       <div data-testid="app" />
     </SmartAppRoot>
   )
@@ -258,17 +513,82 @@ function Shell({ launched }: { readonly launched?: boolean }): JSX.Element {
 function renderShell({
   app = 'medications',
   launched,
+  children = <div data-testid="app" />,
 }: {
   readonly app?: AppSectionId
   readonly launched?: boolean
+  readonly children?: JSX.Element
 }): void {
   render(
     <StrictMode>
-      <SmartAppRoot app={app} standalone={STANDALONE} launched={launched}>
-        <div data-testid="app" />
+      <SmartAppRoot app={app} standalone={STANDALONE} telemetry={TELEMETRY} launched={launched}>
+        {children}
       </SmartAppRoot>
     </StrictMode>
   )
+}
+
+/** Stores a current answer, as a returning visitor has one. */
+function storeConsent(switches: Pick<TelemetryConsent, 'crashReports' | 'performance'>): void {
+  writeConsent(window.localStorage, {
+    version: TELEMETRY_CONSENT_COPY.version,
+    decidedAt: '2026-09-29T12:00:00.000Z',
+    ...switches,
+  })
+}
+
+/** Sets the dialog's switches to `switches` and presses Continue. */
+function answerDialog(switches: Pick<TelemetryConsent, 'crashReports' | 'performance'>): void {
+  for (const [label, wanted] of [
+    [TELEMETRY_CONSENT_COPY.crashReports.label, switches.crashReports],
+    [TELEMETRY_CONSENT_COPY.performance.label, switches.performance],
+  ] as const) {
+    const toggle = screen.getByRole<HTMLInputElement>('switch', { name: label })
+    if (toggle.checked !== wanted) fireEvent.click(toggle)
+  }
+  fireEvent.click(screen.getByRole('button', { name: TELEMETRY_CONSENT_COPY.continueLabel }))
+}
+
+/** The consent `<dialog>` while it is open, or `null`. */
+function openDialog(): HTMLDialogElement | null {
+  return document.querySelector('dialog[open]')
+}
+
+/** Throws `error` from render, as a crashing app does. */
+function Throws({ error }: { readonly error: Error }): never {
+  throw error
+}
+
+/** Runs a query on the provided client that fails with `error`. */
+function FailingRead({ error }: { readonly error: Error }): null {
+  useQuery({ queryKey: ['failing-read'], queryFn: () => Promise.reject(error), retry: false })
+  return null
+}
+
+/**
+ * jsdom has no native `<dialog>`: `showModal` and `close` are modelled as the
+ * `open` attribute, and the original descriptors are put back after each test.
+ */
+const dialogMethodDescriptors = (['showModal', 'close'] as const).map(
+  (method) =>
+    [method, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, method)] as const
+)
+
+function stubDialogModality(): void {
+  HTMLDialogElement.prototype.showModal = function showModalByAttribute(this: HTMLDialogElement) {
+    this.setAttribute('open', '')
+  }
+  HTMLDialogElement.prototype.close = function closeByAttribute(this: HTMLDialogElement) {
+    this.removeAttribute('open')
+    this.dispatchEvent(new Event('close'))
+  }
+}
+
+function restoreDialogModality(): void {
+  for (const [method, descriptor] of dialogMethodDescriptors) {
+    if (descriptor === undefined) Reflect.deleteProperty(HTMLDialogElement.prototype, method)
+    else Object.defineProperty(HTMLDialogElement.prototype, method, descriptor)
+  }
 }
 
 /** Starts the SMART handshake and records the client it was provided. */

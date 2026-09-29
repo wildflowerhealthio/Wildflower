@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { queryOptions, useQuery, type QueryClient } from '@tanstack/react-query'
 import type Client from 'fhirclient/lib/Client'
 import { useEffect } from 'react'
 
@@ -21,6 +21,26 @@ type SmartHandshake =
 const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
 
 /**
+ * The handshake query every {@link useSmartHandshake} mount runs, and what
+ * {@link whenSmartHandshakeReady} reads back: the token exchange under
+ * {@link SMART_HANDSHAKE_QUERY_KEY}, typed so a read of its data is a
+ * {@link Client}.
+ *
+ * @remarks
+ * `retry: false` because re-POSTing a consumed code cannot succeed. `staleTime`
+ * and `gcTime` are `Infinity` because there is nothing to refetch — the
+ * handshake is a one-shot whose result lives for the page.
+ */
+const smartHandshakeQuery = queryOptions({
+  queryKey: SMART_HANDSHAKE_QUERY_KEY,
+  queryFn: () => readySmartClient(),
+  retry: false,
+  staleTime: Infinity,
+  gcTime: Infinity,
+  refetchOnWindowFocus: false,
+})
+
+/**
  * Complete the SMART handshake exactly once, as a TanStack Query, and report its
  * state.
  *
@@ -34,26 +54,50 @@ const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
  * code (fhirclient's own guard only suppresses a *sequential* reload, after the
  * first exchange has persisted; two near-simultaneous calls both read the
  * pre-exchange state and both POST). Query-level dedup means both mounts attach
- * to the one in-flight exchange instead.
+ * to the one in-flight exchange instead. The query's options are
+ * {@link smartHandshakeQuery}'s.
  *
- * `retry: false` because re-POSTing a consumed code cannot succeed. `staleTime`
- * and `gcTime` are `Infinity` because there is nothing to refetch — the
- * handshake is a one-shot whose result lives for the page. Requires a
- * `QueryClientProvider` above it; {@link buildSmartQueryClient} builds the
- * client the app provides.
+ * Requires a `QueryClientProvider` above it; {@link buildSmartQueryClient}
+ * builds the client the app provides.
  */
 const useSmartHandshake = (): SmartHandshake => {
-  const query = useQuery({
-    queryKey: SMART_HANDSHAKE_QUERY_KEY,
-    queryFn: () => readySmartClient(),
-    retry: false,
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnWindowFocus: false,
-  })
+  const query = useQuery(smartHandshakeQuery)
   if (query.isSuccess) return { kind: 'ready', client: query.data }
   if (query.isError) return { kind: 'error', error: query.error }
   return { kind: 'connecting' }
+}
+
+/**
+ * Call `onReady` once with the ready {@link Client} when the SMART handshake on
+ * `queryClient` completes, or at once if it already has.
+ *
+ * @param queryClient - The page's one client, where {@link useSmartHandshake}
+ *   runs the exchange
+ * @param onReady - Called with the ready client, at most once
+ * @returns A function that stops listening
+ *
+ * @remarks
+ * For code above the app that needs the connected server without running the
+ * exchange itself: the app root, which provides `queryClient` while the app
+ * beneath it calls {@link useSmartHandshake}. It reads the handshake query's
+ * cached data and never starts the query, so it cannot fire the single-use
+ * exchange a second time. A failed handshake never calls `onReady`.
+ */
+const whenSmartHandshakeReady = (
+  queryClient: QueryClient,
+  onReady: (client: Client) => void
+): (() => void) => {
+  let notified = false
+  const notifyIfReady = (): void => {
+    if (notified) return
+    const readyClient = queryClient.getQueryData(smartHandshakeQuery.queryKey)
+    if (readyClient === undefined) return
+    notified = true
+    onReady(readyClient)
+  }
+  const unsubscribe = queryClient.getQueryCache().subscribe(notifyIfReady)
+  notifyIfReady()
+  return unsubscribe
 }
 
 /**
@@ -89,5 +133,6 @@ export {
   SMART_HANDSHAKE_QUERY_KEY,
   useLaunchFailureRedirect,
   useSmartHandshake,
+  whenSmartHandshakeReady,
   type SmartHandshake,
 }

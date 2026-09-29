@@ -27,8 +27,11 @@ redirect, wires the OS colour-scheme listener, and renders `<AppRoot />` inside
 `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="healthViewer"
-standalone={standaloneSmartConfig}>` around `<App />`. `SmartAppRoot` owns the
-single `QueryClientProvider` and branches, latched on mount, on whether a SMART
+standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>` around
+`<App />`. `SmartAppRoot` shows the telemetry consent dialog before either
+branch (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
+through the `VITE_SENTRY_DSN_HEALTH_VIEWER` build variable; see
+`.env.example`), owns the single `QueryClientProvider`, and branches, latched on mount, on whether a SMART
 callback is in the URL — the slim `BrandBar` above `<App />` when launched, the
 full Wildflower chrome with `APP_DESCRIPTIONS.healthViewer`'s `AppLanding`
 beside `ConnectMenu` on a bare visit. The package exports `AppRoot` via the

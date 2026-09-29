@@ -1,4 +1,5 @@
 import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
+import type { SmartAppTelemetry } from 'smart-app-react'
 
 /**
  * The scopes the health viewer asks for, the same for an EHR launch and a
@@ -59,4 +60,14 @@ const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   scope: HEALTH_VIEWER_SCOPE,
 }
 
-export { HEALTH_VIEWER_SCOPE, smartConfig, standaloneSmartConfig }
+/**
+ * Where this app's telemetry goes once the visitor consents to it: its own
+ * Sentry project, whose DSN is the `VITE_SENTRY_DSN_HEALTH_VIEWER` build variable, with
+ * `health-viewer` as the `app` tag. A build that sets no DSN reports nothing.
+ */
+const smartAppTelemetry: SmartAppTelemetry = {
+  dsn: import.meta.env.VITE_SENTRY_DSN_HEALTH_VIEWER ?? '',
+  app: 'health-viewer',
+}
+
+export { HEALTH_VIEWER_SCOPE, smartAppTelemetry, smartConfig, standaloneSmartConfig }

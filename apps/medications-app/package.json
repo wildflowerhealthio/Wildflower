@@ -38,6 +38,9 @@
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "smart-app-react": "workspace:*",
+    "telemetry-core": "workspace:*",
+    "telemetry-react": "workspace:*",
+    "telemetry-web": "workspace:*",
     "tundra-css": "catalog:"
   },
   "devDependencies": {

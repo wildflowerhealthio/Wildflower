@@ -40,7 +40,7 @@ const App = ({ onMount }: { readonly onMount: () => void }): JSX.Element => {
   return (
     <main>
       <p>{APP_TEXT}</p>
-      <TelemetryStatusControl consent={consent} copy={TELEMETRY_CONSENT_COPY} onChange={reopen} />
+      <TelemetryStatusControl consent={consent} copy={TELEMETRY_CONSENT_COPY} onPress={reopen} />
     </main>
   )
 }

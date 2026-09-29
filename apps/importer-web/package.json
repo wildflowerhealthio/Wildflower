@@ -37,6 +37,9 @@
     "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
     "smart-app-react": "workspace:*",
+    "telemetry-core": "workspace:*",
+    "telemetry-react": "workspace:*",
+    "telemetry-web": "workspace:*",
     "tundra-css": "catalog:"
   },
   "devDependencies": {

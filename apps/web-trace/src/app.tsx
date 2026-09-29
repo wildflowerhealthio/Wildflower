@@ -161,9 +161,9 @@ const App = (): JSX.Element => {
   // context nor, through `TraceApp`'s own memo, the router beneath it.
   //
   // Plain `FetchHttpClient.layer`, not `telemetry-react`'s `webHttpClientLayer`:
-  // this app is registered `local_only = 1`, and the telemetry layer's OTLP
-  // exporter is exactly the kind of outbound request that claim rules out. The
-  // handshake's `serverUrl` is the FHIR base verbatim — the typed client emits
+  // the app's only outbound traffic is the FHIR server and, once the visitor
+  // consents in `SmartAppRoot`'s dialog, Sentry; the telemetry layer would start
+  // reporting from the build's env without asking. The handshake's `serverUrl` is the FHIR base verbatim — the typed client emits
   // base-relative paths, so there is no prefix to reconcile and no failure arm
   // here beyond the handshake's own.
   const client = handshake.kind === 'ready' ? handshake.client : undefined

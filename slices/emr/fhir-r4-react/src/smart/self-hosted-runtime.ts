@@ -1,5 +1,5 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
-import { QueryClient } from '@tanstack/react-query'
+import { QueryCache, QueryClient } from '@tanstack/react-query'
 import { Duration, Effect, Layer, pipe } from 'effect'
 import { trimTrailingSlashes } from 'fhir-r4/clients'
 
@@ -94,8 +94,19 @@ const smartHttpClientLayer = (
   ).pipe(Layer.provide(transport))
 }
 
+/** Options for {@link buildSmartQueryClient}. */
+interface BuildSmartQueryClientOptions {
+  /**
+   * Called with the error of every query that fails on the client, the SMART
+   * handshake's included; the app root reports it to its crash reporter here.
+   */
+  readonly onQueryError?: (queryError: unknown) => void
+}
+
 /**
  * The `QueryClient` a self-hosted SMART app runs on.
+ *
+ * @param options - Where the client's query failures are reported
  *
  * @remarks
  * In-memory only, no persister: what a self-hosted app reads is the data
@@ -107,9 +118,13 @@ const smartHttpClientLayer = (
  * (where {@link useSmartHandshake} runs the token exchange, before any router
  * context exists), and hand that same instance to {@link buildSmartRouterContext}
  * — one client for the handshake query and every app query alike.
+ *
+ * `onQueryError` is the query cache's `onError`, so it runs once per failed
+ * query (after its retries), whichever component started it.
  */
-const buildSmartQueryClient = (): QueryClient =>
+const buildSmartQueryClient = (options: BuildSmartQueryClientOptions = {}): QueryClient =>
   new QueryClient({
+    queryCache: new QueryCache({ onError: options.onQueryError }),
     defaultOptions: {
       queries: {
         staleTime: pipe(5, Duration.minutes, Duration.toMillis),
@@ -168,4 +183,10 @@ const buildSmartRouterContext = (
   }
 }
 
-export { buildSmartQueryClient, buildSmartRouterContext, smartHttpClientLayer, type SmartSession }
+export {
+  buildSmartQueryClient,
+  buildSmartRouterContext,
+  smartHttpClientLayer,
+  type BuildSmartQueryClientOptions,
+  type SmartSession,
+}

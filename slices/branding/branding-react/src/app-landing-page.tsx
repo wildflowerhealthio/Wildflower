@@ -18,13 +18,17 @@ import styles from './app-landing-page.module.css'
  * @param app - Which app's description `AppLanding` renders.
  * @param children - The action area `AppLanding` places beside the
  *   introduction: the app's connect menu.
+ * @param aboveFooter - A small row between the landing and `SiteFooter`, such
+ *   as the telemetry status control; omitted, there is no row.
  */
 function AppLandingPage({
   app,
   children,
+  aboveFooter,
 }: {
   readonly app: AppSectionId
   readonly children: ReactNode
+  readonly aboveFooter?: ReactNode
 }): JSX.Element {
   return (
     <div className={styles['app-landing-page']}>
@@ -32,6 +36,9 @@ function AppLandingPage({
       <main className={styles['app-landing-page__main']}>
         <AppLanding app={app}>{children}</AppLanding>
       </main>
+      {aboveFooter === undefined ? null : (
+        <div className={styles['app-landing-page__above-footer']}>{aboveFooter}</div>
+      )}
       <SiteFooter />
     </div>
   )

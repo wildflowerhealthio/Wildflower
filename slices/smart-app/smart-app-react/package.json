@@ -2,7 +2,7 @@
   "name": "smart-app-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The Wildflower chrome every self-hosted SMART app boots through: `SmartAppRoot` (one QueryClient, the launched/standalone branch latched on mount, the launch-failure banner), `runSmartLaunchEntry` (the whole launch.html entry), `ConnectMenu` (the standalone connect flow: over `fhir-r4-react/smart`'s launch primitives for a SMART app, or through the caller's own sign-in for the Wildflower owner UI), and the read-status lines an app's page speaks (`LoadingLine`, `LoadingMoreLine`, `ReadFailureLine`). Built on `fhir-r4-react/smart` for the SMART wiring and `branding-react` for the Wildflower chrome, so neither of those has to know about the other.",
+  "description": "The Wildflower chrome every self-hosted SMART app boots through: `SmartAppRoot` (the telemetry consent gate around both branches, one QueryClient, the launched/standalone branch latched on mount, the launch-failure banner), `runSmartLaunchEntry` (the whole launch.html entry), `ConnectMenu` (the standalone connect flow: over `fhir-r4-react/smart`'s launch primitives for a SMART app, or through the caller's own sign-in for the Wildflower owner UI), and the read-status lines an app's page speaks (`LoadingLine`, `LoadingMoreLine`, `ReadFailureLine`). Built on `fhir-r4-react/smart` for the SMART wiring and `branding-react` for the Wildflower chrome, so neither of those has to know about the other.",
   "type": "module",
   "exports": {
     ".": {
@@ -32,6 +32,9 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-tundraish": "workspace:*",
+    "telemetry-core": "workspace:*",
+    "telemetry-react": "workspace:*",
+    "telemetry-web": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
@@ -44,6 +47,9 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-tundraish": "workspace:*"
+    "react-tundraish": "workspace:*",
+    "telemetry-core": "workspace:*",
+    "telemetry-react": "workspace:*",
+    "telemetry-web": "workspace:*"
   }
 }

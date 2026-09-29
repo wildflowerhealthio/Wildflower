@@ -10,7 +10,7 @@ type TelemetryStatusControlProps = {
   /** The dialog's copy, whose switch labels name the switches here too. */
   readonly copy: TelemetryConsentCopy
   /** Called when the visitor presses the control; the caller reopens the dialog. */
-  readonly onChange: () => void
+  readonly onPress: () => void
 }
 
 /** How the status control reads one switch. */
@@ -31,7 +31,7 @@ const telemetryStatusText = (consent: TelemetryConsent, copy: TelemetryConsentCo
 /**
  * The small "Telemetry: …" control that says what the visitor agreed to send
  * and, when pressed, lets them change it. App chrome places it (the brand bar,
- * or above the site footer) and reopens the consent dialog from `onChange`.
+ * or above the site footer) and reopens the consent dialog from `onPress`.
  *
  * @remarks
  * The visible text is the status; the button's accessible name carries that
@@ -41,9 +41,9 @@ const telemetryStatusText = (consent: TelemetryConsent, copy: TelemetryConsentCo
 const TelemetryStatusControl = ({
   consent,
   copy,
-  onChange,
+  onPress,
 }: TelemetryStatusControlProps): JSX.Element => (
-  <button type="button" className={styles['telemetry-status']} onClick={onChange}>
+  <button type="button" className={styles['telemetry-status']} onClick={onPress}>
     {telemetryStatusText(consent, copy)}
     <span className="sr-only">, change telemetry settings</span>
   </button>

@@ -177,10 +177,11 @@ const App = (): JSX.Element => {
   // context nor, through `ImporterApp`'s own memo, the router beneath it.
   //
   // Plain `FetchHttpClient.layer`, not `telemetry-react`'s `webHttpClientLayer`:
-  // this app talks to exactly one host — the FHIR base the SMART handshake named
-  // — and the telemetry layer would add a second, uninstrumented-by-this-app OTLP
-  // destination to a bundle whose whole job is moving the user's records between
-  // two places they chose. The handshake's `serverUrl` is the FHIR base verbatim
+  // the app's only outbound traffic is the FHIR server the SMART handshake named
+  // and, once the visitor consents in `SmartAppRoot`'s dialog, Sentry; the
+  // telemetry layer would start reporting from the build's env without asking,
+  // in a bundle whose whole job is moving the user's records between two places
+  // they chose. The handshake's `serverUrl` is the FHIR base verbatim
   // — the typed client emits base-relative paths, so there is no prefix to
   // reconcile and no failure arm here beyond the handshake's own.
   const client = handshake.kind === 'ready' ? handshake.client : undefined

@@ -112,8 +112,9 @@ interface Session {
  * `React.StrictMode`. A failed exchange is carried back to the app root, which
  * can offer the connect menu again.
  *
- * Plain `FetchHttpClient.layer`: the page talks to exactly one host, the FHIR
- * base the handshake named.
+ * Plain `FetchHttpClient.layer`: the page's only outbound traffic is the FHIR
+ * base the handshake named and, once the visitor consents in `SmartAppRoot`'s
+ * dialog, Sentry.
  */
 const App = (): JSX.Element => {
   const queryClient = useQueryClient()

@@ -1,4 +1,5 @@
 import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
+import type { SmartAppTelemetry } from 'smart-app-react'
 
 /**
  * SMART registration for this app.
@@ -58,4 +59,14 @@ const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   scope: 'launch openid fhirUser system/DocumentReference.read',
 }
 
-export { smartConfig, standaloneSmartConfig }
+/**
+ * Where this app's telemetry goes once the visitor consents to it: its own
+ * Sentry project, whose DSN is the `VITE_SENTRY_DSN_WEB_TRACE` build variable, with
+ * `web-trace` as the `app` tag. A build that sets no DSN reports nothing.
+ */
+const smartAppTelemetry: SmartAppTelemetry = {
+  dsn: import.meta.env.VITE_SENTRY_DSN_WEB_TRACE ?? '',
+  app: 'web-trace',
+}
+
+export { smartAppTelemetry, smartConfig, standaloneSmartConfig }

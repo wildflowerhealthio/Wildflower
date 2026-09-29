@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 const { readyMock } = vi.hoisted(() => ({ readyMock: vi.fn<() => Promise<Client>>() }))
 vi.mock('./smart-launch.ts', () => ({ readySmartClient: readyMock }))
 
-const { useSmartHandshake } = await import('./use-smart-handshake.ts')
+const { useSmartHandshake, whenSmartHandshakeReady } = await import('./use-smart-handshake.ts')
 
 // A `Client` stub: the hook only ever hands it back, so nothing reads its shape.
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, never structurally read
@@ -24,10 +24,10 @@ const Probe = (): JSX.Element => <span>{useSmartHandshake().kind}</span>
  * would double-POST a bare `useEffect` exchange — over a plain `QueryClient`
  * with retries left on, so the hook's own `retry: false` is what's under test.
  */
-const mountUnderStrictMode = (): void => {
+const mountUnderStrictMode = (queryClient: QueryClient = new QueryClient()): void => {
   render(
     <StrictMode>
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={queryClient}>
         <Probe />
       </QueryClientProvider>
     </StrictMode>
@@ -68,5 +68,79 @@ describe('useSmartHandshake', () => {
     // `retry: false` holds even though the QueryClient's default retry is 3 —
     // re-sending a single-use code cannot succeed.
     expect(readyMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('whenSmartHandshakeReady', () => {
+  it('should hand over the ready client once the handshake completes, once', async () => {
+    // Arrange
+    readyMock.mockResolvedValue(fakeClient)
+    const queryClient = new QueryClient()
+    const onReady = vi.fn<(client: Client) => void>()
+    whenSmartHandshakeReady(queryClient, onReady)
+
+    // Act
+    mountUnderStrictMode(queryClient)
+
+    // Assert
+    await waitFor(() => {
+      expect(onReady).toHaveBeenCalledWith(fakeClient)
+    })
+    await queryClient.invalidateQueries()
+    expect(onReady).toHaveBeenCalledTimes(1)
+  })
+
+  it('should hand over a client that was ready before it was asked', async () => {
+    // Arrange — the handshake has already completed
+    readyMock.mockResolvedValue(fakeClient)
+    const queryClient = new QueryClient()
+    mountUnderStrictMode(queryClient)
+    await waitFor(() => {
+      expect(screen.getByText('ready')).toBeDefined()
+    })
+    const onReady = vi.fn<(client: Client) => void>()
+
+    // Act
+    whenSmartHandshakeReady(queryClient, onReady)
+
+    // Assert
+    expect(onReady).toHaveBeenCalledExactlyOnceWith(fakeClient)
+  })
+
+  it('should never call back for a failed handshake, nor start one itself', async () => {
+    // Arrange
+    readyMock.mockRejectedValue(new Error('authorization code already redeemed'))
+    const queryClient = new QueryClient()
+    const onReady = vi.fn<(client: Client) => void>()
+    whenSmartHandshakeReady(queryClient, onReady)
+    expect(readyMock).not.toHaveBeenCalled()
+
+    // Act
+    mountUnderStrictMode(queryClient)
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText('error')).toBeDefined()
+    })
+    expect(onReady).not.toHaveBeenCalled()
+    expect(readyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('should stop listening once unsubscribed', async () => {
+    // Arrange
+    readyMock.mockResolvedValue(fakeClient)
+    const queryClient = new QueryClient()
+    const onReady = vi.fn<(client: Client) => void>()
+    const stopListening = whenSmartHandshakeReady(queryClient, onReady)
+
+    // Act
+    stopListening()
+    mountUnderStrictMode(queryClient)
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText('ready')).toBeDefined()
+    })
+    expect(onReady).not.toHaveBeenCalled()
   })
 })
