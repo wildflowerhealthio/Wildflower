@@ -113,7 +113,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [docs/Testing/](./docs/Testing/Testing%20Reference.md) — Property testing, unit testing, React testing, integration testing
 - [Documentation Reference](./docs/Documentation/Reference.md) — Naming rules for docs
 - [Bridge Explanation](./docs/Messaging/Bridge%20Explanation.md) — The webview ↔ host bridge; [Wire Pinning How-To](./docs/Messaging/Wire%20Pinning%20How-To.md) for TS ⇄ Rust wire shapes
-- [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why `pnpm.overrides` exists and when to add/remove one
+- [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why the pnpm `overrides:` exist and when to add/remove one
 - [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md) — The Rust cache keys CI jobs share, and what forks them
 - [TypeScript CI Build Cache Explanation](./docs/TypeScript/CI%20Build%20Cache%20Explanation.md) — The `vp run pack` cache `ci-typescript.yml` restores and `ts-cache-warm.yml` warms on `main`
 - [Pebble CI Build Cache Explanation](./docs/Pebble/CI%20Build%20Cache%20Explanation.md) — The Pebble SDK install `ci-pebble.yml` caches through `.github/actions/setup-pebble-sdk`

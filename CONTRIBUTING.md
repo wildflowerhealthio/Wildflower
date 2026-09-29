@@ -41,7 +41,6 @@ This is a pnpm + Vite+ workspace (a polyglot repo — TS packages plus a Cargo w
 - **`slices/`** — Vertical product slices (`apps`, `browser-sniffer`, `collector`, `databases`, `emr`, `gatekeeper`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`). Each is a `<name>-core` plus optional platform adapters (`-react`, `-rust`, `-tauri`/`-tauri-rust`, `-node`, `-web`); a few are Rust-only
 - **`plugins/`** — Tauri plugins (`tauri-plugin-native-webview`)
 - **`scripts/`** — Shared check/build scripts (e.g. `scripts/checks/rust.sh`)
-- **`patches/`** — pnpm patch files applied via `pnpm.patchedDependencies`
 - **`docs/`** — Project documentation ([four-kinds convention](./docs/Documentation/Explanation.md))
 
 Package versions are governed by the pnpm workspace catalog in `pnpm-workspace.yaml` (which is authoritative for workspace membership — the npm `workspaces` field in `package.json` is not used).
@@ -156,7 +155,7 @@ See [Effect Patterns Reference](./docs/Effect/Patterns%20Reference.md) for repos
 3. Keep dependencies minimal
 4. Avoid version conflicts across packages
 
-Dependency versions are governed by the pnpm **catalog** in `pnpm-workspace.yaml` (`catalogMode: prefer`) plus `pnpm.overrides` in the root `package.json`. Prefer `catalog:` references so a version is pinned in one place. See [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) for when to add or remove an override.
+Dependency versions are governed by the pnpm **catalog** in `pnpm-workspace.yaml` (`catalogMode: prefer`) plus the `overrides:` block in the same file. Prefer `catalog:` references so a version is pinned in one place. See [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) for when to add or remove an override.
 
 ### Peer Dependencies
 
