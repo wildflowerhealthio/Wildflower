@@ -1,4 +1,3 @@
-import './instrument.ts'
 import { createBrowserHistory } from '@tanstack/react-router'
 import 'react-tundraish/styles'
 // The shared chrome's layout tokens, which the landing page's header, footer
@@ -13,9 +12,12 @@ import {
   searchWithoutAuthorizationResponse,
 } from 'gatekeeper-core/smart-client'
 import { sanitizeReturnTo, type TokenResponseHandler } from 'gatekeeper-react'
+import type { JSX } from 'react'
 import { addOsColorSchemeListener } from 'react-tundraish'
+import { consentedTelemetryLayer } from 'telemetry-web'
 import './styles/global.css'
-import { renderApp } from './app-root.tsx'
+import { buildAppTree, mountAtRoot } from './app-root.tsx'
+import { WebEntryRoot } from './session/web-entry-root.tsx'
 import {
   authStateForSession,
   finishSignIn,
@@ -77,7 +79,7 @@ const settleUrlAfterSignIn = (returnTo: string): void => {
 
 /**
  * Redeem an authorization code, if this load is a return leg, and only then
- * mount the app.
+ * build the app.
  *
  * The order is the point. The flow returns to the app root and settles on the
  * return path (`/home` by default), which sits behind the `_auth` gate, and the
@@ -87,8 +89,11 @@ const settleUrlAfterSignIn = (returnTo: string): void => {
  * flight, so the sign-in would appear to fail every time. An ordinary load pays
  * a microtask for this: with no pending record, `completeSignIn` resolves to
  * `None` without touching the network.
+ *
+ * `WebEntryRoot` calls this once the visitor has answered the telemetry
+ * consent dialog, so nothing here runs before an answer.
  */
-const boot = async (): Promise<void> => {
+const bootApp = async (): Promise<JSX.Element> => {
   const returnSearch = window.location.search
   // The same `basepath` the router gets, so the callback re-derives the exact
   // `redirect_uri` the outbound leg sent from the app root — see `sign-in.ts`.
@@ -142,14 +147,18 @@ const boot = async (): Promise<void> => {
     },
   }
 
-  renderApp({
+  return buildAppTree({
     history,
     entry: 'main-web',
     basepath,
     ...entryOptions,
+    // Empty until the visitor's answer turns performance on: this entry never
+    // starts telemetry from the build's env.
+    effectTelemetryLayer: consentedTelemetryLayer,
     tokenResponseHandler,
     ...(completed.tag === 'Failed' ? { signInProblem: completed.problem } : {}),
   })
 }
 
-void boot()
+// The consent dialog first; the answer starts telemetry and then boots the app.
+mountAtRoot(<WebEntryRoot bootApp={bootApp} />)

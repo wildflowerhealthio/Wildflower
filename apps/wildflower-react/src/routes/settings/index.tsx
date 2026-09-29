@@ -8,6 +8,7 @@ import type { SettingsItem } from 'shared-structures-react'
 import { tunnelSettingsItemsFragment } from 'tunnel-react'
 
 import { usePlatformSettingsItems } from '../../session/platform-settings-items-context.ts'
+import { useTelemetrySettingsItems } from '../../session/telemetry-settings-items.ts'
 
 /**
  * Compile-time concatenation of every slice's
@@ -48,15 +49,19 @@ function SettingsIndex({
 }
 
 /**
- * Route binding: reads the entry's platform settings rows from the
- * {@link usePlatformSettingsItems} provider and hands them to the
- * presentational {@link SettingsIndex}.
+ * Route binding: reads the entry's rows and hands them to the presentational
+ * {@link SettingsIndex}: the Telemetry row where the entry mounted the consent
+ * gate ({@link useTelemetrySettingsItems}), then the entry's platform settings
+ * rows from the {@link usePlatformSettingsItems} provider.
  */
 function SettingsIndexRoute(): JSX.Element {
+  const telemetrySettingsItems = useTelemetrySettingsItems()
   const platformSettingsItems = usePlatformSettingsItems()
-  return <SettingsIndex platformSettingsItems={platformSettingsItems} />
+  return (
+    <SettingsIndex platformSettingsItems={[...telemetrySettingsItems, ...platformSettingsItems]} />
+  )
 }
 
 const Route = createFileRoute('/settings/')({ component: SettingsIndexRoute })
 
-export { Route, SettingsIndex }
+export { Route, SettingsIndex, SettingsIndexRoute }

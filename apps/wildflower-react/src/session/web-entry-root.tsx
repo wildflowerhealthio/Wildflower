@@ -1,0 +1,72 @@
+import { TELEMETRY_CONSENT_COPY } from 'branding-core'
+import { Suspense, use, useRef, useState, type JSX, type ReactNode } from 'react'
+import {
+  CrashReportingBoundary,
+  TelemetryConsentGate,
+  type TelemetryConsentGateProps,
+  useConsentedTelemetryStart,
+} from 'telemetry-react'
+
+/** Props for {@link WebEntryRoot}. */
+interface WebEntryRootProps {
+  /**
+   * `main-web`'s boot: redeems the sign-in the page returned with, if any,
+   * and builds the app tree (`buildAppTree`). Called once, after the visitor
+   * has answered the telemetry consent dialog.
+   */
+  readonly bootApp: () => Promise<ReactNode>
+}
+
+/** Renders the app tree `bootedApp` resolves to, suspending until it does. */
+function BootedApp({ bootedApp }: { readonly bootedApp: Promise<ReactNode> }): ReactNode {
+  return use(bootedApp)
+}
+
+/**
+ * The root `main-web` mounts: the telemetry consent gate, then the owner UI.
+ *
+ * @remarks
+ * **Nothing boots before the visitor answers.** Until an answer for the
+ * current copy version is stored, the page is the consent dialog alone:
+ * `bootApp` has not run, so no sign-in is redeemed, no router, query client
+ * or runtime exists, and Sentry has not started. A stored answer is handed to
+ * the gate's `onDecided` in the first commit, as a new one is on Continue;
+ * either way the answer starts telemetry (reporting to the
+ * `VITE_SENTRY_DSN_WILDFLOWER_REACT` project, tagged
+ * `app: wildflower-react`, `entry: main-web`) and only then calls `bootApp`,
+ * once, so a persisted yes has Sentry and the tracer provider running before
+ * the router and runtime are built. Later answers (the Telemetry row in
+ * settings reopens the dialog) start or narrow telemetry and leave the app
+ * mounted. A boot that fails is reported by the boundary around it.
+ */
+function WebEntryRoot({ bootApp }: WebEntryRootProps): JSX.Element {
+  const { startTelemetry } = useConsentedTelemetryStart({
+    dsn: import.meta.env.VITE_SENTRY_DSN_WILDFLOWER_REACT ?? '',
+    tags: { app: 'wildflower-react', entry: 'main-web' },
+  })
+  // StrictMode runs the gate's layout effect twice on mount; the sign-in
+  // redemption in `bootApp` spends a single-use code, so it runs once.
+  const bootStarted = useRef(false)
+  const [bootedApp, setBootedApp] = useState<Promise<ReactNode>>()
+
+  const startTelemetryThenBoot: TelemetryConsentGateProps['onDecided'] = (consent) => {
+    startTelemetry(consent)
+    if (bootStarted.current) return
+    bootStarted.current = true
+    setBootedApp(bootApp())
+  }
+
+  return (
+    <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetryThenBoot}>
+      <CrashReportingBoundary extraContext={{ entry: 'main-web' }}>
+        {bootedApp === undefined ? null : (
+          <Suspense fallback={null}>
+            <BootedApp bootedApp={bootedApp} />
+          </Suspense>
+        )}
+      </CrashReportingBoundary>
+    </TelemetryConsentGate>
+  )
+}
+
+export { WebEntryRoot, type WebEntryRootProps }

@@ -13,6 +13,16 @@ export {
   TelemetryStatusControl,
   type TelemetryStatusControlProps,
 } from './telemetry-status-control.tsx'
+export { telemetryConsentSummary } from './telemetry-consent-summary.ts'
+export {
+  useConsentedTelemetryStart,
+  type ConsentedTelemetryStart,
+  type ConsentedTelemetryStartOptions,
+} from './use-consented-telemetry-start.ts'
+export {
+  CrashReportingBoundary,
+  type CrashReportingBoundaryProps,
+} from './crash-reporting-boundary.tsx'
 export {
   useTelemetryConsent,
   type TelemetryConsentPrompt,

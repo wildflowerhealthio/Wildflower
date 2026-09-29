@@ -1204,6 +1204,9 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 30.1.1
+      telemetry-core:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-core
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -1289,6 +1292,9 @@ importers:
       scopes-react:
         specifier: workspace:*
         version: link:../../slices/scopes/scopes-react
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-web
       tundra-css:
         specifier: 'catalog:'
         version: 0.14.0

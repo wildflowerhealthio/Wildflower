@@ -1,4 +1,3 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
@@ -133,16 +132,6 @@ vi.mock('../bridges/har-recorder-sender-forwarder.tsx', () => ({
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
-  webTelemetryLayerFromEnv: () => Layer.empty,
-}))
-// Bare `HttpClient` so the authed runtime constructs without telemetry/fetch.
-vi.mock('telemetry-react', () => ({
-  webHttpClientLayer: Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) =>
-      Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
-    )
-  ),
 }))
 // `renderApp` imports the real `routeTree.gen.ts`, whose top-level
 // imports eagerly pull in every slice's route screens (Effect HttpApi
@@ -230,6 +219,7 @@ describe('renderApp InnerWrap lifecycle', () => {
         tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
+        effectTelemetryLayer: Layer.empty,
         externalLinkRoot: () => 'https://example.test',
         platformSettingsItems: [],
         platformTabs: [],

@@ -60,12 +60,15 @@ import `branding-react/styles.css` itself.
   yes.** `SmartAppRoot` renders both branches inside `telemetry-react`'s
   `TelemetryConsentGate`, so until the visitor has answered the page is the
   dialog alone: the connect menu does not mount, the app does not mount, and
-  no query runs. The answer goes to `initConsentedTelemetry`, which starts
-  Sentry only when a switch is on. The FHIR host tag waits for Sentry to run;
-  the launch failure the page arrived with is reported once, after it starts.
-  The error boundaries around the launched app and around the connect menu,
-  and the `QueryClient`'s `onQueryError`, call `Sentry.captureException`
-  unconditionally, which does nothing on an SDK that was never initialized.
+  no query runs. The answer goes to `telemetry-react`'s
+  `useConsentedTelemetryStart`, which starts Sentry only when a switch is on;
+  the owner UI's web entry starts through the same hook, so the start logic
+  lives there, not here. The FHIR host tag waits for Sentry to run; the launch
+  failure the page arrived with is reported once, from the hook's
+  `onFirstStart`. The `CrashReportingBoundary`s (`telemetry-react`) around
+  the launched app and around the connect menu, and the `QueryClient`'s
+  `onQueryError`, call `Sentry.captureException` unconditionally, which does
+  nothing on an SDK that was never initialized.
   `onQueryError` skips the handshake query (`isSmartHandshakeQuery`): a failed
   handshake comes back to the root as its launch failure and is reported
   there, so it is reported once. An app keeps the plain

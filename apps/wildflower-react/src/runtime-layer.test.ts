@@ -4,7 +4,7 @@ import {
   HttpClientRequest,
   HttpClientResponse,
 } from '@effect/platform'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Tracer } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { RunAuthed, RuntimeLayer } from './router-context.ts'
@@ -37,10 +37,32 @@ describe('runAuthed runner', () => {
   })
 })
 
+describe('runAuthed telemetry', () => {
+  it('should run every authed request under the entry’s Effect telemetry layer', async () => {
+    // Arrange — the entry's layer sets a tracer of its own
+    const entryTracer = Tracer.make({
+      span: () => {
+        throw new Error('not used')
+      },
+      context: (execute) => execute(),
+    })
+    const { runAuthed } = buildRunAuthed(
+      () => capturingHttpClientLayer([]),
+      Layer.setTracer(entryTracer)
+    )
+
+    // Act
+    const tracer = await runAuthed(Effect.tracer)
+
+    // Assert
+    expect(tracer).toBe(entryTracer)
+  })
+})
+
 describe('runAuthed boot-race integration', () => {
   it('re-sends a 401 and resolves once the request clears', async () => {
     // Arrange
-    const { runAuthed } = buildRunAuthed(() => flakyUnauthorizedThenOkLayer())
+    const { runAuthed } = buildRunAuthed(() => flakyUnauthorizedThenOkLayer(), Layer.empty)
 
     // Act — the first send 401s; the runner re-sends and gets the 204.
     const status = await runAuthed(fetchStatus)
@@ -67,7 +89,7 @@ describe('runAuthed boot-race integration', () => {
             )
       })
     )
-    const { runAuthed } = buildRunAuthed(() => layer)
+    const { runAuthed } = buildRunAuthed(() => layer, Layer.empty)
 
     // Act — boot, then a genuine post-boot 401.
     expect(await runAuthed(fetchStatus)).toBe(204)
@@ -102,7 +124,7 @@ const makeRunner = (
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-} => buildRunAuthed(() => capturingHttpClientLayer(captures))
+} => buildRunAuthed(() => capturingHttpClientLayer(captures), Layer.empty)
 
 // Requires `HttpClient` and issues one request so the stub can record
 // the (absent) Authorization header.
