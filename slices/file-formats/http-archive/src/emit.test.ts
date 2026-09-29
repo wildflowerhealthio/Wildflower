@@ -1,10 +1,11 @@
+import { isIPv4, isIPv6 } from 'node:net'
 // oxlint-disable import/max-dependencies -- HAR 1.2 is published as eighteen
 // cross-referencing schema files; ajv needs every one registered before it can
 // compile `har.json`, and splitting them across modules would only move the
 // count, not reduce it.
 import { Ajv } from 'ajv'
 import draft06 from 'ajv/dist/refs/json-schema-draft-06.json' with { type: 'json' }
-import { DateTime, Duration, Schema } from 'effect'
+import { DateTime, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import afterRequestSchema from 'har-schema/lib/afterRequest.json' with { type: 'json' }
 import beforeRequestSchema from 'har-schema/lib/beforeRequest.json' with { type: 'json' }
@@ -30,7 +31,15 @@ import { describe, expect, test } from 'vite-plus/test'
 import { noTimings } from 'web-trace-core'
 import type { TraceExchange } from 'web-trace-core'
 import { arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
-import { CREATOR_NAME, DROPPED_REQUEST_ON_IMPORT_COMMENT, emitHar, emitHarFromLog } from './emit.ts'
+import {
+  CREATOR_NAME,
+  DROPPED_REQUEST_ON_IMPORT_COMMENT,
+  emitHar,
+  emitHarFromLog,
+  harFromJson,
+  harToJson,
+  queryStringOf,
+} from './emit.ts'
 import { Har } from './har.ts'
 import type * as HttpArchive from './http-archive.ts'
 
@@ -39,13 +48,17 @@ const { session: sessionArbitrary } = arbitraries(fc)
 /**
  * The published HAR 1.2 schema, wired up as the authority this emitter is held
  * to. `strict` is off because the schema carries pre-draft keywords (`optional`,
- * `min`) that ajv would otherwise reject, and `validateFormats` is off because
- * ajv 8 ships no format validators — the one format that matters here,
- * `startedDateTime`, is also pinned by a `pattern` in the schema itself, which
- * does run.
+ * `min`) that ajv would otherwise reject. ajv 8 ships no format validators, so
+ * the schema's formats are supplied here: `date-time` and `uri` pass through
+ * (`startedDateTime` is also pinned by a `pattern` in the schema itself, which
+ * does run), while `ipv4` and `ipv6` are checked for real — `serverIPAddress`
+ * is a `oneOf` of the two, which no string satisfies when both pass through.
  */
 const validateHar = ((): ((value: unknown) => true | readonly string[]) => {
-  const ajv = new Ajv({ strict: false, validateFormats: false })
+  const ajv = new Ajv({
+    strict: false,
+    formats: { 'date-time': true, uri: true, ipv4: isIPv4, ipv6: isIPv6 },
+  })
   ajv.addMetaSchema(draft06)
   for (const schema of [
     afterRequestSchema,
@@ -263,5 +276,95 @@ describe('emitHarFromLog', () => {
       requestComment: 'The request side was never observed.',
     })
     expect(validateHar(encode(archive))).toBe(true)
+  })
+})
+
+describe('the optional HAR 1.2 fields', () => {
+  /** An emitted archive with a page, and its entry pointing at it with every phase stated. */
+  const withPage = (): Har => {
+    const { log } = emit([traceExchange()])
+    return {
+      log: {
+        ...log,
+        pages: [
+          {
+            startedDateTime: DateTime.unsafeMake('2026-05-04T15:22:31.104Z'),
+            id: 'page_1',
+            title: 'https://portal.example.org/records',
+            pageTimings: { onContentLoad: 412.5 },
+          },
+        ],
+        entries: log.entries.map((entry) => ({
+          ...entry,
+          pageref: 'page_1',
+          timings: { ...entry.timings, blocked: 1, dns: -1, connect: 4, ssl: 2 },
+          serverIPAddress: '203.0.113.7',
+          connection: '443',
+        })),
+      },
+    }
+  }
+
+  test('an archive with pages, pageref, a server address and every phase validates', () => {
+    expect(validateHar(encode(withPage()))).toBe(true)
+  })
+
+  test('the schema check can fail — a page without an id is caught', () => {
+    const archive = encode(withPage())
+    const broken = {
+      log: {
+        ...archive.log,
+        pages: archive.log.pages?.map((page) => ({ ...page, id: undefined })),
+      },
+    }
+    expect(validateHar(broken)).not.toBe(true)
+  })
+
+  test('the schema check can fail — a server address that is a hostname is caught', () => {
+    const archive = encode(withPage())
+    const broken = {
+      log: {
+        ...archive.log,
+        entries: archive.log.entries.map((entry) => ({
+          ...entry,
+          serverIPAddress: 'portal.example.org',
+        })),
+      },
+    }
+    expect(validateHar(broken)).not.toBe(true)
+  })
+
+  test('round-trips through the file text', () => {
+    const archive = withPage()
+    expect(Effect.runSync(harFromJson(Effect.runSync(harToJson(archive))))).toEqual(archive)
+  })
+})
+
+describe('harToJson', () => {
+  const archive = (): Har => emit([traceExchange()])
+
+  test('writes one line by default', () => {
+    const text = Effect.runSync(harToJson(archive()))
+    expect(text).not.toContain('\n')
+    expect(JSON.parse(text)).toEqual(encode(archive()))
+  })
+
+  test('pretty writes the same archive indented by two spaces', () => {
+    const text = Effect.runSync(harToJson(archive(), { pretty: true }))
+    expect(text).toBe(JSON.stringify(encode(archive()), null, 2))
+  })
+})
+
+describe('queryStringOf', () => {
+  test('lists every parameter in order, repeats included', () => {
+    expect(queryStringOf('https://portal.example.org/search?code=a&code=b&page=2')).toEqual([
+      { name: 'code', value: 'a' },
+      { name: 'code', value: 'b' },
+      { name: 'page', value: '2' },
+    ])
+  })
+
+  test('a URL that does not parse has no query string', () => {
+    expect(queryStringOf('not a url?q=1')).toEqual([])
   })
 })

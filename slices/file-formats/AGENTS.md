@@ -15,8 +15,9 @@ consumer slices.
 ## Package roles
 
 - **[`http-archive`](./http-archive/AGENTS.md)** — the HTTP Archive format
-  (HAR 1.2): `Har`/`HarFromJson`, `emitHar`/`emitHarFromLog`, and the
-  `HttpArchive` projection an importer and a replay consume. Moved out of the
+  (HAR 1.2): `Har`/`HarFromJson`, `emitHar`/`emitHarFromLog`, the
+  `HttpArchive` projection an importer and a replay consume, and `ChromeHar`
+  for an archive that keeps the Chrome DevTools entry extras. Moved out of the
   old `har-importer-core/har` subpath.
 - **[`positioned-text`](./positioned-text/AGENTS.md)** — a PDF's text content
   as absolutely positioned runs: the `Document.Schema` schema

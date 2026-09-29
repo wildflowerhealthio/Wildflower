@@ -1,10 +1,10 @@
-import { DateTime, Duration, Encoding, Schema } from 'effect'
+import { DateTime, Duration, type Effect, Encoding, type ParseResult, Schema } from 'effect'
 
 import type { TraceExchange } from 'web-trace-core'
 import { contentTypeOf } from 'web-trace-core/capture'
 
 import {
-  type Har,
+  Har,
   type HarBody,
   type HarEntry,
   HarFromJson,
@@ -65,6 +65,14 @@ interface EmitHarOptions {
 
 const CREATOR_NAME = 'Wildflower Web Trace'
 
+/**
+ * The query parameters of `url`, in order, as HAR's `request.queryString`
+ * lists them.
+ *
+ * @param url - The request URL
+ * @returns One pair per parameter, repeats preserved, or none when `url` does
+ *   not parse as a URL
+ */
 const queryStringOf = (url: string): readonly HarNameValue[] => {
   try {
     return [...new URL(url).searchParams].map(([name, value]) => ({ name, value }))
@@ -306,8 +314,34 @@ const emitHarFromLog = (log: HttpArchive.Log, options: EmitHarFromLogOptions = {
   }
 }
 
-/** Serializes an archive to the text of a `.har` file. */
-const harToJson = Schema.encode(HarFromJson)
+/**
+ * Options for {@link harToJson}.
+ */
+interface HarToJsonOptions {
+  /**
+   * Indent the JSON by two spaces, as a DevTools "Save all as HAR" export does,
+   * rather than writing it on one line.
+   *
+   * @defaultValue `false`
+   */
+  readonly pretty?: boolean
+}
+
+/** {@link HarFromJson}, writing two-space-indented JSON. */
+const HarFromPrettyJson = Schema.parseJson(Har, { space: 2 })
+
+/**
+ * Serializes an archive to the text of a `.har` file.
+ *
+ * @param har - The archive to write
+ * @param options - Whether to indent the JSON
+ * @returns The file text, or a `ParseError` when `har` does not encode
+ */
+const harToJson = (
+  har: Har,
+  options: HarToJsonOptions = {}
+): Effect.Effect<string, ParseResult.ParseError> =>
+  Schema.encode(options.pretty === true ? HarFromPrettyJson : HarFromJson)(har)
 
 /** Reads the text of a `.har` file into an archive. */
 const harFromJson = Schema.decodeUnknown(HarFromJson)
@@ -321,7 +355,9 @@ export {
   emitHarFromLog,
   harFromJson,
   harToJson,
+  type HarToJsonOptions,
   METHOD_COMMENT,
+  queryStringOf,
   REQUEST_COMMENT,
   SKIPPED_BODY_COMMENT,
 }
