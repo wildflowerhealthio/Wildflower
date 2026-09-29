@@ -96,7 +96,9 @@ const FHIR_ID = new RegExp(`^${FHIR_ID_PATTERN}$`)
 const FILE_NAME = new RegExp(`^${FILE_NAME_PATTERN}$`)
 
 /** A resource id in FHIR R4's id grammar. */
-const ResourceIdSchema = Schema.String.pipe(Schema.pattern(FHIR_ID))
+const ResourceIdSchema = Schema.String.pipe(Schema.pattern(FHIR_ID)).annotations({
+  identifier: 'DataSetResourceId',
+})
 
 /** A resource file's path, as the manifest lists it. */
 const ResourcePathSchema = Schema.String.pipe(

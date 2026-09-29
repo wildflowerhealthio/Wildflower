@@ -29,7 +29,7 @@ const PersonSchema = Schema.Struct({
   displayName: Schema.NonEmptyString,
   /** A sentence or two on what their records show. */
   summary: Schema.String,
-})
+}).annotations({ identifier: 'DataSetPerson' })
 
 /** A person and the files that are theirs. */
 const PersonEntrySchema = Schema.Struct({
@@ -43,14 +43,14 @@ const PersonEntrySchema = Schema.Struct({
   resources: Schema.Array(DataSetLayout.ResourcePathSchema),
   /** The files the person's records were imported from, in path order. */
   staticFiles: Schema.Array(DataSetLayout.StaticFilePathSchema),
-})
+}).annotations({ identifier: 'DataSetPersonEntry' })
 
 /** How many people and distinct files the data set holds; a file two people share counts once. */
 const TotalsSchema = Schema.Struct({
   people: Schema.NonNegativeInt,
   resources: Schema.NonNegativeInt,
   staticFiles: Schema.NonNegativeInt,
-})
+}).annotations({ identifier: 'DataSetTotals' })
 
 const ManifestStruct = Schema.Struct({
   schemaVersion: Schema.Literal(SCHEMA_VERSION),
