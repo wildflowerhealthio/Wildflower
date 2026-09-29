@@ -111,6 +111,21 @@ describe('ProfileResponseKind', () => {
       expect(result.right[0]?.name).toEqual([])
     })
 
+    it('does not fail on a field the Patient does not read, whatever its shape', () => {
+      const unreadFieldsOddlyShaped = {
+        data: {
+          identifiers: { uid: 'uid-1', reportingGuid: null },
+          accountState: 7,
+          createdOn: null,
+          updatedOn: '2010-05-03',
+        },
+        related: {},
+      }
+      const result = runParse(makeResponse(JSON.stringify(unreadFieldsOddlyShaped)))
+      if (result._tag !== 'Right') throw new Error('expected a successful parse')
+      expect(result.right[0]?.id).toBe('uid-1')
+    })
+
     it('fails with ParseError when the required uid is missing', () => {
       expectLeftToEqual(
         runParse(makeResponse(JSON.stringify({ data: { identifiers: {} } }))),

@@ -7,9 +7,22 @@ import { REXALL_PROFILE_URL } from '../tunnel-url.ts'
 
 type PatientType = typeof Patient.Schema.Type
 
-type Profile = typeof CarebookProfile.Type
+/**
+ * The part of {@link CarebookProfile} the `Patient` is built from. Decoding
+ * only these fields keeps every field the `Patient` does not read — the
+ * timestamps, `accountState`, `reportingGuid`, `related` — from failing a
+ * profile, whatever shape a capture sends it in.
+ */
+const PatientProfile = Schema.Struct({
+  data: Schema.Struct({
+    ...CarebookProfile.fields.data.pick('names', 'birthDate', 'zipPostalCode').fields,
+    identifiers: CarebookProfile.fields.data.fields.identifiers.pick('uid', 'email'),
+  }),
+})
 
-const decodeProfile = Schema.decode(Schema.parseJson(CarebookProfile))
+type Profile = typeof PatientProfile.Type
+
+const decodeProfile = Schema.decode(Schema.parseJson(PatientProfile))
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
 
 /** A profile name's part, when the profile carries a non-blank one. */

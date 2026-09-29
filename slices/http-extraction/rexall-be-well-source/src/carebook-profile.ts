@@ -12,17 +12,16 @@ const OptionalProfileString = Schema.optionalWith(Schema.String, { as: 'Option' 
  * not FHIR), in the shape of `fixtures/profile-me.json`.
  *
  * @remarks
- * `ProfileResponseKind` decodes it into an R4 `Patient`, so the decode is
- * lenient: only `data.identifiers.uid` (the `Patient.id` every medication's
+ * Lenient: only `data.identifiers.uid` (the `Patient.id` every medication's
  * `subject` references) is required, every other field is optional, and
- * unmodelled keys are ignored. Field names are reconciled against a real
- * capture — note the non-obvious nesting (`data.names`, top-level
- * `data.zipPostalCode`); since the decode is lenient, a wrong path silently
- * leaves `Patient.name` / `Patient.address` empty rather than failing.
+ * unmodelled keys are ignored. `ProfileResponseKind` decodes the fields of it
+ * that its `Patient` reads. Field names are reconciled against a real capture —
+ * note the non-obvious nesting (`data.names`, top-level `data.zipPostalCode`);
+ * since the decode is lenient, a wrong path silently leaves `Patient.name` /
+ * `Patient.address` empty rather than failing.
  *
- * `createdOn` / `updatedOn` arrive in `CarebookTimestamp`'s form. They
- * decode as plain strings: the `Patient` reads neither, so a timestamp in some
- * other form must not fail the profile.
+ * `createdOn` / `updatedOn` arrive in `CarebookTimestamp`'s form and decode as
+ * plain strings, so a timestamp in some other form does not fail the profile.
  */
 const CarebookProfile = Schema.Struct({
   data: Schema.Struct({

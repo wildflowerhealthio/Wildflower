@@ -31,8 +31,9 @@ rather than a copy, and what it writes is what the response kinds read.
   coding-system catalogue (`CarebookExtension`, `CarebookIdentifierSystem`,
   `CarebookCodingSystem`, `RequestTypeCode`, `REXALL_SYSTEM_SOURCE`).
 - `src/carebook-profile.ts` — `CarebookProfile`, the wire schema of the
-  profile body, which `ProfileResponseKind` decodes. Lenient: only
-  `data.identifiers.uid` is required and unmodelled keys are ignored.
+  profile body. Lenient: only `data.identifiers.uid` is required and unmodelled
+  keys are ignored. `ProfileResponseKind` decodes only the fields its `Patient`
+  reads, so no other field fails a profile.
 - `src/carebook-timestamp.ts` — `CarebookTimestamp`, the dialect's
   `2024-03-11T16:54:30+00:00` form ⇄ `DateTime.Utc`, and `carebookTimestampOf`,
   its encoder. `CarebookProfile` keeps `createdOn` / `updatedOn` as plain
