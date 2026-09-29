@@ -137,12 +137,12 @@ accepts the writes and the set has room to grow.
   so its real URL carries `?code=…&state=…`. A browser history would try to
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
-- **Plain `FetchHttpClient.layer`, not `telemetry-react`'s
-  `webHttpClientLayer`.** Not for a `local_only` reason — this app is registered
+- **Plain `FetchHttpClient.layer`, with no `telemetry-web`
+  `webTelemetryLayerFromEnv`.** Not for a `local_only` reason — this app is registered
   `local_only = 0`, because its assets are served from wildflowerhealth.io and it
   writes to the FHIR base the handshake named. The reason is that the importer's
   only outbound traffic is that FHIR server and, once the visitor says yes in
-  `SmartAppRoot`'s consent dialog, Sentry; the telemetry layer would start
+  `SmartAppRoot`'s consent dialog, Sentry; that layer would start
   reporting from the build's env without asking, in a bundle whose whole job is
   moving the user's records between two places they chose. `app.tsx` is
   the only file that names the real transport; `buildSmartRouterContext` keeps it

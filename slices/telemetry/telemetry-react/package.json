@@ -2,7 +2,7 @@
   "name": "telemetry-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The browser side of Wildflower telemetry in React: the telemetry consent gate every web app starts behind (the non-dismissable consent dialog, the hook that keeps the answer in localStorage, and the status control that reopens it), what an app root does with the answer (`useConsentedTelemetryStart`, which starts telemetry with the app's own DSN and tags, and `CrashReportingBoundary`, which reports render crashes), and the web-side HttpClient layer that combines FetchHttpClient with the web telemetry layer, which slice-react packages import as a default HTTP layer.",
+  "description": "The browser side of Wildflower telemetry in React: the telemetry consent gate every web app starts behind (the non-dismissable consent dialog, the hook that keeps the answer in localStorage, and the status control that reopens it), and what an app root does with the answer (`useConsentedTelemetryStart`, which starts telemetry with the app's own DSN and tags, and `CrashReportingBoundary`, which reports render crashes).",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -28,14 +28,12 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/platform": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "branding-core": "workspace:*",
-    "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
@@ -51,9 +49,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "@effect/platform": "catalog:",
     "branding-core": "workspace:*",
-    "effect": "catalog:",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",

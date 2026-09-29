@@ -1,4 +1,3 @@
-export { webHttpClientLayer } from './web-http-client-layer.ts'
 export {
   TelemetryConsentContext,
   useTelemetryConsentControls,

@@ -57,6 +57,31 @@ describe('runAuthed telemetry', () => {
     // Assert
     expect(tracer).toBe(entryTracer)
   })
+
+  it('should trace the transport’s own HTTP spans with the entry’s tracer', async () => {
+    // Arrange — the transport carries no telemetry of its own (as the real
+    // `FetchHttpClient.layer` transport does not); the entry's layer records
+    // every span Effect opens
+    const spanNames: string[] = []
+    const defaultTracer = Effect.runSync(Effect.tracer)
+    const recordingTracer = Tracer.make({
+      span: (...spanArgs: Parameters<Tracer.Tracer['span']>) => {
+        spanNames.push(spanArgs[0])
+        return defaultTracer.span(...spanArgs)
+      },
+      context: (execute, fiber) => defaultTracer.context(execute, fiber),
+    })
+    const { runAuthed } = buildRunAuthed(
+      () => capturingHttpClientLayer([]),
+      Layer.setTracer(recordingTracer)
+    )
+
+    // Act
+    await runAuthed(fetchWithHttpInScope)
+
+    // Assert
+    expect(spanNames).toContain('http.client GET')
+  })
 })
 
 describe('runAuthed boot-race integration', () => {

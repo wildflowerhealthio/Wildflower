@@ -5065,9 +5065,6 @@ importers:
 
   slices/telemetry/telemetry-react:
     devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
       '@testing-library/dom':
         specifier: 'catalog:'
         version: 10.4.2
@@ -5086,9 +5083,6 @@ importers:
       branding-core:
         specifier: workspace:*
         version: link:../../branding/branding-core
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2

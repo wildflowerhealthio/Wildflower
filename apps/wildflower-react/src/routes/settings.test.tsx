@@ -42,7 +42,7 @@ const renderSettingsScreen = (platformSettingsItems: readonly SettingsItem[] = [
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: () => <SettingsIndex platformSettingsItems={platformSettingsItems} />,
+    component: () => <SettingsIndex entrySettingsItems={platformSettingsItems} />,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute]),

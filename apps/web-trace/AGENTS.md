@@ -76,11 +76,11 @@ package growing a second, prop-threaded way in.
   so its real URL carries `?code=…&state=…`. A browser history would try to
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
-- **Plain `FetchHttpClient.layer`, not `telemetry-react`'s
-  `webHttpClientLayer`.** The app is registered `local_only = 0` (its assets are
+- **Plain `FetchHttpClient.layer`, with no `telemetry-web`
+  `webTelemetryLayerFromEnv`.** The app is registered `local_only = 0` (its assets are
   served from the published site). Its only outbound traffic is the FHIR server
-  and, once the visitor says yes in `SmartAppRoot`'s consent dialog, Sentry; the
-  telemetry layer would start reporting from the build's env without asking.
+  and, once the visitor says yes in `SmartAppRoot`'s consent dialog, Sentry; that
+  layer would start reporting from the build's env without asking.
 - **`build` is `vp build`, with no `tsc` step** (unlike `apps/medications-app`).
   The tsconfig sets `customConditions: ["source"]` so `tsc` and the bundler agree on
   which copy of `QueryClient` a slice's router context refers to — without it,

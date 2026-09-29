@@ -72,8 +72,8 @@ import `branding-react/styles.css` itself.
   `onQueryError` skips the handshake query (`isSmartHandshakeQuery`): a failed
   handshake comes back to the root as its launch failure and is reported
   there, so it is reported once. An app keeps the plain
-  `FetchHttpClient.layer` and never provides `webHttpClientLayer` or calls
-  `webTelemetryLayerFromEnv` / `initWebTelemetryFromEnv`: those start
+  `FetchHttpClient.layer` and never provides `webTelemetryLayerFromEnv` or
+  calls `initWebTelemetryFromEnv`: those start
   telemetry from the build's env without asking. Tests cover each branch
   directly (`smart-app-root.test.tsx`).
 - **The telemetry status control is on both branches.** It sits in
