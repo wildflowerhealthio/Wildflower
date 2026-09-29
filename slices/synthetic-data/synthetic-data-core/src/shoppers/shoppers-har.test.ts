@@ -33,6 +33,19 @@ const decodeLog = Schema.decodeUnknownSync(HttpArchive.LogFromHarJson)
 const STATUS_URL =
   /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/prescriptions\/[0-9a-f-]{36}\/prescription-status$/
 
+/** The status body's fillability fields: whether the portal still offers a fill. */
+const decodeStatusBody = Schema.decodeUnknownSync(
+  Schema.parseJson(
+    Schema.Struct({
+      expired: Schema.Boolean,
+      archived: Schema.Boolean,
+      renewable: Schema.Boolean,
+      nextFillDate: Schema.optional(Schema.String),
+      status: Schema.Struct({ type: Schema.String }),
+    })
+  )
+)
+
 const prescriptionCountOf = (account: ShoppersAccount): number =>
   account.patients.reduce((count, patient) => count + patient.story.prescriptions.length, 0)
 
@@ -85,6 +98,26 @@ describe('ShoppersHar.render', () => {
         expect(fillDates.length).toBeGreaterThan(prescriptionCountOf(account))
         for (const epochMillis of fillDates) {
           expect(epochMillis).toBeLessThan(captureStart)
+        }
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('property: a status body offers a fill only while the prescription is neither archived nor expired', () => {
+    fc.assert(
+      fc.property(asOfArbitrary, accountArbitrary, (asOf, account) => {
+        const statusBodies = decodeLog(ShoppersHar.render(asOf, account))
+          .entries.filter((entry) => STATUS_URL.test(entry.url))
+          .map((entry) => decodeStatusBody(new TextDecoder().decode(entry.body)))
+        expect(statusBodies).toHaveLength(prescriptionCountOf(account))
+        for (const body of statusBodies) {
+          const fillable = !body.archived && !body.expired
+          expect(body.renewable).toBe(fillable)
+          if (!fillable) {
+            expect(body.status.type).toBe('UNABLE_TO_RENEW_ONLINE')
+            expect(body.nextFillDate).toBeUndefined()
+          }
         }
       }),
       { numRuns: RUNS }

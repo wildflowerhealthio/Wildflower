@@ -180,15 +180,21 @@ const dispensesOf = (
 const isArchived = (expected: ExpectedPrescription): boolean =>
   expected.status === 'stopped' || expected.nextKey !== null
 
-/** The portal's machine status: archived, else refillable while repeats remain, else renewable. */
+/** Whether the prescription's validity has run out by the as-of day. */
+const isExpired = (expected: ExpectedPrescription): boolean => expected.writtenDay + VALID_DAYS <= 0
+
+/**
+ * The portal's machine status: unable to renew online once archived or
+ * expired, else refillable while repeats remain, else renewable.
+ */
 const statusCodeOf = (expected: ExpectedPrescription): string => {
-  if (isArchived(expected)) return 'UNABLE_TO_RENEW_ONLINE'
+  if (isArchived(expected) || isExpired(expected)) return 'UNABLE_TO_RENEW_ONLINE'
   return expected.repeatsAvailable > 0 ? 'READY_FOR_REFILL' : 'READY_FOR_RENEW'
 }
 
 /** The importer's status: `stopped` when archived or expired, else `unknown`. */
 const requestStatusOf = (expected: ExpectedPrescription): 'stopped' | 'unknown' =>
-  isArchived(expected) || expected.writtenDay + VALID_DAYS <= 0 ? 'stopped' : 'unknown'
+  isArchived(expected) || isExpired(expected) ? 'stopped' : 'unknown'
 
 describe(
   'ShoppersHar.render through the HAR importer',

@@ -70,7 +70,10 @@ One namespace per module, in the `effect` style, from the flat root entry:
   `customer-payload.ts`, `prescription-status-payload.ts` and
   `prescription-history-payload.ts` build the three bodies. The status feed
   names the product on the label now and holds only the latest fill; the
-  history feed lists every fill with the DIN dispensed that day.
+  history feed lists every fill with the DIN dispensed that day. A
+  prescription is valid for 365 days from the day it is written; once it is
+  expired or archived its status body offers no fill (`Unable to renew
+online`, not renewable, no `nextFillDate`).
 
 ## Adding a source
 
@@ -120,7 +123,8 @@ particular person's story.
   amortized dose.
 - `src/shoppers/shoppers-har.test.ts` — the Rexall properties again for the
   Shoppers archive over generated accounts, plus the collector's page and XHR
-  order.
+  order, and that no expired or archived prescription's status body offers a
+  fill.
 - `src/shoppers/shoppers-har.round-trip.test.ts` — generated accounts' HARs
   through `harImporter.decode`, then `medication-core`: the Patients (one per
   managed person, plus the account Patient), each request's brand, DIN, sig,

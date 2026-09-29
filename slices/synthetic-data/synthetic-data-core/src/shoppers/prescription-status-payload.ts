@@ -68,8 +68,8 @@ interface PrescriptionStatusPayload {
 }
 
 /**
- * The dashboard's status for a prescription that is no longer in use: the
- * machine type and labels the capture shows.
+ * The dashboard's status for a prescription that can no longer be filled —
+ * archived or expired: the machine type and labels the capture shows.
  */
 const ARCHIVED_STATUS: PortalStatus = {
   label: 'Unable to renew online',
@@ -78,7 +78,7 @@ const ARCHIVED_STATUS: PortalStatus = {
   type: 'UNABLE_TO_RENEW_ONLINE',
 }
 
-/** A prescription with repeats left. The set is open; this type extrapolates the capture's. */
+/** A valid prescription with repeats left. The set is open; this type extrapolates the capture's. */
 const REFILLABLE_STATUS: PortalStatus = {
   label: 'Ready for refill',
   portalLabel: 'Ready for refill',
@@ -86,7 +86,7 @@ const REFILLABLE_STATUS: PortalStatus = {
   type: 'READY_FOR_REFILL',
 }
 
-/** A prescription whose repeats have run out, still in use. */
+/** A valid prescription whose repeats have run out, still in use. */
 const RENEWABLE_STATUS: PortalStatus = {
   label: 'Ready for renewal',
   portalLabel: 'Ready to renew',
@@ -101,17 +101,29 @@ const RENEWABLE_STATUS: PortalStatus = {
 const isArchived = ({ prescription, superseded }: ShoppersPrescription): boolean =>
   prescription.ended !== null || superseded
 
+/** The last day before the prescription's validity runs out, as a story day. */
+const expiryDayOf = ({ prescription }: ShoppersPrescription): StoryDay =>
+  prescription.written.day + PRESCRIPTION_VALID_DAYS
+
+/** Whether the prescription has expired by the as-of day. */
+const isExpired = (shoppersPrescription: ShoppersPrescription): boolean =>
+  expiryDayOf(shoppersPrescription) <= 0
+
+/** Whether the prescription can still be filled: neither archived nor expired. */
+const isFillable = (shoppersPrescription: ShoppersPrescription): boolean =>
+  !isArchived(shoppersPrescription) && !isExpired(shoppersPrescription)
+
 const portalStatusOf = (shoppersPrescription: ShoppersPrescription): PortalStatus => {
-  if (isArchived(shoppersPrescription)) return ARCHIVED_STATUS
+  if (!isFillable(shoppersPrescription)) return ARCHIVED_STATUS
   return Prescription.repeatsRemainingOf(shoppersPrescription.prescription) > 0
     ? REFILLABLE_STATUS
     : RENEWABLE_STATUS
 }
 
-/** The day a prescription's next fill falls due, while it is in use and has a repeat left. */
+/** The day a prescription's next fill falls due, while it can be filled and has a repeat left. */
 const nextFillDayOf = (shoppersPrescription: ShoppersPrescription): StoryDay | null => {
   const { prescription } = shoppersPrescription
-  if (isArchived(shoppersPrescription) || Prescription.repeatsRemainingOf(prescription) === 0) {
+  if (!isFillable(shoppersPrescription) || Prescription.repeatsRemainingOf(prescription) === 0) {
     return null
   }
   return Prescription.suppliedUntilOf(prescription)
@@ -142,8 +154,6 @@ const prescriptionStatusPayloadOf = (
   const product = Prescription.currentProductOf(prescription)
   const lastFill = shoppersPrescription.fills.at(-1)
   const nextFillDay = nextFillDayOf(shoppersPrescription)
-  const expiryDay = prescription.written.day + PRESCRIPTION_VALID_DAYS
-  const expired = expiryDay <= 0
   const archived = isArchived(shoppersPrescription)
   return {
     id: shoppersPrescription.prescriptionId,
@@ -158,12 +168,12 @@ const prescriptionStatusPayloadOf = (
     din: product.din,
     direction: Prescription.sigOf(prescription),
     refillQuantity: Prescription.quantityPerFillOf(prescription),
-    expiryDate: portalDateTimeOf(asOf, expiryDay),
+    expiryDate: portalDateTimeOf(asOf, expiryDayOf(shoppersPrescription)),
     ...(lastFill === undefined ? {} : { lastFillDate: portalDateTimeOf(asOf, lastFill.day) }),
     ...(nextFillDay === null ? {} : { nextFillDate: portalDateTimeOf(asOf, nextFillDay) }),
-    expired,
+    expired: isExpired(shoppersPrescription),
     archived,
-    renewable: !archived && !expired,
+    renewable: isFillable(shoppersPrescription),
     ...(previousPrescriptionNumber === null
       ? {}
       : { previousPrescription: previousPrescriptionNumber }),
