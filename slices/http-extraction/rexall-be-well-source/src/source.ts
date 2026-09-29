@@ -4,7 +4,7 @@ import { SourceDescriptor } from 'http-extraction-fundamentals'
 import { rexallBeWellResponseKinds } from './response-kinds.ts'
 
 /**
- * The Rexall Be Well source as one value — the package's whole public surface.
+ * The Rexall Be Well source as one value — the package's primary export.
  * Both the live plan and the archive importer reach the same pre-adopted
  * `responseKinds` tuple through it by reference. See `response-kinds.ts`.
  */

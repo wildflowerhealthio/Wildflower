@@ -18,8 +18,11 @@ const MedicationRequestBundle = Bundle.searchsetBundle(MedicationRequest.Schema)
 const MedicationDispenseBundle = Bundle.searchsetBundle(MedicationDispense.Schema)
 
 /** Either dialect resource, discriminated on `resourceType`. */
-const MedicationResource = Schema.Union(MedicationRequest.Schema, MedicationDispense.Schema)
+const MedicationResource: Schema.Union<
+  [typeof MedicationRequest.Schema, typeof MedicationDispense.Schema]
+> = Schema.Union(MedicationRequest.Schema, MedicationDispense.Schema)
 
-const MedicationBundle = Bundle.searchsetBundle(MedicationResource)
+const MedicationBundle: ReturnType<typeof Bundle.searchsetBundle<typeof MedicationResource>> =
+  Bundle.searchsetBundle(MedicationResource)
 
 export { MedicationRequestBundle, MedicationDispenseBundle, MedicationResource, MedicationBundle }

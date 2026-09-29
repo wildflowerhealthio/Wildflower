@@ -8,6 +8,11 @@ portal's carebook STU3 dialect decodes into FHIR R4 resources, exported as one
 consumes the same response-kind tuple by reference, so the two consumers can
 never disagree on a decode.
 
+It also exports the dialect itself — the carebook catalogue, the wire schemas
+and the tunnel URLs — so a producer of carebook traffic
+(`synthetic-data`'s Rexall renderer) spells the dialect from this package
+rather than a copy, and what it writes is what the response kinds read.
+
 ## Shape
 
 - `src/response-kinds/profile-response-kind.ts` —
@@ -16,9 +21,26 @@ never disagree on a decode.
 - `src/response-kinds/medication-list-response-kind.ts` —
   `https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?…`
   → R4 `MedicationRequest` + `MedicationDispense` resources.
-- `src/carebook.ts` — the carebook STU3 dialect decoder.
+- `src/tunnel-url.ts` — the tunnel's URLs: `REXALL_PROFILE_URL`,
+  `REXALL_STU3_BASE_URL` (the root of every searchset `fullUrl`) and
+  `medicationListUrlOf`, the prescriptions-page searchset URL for an account.
+  Both response kinds build their matchers from these, so a built URL is one a
+  kind recognizes (`tunnel-url.test.ts` pins that, and pins the built list URL
+  to the capture's).
+- `src/carebook.ts` — the carebook STU3 dialect's extension, identifier and
+  coding-system catalogue (`CarebookExtension`, `CarebookIdentifierSystem`,
+  `CarebookCodingSystem`, `RequestTypeCode`, `REXALL_SYSTEM_SOURCE`).
+- `src/carebook-profile.ts` — `CarebookProfile`, the wire schema of the
+  profile body, which `ProfileResponseKind` decodes. Lenient: only
+  `data.identifiers.uid` is required and unmodelled keys are ignored.
+- `src/carebook-timestamp.ts` — `CarebookTimestamp`, the dialect's
+  `2024-03-11T16:54:30+00:00` form ⇄ `DateTime.Utc`, and `carebookTimestampOf`,
+  its encoder. `CarebookProfile` keeps `createdOn` / `updatedOn` as plain
+  strings, so a timestamp in another form never fails a profile.
 - `src/promote/` — extension promotion (see "Extension Promotion" below).
-- `src/bundle.ts` — searchset Bundle unwrapping.
+- `src/bundle.ts` — the carebook STU3 searchset Bundle schemas. `MedicationBundle`
+  and `MedicationResource` are exported, for a producer to type its searchset as
+  `typeof MedicationBundle.Encoded`.
 - `src/source-system.ts` — `REXALL_CAREBOOK_SYSTEM`, the Wildflower-minted
   `sid` URI each kind's `tryRecognize` mints and adoption keys under.
 - `src/response-kinds.ts` — `rexallBeWellResponseKinds` (internal): the kinds

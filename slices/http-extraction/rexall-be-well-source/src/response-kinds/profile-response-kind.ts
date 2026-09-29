@@ -1,41 +1,15 @@
-import { Effect, Option, pipe, Schema, String as Str } from 'effect'
+import { Effect, Option, RegExp as EffectRegExp, pipe, Schema, String as Str } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
+import { CarebookProfile } from '../carebook-profile.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
+import { REXALL_PROFILE_URL } from '../tunnel-url.ts'
 
 type PatientType = typeof Patient.Schema.Type
 
-/**
- * An optional profile string, decoded to an `Option`. A blank one is still
- * `Some("")` here — the profile sends `""` for a name it holds no value for —
- * so a reader filters blanks out where it reads the field.
- */
-const OptionalProfileString = Schema.optionalWith(Schema.String, { as: 'Option' })
+type Profile = typeof CarebookProfile.Type
 
-/**
- * Just-enough schema for the bespoke (non-FHIR) carebook profile payload at
- * `…/enduser/profile/v2/me`, synthesized here into an R4 `Patient`. Only
- * `data.identifiers.uid` (the `Patient.id` every medication's `subject`
- * references) is required; the rest is optional and lenient. Field names are
- * reconciled against a real capture — note the non-obvious nesting (`data.names`,
- * top-level `data.zipPostalCode`); since the decode is lenient, a wrong path
- * silently leaves `Patient.name` / `Patient.address` empty rather than failing.
- */
-const ProfileSchema = Schema.Struct({
-  data: Schema.Struct({
-    identifiers: Schema.Struct({ uid: Schema.String, email: OptionalProfileString }),
-    names: Schema.optionalWith(
-      Schema.Struct({ firstName: OptionalProfileString, lastName: OptionalProfileString }),
-      { as: 'Option' }
-    ),
-    birthDate: OptionalProfileString,
-    zipPostalCode: OptionalProfileString,
-  }),
-})
-
-type Profile = typeof ProfileSchema.Type
-
-const decodeProfile = Schema.decode(Schema.parseJson(ProfileSchema))
+const decodeProfile = Schema.decode(Schema.parseJson(CarebookProfile))
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
 
 /** A profile name's part, when the profile carries a non-blank one. */
@@ -79,10 +53,10 @@ const patientWire = (profile: Profile): Record<string, unknown> => {
 }
 
 /**
- * The exact profile-identity XHR URL, anchored and pinned to host + full
+ * {@link REXALL_PROFILE_URL} exactly, anchored and pinned to host + full
  * `/enduser/profile/v2/me` path with an optional query. Only the query varies.
  */
-const profileUrl = /^https:\/\/rexall-prd-tunnel\.letsbewell\.ca\/enduser\/profile\/v2\/me(?:\?|$)/
+const profileUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PROFILE_URL)}(?:\\?|$)`)
 
 /**
  * Response kind for the carebook profile response: decodes the bespoke JSON and
@@ -100,4 +74,4 @@ const ProfileResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = Http
     }),
 })
 
-export { ProfileResponseKind, ProfileSchema }
+export { ProfileResponseKind }
