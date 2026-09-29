@@ -1,4 +1,3 @@
-export * as WebPlatformAdapter from './web-platform-adapter.ts'
 export { useLateBoundSender } from './late-bound-sender.ts'
 export {
   HandlerCoordinatorContext,

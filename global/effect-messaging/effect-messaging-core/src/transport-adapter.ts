@@ -1,9 +1,6 @@
 import { Context, type Effect, type Scope } from 'effect'
 import type { BareSenderFunction } from './bare-sender.ts'
 
-/** Wire-format constant — the RN-WebView bridge object name on `window`. */
-const REACT_NATIVE_WEBVIEW_GLOBAL = 'ReactNativeWebView' as const
-
 /** Service shape supplied at the {@link TransportAdapter} `Context.Tag`. */
 interface Service {
   /** Send one already-encoded string to the other process. */
@@ -34,5 +31,5 @@ class TransportAdapter extends Context.Tag('@effect-messaging/TransportAdapter')
   Service
 >() {}
 
-export { TransportAdapter, REACT_NATIVE_WEBVIEW_GLOBAL }
+export { TransportAdapter }
 export type { Service as TransportAdapterService }

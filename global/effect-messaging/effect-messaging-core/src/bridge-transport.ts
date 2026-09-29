@@ -176,8 +176,8 @@ const make = <
  * @remarks
  * `onPageReady` (optional) fires inside the inbound dispatcher every
  * time the host receives `__Ready` — first page load and every
- * subsequent reload (Metro fast refresh, react-native-webview Android
- * blank-page workaround remount, `webviewRef.current?.reload()`, …).
+ * subsequent reload (a fast refresh, a WebView remount, an explicit
+ * reload, …).
  * Use it to push current state (auth token, route, etc.) that a freshly
  * loaded SPA needs but won't get a second time through the one-shot
  * `peerReadyGate` Deferred. The closure captures `sendMessage` via an

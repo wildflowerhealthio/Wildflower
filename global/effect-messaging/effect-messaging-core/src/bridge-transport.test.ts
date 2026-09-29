@@ -381,10 +381,9 @@ describe('BridgeTransport.make — onPageReady re-fire', () => {
   // `__Ready` control handler. The `peerReadyGate` Deferred itself is one-shot
   // (subsequent `Deferred.succeed` calls return `false` and are no-ops),
   // but the user-supplied callback runs unconditionally on every `__Ready`
-  // so a freshly-reloaded SPA — second WebView mount, Metro reload, the
-  // Android blank-page workaround remount — re-receives every binding's
-  // post-page-ready push (auth token, route, etc.) without remounting the
-  // host transport.
+  // so a freshly-reloaded SPA — a second WebView mount or a page reload —
+  // re-receives every binding's post-page-ready push (auth token, route,
+  // etc.) without remounting the host transport.
   test('the callback fires once per __Ready received', async () => {
     const { NavigationLike } = makeBridges()
     const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
