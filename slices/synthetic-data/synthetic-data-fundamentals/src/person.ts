@@ -19,8 +19,8 @@ import * as StoryDay from './story-day.ts'
  * than a FHIR `Patient`: a source renders the resource, or its own profile
  * shape, from it on a given as-of date.
  *
- * The name is the two parts every source writes (a carebook profile's
- * `firstName` / `lastName`, a FHIR `HumanName`'s `given` / `family`), not a
+ * The name is the two parts every source writes (a pharmacy profile's first
+ * and last name, a FHIR `HumanName`'s `given` / `family`), not a
  * `HumanName`: one name, never several with uses and periods, is all a
  * generated person has.
  */
@@ -57,8 +57,5 @@ const birthDateOf = (person: Person, asOf: DateTime.Utc): DateTime.Utc => {
   return DateTime.subtract(lastBirthday, { years: person.age })
 }
 
-/** The person's full name, given name first (`'Sam Okoye'`). */
-const fullNameOf = (person: Person): string => `${person.givenName} ${person.familyName}`
-
-export { birthDateOf, fullNameOf }
+export { birthDateOf }
 export type { Person }

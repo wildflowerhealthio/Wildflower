@@ -560,12 +560,9 @@ const storyCaseArbitrary = (personKey: string): fc.Arbitrary<StoryCase> =>
 export {
   ageOn,
   asOfArbitrary,
-  dinArbitrary,
   dosingArbitrary,
-  expectedNameOf,
   expectedSigOf,
   personArbitrary,
-  prescriberArbitrary,
   productArbitrary,
   storyCaseArbitrary,
 }

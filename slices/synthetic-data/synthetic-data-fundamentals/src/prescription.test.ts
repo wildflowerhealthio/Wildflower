@@ -78,7 +78,7 @@ describe('Prescription.repeatsRemainingOf', () => {
     )
   })
 
-  test('counts the whole authorization for a prescription never filled', () => {
+  test('property: counts the whole authorization for a prescription never filled', () => {
     fc.assert(
       fc.property(prescriptionArbitrary, (prescription) => {
         expect(Prescription.repeatsRemainingOf({ ...prescription, fillDays: [] })).toBe(
@@ -147,7 +147,7 @@ describe('Prescription.sigOf', () => {
     fillDays: [-30],
   } satisfies Prescription.Prescription
 
-  test('writes the dialect the capture shows for one tablet once daily', () => {
+  test('writes one tablet once daily with no direction', () => {
     expect(Prescription.sigOf(onceDaily)).toBe('TAKE 1 TABLET (=5MG) BY MOUTH ONCE DAILY')
   })
 

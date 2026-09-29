@@ -49,10 +49,10 @@ that runs them.
 layers a source-free base under per-source packages:
 `synthetic-data-fundamentals` holds the story model (people, prescriptions, lab
 draws, every date relative to one as-of date), deterministic seeded values, and
-the defaults a generated browser capture is built with on `http-archive`; one
-`synthetic-data-<source>` generator per source writes a story as the files that
-source produces, proven through the real importer. The stories themselves live
-in `wildflowerhealthio/synthetic-data`.
+the defaults a generated browser capture is built with on `http-archive`; a
+source's generator is a `synthetic-data-<source>` package on top of it that
+writes a story as the files that source produces, proven through the real
+importer. The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
