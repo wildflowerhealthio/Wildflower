@@ -18,14 +18,22 @@ Nothing here names a person or tells a particular story.
 The slice is layered like `health-viewer`: a source-free base, with one
 generator package per source on top of it.
 
-- **`synthetic-data-fundamentals`** (pure) — the story model as `effect`-style
-  namespaces from one flat entry: `Story`, `Person`, `Prescription`,
-  `DrugProduct`, `LabDraw`, `StoryDay` (days relative to the as-of date, and
-  `instantOn` for the time of day an event happens), `Seeded` (deterministic
-  ids and numbers) and `HarCapture` (the synthetic defaults a generated Chrome
-  DevTools capture is built with, on `http-archive`'s `ChromeHar`). Its
-  `./test-helpers` subpath holds the fast-check arbitraries every generator's
-  tests draw stories from. See its
+- **`synthetic-data-fundamentals`** (pure) — the source-free base, as three
+  sub-entries (its root exports nothing):
+  - `synthetic-data-fundamentals/story` — the story model as `effect`-style
+    namespaces: `Story`, `Person`, `Prescription`, `DrugProduct`, `LabDraw`,
+    `StoryDay` (days relative to the as-of date, and `instantOn` for the time
+    of day an event happens).
+    `import { Prescription, StoryDay } from 'synthetic-data-fundamentals/story'`.
+  - `synthetic-data-fundamentals/seeding` — deterministic ids and numbers.
+    `import * as Seeding from 'synthetic-data-fundamentals/seeding'`.
+  - `synthetic-data-fundamentals/chrome-har` — the synthetic defaults a
+    generated Chrome DevTools capture is built with, on `http-archive`'s
+    `ChromeHar`.
+    `import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'`.
+
+  Its `./test-helpers` subpath holds the fast-check arbitraries every
+  generator's tests draw stories from. See its
   [AGENTS.md](./synthetic-data-fundamentals/AGENTS.md).
 
 A generator for a source is a `synthetic-data-<source>` package on top of
@@ -42,11 +50,11 @@ that source package's constants.
 - **Generation is deterministic.** The same as-of day gives byte-identical
   output. Values a real system would draw at random (ids, prescription
   numbers, times of day) are hashed from the names of what they belong to
-  (`Seeded`, `StoryDay.instantOn`), and jitter never moves an event off the
+  (`Seeding`, `StoryDay.instantOn`), and jitter never moves an event off the
   day its story sets.
 - **Formats are their own packages'.** A generator builds `http-archive`
-  values (through `HarCapture`) and FHIR shapes from `fhir-r4`; it declares no
-  wire type another package already owns.
+  values (through `synthetic-data-fundamentals/chrome-har`) and FHIR shapes
+  from `fhir-r4`; it declares no wire type another package already owns.
 - **Generate what the source sends, then import it.** A generator writes the
   source's own wire shape (modelled on that source package's anonymized
   fixtures, spelled from its constants), and a round-trip test runs generated

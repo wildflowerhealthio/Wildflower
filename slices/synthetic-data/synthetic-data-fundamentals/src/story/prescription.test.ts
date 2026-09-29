@@ -2,9 +2,9 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { expectedSigOf, productArbitrary, dosingArbitrary } from '../test-helpers.ts'
 import type * as DrugProduct from './drug-product.ts'
 import * as Prescription from './prescription.ts'
-import { expectedSigOf, productArbitrary, dosingArbitrary } from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 200 })
 

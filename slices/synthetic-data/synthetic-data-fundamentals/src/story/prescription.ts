@@ -2,7 +2,11 @@ import type * as DrugProduct from './drug-product.ts'
 import type { StoryDay } from './story-day.ts'
 
 /**
- * A prescription as a pharmacy holds it: one product, one dosing, a fill
+ * A base domain object of the story model: a prescription in a `Story`, which
+ * a pharmacy source's renderer spells as that source's prescription and fill
+ * records.
+ *
+ * It is the prescription as a pharmacy holds it: one product, one dosing, a fill
  * quantity and supply, repeats, and the days it was filled — plus why it was
  * written and, when it no longer runs, why it ended.
  *

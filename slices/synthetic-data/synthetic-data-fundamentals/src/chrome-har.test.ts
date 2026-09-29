@@ -6,7 +6,7 @@ import { utf8Bytes } from 'kitchen-sink'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import * as HarCapture from './har-capture.ts'
+import * as ChromeHar from './chrome-har.ts'
 import { asOfArbitrary } from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 100 })
@@ -24,7 +24,7 @@ const urlArbitrary: fc.Arbitrary<string> = fc
     return url.href
   })
 
-const pageSpecArbitrary = (id: string): fc.Arbitrary<HarCapture.PageSpec> =>
+const pageSpecArbitrary = (id: string): fc.Arbitrary<ChromeHar.PageSpec> =>
   fc.record({
     id: fc.constant(id),
     url: urlArbitrary,
@@ -33,10 +33,10 @@ const pageSpecArbitrary = (id: string): fc.Arbitrary<HarCapture.PageSpec> =>
     onLoadMillis: fc.integer({ min: 1, max: 5000 }),
   })
 
-const exchangeSpecArbitrary = (pageref: string): fc.Arbitrary<HarCapture.ExchangeSpec> =>
+const exchangeSpecArbitrary = (pageref: string): fc.Arbitrary<ChromeHar.ExchangeSpec> =>
   fc.record({
     pageref: fc.constant(pageref),
-    resourceType: fc.constantFrom<HarCapture.ResourceType>('document', 'xhr'),
+    resourceType: fc.constantFrom<ChromeHar.ResourceType>('document', 'xhr'),
     startedAt: asOfArbitrary,
     url: urlArbitrary,
     requestHeaders: fc.array(fc.tuple(nameArbitrary, fc.string()), { maxLength: 3 }),
@@ -59,15 +59,15 @@ const captureArbitrary = fc
     })
   )
 
-describe('HarCapture', () => {
+describe('ChromeHar', () => {
   test('property: an archive writes to text that `http-archive` reads back unchanged', () => {
     fc.assert(
       fc.property(captureArbitrary, ({ pages, exchanges }) => {
-        const archive = HarCapture.archiveOf(
-          pages.map(HarCapture.pageOf),
-          exchanges.map(HarCapture.entryOf)
+        const archive = ChromeHar.archiveOf(
+          pages.map(ChromeHar.pageOf),
+          exchanges.map(ChromeHar.entryOf)
         )
-        const text = Effect.runSync(HarCapture.toJson(archive))
+        const text = Effect.runSync(ChromeHar.toJson(archive))
         expect(Effect.runSync(chromeHarFromJson(text))).toEqual(archive)
       }),
       { numRuns: RUNS }
@@ -77,7 +77,7 @@ describe('HarCapture', () => {
   test('property: a navigation is initiated by the browser, an XHR by a script', () => {
     fc.assert(
       fc.property(exchangeSpecArbitrary('page_1'), (spec) => {
-        const entry = HarCapture.entryOf(spec)
+        const entry = ChromeHar.entryOf(spec)
         expect(entry._resourceType).toBe(spec.resourceType)
         expect({ initiator: entry._initiator.type, priority: entry._priority }).toEqual(
           spec.resourceType === 'document'
@@ -92,7 +92,7 @@ describe('HarCapture', () => {
   test('property: an entry records its body as UTF-8 text and its time as the sum of its phases', () => {
     fc.assert(
       fc.property(exchangeSpecArbitrary('page_1'), (spec) => {
-        const entry = HarCapture.entryOf(spec)
+        const entry = ChromeHar.entryOf(spec)
         const bytes = utf8Bytes(spec.body).length
         expect(entry.response.content).toEqual({
           size: bytes,
@@ -112,7 +112,7 @@ describe('HarCapture', () => {
   test('property: an entry lists its URL query parameters in order', () => {
     fc.assert(
       fc.property(exchangeSpecArbitrary('page_1'), (spec) => {
-        expect(HarCapture.entryOf(spec).request.queryString).toEqual(
+        expect(ChromeHar.entryOf(spec).request.queryString).toEqual(
           [...new URL(spec.url).searchParams].map(([name, value]) => ({ name, value }))
         )
       }),
@@ -122,9 +122,9 @@ describe('HarCapture', () => {
 
   test('writes the archive as a DevTools export does: WebInspector, two-space indented', () => {
     const startedAt = DateTime.unsafeMake('2026-03-11T16:54:30.000Z')
-    const archive = HarCapture.archiveOf(
+    const archive = ChromeHar.archiveOf(
       [
-        HarCapture.pageOf({
+        ChromeHar.pageOf({
           id: 'page_1',
           url: 'https://portal.example.org/',
           startedAt,
@@ -134,7 +134,7 @@ describe('HarCapture', () => {
       ],
       []
     )
-    const text = Effect.runSync(HarCapture.toJson(archive))
+    const text = Effect.runSync(ChromeHar.toJson(archive))
     expect(text.startsWith('{\n  "log": {\n')).toBe(true)
     expect(archive.log.creator).toEqual({ name: 'WebInspector', version: '537.36' })
     expect(archive.log.pages?.[0]?.title).toBe('https://portal.example.org/')

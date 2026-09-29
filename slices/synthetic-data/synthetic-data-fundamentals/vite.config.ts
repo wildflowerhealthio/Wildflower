@@ -10,6 +10,9 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
+      'chrome-har': 'src/chrome-har.ts',
+      seeding: 'src/seeding.ts',
+      'story/index': 'src/story/index.ts',
       'test-helpers': 'src/test-helpers.ts',
     },
   },

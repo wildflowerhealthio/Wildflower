@@ -47,9 +47,10 @@ that runs them.
 `synthetic-data` is tooling for synthetic health data — see
 [synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md). Like `health-viewer`, it
 layers a source-free base under per-source packages:
-`synthetic-data-fundamentals` holds the story model (people, prescriptions, lab
-draws, every date relative to one as-of date), deterministic seeded values, and
-the defaults a generated browser capture is built with on `http-archive`; a
+`synthetic-data-fundamentals` holds, as three sub-entries, the story model
+(`/story`: people, prescriptions, lab draws, every date relative to one as-of
+date), deterministic seeded values (`/seeding`), and the defaults a generated
+Chrome capture is built with on `http-archive` (`/chrome-har`); a
 source's generator is a `synthetic-data-<source>` package on top of it that
 writes a story as the files that source produces, proven through the real
 importer. The stories themselves live in `wildflowerhealthio/synthetic-data`.

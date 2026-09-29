@@ -3,8 +3,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { asOfArbitrary } from '../test-helpers.ts'
 import * as StoryDay from './story-day.ts'
-import { asOfArbitrary } from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 200 })
 

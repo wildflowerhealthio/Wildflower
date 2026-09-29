@@ -1,6 +1,8 @@
 /**
- * A marketed Canadian drug product as a story prescribes it, identified by its
- * DIN.
+ * A base domain object of the story model: the marketed product a
+ * `Prescription` points at. A data set's catalogue is a list of these, and a
+ * renderer spells one as the source's medication shape. A Canadian product,
+ * identified by its DIN.
  *
  * @remarks
  * This package carries the type only. The products a data set prescribes, and
