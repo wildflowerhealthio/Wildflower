@@ -1,12 +1,19 @@
 // oxlint-disable no-underscore-dangle -- `_initiator`, `_priority` and `_resourceType` are the exact keys a DevTools export writes; these tests read them back.
 import { DateTime, Effect, Schema } from 'effect'
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
+  CHROME_CREATOR,
   type ChromeHar,
   type ChromeHarEntry,
+  type ChromeResourceType,
+  chromeExtrasOf,
   chromeHarFromJson,
+  chromeHarOf,
   chromeHarToJson,
+  chromePageOf,
 } from './chrome-har.ts'
 import chromeExport from './fixtures/chrome-devtools.har.json' with { type: 'json' }
 import { Har, HarFromJson } from './har.ts'
@@ -131,6 +138,70 @@ describe('ChromeHar', () => {
     const pretty = Effect.runSync(chromeHarToJson(archive, { pretty: true }))
     expect(pretty).toBe(JSON.stringify(JSON.parse(writeChrome(archive)), null, 2))
     expect(writeChrome(archive)).not.toContain('\n')
+  })
+})
+
+const RESOURCE_TYPES: readonly ChromeResourceType[] = ['document', 'xhr', 'fetch']
+
+describe('the ChromeHar producer vocabulary', () => {
+  test('chromeExtrasOf gives every resource type its initiator and priority', () => {
+    expect(RESOURCE_TYPES.map(chromeExtrasOf)).toEqual([
+      { _initiator: { type: 'other' }, _priority: 'VeryHigh', _resourceType: 'document' },
+      { _initiator: { type: 'script' }, _priority: 'High', _resourceType: 'xhr' },
+      { _initiator: { type: 'script' }, _priority: 'High', _resourceType: 'fetch' },
+    ])
+  })
+
+  test('chromePageOf titles a page with its URL, as DevTools does', () => {
+    const startedAt = DateTime.unsafeMake('2026-05-04T15:22:31.104Z')
+    expect(
+      chromePageOf({
+        id: 'page_1',
+        url: 'https://portal.example.org/records',
+        startedAt,
+        onContentLoadMillis: 412.5,
+        onLoadMillis: 903.1,
+      })
+    ).toEqual({
+      startedDateTime: startedAt,
+      id: 'page_1',
+      title: 'https://portal.example.org/records',
+      pageTimings: { onContentLoad: 412.5, onLoad: 903.1 },
+    })
+  })
+
+  test('property: an archive built with it round-trips, creator and extras included', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.constantFrom(...RESOURCE_TYPES), { maxLength: 4 }),
+        fc.boolean(),
+        (resourceTypes, pretty) => {
+          const archive = chromeHarOf(
+            [
+              chromePageOf({
+                id: 'page_1',
+                url: 'https://portal.example.org/records',
+                startedAt: DateTime.unsafeMake('2026-05-04T15:22:31.104Z'),
+                onContentLoadMillis: 412.5,
+                onLoadMillis: 903.1,
+              }),
+            ],
+            resourceTypes.map((resourceType) => chromeEntry(chromeExtrasOf(resourceType)))
+          )
+          const read = Effect.runSync(
+            chromeHarFromJson(Effect.runSync(chromeHarToJson(archive, { pretty })))
+          )
+          expect(read).toEqual(archive)
+          expect(read.log.creator).toEqual(CHROME_CREATOR)
+          expect(read.log.version).toBe('1.2')
+          expect(read.log.entries.map((entry) => entry._resourceType)).toEqual(resourceTypes)
+          expect(read.log.entries.map((entry) => entry._initiator?.type)).toEqual(
+            resourceTypes.map((resourceType) => chromeExtrasOf(resourceType)._initiator.type)
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
   })
 })
 
