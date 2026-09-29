@@ -534,8 +534,18 @@ const fakeJwt = (
   original: string,
   bytes: Uint8Array,
   depth: number
-): Effect.Effect<string, RedactionError> =>
-  Effect.gen(function* () {
+): Effect.Effect<string, RedactionError> => {
+  const rebuildClaims = (
+    claims: Record<string, unknown>
+  ): Effect.Effect<Record<string, unknown>, RedactionError> =>
+    Effect.forEach(Object.entries(claims), ([claim, value]) =>
+      (STRUCTURAL_JWT_CLAIMS.has(claim) || typeof value === 'boolean' || value === null
+        ? Effect.succeed(value)
+        : pseudonymizeUnknown(policy, value, depth + 1)
+      ).pipe(Effect.map((mapped) => [claim, mapped] as const))
+    ).pipe(Effect.map((entries) => Object.fromEntries(entries)))
+
+  return Effect.gen(function* () {
     const [headerSegment = '', payloadSegment = '', signatureSegment = ''] = original.split('.')
     const header = parseJson(decodeBase64UrlSafe(headerSegment))
     const payload = parseJson(decodeBase64UrlSafe(payloadSegment))
@@ -543,22 +553,13 @@ const fakeJwt = (
       return generateFake('jwt', original, bytes)
     }
 
-    const rebuildClaims = (
-      claims: Record<string, unknown>
-    ): Effect.Effect<Record<string, unknown>, RedactionError> =>
-      Effect.forEach(Object.entries(claims), ([claim, value]) =>
-        (STRUCTURAL_JWT_CLAIMS.has(claim) || typeof value === 'boolean' || value === null
-          ? Effect.succeed(value)
-          : pseudonymizeUnknown(policy, value, depth + 1)
-        ).pipe(Effect.map((mapped) => [claim, mapped] as const))
-      ).pipe(Effect.map((entries) => Object.fromEntries(entries)))
-
     return [
       encodeBase64Url(JSON.stringify(yield* rebuildClaims(header))),
       encodeBase64Url(JSON.stringify(yield* rebuildClaims(payload))),
       fakeBase64Url(prngFromBytes(bytes), signatureSegment.length),
     ].join('.')
   })
+}
 
 /** Pseudonymizes a JWT claim, which may be a scalar or a nested structure. */
 const pseudonymizeUnknown = (

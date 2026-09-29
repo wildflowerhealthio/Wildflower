@@ -16,6 +16,51 @@ interface MessagingWindowGlobals {
 
 const winGlobals = (): Window & MessagingWindowGlobals => window
 
+const bareSender: BareSenderFunction = (encoded) =>
+  Effect.gen(function* () {
+    const w = winGlobals()
+    const rnBridge = w[REACT_NATIVE_WEBVIEW_GLOBAL]
+    if (rnBridge !== undefined) {
+      // RN-WebView's `postMessage` API differs from `window.postMessage` (no `targetOrigin`).
+      // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin
+      rnBridge.postMessage(encoded)
+    } else {
+      yield* Effect.logWarning(
+        `[effect-messaging] sendMessage: no ReactNativeWebView in window; running standalone? message dropped.`
+      )
+    }
+  })
+
+// Origin filter accepts `''` for sandboxed/file:/data: documents — see issue #24.
+// Source filter accepts `null` only when the page is hosted inside RN-WebView:
+// its iOS native dispatch builds a MessageEvent without a source or origin,
+// so a strict `source !== window` check would drop every host→web message
+// on iOS. The `ReactNativeWebView` presence check is the co-signing condition
+// so synthesized null-source events from foreign sandboxed pages stay rejected.
+const attachBareSender = (
+  otherBareSender: BareSenderFunction
+): Effect.Effect<void, never, Scope.Scope> => {
+  const onMessageEffect = (event: MessageEvent<unknown>): Effect.Effect<void> => {
+    const inRNWebView = winGlobals()[REACT_NATIVE_WEBVIEW_GLOBAL] !== undefined
+    const isAdmissibleSource = event.source === window || (event.source === null && inRNWebView)
+    if (!isAdmissibleSource) return Effect.void
+    if (event.origin !== window.location.origin && event.origin !== '') return Effect.void
+    if (typeof event.data !== 'string') return Effect.void
+    return otherBareSender(event.data)
+  }
+  const onMessage = (event: MessageEvent<unknown>): Promise<void> =>
+    Effect.runPromise(onMessageEffect(event))
+  return Effect.acquireRelease(
+    Effect.sync(() => {
+      window.addEventListener('message', onMessage)
+    }),
+    () =>
+      Effect.sync(() => {
+        window.removeEventListener('message', onMessage)
+      })
+  )
+}
+
 /**
  * Build a {@link TransportAdapter} service for the page side.
  *
@@ -35,21 +80,6 @@ const winGlobals = (): Window & MessagingWindowGlobals => window
  * no `urlParams` schemas contributes nothing to drainInitial.
  */
 const make = (bridges: ReadonlyArray<Bridge.AnyBridge>): TransportAdapter['Type'] => {
-  const bareSender: BareSenderFunction = (encoded) =>
-    Effect.gen(function* () {
-      const w = winGlobals()
-      const rnBridge = w[REACT_NATIVE_WEBVIEW_GLOBAL]
-      if (rnBridge !== undefined) {
-        // RN-WebView's `postMessage` API differs from `window.postMessage` (no `targetOrigin`).
-        // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin
-        rnBridge.postMessage(encoded)
-      } else {
-        yield* Effect.logWarning(
-          `[effect-messaging] sendMessage: no ReactNativeWebView in window; running standalone? message dropped.`
-        )
-      }
-    })
-
   const drainInitial: Effect.Effect<ReadonlyArray<string>> = Effect.sync(() => {
     const search = window.location.search
     const messages = UrlParamMessage.reEncodeMessagesFromParams(search, bridges)
@@ -60,37 +90,6 @@ const make = (bridges: ReadonlyArray<Bridge.AnyBridge>): TransportAdapter['Type'
     }
     return messages
   })
-
-  // Origin filter accepts `''` for sandboxed/file:/data: documents — see issue #24.
-  // Source filter accepts `null` only when the page is hosted inside RN-WebView:
-  // its iOS native dispatch builds a MessageEvent without a source or origin,
-  // so a strict `source !== window` check would drop every host→web message
-  // on iOS. The `ReactNativeWebView` presence check is the co-signing condition
-  // so synthesized null-source events from foreign sandboxed pages stay rejected.
-  const attachBareSender = (
-    otherBareSender: BareSenderFunction
-  ): Effect.Effect<void, never, Scope.Scope> =>
-    Effect.acquireRelease(
-      Effect.sync(() => {
-        const onMessageEffect = (event: MessageEvent<unknown>): Effect.Effect<void> => {
-          const inRNWebView = winGlobals()[REACT_NATIVE_WEBVIEW_GLOBAL] !== undefined
-          const isAdmissibleSource =
-            event.source === window || (event.source === null && inRNWebView)
-          if (!isAdmissibleSource) return Effect.void
-          if (event.origin !== window.location.origin && event.origin !== '') return Effect.void
-          if (typeof event.data !== 'string') return Effect.void
-          return otherBareSender(event.data)
-        }
-        const onMessage = (event: MessageEvent<unknown>): Promise<void> =>
-          Effect.runPromise(onMessageEffect(event))
-        window.addEventListener('message', onMessage)
-        return onMessage
-      }),
-      (onMessage) =>
-        Effect.sync(() => {
-          window.removeEventListener('message', onMessage)
-        })
-    ).pipe(Effect.asVoid)
 
   return { bareSender, drainInitial, attachBareSender }
 }
