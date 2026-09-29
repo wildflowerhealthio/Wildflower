@@ -27,7 +27,7 @@ Rows 1–2 are the catalog values. The `vite@*: 'catalog:'` override in [pnpm-wo
 
 ## Steps
 
-1. For a minor or major release, run the **new** release's migrator first, against the old lockfile — Vite+'s upgrade guides ask for this so the migrator can read the old versions (for 1.0 it wrote the Vitest 4 compatibility settings and moved `run.tasks` cache settings under `cache`):
+1. For a minor or major release, run the **new** release's migrator first, against the old lockfile, so it can read the old versions and rewrite config the release changed:
 
    ```bash
    vp dlx -p vite-plus@<new> vp migrate --no-interactive
