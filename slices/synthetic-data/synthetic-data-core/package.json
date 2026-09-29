@@ -2,7 +2,7 @@
   "name": "synthetic-data-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure tooling for synthetic health data: a story model (people, prescriptions, fills, lab draws) with every date derived from one as-of date, deterministic seeded ids, and one renderer per source — the Rexall Be Well HAR, the Shoppers Drug Mart family-account HAR, lab results as the LifeLabs import makes them, filed on the person's pharmacy Patient, and FHIR Sync for Pebble's Observations of a day-by-day physiology. The stories themselves live in wildflowerhealthio/synthetic-data. No DOM, no fs, no React.",
+  "description": "Pure tooling for synthetic health data: a story model (people, prescriptions, fills, lab draws) with every date derived from one as-of date, deterministic seeded ids, and one renderer per source — the Rexall Be Well HAR, the Shoppers Drug Mart family-account HAR, lab results as the LifeLabs import makes them, filed on the person's pharmacy Patient, FHIR Sync for Pebble's Observations of a day-by-day physiology, and a de-identified DICOM image re-identified for a story and read through the DICOM importer. The stories themselves live in wildflowerhealthio/synthetic-data. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -29,6 +29,9 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "dicom": "workspace:*",
+    "dicom-importer-core": "workspace:*",
+    "dicom-parser": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
@@ -46,6 +49,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "dicom-importer-core": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-sync-pebble-core": "workspace:*",

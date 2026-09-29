@@ -122,6 +122,23 @@ physiology)`: the Observations FHIR Sync for Pebble writes, built by
   reports it (`token`, `info`): `watchOf(keys)` hashes a 32-hex-digit token
   and picks an `emery` Pebble Time 2 and firmware; `toReference` is
   `WatchDevice.toReference` over it.
+- **`DicomImage`** (`src/dicom/`) — `reidentify(asOf, deidentifiedFile,
+reidentification)`: an already de-identified Part 10 file (the data set
+  carries the real image and its licence) re-identified as a person on a story
+  day. The patient, the study/series/acquisition/content dates and times, and
+  the Study, Series and SOP Instance UIDs are rewritten; every other top-level
+  instance UID is re-minted from its source value; UIDs sit under a
+  UUID-derived root (`UID_ROOT`, `2.25.…`) with a 15-digit arc hashed by
+  `Seeded`. Private elements, other dates and times and `PatientAge` are
+  dropped; `ImageType` becomes `DERIVED\PRIMARY`; `PatientIdentityRemoved`
+  stays `YES`. Pixel Data and sequences are copied byte for byte.
+  `importWithSubject(file, fileName, subject)` runs the result through
+  `dicomImporter.decode` (the equipment clock read as `America/Toronto`),
+  drops its `Patient` and files the `ImagingStudy`, `ServiceRequest` and
+  source-file `DocumentReference` on `subject`. `part10.ts` is the element
+  stream it edits: a reader and writer for Part 10 files whose data set is
+  Explicit VR Little Endian (that syntax and the encapsulated ones), values
+  kept as raw bytes, the meta group length counted on write.
 
 ## Adding a source
 
@@ -143,7 +160,8 @@ and coding catalogue — spelled once, there — and `REXALL_CAREBOOK_SYSTEM`),
 `shoppers-drugmart-source` (`SHOPPERS_DRUGMART_SYSTEM`) and
 `lifelabs-pdf-importer-core/synthesis` (the `Report` model, `toFhirResources`,
 `LIFELABS_SYSTEM` and the default time zone, without the main entry's
-pdfjs-backed decode). The Shoppers portal's JSON has no catalogue —
+pdfjs-backed decode). `DicomImage` depends on `dicom-importer-core` (the
+importer it reads its output through). The Shoppers portal's JSON has no catalogue —
 `shoppers-drugmart-source` exports only its descriptor and `sid` system; its
 identifier systems name the FHIR it writes, not the wire — so the Shoppers
 payloads are typed here, after that package's test fixtures. The Pebble
@@ -218,6 +236,18 @@ particular person's story.
   days.
 - `src/pebble/pebble-watch.test.ts` — `watchOf`'s determinism and token shape,
   and the device reference the phone writes.
+- `src/dicom/dicom-fixture.test-helpers.ts` — de-identified DICOM fixtures:
+  `dicom/test-helpers`' `writeDicom` files with private groups, the
+  de-identification attributes, extra dates and a Frame of Reference spliced
+  in (located with `dicom-parser`, not the reader under test).
+- `src/dicom/part10.test.ts` — the element stream reads and writes generated
+  files back byte for byte (native and encapsulated Pixel Data, nested
+  undefined-length sequences) and rejects other transfer syntaxes.
+- `src/dicom/dicom-image.test.ts` — over generated files, people and as-of
+  dates: the header holds the patient, story day and valid, deterministic
+  UIDs; private elements are gone; Pixel Data is identical; the file is
+  well formed for `dicom-parser` and `detectDicom`; as-of properties; and the
+  importer reads it onto the given Patient with no `Patient` of its own.
 
 ## The Shoppers import, as it comes out
 

@@ -17,6 +17,7 @@
  * @packageDocumentation
  */
 export * as ChromeHar from './har/chrome-har.ts'
+export * as DicomImage from './dicom/dicom-image.ts'
 export * as DrugProduct from './drug-product.ts'
 export * as LifeLabs from './lifelabs/lifelabs.ts'
 export * as LifeLabsLaboratory from './lifelabs/laboratory.ts'

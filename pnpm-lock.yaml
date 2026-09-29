@@ -4629,6 +4629,15 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
+      dicom:
+        specifier: workspace:*
+        version: link:../../file-formats/dicom
+      dicom-importer-core:
+        specifier: workspace:*
+        version: link:../../importer/dicom-importer-core
+      dicom-parser:
+        specifier: 'catalog:'
+        version: 1.8.21
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
