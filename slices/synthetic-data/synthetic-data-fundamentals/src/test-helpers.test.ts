@@ -2,8 +2,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import * as DrugProduct from './drug-product.ts'
-import * as Prescription from './prescription.ts'
+import * as DrugProduct from './story/drug-product.ts'
+import * as Prescription from './story/prescription.ts'
 import { storyCaseArbitrary } from './test-helpers.ts'
 
 const RUNS = numRunsFor({ base: 100 })

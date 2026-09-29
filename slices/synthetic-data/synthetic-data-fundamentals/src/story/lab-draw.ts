@@ -1,8 +1,9 @@
 import type { StoryDay } from './story-day.ts'
 
 /**
- * One lab result in a story: the value that drove, or answered, a medication
- * change.
+ * A base domain object of the story model: one lab result in a `Story`, the
+ * value that drove, or answered, a medication change. A lab source's renderer
+ * spells it as that source's report.
  *
  * @remarks
  * The story's record of what a lab reported, not a lab report: the lab

@@ -47,9 +47,11 @@ that runs them.
 `synthetic-data` is tooling for synthetic health data — see
 [synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md). Like `health-viewer`, it
 layers a source-free base under per-source packages:
-`synthetic-data-fundamentals` holds the story model (people, prescriptions, lab
-draws, every date relative to one as-of date), deterministic seeded values, and
-the defaults a generated browser capture is built with on `http-archive`; a
+`synthetic-data-fundamentals` holds three roles as sub-entries: the story model
+(`/story`: people, prescriptions, lab draws, every date relative to one as-of
+date), deterministic values (`/seeding`, hashed with `kitchen-sink`'s FNV-1a and
+`fmix64` over `fhir-r4`'s id fold), and Chrome capture defaults (`/chrome-har`,
+on `http-archive`'s format and DevTools vocabulary); a
 source's generator is a `synthetic-data-<source>` package on top of it that
 writes a story as the files that source produces, proven through the real
 importer (`synthetic-data-rexall-be-well` writes a letsbewell.ca session HAR).

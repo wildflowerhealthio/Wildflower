@@ -13,11 +13,11 @@ import { DateTime } from 'effect'
 import * as fc from 'fast-check'
 import { AdministrativeGender } from 'fhir-r4/data-types'
 
-import type * as DrugProduct from './drug-product.ts'
-import type * as Person from './person.ts'
-import type * as Prescription from './prescription.ts'
-import type { StoryDay } from './story-day.ts'
-import type { Story } from './story.ts'
+import type * as DrugProduct from './story/drug-product.ts'
+import type * as Person from './story/person.ts'
+import type * as Prescription from './story/prescription.ts'
+import type { StoryDay } from './story/story-day.ts'
+import type { Story } from './story/story.ts'
 
 /**
  * An as-of instant anywhere in 2000–2099, at any time of day: the range a

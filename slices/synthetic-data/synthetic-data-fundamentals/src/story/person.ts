@@ -4,9 +4,10 @@ import type { AdministrativeGender } from 'fhir-r4/data-types'
 import * as StoryDay from './story-day.ts'
 
 /**
- * One person in a synthetic data set, with the demographics every source
- * renders: name, administrative gender, and an age that holds at any as-of
- * date.
+ * A base domain object of the story model: the person a `Story` is about. A
+ * renderer spells one as the source's patient or profile shape, from the
+ * demographics every source renders: name, administrative gender, and an age
+ * that holds at any as-of date.
  */
 
 /**

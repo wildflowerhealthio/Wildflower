@@ -3,8 +3,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { ageOn, asOfArbitrary, personArbitrary } from '../test-helpers.ts'
 import * as Person from './person.ts'
-import { ageOn, asOfArbitrary, personArbitrary } from './test-helpers.ts'
 
 const personArb = personArbitrary('someone')
 

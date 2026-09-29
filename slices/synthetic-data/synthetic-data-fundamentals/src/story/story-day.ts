@@ -1,10 +1,11 @@
 import { DateTime } from 'effect'
 
-import * as Seeded from './seeded.ts'
+import * as Seeding from '../seeding.ts'
 
 /**
- * A day in a story, counted from the as-of date: `0` is the as-of day itself,
- * `-30` is thirty days before it.
+ * The story model's calendar: a day in a story, counted from the as-of date —
+ * `0` is the as-of day itself, `-30` is thirty days before it. Every other
+ * story object dates its events in these.
  *
  * @remarks
  * Every date the data set carries is written as a `StoryDay` and only turned
@@ -60,7 +61,7 @@ const instantOn = (
   toHourUtc: number
 ): DateTime.Utc =>
   DateTime.add(toDateTime(asOf, storyDay), {
-    seconds: Seeded.integerOf(keys, fromHourUtc * 3600, toHourUtc * 3600 - 1),
+    seconds: Seeding.integerOf(keys, fromHourUtc * 3600, toHourUtc * 3600 - 1),
   })
 
 export { asOfDayOf, instantOn, toDateTime, toIsoDate }
