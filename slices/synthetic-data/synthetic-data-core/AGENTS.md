@@ -131,7 +131,8 @@ reidentification)`: an already de-identified Part 10 file (the data set
   UUID-derived root (`UID_ROOT`, `2.25.…`) with a 15-digit arc hashed by
   `Seeded`. Private elements, other dates and times and `PatientAge` are
   dropped; `ImageType` becomes `DERIVED\PRIMARY`; `PatientIdentityRemoved`
-  stays `YES`. Pixel Data and sequences are copied byte for byte.
+  stays `YES`. Pixel Data and sequences are copied byte for byte, so a
+  private element, date or UID nested in a sequence keeps the source's value.
   `importWithSubject(file, fileName, subject)` runs the result through
   `dicomImporter.decode` (the equipment clock read as `America/Toronto`),
   drops its `Patient` and files the `ImagingStudy`, `ServiceRequest` and

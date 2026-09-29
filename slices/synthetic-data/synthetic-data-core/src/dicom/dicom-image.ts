@@ -33,7 +33,10 @@ import * as Part10 from './part10.ts'
  *   `LongitudinalTemporalInformationModified` is `MODIFIED`.
  *
  * Pixel Data, and every element not named above, is copied byte for byte.
- * Sequences are copied whole: only top-level elements are rewritten.
+ * Sequences are copied whole: only top-level elements are rewritten, so a
+ * private element, date or instance UID nested in a sequence keeps the
+ * source's value. A source for this renderer is one whose sequences carry
+ * none of those (a de-identification profile that cleans or removes them).
  *
  * {@link importWithSubject} then reads the result as the DICOM importer does
  * and files it on the person's Patient from another source.
@@ -253,7 +256,9 @@ const rewrittenElementsOf = (
     valueOf(Tag.PatientSex, 'CS', [SEX[person.gender]]),
     valueOf(Tag.PatientIdentityRemoved, 'CS', ['YES']),
     valueOf(Tag.DeidentificationMethod, 'LO', [
-      ...(deidentificationMethod === undefined ? [] : valuesOf(deidentificationMethod)),
+      ...(deidentificationMethod === undefined
+        ? []
+        : valuesOf(deidentificationMethod).filter((method) => method !== '')),
       SYNTHETIC_IDENTITY_METHOD,
     ]),
     valueOf(Tag.StudyInstanceUID, 'UI', [uidOf([...keys, 'study-instance'])]),

@@ -159,6 +159,8 @@ describe('Part10', () => {
     ['Implicit VR Little Endian', '1.2.840.10008.1.2'],
     ['Explicit VR Big Endian', '1.2.840.10008.1.2.2'],
     ['Deflated Explicit VR Little Endian', '1.2.840.10008.1.2.1.99'],
+    ['JPIP Referenced Deflate', '1.2.840.10008.1.2.4.95'],
+    ['JPIP HTJ2K Referenced Deflate', '1.2.840.10008.1.2.4.205'],
   ])('rejects a file declaring %s', (_name, transferSyntaxUid) => {
     const file = writeDicom({
       StudyInstanceUID: '1.2',
@@ -197,5 +199,22 @@ describe('Part10', () => {
       'No DICM prefix at byte 128; only a DICOM Part 10 file is read.'
     )
     expect(reasonOf(file.slice(0, -3))).toMatch(/^The file ends inside an element at byte \d+\.$/)
+  })
+
+  test('refuses to encode an odd-length value, or a short-VR value past 16 bits', () => {
+    const file = decoded(
+      writeDicom({
+        StudyInstanceUID: '1.2',
+        SeriesInstanceUID: '1.2.1',
+        SOPInstanceUID: '1.2.1.1',
+        Modality: 'CR',
+      })
+    )
+    const withElement = (value: Uint8Array): Part10.Part10File => ({
+      ...file,
+      dataSet: [...file.dataSet, { tag: 0x0008_1030, vr: 'LO', value, undefinedLength: false }],
+    })
+    expect(() => Part10.encode(withElement(new Uint8Array(3)))).toThrow(/odd-length/)
+    expect(() => Part10.encode(withElement(new Uint8Array(0x1_0000)))).toThrow(/16-bit length/)
   })
 })

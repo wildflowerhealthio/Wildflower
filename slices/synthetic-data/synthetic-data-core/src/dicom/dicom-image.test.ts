@@ -355,6 +355,19 @@ describe('DicomImage.reidentify', () => {
     })
     expect(longAccession._tag).toBe('UnencodableValue')
   })
+
+  test('writes only the synthetic method when the source states an empty DeidentificationMethod', () => {
+    const emptyMethod = withElementsSpliced(
+      plainFile,
+      DEIDENTIFIED_EXPORT_ELEMENTS.map((element) =>
+        element.tag === 0x0012_0063 ? { ...element, value: '' } : element
+      )
+    )
+    const dataSet = parseDicom(reidentified(asOf, emptyMethod, example))
+    expect(textOf(dataSet, 0x0012_0063)).toBe(
+      'Synthetic re-identification: patient, dates and UIDs replaced'
+    )
+  })
 })
 
 describe('DicomImage.importWithSubject', () => {

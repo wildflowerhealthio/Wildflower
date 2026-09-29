@@ -65,14 +65,24 @@ const SEQUENCE_DELIMITATION_TAG = 0xfffe_e0dd
 const EXPLICIT_VR_LITTLE_ENDIAN = '1.2.840.10008.1.2.1'
 
 /**
+ * The two JPIP Referenced Deflate syntaxes: under `1.2.840.10008.1.2.4.` like
+ * the encapsulated ones, but their data set is deflated.
+ */
+const DEFLATED_JPIP_TRANSFER_SYNTAXES: ReadonlySet<string> = new Set([
+  '1.2.840.10008.1.2.4.95',
+  '1.2.840.10008.1.2.4.205',
+])
+
+/**
  * Whether a transfer syntax encodes its data set as Explicit VR Little
  * Endian: that syntax itself, and every encapsulated one — the JPEG family,
- * JPEG-LS, JPEG 2000, MPEG, HEVC (`1.2.840.10008.1.2.4.*`) and RLE
- * (`1.2.840.10008.1.2.5`).
+ * JPEG-LS, JPEG 2000, HTJ2K, MPEG, HEVC (`1.2.840.10008.1.2.4.*`, less the
+ * deflated JPIP ones) and RLE (`1.2.840.10008.1.2.5`).
  */
 const isExplicitVrLittleEndianDataSet = (transferSyntaxUid: string): boolean =>
   transferSyntaxUid === EXPLICIT_VR_LITTLE_ENDIAN ||
-  transferSyntaxUid.startsWith('1.2.840.10008.1.2.4.') ||
+  (transferSyntaxUid.startsWith('1.2.840.10008.1.2.4.') &&
+    !DEFLATED_JPIP_TRANSFER_SYNTAXES.has(transferSyntaxUid)) ||
   transferSyntaxUid === '1.2.840.10008.1.2.5'
 
 /** The VRs PS3.5 Table 7.1-1 writes with two reserved bytes and a 32-bit length. */
@@ -321,9 +331,22 @@ const decode = (bytes: Uint8Array): Either.Either<Part10File, UnsupportedDicomFi
   }
 }
 
-/** The bytes one element is written as: tag, VR, length, value. */
+/**
+ * The bytes one element is written as: tag, VR, length, value.
+ *
+ * @remarks
+ * Throws on an odd-length value, or one too long for its VR's 16-bit length:
+ * every element comes from {@link decode} or a caller that pads its values, so
+ * either is a bug in that caller, not a property of the file.
+ */
 const encodeElement = (element: DataElement): Uint8Array => {
   const long = LONG_LENGTH_VRS.has(element.vr)
+  if (element.value.length % 2 === 1) {
+    throw new Error(`${tagLabelOf(element.tag)} has an odd-length value; DICOM values are even.`)
+  }
+  if (!long && element.value.length > 0xffff) {
+    throw new Error(`${tagLabelOf(element.tag)} ${element.vr} is longer than its 16-bit length.`)
+  }
   const headerLength = long ? 12 : 8
   const bytes = new Uint8Array(headerLength + element.value.length)
   const view = new DataView(bytes.buffer)
