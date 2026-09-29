@@ -15,17 +15,9 @@ export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle } from
 export { detectLifeLabsPdf } from './detect.ts'
 export { lifeLabsPdfImporter } from './lifelabs-pdf-importer.ts'
 export * as Report from './entities/report.ts'
-export type { Type as ReportGroup } from './entities/group.ts'
-export type { Type as ReportLab } from './entities/lab.ts'
-export type { Type as ReportPatient } from './entities/patient.ts'
-export type { Type as LifeLabsReport } from './entities/report.ts'
-export type { Type as ReportSection } from './entities/section.ts'
-export type { Type as ReportRow } from './entities/test-table-row.ts'
-export { toFhirResources, type ReportResources, type SynthesisOptions } from './fhir/to-fhir.ts'
-export { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
+export * from './synthesis.ts'
 export {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
-  LIFELABS_SYSTEM,
   LifeLabsIdentifierSystem,
 } from './source-system.ts'

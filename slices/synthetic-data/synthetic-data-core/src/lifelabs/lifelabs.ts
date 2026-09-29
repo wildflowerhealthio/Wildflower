@@ -141,7 +141,11 @@ const labNumberOf = (asOf: DateTime.Utc, person: Person.Person, day: StoryDay.St
   return `${year}-${prefix}${Seeded.digitsOf(keys, 7)}`
 }
 
-/** One draw as its row of the results grid. */
+/**
+ * One draw as its row of the results grid. The flag is read off the printed
+ * result, not the story's value, so a value that rounds onto a bound flags as
+ * the result beside it reads.
+ */
 const rowOf = (
   laboratory: Laboratory.Laboratory,
   person: Person.Person,
@@ -149,10 +153,11 @@ const rowOf = (
   draw: LabDraw
 ): ReportRow => {
   const range = test.range[person.gender]
+  const result = draw.value.toFixed(test.decimals)
   return {
     name: test.name,
-    flag: Laboratory.flagOf(draw.value, range),
-    result: draw.value.toFixed(test.decimals),
+    flag: Laboratory.flagOf(Number(result), range),
+    result,
     referenceRange: Laboratory.printRange(range),
     unit: printedUnitOf(draw.unit),
     labLicence: laboratory.licence,
@@ -170,15 +175,17 @@ const sectionsOf = (
   draws: readonly LabDraw[]
 ): Effect.Effect<readonly ReportSection[], UncataloguedLabTest> =>
   Effect.gen(function* () {
-    const printed: { readonly test: Laboratory.LifeLabsTest; readonly draw: LabDraw }[] = []
+    const printed: {
+      readonly test: Laboratory.LifeLabsTest
+      readonly printIndex: number
+      readonly draw: LabDraw
+    }[] = []
     for (const draw of draws) {
       const test = Laboratory.testOf(laboratory, draw.test)
       if (test === undefined) return yield* new UncataloguedLabTest({ test: draw.test })
-      printed.push({ test, draw })
+      printed.push({ test, printIndex: laboratory.tests.indexOf(test), draw })
     }
-    const inPrintOrder = printed.toSorted(
-      (left, right) => laboratory.tests.indexOf(left.test) - laboratory.tests.indexOf(right.test)
-    )
+    const inPrintOrder = printed.toSorted((left, right) => left.printIndex - right.printIndex)
     const sections: {
       name: string
       comments: []
@@ -285,7 +292,7 @@ const withSubject =
  *   `DiagnosticReport` — with no `Patient`; the same for the same inputs.
  *   Fails with {@link UncataloguedLabTest} when a draw names a test the
  *   laboratory does not print, or a `ParseError` when the synthesis does not
- *   satisfy its `fhir-r4` schema
+ *   satisfy its `fhir-r4` schema or `pharmacyPatient`'s system is not a URI
  */
 const render = (
   asOf: DateTime.Utc,
@@ -295,13 +302,14 @@ const render = (
   pharmacyPatient: SourcePatient.SourcePatient
 ): Effect.Effect<readonly FhirResource[], UncataloguedLabTest | ParseResult.ParseError> =>
   Effect.gen(function* () {
+    const subject = yield* SourcePatient.referenceOf(pharmacyPatient)
     const reports = yield* reportsOf(asOf, story, laboratory, requisition)
     const groups = yield* toFhirResources(reports, { timeZone: TIME_ZONE })
     return groups
       .flatMap((group) => group.resources)
       .filter((resource) => resource.resourceType !== 'Patient')
       .map(adoptUnderLifeLabs)
-      .map(withSubject(SourcePatient.referenceOf(pharmacyPatient)))
+      .map(withSubject(subject))
   })
 
 export { render, reportsOf, UncataloguedLabTest }

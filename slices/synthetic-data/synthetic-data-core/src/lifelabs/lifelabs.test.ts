@@ -109,6 +109,22 @@ const drawsInPrintOrder = (
         )
     )
 
+/** A fixed person's story with only `draw`, for the example tests. */
+const storyDrawing = (draw: Story['labDraws'][number]): Story => ({
+  person: {
+    key: 'alex',
+    givenName: 'Alex',
+    familyName: 'Rivera',
+    gender: 'female',
+    age: 40,
+    daysSinceBirthday: 0,
+    email: 'alex@example.com',
+    postalCode: 'K7L 2V4',
+  },
+  prescriptions: [],
+  labDraws: [draw],
+})
+
 describe('LifeLabs.render', () => {
   test('property: emits only Practitioners, Observations and DiagnosticReports, each valid under its fhir-r4 schema', () => {
     fc.assert(
@@ -289,20 +305,7 @@ describe('LifeLabs.reportsOf', () => {
 
   test('fails when a draw names a test the laboratory does not print', () => {
     const laboratory: Laboratory.Laboratory = { addressLines: [], licence: '#5687', tests: [] }
-    const story: Story = {
-      person: {
-        key: 'alex',
-        givenName: 'Alex',
-        familyName: 'Rivera',
-        gender: 'female',
-        age: 40,
-        daysSinceBirthday: 0,
-        email: 'alex@example.com',
-        postalCode: 'K7L 2V4',
-      },
-      prescriptions: [],
-      labDraws: [{ day: -1, test: 'Sodium', value: 140, unit: 'mmol/L' }],
-    }
+    const story = storyDrawing({ day: -1, test: 'Sodium', value: 140, unit: 'mmol/L' })
     const failure = Effect.runSync(
       Effect.flip(
         LifeLabs.reportsOf(DateTime.unsafeMake('2026-09-28T12:00:00Z'), story, laboratory, {
@@ -313,5 +316,50 @@ describe('LifeLabs.reportsOf', () => {
     )
     expect(failure).toBeInstanceOf(LifeLabs.UncataloguedLabTest)
     expect(failure.test).toBe('Sodium')
+  })
+})
+
+describe('LifeLabsLaboratory.flagOf and printRange', () => {
+  test.each([
+    { range: Laboratory.between('3.50', '5.00'), value: 3.49, flag: 'LO', printed: '3.50 - 5.00' },
+    { range: Laboratory.between('3.50', '5.00'), value: 3.5, flag: '', printed: '3.50 - 5.00' },
+    { range: Laboratory.between('3.50', '5.00'), value: 5, flag: '', printed: '3.50 - 5.00' },
+    { range: Laboratory.between('3.50', '5.00'), value: 5.01, flag: 'HI', printed: '3.50 - 5.00' },
+    { range: Laboratory.below('3.50'), value: 3.49, flag: '', printed: '<3.50' },
+    { range: Laboratory.below('3.50'), value: 3.5, flag: 'HI', printed: '<3.50' },
+    { range: Laboratory.atLeast('60'), value: 59, flag: 'LO', printed: '>=60' },
+    { range: Laboratory.atLeast('60'), value: 60, flag: '', printed: '>=60' },
+  ] as const)('$value against $printed flags "$flag"', ({ range, value, flag, printed }) => {
+    expect(Laboratory.flagOf(value, range)).toBe(flag)
+    expect(Laboratory.printRange(range)).toBe(printed)
+  })
+})
+
+describe('LifeLabs.reportsOf flag', () => {
+  test('is read off the printed result when the value rounds onto a bound', () => {
+    const laboratory: Laboratory.Laboratory = {
+      addressLines: [],
+      licence: '#5687',
+      tests: [
+        {
+          storyTest: 'TSH',
+          name: 'TSH',
+          section: 'Endocrinology',
+          group: '',
+          decimals: 2,
+          range: Laboratory.eitherSex(Laboratory.between('0.32', '4.00')),
+          comments: [],
+        },
+      ],
+    }
+    const story = storyDrawing({ day: -1, test: 'TSH', value: 4.004, unit: 'mIU/L' })
+    const [report] = Effect.runSync(
+      LifeLabs.reportsOf(DateTime.unsafeMake('2026-09-28T12:00:00Z'), story, laboratory, {
+        orderedBy: 'ROY DR. ANNE',
+        copyTo: [],
+      })
+    )
+    const [row] = report?.sections[0]?.groups[0]?.rows ?? []
+    expect({ result: row?.result, flag: row?.flag }).toEqual({ result: '4.00', flag: '' })
   })
 })

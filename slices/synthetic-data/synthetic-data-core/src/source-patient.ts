@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { type Effect, type ParseResult, Schema } from 'effect'
 import { IdentifierAndReference, type ReferenceType } from 'fhir-r4/data-types'
 import { localResourceId } from 'fhir-r4/identity'
 
@@ -21,7 +21,7 @@ interface SourcePatient {
   readonly originalId: string
 }
 
-const decodeReference = Schema.decodeSync(IdentifierAndReference.ReferenceSchema)
+const decodeReference = Schema.decode(IdentifierAndReference.ReferenceSchema)
 
 /** The id the Patient is stored under once its source's import adopts it. */
 const adoptedIdOf = (sourcePatient: SourcePatient): string =>
@@ -30,9 +30,12 @@ const adoptedIdOf = (sourcePatient: SourcePatient): string =>
 /**
  * A reference to the Patient, as adoption rewrites the source's own
  * `Patient/<originalId>`: the adopted id, with the source's id beside it as
- * `Reference.identifier`.
+ * `Reference.identifier`. Fails with a `ParseError` when `system` is not a
+ * URI the `Reference` schema accepts.
  */
-const referenceOf = (sourcePatient: SourcePatient): ReferenceType =>
+const referenceOf = (
+  sourcePatient: SourcePatient
+): Effect.Effect<ReferenceType, ParseResult.ParseError> =>
   decodeReference({
     reference: `Patient/${adoptedIdOf(sourcePatient)}`,
     identifier: { system: sourcePatient.system, value: sourcePatient.originalId },

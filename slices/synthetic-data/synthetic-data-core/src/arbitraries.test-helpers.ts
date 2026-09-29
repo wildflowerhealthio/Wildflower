@@ -1,5 +1,7 @@
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
+import { REXALL_CAREBOOK_SYSTEM } from 'rexall-be-well-source'
+import { SHOPPERS_DRUGMART_SYSTEM } from 'shoppers-drugmart-source'
 
 import type * as DrugProduct from './drug-product.ts'
 import type { LabDraw } from './lab-draw.ts'
@@ -918,15 +920,14 @@ const labStoryArbitrary: fc.Arbitrary<{
 /** Ordered by one practitioner, copied to at most one other (the print joins a longer list). */
 const requisitionArbitrary: fc.Arbitrary<LabRequisition> = fc.record({
   orderedBy: fc.constantFrom(...ORDERING_PRACTITIONERS),
-  copyTo: fc.subarray(ORDERING_PRACTITIONERS, { maxLength: 1 }),
+  copyTo: fc
+    .option(fc.constantFrom(...ORDERING_PRACTITIONERS), { nil: undefined })
+    .map((copied): LabRequisition['copyTo'] => (copied === undefined ? [] : [copied])),
 })
 
 /** A Patient under one of the pharmacy source systems, keyed by a uuid. */
 const sourcePatientArbitrary: fc.Arbitrary<SourcePatient> = fc.record({
-  system: fc.constantFrom(
-    'https://wildflowerhealth.io/fhir/sid/rexall-carebook',
-    'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
-  ),
+  system: fc.constantFrom(REXALL_CAREBOOK_SYSTEM, SHOPPERS_DRUGMART_SYSTEM),
   originalId: fc.uuid(),
 })
 
