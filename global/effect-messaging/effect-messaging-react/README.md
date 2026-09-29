@@ -1,84 +1,31 @@
 # effect-messaging-react
 
-Browser-side adapter for `effect-messaging-core`. Provides a
-`WebPlatformAdapter` factory that wires the page side of the
-WebView ↔ host postMessage bridge into Effect's `TransportAdapter`
-service.
+React bindings for `effect-messaging-core`. The transport itself comes
+from a platform package (`effect-messaging-tauri`'s `makeTauriTransport`);
+this package lets React slices reach its `HandlerCoordinator` and
+register their inbound handlers from their own lifecycle.
 
-## Why an adapter, not a wrapped transport
+## Main exports
 
-The page often needs to _peek_ at the host-injected initial
-messages before mounting (e.g. to seed a `<MemoryRouter
-initialEntries={[...]}>` at the right path). Doing that with a
-single fused wrapper that builds its own adapter internally would
-require reaching inside the transport. Instead, the page constructs
-the adapter itself, drains the initial messages once, and provides a
-replay adapter to `BridgeTransport.makeWebTransport` so the dispatch
-fiber sees the same messages exactly once.
+- **`HandlerCoordinatorContext`** — React context carrying the
+  transport's `HandlerCoordinator`. The app root provides it once the
+  transport resolves.
+- **`useHandlerCoordinator()`** — reads the surrounding coordinator;
+  throws `NoContextException` without a provider.
+- **`makeUseSliceRegister(bridge)`** — builds a slice's typed
+  `register` / `unregister` hook with its own bridge pre-applied, so the
+  handler record is checked against `bridge['HostToWeb']`. Instantiate
+  it at module scope and export the resulting hook:
 
-```ts
-import { Effect, Layer, ManagedRuntime } from 'effect'
-import { BridgeTransport, TransportAdapter } from 'effect-messaging-core'
-import { WebPlatformAdapter } from 'effect-messaging-react'
+  ```ts
+  const useCollectorRegister = makeUseSliceRegister(CollectorBridge)
+  // …in a component:
+  const { register, unregister } = useCollectorRegister()
+  Effect.runFork(register(handlers))
+  ```
 
-const webAdapter = WebPlatformAdapter.make()
-const initialMessages = Effect.runSync(webAdapter.drainInitial)
-
-// Use `initialMessages` to derive routing, auth state, etc., then
-// hand them back through a replay adapter so the dispatch fiber
-// processes them once.
-const replayAdapter = {
-  bareSender: webAdapter.bareSender,
-  drainInitial: Effect.succeed(initialMessages),
-  attachLive: webAdapter.attachLive,
-}
-
-const transport = await managedRuntime.runPromise(
-  Scope.extend(
-    BridgeTransport.makeWebTransport({ bridges, handlers }).pipe(
-      Effect.provide(Layer.succeed(TransportAdapter, replayAdapter))
-    ),
-    scope
-  )
-)
-```
-
-## Behaviors
-
-The adapter exposes the three `TransportAdapter` surfaces:
-
-- **`bareSender`** — calls
-  `window.ReactNativeWebView.postMessage(encoded)`. Warns and
-  drops when the host is absent (standalone-web bundles).
-- **`drainInitial`** — reads
-  `window[INITIAL_MESSAGES_WINDOW_GLOBAL]` (default
-  `__INITIAL_MESSAGES__`), deletes the global so a hot reload
-  doesn't double-replay, and filters out non-string entries.
-- **`attachLive`** — `window.addEventListener('message', ...)`
-  inside `Effect.acquireRelease`. The listener detaches when the
-  transport's scope closes. The filter accepts events whose
-  `source === window` and whose `origin` matches the page origin
-  or is `''` (sandboxed / `file://` / `data:` documents).
-
-## Threat model: postMessage origin trust
-
-The `attachLive` filter admits `event.origin === ''` alongside the
-same-origin check. Null origin appears for sandboxed iframes,
-`data:` documents, and `file://` documents (the native host case).
-Combined with `event.source === window`, this means the sender
-must be the same window object — but the bundle still relies on
-the host being trusted.
-
-The bundle is loaded by the native host from a controlled scheme; it must
-never be loaded inside an attacker-controlled frame. Hosts that
-load this bundle in untrusted environments need to tighten
-`attachLive` to `event.origin === window.location.origin` only.
-
-See issue #24 for the full embedding-contract threat model.
-
-## Wire-format constants
-
-`INITIAL_MESSAGES_WINDOW_GLOBAL` and
-`REACT_NATIVE_WEBVIEW_GLOBAL` live in `effect-messaging-core`'s
-`platform-adapter.ts`, so both sides of the bridge share one
-source of truth for the wire-format contract.
+- **`useLateBoundSender(senderRef)`** — an identity-stable sender that
+  reads `senderRef.current` at send time, for a sender that is wired up
+  after the consumer mounts.
+- **`BridgeHandlerRecord` / `HandlerCoordinator`** — re-exported from
+  `effect-messaging-core`, where the platform-agnostic contract lives.

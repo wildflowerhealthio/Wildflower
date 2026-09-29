@@ -1,4 +1,3 @@
-import type { Schema } from 'effect'
 import type * as MessageHandler from './message-handler.ts'
 import * as Message from './message.ts'
 
@@ -12,25 +11,9 @@ import * as Message from './message.ts'
  * record) selects `bridge[direction]` without an endpoint→direction
  * translation step. The host's inbound direction is `'WebToHost'` and its
  * outbound is `'HostToWeb'`; the web side is the mirror — but that mapping
- * now lives at the two transport entry points, not in these types.
+ * lives at the transport entry points, not in these types.
  */
 type Direction = 'HostToWeb' | 'WebToHost'
-
-/**
- * Optional per-tag schemas for encoding messages as URL query params
- * (the `?<Tag>=<value>` form on the WebView's source URL). Keys must be
- * a subset of the bridge's host→web tag names; each value is a
- * `Schema<MessageOf<Tag>, string>` — encoded form is the URL-param
- * value, decoded form is the typed message (with `_tag` populated).
- *
- * Tags without an entry can't ride on URL params. Use {@link singleStringMessageSchema}
- * for the common single-string-field case.
- */
-type UrlParamSchemas<HostToWeb extends Message.SchemaRecord> = {
-  readonly [Tag in keyof HostToWeb]?: HostToWeb[Tag] extends Schema.Schema<infer A, string, never>
-    ? Schema.Schema<A, string, never>
-    : never
-}
 
 /**
  * A declared cross-process bridge: the two directional schema records
@@ -51,7 +34,6 @@ interface Bridge<
   readonly name: Name
   readonly HostToWeb: HostToWeb
   readonly WebToHost: WebToHost
-  readonly UrlParamSchemas: UrlParamSchemas<HostToWeb>
 }
 
 /** Structural bound for "any wired bridge". */
@@ -59,8 +41,6 @@ type AnyBridge = {
   readonly name: string
   readonly HostToWeb: Message.SchemaRecord
   readonly WebToHost: Message.SchemaRecord
-  // oxlint-disable-next-line typescript/no-explicit-any
-  readonly UrlParamSchemas: Readonly<Record<string, Schema.Schema<any, string, never> | undefined>>
 }
 
 /**
@@ -77,10 +57,10 @@ type AnyBridge = {
  *   A naked distribution is required because indexing a tuple-mapped type
  *   (`{ [I in keyof Bridges]: … }[number]`) over a *generic* `Bridges`
  *   eagerly collapses `Bridges[number]` to its `AnyBridge` constraint,
- *   breaking the sender variance check in {@link callPageReady}; the
- *   distributive conditional stays *deferred* over a generic `Bridges`,
- *   preserving the symbolic relationship that lets the full-tuple sender
- *   hand off to each narrow per-slot callback.
+ *   breaking sender variance checks; the distributive conditional stays
+ *   *deferred* over a generic `Bridges`, preserving the symbolic
+ *   relationship that lets a full-tuple sender hand off to a narrower
+ *   single-bridge sender.
  * - The outer `… extends infer M extends { readonly _tag: string } ? M`
  *   re-pins the constraint to `{ _tag: string }`. Without it the doubly
  *   deferred inner conditional has no apparent `_tag`, so the generic
@@ -93,28 +73,6 @@ type SendableMessage<Bridges extends ReadonlyArray<AnyBridge>, Dir extends Direc
 ) extends infer M extends { readonly _tag: string }
   ? M
   : never
-
-/**
- * Union of decoded message types whose tags have a `urlParams` schema
- * declared on some wired bridge. The host transport's `initialMessages`
- * narrows to this so call sites can't pass a tag that has no URL form.
- *
- * @remarks
- * Maps over the `Bridges` tuple and, per bridge, strips its
- * `UrlParamSchemas` down to a plain `Message.SchemaRecord` — the `-?`
- * modifier removes the optional flag inherited from `UrlParamSchemas`'s
- * `?` keys and `NonNullable` drops the `| undefined` — then delegates the
- * decoded-type extraction to {@link Message.Of}. This keeps
- * `UrlParamableMessage` `infer`-free; the lone surviving extraction
- * `infer` lives in `Message.Of`.
- */
-type UrlParamableMessage<Bridges extends ReadonlyArray<AnyBridge>> = {
-  readonly [I in keyof Bridges]: Message.Of<{
-    readonly [Tag in keyof Bridges[I]['UrlParamSchemas']]-?: NonNullable<
-      Bridges[I]['UrlParamSchemas'][Tag]
-    >
-  }>
-}[number]
 
 /**
  * Tuple-mapped handler requirement for a bridge transport. Position `I`
@@ -140,17 +98,12 @@ type HandlersByBridge<Bridges extends ReadonlyArray<AnyBridge>, Dir extends Dire
  *   name: 'Navigation',
  *   hostToWeb: [['HostBackRequested', HostBackRequested]] as const,
  *   webToHost: [['RouteChanged', RouteChanged]] as const,
- *   urlParams: {
- *     HostRequestedWebNavigation: singleStringMessageSchema('HostRequestedWebNavigation', 'path'),
- *   },
  * })
  * ```
  *
  * @remarks
  * Pair tuples are validated via {@link Message.ValidatedPairs} — a
- * mismatched `[tag, schema]` fails at the call site. `urlParams` is
- * optional; tags without a urlParams schema can't ride on the WebView
- * source URL.
+ * mismatched `[tag, schema]` fails at the call site.
  */
 const make = <
   const Name extends string,
@@ -160,7 +113,6 @@ const make = <
   readonly name: Name
   readonly hostToWeb: HostToWebPairs & Message.ValidatedPairs<HostToWebPairs>
   readonly webToHost: WebToHostPairs & Message.ValidatedPairs<WebToHostPairs>
-  readonly urlParams?: UrlParamSchemas<Message.RecordFromPairs<HostToWebPairs>>
 }): Bridge<
   Name,
   Message.RecordFromPairs<HostToWebPairs>,
@@ -173,17 +125,8 @@ const make = <
     name: definition.name,
     HostToWeb: hostToWebRecord,
     WebToHost: webToHostRecord,
-    UrlParamSchemas: definition.urlParams ?? {},
   }
 }
 
 export { make }
-export type {
-  AnyBridge,
-  Bridge,
-  Direction,
-  HandlersByBridge,
-  SendableMessage,
-  UrlParamableMessage,
-  UrlParamSchemas,
-}
+export type { AnyBridge, Bridge, Direction, HandlersByBridge, SendableMessage }

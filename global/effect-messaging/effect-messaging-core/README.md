@@ -2,10 +2,10 @@
 
 Platform-agnostic core of the cross-process bridge transport. Provides
 the `Bridge.make` factory for declaring typed bridges, the
-`BridgeTransport.makeHostTransport` / `makeWebTransport` Effects for
-wiring multiple bridges through a single dispatch fiber, and the
-`TransportAdapter` Tag the platform adapter package (`effect-messaging-react`)
-supplies.
+`BridgeTransport.makeHostTransport` Effect for wiring multiple bridges
+through a single dispatch fiber, the `TransportAdapter` Tag a platform
+adapter supplies, and the `HandlerCoordinator` contract the page-side
+transports (`effect-messaging-tauri`) implement.
 
 ## Concepts
 
@@ -16,9 +16,10 @@ entry per message): `HostToWeb` is what the host sends and the web
 receives, `WebToHost` is the reverse. A bridge knows only its schemas —
 it has no `send`, no notion of a transport, and no endpoint identity. The
 `Bridge.Direction` (`'HostToWeb' | 'WebToHost'`) simply names the two
-records; the endpoint→direction mapping lives only at the two transport
+records; the endpoint→direction mapping lives only at the transport
 entry points (`makeHostTransport` binds inbound `WebToHost` / outbound
-`HostToWeb`; `makeWebTransport` is the mirror).
+`HostToWeb`; `makeTauriTransport` in `effect-messaging-tauri` is the
+page-side mirror).
 
 The inbound side is served by a plain **handler record**
 (`MessageHandler.HandlersFor<Bridge[Direction]>`): one Effect-returning
@@ -26,12 +27,11 @@ function (`(message) => Effect<void>`) per inbound tag, passed as a value
 — no `Context.Tag`, no `Layer`.
 
 A **transport** consumes a tuple of bridges plus a parallel tuple of
-their handler records (`Bridge.HandlersByBridge<Bridges, InDir>`), drains
-the platform's initial messages, and forks a dispatch fiber that
-decodes inbound messages to the right bridge's handler. The transport
-owns all sending: its public `sendMessage` is typed as the union of
-every wired bridge's outbound messages for the outbound direction
-(`Bridge.SendableMessage<Bridges, OutDir>`), and internally it encodes
+their handler records (`Bridge.HandlersByBridge<Bridges, 'WebToHost'>`)
+and forks a dispatch fiber that decodes inbound messages to the right
+bridge's handler. The transport owns all sending: its public
+`sendMessage` is typed as the union of every wired bridge's outbound
+messages (`Bridge.SendableMessage<Bridges, 'HostToWeb'>`), and internally it encodes
 each message with `Message.stringifyMessage` against the merged outbound
 record before handing the wire string to the adapter's bare sender.
 `registerHandlers(next)` swaps the active records at runtime via an
@@ -48,7 +48,6 @@ type AnyBridge = {
   readonly name: string
   readonly HostToWeb: Message.SchemaRecord
   readonly WebToHost: Message.SchemaRecord
-  readonly UrlParamSchemas: Readonly<Record<string, Schema.Schema<any, string, never> | undefined>>
 }
 ```
 
@@ -99,34 +98,17 @@ one scoped fiber:
 
 The `__Ready` handshake is one-way. The host buffers its outbox until it
 dispatches the web peer's `__Ready` — routed through the normal inbound →
-handler path, where an injected control handler resolves `peerReadyGate`. The
-web's gate is open from the start (it never waits on anyone), so its
-sends flow immediately. `signalReady` posts the `__Ready` wire string on
-the web and is a no-op on the host. Scope close shuts both queues down and
-interrupts
-both fibers.
-
-## Drain-then-replay
-
-The Web platform adapter's `drainInitial` reads
-`window.__INITIAL_MESSAGES__` once, deletes the global, and returns
-the strings. The transport then offers each string into the inbox —
-behind the web's self-`__Ready`, so the handshake gates before the
-seeded messages dispatch.
-
-Web consumers that need to _peek_ at the initial messages before
-mounting (e.g. to seed `<MemoryRouter initialEntries={[…]}>` at the
-right path) can construct the adapter, drain it, and provide a replay
-adapter that hands the same strings back through `drainInitial` to
-`makeWebTransport`. See `effect-messaging-react/README.md` for the
-full pattern.
+handler path, where an injected control handler resolves `peerReadyGate`.
+The optional `onPageReady` callback runs on every `__Ready`, so a
+reloaded page re-receives the host's boot-state push. Scope close shuts
+both queues down and interrupts both fibers.
 
 ## Subpaths
 
 - `effect-messaging-core` — main barrel: `Bridge`, `BridgeTransport`,
-  `HostBindings`, `Message`, `MessageHandler`, `HandlerHelpers`,
-  `Logging`, `TransportAdapter`, `UrlParamMessage`, and the
-  `bare-sender` re-exports.
+  `Message`, `MessageHandler`, `HandlerHelpers`, `Logging`,
+  `TransportAdapter`, the `BridgeHandlerRecord` / `HandlerCoordinator`
+  types, and the `bare-sender` re-exports.
 - `effect-messaging-core/test` — `TestPlatformAdapterLayer`, the
   capturing-stub `Layer<TransportAdapter>` for tests. Kept out of the
   production barrel (mirrors the `vite-plus/test` convention).

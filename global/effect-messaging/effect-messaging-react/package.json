@@ -2,7 +2,7 @@
   "name": "effect-messaging-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser adapter for effect-messaging: window.postMessage transport and generic URL helpers.",
+  "description": "React bindings for effect-messaging: handler-coordinator context, per-slice register hooks, late-bound sender.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -33,9 +33,7 @@
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
@@ -47,7 +45,6 @@
   "peerDependencies": {
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*"
   }

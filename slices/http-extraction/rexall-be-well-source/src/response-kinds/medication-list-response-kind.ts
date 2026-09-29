@@ -1,9 +1,10 @@
-import { Effect, Schema } from 'effect'
+import { Effect, RegExp as EffectRegExp, Schema } from 'effect'
 import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 import { promoteMedicationDispense } from '../promote/medication-dispense.ts'
 import { promoteMedicationRequest } from '../promote/medication-request.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
+import { REXALL_PHARMACY_LOCATION_URL } from '../tunnel-url.ts'
 
 /** A decoded carebook medication: an fhir-r4 `MedicationRequest` or `MedicationDispense`. */
 type MedicationResource =
@@ -53,12 +54,11 @@ const promote = (resource: MedicationResource): MedicationResource =>
     : promoteMedicationDispense(resource)
 
 /**
- * The exact prescriptions-searchset XHR URL, anchored and pinned to host + `v1`
- * + full path; the trailing `?` requires a query. Disjoint from
- * `ProfileResponseKind`.
+ * {@link REXALL_PHARMACY_LOCATION_URL} followed by a query: the
+ * prescriptions-searchset XHR, anchored and pinned to host + `v1` + full path;
+ * the trailing `?` requires a query. Disjoint from `ProfileResponseKind`.
  */
-const medicationListUrl =
-  /^https:\/\/rexall-prd-tunnel\.letsbewell\.ca\/enduser\/health\/v1\/fhir\/stu3\/pharmacy\/Location\?/
+const medicationListUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PHARMACY_LOCATION_URL)}\\?`)
 
 /**
  * Response kind for the Rexall prescriptions page's single XHR: one

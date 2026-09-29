@@ -56,13 +56,6 @@ const useRouteChangeWatcher = (send: RouteChangeSender): void => {
 /**
  * Mount under a TanStack `<RouterProvider>`. Watches navigation to emit
  * `RouteChanged`. Renders no DOM.
- *
- * @remarks
- * Inbound navigation messages (`HostBackRequested`,
- * `HostRequestedWebNavigation`) are handled by the record built via
- * {@link makeNavigationWebHandlers} — call that inside a component with
- * `useNavigate()` access and pass the record to
- * `BridgeTransport.makeWebTransport`'s `handlers`.
  */
 function NavigationBridgeHandler({ sender }: { sender: RouteChangeSender }): JSX.Element | null {
   useRouteChangeWatcher(sender)

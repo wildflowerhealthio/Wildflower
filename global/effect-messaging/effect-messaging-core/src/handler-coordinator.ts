@@ -10,9 +10,9 @@ import type * as MessageHandler from './message-handler.ts'
  *
  * @remarks
  * The platform-agnostic storage shape a transport's coordinator keeps one
- * of per bridge name. Both the React (`window.postMessage`) and Tauri
- * (per-tag event) adapters erase their typed `HandlersFor` records to this
- * for name-keyed storage, then re-narrow at the dispatch site.
+ * of per bridge name. The Tauri transport erases its typed `HandlersFor`
+ * records to this for name-keyed storage, then re-narrows at the dispatch
+ * site.
  */
 type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Effect<void>>>
 
@@ -22,11 +22,9 @@ type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Ef
  * mounts.
  *
  * @remarks
- * Holds one record per bridge name. On every change it recomposes the full
- * per-bridge tuple in `bridges` order and re-registers once (replace
- * semantics) — so slices register independently without clobbering each
- * other. A bridge with no registered record gets a generated **drop-all**
- * record (every inbound tag warns-and-drops).
+ * Holds one record per bridge name, so slices register independently
+ * without clobbering each other. A bridge with no registered record
+ * warns-and-drops every inbound tag.
  *
  * The outward `register` / `unregister` API is wide on purpose: each call's
  * `bridge` argument fixes `B`, so a slice calling
@@ -37,16 +35,15 @@ type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Ef
  * reality.
  *
  * This contract is platform-agnostic — its only error channel is core's
- * {@link BridgeTransport.DuplicateTagError}. Adapters (React's
- * `makeHandlerCoordinator` + context, Tauri's transport) implement it; the
- * React-flavored hooks (`makeUseSliceRegister`, the context) live in the
- * React adapter.
+ * {@link BridgeTransport.DuplicateTagError}. Transports (Tauri's
+ * `makeTauriTransport`) implement it; the React-flavored hooks
+ * (`makeUseSliceRegister`, the context) live in the React adapter.
  */
 interface HandlerCoordinator {
   /**
-   * Install `handlers` as `bridge`'s active record (last writer wins) and
-   * re-register. Fails with a `DuplicateTagError` if the combined record
-   * would collide on an inbound tag.
+   * Install `handlers` as `bridge`'s active record (last writer wins).
+   * Fails with a `DuplicateTagError` if the combined record would collide
+   * on an inbound tag.
    */
   readonly register: <const B extends Bridge.AnyBridge>(
     bridge: B,
@@ -54,9 +51,8 @@ interface HandlerCoordinator {
   ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
   /**
    * Remove `handlers` if it's still the active record for `bridge`
-   * (set-if-equal), then re-register. Same failure channel as
-   * {@link HandlerCoordinator.register}, since re-registering is what
-   * actually surfaces a collision.
+   * (set-if-equal). Same failure channel as
+   * {@link HandlerCoordinator.register}.
    */
   readonly unregister: <const B extends Bridge.AnyBridge>(
     bridge: B,

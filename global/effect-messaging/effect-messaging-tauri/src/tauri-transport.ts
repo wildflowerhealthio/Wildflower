@@ -72,14 +72,14 @@ interface TauriTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   /**
    * Emit an outbound (web→host) message on the single bridge channel.
    * Emit failures are logged and dropped — sending never fails the
-   * caller, mirroring the postMessage transports' behavior.
+   * caller, mirroring the core transport's outbound pump.
    */
   readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'WebToHost'>
   /**
-   * Per-bridge inbound handler registration with the same semantics as
-   * `makeHandlerCoordinator` (last-writer-wins `register`, set-if-equal
-   * `unregister`, drop-all-with-warn for unregistered bridges) — so
-   * slice `makeUseSliceRegister` hooks work unchanged.
+   * Per-bridge inbound handler registration: last-writer-wins
+   * `register`, set-if-equal `unregister`, drop-all-with-warn for
+   * unregistered bridges — so slice `makeUseSliceRegister` hooks work
+   * unchanged.
    */
   readonly coordinator: HandlerCoordinator
 }
@@ -142,8 +142,7 @@ const assertUniqueTags = (bridges: ReadonlyArray<Bridge.AnyBridge>): void => {
  * the gatekeeper token) cannot race listener setup and vanish (Tauri
  * events are not buffered). The host re-receives `__Ready` on every
  * page load, so reloads re-trigger its boot-state push. The resolved
- * Promise therefore has the same meaning as the postMessage
- * transports' `signalReady`.
+ * Promise therefore means the host has been told the page is ready.
  *
  * The transport lives for the page's lifetime — listeners are never
  * detached (page teardown drops them with the document).
@@ -227,7 +226,7 @@ const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.Any
   // handler on an earlier event be overtaken by a later event's fiber, so
   // two rapid pushes on the same tag could apply out of order; funnelling
   // through one consumer pins FIFO across handler suspensions, matching the
-  // postMessage transports. Each queued program carries its own
+  // core transport. Each queued program carries its own
   // error/defect handling (see `dispatchFor`), so a bad message never
   // takes the consumer down.
   const inbox = Queue.unbounded<Effect.Effect<void>>().pipe(Effect.runSync)

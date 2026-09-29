@@ -1223,15 +1223,9 @@ importers:
       effect-messaging-core:
         specifier: workspace:*
         version: link:../effect-messaging-core
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
       jsdom:
         specifier: 'catalog:'
         version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../kitchen-sink
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -4366,9 +4360,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.22.2
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
       effect-messaging-react:
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-react

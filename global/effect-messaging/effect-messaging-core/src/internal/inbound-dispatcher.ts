@@ -108,25 +108,14 @@ const makeInboundDispatcher = <
 
     const inbox = yield* Queue.unbounded<string>()
 
-    // Seed the inbox with whatever the adapter has already collected
-    // (e.g. URL-param-encoded messages on the web side). Done before
-    // the live source attaches and before the dispatch fiber starts, so
-    // initial messages always reach the dispatcher first and FIFO
-    // ordering is enforced by code rather than by author discipline.
-    const initial = yield* adapter.drainInitial
-    for (const raw of initial) {
-      yield* Queue.offer(inbox, raw)
-    }
-
     const enqueue = (raw: string): Effect.Effect<void> => offerQuietly(inbox, raw)
 
     if (adapter.attachBareSender !== undefined) {
       yield* adapter.attachBareSender(enqueue)
     }
 
-    // Start the dispatch fiber last — by this point both the initial
-    // drain has been offered and the live source is wired, so the
-    // dispatcher consumes everything in arrival order.
+    // Start the dispatch fiber last — by this point the live source is
+    // wired, so the dispatcher consumes everything in arrival order.
     yield* Effect.forkScoped(
       Stream.runForEach(Stream.fromQueue(inbox, { shutdown: true }), (raw) =>
         dispatch(raw).pipe(

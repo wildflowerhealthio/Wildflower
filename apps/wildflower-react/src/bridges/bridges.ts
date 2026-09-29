@@ -5,17 +5,11 @@ import { HarRecorderBridge } from 'har-recorder-core'
 import { NavigationBridge } from 'navigation-core'
 
 /**
- * The tuple of slice bridges wired into the page-side `BridgeTransport`.
- * Single source of truth: `build-transport.ts` reads the runtime value
- * and `transport-context.ts` derives the `Bridges` type from
- * `typeof bridges`, so the runtime list and the type can't drift.
- *
- * Order is irrelevant to dispatch (the transport routes by `_tag`). The
- * position-keyed `handlers` tuple consumed by
- * `BridgeTransport.makeWebTransport` is now reconstituted internally by
- * `makeHandlerCoordinator`'s `recompose`, so adjusting this list no
- * longer requires keeping a parallel list in `build-transport.ts` in
- * sync by hand.
+ * The tuple of slice bridges wired into the page-side transport.
+ * Single source of truth: the Tauri entry passes the runtime value to
+ * `makeTauriTransport` and `transport-context.ts` derives the `Bridges`
+ * type from `typeof bridges`, so the runtime list and the type can't
+ * drift. Order is irrelevant to dispatch (the transport routes by `_tag`).
  */
 const bridges = [
   NavigationBridge,

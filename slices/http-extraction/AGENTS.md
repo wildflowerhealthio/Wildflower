@@ -33,8 +33,9 @@ navigation, persistence, HAR, files, or apps.
   and body policy. See its [AGENTS.md](./web-trace-source/AGENTS.md).
 - **`rexall-be-well-source`** — the Rexall Be Well source: three response kinds
   (Patient, MedicationRequest, MedicationDispense) that decode Rexall's carebook
-  STU3 dialect into FHIR R4 resources. See its
-  [AGENTS.md](./rexall-be-well-source/AGENTS.md).
+  STU3 dialect into FHIR R4 resources, plus that dialect's catalogue, wire
+  schemas and tunnel URLs for a producer of carebook traffic to spell it from.
+  See its [AGENTS.md](./rexall-be-well-source/AGENTS.md).
 - **`shoppers-drugmart-source`** — the Shoppers Drug Mart source: three response
   kinds (Customer, Prescription, PrescriptionHistory) that synthesize FHIR R4
   Patient / MedicationRequest / MedicationDispense from the portal's bespoke

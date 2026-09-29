@@ -8,8 +8,8 @@ import { Schema } from 'effect'
  * `BrowserSnifferBridge`'s `BridgeTransport` and dispatches by `_tag`.
  *
  * Why JSON-flat (not nested envelopes): the sniffer is injected into
- * third-party pages and must use raw `window.ReactNativeWebView.postMessage`
- * without any module-loading. A flat tagged-struct wire format keeps the
+ * third-party pages and must post over the raw host channel without any
+ * module-loading. A flat tagged-struct wire format keeps the
  * sniffer trivial to author while still typed end-to-end at the host.
  *
  * The sniffer additionally posts `{"_tag":"__Ready"}` as its first

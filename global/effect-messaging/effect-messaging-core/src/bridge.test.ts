@@ -126,8 +126,8 @@ describe('Bridge.make — type-level surface', () => {
     assertType<InboundType>({ _tag: 'Ping', value: 1 })
 
     // The web side consumes `HandlersFor` over the bridge's `HostToWeb`
-    // record (its inbound direction) — the shape `makeWebTransport` and
-    // `registerHandlers` consume.
+    // record (its inbound direction) — the shape a `HandlerCoordinator`
+    // registration consumes.
     type WebHandlers = MessageHandler.HandlersFor<(typeof bridge)['HostToWeb']>
     assertType<WebHandlers>({
       Ping: ({ value }) => Effect.sync(() => expect(typeof value).toBe('number')),
