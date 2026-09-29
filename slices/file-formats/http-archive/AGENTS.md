@@ -55,8 +55,9 @@ dissolves `slices/web-trace` — `web-trace-core` (`TraceExchange`,
 - `http-archive.test.ts` — the projection round-trips through
   `LogFromHarJson`; a foreign archive decodes to the response half it observed.
 - `emit.test.ts` — an emitted archive validates against the HAR spec and
-  round-trips the exchanges it was built from; `harToJson` writes compact or
-  pretty text of the same archive.
+  round-trips the exchanges it was built from; one carrying pages, `pageref`,
+  `serverIPAddress` and every timing phase validates and round-trips too;
+  `harToJson` writes compact or pretty text of the same archive.
 - `chrome-har.test.ts` — a `ChromeHar` round-trips pages, `pageref` and the
   DevTools extras through its file text; the base `Har` reads the same export
   with only the extras dropped.
