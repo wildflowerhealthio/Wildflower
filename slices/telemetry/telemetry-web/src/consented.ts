@@ -57,21 +57,31 @@ const PERSONAL_DATA_OFF: NonNullable<InitSentryWebOptions['dataCollection']> = {
 }
 
 /**
- * The `Sentry.init` options that hold the SDK to what `consent` allows.
+ * The latest answer handed to {@link initConsentedTelemetry}. The SDK's hooks
+ * read it for every event, so a switch turned off stops its events at once.
+ */
+let latestConsent: TelemetryConsent | undefined
+
+/**
+ * The `Sentry.init` options that hold the SDK to what the visitor consented
+ * to.
+ *
+ * @param initialConsent - The answer the SDK starts with
  *
  * @remarks
- * {@link PERSONAL_DATA_OFF} applies whatever the answer. Browser tracing is added only
- * with `performance`; nothing adds session replay or profiling. Each hook
- * drops the events its switch does not cover — error events without
- * `crashReports`, transactions without `performance` — and anonymizes the URLs
- * in the ones it sends.
+ * {@link PERSONAL_DATA_OFF} applies whatever the answer. Browser tracing is
+ * added only when `initialConsent` has `performance`; nothing adds session
+ * replay or profiling. Each hook drops the events its switch does not cover in
+ * {@link latestConsent} — error events without `crashReports`, transactions
+ * without `performance` — and anonymizes the URLs in the ones it sends.
  */
-const sentryOptionsFor = (consent: TelemetryConsent): InitSentryWebOptions => ({
+const sentryOptionsFor = (initialConsent: TelemetryConsent): InitSentryWebOptions => ({
   dataCollection: PERSONAL_DATA_OFF,
-  integrations: consent.performance ? [Sentry.browserTracingIntegration()] : [],
-  beforeSend: (errorEvent) => (consent.crashReports ? scrubEvent(errorEvent) : null),
+  integrations: initialConsent.performance ? [Sentry.browserTracingIntegration()] : [],
+  beforeSend: (errorEvent) =>
+    latestConsent?.crashReports === true ? scrubEvent(errorEvent) : null,
   beforeSendTransaction: (transactionEvent) =>
-    consent.performance ? scrubEvent(transactionEvent) : null,
+    latestConsent?.performance === true ? scrubEvent(transactionEvent) : null,
 })
 
 /**
@@ -89,15 +99,18 @@ const sentryOptionsFor = (consent: TelemetryConsent): InitSentryWebOptions => ({
  * is handed to {@link initWebTelemetry} with the options `sentryOptionsFor`
  * derives from `consent`.
  *
- * Idempotent like {@link initWebTelemetry}: once the SDK is initialized, later
- * calls keep its first options, so a changed answer takes effect on the next
- * page load.
+ * Call it again whenever the answer changes. The SDK initializes once per page
+ * load, keeping its first options, but its hooks follow the latest answer: a
+ * switch turned off stops its events at once, crash reports turned on start
+ * at once, and performance turned on after the SDK started without it takes
+ * effect on the next page load, when browser tracing is added.
  */
 const initConsentedTelemetry = ({
   consent,
   config,
   tags,
 }: InitConsentedTelemetryOptions): boolean => {
+  latestConsent = consent
   const consentedConfig = telemetryConfigFor(consent, config)
   if (consent === undefined || !isTelemetryEnabled(consentedConfig)) return false
   Sentry.getGlobalScope().setTags(tags)

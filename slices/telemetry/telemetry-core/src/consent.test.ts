@@ -95,6 +95,33 @@ describe('readConsent', () => {
   })
 })
 
+describe('storage failures', () => {
+  test('a storage error reaches the caller rather than reading or writing a default', () => {
+    const storageError = new Error('storage is disabled')
+    const failingStorage: ConsentStorage = {
+      getItem: () => {
+        throw storageError
+      },
+      setItem: () => {
+        throw storageError
+      },
+      removeItem: () => {
+        throw storageError
+      },
+    }
+    const consent: TelemetryConsent = {
+      version: 1,
+      crashReports: true,
+      performance: false,
+      decidedAt: '2026-09-29T00:00:00.000Z',
+    }
+
+    expect(() => readConsent(failingStorage, 1)).toThrow(storageError)
+    expect(() => writeConsent(failingStorage, consent)).toThrow(storageError)
+    expect(() => clearConsent(failingStorage)).toThrow(storageError)
+  })
+})
+
 describe('writeConsent', () => {
   test('property: a later answer replaces an earlier one', () => {
     fc.assert(

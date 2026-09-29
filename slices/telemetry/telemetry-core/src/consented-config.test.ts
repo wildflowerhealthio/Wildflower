@@ -44,7 +44,7 @@ describe('telemetryConfigFor', () => {
     expect(consentedConfig.otel.otlpEndpoint).toBeNull()
   })
 
-  test('keeps the DSN, the sample rate and the OTLP endpoint with performance only', () => {
+  test('keeps the DSN and the sample rate with performance only', () => {
     const consentedConfig = telemetryConfigFor(
       consentWith({ crashReports: false, performance: true }),
       baseConfig
@@ -52,10 +52,9 @@ describe('telemetryConfigFor', () => {
 
     expect(consentedConfig.sentry.dsn).toBe(baseConfig.sentry.dsn)
     expect(consentedConfig.sentry.tracesSampleRate).toBe(0.25)
-    expect(consentedConfig.otel.otlpEndpoint).toBe(baseConfig.otel.otlpEndpoint)
   })
 
-  test('property: never samples profiles and keeps every field outside the switches', () => {
+  test('property: never samples profiles or exports over OTLP, and keeps every field outside the switches', () => {
     fc.assert(
       fc.property(fc.boolean(), fc.boolean(), (crashReports, performance) => {
         const consentedConfig = telemetryConfigFor(
@@ -64,6 +63,7 @@ describe('telemetryConfigFor', () => {
         )
 
         expect(consentedConfig.sentry.profileSessionSampleRate).toBe(0)
+        expect(consentedConfig.otel.otlpEndpoint).toBeNull()
         expect(consentedConfig.sentry.environment).toBe(baseConfig.sentry.environment)
         expect(consentedConfig.sentry.release).toBe(baseConfig.sentry.release)
         expect(consentedConfig.otel.serviceName).toBe(baseConfig.otel.serviceName)

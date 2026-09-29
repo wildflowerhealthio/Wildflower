@@ -62,12 +62,27 @@ const errorEventCarrying = (url: string): SampleErrorEvent => ({
   ],
 })
 
-/** A transaction event in the shape the SDK hands `beforeSendTransaction`. */
+/**
+ * A transaction event in the shape the SDK hands `beforeSendTransaction`: a
+ * page load, a Sentry fetch span, and a span from Effect's HTTP client with
+ * its request and response headers.
+ */
 const transactionEventCarrying = (url: string): SampleTransactionEvent => ({
   type: 'transaction',
   transaction: new URL(url).pathname,
   request: { url },
-  contexts: { trace: { trace_id: 't1', span_id: 's1', data: { url, 'sentry.op': 'pageload' } } },
+  contexts: {
+    trace: {
+      trace_id: 't1',
+      span_id: 's1',
+      data: {
+        'url.full': url,
+        'url.path': new URL(url).pathname,
+        'lcp.url': url,
+        'sentry.op': 'pageload',
+      },
+    },
+  },
   spans: [
     {
       span_id: 's2',
@@ -75,12 +90,26 @@ const transactionEventCarrying = (url: string): SampleTransactionEvent => ({
       description: `GET ${url}`,
       data: { 'http.url': url, url, 'url.full': url, 'http.query': '?a=1', 'http.fragment': '#b' },
     },
-    { span_id: 's3', op: 'ui.long-task', description: 'Main UI thread blocked', data: {} },
+    {
+      span_id: 's3',
+      op: 'http.client',
+      description: 'http.client GET',
+      data: {
+        'url.full': url,
+        'url.path': new URL(url).pathname,
+        'url.query': 'patient=123',
+        'http.request.header.accept': 'application/fhir+json',
+        'http.response.header.location': url,
+        'server.address': new URL(url).origin,
+      },
+    },
+    { span_id: 's4', op: 'ui.long-task', description: 'Main UI thread blocked', data: {} },
   ],
 })
 
 const FHIR_URL = 'https://fhir.example/r4/Patient/123/_history/2?_format=json#top'
 const ANONYMIZED_FHIR_URL = 'https://fhir.example/r4/Patient/{id}/_history/{vid}'
+const ANONYMIZED_FHIR_PATH = '/r4/Patient/{id}/_history/{vid}'
 
 describe('scrubEvent', () => {
   test('anonymizes every URL an error event carries and keeps the rest', () => {
@@ -107,13 +136,18 @@ describe('scrubEvent', () => {
   test('anonymizes every URL a transaction event carries and keeps the rest', () => {
     expect(scrubEvent(transactionEventCarrying(FHIR_URL))).toStrictEqual({
       type: 'transaction',
-      transaction: '/r4/Patient/{id}/_history/{vid}',
+      transaction: ANONYMIZED_FHIR_PATH,
       request: { url: ANONYMIZED_FHIR_URL },
       contexts: {
         trace: {
           trace_id: 't1',
           span_id: 's1',
-          data: { url: ANONYMIZED_FHIR_URL, 'sentry.op': 'pageload' },
+          data: {
+            'url.full': ANONYMIZED_FHIR_URL,
+            'url.path': ANONYMIZED_FHIR_PATH,
+            'lcp.url': ANONYMIZED_FHIR_URL,
+            'sentry.op': 'pageload',
+          },
         },
       },
       spans: [
@@ -131,6 +165,19 @@ describe('scrubEvent', () => {
         },
         {
           span_id: 's3',
+          op: 'http.client',
+          description: 'http.client GET',
+          data: {
+            'url.full': ANONYMIZED_FHIR_URL,
+            'url.path': ANONYMIZED_FHIR_PATH,
+            'url.query': undefined,
+            'http.request.header.accept': undefined,
+            'http.response.header.location': undefined,
+            'server.address': 'https://fhir.example',
+          },
+        },
+        {
+          span_id: 's4',
           op: 'ui.long-task',
           description: 'Main UI thread blocked',
           data: {},
@@ -167,6 +214,7 @@ describe('scrubEvent', () => {
     fc.assert(
       fc.property(fc.webUrl({ withQueryParameters: true, withFragments: true }), (url) => {
         const anonymizedUrl = anonymizeUrl(url)
+        const anonymizedPath = anonymizeUrl(new URL(url).pathname)
         const errorEvent = scrubEvent(errorEventCarrying(url))
         const transactionEvent = scrubEvent(transactionEventCarrying(url))
 
@@ -177,11 +225,18 @@ describe('scrubEvent', () => {
           errorEvent.breadcrumbs[1]?.data?.from,
           errorEvent.breadcrumbs[1]?.data?.to,
           transactionEvent.request.url,
-          transactionEvent.contexts.trace.data.url,
+          transactionEvent.contexts.trace.data['url.full'],
+          transactionEvent.contexts.trace.data['lcp.url'],
           transactionEvent.spans[0]?.data['http.url'],
           transactionEvent.spans[0]?.data.url,
           transactionEvent.spans[0]?.data['url.full'],
-        ]).toStrictEqual(Array.from({ length: 10 }, () => anonymizedUrl))
+          transactionEvent.spans[1]?.data['url.full'],
+        ]).toStrictEqual(Array.from({ length: 12 }, () => anonymizedUrl))
+        expect([
+          transactionEvent.transaction,
+          transactionEvent.contexts.trace.data['url.path'],
+          transactionEvent.spans[1]?.data['url.path'],
+        ]).toStrictEqual(Array.from({ length: 3 }, () => anonymizedPath))
         expect(transactionEvent.spans[0]?.description).toBe(`GET ${anonymizedUrl}`)
       }),
       { numRuns: numRunsFor({ base: 100 }) }

@@ -15,18 +15,33 @@ const VERSION_ID_PLACEHOLDER = '{vid}'
 
 /**
  * The placeholders as `URL` serialises them into a pathname, so a URL this
- * module already anonymized reads back to the same placeholders.
+ * module already anonymized, or its {@link INVALID_URL_PLACEHOLDER} read as a
+ * path-relative reference, reads back to the same placeholders.
  */
-const placeholderByPercentEncoding: ReadonlyMap<string, string> = new Map([
-  [encodeURIComponent(RESOURCE_ID_PLACEHOLDER), RESOURCE_ID_PLACEHOLDER],
-  [encodeURIComponent(VERSION_ID_PLACEHOLDER), VERSION_ID_PLACEHOLDER],
-])
+const placeholderByPercentEncoding: ReadonlyMap<string, string> = new Map(
+  [RESOURCE_ID_PLACEHOLDER, VERSION_ID_PLACEHOLDER, INVALID_URL_PLACEHOLDER].map(
+    (placeholder) => [encodeURIComponent(placeholder), placeholder] as const
+  )
+)
 
 /**
- * The base a root-relative path is resolved against. Only the path of the
- * result is read, so the host never reaches the output.
+ * The base a relative reference is resolved against. Its host and path tell
+ * the form of the reference apart once the URL parser has read it: a
+ * protocol-relative reference replaces the host, a root-relative one the path,
+ * and a path-relative one stays under the path. Neither reaches the output.
  */
-const ROOT_RELATIVE_BASE = 'http://root-relative.invalid'
+const RELATIVE_REFERENCE_BASE = new URL('http://relative-reference.invalid/relative-path/')
+
+/**
+ * `segment` with its percent-encoded ASCII octets decoded, so an encoded
+ * resource type (`Pati%65nt`) or interaction (`%5Fhistory`) is recognized as
+ * the server reads it. Octets outside ASCII stay encoded; only ASCII can make
+ * a segment a resource type or an interaction.
+ */
+const decodeAsciiOctets = (segment: string): string =>
+  segment.replace(/%([0-7][0-9A-Fa-f])/g, (_octet, hex: string) =>
+    String.fromCharCode(Number.parseInt(hex, 16))
+  )
 
 /**
  * Whether `segment` is shaped like a FHIR resource type: an uppercase letter,
@@ -62,8 +77,10 @@ const anonymizePathSegment = (
   segments: readonly string[]
 ): string => {
   const readable = placeholderByPercentEncoding.get(segment) ?? segment
-  const previous = segments[index - 1]
-  if (previous === undefined || readable === '' || isInteractionSegment(readable)) return readable
+  const encodedPrevious = segments[index - 1]
+  if (encodedPrevious === undefined || readable === '') return readable
+  if (isInteractionSegment(decodeAsciiOctets(readable))) return readable
+  const previous = decodeAsciiOctets(encodedPrevious)
   if (previous === '_history') return VERSION_ID_PLACEHOLDER
   if (isResourceTypeSegment(previous)) return RESOURCE_ID_PLACEHOLDER
   return readable
@@ -73,17 +90,32 @@ const anonymizePathSegment = (
 const anonymizePathname = (pathname: string): string =>
   pathname.split('/').map(anonymizePathSegment).join('/')
 
-/** Whether `url` is a path from the root of the current origin (`/fhir/Patient/1`). */
-const isRootRelativePath = (url: string): boolean => url.startsWith('/') && !url.startsWith('//')
+/**
+ * `pathname` written as a root-relative reference that reads back as the same
+ * path: a leading `//` would read as a host, so it gets a `/.` in front.
+ */
+const asRootRelativeReference = (pathname: string): string =>
+  pathname.startsWith('//') ? `/.${pathname}` : pathname
+
+/**
+ * `relativePath` written as a path-relative reference that reads back as the
+ * same path: one the URL parser would read as absolute (`x:/y`) or as
+ * root-relative gets a `./` in front.
+ */
+const asPathRelativeReference = (relativePath: string): string =>
+  URL.canParse(relativePath) || /^[/\\]/.test(relativePath) ? `./${relativePath}` : relativePath
 
 /**
  * `url` reduced to the shape of the request, safe to report as performance
  * data.
  *
- * @param url - An absolute `http:` or `https:` URL, or a root-relative path
- * @returns For an absolute URL, its origin and anonymized path; for a
- *   root-relative path, the anonymized path; for anything else,
- *   {@link INVALID_URL_PLACEHOLDER}
+ * @param url - An absolute `http:` or `https:` URL, or a relative reference:
+ *   protocol-relative (`//fhir.example/Patient/1`), root-relative
+ *   (`/fhir/Patient/1`) or path-relative (`Patient/1`)
+ * @returns The anonymized URL in the form it was given: origin and path for an
+ *   absolute URL, `//` host and path for a protocol-relative one, the path for
+ *   the others; {@link INVALID_URL_PLACEHOLDER} for an absolute URL of another
+ *   scheme, or input the URL parser rejects
  *
  * @remarks
  * The query string, the fragment and any credentials are dropped. In the path,
@@ -91,38 +123,60 @@ const isRootRelativePath = (url: string): boolean => url.startsWith('/') && !url
  * the segment after `_history` becomes `{vid}`; operations (`$everything`) and
  * interactions (`_search`) stay. Every other segment — the FHIR base path —
  * stays as written, so `https://fhir.example/r4/Patient/123/_history/2?x=1`
- * becomes `https://fhir.example/r4/Patient/{id}/_history/{vid}`.
+ * becomes `https://fhir.example/r4/Patient/{id}/_history/{vid}`, and
+ * `Observation?patient=1` becomes `Observation`. Segments are classified with
+ * their percent-encoded ASCII decoded, as the server reads them.
+ *
+ * The form of `url` is the one the WHATWG URL parser reads, so input it
+ * normalizes (surrounding spaces, tabs, backslashes) is classified as a
+ * browser would request it.
  *
  * Idempotent: an anonymized URL anonymizes to itself.
  */
 const anonymizeUrl = (url: string): string => {
-  if (isRootRelativePath(url)) return anonymizePathname(new URL(url, ROOT_RELATIVE_BASE).pathname)
-  if (!URL.canParse(url)) return INVALID_URL_PLACEHOLDER
-  const parsedUrl = new URL(url)
-  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-    return INVALID_URL_PLACEHOLDER
+  if (URL.canParse(url)) {
+    const absoluteUrl = new URL(url)
+    if (absoluteUrl.protocol !== 'http:' && absoluteUrl.protocol !== 'https:') {
+      return INVALID_URL_PLACEHOLDER
+    }
+    return `${absoluteUrl.origin}${anonymizePathname(absoluteUrl.pathname)}`
   }
-  return `${parsedUrl.origin}${anonymizePathname(parsedUrl.pathname)}`
+  if (!URL.canParse(url, RELATIVE_REFERENCE_BASE)) return INVALID_URL_PLACEHOLDER
+  const resolvedUrl = new URL(url, RELATIVE_REFERENCE_BASE)
+  const anonymizedPathname = anonymizePathname(resolvedUrl.pathname)
+  if (resolvedUrl.host !== RELATIVE_REFERENCE_BASE.host) {
+    return `//${resolvedUrl.host}${anonymizedPathname}`
+  }
+  if (resolvedUrl.pathname.startsWith(RELATIVE_REFERENCE_BASE.pathname)) {
+    return asPathRelativeReference(
+      anonymizedPathname.slice(RELATIVE_REFERENCE_BASE.pathname.length)
+    )
+  }
+  return asRootRelativeReference(anonymizedPathname)
 }
 
-/** Whether a whitespace-separated token of free text is meant as a URL. */
-const isUrlToken = (token: string): boolean => isRootRelativePath(token) || /^https?:/i.test(token)
+/**
+ * Whether a whitespace-delimited token of free text is meant as a URL: an
+ * absolute `http(s)` URL, or anything with a path separator, query or
+ * fragment in it (`/Patient/1`, `Patient/1`, `Observation?patient=1`).
+ */
+const isUrlToken = (token: string): boolean => /^https?:/i.test(token) || /[/?#]/.test(token)
 
 /**
- * `text` with every token that is an absolute `http(s)` URL or a
- * root-relative path run through {@link anonymizeUrl}.
+ * `text` with every token that is meant as a URL (see `isUrlToken`) run
+ * through {@link anonymizeUrl}.
  *
  * @remarks
  * For the free text telemetry carries URLs in: span descriptions
  * (`GET https://fhir.example/Patient/123`) and transaction names
- * (`/Patient/123`). Tokens are split on single spaces, so the text keeps its
- * spacing; everything that is not a URL stays as written.
+ * (`/Patient/123`). Tokens are split on whitespace, which is kept as written;
+ * everything that is not a URL stays as written too.
  */
 const anonymizeUrlsInText = (text: string): string =>
   text
-    .split(' ')
+    .split(/(\s+)/)
     .map((token) => (isUrlToken(token) ? anonymizeUrl(token) : token))
-    .join(' ')
+    .join('')
 
 export {
   anonymizeUrl,

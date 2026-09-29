@@ -186,6 +186,46 @@ describe('initConsentedTelemetry', () => {
     expect(sentTransactionEvent?.transaction).toBe('/r4/Patient/{id}')
   })
 
+  test('stops sending both kinds of event once the visitor turns both switches off', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    const options = sentryInitOptions()
+
+    expect(
+      initConsentedTelemetry({
+        consent: consentWith({ crashReports: false, performance: false }),
+        config: buildConfig,
+        tags,
+      })
+    ).toBe(false)
+
+    expect(await options.beforeSend?.(errorEvent, {})).toBeNull()
+    expect(await options.beforeSendTransaction?.(transactionEvent, {})).toBeNull()
+  })
+
+  test('starts sending errors once crash reports are turned on after performance only', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: false, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    const options = sentryInitOptions()
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+
+    const sentErrorEvent = await options.beforeSend?.(errorEvent, {})
+    expect(sentErrorEvent?.request?.url).toBe(ANONYMIZED_FHIR_URL)
+  })
+
   test('sets the tags on the global scope', async () => {
     const { initConsentedTelemetry } = await importConsented()
 
