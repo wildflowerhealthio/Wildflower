@@ -272,6 +272,9 @@ describe('SyntheticDataScreen', () => {
     expect(screen.getByRole('progressbar', { name: 'Reading 5 of 6 files…' })).toBeTruthy()
     for (const box of screen.getAllByRole('checkbox')) expect(box.matches(':disabled')).toBe(true)
     expect((await loadButton()).hasAttribute('disabled')).toBe(true)
+    // Reading another data set would unmount the load while it carries on.
+    expect(screen.getByLabelText('Data set URL').matches(':disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Read data set' }).matches(':disabled')).toBe(true)
     expect(bundleCount).toBe(0)
   })
 
@@ -285,6 +288,32 @@ describe('SyntheticDataScreen', () => {
       )
     ).toBeTruthy()
     expect(screen.queryByRole('button', { name: `Load into ${SERVER_URL}` })).toBeNull()
+  })
+
+  it('should read index.json again when the same URL is submitted after a failed read', async () => {
+    const { files } = await dataSetFixture()
+    const host = staticHostOf(files)
+    let indexReads = 0
+    // The first read of index.json finds nothing; the host has it by the second.
+    const fixedHost: StaticHost = {
+      ...host,
+      fetch: (url) => {
+        if (url.endsWith('/index.json')) indexReads += 1
+        return indexReads === 1 && url.endsWith('/index.json')
+          ? Promise.resolve(new Response('Not Found', { status: 404, statusText: 'Not Found' }))
+          : host.fetch(url)
+      },
+    }
+    const { onChange } = mount(fixedHost)
+    await screen.findByText(
+      'Could not load the data set: index.json: the host answered 404 Not Found.'
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Read data set' }))
+
+    expect(await screen.findByRole('group', { name: 'People' })).toBeTruthy()
+    expect(onChange).toHaveBeenCalledWith(DATA_SET_URL)
+    expect(indexReads).toBe(2)
   })
 
   it('should report a URL that is not a data set root without reading it', async () => {

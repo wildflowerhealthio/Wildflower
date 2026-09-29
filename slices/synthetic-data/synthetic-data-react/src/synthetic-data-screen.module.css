@@ -10,15 +10,22 @@
   max-width: 48rem;
 }
 
-/* The URL field with its button under it. */
-.dataSetForm {
+/*
+ * The URL field with its button under it, in a bare fieldset so both lock
+ * while a load runs.
+ */
+.dataSetFields {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }
 
-.dataSetForm > :first-child {
+.dataSetFields > :first-child {
   align-self: stretch;
 }
 

@@ -51,7 +51,7 @@ const rankOf = (resource: FhirResource): number => {
 }
 
 describe('writeBatchesOf', () => {
-  it('property: writes every resource once, in type order, in full bundles but the last', () => {
+  it('property: writes every resource once, in type order, one type to a bundle, each full but a type’s last', () => {
     fc.assert(
       fc.property(fc.array(resourceArbitrary, { maxLength: 3 * WRITE_BATCH_SIZE }), (resources) => {
         const batches = writeBatchesOf(resources)
@@ -65,11 +65,48 @@ describe('writeBatchesOf', () => {
             list.filter((one) => one.resourceType === resourceType)
           expect(ofType(written)).toEqual(ofType(resources))
         }
-        expect(batches.slice(0, -1).every((batch) => batch.length === WRITE_BATCH_SIZE)).toBe(true)
         expect(batches.every((batch) => batch.length > 0)).toBe(true)
+        // A bundle's entries may be applied in any order, so none mixes types…
+        for (const batch of batches) {
+          expect(new Set(batch.map((one) => one.resourceType)).size).toBe(1)
+        }
+        // …and only a type's last bundle is short.
+        batches.forEach((batch, index) => {
+          const next = batches[index + 1]
+          if (next !== undefined && next[0]?.resourceType === batch[0]?.resourceType) {
+            expect(batch).toHaveLength(WRITE_BATCH_SIZE)
+          }
+        })
+        // Each type's resources are adjacent, so a type is written before the next begins.
+        const bundleTypes = batches.map((batch) => batch[0]?.resourceType)
+        const typeRuns = bundleTypes.filter((type, index) => type !== bundleTypes[index - 1])
+        expect(new Set(typeRuns).size).toBe(typeRuns.length)
       }),
       { numRuns: RUNS }
     )
+  })
+
+  it('should split a type past the bundle size, after the types it references', () => {
+    const observations = Array.from({ length: 2 * WRITE_BATCH_SIZE + 50 }, (_, index) =>
+      Schema.decodeUnknownSync(FhirResourceSchema)({
+        resourceType: 'Observation',
+        id: `obs-${index}`,
+        ...MINIMAL_JSON['Observation'],
+      })
+    )
+    const patient = Schema.decodeUnknownSync(FhirResourceSchema)({
+      resourceType: 'Patient',
+      id: 'p',
+    })
+
+    const batches = writeBatchesOf([...observations, patient])
+
+    expect(batches.map((batch) => [batch[0]?.resourceType, batch.length])).toEqual([
+      ['Patient', 1],
+      ['Observation', WRITE_BATCH_SIZE],
+      ['Observation', WRITE_BATCH_SIZE],
+      ['Observation', 50],
+    ])
   })
 })
 

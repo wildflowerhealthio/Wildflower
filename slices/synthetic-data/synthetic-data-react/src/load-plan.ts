@@ -83,12 +83,35 @@ const writeRankOf = (resource: FhirResource): number => {
   return rank === -1 ? WRITE_ORDER.length : rank
 }
 
+/** Resources by {@link writeRankOf}, then by type, so each type's resources are adjacent. */
+const WRITE_ORDER_OF_RESOURCES: Order.Order<FhirResource> = Order.combine(
+  Order.mapInput(Order.number, writeRankOf),
+  Order.mapInput(Order.string, (resource: FhirResource) => resource.resourceType)
+)
+
 /**
- * The batch bundles a load writes, in the order it writes them: the
- * resources in {@link WRITE_ORDER} (their read order kept within a type),
+ * The batch bundles a load writes, in the order it writes them: one type's
+ * resources to a bundle, the types in {@link WRITE_ORDER}, then any other
+ * type by name (read order kept within a type), at most
  * {@link WRITE_BATCH_SIZE} to a bundle.
+ *
+ * @remarks
+ * A bundle never mixes types because a batch's entries are independent: a
+ * server may apply them in any order (FHIR R4's batch rules), so a Patient and an
+ * Observation naming it in one bundle could be written the wrong way round.
+ * Bundles are sent one after another, so every type is stored before the next
+ * one's first bundle is sent.
  */
-const writeBatchesOf = (resources: readonly FhirResource[]): readonly (readonly FhirResource[])[] =>
-  Arr.chunksOf(Arr.sort(resources, Order.mapInput(Order.number, writeRankOf)), WRITE_BATCH_SIZE)
+const writeBatchesOf = (
+  resources: readonly FhirResource[]
+): readonly (readonly FhirResource[])[] => {
+  const inWriteOrder = Arr.sort(resources, WRITE_ORDER_OF_RESOURCES)
+  return Arr.isNonEmptyReadonlyArray(inWriteOrder)
+    ? Arr.groupWith(
+        inWriteOrder,
+        (left, right) => left.resourceType === right.resourceType
+      ).flatMap((resourcesOfType) => Arr.chunksOf(resourcesOfType, WRITE_BATCH_SIZE))
+    : []
+}
 
 export { resourcePathsOf, resourceTypeCountsOf, WRITE_BATCH_SIZE, WRITE_ORDER, writeBatchesOf }

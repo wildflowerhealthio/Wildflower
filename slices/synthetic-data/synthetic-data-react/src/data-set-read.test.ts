@@ -177,4 +177,39 @@ describe('readResources', () => {
       )
     )
   })
+
+  it('should fail a file holding another source file before fetching its static file', async () => {
+    const { files, sourceFile } = await dataSetFixture()
+    const sourceFileJson = files.find(
+      ({ path }) => path === `fhir/DocumentReference/${sourceFile.id}.json`
+    )
+    if (sourceFileJson === undefined) throw new Error('expected the source file’s file')
+    const host = staticHostOf(
+      files,
+      new Map([['fhir/Patient/patient-a.json', sourceFileJson.contents]])
+    )
+
+    const result = await resourcesOf(host, ['fhir/Patient/patient-a.json'])
+
+    expect(result).toEqual(
+      Either.left(
+        new DataSetReadFailed({
+          path: 'fhir/Patient/patient-a.json',
+          message: `fhir/Patient/patient-a.json: it holds DocumentReference/${sourceFile.id}, not the resource its path names.`,
+        })
+      )
+    )
+    expect(host.requestedUrls).toEqual([`${DATA_SET_URL}fhir/Patient/patient-a.json`])
+  })
+
+  it('should fail naming a resource file that is not JSON', async () => {
+    const { files } = await dataSetFixture()
+    const host = staticHostOf(files, new Map([['fhir/Patient/patient-a.json', 'not json']]))
+
+    const result = await resourcesOf(host, ['fhir/Patient/patient-a.json'])
+
+    if (Either.isRight(result)) throw new Error('expected the read to fail')
+    expect(result.left.path).toBe('fhir/Patient/patient-a.json')
+    expect(result.left.message).toMatch(/^fhir\/Patient\/patient-a\.json: it is not JSON \(/)
+  })
 })

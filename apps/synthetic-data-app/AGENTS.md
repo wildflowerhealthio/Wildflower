@@ -23,10 +23,11 @@ script.
   bare visit's `?dataSet=` (`rememberDataSetParam`) before the SMART redirect
   drops it; the page starts from the kept URL, else `DEFAULT_DATA_SET_URL`, and
   keeps each URL the reader submits. Nothing writes the address bar.
-- **The data set is read without the FHIR token.** Its files go out through
-  `globalThis.fetch` to the data set's own host; only the FHIR writes go
-  through the router context's HTTP layer, which addresses the handshake's
-  server and carries its bearer token.
+- **The data set is read without the FHIR token.** `synthetic-data-react`
+  fetches its files from the data set's own host through `globalThis.fetch`,
+  with no credentials, so a `?dataSet=` naming this origin does not read it
+  with its cookies. Only the FHIR writes go through the router context's HTTP
+  layer, which addresses the handshake's server and carries its bearer token.
 - **The scope string is the Importer's write set for the types a data set
   holds.** `config.ts`'s `SYNTHETIC_DATA_SCOPE` is pinned to the dev client's
   `SYNTHETIC_DATA_DEV_SCOPES` by `gatekeeper-rust`'s `seeding.rs` test, and
@@ -39,7 +40,7 @@ script.
   `buildSmartRouterContext`, with a recording FHIR transport and a stubbed
   `globalThis.fetch` serving a data set `DataSet.assemble` built: a load
   writes each resource to the FHIR base with the bearer token, the data set is
-  read only from its own host, a submitted URL is read and kept, and the scope
+  read only from its own host and with no credentials, a submitted URL is read and kept, and the scope
   string covers `WRITE_ORDER`.
 - `data-set-url-memory.test.ts` — the published set until one is kept, the
   last URL kept, a page's `?dataSet=` kept, and a page without one (the OAuth

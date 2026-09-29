@@ -10,9 +10,11 @@ import { DataSet, DataSetLayout, DataSetManifest } from 'synthetic-data-core'
  * carried inline again.
  *
  * @remarks
- * Every path read comes from the manifest, whose schema has already checked
- * it against the layout's grammar (`DataSetLayout.ResourcePathSchema`,
- * `StaticFilePathSchema`), so a read never leaves the data set's root.
+ * Every path read is in the layout's grammar, so a read never leaves the
+ * data set's root: a resource path comes from the manifest, whose schema
+ * checks it (`DataSetLayout.ResourcePathSchema`), and a static file's path
+ * from its source file's `url`, which `DataSetLayout.staticFileLinkOf` links
+ * only when it is a `StaticFilePathSchema` path.
  *
  * A source file is laid out with a relative `url` to its HAR or DICOM file
  * instead of the `data` its import stored. The reader fetches that file and
@@ -139,7 +141,11 @@ const withStaticFileRead = (
     return DataSetLayout.withStaticFileData(documentReferenceJson, bytes)
   })
 
-/** The resource the file at `path` holds, which must be the one its path names. */
+/**
+ * The resource the file at `path` holds, which must be the one its path
+ * names — checked on the file's JSON, before a source file's static file is
+ * fetched.
+ */
 const readResource = (
   root: URL,
   path: string,
@@ -155,22 +161,19 @@ const readResource = (
         )
       )
     )
-    const link = DataSetLayout.staticFileLinkOf(json)
-    const inlineJson = link === undefined ? json : yield* withStaticFileRead(root, link, fetchUrl)
-    const resource = yield* Schema.decode(FhirResourceSchema)(inlineJson).pipe(
-      Effect.mapError((error) => readFailed(path, `it is not a FHIR R4 resource. ${error.message}`))
-    )
     const heldPath =
-      resource.id === null
-        ? undefined
-        : DataSetLayout.resourcePathOf(resource.resourceType, resource.id)
+      json.id === undefined ? undefined : DataSetLayout.resourcePathOf(json.resourceType, json.id)
     if (heldPath !== path) {
       return yield* readFailed(
         path,
-        `it holds ${resource.resourceType}/${resource.id ?? '<no id>'}, not the resource its path names.`
+        `it holds ${json.resourceType}/${json.id ?? '<no id>'}, not the resource its path names.`
       )
     }
-    return resource
+    const link = DataSetLayout.staticFileLinkOf(json)
+    const inlineJson = link === undefined ? json : yield* withStaticFileRead(root, link, fetchUrl)
+    return yield* Schema.decode(FhirResourceSchema)(inlineJson).pipe(
+      Effect.mapError((error) => readFailed(path, `it is not a FHIR R4 resource. ${error.message}`))
+    )
   })
 
 /**

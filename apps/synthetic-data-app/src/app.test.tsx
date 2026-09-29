@@ -16,7 +16,7 @@ import { rememberedDataSetUrl } from './data-set-url-memory.ts'
  * The app's own wiring, end to end: its router context satisfies
  * `synthetic-data-react`'s `useRunAuthed`, its HTTP layer addresses the FHIR
  * server the SMART handshake named with the granted token, and the data set
- * is read from its own host with no token. Only the two transports are stubs
+ * is read from its own host with no token or cookies. Only the two transports are stubs
  * — the FHIR server's `HttpClient` and `globalThis.fetch` for the data set —
  * so the real `buildSmartRouterContext`, router, reads and writes run.
  *
@@ -38,6 +38,8 @@ interface RecordedWrite {
 let writes: RecordedWrite[]
 /** Every URL the data set was read from. */
 let dataSetUrls: string[]
+/** The credentials mode of every data set read. */
+let dataSetCredentials: (RequestCredentials | undefined)[]
 
 const BatchBundleWire = Schema.parseJson(
   Schema.Struct({
@@ -98,8 +100,9 @@ const DATA_SET_FILES = Either.getOrThrow(
 
 /** Serve the data set at `root` through `globalThis.fetch`. */
 const serveDataSetAt = (root: string): void => {
-  vi.stubGlobal('fetch', (url: string): Promise<Response> => {
+  vi.stubGlobal('fetch', (url: string, init?: RequestInit): Promise<Response> => {
     dataSetUrls.push(url)
+    dataSetCredentials.push(init?.credentials)
     const file = DATA_SET_FILES.find(({ path }) => `${root}${path}` === url)
     return Promise.resolve(
       file === undefined
@@ -122,6 +125,7 @@ const mount = (): void => {
 beforeEach(() => {
   writes = []
   dataSetUrls = []
+  dataSetCredentials = []
   window.sessionStorage.clear()
 })
 
@@ -150,9 +154,11 @@ describe('SyntheticDataApp', () => {
       expect(write.bundleUrl.startsWith(SERVER_URL)).toBe(true)
       expect(write.authorization).toBe(`Bearer ${ACCESS_TOKEN}`)
     }
-    // …and the data set is read from its own host, never the FHIR server.
+    // …and the data set is read from its own host, never the FHIR server, and
+    // with no credentials.
     expect(dataSetUrls.length).toBeGreaterThan(0)
     for (const url of dataSetUrls) expect(url.startsWith(DEFAULT_DATA_SET_URL)).toBe(true)
+    expect(new Set(dataSetCredentials)).toEqual(new Set(['omit']))
   })
 
   it('should read the data set URL submitted, and keep it for this tab', async () => {

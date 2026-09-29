@@ -30,8 +30,9 @@ slice is where the two meet, so neither has to know about the other.
 Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/importer-web`,
 `apps/synthetic-data-app` and `apps/web-trace` mount `SmartAppRoot` and
 `runSmartLaunchEntry`; the first two, `apps/synthetic-data-app` and
-`synthetic-data-react`'s screen speak the read-status lines; `apps/fhir-sync-pebble-web` is
-standalone-only, so it mounts `SmartAppRoot` with no launch entry;
+`synthetic-data-react`'s screen speak the read-status lines;
+`apps/fhir-sync-pebble-web` is standalone-only, so it mounts `SmartAppRoot`
+with no launch entry;
 `apps/wildflower-react`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.
 
