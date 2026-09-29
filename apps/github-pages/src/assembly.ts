@@ -93,6 +93,16 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
+    packageName: 'synthetic-data-app',
+    // The package lives in `apps/synthetic-data-app`; its published path is
+    // `/${SECTION_PATHS.syntheticData}`.
+    sourceDir: 'apps/synthetic-data-app/dist',
+    destPath: SECTION_PATHS.syntheticData,
+    // Two entries: the EHR launch endpoint and the app root (the redirect target,
+    // which also serves the standalone connect menu on a bare visit).
+    requiredFiles: ['index.html', 'launch.html'],
+  },
+  {
     packageName: 'ohif-viewer',
     // The prebuilt OHIF viewer pinned in apps/ohif-viewer/prebuilt.json (or
     // the stub page while nothing is pinned), with Wildflower's runtime

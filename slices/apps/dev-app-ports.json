@@ -6,5 +6,6 @@
   "importer-app-dev": 5193,
   "ohif-viewer-dev": 5194,
   "fhir-sync-pebble-dev": 5195,
-  "health-viewer-app-dev": 5196
+  "health-viewer-app-dev": 5196,
+  "synthetic-data-app-dev": 5197
 }

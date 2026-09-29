@@ -18,6 +18,7 @@
     "marketing-website": "workspace:*",
     "medications-app": "workspace:*",
     "ohif-viewer": "workspace:*",
+    "synthetic-data-app": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",

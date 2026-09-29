@@ -15,6 +15,7 @@ const SECTION_PATHS = {
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',
   healthViewer: 'health-viewer-app',
+  syntheticData: 'synthetic-data-app',
   // The hosted copy of the wildflower-react owner UI, published cross-origin to
   // the API. `/app/` was chosen over `/wildflower-react/` and `/wildflower/`.
   app: 'app',

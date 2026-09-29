@@ -109,11 +109,12 @@ describe('navHref', () => {
 })
 
 describe('HEADER_NAV_LINKS', () => {
-  it('should link directly into the six apps, in design order', () => {
+  it('should link directly into the seven apps, in design order', () => {
     expect(HEADER_NAV_LINKS.map((link) => link.label)).toStrictEqual([
       'Medications',
       'Health viewer',
       'Importer',
+      'Synthetic data',
       'Web traces',
       'Server docs',
       'Imaging',

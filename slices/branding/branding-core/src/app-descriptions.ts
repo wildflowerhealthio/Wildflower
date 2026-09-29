@@ -7,15 +7,22 @@ import type { SectionId } from './site.ts'
  */
 type AppSectionId = Extract<
   SectionId,
-  'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace' | 'healthViewer' | 'app'
+  | 'medications'
+  | 'fhirSyncPebble'
+  | 'importer'
+  | 'webTrace'
+  | 'healthViewer'
+  | 'syntheticData'
+  | 'app'
 >
 
 /**
  * The app sections the marketing homepage has a launcher row for: all but the
- * owner UI, and the Synthesized Health Viewer, whose homepage row keeps its own
- * inline copy until the app is registered on the Wildflower host.
+ * owner UI; the Synthesized Health Viewer, whose homepage row keeps its own
+ * inline copy until the app is registered on the Wildflower host; and the
+ * Synthetic Data Loader, which has no homepage row until it is registered.
  */
-type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'healthViewer'>
+type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'healthViewer' | 'syntheticData'>
 
 /**
  * The four SMART app sections, in the order the marketing homepage presents
@@ -213,6 +220,19 @@ const APP_DESCRIPTIONS: {
       label: 'Open the Synthesized Health Viewer',
       note: 'Plot observations and doses for a patient on any FHIR server, including our demo',
     },
+  },
+  syntheticData: {
+    name: 'Synthetic Data Loader',
+    tagline:
+      'Loads people from a published synthetic data set into a FHIR server, ' +
+      'with their records exactly as the importers would have written them.',
+    paragraphs: [
+      "I want to try the apps on realistic records without using anyone's real health data.",
+      'This app loads a synthetic family into a FHIR server you choose: pharmacy fills, ' +
+        'lab results, watch readings and an X-ray, each made by running generated files ' +
+        'through the real importers. The viewers then have something true to life to show.',
+    ],
+    anchor: 'developers',
   },
   app: {
     name: 'Wildflower',

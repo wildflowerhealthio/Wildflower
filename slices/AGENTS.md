@@ -48,7 +48,9 @@ that runs them.
 medication, lab and device stories, and renderers that write them as the files
 each real source would produce, proven through the real importers over
 generated stories. The stories themselves live in `wildflowerhealthio/synthetic-data`
-— see [synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md).
+— see [synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md). Its
+`synthetic-data-react` loads a published data set into a FHIR server, for
+`apps/synthetic-data-app`.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 

@@ -122,6 +122,16 @@ describe('site layout', () => {
     ])
   })
 
+  it('serves the synthetic data loader from /synthetic-data-app with both SMART entries', () => {
+    const [syntheticData] = resolveSections(repoRoot, outDir, [sectionFor('synthetic-data-app')])
+    expect(syntheticData?.from).toBe(join(repoRoot, 'apps', 'synthetic-data-app', 'dist'))
+    expect(syntheticData?.to).toBe(join(outDir, 'synthetic-data-app'))
+    expect(syntheticData?.requiredPaths).toEqual([
+      join(outDir, 'synthetic-data-app', 'index.html'),
+      join(outDir, 'synthetic-data-app', 'launch.html'),
+    ])
+  })
+
   it('serves the hosted owner UI from /app with its SPA entry', () => {
     const [app] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-react')])
     expect(app?.to).toBe(join(outDir, 'app'))
@@ -191,6 +201,7 @@ describe('site layout', () => {
         'importer-app',
         'medications-app',
         'ohif-viewer',
+        'synthetic-data-app',
         'web-trace-app',
         'wildflower-server-docs',
       ].toSorted()

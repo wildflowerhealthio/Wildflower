@@ -101,7 +101,7 @@ function navHref(link: NavLink, ctx: NavContext): string {
 
 /**
  * Primary nav links rendered in every site header — the marketing homepage
- * and each app share one bar with direct links into the six apps. The
+ * and each app share one bar with direct links into the seven apps. The
  * hrefs resolve per context (root-relative on marketing, absolute from an
  * app); see {@link navHref}.
  */
@@ -109,6 +109,7 @@ const HEADER_NAV_LINKS: readonly NavLink[] = [
   { kind: 'section', label: 'Medications', section: 'medications' },
   { kind: 'section', label: 'Health viewer', section: 'healthViewer' },
   { kind: 'section', label: 'Importer', section: 'importer' },
+  { kind: 'section', label: 'Synthetic data', section: 'syntheticData' },
   { kind: 'section', label: 'Web traces', section: 'webTrace' },
   { kind: 'section', label: 'Server docs', section: 'serverDocs' },
   { kind: 'section', label: 'Imaging', section: 'ohifViewer' },

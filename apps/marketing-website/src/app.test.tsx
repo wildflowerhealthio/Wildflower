@@ -56,7 +56,7 @@ describe('App', () => {
     render(<App />)
 
     // Assert — every "call to action" on the page is a link into an app;
-    // the header carries all six routes.
+    // the header carries all seven routes.
     const nav = screen.getByRole('navigation', { name: 'Apps' })
     const hrefs = within(nav)
       .getAllByRole('link')
@@ -67,6 +67,7 @@ describe('App', () => {
       './medications-app',
       './health-viewer-app',
       './importer-app',
+      './synthetic-data-app',
       './web-trace-app',
       './wildflower-server-docs',
       './ohif-viewer',
