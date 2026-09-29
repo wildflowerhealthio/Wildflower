@@ -4,14 +4,17 @@ import type { TelemetryConsent } from 'telemetry-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { TelemetryStatusControl } from './telemetry-status-control.tsx'
+import type { TelemetryConsentSwitches } from './use-telemetry-consent.ts'
 
 afterEach(() => {
   document.body.innerHTML = ''
 })
 
-const consentWith = (
-  switches: Pick<TelemetryConsent, 'crashReports' | 'performance'>
-): TelemetryConsent => ({ version: 1, decidedAt: '2026-09-29T12:00:00.000Z', ...switches })
+const consentWith = (switches: TelemetryConsentSwitches): TelemetryConsent => ({
+  version: 1,
+  decidedAt: '2026-09-29T12:00:00.000Z',
+  ...switches,
+})
 
 const { crashReports, performance } = TELEMETRY_CONSENT_COPY
 

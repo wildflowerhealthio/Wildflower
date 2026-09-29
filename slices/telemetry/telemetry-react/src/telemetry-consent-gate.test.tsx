@@ -13,6 +13,7 @@ import {
   stubDialogModality,
 } from './telemetry-consent.test-helpers.ts'
 import { TelemetryStatusControl } from './telemetry-status-control.tsx'
+import type { TelemetryConsentSwitches } from './use-telemetry-consent.ts'
 
 const NOW = new Date('2026-09-29T12:00:00.000Z')
 
@@ -28,14 +29,14 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-type ConsentSwitches = Pick<TelemetryConsent, 'crashReports' | 'performance'>
-
 const APP_TEXT = 'The app'
 
-/** Stands in for the app: records that it mounted, and carries the status control. */
+/** Stands in for the app: records that its effects ran, and carries the status control. */
 const App = ({ onMount }: { readonly onMount: () => void }): JSX.Element => {
   const { consent, reopen } = useTelemetryConsentControls()
-  useEffect(onMount, [onMount])
+  useEffect(() => {
+    onMount()
+  }, [onMount])
   return (
     <main>
       <p>{APP_TEXT}</p>
@@ -46,12 +47,13 @@ const App = ({ onMount }: { readonly onMount: () => void }): JSX.Element => {
 
 interface RenderedGate {
   readonly onDecided: ReturnType<typeof vi.fn<(consent: TelemetryConsent) => void>>
-  readonly onAppMount: ReturnType<typeof vi.fn<() => void>>
+  /** Returns how many times `onDecided` had been called when the app's effect ran. */
+  readonly onAppMount: ReturnType<typeof vi.fn<() => number>>
 }
 
 const renderGate = (storage = mapConsentStorage()): RenderedGate => {
   const onDecided = vi.fn<(consent: TelemetryConsent) => void>()
-  const onAppMount = vi.fn<() => void>()
+  const onAppMount = vi.fn<() => number>(() => onDecided.mock.calls.length)
   render(
     <TelemetryConsentGate storage={storage} copy={TELEMETRY_CONSENT_COPY} onDecided={onDecided}>
       <App onMount={onAppMount} />
@@ -63,7 +65,7 @@ const renderGate = (storage = mapConsentStorage()): RenderedGate => {
 const switchNamed = (label: string): HTMLInputElement =>
   screen.getByRole<HTMLInputElement>('switch', { name: label })
 
-const setSwitches = ({ crashReports, performance }: ConsentSwitches): void => {
+const setSwitches = ({ crashReports, performance }: TelemetryConsentSwitches): void => {
   for (const [label, wanted] of [
     [TELEMETRY_CONSENT_COPY.crashReports.label, crashReports],
     [TELEMETRY_CONSENT_COPY.performance.label, performance],
@@ -76,7 +78,7 @@ const pressContinue = (): void => {
   fireEvent.click(screen.getByRole('button', { name: TELEMETRY_CONSENT_COPY.continueLabel }))
 }
 
-const answered = (switches: ConsentSwitches): TelemetryConsent => ({
+const answered = (switches: TelemetryConsentSwitches): TelemetryConsent => ({
   version: TELEMETRY_CONSENT_COPY.version,
   decidedAt: NOW.toISOString(),
   ...switches,
@@ -115,6 +117,7 @@ describe('TelemetryConsentGate', () => {
     expect(openDialog()).toBeNull()
     expect(screen.getByText(APP_TEXT)).toBeDefined()
     expect(onAppMount).toHaveBeenCalledTimes(1)
+    expect(onAppMount).toHaveReturnedWith(1)
   })
 
   it('should ask again, keeping the app unmounted, when the stored answer is for older copy', () => {
@@ -149,6 +152,7 @@ describe('TelemetryConsentGate', () => {
     expect(onAppMount).toHaveBeenCalledTimes(1)
     expect(onDecided).toHaveBeenCalledTimes(1)
     expect(onDecided).toHaveBeenCalledWith(stored)
+    expect(onAppMount).toHaveReturnedWith(1)
   })
 
   it('should reopen from the status control with the switches set to the answer, over the mounted app', () => {

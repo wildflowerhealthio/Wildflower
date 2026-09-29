@@ -46,7 +46,27 @@ describe('TelemetryConsentDialog', () => {
     expect(screen.getByText(TELEMETRY_CONSENT_COPY.crashReports.description)).toBeDefined()
     expect(screen.getByText(TELEMETRY_CONSENT_COPY.performance.description)).toBeDefined()
     expect(screen.getByText(TELEMETRY_CONSENT_COPY.sessions)).toBeDefined()
+    expect(screen.getByText(TELEMETRY_CONSENT_COPY.changeLater)).toBeDefined()
   }, 15_000)
+
+  it('should be named by its title and describe each switch by what it sends', () => {
+    // Arrange + Act
+    render(
+      <TelemetryConsentDialog open={true} copy={TELEMETRY_CONSENT_COPY} onContinue={vi.fn()} />
+    )
+
+    // Assert
+    expect(screen.getByRole('dialog', { name: TELEMETRY_CONSENT_COPY.title })).toBeDefined()
+    for (const [consentSwitch, switchCopy] of [
+      [crashReportsSwitch(), TELEMETRY_CONSENT_COPY.crashReports],
+      [performanceSwitch(), TELEMETRY_CONSENT_COPY.performance],
+    ] as const) {
+      const descriptionId = consentSwitch.getAttribute('aria-describedby')
+      expect(
+        descriptionId === null ? null : document.getElementById(descriptionId)?.textContent
+      ).toBe(switchCopy.description)
+    }
+  })
 
   it('should start with both switches off and continue with both off', () => {
     // Arrange
@@ -125,19 +145,20 @@ describe('TelemetryConsentDialog', () => {
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
   })
 
-  it('should open again when the browser closes it before the visitor answers', () => {
+  it('should open again, keeping the switches as set, when the browser closes it before the visitor answers', () => {
     // Arrange
     const onContinue = vi.fn()
     render(
       <TelemetryConsentDialog open={true} copy={TELEMETRY_CONSENT_COPY} onContinue={onContinue} />
     )
+    fireEvent.click(crashReportsSwitch())
 
     // Act: what Chrome does on a second Escape with no click in between.
     act(() => openDialog()?.close())
 
     // Assert
     expect(openDialog()).not.toBeNull()
-    expect(continueButton()).toBeDefined()
+    expect(crashReportsSwitch().checked).toBe(true)
     expect(onContinue).not.toHaveBeenCalled()
   })
 

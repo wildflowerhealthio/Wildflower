@@ -28,4 +28,4 @@ export {
 } from './spa-redirect.ts'
 export type { RestorableHistory, RestorableLocation, RestorationTarget } from './spa-redirect.ts'
 export { TELEMETRY_CONSENT_COPY } from './telemetry-consent-copy.ts'
-export type { TelemetryConsentCopy, TelemetryConsentSwitchCopy } from './telemetry-consent-copy.ts'
+export type { TelemetryConsentCopy } from './telemetry-consent-copy.ts'

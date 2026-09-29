@@ -1,15 +1,12 @@
 import type { TelemetryConsentCopy } from 'branding-core'
-import { useState, type JSX } from 'react'
+import { useId, useState, type JSX } from 'react'
 import { Dialog, ToggleSwitch } from 'react-tundraish'
-import type { TelemetryConsent } from 'telemetry-core'
 
+import type { TelemetryConsentSwitches } from './use-telemetry-consent.ts'
 import styles from './telemetry-consent-dialog.module.css'
 
-/** The two switches the dialog asks about, as a visitor sets them. */
-type ConsentSwitches = Pick<TelemetryConsent, 'crashReports' | 'performance'>
-
 /** Where the switches start the first time a visitor sees the dialog: both off. */
-const SWITCHES_OFF: ConsentSwitches = { crashReports: false, performance: false }
+const SWITCHES_OFF: TelemetryConsentSwitches = { crashReports: false, performance: false }
 
 type TelemetryConsentDialogProps = {
   /** Whether the dialog is showing. */
@@ -17,13 +14,13 @@ type TelemetryConsentDialogProps = {
   /** The words the dialog shows (`TELEMETRY_CONSENT_COPY` from `branding-core`). */
   readonly copy: TelemetryConsentCopy
   /** The answer being changed, when reopened; the switches start from it. */
-  readonly initial?: ConsentSwitches
+  readonly initial?: TelemetryConsentSwitches
   /** Called with the switches as they stand when the visitor presses Continue. */
-  readonly onContinue: (switches: ConsentSwitches) => void
+  readonly onContinue: (switches: TelemetryConsentSwitches) => void
 }
 
 type TelemetryConsentFormProps = Pick<TelemetryConsentDialogProps, 'copy' | 'onContinue'> & {
-  readonly initialSwitches: ConsentSwitches
+  readonly initialSwitches: TelemetryConsentSwitches
 }
 
 /**
@@ -36,6 +33,8 @@ const TelemetryConsentForm = ({
   onContinue,
 }: TelemetryConsentFormProps): JSX.Element => {
   const [switches, setSwitches] = useState(initialSwitches)
+  const crashReportsDescriptionId = useId()
+  const performanceDescriptionId = useId()
   return (
     <div className={styles['consent']}>
       <div className={styles['consent__warning']}>
@@ -50,21 +49,28 @@ const TelemetryConsentForm = ({
         <div className={styles['consent__switch']}>
           <ToggleSwitch
             label={copy.crashReports.label}
+            describedBy={crashReportsDescriptionId}
             checked={switches.crashReports}
             onChange={(crashReports) => setSwitches({ ...switches, crashReports })}
           />
-          <p className={styles['consent__switch-description']}>{copy.crashReports.description}</p>
+          <p id={crashReportsDescriptionId} className={styles['consent__switch-description']}>
+            {copy.crashReports.description}
+          </p>
         </div>
         <div className={styles['consent__switch']}>
           <ToggleSwitch
             label={copy.performance.label}
+            describedBy={performanceDescriptionId}
             checked={switches.performance}
             onChange={(performance) => setSwitches({ ...switches, performance })}
           />
-          <p className={styles['consent__switch-description']}>{copy.performance.description}</p>
+          <p id={performanceDescriptionId} className={styles['consent__switch-description']}>
+            {copy.performance.description}
+          </p>
         </div>
       </div>
       <p className={styles['consent__text']}>{copy.sessions}</p>
+      <p className={styles['consent__text']}>{copy.changeLater}</p>
       <button type="button" className="button-2 filled" onClick={() => onContinue(switches)}>
         {copy.continueLabel}
       </button>
@@ -79,37 +85,30 @@ const TelemetryConsentForm = ({
  * like any other.
  *
  * @remarks
- * The dialog is non-dismissable: no ×, and the backdrop and Escape do
- * nothing, so the only way out is Continue. A browser may still close a modal
- * dialog itself (Chrome does on a second Escape with no click in between);
- * the dialog then opens again, since the visitor has not answered.
- *
- * The caller owns `open` and closes it from `onContinue`.
+ * The dialog is react-tundraish's non-dismissable `Dialog`: no ×, the
+ * backdrop and Escape do nothing, and if the browser closes it anyway it
+ * shows itself again with the switches as the visitor left them. The only
+ * way out is Continue; the caller owns `open` and closes it from
+ * `onContinue`.
  */
 const TelemetryConsentDialog = ({
   open,
   copy,
   initial = SWITCHES_OFF,
   onContinue,
-}: TelemetryConsentDialogProps): JSX.Element => {
-  // Bumped when the browser closes the dialog while it should be open;
-  // remounting the Dialog under a new key shows it again.
-  const [browserCloseCount, setBrowserCloseCount] = useState(0)
-  return (
-    <Dialog
-      key={browserCloseCount}
-      open={open}
-      dismissable={false}
-      title={copy.title}
-      onClose={() => {
-        if (open) setBrowserCloseCount((count) => count + 1)
-      }}
-    >
-      {open ? (
-        <TelemetryConsentForm copy={copy} initialSwitches={initial} onContinue={onContinue} />
-      ) : null}
-    </Dialog>
-  )
-}
+}: TelemetryConsentDialogProps): JSX.Element => (
+  <Dialog
+    open={open}
+    dismissable={false}
+    title={copy.title}
+    // Only a close the caller asked for (`open` set false after Continue)
+    // reaches here, and the caller has already acted on it.
+    onClose={() => undefined}
+  >
+    {open ? (
+      <TelemetryConsentForm copy={copy} initialSwitches={initial} onContinue={onContinue} />
+    ) : null}
+  </Dialog>
+)
 
 export { TelemetryConsentDialog, type TelemetryConsentDialogProps }

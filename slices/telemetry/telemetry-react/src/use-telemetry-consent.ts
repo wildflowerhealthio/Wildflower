@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useEffectEvent, useState } from 'react'
+import { useCallback, useEffectEvent, useLayoutEffect, useState } from 'react'
 import {
   readConsent,
   type ConsentStorage,
   type TelemetryConsent,
   writeConsent,
 } from 'telemetry-core'
+
+/** The two switches of the telemetry consent dialog, as the visitor set them. */
+type TelemetryConsentSwitches = Pick<TelemetryConsent, 'crashReports' | 'performance'>
 
 /** Options for {@link useTelemetryConsent}. */
 interface UseTelemetryConsentOptions {
@@ -27,7 +30,7 @@ interface TelemetryConsentPrompt {
   /** Whether the dialog should be showing: no answer yet, or reopened. */
   readonly dialogOpen: boolean
   /** Keep the visitor's switch settings as their answer and close the dialog. */
-  readonly decide: (switches: Pick<TelemetryConsent, 'crashReports' | 'performance'>) => void
+  readonly decide: (switches: TelemetryConsentSwitches) => void
   /** Show the dialog again over an answer already given, so the visitor can change it. */
   readonly reopen: () => void
 }
@@ -46,9 +49,12 @@ interface TelemetryConsentPrompt {
  * current time, writes the record, and closes the dialog; a storage error
  * throws from it rather than leaving an answer that was never kept.
  *
- * `onDecided` runs from an effect whenever the answer changes, so it may run
- * more than once with the same answer (React's strict mode mounts twice);
- * `initConsentedTelemetry` is safe to call again with an unchanged answer.
+ * `onDecided` runs from a layout effect whenever the answer changes: after
+ * the storage write, and before any passive effect (`useEffect`) of the app
+ * the answer reveals, so telemetry has started before the app's first fetch.
+ * It may run more than once with the same answer (React's strict mode mounts
+ * twice); `initConsentedTelemetry` is safe to call again with an unchanged
+ * answer.
  */
 const useTelemetryConsent = ({
   storage,
@@ -59,12 +65,12 @@ const useTelemetryConsent = ({
   const [reopened, setReopened] = useState(false)
 
   const announceDecision = useEffectEvent(onDecided)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (consent !== undefined) announceDecision(consent)
   }, [consent])
 
   const decide = useCallback(
-    (switches: Pick<TelemetryConsent, 'crashReports' | 'performance'>): void => {
+    (switches: TelemetryConsentSwitches): void => {
       const decidedConsent: TelemetryConsent = {
         version,
         crashReports: switches.crashReports,
@@ -86,4 +92,4 @@ const useTelemetryConsent = ({
 }
 
 export { useTelemetryConsent }
-export type { TelemetryConsentPrompt, UseTelemetryConsentOptions }
+export type { TelemetryConsentPrompt, TelemetryConsentSwitches, UseTelemetryConsentOptions }

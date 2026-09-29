@@ -16,5 +16,6 @@ export {
 export {
   useTelemetryConsent,
   type TelemetryConsentPrompt,
+  type TelemetryConsentSwitches,
   type UseTelemetryConsentOptions,
 } from './use-telemetry-consent.ts'

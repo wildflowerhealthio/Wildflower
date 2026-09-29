@@ -31,6 +31,8 @@ interface TelemetryConsentCopy {
   readonly performance: TelemetryConsentSwitchCopy
   /** What either switch also turns on: Sentry's session counts. */
   readonly sessions: string
+  /** That the answer can be changed later, and where. */
+  readonly changeLater: string
   /** The one button, which records the answer whatever the switches say. */
   readonly continueLabel: string
 }
@@ -47,32 +49,39 @@ interface TelemetryConsentCopy {
  */
 const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
   version: 1,
-  title: 'Before you start',
+  title: 'Demo apps and telemetry',
   warning: [
     'These are demo apps from the Wildflower Health Project. ' +
       'Use them only with synthetic or test data.',
     "Never connect them to a real person's health record.",
   ],
   destination:
-    'If you turn on either switch below, reports go to Sentry, a third-party service ' +
-    'hosted in the United States. Both switches start off.',
+    'The two switches below choose what, if anything, these apps report to Sentry, ' +
+    'a third-party service in the United States. Both switches start off, ' +
+    'and with both off nothing is sent.',
   crashReports: {
     label: 'Crash reports',
     description:
-      'Sends the errors the app hits. A report may include anything the app had loaded at ' +
-      'the time: names, medications, results, record ids and server addresses.',
+      'When the app runs into an error, it sends a report of the error. ' +
+      'A report can include anything the app had loaded at the time, including ' +
+      'names, medications, results, record ids and server addresses.',
   },
   performance: {
     label: 'Performance data',
     description:
-      'Sends anonymized page loads, request timings, and route and resource-type names. ' +
-      'Record ids and query strings are removed before sending. No record contents are sent.',
+      'Sends anonymized timings: how long pages and requests take, with the names of ' +
+      'the pages and of the resource types requested. Record ids and query strings ' +
+      'are removed first, and no record contents are sent.',
   },
   sessions:
-    'While either switch is on, Sentry also counts app sessions. ' +
-    'The counts carry no identifying information.',
+    'While either switch is on, Sentry also counts app sessions. A session records that ' +
+    'the app was opened, whether it ran into an error, and the browser and operating ' +
+    'system it ran on. Sessions carry no page addresses or record data.',
+  changeLater:
+    'You can change your answer at any time with the Telemetry button at the top or ' +
+    'bottom of the page.',
   continueLabel: 'Continue',
 }
 
 export { TELEMETRY_CONSENT_COPY }
-export type { TelemetryConsentCopy, TelemetryConsentSwitchCopy }
+export type { TelemetryConsentCopy }

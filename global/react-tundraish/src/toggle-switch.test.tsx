@@ -21,6 +21,25 @@ describe('ToggleSwitch', () => {
     expect(getSwitch('Run tunnel').checked).toBe(true)
   }, 15_000)
 
+  it('is described by the element named in describedBy', () => {
+    render(
+      <>
+        <ToggleSwitch
+          checked={false}
+          onChange={vi.fn()}
+          label="Run tunnel"
+          describedBy="tunnel-description"
+        />
+        <p id="tunnel-description">Opens a public URL to this device.</p>
+      </>
+    )
+
+    const describedBy = getSwitch('Run tunnel').getAttribute('aria-describedby')
+    expect(describedBy === null ? null : document.getElementById(describedBy)?.textContent).toBe(
+      'Opens a public URL to this device.'
+    )
+  })
+
   it('fires onChange with the new checked state when the user clicks the row', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()

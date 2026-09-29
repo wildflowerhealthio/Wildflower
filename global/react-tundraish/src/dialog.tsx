@@ -1,4 +1,11 @@
-import { useLayoutEffect, useRef, type JSX, type ReactNode, type SyntheticEvent } from 'react'
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  type JSX,
+  type ReactNode,
+  type SyntheticEvent,
+} from 'react'
 import { cn } from 'react-kitchen-sink'
 
 import styles from './dialog.module.css'
@@ -17,12 +24,17 @@ type DialogProps = {
    * including ESC — closes the dialog).
    *
    * `false` is for blocking flows where the host needs an answer
-   * before the user can move on (the device-consent popup in
+   * before the user can move on (the telemetry consent dialog in
    * particular). The × button is hidden, backdrop clicks are ignored,
-   * `cancel` is `preventDefault`'d, and `onCancel` is *not* invoked —
-   * a non-dismissable dialog has nothing meaningful to do on cancel,
-   * so forwarding the event would invite consumers to wire deny/close
-   * logic into it accidentally.
+   * the element carries `closedby="none"` so ESC is not a close
+   * request, `cancel` is `preventDefault`'d, and `onCancel` is *not*
+   * invoked — a non-dismissable dialog has nothing meaningful to do on
+   * cancel, so forwarding the event would invite consumers to wire
+   * deny/close logic into it accidentally. If the browser closes the
+   * dialog anyway while `open` is still `true` (Chrome does on a second
+   * ESC where `closedby` is unsupported), it is shown again and
+   * `onClose` is not called: only the consumer setting `open` to
+   * `false` closes it.
    */
   readonly dismissable?: boolean
 }
@@ -37,6 +49,7 @@ const Dialog = ({
   dismissable = true,
 }: DialogProps): JSX.Element => {
   const ref = useRef<HTMLDialogElement>(null)
+  const titleId = useId()
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
 
   useLayoutEffect(() => {
@@ -56,7 +69,17 @@ const Dialog = ({
     <dialog
       ref={ref}
       className={cn(styles['dialog'], className)}
+      aria-labelledby={title === undefined ? undefined : titleId}
+      closedby={dismissable ? undefined : 'none'}
       onClose={() => {
+        // A blocking dialog the browser closed on its own, while the
+        // consumer still holds it open: show it again, as if nothing
+        // happened. `open` here is this render's prop, so a close the
+        // consumer asked for (`open` now false) passes through.
+        if (!dismissable && open) {
+          if (ref.current?.open === false) ref.current.showModal()
+          return
+        }
         previouslyFocusedRef.current?.focus()
         previouslyFocusedRef.current = null
         onClose()
@@ -79,7 +102,9 @@ const Dialog = ({
       }}
     >
       <header className={styles['dialog__header']}>
-        <h2 className={cn('text-heading-4', styles['dialog__title'])}>{title}</h2>
+        <h2 id={titleId} className={cn('text-heading-4', styles['dialog__title'])}>
+          {title}
+        </h2>
         {dismissable ? (
           <button
             type="button"
