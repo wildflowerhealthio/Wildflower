@@ -11,6 +11,7 @@ import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { makeAwaitEmbeddedAuthReady, makeEmbeddedAuthStateStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { addOsColorSchemeListener } from 'react-tundraish'
+import { webTelemetryLayerFromEnv } from 'telemetry-web'
 import { renderApp } from 'wildflower-react/app-root'
 import { bridges } from 'wildflower-react/bridges'
 
@@ -37,6 +38,10 @@ renderApp({
   // drift from the server. 127.0.0.1 matches the canonical `Host:` form
   // loopback requests carry to the gatekeeper.
   apiBaseUrl: WILDFLOWER_LOOPBACK_ORIGIN,
+  // Telemetry here starts from the build's env without asking, as
+  // `wildflower-react/instrument` above does: the consent dialog governs the
+  // web entry only.
+  effectTelemetryLayer: webTelemetryLayerFromEnv(),
   // No platform settings rows: a logout row is meaningless here (the session is
   // the host's loopback-owner trust, re-authenticated per request, so the page
   // holds nothing to forget or revoke). The entry, not the settings route,

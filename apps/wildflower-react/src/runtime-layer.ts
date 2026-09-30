@@ -8,7 +8,6 @@ import { FhirResourcesApiPrefix } from 'fhir-r4/http-api-definition'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
-import { webTelemetryLayerFromEnv } from 'telemetry-web'
 import { unauthorizedRetrySchedule } from './retry-policy.ts'
 import type { RunAuthed, RuntimeLayer } from './router-context.ts'
 
@@ -30,14 +29,19 @@ type ApiTransport = (mountPath: string) => Layer.Layer<HttpClient.HttpClient>
  * The `beforeLoad` auth gate (not the loaders) guarantees the auth
  * signal is ready before any authed loader runs, so there's no
  * `isTokenReady` reader here — loaders are plain `ensureQueryData`.
+ *
+ * @param effectTelemetryLayer - The entry's Effect telemetry layer, merged
+ *   into the runtime so every authed request runs under the page's tracer
+ *   (see `RenderAppOptions.effectTelemetryLayer`)
  */
 const buildRunAuthed = (
-  transportAt: ApiTransport
+  transportAt: ApiTransport,
+  effectTelemetryLayer: Layer.Layer<never>
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
 } => {
-  const baseRuntimeLayer = Layer.mergeAll(transportAt(''), webTelemetryLayerFromEnv())
+  const baseRuntimeLayer = Layer.mergeAll(transportAt(''), effectTelemetryLayer)
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
     Layer.mergeAll(
       TunnelRouterContext.sliceRuntimeLayer,

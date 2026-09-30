@@ -1,5 +1,10 @@
 export type { ContextManagerFactory, SentryAdapter, SentryClient } from './client-layer.ts'
-export { getGlobalTracer, initClientTelemetry, makeClientTelemetryLayer } from './client-layer.ts'
+export {
+  getGlobalTracer,
+  initClientTelemetry,
+  makeClientTelemetryLayer,
+  makeEffectTracerLayer,
+} from './client-layer.ts'
 export type {
   OtelRuntimeConfig,
   SentryRuntimeConfig,

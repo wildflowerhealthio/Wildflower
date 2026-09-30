@@ -1,7 +1,6 @@
-import type { HttpClient } from '@effect/platform'
+import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import type { QueryClient } from '@tanstack/react-query'
 import type { Layer } from 'effect'
-import { webHttpClientLayer } from 'telemetry-react'
 
 import { buildQueryClient } from '../query-client.ts'
 import type { RunAuthed, RuntimeLayer } from '../router-context.ts'
@@ -13,7 +12,7 @@ import { prependApiBaseUrl } from './prepend-api-base-url.ts'
  * The API server's transport, per mount path, over `transport`.
  *
  * @param transport - The underlying `HttpClient` layer (the real one is
- *   `telemetry-react`'s `webHttpClientLayer`; tests pass a stub).
+ *   `FetchHttpClient.layer`; tests pass a stub).
  * @param apiBaseUrl - Absolute API origin for entries whose page isn't
  *   served by the API server. Omitted, requests stay relative to the page
  *   origin.
@@ -59,6 +58,8 @@ const apiTransportAt =
  * @param onUnauthorized - Invoked by the `QueryClient`'s cache when an
  *   authed query/mutation ends in a 401 that survived the boot-race
  *   retry — the entry uses it to send the user to device login.
+ * @param effectTelemetryLayer - The entry's Effect telemetry layer, which
+ *   every authed request runs under (see `buildRunAuthed`).
  * @param readBearer - Lazy bearer reader for the hosted entry. When
  *   provided, every relative request carries `Authorization: Bearer
  *   <token>`. Omitted for `main-tauri`, which the host authenticates.
@@ -66,6 +67,7 @@ const apiTransportAt =
 const buildAppQueryRuntime = (
   apiBaseUrl: string | undefined,
   onUnauthorized: () => void,
+  effectTelemetryLayer: Layer.Layer<never>,
   readBearer?: () => string | undefined
 ): {
   readonly queryClient: QueryClient
@@ -74,7 +76,8 @@ const buildAppQueryRuntime = (
 } => {
   const queryClient = buildQueryClient(onUnauthorized)
   const { runAuthed, runtimeLayer } = buildRunAuthed(
-    apiTransportAt(webHttpClientLayer, apiBaseUrl, readBearer)
+    apiTransportAt(FetchHttpClient.layer, apiBaseUrl, readBearer),
+    effectTelemetryLayer
   )
   return { queryClient, runAuthed, runtimeLayer }
 }

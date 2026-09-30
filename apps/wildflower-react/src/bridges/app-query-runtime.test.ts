@@ -115,7 +115,10 @@ const runnerOver = (
       )
     })
   )
-  const { runAuthed } = buildRunAuthed(apiTransportAt(transport, apiBaseUrl, readBearer))
+  const { runAuthed } = buildRunAuthed(
+    apiTransportAt(transport, apiBaseUrl, readBearer),
+    Layer.empty
+  )
   return { runAuthed, recorded }
 }
 

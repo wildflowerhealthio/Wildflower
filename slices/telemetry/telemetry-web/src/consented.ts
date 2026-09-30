@@ -1,5 +1,7 @@
+import { Layer } from 'effect'
 import {
   isTelemetryEnabled,
+  makeEffectTracerLayer,
   scrubEvent,
   type TelemetryConfig,
   type TelemetryConsent,
@@ -65,6 +67,13 @@ const PERSONAL_DATA_OFF: NonNullable<InitSentryWebOptions['dataCollection']> = {
 let latestConsent: TelemetryConsent | undefined
 
 /**
+ * The Effect tracer layer for the tracer provider a consent registered, or
+ * `undefined` while no answer has registered one. {@link consentedTelemetryLayer}
+ * provides it.
+ */
+let consentedEffectTracerLayer: Layer.Layer<never> | undefined
+
+/**
  * The `Sentry.init` options that hold the SDK to what the visitor consented
  * to.
  *
@@ -99,7 +108,8 @@ const sentryOptionsFor = (initialConsent: TelemetryConsent): InitSentryWebOption
  * until one switch is on, so an app that never gets a yes never touches the
  * SDK. With a yes, `tags` are set on the global scope and the narrowed config
  * is handed to {@link initWebTelemetry} with the options `sentryOptionsFor`
- * derives from `consent`.
+ * derives from `consent`; the tracer provider that registers is the one
+ * {@link consentedTelemetryLayer} binds Effect's spans to.
  *
  * Call it again whenever the answer changes. The SDK initializes once per page
  * load, keeping its first options, but its hooks follow the latest answer: a
@@ -116,9 +126,31 @@ const initConsentedTelemetry = ({
   const consentedConfig = telemetryConfigFor(consent, config)
   if (consent === undefined || !isTelemetryEnabled(consentedConfig)) return false
   Sentry.getGlobalScope().setTags(tags)
-  initWebTelemetry(consentedConfig, sentryOptionsFor(consent))
+  const tracerProvider = initWebTelemetry(consentedConfig, sentryOptionsFor(consent))
+  if (tracerProvider !== undefined && consentedEffectTracerLayer === undefined) {
+    consentedEffectTracerLayer = makeEffectTracerLayer(consentedConfig)
+  }
   return true
 }
+
+/**
+ * The Effect telemetry layer for an app that asks first: Effect's spans go to
+ * the tracer provider {@link initConsentedTelemetry} registered, while the
+ * latest answer has performance on, and nowhere otherwise.
+ *
+ * @remarks
+ * Suspended, so importing or composing it starts nothing, and re-read each
+ * time a runtime builds it: an app that provides it per request (the owner
+ * UI's `runAuthed`) traces from the first request after a yes turns
+ * performance on, and stops with the first after it is turned off. Until an
+ * answer registers the provider it is `Layer.empty`. Unlike
+ * `webTelemetryLayerFromEnv`, it never initializes anything itself.
+ */
+const consentedTelemetryLayer: Layer.Layer<never> = Layer.suspend(() =>
+  consentedEffectTracerLayer !== undefined && latestConsent?.performance === true
+    ? consentedEffectTracerLayer
+    : Layer.empty
+)
 
 /**
  * Tag every event reported from now on with the host of the FHIR server the
@@ -131,4 +163,4 @@ const setFhirServerHost = (fhirServerHost: string): void => {
 }
 
 export type { InitConsentedTelemetryOptions, TelemetryTags }
-export { initConsentedTelemetry, setFhirServerHost }
+export { consentedTelemetryLayer, initConsentedTelemetry, setFhirServerHost }
