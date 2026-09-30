@@ -41,6 +41,13 @@ generator package per source on top of it.
   generator's tests draw stories from. See its
   [AGENTS.md](./synthetic-data-fundamentals/AGENTS.md).
 
+- **`synthetic-data-rexall-be-well`** (pure) — `RexallHar.render`: a `Story`,
+  filled under a `RexallAccount`, as the HAR a letsbewell.ca session exports
+  (the carebook profile and the STU3 prescriptions searchset), written as
+  `rexall-be-well-source`'s schemas encode them. Its `./test-helpers` subpath
+  holds `rexallAccountArbitrary`. See its
+  [AGENTS.md](./synthetic-data-rexall-be-well/AGENTS.md).
+
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's
 account on that source, and writes the source's own wire shape, spelled from
