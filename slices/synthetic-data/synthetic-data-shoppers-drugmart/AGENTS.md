@@ -9,14 +9,19 @@ payload schemas. No DOM, no `fs`, no React.
 
 ## Shape
 
-The root entry exports `ShoppersHar` and the account types:
+The root entry exports `ShoppersHar`, the account types and
+`shoppersPatientReferenceOf`:
 `import { ShoppersHar, type ShoppersAccount } from 'synthetic-data-shoppers-drugmart'`.
 
 - `src/shoppers-account.ts` — `ShoppersAccount`, the generator's input: the
   account's `pcid`, its phone and address, the `ShoppersStore` that fills for
   it, and the `ShoppersPatient`s it manages (each a `patientId`, a phone and a
   `Story`), the account holder first. The address is typed from
-  `CustomerPayload`'s.
+  `CustomerPayload`'s. `shoppersPatientReferenceOf` is the reference to the
+  Patient the Shoppers import makes of one managed person (`fhir-r4/identity`'s
+  `adoptedReferenceOf` under `SHOPPERS_DRUGMART_SYSTEM`, keyed by their
+  `patientId`, never the account's `pcid`), for a result from another source
+  to be filed on.
 - `src/shoppers-prescription.ts` — `shoppersPrescriptionsOf`: every
   prescription on the account with the ids the portal keys it by (its uuid,
   its seven-digit `prescriptionNumber`, each fill's `dispenseId`), the number
@@ -48,13 +53,14 @@ story from `synthetic-data-fundamentals/test-helpers`.
 
 Depends on `synthetic-data-fundamentals` (the story model and `StoryDay` from
 `/story`, `Seeding` from `/seeding`, `ChromeHar` from `/chrome-har`),
-`http-archive` (the Chrome HAR format) and `shoppers-drugmart-source` (the
+`http-archive` (the Chrome HAR format), `fhir-r4` (`adoptedReferenceOf`) and
+`shoppers-drugmart-source` (the
 API URL builders and `SHOPPERS_PORTAL_ORIGIN`, and the `CustomerPayload` /
 `SourcePatient` / `SourcePrescription` / `SourceDispense` / `HistoryPayload` /
 `SourceHistoryDispense` schemas whose encoded types the bodies are written
-as). The round-trip test also uses `har-importer-core`,
-`importer-fundamentals`, `medication-core` and `fhir-r4`, as dev dependencies
-only. Never imports a `-react`, `-node` or `-tauri` package.
+as, and `SHOPPERS_DRUGMART_SYSTEM`). The round-trip test also uses
+`har-importer-core`, `importer-fundamentals` and `medication-core`, as dev
+dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
 
 ## Rules
 

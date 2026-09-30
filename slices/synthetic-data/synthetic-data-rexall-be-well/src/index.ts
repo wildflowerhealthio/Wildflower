@@ -8,5 +8,5 @@
  *
  * @packageDocumentation
  */
-export type { RexallAccount } from './rexall-account.ts'
+export { type RexallAccount, rexallPatientReferenceOf } from './rexall-account.ts'
 export * as RexallHar from './rexall-har.ts'

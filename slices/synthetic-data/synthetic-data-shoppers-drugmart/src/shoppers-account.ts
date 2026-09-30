@@ -1,4 +1,10 @@
-import type { CustomerPayload, SourcePatient } from 'shoppers-drugmart-source'
+import type { ReferenceType } from 'fhir-r4/data-types'
+import { adoptedReferenceOf } from 'fhir-r4/identity'
+import {
+  type CustomerPayload,
+  SHOPPERS_DRUGMART_SYSTEM,
+  type SourcePatient,
+} from 'shoppers-drugmart-source'
 import type { Story } from 'synthetic-data-fundamentals/story'
 
 /**
@@ -54,4 +60,14 @@ interface ShoppersAccount {
   readonly patients: readonly [ShoppersPatient, ...ShoppersPatient[]]
 }
 
+/**
+ * A reference to the Patient the Shoppers import makes of one person the
+ * account manages, as that import spells its own: keyed by their `patientId`
+ * under the Shoppers source system — not the account Patient keyed by `pcid`.
+ * What a result from another source is filed on.
+ */
+const shoppersPatientReferenceOf = (patient: ShoppersPatient): ReferenceType =>
+  adoptedReferenceOf({ system: SHOPPERS_DRUGMART_SYSTEM }, 'Patient', patient.patientId)
+
+export { shoppersPatientReferenceOf }
 export type { ShoppersAccount, ShoppersAddress, ShoppersPatient, ShoppersStore }
