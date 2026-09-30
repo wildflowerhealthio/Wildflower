@@ -36,4 +36,8 @@ describe('terminology', () => {
       expect(new URL(url).href).toBe(url)
     }
   })
+
+  it('should spell the workout code system as the lifting slice writes it', () => {
+    expect(WildflowerCodeSystem.Workout).toBe(`${WILDFLOWER_CODE_SYSTEM_BASE}/workout`)
+  })
 })

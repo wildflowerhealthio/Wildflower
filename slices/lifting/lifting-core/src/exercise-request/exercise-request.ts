@@ -18,23 +18,23 @@ import {
 import { ServiceRequest } from 'fhir-r4/resources'
 
 import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
-import * as Session from '../exercise-set-observation/session.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
+import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
+import * as LiftingMeasure from '../lifting-measure/lifting-measure.ts'
 import {
   countAmong,
   countConcept,
-  LiftingMeasureCode,
   loadAmong,
   loadConcept,
   measureIssues,
   measures,
-} from '../lifting-measure/lifting-measure.ts'
+} from '../lifting-measure/measure-concept.ts'
 import * as Load from '../load/load.ts'
 import * as Plan from '../plan/plan.ts'
 import * as PlannedExercise from '../plan/planned-exercise.ts'
 import * as ProgressionRule from '../plan/progression-rule.ts'
-import { liftingFeatureConcept } from '../terminology.ts'
+import * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 
 /**
  * What a lifter is to do at one exercise until it moves, as FHIR orders it: a
@@ -45,9 +45,9 @@ import { liftingFeatureConcept } from '../terminology.ts'
  * range: lift the load for sets × reps.
  *
  * @remarks
- * One `ExerciseRequest` is one load: a met session closes it (`completed`) and
- * issues the next one heavier, a deload closes it (`revoked`) and issues the
- * next one lighter, a change of program revokes them all. It carries no rule:
+ * Each one is one load: a met workout closes it (`completed`) and issues the
+ * next one heavier, a deload closes it (`revoked`) and issues the next one
+ * lighter, and a change of program revokes them all. It carries no rule:
  * how its load moves is the plan's, on the `PlannedExercise` for the same
  * exercise. Its `status` is not narrowed — the app searches `status=active`.
  * Other order details ride along untouched.
@@ -76,7 +76,7 @@ const ExerciseRequestSchema: Schema.Schema<Type, ServiceRequest.Type> =
       instantiatesCanonical: Schema.Tuple(Schema.String),
     }).pipe(
       Schema.filter((serviceRequest) =>
-        [LiftingMeasureCode.Load, LiftingMeasureCode.Sets, LiftingMeasureCode.Reps].flatMap(
+        [LiftingMeasure.Code.Load, LiftingMeasure.Code.Sets, LiftingMeasure.Code.Reps].flatMap(
           (measure) =>
             measureIssues({ concepts: serviceRequest.orderDetail, measure, path: ['orderDetail'] })
         )
@@ -126,7 +126,7 @@ const decodeServiceRequest = (slots: {
     status: 'active',
     intent: 'plan',
     priority: 'routine',
-    category: [liftingFeatureConcept],
+    category: [LiftingFeature.concept],
     instantiatesCanonical: [slots.instantiatesCanonical],
     authoredOn: DateTime.formatIso(slots.authoredOn),
   })
@@ -142,13 +142,13 @@ const decodeServiceRequest = (slots: {
  * `ServiceRequest`, the lifter it is for as its `subject`, the plan and the
  * exercise in it, the load to start at, and when it was issued.
  *
- * @returns The `ExerciseRequest`; {@link ExerciseUnplanned} when the plan does
+ * @returns The new `ExerciseRequest`; {@link ExerciseUnplanned} when the plan does
  *   not run the exercise; or a `ParseError` when the load is in another unit
  *   than the exercise's rule moves, or under the rule's minimum load
  *
  * @remarks
- * This is how a lifter's starting load is set, and how an `ExerciseRequest` is re-made
- * after a plan edit. Between sessions, {@link progress} issues the next one.
+ * This is how a lifter's starting load is set, and how one is re-made after a
+ * plan edit. Between workouts, {@link progress} issues the next one.
  */
 const make = ({
   serviceRequestId,
@@ -183,11 +183,11 @@ const make = ({
             orderDetail: [
               loadConcept(startingLoad),
               countConcept({
-                measure: LiftingMeasureCode.Sets,
+                measure: LiftingMeasure.Code.Sets,
                 value: PlannedExercise.setsOf(planned),
               }),
               countConcept({
-                measure: LiftingMeasureCode.Reps,
+                measure: LiftingMeasure.Code.Reps,
                 value: PlannedExercise.repsOf(planned),
               }),
             ],
@@ -205,13 +205,13 @@ const exerciseOf = (exerciseRequest: Type): ExerciseConcept.Type => exerciseRequ
 /** The load to lift, from the `load` order detail. */
 const loadOf = (exerciseRequest: Type): Load.Type => loadAmong(exerciseRequest.orderDetail)
 
-/** Sets to perform each session, from the `sets` order detail; a positive integer. */
+/** Sets to perform each workout, from the `sets` order detail; a positive integer. */
 const setsOf = (exerciseRequest: Type): number =>
-  countAmong(exerciseRequest.orderDetail, LiftingMeasureCode.Sets)
+  countAmong(exerciseRequest.orderDetail, LiftingMeasure.Code.Sets)
 
 /** Reps per set, from the `reps` order detail; a positive integer. */
 const repsOf = (exerciseRequest: Type): number =>
-  countAmong(exerciseRequest.orderDetail, LiftingMeasureCode.Reps)
+  countAmong(exerciseRequest.orderDetail, LiftingMeasure.Code.Reps)
 
 /** The canonical url of the plan the `ServiceRequest` follows: its one `instantiatesCanonical`. */
 const planUrlOf = (exerciseRequest: Type): string => exerciseRequest.instantiatesCanonical[0]
@@ -220,8 +220,8 @@ const planUrlOf = (exerciseRequest: Type): string => exerciseRequest.instantiate
 type ClosingStatus = Extract<ServiceRequest.Type['status'], 'completed' | 'revoked'>
 
 /**
- * The `ExerciseRequest` closed: `completed` when met, `revoked` when abandoned
- * — on a deload, or for every `active` `ExerciseRequest` of a plan being left.
+ * An `ExerciseRequest` closed: `completed` when met, or `revoked` when
+ * abandoned — on a deload, and for every active one of a plan being left.
  */
 const close = (exerciseRequest: Type, status: ClosingStatus): Type => ({
   ...exerciseRequest,
@@ -240,24 +240,83 @@ const forExercise = (
 }
 
 /**
- * Whether a session met the `ExerciseRequest`: at least its sets performed, and each of
- * the first that many reaching its reps.
+ * One attempt at an `ExerciseRequest`'s load: a completed `WorkoutProcedure`
+ * and the sets in it logged against that `ExerciseRequest`, earliest first —
+ * what {@link isMetBy} judges.
+ */
+interface Attempt {
+  /** The completed workout. */
+  readonly workoutProcedure: WorkoutProcedure.Type
+  /** The sets of the exercise performed in it, earliest first. */
+  readonly setObservations: Arr.NonEmptyReadonlyArray<ExerciseSetObservation.Type>
+}
+
+/**
+ * The attempts at an `ExerciseRequest`: each completed workout that carried it
+ * out and has sets logged against it, earliest first by start, with those
+ * sets.
+ *
+ * @param exerciseRequest - The one whose attempts to list
+ * @param performed - The lifter's workouts and sets, in any order; workouts
+ *   that did not carry it out, sets logged against another one, and workouts
+ *   still in progress are passed over
  *
  * @remarks
- * Sets past the `ExerciseRequest`'s are extra work and do not count either way.
+ * A completed workout with no set logged against it (the lifter skipped the
+ * exercise) is no attempt, so it counts neither way.
  */
-const isMetBy = (exerciseRequest: Type, session: Session.Type): boolean =>
-  session.setObservations.length >= setsOf(exerciseRequest) &&
-  session.setObservations
+const attemptsAt = (
+  exerciseRequest: Type,
+  performed: {
+    readonly workoutProcedures: readonly WorkoutProcedure.Type[]
+    readonly setObservations: readonly ExerciseSetObservation.Type[]
+  }
+): readonly Attempt[] => {
+  const ownSets = performed.setObservations.filter(
+    (setObservation) =>
+      ExerciseSetObservation.serviceRequestIdOf(setObservation) === exerciseRequest.id
+  )
+  return WorkoutProcedure.completedByStart(performed.workoutProcedures)
+    .filter((workoutProcedure) =>
+      WorkoutProcedure.serviceRequestIdsOf(workoutProcedure).includes(exerciseRequest.id)
+    )
+    .flatMap((workoutProcedure) =>
+      Arr.match(
+        ExerciseSetObservation.sortByStart(
+          ownSets.filter(
+            (setObservation) =>
+              ExerciseSetObservation.procedureIdOf(setObservation) === workoutProcedure.id
+          )
+        ),
+        {
+          onEmpty: () => [],
+          onNonEmpty: (setObservations): readonly Attempt[] => [
+            { workoutProcedure, setObservations },
+          ],
+        }
+      )
+    )
+}
+
+/**
+ * Whether an attempt met the `ExerciseRequest`: at least its sets performed,
+ * and each of the first that many reaching its reps.
+ *
+ * @remarks
+ * Sets past the ones asked for are extra work and do not count either way.
+ */
+const isMetBy = (exerciseRequest: Type, attempt: Attempt): boolean =>
+  attempt.setObservations.length >= setsOf(exerciseRequest) &&
+  attempt.setObservations
     .slice(0, setsOf(exerciseRequest))
     .every(
       (setObservation) => ExerciseSetObservation.repsOf(setObservation) >= repsOf(exerciseRequest)
     )
 
 /**
- * What an `ExerciseRequest`'s sessions do to it: close it as met and issue the next at
- * the incremented load, keep it open, or close it as abandoned and issue the
- * next at the deloaded load.
+ * What the attempts at an `ExerciseRequest` do to it: close it as met and
+ * issue the next at the incremented load, keep it open, or close it as
+ * abandoned and issue the next at the deloaded load.
  */
 type Decision = 'increment' | 'hold' | 'deload'
 
@@ -266,13 +325,13 @@ interface Progress {
   /** Which way the load moved. */
   readonly decision: Decision
   /**
-   * The current `ExerciseRequest`: `completed` after an increment, `revoked` after a
-   * deload, unchanged on a hold.
+   * The current `ExerciseRequest`: `completed` after an increment, `revoked`
+   * after a deload, unchanged on a hold.
    */
   readonly current: Type
   /**
-   * The `ExerciseRequest` issued in place of the current one — at the new load,
-   * everything else unchanged, `replaces` the current one; `None` on a hold.
+   * The one issued in its place — at the new load, everything else
+   * unchanged, `replaces` naming the current one; `None` on a hold.
    */
   readonly next: Option.Option<Type>
 }
@@ -284,22 +343,21 @@ interface Progress {
 const ROUNDING_TOLERANCE = 1e-9
 
 /**
- * How many of an `ExerciseRequest`'s most recent sessions in a row failed — the count a
- * deload waits on ("failure 2 of 3").
+ * How many of the most recent attempts at an `ExerciseRequest` failed in a
+ * row — the count a deload waits on ("failure 2 of 3").
  *
- * @param exerciseRequest - The `ExerciseRequest` the sessions were at
- * @param sessions - Its sessions, earliest first, as `Session.groupByDate` groups them
- * @returns The length of the trailing run of sessions that did not meet the `ExerciseRequest`
+ * @param exerciseRequest - The one the attempts were at
+ * @param attempts - Its attempts, earliest first, as {@link attemptsAt} lists them
+ * @returns The length of the trailing run of attempts that did not meet it
  *
  * @remarks
- * Every session here is at the `ExerciseRequest`'s load — an `ExerciseRequest` is one load, and a
- * load change issues a new one — so no session before the current load can
- * count against it.
+ * Every attempt counted is at its load: a new load is a new `ExerciseRequest`,
+ * so no attempt at an earlier load can count against this one.
  */
-const consecutiveFailures = (exerciseRequest: Type, sessions: readonly Session.Type[]): number =>
+const consecutiveFailures = (exerciseRequest: Type, attempts: readonly Attempt[]): number =>
   pipe(
-    Arr.reverse(sessions),
-    Arr.takeWhile((session) => !isMetBy(exerciseRequest, session))
+    Arr.reverse(attempts),
+    Arr.takeWhile((attempt) => !isMetBy(exerciseRequest, attempt))
   ).length
 
 /** `load` rounded down to a multiple of `step`, within {@link ROUNDING_TOLERANCE}. */
@@ -341,41 +399,41 @@ const CLOSING_STATUS_OF: { readonly [Moved in Exclude<Decision, 'hold'>]: Closin
 }
 
 /**
- * One progression step for one `ExerciseRequest`: decide from the sets logged
- * against it whether its load goes up, stays, or deloads, and write the
+ * One progression step for one `ExerciseRequest`: decide from its attempts
+ * whether its load goes up, stays, or deloads, and write the
  * `ServiceRequest`s that apply the decision.
  *
- * @param step - The current `ExerciseRequest`; the plan's rule for its exercise; every
- *   set logged against it, in any order; the lifter's zone, which
- *   groups the sets into sessions; the id the app minted for the next
- *   `ServiceRequest`, when one is issued; and when the step was taken, the next
- *   `ServiceRequest`'s `authoredOn`
- * @returns The decision, the current `ExerciseRequest` closed as it says, and the next
- *   one; or a `ParseError` when the current one's load is in a unit the rule
- *   does not move
+ * @param step - The current `ExerciseRequest`; the plan's rule for its
+ *   exercise; the lifter's workouts and sets, in any order (see
+ *   {@link attemptsAt}); the id the app minted for the next `ServiceRequest`,
+ *   when one is issued; and when the step was taken, its `authoredOn`
+ * @returns The decision, the current one closed as it says, and the next
+ *   one; or a `ParseError` when the current load is in a unit the rule does
+ *   not move
  *
  * @remarks
- * The rule, over the sets grouped by `Session.groupByDate`:
+ * The rule, over the attempts {@link attemptsAt} lists:
  *
- * - **increment** — the most recent session met the `ExerciseRequest` (see
- *   {@link isMetBy}): the current one is `completed`, and the next is the
+ * - **increment** — the most recent attempt met it (see
+ *   {@link isMetBy}): it is closed as `completed`, and the next one is the
  *   rule's increment heavier.
  * - **deload** — otherwise, when {@link consecutiveFailures} has reached the
  *   rule's failures before a deload and the deloaded load (cut by the deload
  *   fraction, rounded down to a multiple of the load step, never below the
- *   minimum load) is lower than the current one: the current `ExerciseRequest` is
- *   `revoked`, and the next is at the deloaded load.
- * - **hold** — otherwise: no sets yet, too few failures, or a deload that
+ *   minimum load) is lower than the current one: it is closed as `revoked`,
+ *   and the next one is at the deloaded load.
+ * - **hold** — otherwise: no attempt yet, too few failures, or a deload that
  *   would not lower a load already at its floor. Nothing is written.
  *
- * The next `ExerciseRequest` starts with no sets, so running the step on it holds until
- * its own sessions say otherwise.
+ * A workout still in progress is never judged. The next `ExerciseRequest`
+ * has no attempts yet, so running the step on it holds until its own workouts say
+ * otherwise.
  */
 const progress = (step: {
   readonly exerciseRequest: Type
   readonly progressionRule: ProgressionRule.Type
+  readonly workoutProcedures: readonly WorkoutProcedure.Type[]
   readonly setObservations: readonly ExerciseSetObservation.Type[]
-  readonly zone: DateTime.TimeZone
   readonly nextServiceRequestId: string
   readonly authoredOn: DateTime.Utc
 }): Either.Either<Progress, ParseResult.ParseError> => {
@@ -385,10 +443,10 @@ const progress = (step: {
       loadOf(exerciseRequest)
     ),
     Either.flatMap((load) => {
-      const sessions = Session.groupByDate(step.setObservations, step.zone)
+      const attempts = attemptsAt(exerciseRequest, step)
       const value = Load.valueOf(load)
       const moved = pipe(
-        Arr.last(sessions),
+        Arr.last(attempts),
         Option.filter((latest) => isMetBy(exerciseRequest, latest)),
         Option.map(() => ({
           decision: 'increment' as const,
@@ -400,7 +458,7 @@ const progress = (step: {
             Option.filter(
               (deloaded) =>
                 deloaded < value &&
-                consecutiveFailures(exerciseRequest, sessions) >=
+                consecutiveFailures(exerciseRequest, attempts) >=
                   ProgressionRule.failuresBeforeDeloadOf(progressionRule)
             ),
             Option.map((deloaded) => ({ decision: 'deload' as const, value: deloaded }))
@@ -420,7 +478,7 @@ const progress = (step: {
                 instantiatesCanonical: planUrlOf(exerciseRequest),
                 code: exerciseOf(exerciseRequest),
                 orderDetail: exerciseRequest.orderDetail.map((detail) =>
-                  measures(LiftingMeasureCode.Load)(detail) ? loadConcept(nextLoad) : detail
+                  measures(LiftingMeasure.Code.Load)(detail) ? loadConcept(nextLoad) : detail
                 ),
                 replaces: [
                   IdentifierAndReference.referenceTo({
@@ -443,6 +501,7 @@ const progress = (step: {
 }
 
 export {
+  attemptsAt,
   close,
   consecutiveFailures,
   ExerciseRequestSchema as Schema,
@@ -457,4 +516,4 @@ export {
   repsOf,
   setsOf,
 }
-export type { ClosingStatus, Decision, Progress, Type }
+export type { Attempt, ClosingStatus, Decision, Progress, Type }

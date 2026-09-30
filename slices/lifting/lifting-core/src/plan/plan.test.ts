@@ -1,11 +1,10 @@
-import { Array as Arr, DateTime, Option, Schema } from 'effect'
+import { Array as Arr, DateTime, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { WILDFLOWER_CANONICAL_BASE, WildflowerCodeSystem } from 'fhir-r4/data-types'
 import { PlanDefinition } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as StrongLifts5x5 from '../plans/strong-lifts.ts'
 import {
   exerciseRequestAt,
@@ -13,10 +12,11 @@ import {
   issuePathsOf,
   made,
   planArb,
-  setAt,
+  SUBJECT,
   smallPlanArb,
   throughWire,
 } from '../test-helpers.ts'
+import * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 import * as Plan from './plan.ts'
 import * as PlannedExercise from './planned-exercise.ts'
 import * as ProgressionRule from './progression-rule.ts'
@@ -152,7 +152,7 @@ describe('nextWorkout', () => {
     )
   })
 
-  it('should follow the most recent set, whatever order the sets arrive in', () => {
+  it('should follow the most recently started completed workout, whatever order they arrive in', () => {
     fc.assert(
       fc.property(
         planArb,
@@ -162,16 +162,20 @@ describe('nextWorkout', () => {
           // Arrange
           const workouts = Plan.workoutsOf(plan)
           const workoutIndexOf = (index: number): number => (seed + index) % workouts.length
-          const sets = offsets.map((offset, index) =>
-            setIn(
-              Workout.labelOf(workouts[workoutIndexOf(index)] ?? Arr.headNonEmpty(workouts)),
-              DateTime.unsafeMake(Date.UTC(2026, 0, 1) + offset * 1000)
-            )
+          const performed = offsets.map((offset, index) =>
+            completedIn({
+              plan,
+              workout: workouts[workoutIndexOf(index)] ?? Arr.headNonEmpty(workouts),
+              start: DateTime.unsafeMake(Date.UTC(2026, 0, 1) + offset * 1000),
+            })
           )
           const latestWorkoutIndex = workoutIndexOf(offsets.indexOf(Math.max(...offsets)))
 
           // Act
-          const next = Plan.nextWorkout(plan, Arr.reverse(sets))
+          const next = Plan.nextWorkout(
+            plan,
+            WorkoutProcedure.latestCompleted(Arr.reverse(performed))
+          )
 
           // Assert
           expect(next).toBe(workouts[(latestWorkoutIndex + 1) % workouts.length])
@@ -181,12 +185,16 @@ describe('nextWorkout', () => {
     )
   })
 
-  it('should start over at the first workout when the latest label is not in the plan', () => {
+  it('should start over at the first workout when the latest one is not in the plan', () => {
     fc.assert(
       fc.property(planArb, instantArb, (plan, start) => {
-        expect(Plan.nextWorkout(plan, [setIn('not-a-workout', start)])).toBe(
-          Arr.headNonEmpty(Plan.workoutsOf(plan))
+        const [planned] = Workout.plannedExercisesOf(Arr.headNonEmpty(Plan.workoutsOf(plan)))
+        const elsewhere = made(
+          Workout.make({ label: 'not-a-workout', plannedExercises: [planned] })
         )
+        expect(
+          Plan.nextWorkout(plan, Option.some(completedIn({ plan, workout: elsewhere, start })))
+        ).toBe(Arr.headNonEmpty(Plan.workoutsOf(plan)))
       }),
       { numRuns: RUNS }
     )
@@ -211,22 +219,45 @@ function summaryOf(planned: PlannedExercise.Type): readonly unknown[] {
   ]
 }
 
-/** A squat `ExerciseRequest` every generated set is logged against. */
+/** A squat `ExerciseRequest` every generated workout carries out. */
 const squatExerciseRequest = exerciseRequestAt(
   Workout.plannedExercisesOf(Arr.headNonEmpty(Plan.workoutsOf(StrongLifts5x5.plan('plan-1'))))[0],
   45
 )
 
-function setIn(workoutLabel: string, start: DateTime.Utc): ExerciseSetObservation.Type {
-  return setAt({ exerciseRequest: squatExerciseRequest, workoutLabel, start, reps: 5 })
+/** `workout` of `plan`, started at `start` and completed an hour later. */
+function completedIn({
+  plan,
+  workout,
+  start,
+}: {
+  readonly plan: Plan.Type
+  readonly workout: Workout.Type
+  readonly start: DateTime.Utc
+}): WorkoutProcedure.Type {
+  return made(
+    Either.flatMap(
+      WorkoutProcedure.make({
+        procedureId: `workout-${DateTime.toEpochMillis(start)}`,
+        subject: SUBJECT,
+        plan,
+        workout,
+        exerciseRequests: [squatExerciseRequest],
+        start,
+      }),
+      (started) => WorkoutProcedure.complete(started, DateTime.addDuration(start, '1 hour'))
+    )
+  )
 }
 
-/** The workouts `nextWorkout` names over `count` visits, each logged a day after the last. */
+/** The workouts `nextWorkout` names over `count` visits, each completed a day after the last. */
 function visitsOf(plan: Plan.Type, count: number): readonly Workout.Type[] {
-  const sets: ExerciseSetObservation.Type[] = []
+  const performed: WorkoutProcedure.Type[] = []
   return Arr.makeBy(count, (day) => {
-    const workout = Plan.nextWorkout(plan, sets)
-    sets.push(setIn(Workout.labelOf(workout), DateTime.unsafeMake(Date.UTC(2026, 0, day + 1))))
+    const workout = Plan.nextWorkout(plan, WorkoutProcedure.latestCompleted(performed))
+    performed.push(
+      completedIn({ plan, workout, start: DateTime.unsafeMake(Date.UTC(2026, 0, day + 1)) })
+    )
     return workout
   })
 }

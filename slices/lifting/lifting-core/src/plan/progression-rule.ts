@@ -21,9 +21,9 @@ const Part = {
    * a string, not a `valueCode`, which fhir-r4 leaves unregistered.
    */
   Unit: 'unit',
-  /** Added to the load after a successful session, as a `valueDecimal` `> 0`. */
+  /** Added to the load after a successful workout, as a `valueDecimal` `> 0`. */
   Increment: 'increment',
-  /** Consecutive failed sessions at one load that trigger a deload, as a positive `valueInteger`. */
+  /** Consecutive failed workouts at one load that trigger a deload, as a positive `valueInteger`. */
   FailuresBeforeDeload: 'failuresBeforeDeload',
   /** The fraction of the load a deload takes off, as a `valueDecimal` strictly between 0 and 1. */
   DeloadFraction: 'deloadFraction',
@@ -63,10 +63,10 @@ const PART_SCHEMAS = {
 } as const satisfies Record<PartName, Schema.Schema.AnyNoContext>
 
 /**
- * How one exercise's load moves between sessions, as FHIR carries it: a
+ * How one exercise's load moves between workouts, as FHIR carries it: a
  * {@link WildflowerExtension.LiftingProgression} extension narrowed to exactly
  * one sub-extension per {@link Part}, each in range. Up by the increment after
- * a success; after enough consecutive failed sessions at one load, down by
+ * a success; after enough consecutive failed workouts at one load, down by
  * the deload fraction, rounded down to a multiple of the load step and never
  * below the minimum load. Every amount is in the rule's unit, and only a load
  * in that unit progresses by this rule.
@@ -142,11 +142,11 @@ const partOf = <A>(read: {
 const unitOf = (rule: Type): Load.Unit =>
   partOf({ rule, part: Part.Unit, schema: PART_SCHEMAS.unit }).valueString
 
-/** Added to the load after a successful session. */
+/** Added to the load after a successful workout. */
 const incrementOf = (rule: Type): number =>
   partOf({ rule, part: Part.Increment, schema: PART_SCHEMAS.increment }).valueDecimal
 
-/** Consecutive failed sessions at one load that trigger a deload. */
+/** Consecutive failed workouts at one load that trigger a deload. */
 const failuresBeforeDeloadOf = (rule: Type): number =>
   partOf({ rule, part: Part.FailuresBeforeDeload, schema: PART_SCHEMAS.failuresBeforeDeload })
     .valueInteger

@@ -10,11 +10,11 @@ import {
 import { narrowFields, WILDFLOWER_CANONICAL_BASE, withMandatoryId } from 'fhir-r4/data-types'
 import { PlanDefinition } from 'fhir-r4/resources'
 
-import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import { NonBlankString } from '../internal/non-blank-string.ts'
-import { liftingFeatureConcept } from '../terminology.ts'
+import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
+import * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 import * as PlannedExercise from './planned-exercise.ts'
 import * as ProgressionRule from './progression-rule.ts'
 import * as Workout from './workout.ts'
@@ -149,7 +149,7 @@ const make = (plan: {
     url: `${WILDFLOWER_CANONICAL_BASE}/PlanDefinition/${plan.planDefinitionId}`,
     status: 'active',
     title: plan.title,
-    topic: [liftingFeatureConcept],
+    topic: [LiftingFeature.concept],
     action: plan.workouts,
   })
 
@@ -171,29 +171,31 @@ const plannedExerciseOf = (plan: Type, exerciseId: string): Option.Option<Planne
   )
 
 /**
- * The workout due next: the one after the most recent set's workout, in the
- * plan's cycle order.
+ * The workout due next: the one after the most recent completed workout's,
+ * in the plan's cycle order.
  *
  * @param plan - The plan whose workouts cycle
- * @param setObservations - Every set logged under the plan, at any exercise, in any order
- * @returns One of the plan's workouts: the one after the most recent set's
- *   workout label, wrapping from the last back to the first
+ * @param latestCompleted - The lifter's most recent completed workout under
+ *   the plan, as `WorkoutProcedure.latestCompleted` finds it; `None` before
+ *   the first
+ * @returns One of the plan's workouts: the one after the one
+ *   `latestCompleted` performed, wrapping from the last back to the first
  *
  * @remarks
- * With no sets — or when the most recent set's label names no workout in the
+ * With no completed workout — or one whose label names no workout in the
  * plan, as after the plan's workouts were replaced — the cycle starts over at
  * the first workout.
  */
 const nextWorkout = (
   plan: Type,
-  setObservations: readonly ExerciseSetObservation.Type[]
+  latestCompleted: Option.Option<WorkoutProcedure.Type>
 ): Workout.Type =>
   pipe(
-    Arr.last(ExerciseSetObservation.sortByStart(setObservations)),
+    latestCompleted,
     Option.flatMap((latest) =>
       Arr.findFirstIndex(
         plan.action,
-        (workout) => Workout.labelOf(workout) === ExerciseSetObservation.workoutLabelOf(latest)
+        (workout) => Workout.labelOf(workout) === WorkoutProcedure.workoutLabelOf(latest)
       )
     ),
     Option.flatMap((index) => Arr.get(plan.action, (index + 1) % plan.action.length)),

@@ -63,11 +63,19 @@ const WildflowerCodeSystem = {
   LiftingMeasure: `${WILDFLOWER_CODE_SYSTEM_BASE}/lifting-measure`,
   /**
    * Which Wildflower feature a resource belongs to (`strength-training`), as
-   * a `ServiceRequest.category` or a `PlanDefinition.topic` — so a feature's
-   * resources can be searched for (`category=<system>|<code>`,
-   * `topic=<system>|<code>`) apart from every other on the record.
+   * a `ServiceRequest.category`, a `Procedure.category` or a
+   * `PlanDefinition.topic` — so a feature's resources can be searched for
+   * (`category=<system>|<code>`, `topic=<system>|<code>`) apart from every
+   * other on the record.
    */
   Feature: `${WILDFLOWER_CODE_SYSTEM_BASE}/feature`,
+  /**
+   * Which workout of a strength-training plan a `Procedure` is, as its
+   * `code`: the workout's label within the plan (`A`, `B`) as the code and the
+   * display. A label names a workout only within one plan, so the plan is the
+   * `Procedure.instantiatesCanonical` beside it.
+   */
+  Workout: `${WILDFLOWER_CODE_SYSTEM_BASE}/workout`,
 } as const
 
 /**
@@ -106,11 +114,6 @@ const WildflowerExtension = {
    * sets or reps.
    */
   LiftingMeasureValue: `${WILDFLOWER_EXTENSION_BASE}/lifting-measure-value`,
-  /**
-   * On a strength-training `Observation` (one set): the label of the workout
-   * (e.g. `"A"`) the set was part of, as a `valueString`.
-   */
-  WorkoutLabel: `${WILDFLOWER_EXTENSION_BASE}/workout-label`,
 } as const
 
 export {

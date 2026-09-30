@@ -1,11 +1,10 @@
-import { DateTime, Either, Option, Schema } from 'effect'
+import { Array as Arr, DateTime, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { IdentifierAndReference } from 'fhir-r4/data-types'
 import { numRunsFor } from 'kitchen-sink/test'
 import { assert, describe, expect, it } from 'vite-plus/test'
 
-import type * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
-import * as Session from '../exercise-set-observation/session.ts'
+import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as Load from '../load/load.ts'
 import * as Plan from '../plan/plan.ts'
 import * as PlannedExercise from '../plan/planned-exercise.ts'
@@ -20,15 +19,14 @@ import {
   type ProgressionCase,
   progressionCaseArb,
   ruleOf,
-  setAt,
+  performedWorkoutAt,
   someOrFail,
   SUBJECT,
-  UTC,
-  zoneArb,
 } from '../test-helpers.ts'
+import * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 import * as ExerciseRequest from './exercise-request.ts'
 
-// Each case makes its `ExerciseRequest`s and sets through their schemas, so a property
+// Each case makes its `ExerciseRequest`s, workouts and sets through their schemas, so a property
 // over them runs fewer iterations than one over plain values.
 const RUNS = numRunsFor({ base: 60 })
 
@@ -52,41 +50,59 @@ const squatAt = (value: number): ExerciseRequest.Type =>
     })
   )
 
-/** One progression step over `setObservations` in `zone`, issuing `sr-3`. */
-const step = (spec: {
-  readonly exerciseRequest: ExerciseRequest.Type
-  readonly progressionRule: ProgressionRule.Type
+/** What the lifter performed: the workouts and the sets in them. */
+interface Performed {
+  readonly workoutProcedures: readonly WorkoutProcedure.Type[]
   readonly setObservations: readonly ExerciseSetObservation.Type[]
-  readonly zone?: DateTime.TimeZone
-}): Either.Either<ExerciseRequest.Progress, unknown> =>
+}
+
+/** One progression step over what was performed, issuing `sr-3`. */
+const step = (
+  spec: {
+    readonly exerciseRequest: ExerciseRequest.Type
+    readonly progressionRule: ProgressionRule.Type
+  } & Performed
+): Either.Either<ExerciseRequest.Progress, unknown> =>
   ExerciseRequest.progress({
     ...spec,
-    zone: spec.zone ?? UTC,
     nextServiceRequestId: 'sr-3',
     authoredOn: STEP_AUTHORED_ON,
   })
 
 /** The step a generated case calls for, which must succeed. */
-const stepOf = (progressionCase: ProgressionCase, zone = UTC): ExerciseRequest.Progress =>
-  made(
-    step({
-      exerciseRequest: progressionCase.exerciseRequest,
-      progressionRule: ruleOf(progressionCase.planned),
-      setObservations: progressionCase.setObservations,
-      zone,
-    })
+const stepOf = (progressionCase: ProgressionCase): ExerciseRequest.Progress =>
+  made(step({ ...progressionCase, progressionRule: ruleOf(progressionCase.planned) }))
+
+/** Nothing performed yet. */
+const NOTHING: Performed = { workoutProcedures: [], setObservations: [] }
+
+/** One completed workout per entry of `repsPerWorkout`, a day apart, each with its sets against `exerciseRequest`. */
+const history = ({
+  exerciseRequest,
+  repsPerWorkout,
+}: {
+  readonly exerciseRequest: ExerciseRequest.Type
+  readonly repsPerWorkout: readonly (readonly number[])[]
+}): Performed => {
+  const performed = repsPerWorkout.map((reps, index) =>
+    performedWorkoutAt({ exerciseRequest, index, reps })
   )
+  return {
+    workoutProcedures: performed.map(({ workoutProcedure }) => workoutProcedure),
+    setObservations: performed.flatMap(({ setObservations }) => setObservations),
+  }
+}
 
 /** The load value of an issued `ExerciseRequest`. */
 const loadValueOf = (exerciseRequest: ExerciseRequest.Type): number =>
   Load.valueOf(ExerciseRequest.loadOf(exerciseRequest))
 
 describe('ExerciseRequest.progress', () => {
-  it('should hold an `ExerciseRequest` with no sets yet, writing nothing', () => {
+  it('should hold an `ExerciseRequest` with no workout yet, writing nothing', () => {
     const current = squatAt(135)
-    expect(
-      step({ exerciseRequest: current, progressionRule: barbell, setObservations: [] })
-    ).toEqual(Either.right({ decision: 'hold', current, next: Option.none() }))
+    expect(step({ exerciseRequest: current, progressionRule: barbell, ...NOTHING })).toEqual(
+      Either.right({ decision: 'hold', current, next: Option.none() })
+    )
   })
 
   it('should complete a met 135 lb squat and issue 140 lb in its place', () => {
@@ -98,7 +114,7 @@ describe('ExerciseRequest.progress', () => {
       step({
         exerciseRequest: current,
         progressionRule: barbell,
-        setObservations: session({ exerciseRequest: current, day: 1, reps: [5, 5, 5, 5, 5] }),
+        ...history({ exerciseRequest: current, repsPerWorkout: [[5, 5, 5, 5, 5]] }),
       })
     )
 
@@ -117,20 +133,21 @@ describe('ExerciseRequest.progress', () => {
     ])
   })
 
-  it('should hold after one and two failed sessions, and deload 10% after the third', () => {
+  it('should hold after one and two failed workouts, and deload 10% after the third', () => {
     // Arrange
     const current = squatAt(150)
-    const failures = [1, 2, 3].flatMap((day) =>
-      session({ exerciseRequest: current, day, reps: [5, 5, 5, 4, 3] })
-    )
+    const failed = [5, 5, 5, 4, 3]
 
     // Act
-    const afterEach = [5, 10, 15].map((setCount) =>
+    const afterEach = [1, 2, 3].map((workoutCount) =>
       made(
         step({
           exerciseRequest: current,
           progressionRule: barbell,
-          setObservations: failures.slice(0, setCount),
+          ...history({
+            exerciseRequest: current,
+            repsPerWorkout: Array.from({ length: workoutCount }, () => failed),
+          }),
         })
       )
     )
@@ -146,17 +163,22 @@ describe('ExerciseRequest.progress', () => {
     // 50 × 0.9 = 45; 45 × 0.9 = 40.5 would round to 40, under the 45 lb floor.
     const at50 = squatAt(50)
     const at45 = squatAt(45)
-    const failuresAt = (current: ExerciseRequest.Type): readonly ExerciseSetObservation.Type[] =>
-      [1, 2, 3].flatMap((day) => session({ exerciseRequest: current, day, reps: [4, 4, 4, 4, 4] }))
+    const failuresAt = (current: ExerciseRequest.Type): Performed =>
+      history({
+        exerciseRequest: current,
+        repsPerWorkout: [
+          [4, 4, 4, 4, 4],
+          [4, 4, 4, 4, 4],
+          [4, 4, 4, 4, 4],
+        ],
+      })
     const from50 = made(
-      step({ exerciseRequest: at50, progressionRule: barbell, setObservations: failuresAt(at50) })
+      step({ exerciseRequest: at50, progressionRule: barbell, ...failuresAt(at50) })
     )
     expect(from50.decision).toBe('deload')
     expect(loadValueOf(someOrFail(from50.next))).toBe(45)
     expect(
-      made(
-        step({ exerciseRequest: at45, progressionRule: barbell, setObservations: failuresAt(at45) })
-      ).decision
+      made(step({ exerciseRequest: at45, progressionRule: barbell, ...failuresAt(at45) })).decision
     ).toBe('hold')
   })
 
@@ -174,7 +196,7 @@ describe('ExerciseRequest.progress', () => {
     const refused = step({
       exerciseRequest: squatAt(135),
       progressionRule: kilograms,
-      setObservations: [],
+      ...NOTHING,
     })
     expect(
       Either.match(refused, {
@@ -259,7 +281,7 @@ describe('ExerciseRequest.progress', () => {
               step({
                 exerciseRequest: issued,
                 progressionRule: ruleOf(progressionCase.planned),
-                setObservations: [],
+                ...NOTHING,
               }),
               (progress) => progress.decision
             )
@@ -270,38 +292,60 @@ describe('ExerciseRequest.progress', () => {
     )
   })
 
-  it('should decide the same whatever order the sets arrive in', () => {
+  it('should decide the same whatever order the workouts and sets arrive in', () => {
     fc.assert(
       fc.property(
         progressionCaseArb.chain((progressionCase) =>
           fc
-            .shuffledSubarray([...progressionCase.setObservations], {
-              minLength: progressionCase.setObservations.length,
-            })
-            .map((shuffled) => ({ progressionCase, shuffled }))
+            .tuple(
+              fc.shuffledSubarray([...progressionCase.workoutProcedures], {
+                minLength: progressionCase.workoutProcedures.length,
+              }),
+              fc.shuffledSubarray([...progressionCase.setObservations], {
+                minLength: progressionCase.setObservations.length,
+              })
+            )
+            .map(([workoutProcedures, setObservations]) => ({
+              progressionCase,
+              shuffled: { ...progressionCase, workoutProcedures, setObservations },
+            }))
         ),
         ({ progressionCase, shuffled }) => {
-          expect(stepOf({ ...progressionCase, setObservations: shuffled })).toEqual(
-            stepOf(progressionCase)
-          )
+          expect(stepOf(shuffled)).toEqual(stepOf(progressionCase))
         }
       ),
       { numRuns: RUNS }
     )
   })
 
-  it('should decide the same in any zone that keeps each generated session on one day', () => {
-    // Generated sessions run from 18:00 UTC for under an hour, so a zone from
-    // UTC−12 to UTC+5 keeps each one on a single local day.
+  it('should never judge a workout still in progress', () => {
     fc.assert(
-      fc.property(
-        progressionCaseArb,
-        zoneArb.filter((zone) => Option.isSome(offsetHoursOf(zone))),
-        (progressionCase, zone) => {
-          fc.pre(Option.getOrElse(offsetHoursOf(zone), () => 99) <= 5)
-          expect(stepOf(progressionCase, zone)).toEqual(stepOf(progressionCase))
-        }
-      ),
+      fc.property(progressionCaseArb, (progressionCase) => {
+        // Arrange: the latest workout reopened, as if the lifter were still in it.
+        const latest = Arr.last(progressionCase.workoutProcedures)
+        fc.pre(Option.isSome(latest))
+        const reopened = Option.getOrThrow(latest)
+        const inProgress = made(
+          Schema.decodeEither(WorkoutProcedure.Schema)({
+            ...reopened,
+            status: 'in-progress',
+            performedPeriod: { ...reopened.performedPeriod, end: null },
+          })
+        )
+        const earlier = progressionCase.workoutProcedures.slice(0, -1)
+
+        // Act / Assert: the step sees only the workouts before it.
+        expect(stepOf({ ...progressionCase, workoutProcedures: [...earlier, inProgress] })).toEqual(
+          stepOf({
+            ...progressionCase,
+            workoutProcedures: earlier,
+            setObservations: progressionCase.setObservations.filter(
+              (setObservation) =>
+                ExerciseSetObservation.procedureIdOf(setObservation) !== reopened.id
+            ),
+          })
+        )
+      }),
       { numRuns: RUNS }
     )
   })
@@ -318,27 +362,30 @@ describe('ExerciseRequest.progress', () => {
 })
 
 describe('ExerciseRequest.consecutiveFailures', () => {
-  it('should count exactly the failed sessions since the last met one', () => {
+  it('should count exactly the failed workouts since the last met one', () => {
     fc.assert(
-      fc.property(fewFailuresCaseArb, ({ exerciseRequest, setObservations, trailingFailures }) => {
-        expect(
-          ExerciseRequest.consecutiveFailures(
-            exerciseRequest,
-            Session.groupByDate(setObservations, UTC)
-          )
-        ).toBe(trailingFailures)
-      }),
+      fc.property(
+        fewFailuresCaseArb,
+        ({ exerciseRequest, workoutProcedures, setObservations, trailingFailures }) => {
+          expect(
+            ExerciseRequest.consecutiveFailures(
+              exerciseRequest,
+              ExerciseRequest.attemptsAt(exerciseRequest, { workoutProcedures, setObservations })
+            )
+          ).toBe(trailingFailures)
+        }
+      ),
       { numRuns: RUNS }
     )
   })
 
-  it('should be zero after a met session', () => {
+  it('should be zero after a met workout', () => {
     fc.assert(
-      fc.property(incrementCaseArb, ({ exerciseRequest, setObservations }) => {
+      fc.property(incrementCaseArb, ({ exerciseRequest, workoutProcedures, setObservations }) => {
         expect(
           ExerciseRequest.consecutiveFailures(
             exerciseRequest,
-            Session.groupByDate(setObservations, UTC)
+            ExerciseRequest.attemptsAt(exerciseRequest, { workoutProcedures, setObservations })
           )
         ).toBe(0)
       }),
@@ -348,14 +395,17 @@ describe('ExerciseRequest.consecutiveFailures', () => {
 
   it('should reach the deload threshold on a deload-class history', () => {
     fc.assert(
-      fc.property(deloadCaseArb, ({ planned, exerciseRequest, setObservations }) => {
-        expect(
-          ExerciseRequest.consecutiveFailures(
-            exerciseRequest,
-            Session.groupByDate(setObservations, UTC)
-          )
-        ).toBeGreaterThanOrEqual(ProgressionRule.failuresBeforeDeloadOf(ruleOf(planned)))
-      }),
+      fc.property(
+        deloadCaseArb,
+        ({ planned, exerciseRequest, workoutProcedures, setObservations }) => {
+          expect(
+            ExerciseRequest.consecutiveFailures(
+              exerciseRequest,
+              ExerciseRequest.attemptsAt(exerciseRequest, { workoutProcedures, setObservations })
+            )
+          ).toBeGreaterThanOrEqual(ProgressionRule.failuresBeforeDeloadOf(ruleOf(planned)))
+        }
+      ),
       { numRuns: RUNS }
     )
   })
@@ -388,29 +438,4 @@ function expectDeloadedWithinRule({
     expect(deloaded).toBeLessThanOrEqual(load * (1 - deloadFraction) + 1e-6)
     expect(deloaded).toBeGreaterThan(load * (1 - deloadFraction) - loadStep - 1e-6)
   }
-}
-
-/** A fixed-offset zone's whole hours from UTC; `None` for a named zone. */
-function offsetHoursOf(zone: DateTime.TimeZone): Option.Option<number> {
-  return DateTime.isTimeZoneOffset(zone) ? Option.some(zone.offset / 3_600_000) : Option.none()
-}
-
-/** The sets of one session against `exerciseRequest` on January `day` 2026 at 18:00 UTC, three minutes apart. */
-function session({
-  exerciseRequest,
-  day,
-  reps,
-}: {
-  readonly exerciseRequest: ExerciseRequest.Type
-  readonly day: number
-  readonly reps: readonly number[]
-}): readonly ExerciseSetObservation.Type[] {
-  return reps.map((setReps, index) =>
-    setAt({
-      exerciseRequest,
-      workoutLabel: day % 2 === 1 ? 'A' : 'B',
-      start: DateTime.unsafeMake(Date.UTC(2026, 0, day, 18, index * 3)),
-      reps: setReps,
-    })
-  )
 }

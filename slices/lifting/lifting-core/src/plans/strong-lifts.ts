@@ -49,7 +49,7 @@ const STARTING_LOADS: { readonly [L in Lift]: Load.Type } = {
 
 /**
  * The barbell rule in pounds, gaining `increment` per success: three failed
- * sessions at one load take 10% off, in steps of one 2.5 lb plate pair, never
+ * workouts at one load take 10% off, in steps of one 2.5 lb plate pair, never
  * below the empty 45 lb bar.
  */
 const barbellRule = (increment: number): ProgressionRule.Type =>

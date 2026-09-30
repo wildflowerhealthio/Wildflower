@@ -5,9 +5,9 @@ import { ServiceRequest } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import * as Session from '../exercise-set-observation/session.ts'
+import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
-import { LiftingMeasureCode } from '../lifting-measure/lifting-measure.ts'
+import * as LiftingMeasure from '../lifting-measure/lifting-measure.ts'
 import * as Load from '../load/load.ts'
 import * as Plan from '../plan/plan.ts'
 import * as PlannedExercise from '../plan/planned-exercise.ts'
@@ -21,7 +21,9 @@ import {
   made,
   planArb,
   plannedExerciseRequestArb,
+  performedWorkoutAt,
   setAt,
+  startedWorkoutAt,
   SUBJECT,
   successfulRepsArb,
   throughWire,
@@ -89,12 +91,12 @@ describe('ExerciseRequest.make', () => {
       ])
     ).toEqual([
       [
-        LiftingMeasureCode.Load,
+        LiftingMeasure.Code.Load,
         WildflowerExtension.LiftingMeasureValue,
         { value: 45, unit: 'lb', system: 'http://unitsofmeasure.org', code: '[lb_av]' },
       ],
-      [LiftingMeasureCode.Sets, WildflowerExtension.LiftingMeasureValue, 5],
-      [LiftingMeasureCode.Reps, WildflowerExtension.LiftingMeasureValue, 5],
+      [LiftingMeasure.Code.Sets, WildflowerExtension.LiftingMeasureValue, 5],
+      [LiftingMeasure.Code.Reps, WildflowerExtension.LiftingMeasureValue, 5],
     ])
   })
 
@@ -342,26 +344,95 @@ describe('ExerciseRequest.close / forExercise', () => {
   })
 })
 
+describe('ExerciseRequest.attemptsAt', () => {
+  it('should pair each completed workout carrying it out with its own sets, earliest first', () => {
+    fc.assert(
+      fc.property(
+        exerciseRequestArb,
+        fc.array(fc.array(fc.nat({ max: 8 }), { maxLength: 4 }), { maxLength: 4 }),
+        (exerciseRequest, repsPerWorkout) => {
+          // Arrange: workouts latest first, some with no set of the exercise.
+          const performed = repsPerWorkout.map((reps, index) =>
+            performedWorkoutAt({ exerciseRequest, index, reps })
+          )
+          const shuffled = performed.toReversed()
+
+          // Act
+          const attempts = ExerciseRequest.attemptsAt(exerciseRequest, {
+            workoutProcedures: shuffled.map(({ workoutProcedure }) => workoutProcedure),
+            setObservations: shuffled
+              .flatMap(({ setObservations }) => setObservations)
+              .toReversed(),
+          })
+
+          // Assert
+          expect(
+            attempts.map(({ workoutProcedure, setObservations }) => [
+              workoutProcedure.id,
+              setObservations.map(ExerciseSetObservation.repsOf),
+            ])
+          ).toEqual(
+            performed
+              .filter(({ setObservations }) => setObservations.length > 0)
+              .map(({ workoutProcedure }, index) => [
+                workoutProcedure.id,
+                repsPerWorkout.filter((reps) => reps.length > 0)[index],
+              ])
+          )
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
+  it('should pass over a workout in progress, one carrying out another `ExerciseRequest`, and sets against another', () => {
+    // Arrange
+    const squat = squatAt(135)
+    const other = { ...squatAt(140), id: 'sr-other' }
+    const done = performedWorkoutAt({ exerciseRequest: squat, index: 1, reps: [5] })
+    const elsewhere = performedWorkoutAt({ exerciseRequest: other, index: 2, reps: [5] })
+    const started = startedWorkoutAt({ exerciseRequest: squat, index: 9 })
+    const inStarted = setAt({
+      exerciseRequest: squat,
+      workoutProcedure: started,
+      start: DateTime.addDuration(started.performedPeriod.start, '3 minutes'),
+      reps: 5,
+    })
+
+    // Act
+    const attempts = ExerciseRequest.attemptsAt(squat, {
+      workoutProcedures: [done.workoutProcedure, elsewhere.workoutProcedure, started],
+      setObservations: [...done.setObservations, ...elsewhere.setObservations, inStarted],
+    })
+
+    // Assert
+    expect(attempts.map(({ workoutProcedure }) => workoutProcedure.id)).toEqual([
+      done.workoutProcedure.id,
+    ])
+  })
+})
+
 describe('ExerciseRequest.isMetBy', () => {
+  /** The one attempt `reps` make at `exerciseRequest`, in one completed workout. */
+  const attemptOf = (
+    exerciseRequest: ExerciseRequest.Type,
+    reps: readonly number[]
+  ): ExerciseRequest.Attempt => {
+    const [attempt] = ExerciseRequest.attemptsAt(
+      exerciseRequest,
+      (({ workoutProcedure, setObservations }) => ({
+        workoutProcedures: [workoutProcedure],
+        setObservations,
+      }))(performedWorkoutAt({ exerciseRequest, index: 4, reps }))
+    )
+    if (attempt === undefined) throw new Error('one attempt')
+    return attempt
+  }
+
   it('should be met by five fives, and not by a fourth set of four', () => {
     const squat = squatAt(135)
-    const sessionOf = (reps: readonly number[]): Session.Type => {
-      const [session] = Session.groupByDate(
-        reps.map((setReps, index) =>
-          setAt({
-            exerciseRequest: squat,
-            workoutLabel: 'A',
-            start: DateTime.unsafeMake(Date.UTC(2026, 0, 5, 18, index * 3)),
-            reps: setReps,
-          })
-        ),
-        DateTime.zoneMakeOffset(0)
-      )
-      if (session === undefined) throw new Error('one session')
-      return session
-    }
-    expect(ExerciseRequest.isMetBy(squat, sessionOf([5, 5, 5, 5, 5]))).toBe(true)
-    expect(ExerciseRequest.isMetBy(squat, sessionOf([5, 5, 5, 4, 5]))).toBe(false)
+    expect(ExerciseRequest.isMetBy(squat, attemptOf(squat, [5, 5, 5, 5, 5]))).toBe(true)
+    expect(ExerciseRequest.isMetBy(squat, attemptOf(squat, [5, 5, 5, 4, 5]))).toBe(false)
   })
 
   it('should be met exactly when every set it asks for reached the reps it asks for', () => {
@@ -377,19 +448,9 @@ describe('ExerciseRequest.isMetBy', () => {
           )
         ),
         ([exerciseRequest, [expected, reps]]) => {
-          const [session] = Session.groupByDate(
-            reps.map((setReps, index) =>
-              setAt({
-                exerciseRequest,
-                workoutLabel: 'A',
-                start: DateTime.unsafeMake(Date.UTC(2026, 0, 5, 18, index * 3)),
-                reps: setReps,
-              })
-            ),
-            DateTime.zoneMakeOffset(0)
+          expect(ExerciseRequest.isMetBy(exerciseRequest, attemptOf(exerciseRequest, reps))).toBe(
+            expected
           )
-          if (session === undefined) throw new Error('one session')
-          expect(ExerciseRequest.isMetBy(exerciseRequest, session)).toBe(expected)
         }
       ),
       { numRuns: RUNS }

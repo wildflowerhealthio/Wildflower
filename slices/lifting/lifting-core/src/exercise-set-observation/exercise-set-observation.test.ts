@@ -10,17 +10,21 @@ import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import * as StrongLifts5x5 from '../plans/strong-lifts.ts'
 import {
   AUTHORED_ON,
+  completedWorkoutAt,
   exerciseRequestArb,
   instantArb,
   issuePathsOf,
   made,
   SUBJECT,
   throughWire,
-  workoutLabelArb,
 } from '../test-helpers.ts'
 import * as ExerciseSetObservation from './exercise-set-observation.ts'
 
 const RUNS = numRunsFor({ base: 100 })
+
+// A property over a list of sets or workouts makes each through its schema,
+// so it runs fewer iterations than one over a single value.
+const LIST_RUNS = numRunsFor({ base: 30 })
 
 // Encode → JSON → decode of a whole Observation is the slow path, so the wire
 // round-trip runs fewer iterations than the in-memory properties.
@@ -29,17 +33,24 @@ const WIRE_RUNS = numRunsFor({ base: 50 })
 /** A set as the wire carries it: an `Observation`, decoded and then narrowed. */
 const WireSet = Schema.compose(Observation.Schema, ExerciseSetObservation.Schema)
 
-/** What a set is made of: an `ExerciseRequest`, a label, a start, a length up to ten minutes, and any count of reps. */
+/**
+ * What a set is made of: an `ExerciseRequest`, the workout carrying it out, a
+ * start, a length up to ten minutes, and any count of reps.
+ */
 const setInputArb = fc
   .record({
     exerciseRequest: exerciseRequestArb,
-    workoutLabel: workoutLabelArb,
+    workoutIndex: fc.nat({ max: 30 }),
     start: instantArb,
     lengthMillis: fc.nat({ max: 600_000 }),
     reps: fc.nat({ max: 30 }),
   })
-  .map(({ lengthMillis, ...set }) => ({
+  .map(({ lengthMillis, workoutIndex, ...set }) => ({
     ...set,
+    workoutProcedure: completedWorkoutAt({
+      exerciseRequest: set.exerciseRequest,
+      index: workoutIndex,
+    }),
     observationId: 'obs-1',
     end: DateTime.addDuration(set.start, `${lengthMillis} millis`),
   }))
@@ -61,14 +72,14 @@ const squatExerciseRequest = made(
 )
 
 describe('ExerciseSetObservation', () => {
-  it('should write a squat set as a final activity Observation based on its `ServiceRequest`', () => {
+  it('should write a squat set as a final activity Observation based on its `ServiceRequest`, part of its workout', () => {
     // Act
     const wire = Schema.encodeSync(WireSet)(
       made(
         ExerciseSetObservation.make({
           observationId: 'obs-1',
           exerciseRequest: squatExerciseRequest,
-          workoutLabel: 'A',
+          workoutProcedure: completedWorkoutAt({ exerciseRequest: squatExerciseRequest, index: 4 }),
           start: DateTime.unsafeMake('2026-01-05T18:00:00Z'),
           end: DateTime.unsafeMake('2026-01-05T18:00:40Z'),
           reps: 4,
@@ -84,26 +95,27 @@ describe('ExerciseSetObservation', () => {
       code: { text: 'Squat', coding: [{ code: 'squat', display: 'Squat' }] },
       subject: { reference: 'Patient/p-1' },
       basedOn: [{ reference: 'ServiceRequest/sr-2' }],
+      partOf: [{ reference: 'Procedure/workout-4' }],
       effectivePeriod: { start: '2026-01-05T18:00:00.000Z', end: '2026-01-05T18:00:40.000Z' },
       valueInteger: 4,
-      extension: [{ valueString: 'A' }],
     })
+    expect(wire.extension ?? []).toEqual([])
   })
 
-  it('should read back every set it makes, with its `ServiceRequest`, through the wire', () => {
+  it('should read back every set it makes, with its `ServiceRequest` and its workout, through the wire', () => {
     fc.assert(
       fc.property(setInputArb, (input) => {
         const set = throughWire(WireSet, made(ExerciseSetObservation.make(input)))
         expect({
           exerciseId: ExerciseConcept.idOf(ExerciseSetObservation.exerciseOf(set)),
-          workoutLabel: ExerciseSetObservation.workoutLabelOf(set),
+          procedureId: ExerciseSetObservation.procedureIdOf(set),
           start: DateTime.toEpochMillis(ExerciseSetObservation.startOf(set)),
           end: DateTime.toEpochMillis(ExerciseSetObservation.endOf(set)),
           reps: ExerciseSetObservation.repsOf(set),
           serviceRequestId: ExerciseSetObservation.serviceRequestIdOf(set),
         }).toEqual({
           exerciseId: ExerciseConcept.idOf(ExerciseRequest.exerciseOf(input.exerciseRequest)),
-          workoutLabel: input.workoutLabel,
+          procedureId: input.workoutProcedure.id,
           start: DateTime.toEpochMillis(input.start),
           end: DateTime.toEpochMillis(input.end),
           reps: input.reps,
@@ -197,7 +209,29 @@ describe('ExerciseSetObservation', () => {
     )
   })
 
-  it('should refuse an observation with no workout label, or an exercise coding with no display', () => {
+  it('should read the workout beside references to other resources, and refuse none or two', () => {
+    fc.assert(
+      fc.property(setArb, (set) => {
+        const decode = Schema.decodeEither(ExerciseSetObservation.Schema)
+        const imaging = IdentifierAndReference.referenceTo({
+          resourceType: 'ImagingStudy',
+          id: 'is-1',
+        })
+        const other = IdentifierAndReference.referenceTo({ resourceType: 'Procedure', id: 'p-9' })
+        expect(
+          Either.map(
+            decode({ ...set, partOf: [imaging, ...set.partOf] }),
+            ExerciseSetObservation.procedureIdOf
+          )
+        ).toEqual(Either.right(ExerciseSetObservation.procedureIdOf(set)))
+        expect(issuePathsOf(decode({ ...set, partOf: [imaging] }))).toEqual(['partOf'])
+        expect(issuePathsOf(decode({ ...set, partOf: [...set.partOf, other] }))).toEqual(['partOf'])
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  it('should refuse an exercise coding with no display', () => {
     fc.assert(
       fc.property(setArb, (set) => {
         const decode = Schema.decodeEither(ExerciseSetObservation.Schema)
@@ -205,7 +239,6 @@ describe('ExerciseSetObservation', () => {
           ...set.code,
           coding: set.code.coding.map((coding) => ({ ...coding, display: null })),
         }
-        expect(issuePathsOf(decode({ ...set, extension: [] }))).toEqual(['extension'])
         expect(issuePathsOf(decode({ ...set, code: nameless }))).toEqual(['code.coding.0.display'])
       }),
       { numRuns: RUNS }
@@ -249,7 +282,7 @@ describe('sortByStart', () => {
         expect(sorted).toHaveLength(sets.length)
         expect(sets.every((set) => sorted.includes(set))).toBe(true)
       }),
-      { numRuns: RUNS }
+      { numRuns: LIST_RUNS }
     )
   })
 })

@@ -6,7 +6,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
-import { LiftingMeasureCode } from '../lifting-measure/lifting-measure.ts'
+import * as LiftingMeasure from '../lifting-measure/lifting-measure.ts'
 import {
   exerciseArb,
   issuePathsOf,
@@ -60,8 +60,8 @@ describe('PlannedExercise', () => {
         const wire = Schema.encodeSync(WirePlannedExercise)(planned)
         expect(wire.code?.map((concept) => concept.coding?.[0]?.code)).toEqual([
           PlannedExercise.exerciseIdOf(planned),
-          LiftingMeasureCode.Sets,
-          LiftingMeasureCode.Reps,
+          LiftingMeasure.Code.Sets,
+          LiftingMeasure.Code.Reps,
         ])
       }),
       { numRuns: RUNS }

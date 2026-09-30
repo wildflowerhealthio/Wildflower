@@ -14,12 +14,8 @@ import { PlanDefinitionAction } from 'fhir-r4/resources'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
-import {
-  countAmong,
-  countConcept,
-  LiftingMeasureCode,
-  measureIssues,
-} from '../lifting-measure/lifting-measure.ts'
+import * as LiftingMeasure from '../lifting-measure/lifting-measure.ts'
+import { countAmong, countConcept, measureIssues } from '../lifting-measure/measure-concept.ts'
 import * as ProgressionRule from './progression-rule.ts'
 
 /** Whether a concept is coded in the exercise system at all — a candidate for the action's exercise. */
@@ -43,7 +39,7 @@ const isProgressionRule = Schema.is(ProgressionRule.Schema)
  * narrowed to exactly one {@link ExerciseConcept.Type} among its `code`s, one
  * `sets` and one `reps` lifting-measure concept (each a positive integer in its
  * value extension), and exactly one {@link ProgressionRule.Type} among its
- * extensions — `sets` × `reps` each session, the load moved by the rule.
+ * extensions — `sets` × `reps` each workout, the load moved by the rule.
  *
  * @remarks
  * The load itself is not here: it is the lifter's, on their current
@@ -69,12 +65,12 @@ const PlannedExerciseSchema: Schema.Schema<Type, PlanDefinitionAction.Type> =
         }),
         ...measureIssues({
           concepts: action.code,
-          measure: LiftingMeasureCode.Sets,
+          measure: LiftingMeasure.Code.Sets,
           path: ['code'],
         }),
         ...measureIssues({
           concepts: action.code,
-          measure: LiftingMeasureCode.Reps,
+          measure: LiftingMeasure.Code.Reps,
           path: ['code'],
         }),
         ...onlyOneIssues({
@@ -93,7 +89,7 @@ const PlannedExerciseSchema: Schema.Schema<Type, PlanDefinitionAction.Type> =
 const emptyAction: PlanDefinitionAction.Type = Schema.decodeSync(PlanDefinitionAction.Schema)({})
 
 /**
- * The planned `exercise`: `sets` × `reps` each session, its load moved by
+ * The planned `exercise`: `sets` × `reps` each workout, its load moved by
  * `progressionRule`.
  *
  * @returns The planned exercise; or a `ParseError` when `sets` or `reps` is
@@ -109,8 +105,8 @@ const make = (planned: {
     ...emptyAction,
     code: [
       planned.exercise,
-      countConcept({ measure: LiftingMeasureCode.Sets, value: planned.sets }),
-      countConcept({ measure: LiftingMeasureCode.Reps, value: planned.reps }),
+      countConcept({ measure: LiftingMeasure.Code.Sets, value: planned.sets }),
+      countConcept({ measure: LiftingMeasure.Code.Reps, value: planned.reps }),
     ],
     extension: [planned.progressionRule],
   })
@@ -122,13 +118,13 @@ const exerciseOf = (planned: Type): ExerciseConcept.Type =>
 /** The id of the exercise the action plans. */
 const exerciseIdOf = (planned: Type): string => ExerciseConcept.idOf(exerciseOf(planned))
 
-/** Sets to perform each session; a positive integer. */
-const setsOf = (planned: Type): number => countAmong(planned.code, LiftingMeasureCode.Sets)
+/** Sets to perform each workout; a positive integer. */
+const setsOf = (planned: Type): number => countAmong(planned.code, LiftingMeasure.Code.Sets)
 
 /** Reps per set; a positive integer. */
-const repsOf = (planned: Type): number => countAmong(planned.code, LiftingMeasureCode.Reps)
+const repsOf = (planned: Type): number => countAmong(planned.code, LiftingMeasure.Code.Reps)
 
-/** How the exercise's load moves after each session. */
+/** How the exercise's load moves after each workout. */
 const progressionRuleOf = (planned: Type): ProgressionRule.Type =>
   guaranteed(
     pipe(

@@ -119,9 +119,9 @@ describe('ProgressionRule', () => {
             })
           )
         ).toEqual(['extension'])
-        expect(issuePathsOf(decode({ ...rule, url: WildflowerExtension.WorkoutLabel }))).toEqual([
-          'url',
-        ])
+        expect(
+          issuePathsOf(decode({ ...rule, url: WildflowerExtension.LiftingMeasureValue }))
+        ).toEqual(['url'])
       }),
       { numRuns: RUNS }
     )

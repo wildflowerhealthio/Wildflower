@@ -6,25 +6,18 @@ import {
   Option,
   Order,
   type ParseResult,
-  pipe,
   Schema,
 } from 'effect'
-import {
-  Extension,
-  IdentifierAndReference,
-  narrowFields,
-  Period,
-  WildflowerExtension,
-  withMandatoryId,
-} from 'fhir-r4/data-types'
+import { IdentifierAndReference, narrowFields, Period, withMandatoryId } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
 
-// Type-only: an observation is made from its `ExerciseRequest`, but that
-// module reads observations at runtime, so importing it back would be a cycle.
+// Type-only: a set is made from its `ExerciseRequest` and its workout, but
+// both modules read sets at runtime, so importing them back would be a cycle.
 import type * as ExerciseRequest from '../exercise-request/exercise-request.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
+import type * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 
 /** The `Observation.status`es of a set that happened: every status but the retracted ones. */
 const PerformedStatusSchema = Schema.Literal(
@@ -46,35 +39,29 @@ const SpanSchema = narrowFields(Schema.typeSchema(Period.Schema), {
   })
 )
 
-/** What the (already decoded) `WorkoutLabel` extension must carry: its label, as a `valueString`. */
-const WorkoutLabelSchema = Schema.Struct({ valueString: Schema.String })
+/** What an (already decoded) reference to the set's `ServiceRequest` or `Procedure` must carry: its literal. */
+const LiteralReferenceSchema = Schema.Struct({ reference: Schema.String })
 
-/** A `WorkoutLabel` extension as {@link WorkoutLabelSchema} reads it. */
-const readWorkoutLabel = Schema.validateOption(WorkoutLabelSchema)
-
-/** What the (already decoded) one `basedOn` reference to a `ServiceRequest` must carry: its literal. */
-const ServiceRequestReferenceSchema = Schema.Struct({ reference: Schema.String })
-
-/** A `basedOn` reference to a `ServiceRequest`. */
-const refersToServiceRequest = (reference: IdentifierAndReference.ReferenceType): boolean =>
-  Option.isSome(IdentifierAndReference.referencedIdOf(reference, 'ServiceRequest'))
+/** Whether a reference names a resource of `resourceType`. */
+const refersTo =
+  (resourceType: string) =>
+  (reference: IdentifierAndReference.ReferenceType): boolean =>
+    Option.isSome(IdentifierAndReference.referencedIdOf(reference, resourceType))
 
 /**
- * One set performed against an `ExerciseRequest`, as FHIR records it: an
- * `Observation` narrowed to an `id`, a status other than a retracted one, the
- * exercise as its `code`, the set's span as an `effectivePeriod` with a start
- * and an end at or after it, the reps completed as a non-negative
- * `valueInteger`, exactly one {@link WildflowerExtension.WorkoutLabel}
- * extension naming the workout the set was part of, and exactly one `basedOn`
- * reference to the `ServiceRequest` it was performed against.
+ * One set performed against an `ExerciseRequest` in a workout, as FHIR
+ * records it: an `Observation` narrowed to an `id`, a status other than a
+ * retracted one, the exercise as its `code`, the set's span as an
+ * `effectivePeriod` with a start and an end at or after it, the reps
+ * completed as a non-negative `valueInteger`, exactly one `basedOn`
+ * reference to the `ServiceRequest` it was performed against, and exactly
+ * one `partOf` reference to the workout `Procedure` it was performed in.
  *
  * @remarks
- * The load is not here: a set is logged against one `ExerciseRequest`, and
- * the `ExerciseRequest` is the load. Whether a session met its `ExerciseRequest` is derived from
- * the reps of its sets, never stored. A retracted observation (fhir-r4's
- * `Observation.RETRACTED_STATUSES`) does not decode — the set never happened;
- * an app that counts skipped sets apart from unreadable ones checks the
- * status before decoding.
+ * The load is not here: the `ExerciseRequest` a set is logged against holds
+ * it. Whether a workout met that load is derived from the reps of its sets,
+ * never stored. A retracted observation (fhir-r4's
+ * `Observation.RETRACTED_STATUSES`) does not decode — the set never happened.
  */
 interface Type
   extends
@@ -106,18 +93,18 @@ const ExerciseSetObservationSchema: Schema.Schema<Type, Observation.Type> =
     }).pipe(
       Schema.filter((observation) => [
         ...onlyOneIssues({
-          items: observation.extension,
-          selected: Extension.hasUrl(WildflowerExtension.WorkoutLabel),
-          schema: WorkoutLabelSchema,
-          path: ['extension'],
-          expected: `${WildflowerExtension.WorkoutLabel} extension`,
-        }),
-        ...onlyOneIssues({
           items: observation.basedOn,
-          selected: refersToServiceRequest,
-          schema: ServiceRequestReferenceSchema,
+          selected: refersTo('ServiceRequest'),
+          schema: LiteralReferenceSchema,
           path: ['basedOn'],
           expected: 'reference to a ServiceRequest',
+        }),
+        ...onlyOneIssues({
+          items: observation.partOf,
+          selected: refersTo('Procedure'),
+          schema: LiteralReferenceSchema,
+          path: ['partOf'],
+          expected: 'reference to a Procedure',
         }),
       ]),
       Schema.brand('ExerciseSetObservation')
@@ -132,12 +119,11 @@ const emptyObservation: Observation.Type = Schema.decodeUnknownSync(Observation.
 })
 
 /**
- * One set performed against `exerciseRequest`: `final`, in the `activity`
- * category (as the Physical Activity IG files exercise), the `ExerciseRequest`'s
- * exercise as its `code` and its subject as the `subject`, `basedOn` the
- * `ServiceRequest`, the span `start` to `end` as `effectivePeriod`, the `reps`
- * completed as `valueInteger`, and `workoutLabel` in a
- * {@link WildflowerExtension.WorkoutLabel} extension.
+ * One set performed against `exerciseRequest` in `workoutProcedure`:
+ * `final`, in the `activity` category (as the Physical Activity IG files
+ * exercise), the exercise and `subject` of `exerciseRequest`, `basedOn` its
+ * `ServiceRequest`, `partOf` the workout's `Procedure`, the span `start` to `end` as `effectivePeriod`, and the
+ * `reps` completed as `valueInteger`.
  *
  * @returns The observation, stored under `observationId` (the app mints it);
  *   or a `ParseError` when `end` is before `start` or `reps` is not a
@@ -146,7 +132,7 @@ const emptyObservation: Observation.Type = Schema.decodeUnknownSync(Observation.
 const make = (set: {
   readonly observationId: string
   readonly exerciseRequest: ExerciseRequest.Type
-  readonly workoutLabel: string
+  readonly workoutProcedure: WorkoutProcedure.Type
   readonly start: DateTime.Utc
   readonly end: DateTime.Utc
   readonly reps: number
@@ -164,25 +150,18 @@ const make = (set: {
         id: set.exerciseRequest.id,
       }),
     ],
+    partOf: [
+      IdentifierAndReference.referenceTo({
+        resourceType: 'Procedure',
+        id: set.workoutProcedure.id,
+      }),
+    ],
     effectivePeriod: { id: null, extension: [], start: set.start, end: set.end },
     valueInteger: set.reps,
-    extension: [
-      { ...Extension.emptyAt(WildflowerExtension.WorkoutLabel), valueString: set.workoutLabel },
-    ],
   })
 
 /** The exercise performed. */
 const exerciseOf = (observation: Type): ExerciseConcept.Type => observation.code
-
-/** The label of the workout the set was part of. */
-const workoutLabelOf = (observation: Type): string =>
-  guaranteed(
-    pipe(
-      Extension.onlyAt(observation.extension, WildflowerExtension.WorkoutLabel),
-      Option.flatMap(readWorkoutLabel),
-      Option.map((extension) => extension.valueString)
-    )
-  )
 
 /** When the set started. */
 const startOf = (observation: Type): DateTime.Utc => observation.effectivePeriod.start
@@ -193,13 +172,24 @@ const endOf = (observation: Type): DateTime.Utc => observation.effectivePeriod.e
 /** Reps completed; a non-negative integer. */
 const repsOf = (observation: Type): number => observation.valueInteger
 
-/** The id of the `ServiceRequest` the set was performed against — its one `basedOn` `ServiceRequest`. */
-const serviceRequestIdOf = (observation: Type): string =>
+/** The id `references` names for its one `resourceType` — on a value whose schema checked there is one. */
+const referencedIdAmong = (
+  references: readonly IdentifierAndReference.ReferenceType[],
+  resourceType: string
+): string =>
   guaranteed(
-    Arr.findFirst(observation.basedOn, (reference) =>
-      IdentifierAndReference.referencedIdOf(reference, 'ServiceRequest')
+    Arr.findFirst(references, (reference) =>
+      IdentifierAndReference.referencedIdOf(reference, resourceType)
     )
   )
+
+/** The id of the `ServiceRequest` the set was performed against: its one `basedOn`. */
+const serviceRequestIdOf = (observation: Type): string =>
+  referencedIdAmong(observation.basedOn, 'ServiceRequest')
+
+/** The id of the workout `Procedure` the set was performed in: its one `partOf`. */
+const procedureIdOf = (observation: Type): string =>
+  referencedIdAmong(observation.partOf, 'Procedure')
 
 /** Earliest first by {@link startOf}. */
 const byStart: Order.Order<Type> = Order.mapInput(DateTime.Order, startOf)
@@ -219,10 +209,10 @@ export {
   ExerciseSetObservationSchema as Schema,
   exerciseOf,
   make,
+  procedureIdOf,
   repsOf,
   serviceRequestIdOf,
   sortByStart,
   startOf,
-  workoutLabelOf,
 }
 export type { Type }

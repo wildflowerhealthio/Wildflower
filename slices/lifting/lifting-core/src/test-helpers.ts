@@ -10,6 +10,8 @@ import * as Plan from './plan/plan.ts'
 import * as PlannedExercise from './plan/planned-exercise.ts'
 import * as ProgressionRule from './plan/progression-rule.ts'
 import * as Workout from './plan/workout.ts'
+import * as StrongLifts5x5 from './plans/strong-lifts.ts'
+import * as WorkoutProcedure from './workout-procedure/workout-procedure.ts'
 
 /** The value of a make a test built from valid inputs; a refusal is a bug in the test and fails loudly. */
 const made = <A, E>(result: Either.Either<A, E>): A => Either.getOrThrowWith(result, (e) => e)
@@ -25,6 +27,14 @@ const issuePathsOf = <A>(result: Either.Either<A, ParseResult.ParseError>): read
       Arr.dedupe(
         ParseResult.ArrayFormatter.formatErrorSync(error).map((issue) => issue.path.join('.'))
       ),
+  })
+
+/** The messages of the issues of a refused decode or make; none when it was accepted. */
+const issueMessagesOf = <A>(result: Either.Either<A, ParseResult.ParseError>): readonly string[] =>
+  Either.match(result, {
+    onRight: () => [],
+    onLeft: (error) =>
+      ParseResult.ArrayFormatter.formatErrorSync(error).map((issue) => issue.message),
   })
 
 /** A resource encoded to wire JSON and decoded back, as a server round-trip leaves it. */
@@ -96,14 +106,6 @@ const plannedArb: fc.Arbitrary<PlannedExercise.Type> = exerciseArb.chain(planned
 const instantArb: fc.Arbitrary<DateTime.Utc> = fc
   .integer({ min: Date.UTC(2000, 0, 1), max: Date.UTC(2100, 0, 1) })
   .map((epochMillis) => DateTime.unsafeMake(epochMillis))
-
-/** A fixed-offset time zone, whole hours from UTC−12 to UTC+14. */
-const zoneArb: fc.Arbitrary<DateTime.TimeZone> = fc
-  .integer({ min: -12, max: 14 })
-  .map((hours) => DateTime.zoneMakeOffset(hours * 3_600_000))
-
-/** The UTC zone. */
-const UTC: DateTime.TimeZone = DateTime.zoneMakeOffset(0)
 
 /** A workout label, e.g. `A` or `B2`. */
 const workoutLabelArb: fc.Arbitrary<string> = fc.stringMatching(/^[A-Z][0-9]?$/)
@@ -225,18 +227,71 @@ const exerciseRequestArb: fc.Arbitrary<ExerciseRequest.Type> = plannedExerciseRe
 /** Milliseconds one generated set takes, start to end. */
 const SET_LENGTH_MS = 60_000
 
-/** Milliseconds between the starts of consecutive sets of one session. */
+/** Milliseconds between the starts of consecutive sets of one workout. */
 const SET_GAP_MS = 180_000
 
-/** A set of `reps` against `exerciseRequest`, starting at `start` and lasting {@link SET_LENGTH_MS}. */
+/** Milliseconds one generated workout takes, start to end: long enough for twenty sets. */
+const WORKOUT_LENGTH_MS = 20 * SET_GAP_MS
+
+/** The plan generated workouts are workouts of: StrongLifts' `A` and `B`, stored as `plan-1`. */
+const WORKOUT_PLAN: Plan.Type = StrongLifts5x5.plan('plan-1')
+
+/** The 18:00 UTC instant the `index`th workout of a generated history starts at, one day apart. */
+const workoutStartAt = (index: number): DateTime.Utc =>
+  DateTime.unsafeMake(Date.UTC(2026, 0, 1, 18) + index * 86_400_000)
+
+/**
+ * The `index`th workout of a generated history, started but not yet
+ * completed, carrying out `exerciseRequest`: `A` and `B` alternating,
+ * starting at {@link workoutStartAt}`(index)`.
+ */
+const startedWorkoutAt = ({
+  exerciseRequest,
+  index,
+}: {
+  readonly exerciseRequest: ExerciseRequest.Type
+  readonly index: number
+}): WorkoutProcedure.Type =>
+  made(
+    WorkoutProcedure.make({
+      procedureId: `workout-${index}`,
+      subject: SUBJECT,
+      plan: WORKOUT_PLAN,
+      workout:
+        Plan.workoutsOf(WORKOUT_PLAN)[index % 2] ?? Arr.headNonEmpty(Plan.workoutsOf(WORKOUT_PLAN)),
+      exerciseRequests: [exerciseRequest],
+      start: workoutStartAt(index),
+    })
+  )
+
+/**
+ * The `index`th completed workout of a generated history, carrying out
+ * `exerciseRequest`: `A` and `B` alternating, starting at
+ * {@link workoutStartAt}`(index)` and lasting {@link WORKOUT_LENGTH_MS}.
+ */
+const completedWorkoutAt = ({
+  exerciseRequest,
+  index,
+}: {
+  readonly exerciseRequest: ExerciseRequest.Type
+  readonly index: number
+}): WorkoutProcedure.Type =>
+  made(
+    WorkoutProcedure.complete(
+      startedWorkoutAt({ exerciseRequest, index }),
+      DateTime.addDuration(workoutStartAt(index), `${WORKOUT_LENGTH_MS} millis`)
+    )
+  )
+
+/** A set of `reps` against `exerciseRequest` in `workoutProcedure`, starting at `start` and lasting {@link SET_LENGTH_MS}. */
 const setAt = ({
   exerciseRequest,
-  workoutLabel,
+  workoutProcedure,
   start,
   reps,
 }: {
   readonly exerciseRequest: ExerciseRequest.Type
-  readonly workoutLabel: string
+  readonly workoutProcedure: WorkoutProcedure.Type
   readonly start: DateTime.Utc
   readonly reps: number
 }): ExerciseSetObservation.Type =>
@@ -244,19 +299,24 @@ const setAt = ({
     ExerciseSetObservation.make({
       observationId: `set-${DateTime.toEpochMillis(start)}`,
       exerciseRequest,
-      workoutLabel,
+      workoutProcedure,
       start,
       end: DateTime.addDuration(start, `${SET_LENGTH_MS} millis`),
       reps,
     })
   )
 
-/** The 18:00 UTC instant of the `index`th session day of a generated history, one day apart. */
-const sessionAt = (index: number): DateTime.Utc =>
-  DateTime.unsafeMake(Date.UTC(2026, 0, 1, 18) + index * 86_400_000)
+/** A completed workout and the sets logged in it. */
+interface PerformedWorkout {
+  readonly workoutProcedure: WorkoutProcedure.Type
+  readonly setObservations: readonly ExerciseSetObservation.Type[]
+}
 
-/** The sets of one session on session day `index`: one set per entry of `reps`, {@link SET_GAP_MS} apart. */
-const sessionSets = ({
+/**
+ * The `index`th completed workout of a generated history and its sets against
+ * `exerciseRequest`: one set per entry of `reps`, {@link SET_GAP_MS} apart.
+ */
+const performedWorkoutAt = ({
   exerciseRequest,
   index,
   reps,
@@ -264,15 +324,23 @@ const sessionSets = ({
   readonly exerciseRequest: ExerciseRequest.Type
   readonly index: number
   readonly reps: readonly number[]
-}): readonly ExerciseSetObservation.Type[] =>
-  reps.map((setReps, setIndex) =>
-    setAt({
-      exerciseRequest,
-      workoutLabel: index % 2 === 0 ? 'A' : 'B',
-      start: DateTime.addDuration(sessionAt(index), `${setIndex * SET_GAP_MS} millis`),
-      reps: setReps,
-    })
-  )
+}): PerformedWorkout => {
+  const workoutProcedure = completedWorkoutAt({ exerciseRequest, index })
+  return {
+    workoutProcedure,
+    setObservations: reps.map((setReps, setIndex) =>
+      setAt({
+        exerciseRequest,
+        workoutProcedure,
+        start: DateTime.addDuration(
+          WorkoutProcedure.startOf(workoutProcedure),
+          `${setIndex * SET_GAP_MS} millis`
+        ),
+        reps: setReps,
+      })
+    ),
+  }
+}
 
 /** Reps per set that meet `exerciseRequest`, with any extra sets after. */
 const successfulRepsArb = (
@@ -290,7 +358,8 @@ const successfulRepsArb = (
 
 /**
  * Reps per set that fall short of `exerciseRequest`: a set short, or a set too
- * few — but never no set at all, since a session is its sets.
+ * few — but never no set at all, since a workout with no set of the exercise
+ * is no attempt at it.
  */
 const failedRepsArb = (exerciseRequest: ExerciseRequest.Type): fc.Arbitrary<readonly number[]> => {
   const sets = ExerciseRequest.setsOf(exerciseRequest)
@@ -307,20 +376,21 @@ const failedRepsArb = (exerciseRequest: ExerciseRequest.Type): fc.Arbitrary<read
     : fc.oneof(fc.array(fc.nat({ max: reps + 5 }), { minLength: 1, maxLength: sets - 1 }), setShort)
 }
 
-/** An `ExerciseRequest`, the sets logged against it, and the decision they call for. */
+/** An `ExerciseRequest`, the workouts and sets performed against it, and the decision they call for. */
 interface ProgressionCase {
   readonly expected: ExerciseRequest.Decision
   readonly planned: PlannedExercise.Type
   readonly exerciseRequest: ExerciseRequest.Type
+  readonly workoutProcedures: readonly WorkoutProcedure.Type[]
   readonly setObservations: readonly ExerciseSetObservation.Type[]
-  /** The trailing failed sessions the history ends with. */
+  /** The trailing failed workouts the history ends with. */
   readonly trailingFailures: number
 }
 
 /**
- * A history of sessions — a prior stretch succeeding or failing, then `tail`
- * — as sets, session `i` on day {@link sessionAt}`(i)`, so the tail is always
- * the most recent.
+ * A history of workouts — a prior stretch succeeding or failing, then `tail`
+ * — workout `i` starting at {@link workoutStartAt}`(i)`, so the tail is
+ * always the most recent.
  */
 const caseFrom = (spec: {
   readonly expected: ExerciseRequest.Decision
@@ -336,22 +406,26 @@ const caseFrom = (spec: {
       }),
       spec.tail
     )
-    .map(([prior, sessions]) => ({
-      expected: spec.expected,
-      planned,
-      exerciseRequest,
-      setObservations: [...prior, ...sessions].flatMap((reps, index) =>
-        sessionSets({ exerciseRequest, index, reps })
-      ),
-      trailingFailures: spec.trailingFailures(sessions.length),
-    }))
+    .map(([prior, tail]) => {
+      const performed = [...prior, ...tail].map((reps, index) =>
+        performedWorkoutAt({ exerciseRequest, index, reps })
+      )
+      return {
+        expected: spec.expected,
+        planned,
+        exerciseRequest,
+        workoutProcedures: performed.map(({ workoutProcedure }) => workoutProcedure),
+        setObservations: performed.flatMap(({ setObservations }) => setObservations),
+        trailingFailures: spec.trailingFailures(tail.length),
+      }
+    })
 }
 
 /** The rule of a planned exercise. */
 const ruleOf = (planned: PlannedExercise.Type): ProgressionRule.Type =>
   PlannedExercise.progressionRuleOf(planned)
 
-/** The latest session met the `ExerciseRequest`. */
+/** The latest workout met the `ExerciseRequest`. */
 const incrementCaseArb: fc.Arbitrary<ProgressionCase> = plannedExerciseRequestArb.chain(
   (plannedExerciseRequest) =>
     caseFrom({
@@ -379,7 +453,7 @@ const deloadCaseArb: fc.Arbitrary<ProgressionCase> = plannedArb
   })
 
 /**
- * Too few trailing failures: a met session, then fewer failures than a deload
+ * Too few trailing failures: a met workout, then fewer failures than a deload
  * waits for — which needs a rule that waits for at least two.
  */
 const fewFailuresCaseArb: fc.Arbitrary<ProgressionCase> = fc
@@ -446,6 +520,7 @@ const unattemptedCaseArb: fc.Arbitrary<ProgressionCase> = plannedExerciseRequest
     expected: 'hold' as const,
     planned,
     exerciseRequest,
+    workoutProcedures: [],
     setObservations: [],
     trailingFailures: 0,
   })
@@ -476,6 +551,7 @@ export {
   fewFailuresCaseArb,
   incrementCaseArb,
   instantArb,
+  issueMessagesOf,
   issuePathsOf,
   loadUnitArb,
   made,
@@ -487,14 +563,15 @@ export {
   progressionRuleInputArb,
   plannedExerciseRequestArb,
   ruleOf,
+  completedWorkoutAt,
+  performedWorkoutAt,
   setAt,
   smallPlanArb,
   someOrFail,
+  startedWorkoutAt,
   SUBJECT,
   successfulRepsArb,
   throughWire,
-  UTC,
   workoutLabelArb,
-  zoneArb,
 }
-export type { ProgressionCase, PlannedExerciseRequest }
+export type { PerformedWorkout, ProgressionCase, PlannedExerciseRequest }
