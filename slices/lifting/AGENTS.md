@@ -30,19 +30,18 @@ a template rather than a special case.
   `exercisesFor` (what the "today" screen shows), `exerciseIdFromName` (the
   one slug rule for exercise ids), and the `strongLifts5x5()` template with
   `STRONGLIFTS_STARTING_LOADS`. The `lifting-core/fhir` subpath is the FHIR
-  R4 adapter pair per shape — `Prescription` ⇄ `ServiceRequest`, `SetResult`
-  ⇄ `Observation` — over the decoded `fhir-r4` types; the `Plan` ⇄
-  `PlanDefinition` adapter is the next PR in the stack. Each reader gives back
-  a `Stored*` value with the ids an app rewrites the same resources with:
-  `StoredPrescription` (the `ServiceRequest` id, the plan url it instantiates
-  and its `status`), `StoredSetResult` (the request it is `basedOn`).
-  `prescriptionProgressToFhir` turns a progression step into the requests to
-  write — the current one closed, the next one issued in its place — and
-  `revokedRequest` closes one on a change of program. The subpath also
+  R4 adapter pair per shape — `Plan` ⇄ `PlanDefinition`, `Prescription` ⇄
+  `ServiceRequest`, `SetResult` ⇄ `Observation` — over the decoded `fhir-r4`
+  types. Each reader gives back a `Stored*` value with the ids an app rewrites
+  the same resources with: `StoredPlan` (the `PlanDefinition` id and its
+  canonical `url`), `StoredPrescription` (the `ServiceRequest` id, the plan
+  url it instantiates and its `status`), `StoredSetResult` (the request it is
+  `basedOn`). `prescriptionProgressToFhir` turns a progression step into the
+  requests to write — the current one closed, the next one issued in its place
+  — and `revokedRequest` closes one on a change of program. The subpath also
   carries the lifting code literals (`LiftingMeasureCode`,
-  `LiftingProgressionPart`), `planUrlOf` (the canonical url a request
-  instantiates) and `LIFTING_FEATURE_TOKEN`. No DOM, no platform imports, no
-  clock of its own.
+  `LiftingProgressionPart`), `planUrlOf` and `LIFTING_FEATURE_TOKEN`. No DOM,
+  no platform imports, no clock of its own.
 
 The React layer and the app route are not built yet.
 
@@ -70,11 +69,13 @@ The React layer and the app route are not built yet.
 - **A `Plan` is validated by construction.** Any edit goes back through
   `makePlan`. The brand is type-level only — a spread like
   `{ ...plan, title: '' }` still type-checks as a `Plan`, so never build one
-  that way. Because every `Plan` holds the invariants, `exercisesFor` is total
-  — no workout exercise is ever skipped. An editor surfaces
-  `PlanInvalid.problems` (tagged, with the offending label / exercise id /
-  index) rather than keeping its own text checks; exercise ids must be slugs
-  (`exerciseIdFromName(id) === id`).
+  that way. Because every `Plan` holds the invariants, `exercisesFor` and
+  `planToFhir` are total — no workout exercise is ever skipped, and no planned
+  exercise goes unwritten (`makePlan` refuses an exercise no workout runs,
+  `ExerciseUnused`, because the wire carries exercises only under workouts).
+  An editor surfaces `PlanInvalid.problems` (tagged, with the offending label
+  / exercise id / index) rather than keeping its own text checks; exercise
+  ids must be slugs (`exerciseIdFromName(id) === id`).
 - **Loads carry their unit, and a rule moves only its own unit.** A `Load` is
   a `value` in `lb` or `kg`, written as a UCUM `[lb_av]` or `kg`
   `Quantity`; any other UCUM code does not read. A `ProgressionRule`'s
@@ -85,31 +86,38 @@ The React layer and the app route are not built yet.
   the 45 lb bar); a deload that cannot lower the load holds instead. The
   StrongLifts template is pounds only.
 - **Nothing disappears silently.** Every reader returns a tagged error listing
-  every problem (`PrescriptionUnreadable`, `SetUnreadable`) and requires
-  exactly one of each lifting-coded concept, extension and reference — a
-  duplicate is unreadable, not "take the first". Each error's `message` names
-  its problems. Problem variants that mean the same thing are shared across
-  unions: `ExerciseUnreadable` (both readers), `PrescriptionOutOfRange`
-  (`prescribe` and the request reader). The readers read a measure's raw
-  value and leave the range to the domain's own check, so an out-of-range
-  value is named by its field. `setResultFromFhir` returns `Right(None)` for
-  a retracted observation (fhir-r4's `Observation.RETRACTED_STATUSES`), so
-  the app counts skipped and unreadable sets separately, and reads `basedOn`
-  so one search over a plan's sets can be grouped by request.
-  `prescriptionFromFhir` reads `status` without checking it — the app
-  searches `status=active`.
-- **The wire shapes.** A `ServiceRequest` is `active`, intent `plan`,
-  priority `routine`, the `strength-training` feature as `category`, the
-  exercise as `code`, one `orderDetail` per measure (`load`, `sets`, `reps`),
-  `instantiatesCanonical` the plan url (`planUrlOf(planDefinitionId)`),
-  `replaces` the request it succeeds, `authoredOn` when issued. An
-  `Observation` is `final`, in the `activity` category (HL7
-  `observation-category`, as the Physical Activity IG does) with the exercise
-  name as `code.text` so a generic viewer can label it, `basedOn` the
-  request, `effectivePeriod` the set's span, `valueInteger` the reps, and the
-  workout label in an extension. A lifting-measure concept carries its value
-  in a `LiftingMeasureValue` extension — `valueQuantity` for a load,
-  `valueInteger` for a count.
+  every problem (`PlanUnreadable`, `PrescriptionUnreadable`, `SetUnreadable`)
+  and requires exactly one of each lifting-coded concept, extension, part and
+  reference — a duplicate is unreadable, not "take the first". Each error's
+  `message` names its problems. Problem variants that mean the same thing are
+  shared across unions: `ExerciseUnreadable` (all three readers),
+  `ExerciseOutOfRange` (`makePlan` and the plan reader),
+  `PrescriptionOutOfRange` (`prescribe` and the request reader). The readers
+  read a measure's raw value and leave the range to the domain's own check,
+  so an out-of-range value is named by its field. `setResultFromFhir` returns
+  `Right(None)` for a retracted observation (fhir-r4's
+  `Observation.RETRACTED_STATUSES`), so the app counts skipped and unreadable
+  sets separately, and reads `basedOn` so one search over a plan's sets can be
+  grouped by request. `prescriptionFromFhir` reads `status` without checking
+  it — the app searches `status=active`.
+- **The wire shapes.** A `PlanDefinition` is `active`, its `url` from
+  `planUrlOf(id)`, the `strength-training` feature as its `topic`, one
+  `action` per workout (label as `title`) holding one sub-action per exercise
+  whose `code`s are the exercise concept and the `sets` / `reps` measures and
+  whose `extension` is the `LiftingProgression` rule; an exercise in two
+  workouts is written under each and refused if the copies differ
+  (`ExerciseDefinitionsDiffer`). A `ServiceRequest` is `active`, intent
+  `plan`, priority `routine`, the feature as `category`, the exercise as
+  `code`, one `orderDetail` per measure (`load`, `sets`, `reps`),
+  `instantiatesCanonical` the plan url, `replaces` the request it succeeds,
+  `authoredOn` when issued. An `Observation` is `final`, in the `activity`
+  category (HL7 `observation-category`, as the Physical Activity IG does) with
+  the exercise name as `code.text` so a generic viewer can label it, `basedOn`
+  the request, `effectivePeriod` the set's span, `valueInteger` the reps, and
+  the workout label in an extension. A lifting-measure concept carries its
+  value in a `LiftingMeasureValue` extension — `valueQuantity` for a load,
+  `valueInteger` for a count — the same way on a request's `orderDetail` and
+  on a definition's `action.code`.
 - **The FHIR adapters live behind the `lifting-core/fhir` subpath, never the
   root export**, so importing the domain does not pull in `fhir-r4`'s schemas.
   Its own `pack.entry` in `vite.config.ts` makes it a separate `vp pack`

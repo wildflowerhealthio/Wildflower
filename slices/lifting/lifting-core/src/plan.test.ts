@@ -160,6 +160,18 @@ describe('makePlan', () => {
     )
   })
 
+  it('should refuse a planned exercise no workout runs, naming it', () => {
+    fc.assert(
+      fc.property(planInputArb, plannedArb, (input, extra) => {
+        fc.pre(!input.exercises.some((planned) => planned.exercise.id === extra.exercise.id))
+        expect(problemsOf({ ...input, exercises: [...input.exercises, extra] })).toEqual([
+          { _tag: 'ExerciseUnused', exerciseId: extra.exercise.id },
+        ])
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
   it('should refuse a planned exercise out of range, naming the exercise and field', () => {
     fc.assert(
       fc.property(planInputArb, fc.constantFrom(...FIELDS), (input, field) => {

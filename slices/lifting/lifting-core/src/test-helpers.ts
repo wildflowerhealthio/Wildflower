@@ -86,7 +86,10 @@ interface PlanSize {
   readonly maxWorkouts?: number
 }
 
-/** A valid plan input: one entry per distinct exercise, and workouts over those exercises. */
+/**
+ * A valid plan input: one entry per distinct exercise, and workouts over those
+ * exercises, every exercise run by at least one workout.
+ */
 const planInputOfSizeArb = (size: PlanSize = {}): fc.Arbitrary<PlanInput> =>
   fc
     .uniqueArray(exerciseArb, {
@@ -110,7 +113,21 @@ const planInputOfSizeArb = (size: PlanSize = {}): fc.Arbitrary<PlanInput> =>
                   .map((exerciseIds) => ({ label, exerciseIds }))
               )
             )
-          ),
+          )
+          // An exercise no workout drew goes to one of them, round-robin, so
+          // every planned exercise is run.
+          .map((workouts) => {
+            const unused = exercises
+              .map((exercise) => exercise.id)
+              .filter((id) => !workouts.some((workout) => workout.exerciseIds.includes(id)))
+            return workouts.map((workout, index) => ({
+              ...workout,
+              exerciseIds: [
+                ...workout.exerciseIds,
+                ...unused.filter((_, at) => at % workouts.length === index),
+              ],
+            }))
+          }),
       })
     )
 

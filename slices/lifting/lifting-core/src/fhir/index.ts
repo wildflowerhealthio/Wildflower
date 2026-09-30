@@ -30,6 +30,16 @@ export {
   planUrlOf,
 } from './elements.ts'
 
+export type { PlanDefinitionResource, PlanToFhirOptions, StoredPlan } from './plan.ts'
+export {
+  ExerciseActionProblem,
+  planFromFhir,
+  PlanReadProblem,
+  planToFhir,
+  PlanUnreadable,
+  storedPlanAt,
+} from './plan.ts'
+
 export type {
   PrescriptionToFhirOptions,
   ProgressResources,

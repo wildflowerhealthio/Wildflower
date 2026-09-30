@@ -75,7 +75,7 @@ exercises and alternating workouts, the prescription the lifter works at for
 each exercise, the sets logged against it, and the increment / hold / deload
 decision as pure functions (with StrongLifts 5×5 as a template), plus, behind
 the `lifting-core/fhir` subpath, the adapters that store them as FHIR R4
-`ServiceRequest` and `Observation` resources.
+`PlanDefinition`, `ServiceRequest` and `Observation` resources.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 

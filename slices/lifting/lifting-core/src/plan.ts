@@ -100,9 +100,9 @@ interface Workout {
  * {@link exerciseIdFromName}); there is at least one workout, each running at
  * least one exercise, with distinct labels; each key of `exercisesById` is the
  * {@link Exercise.id} of the entry it holds; every exercise a workout names is
- * planned; and every planned exercise is in range (see
- * {@link outOfRangeFieldsOf}). An exercise in more than one workout
- * (StrongLifts' squat) is planned once, shared.
+ * planned, and every planned exercise is run by some workout; and every
+ * planned exercise is in range (see {@link outOfRangeFieldsOf}). An exercise
+ * in more than one workout (StrongLifts' squat) is planned once, shared.
  */
 type Plan = {
   /** Human-friendly name, e.g. `"StrongLifts 5×5"`. */
@@ -161,6 +161,8 @@ type PlanProblem = Data.TaggedEnum<{
   ExerciseOutOfRange: { readonly exerciseId: string; readonly field: PlannedExerciseField }
   /** A workout names an exercise the plan does not run. */
   WorkoutExerciseUnplanned: { readonly label: string; readonly exerciseId: string }
+  /** A planned exercise no workout runs. */
+  ExerciseUnused: { readonly exerciseId: string }
 }>
 
 /** Constructors and matchers for {@link PlanProblem}. */
@@ -267,7 +269,7 @@ const exerciseProblemsOf = (exercises: readonly PlannedExercise[]): readonly Pla
   ),
 ]
 
-/** The problems with the workouts beyond their emptiness: a blank label, a repeated label, an exercise not planned. */
+/** The problems with the workouts beyond their emptiness: a blank label, a repeated label, an exercise not planned, a planned exercise no workout runs. */
 const workoutProblemsOf = (
   workouts: PlanInput['workouts'],
   exercisesById: Readonly<Record<string, PlannedExercise>>
@@ -287,6 +289,15 @@ const workoutProblemsOf = (
           PlanProblem.WorkoutExerciseUnplanned({ label: workout.label, exerciseId })
         )
     ),
+    // With no workouts at all, `WorkoutsMissing` already says every exercise
+    // is unused; naming each would only repeat it.
+    ...(workouts.length === 0
+      ? []
+      : Record.keys(exercisesById)
+          .filter(
+            (exerciseId) => !workouts.some((workout) => workout.exerciseIds.includes(exerciseId))
+          )
+          .map((exerciseId) => PlanProblem.ExerciseUnused({ exerciseId }))),
   ]
 }
 

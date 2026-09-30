@@ -195,6 +195,18 @@ const exerciseOf = (concept: Concept | null): Option.Option<Exercise> =>
     )
   )
 
+/** Whether a concept carries any exercise coding. */
+const namesExercise = (concept: Concept): boolean =>
+  concept.coding.some(Coding.isInSystem(WildflowerCodeSystem.Exercise))
+
+/**
+ * The exercise the single exercise-coded concept in a list names; `None` when
+ * no concept or several carry an exercise coding, or that one has no single
+ * coding with a code and a display.
+ */
+const exerciseAmong = (concepts: readonly Concept[]): Option.Option<Exercise> =>
+  pipe(exactlyOne(concepts.filter(namesExercise)), Option.flatMap(exerciseOf))
+
 /** Whether a concept is the given {@link LiftingMeasureCode}. */
 const isMeasure =
   (measure: LiftingMeasure) =>
@@ -343,6 +355,7 @@ export {
   countAmong,
   countConcept,
   exactlyOne,
+  exerciseAmong,
   exerciseConcept,
   exerciseOf,
   ExerciseUnreadable,
