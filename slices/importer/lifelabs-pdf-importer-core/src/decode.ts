@@ -1,5 +1,4 @@
 import { Effect, ParseResult, Schema } from 'effect'
-import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { DecodedFile, PickedFile } from 'importer-fundamentals'
 import { checkTimeZone } from 'kitchen-sink'
@@ -7,11 +6,8 @@ import type { Document } from 'positioned-text'
 import { extractPositionedText } from 'positioned-text-web'
 
 import * as Report from './entities/report.ts'
-import { toFhirResources } from './fhir/to-fhir.ts'
 import type { LifeLabsPdfSettings } from './settings.ts'
-import { LIFELABS_SYSTEM } from './source-system.ts'
-
-const adopt = adoptResource({ system: LIFELABS_SYSTEM })
+import { adoptedResourcesOf } from './synthesis.ts'
 
 /**
  * Wrap the report-parse's `UnrecognizedLifeLabsDocument` as a `ParseError` so
@@ -46,8 +42,7 @@ const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
  * rather than paper over it with a shared `'?'` key that would collide across
  * resources and defeat `StagedImport.Selection`.
  */
-const labelAdopted = (resource: FhirResource): DecodedFile.Resource => {
-  const adopted = adopt(resource)
+const labelAdopted = (adopted: FhirResource): DecodedFile.Resource => {
   const type = adopted.resourceType
   const id = adopted.id
   if (id === null) {
@@ -99,7 +94,7 @@ const decodeLifeLabsPdfDocument = (
     const reports = yield* Report.tryFromDocument(document).pipe(
       Effect.mapError(unrecognizedAsParseError)
     )
-    const groups = yield* toFhirResources(reports, { timeZone })
+    const groups = yield* adoptedResourcesOf(reports, { timeZone })
     const sections = groups.map((group): DecodedFile.Section => ({
       title: reportSectionTitle(group.report),
       resources: group.resources.map(labelAdopted),

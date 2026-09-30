@@ -76,7 +76,8 @@ function.
   `positioned-text-web`'s `extractPositionedText` on the picked file's bytes
   and hands the extracted `Document.Type` to `decodeLifeLabsPdfDocument`,
   which runs the
-  dialect, the FHIR synthesis, and adoption, yielding a `DecodedFile`: one
+  dialect, then the FHIR synthesis and adoption (`synthesis.ts`'s
+  `adoptedResourcesOf`), yielding a `DecodedFile`: one
   section per report, titled by **`reportSectionTitle`** (the report's `Lab No`
   and date of service, `'LifeLabs report'` when both are masked), and no notes.
   Both extraction failure and an unrecognized LifeLabs document surface as
@@ -84,6 +85,13 @@ function.
   `unreadableFiles` entry. It reads only the picked file's name and bytes: this
   format derives no id from its source file, and the batch decode does the
   `meta.source` stamping.
+- `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
+  exported as the `/synthesis` subpath: the `Report` model's types,
+  `toFhirResources`, **`adoptedResourcesOf`** (synthesis then adoption under
+  `LIFELABS_SYSTEM`, the resources a decode yields), `LIFELABS_SYSTEM` and
+  `defaultLifeLabsPdfSettings`, none of which reaches `positioned-text-web`
+  (pdfjs). For callers that build reports themselves
+  (`synthetic-data-lifelabs`); the main entry re-exports it.
 - `src/detect.ts` — **`detectLifeLabsPdf`**, the importer's `detect`:
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition

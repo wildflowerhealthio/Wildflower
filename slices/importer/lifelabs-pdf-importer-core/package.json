@@ -22,6 +22,10 @@
       "source": "./src/source-file.ts",
       "default": "./dist/source-file.js"
     },
+    "./synthesis": {
+      "source": "./src/synthesis.ts",
+      "default": "./dist/synthesis.js"
+    },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",
       "default": "./dist/test-helpers.js"
