@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { type DateTime, Option, Schema } from 'effect'
 
 const decodeDateTime = Schema.decodeUnknownOption(Schema.DateTimeUtc)
 
@@ -15,4 +15,8 @@ const decodesAsDateTime = (value: string | undefined): value is string =>
 const firstDateTime = (...values: Array<string | undefined>): string | undefined =>
   values.find(decodesAsDateTime)
 
-export { decodesAsDateTime, firstDateTime }
+/** `value` as the instant it decodes to (see {@link decodesAsDateTime}), else `None`. */
+const dateTimeOf = (value: string | undefined): Option.Option<DateTime.Utc> =>
+  value == null ? Option.none() : decodeDateTime(value)
+
+export { dateTimeOf, decodesAsDateTime, firstDateTime }

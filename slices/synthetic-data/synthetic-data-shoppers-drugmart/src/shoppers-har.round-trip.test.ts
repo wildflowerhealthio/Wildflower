@@ -30,10 +30,10 @@ import { type ShoppersCase, shoppersCaseArbitrary } from './test-helpers.ts'
  *
  * @remarks
  * Every expectation — the Patients, each request's name, DIN, sig, fills left,
- * quantity, status, prescriber and prior-prescription link, every fill's day
- * and DIN, and the status feed's latest fill — is `storyCaseArbitrary`'s own
- * reckoning from the generated inputs, or the portal's rules applied to it
- * here, not the payload builders' code.
+ * quantity, supply, status, prescriber and prior-prescription link, every
+ * fill's day and DIN, the status feed's latest fill, and each dose regimen —
+ * is `storyCaseArbitrary`'s own reckoning from the generated inputs, or the
+ * portal's rules applied to it here, not the payload builders' code.
  */
 
 const RUNS = numRunsFor({ base: 15 })
@@ -197,9 +197,21 @@ const statusCodeOf = (expected: ExpectedPrescription): string => {
   return expected.repeatsAvailable > 0 ? 'READY_FOR_REFILL' : 'READY_FOR_RENEW'
 }
 
-/** The importer's status: `stopped` when archived or expired, else `unknown`. */
-const requestStatusOf = (expected: ExpectedPrescription): 'stopped' | 'unknown' =>
-  isArchived(expected) || isExpired(expected) ? 'stopped' : 'unknown'
+/** Whether the prescription is current: neither archived nor expired. */
+const isCurrent = (expected: ExpectedPrescription): boolean =>
+  !isArchived(expected) && !isExpired(expected)
+
+/** The importer's status: `active` while current, else `stopped`. */
+const requestStatusOf = (expected: ExpectedPrescription): 'active' | 'stopped' =>
+  isCurrent(expected) ? 'active' : 'stopped'
+
+/**
+ * The days one fill lasts, as the import states it: the portal names a next
+ * fill, one supply after the last, only for a current prescription with a
+ * repeat left; any other states no supply.
+ */
+const supplyDaysOf = (expected: ExpectedPrescription): number | null =>
+  isCurrent(expected) && expected.repeatsAvailable > 0 ? expected.supplyDays : null
 
 describe(
   'ShoppersHar.render through the HAR importer',
@@ -288,7 +300,7 @@ describe(
             fillsLeft: repeatsAllowedOf(request),
             repeatsAvailable: repeatsAvailableOf(request),
             quantity: request.dispenseRequest?.quantity?.value,
-            supplyDays: request.dispenseRequest?.expectedSupplyDuration ?? null,
+            supplyDays: request.dispenseRequest?.expectedSupplyDuration?.value ?? null,
             status: request.status,
             statusCode: request.statusReason?.coding[0]?.code,
             requester: request.requester?.display,
@@ -300,8 +312,7 @@ describe(
             fillsLeft: expected.repeatsAvailable,
             repeatsAvailable: null,
             quantity: expected.quantity,
-            // The portal states no supply duration.
-            supplyDays: null,
+            supplyDays: supplyDaysOf(expected),
             status: requestStatusOf(expected),
             statusCode: statusCodeOf(expected),
             requester: each.prescriber,
@@ -372,15 +383,50 @@ describe(
       })
     })
 
-    // Known gap (#798): the import states no structured dose, supply or active status, so
-    // medication-core plots nothing from a Shoppers account yet. Flip this when that lands.
-    test('property: medication-core reads no dose regimen from it yet', async () => {
-      await assertRoundTrip(({ shoppersCase }, imported) => {
-        expect(medicationRequestsToDoseRegimens(imported.requests)).toEqual({
-          regimens: [],
+    test('property: medication-core amortizes a daily dose over each prescription that states its supply', async () => {
+      await assertRoundTrip(({ asOf, shoppersCase }, imported) => {
+        const prescriptions = prescriptionsOf(shoppersCase)
+        const batch = medicationRequestsToDoseRegimens(imported.requests)
+        // A request with no supply states no dose either, so it plots nothing.
+        const withSupply = prescriptions.filter(({ expected }) => supplyDaysOf(expected) !== null)
+        expect({ undated: batch.undated, dropped: batch.dropped }).toEqual({
           undated: 0,
-          dropped: prescriptionsOf(shoppersCase).length,
+          dropped: prescriptions.length - withSupply.length,
         })
+        for (const each of prescriptions) {
+          const { expected } = each
+          const request = requestFor(asOf, imported, each)
+          const regimen = batch.regimens.find(({ requestId }) => requestId === request?.id)
+          const supplyDays = supplyDaysOf(expected)
+          expect(
+            regimen === undefined
+              ? null
+              : {
+                  amount: regimen.amount,
+                  unit: regimen.unit,
+                  per: regimen.per,
+                  derivation: regimen.derivation,
+                  status: regimen.status,
+                  start: isoDateOf(regimen.start),
+                  end: isoDateOf(regimen.end),
+                },
+            expected.key
+          ).toEqual(
+            supplyDays === null
+              ? null
+              : {
+                  // One fill's tablets over the days it lasts; the portal states no strength.
+                  amount: expected.quantity / supplyDays,
+                  unit: null,
+                  per: 'd',
+                  derivation: 'amortized',
+                  status: 'active',
+                  // From the last fill to the next, which the import states as the fill window.
+                  start: isoDateOn(asOf, expected.lastFillDay),
+                  end: isoDateOn(asOf, expected.lastFillDay + supplyDays),
+                }
+          )
+        }
       })
     })
   }

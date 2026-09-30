@@ -1,9 +1,18 @@
-import { Array as Arr, Effect, Option, pipe, RegExp as EffectRegExp, Schema } from 'effect'
+import {
+  Array as Arr,
+  DateTime,
+  Duration,
+  Effect,
+  Option,
+  pipe,
+  RegExp as EffectRegExp,
+  Schema,
+} from 'effect'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
-import { decodesAsDateTime, firstDateTime } from '../dates.ts'
+import { dateTimeOf, decodesAsDateTime, firstDateTime } from '../dates.ts'
 import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import {
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
@@ -42,12 +51,13 @@ const SourcePrescription = Schema.Struct({
   refillQuantity: Schema.optional(Schema.Number),
   expiryDate: Schema.optional(Schema.String),
   lastFillDate: Schema.optional(Schema.String),
-  // `lastFillDate` / `nextFillDate` bound the fill window (see {@link dispenseRequestWire}).
+  // `lastFillDate` / `nextFillDate` bound the fill window and the supply one fill
+  // lasts (see {@link dispenseRequestWire}).
   nextFillDate: Schema.optional(Schema.String),
   // The store id → the store-locator link on `dispenseRequest.performer` (and
   // each dispense's `location`); lenient on string vs number.
   storeId: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  // `expired`/`archived` drive `MedicationRequest.status` → `'stopped'`;
+  // `expired`/`archived` drive `MedicationRequest.status` (see {@link requestStatus});
   // `renewable` is decoded but not mapped.
   expired: Schema.optional(Schema.Boolean),
   archived: Schema.optional(Schema.Boolean),
@@ -118,6 +128,25 @@ const patientReference = (patientId: string): Record<string, unknown> => ({
   reference: `Patient/${patientId}`,
 })
 
+/** UCUM, the code system FHIR quantities use for units of measure. */
+const UCUM_SYSTEM = 'http://unitsofmeasure.org'
+
+/**
+ * The days one fill's supply lasts: from `lastFillDate` to `nextFillDate`,
+ * rounded to whole days; `undefined` unless both decode as date-times and the
+ * span comes to at least one day.
+ */
+const supplyDaysPerFillOf = (rx: SourcePrescription): number | undefined =>
+  pipe(
+    Option.all({ lastFill: dateTimeOf(rx.lastFillDate), nextFill: dateTimeOf(rx.nextFillDate) }),
+    Option.map(({ lastFill, nextFill }) =>
+      // `distance` is signed, so a `nextFillDate` before `lastFillDate` stays negative.
+      Math.round(DateTime.distance(lastFill, nextFill) / Duration.toMillis(Duration.days(1)))
+    ),
+    Option.filter((supplyDays) => supplyDays > 0),
+    Option.getOrUndefined
+  )
+
 /** Build the R4 `MedicationRequest.dispenseRequest` wire, or `undefined` if it would be empty. */
 const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
   const dr: Record<string, unknown> = {}
@@ -129,6 +158,15 @@ const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | 
   }
   if (rx.refillQuantity != null && Number.isFinite(rx.refillQuantity)) {
     dr['quantity'] = { value: rx.refillQuantity }
+  }
+  const supplyDaysPerFill = supplyDaysPerFillOf(rx)
+  if (supplyDaysPerFill != null) {
+    dr['expectedSupplyDuration'] = {
+      value: supplyDaysPerFill,
+      unit: 'day',
+      system: UCUM_SYSTEM,
+      code: 'd',
+    }
   }
   // The fill window: `lastFillDate` opens it, `nextFillDate` (else `expiryDate`) closes it.
   const validityStart = firstDateTime(rx.lastFillDate)
@@ -155,13 +193,13 @@ const storeReferenceWire = (rx: SourcePrescription): Record<string, unknown> | u
 }
 
 /**
- * Map the portal's status flags onto `MedicationRequest.status`:
- * `expired`/`archived` → `'stopped'`, else `'unknown'`. Conservative — nothing
- * maps to `'active'` (the portal's enum asserts an affordance, not clinical
- * activity).
+ * Map the portal's status flags onto `MedicationRequest.status`: a prescription
+ * that is `expired` or `archived` is `'stopped'`, and any other is a current
+ * prescription, `'active'`. The portal's `status.type` (what the dashboard
+ * offers next, such as a refill or a renewal) does not affect it.
  */
 const requestStatus = (rx: SourcePrescription): string =>
-  rx.expired === true || rx.archived === true ? 'stopped' : 'unknown'
+  rx.expired === true || rx.archived === true ? 'stopped' : 'active'
 
 /**
  * The `statusReason` wire: the machine `status.type` as a coding under
