@@ -1,4 +1,4 @@
-import type { BatchEntryOutcome, WriteIssue } from 'fhir-r4/clients'
+import { type BatchEntryOutcome, groupByStatus, type WriteIssue } from 'fhir-r4/clients'
 import type { SkipReason } from 'importer-core'
 
 /**
@@ -126,37 +126,21 @@ interface StatusGroup {
   readonly results: readonly ResourceResult[]
 }
 
-/** The leading numeric HTTP code of a status string, or `NaN` when it has none. */
-const statusCode = (status: string): number => Number.parseInt(status, 10)
-
 /**
- * Group every resource across the batch by its response status, failures
- * first, then by ascending HTTP code (a status with no numeric code sorts
- * last within its success/failure band).
+ * Group every resource across the batch by its response status, in
+ * `fhir-r4`'s `groupByStatus` order: failures first, then by ascending HTTP
+ * code (a status with no numeric code sorts last within its success/failure
+ * band).
  *
  * @param batch - Every file's result
  * @returns One {@link StatusGroup} per distinct status, sorted for display
  */
-const groupResultsByStatus = (batch: BatchOutcome): readonly StatusGroup[] => {
-  const groups = new Map<string, ResourceResult[]>()
-  for (const result of allResults(batch)) {
-    const bucket = groups.get(result.status)
-    if (bucket === undefined) groups.set(result.status, [result])
-    else bucket.push(result)
-  }
-  return [...groups.entries()]
-    .map(([status, results]): StatusGroup => ({ status, ok: results[0]?.ok ?? true, results }))
-    .toSorted((a, b) => {
-      // Failures before successes.
-      if (a.ok !== b.ok) return a.ok ? 1 : -1
-      const codeA = statusCode(a.status)
-      const codeB = statusCode(b.status)
-      // A numeric code sorts ascending; a code-less status (the sentinel) sorts last.
-      if (Number.isNaN(codeA)) return Number.isNaN(codeB) ? 0 : 1
-      if (Number.isNaN(codeB)) return -1
-      return codeA - codeB
-    })
-}
+const groupResultsByStatus = (batch: BatchOutcome): readonly StatusGroup[] =>
+  groupByStatus(allResults(batch)).map(({ status, ok, outcomes }) => ({
+    status,
+    ok,
+    results: outcomes,
+  }))
 
 /** The aggregate tally a results view reads across a whole {@link BatchOutcome}. */
 interface BatchSummary {
