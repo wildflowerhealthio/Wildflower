@@ -36,6 +36,22 @@ interface Reference {
 }
 
 /**
+ * The part of `Pebble.getActiveWatchInfo()` {@link describe} reads, for a
+ * caller that builds one rather than receiving it from PebbleKit JS.
+ */
+interface WatchInfo {
+  readonly model: string
+  readonly platform: string
+  readonly firmware: {
+    readonly major: number
+    readonly minor: number
+    readonly patch: number
+    /** Printed after the version when non-empty (`4.9.0-beta`). */
+    readonly suffix: string
+  }
+}
+
+/**
  * The device display for the watch `Pebble.getActiveWatchInfo()` describes:
  * its model, platform and firmware, like "pebble_time_2_black (emery, firmware
  * 4.9.0)". Throws when the info is not that shape.
@@ -106,4 +122,4 @@ const observationId = (
   )
 
 export { describe, observationId, toReference, WATCH_TOKEN_SYSTEM }
-export type { Reference }
+export type { Reference, WatchInfo }

@@ -65,6 +65,14 @@ generator package per source on top of it.
   `laboratoryArbitrary` and the lab-draw arbitraries. See its
   [AGENTS.md](./synthetic-data-lifelabs/AGENTS.md).
 
+- **`synthetic-data-fhir-sync-pebble`** (pure) — `PebbleObservations.render`:
+  a `Physiology` (resting heart rate, walks, nights and charging, per
+  `StoryDay`) as the heart-rate, steps and movement minute history and the
+  sleep and walk activity Observations the FHIR Sync for Pebble app writes,
+  built by `fhir-sync-pebble-core`'s own `WatchSync`. Its `./test-helpers`
+  subpath holds `physiologyCaseArbitrary`. See its
+  [AGENTS.md](./synthetic-data-fhir-sync-pebble/AGENTS.md).
+
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's
 account on that source, and writes the source's own wire shape, spelled from
