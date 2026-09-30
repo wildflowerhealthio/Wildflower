@@ -3,7 +3,8 @@
 **WatchLifts**: a Pebble watchapp for a barbell program. This slice holds what
 its phone settings page edits, every person's weight at every exercise, and
 what the watchapp's PebbleKit JS does with what the page saves; the watchapp
-and its PebbleKit JS glue are [`apps/watch-lifts`](../../apps/watch-lifts/README.md).
+and its PebbleKit JS glue are [`apps/watch-lifts`](../../apps/watch-lifts/README.md),
+and the page is [`apps/watch-lifts-web`](../../apps/watch-lifts-web/AGENTS.md).
 
 ## Packages
 

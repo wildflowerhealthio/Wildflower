@@ -48,7 +48,7 @@ that runs them.
 — see [watch-lifts/AGENTS.md](./watch-lifts/AGENTS.md). Its `watch-lifts-core`
 is the exercises, people and default weights the watch mirrors, the weights
 as the page edits them, and the phone's decoding, storage and message to the
-watch, as pure functions.
+watch, as pure functions; `apps/watch-lifts-web` is the page.
 
 `synthetic-data` is tooling for synthetic health data — see
 [synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md). Like `health-viewer`, it
