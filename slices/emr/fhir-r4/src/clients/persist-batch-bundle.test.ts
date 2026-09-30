@@ -1,5 +1,6 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { Arbitrary, Effect, FastCheck as fc, Layer, type Schema } from 'effect'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { Patient, Observation, type FhirResource } from '../resources/index.ts'
@@ -155,7 +156,8 @@ describe('groupByStatus', () => {
           const grouped = groupByStatus(outcomes).flatMap((group) => group.outcomes)
           expect(asMultiset(grouped)).toEqual(asMultiset(outcomes))
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
