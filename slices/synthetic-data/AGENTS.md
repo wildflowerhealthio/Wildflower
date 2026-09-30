@@ -56,10 +56,20 @@ generator package per source on top of it.
   `./test-helpers` subpath holds `shoppersCaseArbitrary`. See its
   [AGENTS.md](./synthetic-data-shoppers-drugmart/AGENTS.md).
 
+- **`synthetic-data-lifelabs`** (pure) — `LifeLabs.render`: a `Story`'s lab
+  draws, printed by a `Laboratory`, as the FHIR resources the LifeLabs PDF
+  import makes of the reports (`lifelabs-pdf-importer-core/synthesis`), filed
+  on the Patient the person's pharmacy import made. Its `./test-helpers`
+  subpath holds `laboratoryArbitrary` and the lab-draw arbitraries. See its
+  [AGENTS.md](./synthetic-data-lifelabs/AGENTS.md).
+
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's
 account on that source, and writes the source's own wire shape, spelled from
 that source package's constants.
+A pharmacy generator also names the Patient its import makes of a person
+(`rexallPatientReferenceOf`, `shoppersPatientReferenceOf`), so another
+source's results — lab results — are filed on the same Patient.
 
 ## Rules
 
