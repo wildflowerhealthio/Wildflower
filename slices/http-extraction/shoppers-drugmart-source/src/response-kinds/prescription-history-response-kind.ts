@@ -2,6 +2,7 @@ import {
   Array as Arr,
   Effect,
   Option,
+  type ParseResult,
   pipe,
   RegExp as EffectRegExp,
   Schema,
@@ -54,8 +55,28 @@ const HistoryPayload = Schema.Struct({
 })
 
 const decodeHistory = Schema.decode(Schema.parseJson(HistoryPayload))
+const decodeCustomerId = Schema.decodeUnknown(Schema.NonEmptyString)
 const decodeSourceHistoryDispense = Schema.decodeUnknownOption(SourceHistoryDispense)
 const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
+
+/**
+ * The account a history XHR is for: its `customerId` query parameter, which
+ * is the account's `pcid`. A `ParseError` when the URL carries none.
+ */
+const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError> =>
+  decodeCustomerId(URL.parse(url)?.searchParams.get('customerId'))
+
+/**
+ * The `subject` wire: the **account** `Patient`, `Patient/<pcid>`, which is
+ * the id `CustomerResponseKind` keys the account under, so adoption lands both
+ * on one local id. The feed names no managed person, so the account is the
+ * most it can say. The `pcid` rides as the reference's own `identifier`, under
+ * `ShoppersIdentifierSystem.PcId`, so the reference says it names an account.
+ */
+const accountReferenceWire = (customerId: string): Record<string, unknown> => ({
+  reference: `Patient/${customerId}`,
+  identifier: { system: ShoppersIdentifierSystem.PcId, value: customerId },
+})
 
 /**
  * The `authorizingPrescription` wire linking a dispense to its request: a
@@ -104,15 +125,20 @@ const locationWire = (
 /**
  * Build the R4 `MedicationDispense` **wire** for one history entry; `undefined`
  * when it has no `dispenseId` (so it drops-and-counts). `status` is a flat
- * `'completed'` and there is no `subject` — the payload carries no `patientId`.
+ * `'completed'`, and the `subject` is the account the history is for — the
+ * payload carries no `patientId`.
  */
-const dispenseWire = (dispense: SourceHistoryDispense): Record<string, unknown> | undefined => {
+const dispenseWire = (
+  dispense: SourceHistoryDispense,
+  customerId: string
+): Record<string, unknown> | undefined => {
   if (dispense.dispenseId == null) return undefined
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationDispense',
     id: dispense.dispenseId,
     identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: dispense.dispenseId }],
     status: 'completed',
+    subject: accountReferenceWire(customerId),
   }
   const medication = medicationWire(dispense)
   if (medication != null) wire['medicationCodeableConcept'] = medication
@@ -132,11 +158,13 @@ const dispenseWire = (dispense: SourceHistoryDispense): Record<string, unknown> 
  * not decode as a {@link SourceHistoryDispense} or has no `dispenseId`, so the
  * caller can count it as dropped.
  */
-const dispenseWireFrom = (raw: unknown): Option.Option<Record<string, unknown>> =>
-  pipe(
-    decodeSourceHistoryDispense(raw),
-    Option.flatMap((dispense) => Option.fromNullable(dispenseWire(dispense)))
-  )
+const dispenseWireFrom =
+  (customerId: string) =>
+  (raw: unknown): Option.Option<Record<string, unknown>> =>
+    pipe(
+      decodeSourceHistoryDispense(raw),
+      Option.flatMap((dispense) => Option.fromNullable(dispenseWire(dispense, customerId)))
+    )
 
 /**
  * The exact prescription-history XHR URL (`prescriptionHistoryUrlOf`), anchored
@@ -150,13 +178,16 @@ const historyUrl = new RegExp(
 
 /**
  * Entity for the Shoppers prescription-history XHR: one payload carrying **every**
- * dispense across all prescriptions. Each entry synthesizes one
+ * dispense across all prescriptions of an account. Each entry synthesizes one
  * **`MedicationDispense`** (no Patient, no MedicationRequest), linked to its
- * request via `authorizingPrescription`. A prescription's latest fill also
- * appears in the status feed under the same `dispenseId` → same adopted id → an
- * idempotent upsert; neither version subsumes the other and write order is not
- * guaranteed, so last-write-wins loses whichever fields the winner omits. A
- * dispense with no `dispenseId` drops-and-counts via `Effect.logInfo`.
+ * request via `authorizingPrescription`. Its `subject` is the **account**
+ * `Patient` named by the URL's `customerId`, not the managed person the fill
+ * was for: the payload does not say which person that is. A prescription's
+ * latest fill also appears in the status feed under the same `dispenseId`,
+ * which names the person; the source's `mergeResources` combines the two
+ * copies wherever one extraction holds both (`merge-resources.ts`). A dispense with no `dispenseId`
+ * drops-and-counts via `Effect.logInfo`; a URL with no `customerId` fails the
+ * parse.
  */
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
@@ -164,10 +195,11 @@ const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirRes
     tryRecognize: recognizePortal(historyUrl, SHOPPERS_DRUGMART_SYSTEM),
     parse: (response) =>
       Effect.gen(function* () {
+        const customerId = yield* customerIdOf(response.url)
         const { dispenses: raw } = yield* decodeHistory(extractJson(response.text()))
 
         const rawDispenses = raw ?? []
-        const dispenseWires = Arr.filterMap(rawDispenses, dispenseWireFrom)
+        const dispenseWires = Arr.filterMap(rawDispenses, dispenseWireFrom(customerId))
         const dropped = rawDispenses.length - dispenseWires.length
         const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))
         if (dropped > 0) {

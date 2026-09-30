@@ -26,7 +26,8 @@ rather than a copy, and what it writes is what the response kinds read.
   `MedicationDispense` per dispense entry.
 - `src/response-kinds/prescription-history-response-kind.ts` —
   `…/prescription-history?customerId=…` → one `MedicationDispense` per history
-  entry (no Patient, no MedicationRequest).
+  entry (no Patient, no MedicationRequest), its `subject` the **account**
+  `Patient` (see [Conventional slots](#conventional-slots)).
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
   builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
@@ -52,9 +53,12 @@ rather than a copy, and what it writes is what the response kinds read.
   descriptor's `responseKinds`): the three kinds widened to
   `HttpResponseKind<FhirResource>` and mapped through `adoptUnderRecognizedRoot`.
   A module-level constant, stable by identity.
+- `src/merge-resources.ts` — `mergeShoppersResources`, the source's
+  `mergeResources`: a fill seen in both prescription feeds, as one
+  `MedicationDispense` (see [Traps](#traps)).
 - `src/source.ts` — `shoppersDrugMartSource`, the package's primary export: the
-  `SourceDescriptor` (`name: 'shoppers-drugmart'`, display strings, and the
-  pre-adopted `responseKinds`).
+  `SourceDescriptor` (`name: 'shoppers-drugmart'`, display strings, the
+  pre-adopted `responseKinds`, and `mergeShoppersResources`).
 
 ## Layering
 
@@ -72,6 +76,14 @@ config/plan/form are its concern) or `slices/importer` (whose
 
 What a synthesized resource carries where, so one reader covers this source
 and `rexall-be-well-source` alike:
+
+- **Subject** — a status-feed `MedicationRequest` or `MedicationDispense` names
+  the managed **person** (`Patient/<patientId>`). A history-feed
+  `MedicationDispense` names the **account** (`Patient/<pcid>`, the URL's
+  `customerId`), with the `pcid` as the reference's `identifier` under
+  `ShoppersIdentifierSystem.PcId`: the history payload does not say which
+  managed person a fill was for. Adoption lands that reference on the account
+  `Patient` `CustomerResponseKind` emits, which `link.seealso`s every person.
 
 - **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
   canonical `CanadianCodingSystem.Din`
@@ -100,6 +112,17 @@ and `rexall-be-well-source` alike:
   names no next fill for states no supply.
 
 ## Traps
+
+- **A prescription's latest fill is in both feeds under one `dispenseId`,**
+  so under one adopted id, and each copy knows something the other does not.
+  `mergeShoppersResources` makes them one: the status copy's `subject`,
+  `status`, `authorizingPrescription` and `location.reference`, with the
+  history copy's store name as `location.display`, and its DIN coding when the
+  status copy has none. It tells the copies apart by the history copy's
+  account-`pcid` subject identifier, so the result is the same in either
+  arrival order. Only a consumer that holds both copies applies it (the HAR
+  import); the live collector writes each response as it arrives, and its
+  later copy wins.
 
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:
