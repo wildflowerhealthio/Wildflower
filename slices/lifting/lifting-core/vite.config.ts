@@ -11,7 +11,6 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
-      'fhir/index': 'src/fhir/index.ts',
     },
   },
   test: {

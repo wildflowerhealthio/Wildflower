@@ -70,12 +70,12 @@ importer (`synthetic-data-rexall-be-well` writes a letsbewell.ca session HAR,
 The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
 `lifting` holds a person's strength-training plan — see
-[lifting/AGENTS.md](./lifting/AGENTS.md). Its `lifting-core` is the plan of
-exercises and alternating workouts, the prescription the lifter works at for
-each exercise, the sets logged against it, and the increment / hold / deload
-decision as pure functions (with StrongLifts 5×5 as a template), plus, behind
-the `lifting-core/fhir` subpath, the adapters that store them as FHIR R4
-`ServiceRequest` and `Observation` resources.
+[lifting/AGENTS.md](./lifting/AGENTS.md). Its `lifting-core` is the plan as a
+FHIR R4 `PlanDefinition` of workouts and planned exercises, the
+`ServiceRequest` the lifter works at for each exercise, the `Observation` of
+each set logged against it, and the increment / hold / deload decision, as
+pure functions (with StrongLifts 5×5 as a template) — each concept a schema
+narrowing the decoded `fhir-r4` type, with a `make` and getters.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
