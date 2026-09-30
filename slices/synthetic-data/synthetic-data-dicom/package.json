@@ -1,13 +1,13 @@
 {
-  "name": "dicom",
+  "name": "synthetic-data-dicom",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure DICOM Part 10 tag reader and element-stream writer: parseDicomFile wraps dicom-parser into a typed DicomHeader — the identifying tags an importer synthesizes FHIR from, plus the Image Pixel and Pixel Data encoding a preview needs to explain a file that will not render; Part10 reads a file's top-level data elements as raw bytes and writes them back. No DOM, no fs, no React.",
+  "description": "The DICOM synthetic data generator: a real, de-identified DICOM Part 10 image re-identified as a synthetic-data-fundamentals person on a story day (patient, dates and UIDs written with dicom's Part10, pixels untouched), and read back through dicom-importer-core onto the person's Patient from another source. Pure — no DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/file-formats/dicom"
+    "directory": "slices/synthetic-data/synthetic-data-dicom"
   },
   "files": [
     "dist"
@@ -30,19 +30,26 @@
     "dev": "vp pack --watch",
     "test": "vp test"
   },
-  "dependencies": {
-    "dicom-parser": "catalog:"
-  },
   "devDependencies": {
     "@types/node": "catalog:",
+    "dicom": "workspace:*",
+    "dicom-importer-core": "workspace:*",
+    "dicom-parser": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "synthetic-data-fundamentals": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:"
+    "dicom": "workspace:*",
+    "dicom-importer-core": "workspace:*",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "synthetic-data-fundamentals": "workspace:*"
   }
 }

@@ -130,7 +130,8 @@ recoverable by resolving the rewritten reference and reading the target's
 
 `adoptedReferenceOf(source, Type, id)` applies this rule to a bare `Type/id`,
 for a resource written outside that source that must point at what its import
-stores (a synthetic lab result filed on the Patient a pharmacy import made).
+stores (a synthetic lab result filed on the Patient a pharmacy import made);
+`fhir-r4/resources`' `withSubject` files such a resource on it.
 
 ### Reference field table
 

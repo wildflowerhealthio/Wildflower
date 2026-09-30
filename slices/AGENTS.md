@@ -63,7 +63,8 @@ writes a story as the files that source produces, proven through the real
 importer (`synthetic-data-rexall-be-well` writes a letsbewell.ca session HAR,
 `synthetic-data-shoppers-drugmart` a mypharmacy.shoppersdrugmart.ca one, and
 `synthetic-data-lifelabs` the resources a LifeLabs report imports as, and
-`synthetic-data-fhir-sync-pebble` the Observations a Pebble watch syncs).
+`synthetic-data-fhir-sync-pebble` the Observations a Pebble watch syncs, and
+`synthetic-data-dicom` a de-identified image re-identified as a person).
 The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.

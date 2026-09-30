@@ -45,3 +45,25 @@ describe('TransferSyntax.name', () => {
     expect(TransferSyntax.name('__proto__')).toBeUndefined()
   })
 })
+
+describe('TransferSyntax.encodesExplicitVrLittleEndianDataSet', () => {
+  it.each([
+    ['Explicit VR Little Endian', '1.2.840.10008.1.2.1'],
+    ['JPEG Baseline', '1.2.840.10008.1.2.4.50'],
+    ['JPEG 2000 Lossless', '1.2.840.10008.1.2.4.90'],
+    ['HTJ2K Lossless', '1.2.840.10008.1.2.4.201'],
+    ['RLE Lossless', '1.2.840.10008.1.2.5'],
+  ])('holds for %s', (_name, uid) => {
+    expect(TransferSyntax.encodesExplicitVrLittleEndianDataSet(uid)).toBe(true)
+  })
+
+  it.each([
+    ['Implicit VR Little Endian', '1.2.840.10008.1.2'],
+    ['Explicit VR Big Endian', '1.2.840.10008.1.2.2'],
+    ['Deflated Explicit VR Little Endian', '1.2.840.10008.1.2.1.99'],
+    ['JPIP Referenced Deflate', '1.2.840.10008.1.2.4.95'],
+    ['JPIP HTJ2K Referenced Deflate', '1.2.840.10008.1.2.4.205'],
+  ])('does not hold for %s', (_name, uid) => {
+    expect(TransferSyntax.encodesExplicitVrLittleEndianDataSet(uid)).toBe(false)
+  })
+})

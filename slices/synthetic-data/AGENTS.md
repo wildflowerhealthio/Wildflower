@@ -73,6 +73,14 @@ generator package per source on top of it.
   subpath holds `physiologyCaseArbitrary`. See its
   [AGENTS.md](./synthetic-data-fhir-sync-pebble/AGENTS.md).
 
+- **`synthetic-data-dicom`** (pure) — `DicomImage.reidentify`: a real,
+  de-identified DICOM image re-identified as a `Person` on a `StoryDay`
+  (patient, dates and UIDs written with `dicom`'s `Part10`, pixels untouched);
+  `DicomImage.importWithSubject` reads it through the DICOM importer onto the
+  person's Patient from another source. Its `./test-helpers` subpath holds
+  `deidentifiedFileArbitrary`. See its
+  [AGENTS.md](./synthetic-data-dicom/AGENTS.md).
+
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's
 account on that source, and writes the source's own wire shape, spelled from
