@@ -9,13 +9,18 @@ No DOM, no `fs`, no React.
 
 ## Shape
 
-The root entry exports `RexallHar` and the `RexallAccount` type:
+The root entry exports `RexallHar`, the `RexallAccount` type and
+`rexallPatientReferenceOf`:
 `import { RexallHar, type RexallAccount } from 'synthetic-data-rexall-be-well'`.
 
 - `src/rexall-account.ts` — `RexallAccount`, the generator's input beside the
   story: the profile's `uid` and `reportingGuid` (typed from
   `CarebookProfile`'s identifiers), the store number, the carebook pharmacy
   location id, and the `StoryDay`s the account was created and last updated.
+  `rexallPatientReferenceOf` is the reference to the Patient the Rexall
+  import makes of the profile (`fhir-r4/identity`'s `adoptedReferenceOf`
+  under `REXALL_CAREBOOK_SYSTEM`), for a result from another source to be
+  filed on.
 - `src/carebook-profile.ts` — `profileOf`: the `…/enduser/profile/v2/me` body
   as a `typeof CarebookProfile.Encoded`, from the story's `Person` and the
   account.

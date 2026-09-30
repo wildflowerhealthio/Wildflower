@@ -23,7 +23,7 @@ import {
 } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { RexallAccount } from './rexall-account.ts'
+import { type RexallAccount, rexallPatientReferenceOf } from './rexall-account.ts'
 import * as RexallHar from './rexall-har.ts'
 import { rexallAccountArbitrary } from './test-helpers.ts'
 
@@ -194,6 +194,20 @@ describe(
         const birthDate = patient?.birthDate
         expect(birthDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
         expect(ageOn(DateTime.unsafeMake(`${birthDate}T00:00:00Z`), asOf)).toBe(story.person.age)
+      })
+    })
+
+    test('property: rexallPatientReferenceOf spells the subject every request names', async () => {
+      await assertRoundTrip(({ account }, imported) => {
+        const { reference, identifier } = rexallPatientReferenceOf(account)
+        expect(reference).toBe(`Patient/${imported.patients[0]?.id}`)
+        for (const { subject } of imported.requests) {
+          // The target is named by the reference and its identifier; the dialect adds an empty display.
+          expect({ reference: subject.reference, identifier: subject.identifier }).toEqual({
+            reference,
+            identifier,
+          })
+        }
       })
     })
 

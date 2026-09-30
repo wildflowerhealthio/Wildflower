@@ -17,6 +17,7 @@ import { ShoppersIdentifierSystem } from 'shoppers-drugmart-source'
 import { asOfArbitrary, type ExpectedPrescription } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { shoppersPatientReferenceOf } from './shoppers-account.ts'
 import * as ShoppersHar from './shoppers-har.ts'
 import { type ShoppersCase, shoppersCaseArbitrary } from './test-helpers.ts'
 
@@ -240,6 +241,19 @@ describe(
         expect(accountPatient?.link.map((link) => [link.type, link.other.reference])).toEqual(
           imported.personPatients.map((patient) => ['seealso', `Patient/${patient.id}`])
         )
+      })
+    })
+
+    test("property: shoppersPatientReferenceOf spells the subject of every request of that person's", async () => {
+      await assertRoundTrip(({ asOf, shoppersCase }, imported) => {
+        for (const each of prescriptionsOf(shoppersCase)) {
+          const managed = shoppersCase.account.patients[each.patientIndex]
+          const expected = managed === undefined ? null : shoppersPatientReferenceOf(managed)
+          expect(expected?.reference).toBe(
+            `Patient/${imported.personPatients[each.patientIndex]?.id}`
+          )
+          expect(requestFor(asOf, imported, each)?.subject, each.expected.key).toEqual(expected)
+        }
       })
     })
 

@@ -128,6 +128,10 @@ already fills it with its own pharmacy id; the original `Type/id` stays
 recoverable by resolving the rewritten reference and reading the target's
 `identifier[0]`.
 
+`adoptedReferenceOf(source, Type, id)` applies this rule to a bare `Type/id`,
+for a resource written outside that source that must point at what its import
+stores (a synthetic lab result filed on the Patient a pharmacy import made).
+
 ### Reference field table
 
 | Resource             | Rewritten fields                                                                                                                                                                                                                                                                                         |

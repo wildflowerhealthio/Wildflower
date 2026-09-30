@@ -1,4 +1,5 @@
 import { Arbitrary, FastCheck as fc, SchemaAST, type Schema } from 'effect'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
@@ -23,7 +24,12 @@ import {
   Practitioner,
   ServiceRequest,
 } from '../resources/index.ts'
-import { adoptResource, originalIdOf, type SourceIdentity } from './adopt-resource.ts'
+import {
+  adoptResource,
+  adoptedReferenceOf,
+  originalIdOf,
+  type SourceIdentity,
+} from './adopt-resource.ts'
 import { localResourceId } from './local-resource-id.ts'
 
 /**
@@ -645,6 +651,22 @@ describe('reference rewriting', () => {
     }
     expect(dispense.id).not.toBe(request.id)
     expect(dispense.authorizingPrescription[0]?.reference).toBe(`MedicationRequest/${request.id}`)
+  })
+
+  test("property: adoptedReferenceOf spells a reference as adoption rewrites the source's own", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(SOURCE, RELATIVE_SOURCE),
+        fc.constantFrom('Patient', 'Practitioner', 'MedicationRequest'),
+        fc.oneof(fc.uuid(), fc.string({ maxLength: 70 })),
+        (source, resourceType, originalId) => {
+          expect(adoptedReferenceOf(source, resourceType, originalId)).toEqual(
+            subjectOf(source, reference({ reference: `${resourceType}/${originalId}` }))
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 
   test('records the original target id on the reference when the slot is free', () => {

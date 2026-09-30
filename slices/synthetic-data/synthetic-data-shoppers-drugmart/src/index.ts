@@ -9,10 +9,11 @@
  *
  * @packageDocumentation
  */
-export type {
-  ShoppersAccount,
-  ShoppersAddress,
-  ShoppersPatient,
-  ShoppersStore,
+export {
+  type ShoppersAccount,
+  type ShoppersAddress,
+  type ShoppersPatient,
+  type ShoppersStore,
+  shoppersPatientReferenceOf,
 } from './shoppers-account.ts'
 export * as ShoppersHar from './shoppers-har.ts'

@@ -1,13 +1,13 @@
 {
-  "name": "lifelabs-pdf-importer-core",
+  "name": "synthetic-data-lifelabs",
   "version": "0.0.0",
   "private": true,
-  "description": "The LifeLabs PDF binding of the importer slice (core layer): the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports, the FHIR R4 synthesis, and the format's FileImporter. No DOM, no fs, no React.",
+  "description": "The LifeLabs synthetic data generator: a synthetic-data-fundamentals Story's lab draws as the LifeLabs reports a laboratory prints, and as the FHIR R4 resources lifelabs-pdf-importer-core makes of them, filed on the person's pharmacy Patient. Pure — no DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/importer/lifelabs-pdf-importer-core"
+    "directory": "slices/synthetic-data/synthetic-data-lifelabs"
   },
   "files": [
     "dist"
@@ -18,13 +18,9 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./source-file": {
-      "source": "./src/source-file.ts",
-      "default": "./dist/source-file.js"
-    },
-    "./synthesis": {
-      "source": "./src/synthesis.ts",
-      "default": "./dist/synthesis.js"
+    "./story": {
+      "source": "./src/story/index.ts",
+      "default": "./dist/story/index.js"
     },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",
@@ -39,15 +35,17 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
+    "har-importer-core": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "positioned-text": "workspace:*",
-    "positioned-text-web": "workspace:*",
+    "lifelabs-pdf-importer-core": "workspace:*",
+    "synthetic-data-fundamentals": "workspace:*",
+    "synthetic-data-rexall-be-well": "workspace:*",
+    "synthetic-data-shoppers-drugmart": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -56,9 +54,7 @@
   "peerDependencies": {
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "positioned-text": "workspace:*",
-    "positioned-text-web": "workspace:*"
+    "lifelabs-pdf-importer-core": "workspace:*",
+    "synthetic-data-fundamentals": "workspace:*"
   }
 }

@@ -1,8 +1,9 @@
 import { Match } from 'effect'
 
-import type {
-  IdentifierType,
-  ReferenceType,
+import {
+  emptyReference,
+  type IdentifierType,
+  type ReferenceType,
 } from '../data-types/complex/identifier-and-reference.ts'
 import type {
   Binary,
@@ -589,4 +590,30 @@ const originalIdOf = (source: SourceIdentity, resource: FhirResource): string | 
     : null
 }
 
-export { adoptResource, originalIdOf, type SourceIdentity }
+/**
+ * A reference to a resource `source`'s import adopts, spelled as adoption
+ * rewrites that source's own `resourceType/originalId`: the local id, with the
+ * source's id beside it as `Reference.identifier`.
+ *
+ * @param source - The source the target is imported from
+ * @param resourceType - The target's type (`Patient`)
+ * @param originalId - The id the source gave the target
+ *
+ * @remarks
+ * For a resource written outside that source that has to point at what its
+ * import stores — a lab result filed on the Patient a pharmacy import made.
+ * It is {@link adoptResource}'s own rewrite, so the two cannot drift. An
+ * `originalId` outside FHIR's id grammar is left unrewritten, as adoption
+ * leaves it.
+ */
+const adoptedReferenceOf = (
+  source: SourceIdentity,
+  resourceType: string,
+  originalId: string
+): ReferenceType =>
+  rewriteReference(prepare(source))({
+    ...emptyReference,
+    reference: `${resourceType}/${originalId}`,
+  })
+
+export { adoptResource, adoptedReferenceOf, originalIdOf, type SourceIdentity }

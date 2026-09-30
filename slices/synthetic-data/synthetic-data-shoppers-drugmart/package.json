@@ -49,6 +49,7 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
+    "fhir-r4": "workspace:*",
     "http-archive": "workspace:*",
     "shoppers-drugmart-source": "workspace:*",
     "synthetic-data-fundamentals": "workspace:*"

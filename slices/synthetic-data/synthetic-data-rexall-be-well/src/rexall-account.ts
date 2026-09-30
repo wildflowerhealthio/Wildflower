@@ -1,4 +1,10 @@
-import type { CarebookProfile, medicationListUrlOf } from 'rexall-be-well-source'
+import type { ReferenceType } from 'fhir-r4/data-types'
+import { adoptedReferenceOf } from 'fhir-r4/identity'
+import {
+  type CarebookProfile,
+  type medicationListUrlOf,
+  REXALL_CAREBOOK_SYSTEM,
+} from 'rexall-be-well-source'
 import type { StoryDay } from 'synthetic-data-fundamentals/story'
 
 /** The profile's `identifiers`, as the carebook profile body spells them. */
@@ -27,4 +33,13 @@ interface RexallAccount extends Pick<ProfileIdentifiers, 'uid' | 'reportingGuid'
   readonly updatedDay: StoryDay.StoryDay
 }
 
+/**
+ * A reference to the Patient the Rexall import makes of `account`'s profile,
+ * as that import spells its own: keyed by the profile's `uid` under the
+ * carebook source system. What a result from another source is filed on.
+ */
+const rexallPatientReferenceOf = (account: RexallAccount): ReferenceType =>
+  adoptedReferenceOf({ system: REXALL_CAREBOOK_SYSTEM }, 'Patient', account.uid)
+
+export { rexallPatientReferenceOf }
 export type { RexallAccount }
