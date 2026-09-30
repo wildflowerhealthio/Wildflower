@@ -18,9 +18,12 @@ import { rexallAccountArbitrary } from 'synthetic-data-rexall-be-well/test-helpe
 import { type ShoppersAccount, ShoppersHar } from 'synthetic-data-shoppers-drugmart'
 import { shoppersCaseArbitrary } from 'synthetic-data-shoppers-drugmart/test-helpers'
 
+import * as DataSet from './data-set.ts'
+
 /**
  * Generated records run through the real importers, whole — the source-file
- * `DocumentReference` included — as a data set lays them out.
+ * `DocumentReference` included — as a data set lays them out, and a data
+ * set's files served to a reader from memory.
  */
 
 /** Every resource `bytes` imports to through `harImporter.decode`, picked as `fileName`. */
@@ -109,7 +112,37 @@ const importShoppersFamily = async (
 const hashOf = (bytes: Uint8Array): Promise<string> =>
   Effect.runPromise(sha256Base64(new Uint8Array(bytes)))
 
+/**
+ * A data set's files as the `DataSet.FileSource` a reader fetches them
+ * through: a path among `files` is its contents, and any other path fails as
+ * an `UnreadableFile`, as a missing file on a static host does.
+ */
+const fileSourceOf = (files: readonly DataSet.File[]): DataSet.FileSource => {
+  const byPath = new Map(files.map((file) => [file.path, file.contents]))
+  const contentsOf = (path: string): Effect.Effect<string | Uint8Array, DataSet.UnreadableFile> => {
+    const contents = byPath.get(path)
+    return contents === undefined
+      ? Effect.fail(new DataSet.UnreadableFile({ path, reason: 'Not found.' }))
+      : Effect.succeed(contents)
+  }
+  return {
+    text: (path) =>
+      contentsOf(path).pipe(
+        Effect.map((contents) =>
+          typeof contents === 'string' ? contents : new TextDecoder().decode(contents)
+        )
+      ),
+    bytes: (path) =>
+      contentsOf(path).pipe(
+        Effect.map((contents) =>
+          typeof contents === 'string' ? new TextEncoder().encode(contents) : contents
+        )
+      ),
+  }
+}
+
 export {
+  fileSourceOf,
   HAR_FILE_NAME,
   hashOf,
   IMAGE_FILE_NAME,

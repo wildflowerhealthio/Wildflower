@@ -2,7 +2,7 @@
   "name": "synthetic-data-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The synthetic data set assembler: importer output as a published data set's files — fhir/<ResourceType>/<id>.json per resource, each source file an importer read under har/ or dicom/ and linked from its DocumentReference, and an index.json manifest of each person's files — and the reading half that carries a linked source file inline again. Pure — no DOM, no fs, no React.",
+  "description": "The synthetic data set assembler and reader: importer output as a published data set's files — fhir/<ResourceType>/<id>.json per resource, each source file an importer read under har/ or dicom/ and linked from its DocumentReference, and an index.json manifest of each person's files — the reading half that fetches a file back into the resource the import wrote, and the reference order a reader writes the resources to a FHIR server in. Pure — no DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -17,6 +17,10 @@
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./test-helpers": {
+      "source": "./src/test-helpers.ts",
+      "default": "./dist/test-helpers.js"
     },
     "./package.json": "./package.json"
   },

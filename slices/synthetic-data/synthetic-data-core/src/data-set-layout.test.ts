@@ -13,7 +13,7 @@ import {
   importShoppersFamily,
   rexallPersonCaseArbitrary,
   shoppersFamilyCaseArbitrary,
-} from './imports.test-helpers.ts'
+} from './test-helpers.ts'
 
 /**
  * The layout over real importer output: generated Rexall records and a

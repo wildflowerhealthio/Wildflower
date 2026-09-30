@@ -4,12 +4,14 @@ The **data set assembler**: generated records, run through Wildflower's own
 importers, as the files a published data set holds, and the reading half that
 turns a laid-out file back into what the import wrote. It knows nothing of any
 one source: it lays out importer output. No DOM, no `fs`, no React — the data
-repo's emit step writes the files, and the synthetic data app reads them.
+repo's emit step writes the files, and the synthetic data app
+(`synthetic-data-react`) fetches them and writes what it reads to a FHIR
+server.
 
 ## Shape
 
-The root entry exports three namespaces:
-`import { DataSet, DataSetLayout, DataSetManifest } from 'synthetic-data-core'`.
+The root entry exports four namespaces:
+`import { DataSet, DataSetLayout, DataSetManifest, WriteOrder } from 'synthetic-data-core'`.
 
 - `src/data-set-layout.ts` — **`DataSetLayout`**: where each file lives.
   `layOut(resources)` takes importer output (source-file `DocumentReference`s
@@ -42,21 +44,41 @@ The root entry exports three namespaces:
   unique keys. `manifestOf(asOf, wildflowerCommit, people)` builds it from
   laid-out `PersonFiles`: people in the order given, every list sorted and
   distinct, Patient ids read off the person's Patient files.
+  `filesOf(manifest, personKeys)` is the reader's side: the chosen people's
+  resource and static file paths, each once, in path order.
 - `src/data-set.ts` — **`DataSet`**: `assemble`, given the as-of date, the
   Wildflower commit and the people, lays out each person's records, merges them (a file two people
   share, such as a family account's HAR, is written once and listed under
   both) and adds `index.json`: every `File` (`path`, and `contents` as JSON
   text, two-space indented with a trailing newline, or a static file's bytes)
-  in path order.
+  in path order. The reading half runs over a `FileSource` (each file by path,
+  as text or bytes, failing as `UnreadableFile`) the caller supplies:
+  `readManifest` decodes `index.json`, and `readResource` reads a resource
+  file back into the resource the import wrote — the file must hold the
+  resource its path names, and a source file's static file is fetched, checked
+  against its attachment's `size` and `hash` (base64 SHA-256), and carried
+  inline again. Every failure is an `UnreadableFile` naming the file at fault
+  and why.
+- `src/write-order.ts` — **`WriteOrder`**: `bundlesOf(resources, maxEntries)`
+  orders resources into the batch bundles a reader writes them in, each
+  resource in a later bundle than every resource among them it references
+  (`referencesOf`: the relative `Type/id` references in it), and no bundle
+  over `MAX_BUNDLE_ENTRIES` (200). The order comes from the references, not
+  from resource types: a DICOM source file's `DocumentReference` references
+  its `ImagingStudy`, while a HAR's references nothing. Resources in a
+  reference cycle share a last round.
 
-`src/imports.test-helpers.ts` (test-only) runs generated Rexall records with a
-re-identified image, and generated Shoppers family accounts, through the real
-importers for the tests.
+`src/test-helpers.ts`, the `./test-helpers` sub-entry, runs generated Rexall
+records with a re-identified image, and generated Shoppers family accounts,
+through the real importers, and serves a data set's files from memory as a
+`FileSource` (`fileSourceOf`) — for this package's tests and
+`synthetic-data-react`'s.
 
 ## Layering
 
 Depends on `fhir-r4` (`FhirResourceSchema`, the resource types),
-`importer-fundamentals` (`PickedFile.isSourceFile`, `MetaSource`) and the two
+`importer-fundamentals` (`PickedFile.isSourceFile`, `MetaSource`,
+`sha256Base64`) and the two
 importers whose source files a data set carries, `har-importer-core` and
 `dicom-importer-core` (their `format` and `sourceFileFormat`). The tests also
 use the Rexall, Shoppers and DICOM generators and `synthetic-data-fundamentals`,
@@ -66,8 +88,12 @@ package.
 ## Rules
 
 - **The layout is lossless.** Read back through the reading half, every file
-  encodes as the import wrote it; `data-set-layout.test.ts` pins that over
-  real importer output.
+  encodes as the import wrote it; `data-set-layout.test.ts` and
+  `data-set.test.ts` (`readResource` over an assembled data set) pin that
+  over real importer output.
+- **A reader writes nothing it could not check.** `readResource` fails a file
+  whose resource is not the one its path names, or whose static file is not
+  the bytes its attachment describes; the reader stops before writing.
 - **Paths are allowlisted.** Every path the layout writes and the manifest
   lists matches `ResourcePathSchema` or `StaticFilePathSchema`, so a reader
   that decodes the manifest never fetches outside the data set.

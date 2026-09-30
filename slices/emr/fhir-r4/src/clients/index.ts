@@ -23,9 +23,11 @@ export {
 export {
   type BatchEntryOutcome,
   entryUrl,
+  groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
   statusOk,
+  type StatusGroup,
   type WriteIssue,
 } from './persist-batch-bundle.ts'
 export {

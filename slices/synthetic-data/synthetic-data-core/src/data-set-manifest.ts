@@ -148,7 +148,32 @@ const manifestOf = (
   }
 }
 
+/** The files a reader loads for some of a data set's people. */
+interface FilePaths {
+  /** Resource file paths, each once, in path order. */
+  readonly resources: readonly string[]
+  /** Static file paths, each once, in path order. */
+  readonly staticFiles: readonly string[]
+}
+
+/**
+ * The files of the people `personKeys` names: a file two of them share (a
+ * family account's HAR, its Patient) is listed once.
+ *
+ * @param manifest - A decoded manifest
+ * @param personKeys - The keys of the people to load; a key the manifest does
+ *   not list selects nothing
+ */
+const filesOf = (manifest: Type, personKeys: ReadonlySet<string>): FilePaths => {
+  const people = manifest.people.filter((person) => personKeys.has(person.key))
+  return {
+    resources: sortedDistinct(people.flatMap((person) => person.resources)),
+    staticFiles: sortedDistinct(people.flatMap((person) => person.staticFiles)),
+  }
+}
+
 export {
+  filesOf,
   GENERATOR_NAME,
   manifestOf,
   ManifestSchema as Schema,
@@ -156,4 +181,4 @@ export {
   PersonSchema,
   SCHEMA_VERSION,
 }
-export type { Person, PersonFiles, Type }
+export type { FilePaths, Person, PersonFiles, Type }

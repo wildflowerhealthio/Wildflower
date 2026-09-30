@@ -249,3 +249,49 @@ describe('DataSetManifest.Schema', () => {
     ).toBe(true)
   })
 })
+
+describe('DataSetManifest.filesOf', () => {
+  test('property: the chosen people’s files, each once, in path order, and nobody else’s', () => {
+    fc.assert(
+      fc.property(
+        asOfArbitrary,
+        commitArbitrary,
+        peopleArbitrary.chain((people) =>
+          fc.tuple(fc.constant(people), fc.subarray(people.map(({ person }) => person.key)))
+        ),
+        (asOf, commit, [people, chosenKeys]) => {
+          const manifest = DataSetManifest.manifestOf(asOf, commit, people)
+
+          const files = DataSetManifest.filesOf(manifest, new Set(chosenKeys))
+
+          const chosen = people.filter(({ person }) => chosenKeys.includes(person.key))
+          expect(files).toEqual({
+            resources: sorted(chosen.flatMap(({ resources }) => resources.map(({ path }) => path))),
+            staticFiles: sorted(
+              chosen.flatMap(({ staticFiles }) => staticFiles.map(({ path }) => path))
+            ),
+          })
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('selects nothing for a key the manifest does not list', () => {
+    const manifest = DataSetManifest.manifestOf(
+      DateTime.unsafeMake('2026-09-28T00:00:00.000Z'),
+      'abc123',
+      [
+        {
+          person: { key: 'person-1', displayName: 'Sam Okoye', summary: '' },
+          resources: [{ path: 'fhir/Patient/p-1.json', resourceType: 'Patient', id: 'p-1' }],
+          staticFiles: [],
+        },
+      ]
+    )
+    expect(DataSetManifest.filesOf(manifest, new Set(['person-2']))).toEqual({
+      resources: [],
+      staticFiles: [],
+    })
+  })
+})

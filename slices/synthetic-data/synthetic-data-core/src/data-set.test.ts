@@ -1,4 +1,4 @@
-import { DateTime, Either, Schema } from 'effect'
+import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import * as DataSetManifest from './data-set-manifest.ts'
 import * as DataSet from './data-set.ts'
 import {
+  fileSourceOf,
   hashOf,
   importRexallPerson,
   importShoppersFamily,
@@ -14,7 +15,7 @@ import {
   type RexallPersonCase,
   shoppersFamilyCaseArbitrary,
   type ShoppersFamilyCase,
-} from './imports.test-helpers.ts'
+} from './test-helpers.ts'
 
 /**
  * Whole data sets assembled from generated records through the real
@@ -261,5 +262,156 @@ describe('DataSet.assemble', () => {
       { person: { key: 'person-1', displayName: 'One', summary: '' }, resources: [] },
     ])
     expect(files.map((file) => file.path)).toEqual(['index.json'])
+  })
+})
+
+/** What reading `path` through `source` fails with, or `undefined` when it reads. */
+const readFailureOf = async (
+  source: DataSet.FileSource,
+  path: string
+): Promise<DataSet.UnreadableFile | undefined> =>
+  Option.getOrUndefined(
+    Either.getLeft(await Effect.runPromise(Effect.either(DataSet.readResource(source, path))))
+  )
+
+describe('DataSet.readManifest and DataSet.readResource', () => {
+  test(
+    'property: every file of an assembled data set reads back as the resource the import wrote',
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(caseArbitrary, async (generated) => {
+          const people = await peopleOf(generated)
+          const source = fileSourceOf(assemble(people))
+
+          const manifest = await Effect.runPromise(DataSet.readManifest(source))
+          expect(manifest.people.map((person) => person.key)).toEqual(
+            people.map(({ person }) => person.key)
+          )
+          const { resources: paths } = DataSetManifest.filesOf(
+            manifest,
+            new Set(manifest.people.map((person) => person.key))
+          )
+
+          // The last copy of each resource, as the layout keeps it.
+          const importedByLabel = new Map(
+            people.flatMap(({ resources }) => resources.map((one) => [labelOf(one), one] as const))
+          )
+          expect(paths).toEqual(
+            [...importedByLabel.keys()].map((label) => `fhir/${label}.json`).toSorted()
+          )
+          const read = await Effect.runPromise(
+            Effect.forEach(paths, (path) => DataSet.readResource(source, path))
+          )
+          for (const resource of read) {
+            const imported = importedByLabel.get(labelOf(resource))
+            if (imported === undefined) throw new Error(`${labelOf(resource)} was not imported`)
+            expect(Schema.encodeSync(FhirResourceSchema)(resource)).toEqual(
+              Schema.encodeSync(FhirResourceSchema)(imported)
+            )
+          }
+        }),
+        { numRuns: RUNS }
+      )
+    },
+    IMPORT_TIMEOUT_MILLIS
+  )
+
+  /** One person's Rexall records and image, assembled, and the source file linking the image. */
+  const rexallDataSet = async (): Promise<{
+    readonly files: readonly DataSet.File[]
+    readonly imageSourcePath: string
+  }> => {
+    const [personCase] = fc.sample(rexallPersonCaseArbitrary, { numRuns: 1, seed: 29 })
+    if (personCase === undefined) throw new Error('expected a sample')
+    const { resources } = await importRexallPerson(personCase)
+    const files = assemble([
+      { person: { key: 'person-1', displayName: 'One', summary: '' }, resources },
+    ])
+    const imageSource = files.find(
+      (file) =>
+        file.path.startsWith('fhir/DocumentReference/') &&
+        typeof file.contents === 'string' &&
+        file.contents.includes('"dicom/')
+    )
+    if (imageSource === undefined) throw new Error('expected the image source file')
+    return { files, imageSourcePath: imageSource.path }
+  }
+
+  /** `files` with the file at `path` holding `contents` instead. */
+  const replacing = (
+    files: readonly DataSet.File[],
+    path: string,
+    contents: string | Uint8Array
+  ): readonly DataSet.File[] =>
+    files.map((file) => (file.path === path ? { path, contents } : file))
+
+  test(
+    'fails a source file whose static file is not the one its attachment describes',
+    async () => {
+      const { files, imageSourcePath } = await rexallDataSet()
+      const image = files.find((file) => file.path.startsWith('dicom/'))
+      if (!(image?.contents instanceof Uint8Array)) throw new Error('expected the image')
+
+      // One byte changed: the size still matches, the hash does not.
+      const flipped = new Uint8Array(image.contents)
+      flipped[flipped.length - 1] = (flipped[flipped.length - 1] ?? 0) ^ 0xff
+      expect(
+        await readFailureOf(fileSourceOf(replacing(files, image.path, flipped)), imageSourcePath)
+      ).toMatchObject({ _tag: 'UnreadableFile', path: image.path, reason: /SHA-256/ })
+
+      // One byte short.
+      expect(
+        await readFailureOf(
+          fileSourceOf(replacing(files, image.path, image.contents.subarray(1))),
+          imageSourcePath
+        )
+      ).toMatchObject({ _tag: 'UnreadableFile', path: image.path, reason: /bytes/ })
+
+      // Missing.
+      expect(
+        await readFailureOf(
+          fileSourceOf(files.filter((file) => file.path !== image.path)),
+          imageSourcePath
+        )
+      ).toMatchObject({ _tag: 'UnreadableFile', path: image.path })
+    },
+    IMPORT_TIMEOUT_MILLIS
+  )
+
+  test(
+    'fails a resource file that holds a resource other than the one its path names',
+    async () => {
+      const { files } = await rexallDataSet()
+      const patient = files.find((file) => file.path.startsWith('fhir/Patient/'))
+      const study = files.find((file) => file.path.startsWith('fhir/ImagingStudy/'))
+      if (patient === undefined || study === undefined) {
+        throw new Error('expected a Patient and an ImagingStudy file')
+      }
+      expect(
+        await readFailureOf(
+          fileSourceOf(replacing(files, patient.path, study.contents)),
+          patient.path
+        )
+      ).toMatchObject({ _tag: 'UnreadableFile', path: patient.path, reason: /ImagingStudy\// })
+    },
+    IMPORT_TIMEOUT_MILLIS
+  )
+
+  test('fails a resource file that is not a FHIR resource, naming the file', async () => {
+    const source = fileSourceOf([{ path: 'fhir/Patient/a.json', contents: '{"resourceType":' }])
+    expect(await readFailureOf(source, 'fhir/Patient/a.json')).toMatchObject({
+      _tag: 'UnreadableFile',
+      path: 'fhir/Patient/a.json',
+    })
+  })
+
+  test('fails an index.json that is not a manifest, naming the file', async () => {
+    const exit = await Effect.runPromiseExit(
+      DataSet.readManifest(fileSourceOf([{ path: 'index.json', contents: '{"schemaVersion":2}' }]))
+    )
+    expect(exit).toMatchObject({
+      _tag: 'Failure',
+      cause: { error: { _tag: 'UnreadableFile', path: 'index.json' } },
+    })
   })
 })
