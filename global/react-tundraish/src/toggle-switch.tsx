@@ -11,6 +11,12 @@ type ToggleSwitchBase = {
    * `<label>` element.
    */
   readonly label: ReactNode
+  /**
+   * The id of an element that says more about the switch (what turning it
+   * on does), set as the input's `aria-describedby` so assistive tech reads
+   * it after the label.
+   */
+  readonly describedBy?: string
   readonly className?: string
 }
 
@@ -44,7 +50,7 @@ type ToggleSwitchProps = ToggleSwitchBase &
  * switch for "this takes effect now" toggles.
  */
 const ToggleSwitch = (props: ToggleSwitchProps): JSX.Element => {
-  const { checked, label, disabled, className } = props
+  const { checked, label, describedBy, disabled, className } = props
   return (
     <label className={cn(styles['toggle-switch-row'], className)}>
       <span className={styles['toggle-switch']}>
@@ -54,6 +60,7 @@ const ToggleSwitch = (props: ToggleSwitchProps): JSX.Element => {
           className={styles['toggle-switch__input']}
           checked={checked}
           disabled={disabled}
+          aria-describedby={describedBy}
           onChange={(event: ChangeEvent<HTMLInputElement>) => {
             props.onChange?.(event.target.checked)
           }}

@@ -1,0 +1,60 @@
+/*
+ * The telemetry consent dialog's contents, in a readable column centred on
+ * the full-width sheet. The synthetic-data warning comes first and loudest:
+ * the warning tone's box and a body size a step above the rest, so it reads
+ * before the switches do. Everything reads the scheme-aware tokens.
+ */
+
+.consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+  max-width: 42rem;
+  margin: 0 auto;
+}
+
+.consent__warning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-3);
+  background: var(--color-warning-background);
+}
+
+.consent__warning-paragraph {
+  margin: 0;
+  color: var(--color-warning-foreground);
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-4);
+  line-height: var(--line-height-3);
+}
+
+.consent__text {
+  margin: 0;
+  color: var(--color-foreground);
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+}
+
+.consent__switches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* A switch with what it sends beneath it, the description under the label. */
+.consent__switch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.consent__switch-description {
+  margin: 0;
+  color: var(--color-neutral-4);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+}

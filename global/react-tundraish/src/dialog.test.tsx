@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useState, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -174,6 +174,30 @@ describe('Dialog', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeDefined()
   })
 
+  it('is named by its title for assistive tech', () => {
+    // Arrange + Act
+    render(
+      <Dialog open={true} onClose={vi.fn()} title="Device Authorization">
+        Body
+      </Dialog>
+    )
+
+    // Assert
+    expect(screen.getByRole('dialog', { name: 'Device Authorization' })).toBeDefined()
+  })
+
+  it('leaves ESC as a close request when dismissable', () => {
+    // Arrange + Act
+    render(
+      <Dialog open={true} onClose={vi.fn()}>
+        Body
+      </Dialog>
+    )
+
+    // Assert
+    expect(document.querySelector('dialog')?.hasAttribute('closedby')).toBe(false)
+  })
+
   describe('non-dismissable (dismissable={false})', () => {
     it('omits the × close button', () => {
       // Arrange + Act
@@ -223,6 +247,54 @@ describe('Dialog', () => {
       // Assert
       expect(cancelEvent.defaultPrevented).toBe(true)
       expect(onCancel).not.toHaveBeenCalled()
+    })
+
+    it('opts out of close requests with closedby="none"', () => {
+      // Arrange + Act
+      render(
+        <Dialog open={true} onClose={vi.fn()} dismissable={false}>
+          Body
+        </Dialog>
+      )
+
+      // Assert
+      expect(document.querySelector('dialog')?.getAttribute('closedby')).toBe('none')
+    })
+
+    it('shows itself again, without calling onClose, when the browser closes it while open', () => {
+      // Arrange
+      const onClose = vi.fn()
+      render(<ControlledDialogNonDismissable initialOpen={true} onClose={onClose} />)
+      const dialog = document.querySelector('dialog')
+      if (dialog === null) throw new Error('expected the dialog to render')
+
+      // Act — what Chrome does on a second ESC with no activation between.
+      act(() => dialog.close())
+
+      // Assert
+      expect(dialog.hasAttribute('open')).toBe(true)
+      expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('closes, calling onClose once, when the consumer sets open to false', () => {
+      // Arrange
+      const onClose = vi.fn()
+      const { rerender } = render(
+        <Dialog open={true} onClose={onClose} dismissable={false}>
+          Body
+        </Dialog>
+      )
+
+      // Act
+      rerender(
+        <Dialog open={false} onClose={onClose} dismissable={false}>
+          Body
+        </Dialog>
+      )
+
+      // Assert
+      expect(document.querySelector('dialog')?.hasAttribute('open')).toBe(false)
+      expect(onClose).toHaveBeenCalledTimes(1)
     })
   })
 

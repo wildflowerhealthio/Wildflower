@@ -2,7 +2,7 @@
   "name": "telemetry-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Web-side HttpClient layer that combines FetchHttpClient with the web telemetry layer. Slice-react packages import it as a default HTTP layer; their per-slice effect runners auto-provide it.",
+  "description": "The browser side of Wildflower telemetry in React: the telemetry consent gate every web app starts behind (the non-dismissable consent dialog, the hook that keeps the answer in localStorage, and the status control that reopens it), and the web-side HttpClient layer that combines FetchHttpClient with the web telemetry layer, which slice-react packages import as a default HTTP layer.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -25,11 +25,25 @@
     "check": "vp check",
     "dev": "vp pack --watch",
     "prepublishOnly": "vp run build",
-    "test": "vp test --passWithNoTests"
+    "test": "vp test"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "branding-core": "workspace:*",
     "effect": "catalog:",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "telemetry-core": "workspace:*",
     "telemetry-web": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
@@ -38,7 +52,12 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "branding-core": "workspace:*",
     "effect": "catalog:",
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "telemetry-core": "workspace:*",
     "telemetry-web": "workspace:*"
   }
 }
