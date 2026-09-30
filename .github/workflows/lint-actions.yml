@@ -1,0 +1,58 @@
+name: Actions Lint
+
+# actionlint over every workflow: expression and `needs` typos, unknown action
+# inputs, `workflow_call` wiring, and the shellcheck pass over each `run:`
+# script. Its settings are in .github/actionlint.yaml; the repository's
+# standalone shell scripts are lint-shell.yml's.
+
+on:
+  # Called by ci.yml, which runs this only on pull requests that touch
+  # `.github/`; the paths are its `changes` filter.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Check
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Pinned, with the download script from the same tag, so a new release
+      # can't start failing unrelated PRs.
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          set -euo pipefail
+          bash <(curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "$ACTIONLINT_VERSION" "$RUNNER_TEMP"
+
+      # actionlint runs the shellcheck it finds on the PATH. Same pin and
+      # check as lint-shell.yml, so both report the same findings.
+      - name: Install shellcheck
+        env:
+          SHELLCHECK_PY_VERSION: 0.11.0.1
+        run: |
+          set -euo pipefail
+          pipx install "shellcheck-py==$SHELLCHECK_PY_VERSION"
+          version="$(shellcheck --version | sed -n 's/^version: //p')"
+          echo "shellcheck $version"
+          if [[ "$SHELLCHECK_PY_VERSION" != "$version".* ]]; then
+            echo "::error::Expected shellcheck ${SHELLCHECK_PY_VERSION%.*} first on the PATH"
+            exit 1
+          fi
+
+      # Warnings and errors only: shellcheck's style and info notes flag
+      # deliberate idioms, such as literal backticks in a single-quoted
+      # `printf`. The format turns each finding into an inline annotation on
+      # the PR.
+      - name: Run actionlint
+        env:
+          SHELLCHECK_OPTS: --severity=warning
+        run: |
+          "$RUNNER_TEMP/actionlint" \
+            -format '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}}::{{$err.Message}}\n{{end}}'

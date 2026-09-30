@@ -1,59 +1,29 @@
 name: Rust
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    # PR runs are gated to Rust-touching changes at the trigger level, so an
-    # unrelated PR never starts this workflow (no change-detection job needed).
-    # This workflow no longer runs on pushes to main — CI is a pre-merge gate
-    # only. It compiles, lints, and tests the ENTIRE Cargo workspace in one job,
-    # including the crates that pull in `tauri = "2"` (wildflower-tauri,
-    # browser-sniffer-tauri-rust, har-recorder-tauri-rust, shared-structures-tauri-rust,
-    # tauri-plugin-native-webview). Those need GTK/webkit system libs, so the
-    # job installs them and stubs the generated web bundles the Tauri crates
-    # `include_str!`. (This used to be a separate ci-rust-tauri.yml; the split
-    # saved little because most Rust PRs touch a Tauri crate anyway.)
-    #
-    # The full-workspace test pass also runs each slice's
-    # `openapi_spec_snapshot_is_up_to_date` test — the Rust half of the OpenAPI
-    # drift gate (previously api-sync.yml's rust-snapshot job). So a snapshot-only
-    # regen with no *.rs change is matched via the committed JSON path below;
-    # api-sync.yml keeps only the TS drift half.
-    paths:
-      - '**/*.rs'
-      # `**/` is not guaranteed to match a root-level file, and the root
-      # manifest's lints/feature lists change what compiles on their own.
-      - 'Cargo.toml'
-      - '**/Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'deny.toml'
-      # Committed OpenAPI snapshots. `openapi_spec_snapshot_is_up_to_date` (run
-      # as part of the workspace test suite) verifies each still matches what
-      # utoipa emits from the live axum routes; a snapshot-only regen (no *.rs
-      # change) must still trigger that check, so match the generated JSON.
-      - 'slices/**/*-rust/openapi/*.openapi.json'
-      # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri-rust
-      # `include_str!`s a JS bundle generated from this TS package, and the
-      # lockfiles affect that bootstrap build — a change to either can break the
-      # Tauri crates' compile/tests, so run the workspace here too.
-      - 'slices/browser-sniffer/browser-sniffer-tauri/**'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      # What this job runs, and the stub placeholders it compiles against.
-      - 'scripts/checks/rust.sh'
-      - 'scripts/ci/stub-embedded-bundles.sh'
-      - '.github/workflows/ci-rust.yml'
+  # Called by ci.yml, which runs this only on pull requests that touch
+  # Rust; the paths are its `changes` filter.
+  #
+  # It compiles, lints, and tests the ENTIRE Cargo workspace in one job,
+  # including the crates that pull in `tauri = "2"` (wildflower-tauri,
+  # browser-sniffer-tauri-rust, har-recorder-tauri-rust, shared-structures-tauri-rust,
+  # tauri-plugin-native-webview). Those need GTK/webkit system libs, so the
+  # job installs them and stubs the generated web bundles the Tauri crates
+  # `include_str!`. (This used to be a separate ci-rust-tauri.yml; the split
+  # saved little because most Rust PRs touch a Tauri crate anyway.)
+  #
+  # The full-workspace test pass also runs each slice's
+  # `openapi_spec_snapshot_is_up_to_date` test — the Rust half of the OpenAPI
+  # drift gate. So a snapshot-only regen with no *.rs change is matched via
+  # the committed JSON path in ci.yml's `rust` filter; api-sync.yml keeps only
+  # the TS drift half.
+  workflow_call:
 
 permissions:
   contents: read
   # dorny/paths-filter (the in-job bootstrap detector below) reads the PR's
   # changed-file list from the GitHub API.
   pull-requests: read
-
-concurrency:
-  group: rust-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   # One job for fmt + clippy + nextest + doctests across the WHOLE workspace: a

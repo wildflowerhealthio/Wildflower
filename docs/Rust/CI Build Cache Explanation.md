@@ -75,8 +75,8 @@ whenever the dependency graph moves (`Cargo.lock`, any workspace manifest,
 the root `Cargo.toml` both bare and under `**/`: a `**/`-prefixed pattern is not
 guaranteed to match a root-level file, and that manifest's `[workspace.lints]`
 and `[workspace.dependencies]` feature lists fork the lock hash without
-necessarily moving `Cargo.lock`. `ci-rust.yml` lists both spellings for the same
-reason.
+necessarily moving `Cargo.lock`. `ci.yml`'s `rust` filter lists both spellings
+for the same reason.
 
 It reproduces `ci-rust.yml`'s environment exactly — same runner image, same
 toolchain action with no extra `CARGO*`/`RUST*` env or rustflags, same

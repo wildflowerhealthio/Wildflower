@@ -16,30 +16,13 @@ name: API Sync
 # `openapi-drift` filter.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    # Gated at the trigger to changes that touch the TS side of any slice's
-    # contract or a committed snapshot, so an unrelated PR never starts this
-    # workflow (no change-detection job needed). CI is a pre-merge gate only;
-    # this workflow no longer runs on pushes to main.
-    paths:
-      # Any slice's Effect HttpApi definition + its TS drift test.
-      - 'slices/**/http-api-definition/**'
-      # The committed snapshots the drift test diffs against. A Rust route change
-      # instead lands as *.rs and is gated by ci-rust.yml's Rust snapshot half.
-      - 'slices/**/*-rust/openapi/*.openapi.json'
-      # The shared wire-shape engine + the spec-drift test factory.
-      - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
-      # This workflow itself.
-      - '.github/workflows/api-sync.yml'
+  # Called by ci.yml, which runs this only on pull requests that touch the TS
+  # side of a slice's contract or a committed snapshot; the paths are its
+  # `changes` filter.
+  workflow_call:
 
 permissions:
   contents: read
-
-# Cancel superseded PR runs to save the actions budget.
-concurrency:
-  group: api-sync-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   ts-drift:

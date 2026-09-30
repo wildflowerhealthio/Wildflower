@@ -55,8 +55,8 @@ replay.
 method), and a restore only matches entries of the same version. Two workflows
 that spell the paths even slightly differently never see each other's entries,
 whatever their keys say. The composite action holds the paths and key in one
-place, so the warm job and CI cannot drift apart. `ci-typescript.yml` lists the
-action under its trigger `paths` so a change to it runs CI.
+place, so the warm job and CI cannot drift apart. `ci.yml`'s `typescript` filter
+lists the action so a change to it runs CI.
 
 ## Eviction
 

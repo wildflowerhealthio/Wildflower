@@ -1,0 +1,52 @@
+name: Shell Lint
+
+# shellcheck over the repository's shell scripts: every tracked `*.sh` and the
+# git hooks under `.vite-hooks/`. The `run:` scripts inside workflows are
+# actionlint's job (lint-actions.yml), which runs the same shellcheck.
+
+on:
+  # Called by ci.yml, which runs this only on pull requests that touch a shell
+  # script; the paths are its `changes` filter.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: Check
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Pinned because new shellcheck releases add checks; install the same
+      # version locally with `pipx install shellcheck-py==<version>`. The
+      # runner image has its own shellcheck in /usr/bin, so check that the
+      # pinned one is found.
+      - name: Install shellcheck
+        env:
+          SHELLCHECK_PY_VERSION: 0.11.0.1
+        run: |
+          set -euo pipefail
+          pipx install "shellcheck-py==$SHELLCHECK_PY_VERSION"
+          version="$(shellcheck --version | sed -n 's/^version: //p')"
+          echo "shellcheck $version"
+          if [[ "$SHELLCHECK_PY_VERSION" != "$version".* ]]; then
+            echo "::error::Expected shellcheck ${SHELLCHECK_PY_VERSION%.*} first on the PATH"
+            exit 1
+          fi
+
+      # Warnings and errors only, as in lint-actions.yml: the style and info
+      # notes flag deliberate idioms, such as literal backticks in a
+      # single-quoted `echo`. `--external-sources` with the script's own
+      # directory as the source path follows `source ./lib.sh` includes. The
+      # format turns each finding into an inline annotation on the PR, and
+      # `pipefail` keeps shellcheck's exit status.
+      - name: Run shellcheck
+        run: |
+          set -euo pipefail
+          git ls-files -z -- '*.sh' '*.bash' '.vite-hooks/*' \
+            | xargs -0 shellcheck --severity=warning --external-sources --source-path=SCRIPTDIR --format=gcc \
+            | sed -E 's/^([^:]+):([0-9]+):([0-9]+): [a-z]+: (.*)$/::error file=\1,line=\2,col=\3::\4/'

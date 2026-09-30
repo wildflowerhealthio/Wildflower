@@ -1,0 +1,223 @@
+name: CI
+
+# The single pre-merge gate. Every pull request starts this workflow; a
+# `changes` job decides which areas the PR touches, only those areas' reusable
+# workflows run, and the `Required` job at the end sums them up. `Required` is
+# the one status check the `main` ruleset requires, so a PR merges (by hand or
+# by auto-merge) only once every check that applies to it has passed, and a PR
+# that touches no area still gets a green `Required` instead of waiting on
+# checks that never start. Why it is shaped this way:
+# docs/CI/Required Check Explanation.md.
+#
+# CI is a pre-merge gate only: nothing here runs on pushes to main.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+# Cancel superseded PR runs to save the actions budget. The called workflows
+# run inside this one, so this group cancels them too.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Which areas this PR touches. Each filter is the list of paths that area's
+  # checks depend on; a new check area adds a filter here, a job below, and an
+  # entry in `Required`'s `needs`.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # dorny/paths-filter reads the PR's changed-file list from the GitHub API.
+      pull-requests: read
+    outputs:
+      typescript: ${{ steps.filter.outputs.typescript }}
+      rust: ${{ steps.filter.outputs.rust }}
+      pebble: ${{ steps.filter.outputs.pebble }}
+      markdown: ${{ steps.filter.outputs.markdown }}
+      api-sync: ${{ steps.filter.outputs.api-sync }}
+      actions: ${{ steps.filter.outputs.actions }}
+      shell: ${{ steps.filter.outputs.shell }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            # Keep aligned with where TS/JS source actually lives.
+            typescript:
+              - '**/*.ts'
+              - '**/*.tsx'
+              - '**/*.cts'
+              - '**/*.mts'
+              - '**/*.js'
+              - '**/*.jsx'
+              - '**/*.cjs'
+              - '**/*.mjs'
+              - '**/package.json'
+              - '**/tsconfig*.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-typescript.yml'
+              - '.github/actions/vp-pack-cache/**'
+            rust:
+              - '**/*.rs'
+              # `**/` is not guaranteed to match a root-level file, and the
+              # root manifest's lints/feature lists change what compiles on
+              # their own.
+              - 'Cargo.toml'
+              - '**/Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'deny.toml'
+              # Committed OpenAPI snapshots. `openapi_spec_snapshot_is_up_to_date`
+              # (run as part of the workspace test suite) verifies each still
+              # matches what utoipa emits from the live axum routes; a
+              # snapshot-only regen (no *.rs change) must still trigger that
+              # check, so match the generated JSON.
+              - 'slices/**/*-rust/openapi/*.openapi.json'
+              # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri-rust
+              # `include_str!`s a JS bundle generated from this TS package, and
+              # the lockfiles affect that bootstrap build — a change to either
+              # can break the Tauri crates' compile/tests.
+              - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              # What the job runs, and the stub placeholders it compiles against.
+              - 'scripts/checks/rust.sh'
+              - 'scripts/ci/stub-embedded-bundles.sh'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-rust.yml'
+            # The C and the wscripts live only under the two apps, so a C-only
+            # change runs nothing else: ci-typescript.yml runs the same
+            # host-side tests, but only when TS/JS changes.
+            pebble:
+              - 'apps/watch-lifts/**'
+              - 'apps/fhir-sync-pebble/**'
+              # fhir-sync-pebble's PebbleKit JS bundles this core into the
+              # .pbw, and the host-side tests decode the watch's bytes with it.
+              - 'slices/fhir-sync-pebble/**'
+              # The PebbleKit JS build tooling and the App Configuration
+              # hand-off both apps' PebbleKit JS and settings pages build on.
+              - 'global/pebble/**'
+              # The host-side tests build the C through `buildHostCDriver`.
+              - 'global/kitchen-sink/src/test/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-pebble.yml'
+              - '.github/actions/setup-pebble-sdk/**'
+            markdown:
+              - '**/*.md'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/lint-markdown.yml'
+            api-sync:
+              # Any slice's Effect HttpApi definition + its TS drift test.
+              - 'slices/**/http-api-definition/**'
+              # The committed snapshots the drift test diffs against. A Rust
+              # route change instead lands as *.rs and is gated by
+              # ci-rust.yml's Rust snapshot half.
+              - 'slices/**/*-rust/openapi/*.openapi.json'
+              # The shared wire-shape engine + the spec-drift test factory.
+              - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/api-sync.yml'
+            # actionlint reads local composite actions' inputs to check their
+            # callers, so a change under actions/ can break a workflow.
+            actions:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - '.github/actionlint.yaml'
+            shell:
+              - '**/*.sh'
+              - '**/*.bash'
+              - '.vite-hooks/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/lint-shell.yml'
+
+  # A called workflow gets at most the permissions its calling job grants, so
+  # each job below grants what its workflow's own `permissions` block asks for.
+  typescript:
+    name: TypeScript
+    needs: changes
+    if: needs.changes.outputs.typescript == 'true'
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    uses: ./.github/workflows/ci-typescript.yml
+
+  rust:
+    name: Rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci-rust.yml
+
+  pebble:
+    name: Pebble
+    needs: changes
+    if: needs.changes.outputs.pebble == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-pebble.yml
+
+  markdown:
+    name: Markdown Lint
+    needs: changes
+    if: needs.changes.outputs.markdown == 'true'
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    uses: ./.github/workflows/lint-markdown.yml
+
+  api-sync:
+    name: API Sync
+    needs: changes
+    if: needs.changes.outputs.api-sync == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/api-sync.yml
+
+  actions:
+    name: Actions Lint
+    needs: changes
+    if: needs.changes.outputs.actions == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lint-actions.yml
+
+  shell:
+    name: Shell Lint
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lint-shell.yml
+
+  # The status check the `main` ruleset requires. A skipped area (the PR doesn't
+  # touch it) counts as passing; a failed or cancelled job anywhere fails it.
+  # `always()`, not `!cancelled()`: a cancelled run must still report a
+  # failure here, because a skipped `Required` would count as passing.
+  required:
+    name: Required
+    needs: [changes, typescript, rust, pebble, markdown, api-sync, actions, shell]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every CI job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "$NEEDS" | jq -e 'any(.[]; .result == "failure" or .result == "cancelled")' > /dev/null; then
+            echo "::error::A CI job failed or was cancelled"
+            exit 1
+          fi
