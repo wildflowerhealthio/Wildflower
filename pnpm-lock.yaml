@@ -1204,6 +1204,9 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 30.1.1
+      telemetry-core:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-core
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -1289,6 +1292,9 @@ importers:
       scopes-react:
         specifier: workspace:*
         version: link:../../slices/scopes/scopes-react
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-web
       tundra-css:
         specifier: 'catalog:'
         version: 0.14.0
@@ -5143,9 +5149,6 @@ importers:
 
   slices/telemetry/telemetry-react:
     devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
       '@testing-library/dom':
         specifier: 'catalog:'
         version: 10.4.2
@@ -5164,9 +5167,6 @@ importers:
       branding-core:
         specifier: workspace:*
         version: link:../../branding/branding-core
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2

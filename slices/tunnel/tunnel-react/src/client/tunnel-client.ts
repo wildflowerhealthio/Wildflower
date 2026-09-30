@@ -16,8 +16,8 @@ type TunnelAdminClientRequirements = HttpClient.HttpClient | TunnelAdminHttpApiC
  * which sets no `Authorization` header — the host app's `HttpClient` layer
  * decides how requests authenticate. This builder just
  * re-exposes that layer under a `buildXClientLayer()` name matching the other
- * slices. Leaves `HttpClient` unprovided: the host app supplies one (its
- * `webHttpClientLayer`) shared across every slice's client layer via the
+ * slices. Leaves `HttpClient` unprovided: the host app supplies one (the
+ * owner UI's API transport) shared across every slice's client layer via the
  * composed `runtimeLayer`.
  */
 const buildTunnelAdminClientLayer = (): Layer.Layer<

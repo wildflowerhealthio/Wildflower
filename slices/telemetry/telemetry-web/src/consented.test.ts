@@ -1,4 +1,5 @@
 import type { BrowserOptions, ErrorEvent } from '@sentry/react'
+import { Effect, type Layer, type Tracer } from 'effect'
 import { configFromEnv, type TelemetryConsent } from 'telemetry-core'
 import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import type * as Consented from './consented.ts'
@@ -256,5 +257,75 @@ describe('setFhirServerHost', () => {
     setFhirServerHost('fhir.example:8443')
 
     expect(setTagMock).toHaveBeenCalledWith('fhir_server_host', 'fhir.example:8443')
+  })
+})
+
+describe('consentedTelemetryLayer', () => {
+  /** The tracer an effect runs with under `layer`. */
+  const tracerUnder = (layer: Layer.Layer<never>): Tracer.Tracer =>
+    Effect.runSync(Effect.provide(Effect.tracer, layer))
+
+  const defaultTracer = Effect.runSync(Effect.tracer)
+
+  test('leaves Effect on its default tracer, and starts nothing, before any answer', async () => {
+    const { consentedTelemetryLayer } = await importConsented()
+
+    expect(tracerUnder(consentedTelemetryLayer)).toBe(defaultTracer)
+    expect(initMock).not.toHaveBeenCalled()
+  })
+
+  test('binds Effect to the registered tracer provider once performance is on', async () => {
+    const { consentedTelemetryLayer, initConsentedTelemetry } = await importConsented()
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: false, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+
+    expect(tracerUnder(consentedTelemetryLayer)).not.toBe(defaultTracer)
+  })
+
+  test('leaves Effect on its default tracer when only crash reports are on', async () => {
+    const { consentedTelemetryLayer, initConsentedTelemetry } = await importConsented()
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+
+    expect(initMock).toHaveBeenCalledTimes(1)
+    expect(tracerUnder(consentedTelemetryLayer)).toBe(defaultTracer)
+  })
+
+  test('follows the latest answer each time it is built', async () => {
+    const { consentedTelemetryLayer, initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    expect(tracerUnder(consentedTelemetryLayer)).not.toBe(defaultTracer)
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+
+    expect(tracerUnder(consentedTelemetryLayer)).toBe(defaultTracer)
+  })
+
+  test('stays empty when a yes registers no tracer provider (no DSN in the build)', async () => {
+    const { consentedTelemetryLayer, initConsentedTelemetry } = await importConsented()
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: configFromEnv({}),
+      tags,
+    })
+
+    expect(tracerUnder(consentedTelemetryLayer)).toBe(defaultTracer)
   })
 })

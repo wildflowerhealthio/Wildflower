@@ -1,15 +1,15 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { TELEMETRY_CONSENT_COPY, type AppSectionId } from 'branding-core'
 import { AppLandingPage, BrandBar } from 'branding-react'
-import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { ErrorBoundary, type ErrorBoundaryProps } from 'react-tundraish'
-import type { TelemetryConsent } from 'telemetry-core'
+import { useEffect, useState, type JSX, type ReactNode } from 'react'
 import {
+  CrashReportingBoundary,
   TelemetryConsentGate,
   TelemetryStatusControl,
+  useConsentedTelemetryStart,
   useTelemetryConsentControls,
 } from 'telemetry-react'
-import { configFromViteEnv, initConsentedTelemetry, Sentry, setFhirServerHost } from 'telemetry-web'
+import { Sentry, setFhirServerHost } from 'telemetry-web'
 
 import {
   appRootRedirectUri,
@@ -74,39 +74,6 @@ function ConsentStatusControl(): JSX.Element {
 }
 
 /**
- * A `react-tundraish` `ErrorBoundary` that reports what it catches, with its
- * component stack, through `Sentry.captureException`: a no-op while Sentry
- * has not been initialized, which it never is without a yes.
- *
- * @param app - The app's id, shown in the fallback's context pane
- * @param headingLevel - The fallback title's heading level: 2 where the page
- *   already has its h1
- */
-function CrashReportingBoundary({
-  app,
-  headingLevel,
-  children,
-}: {
-  readonly app: string
-  readonly headingLevel?: ErrorBoundaryProps['headingLevel']
-  readonly children: ReactNode
-}): JSX.Element {
-  return (
-    <ErrorBoundary
-      headingLevel={headingLevel}
-      onError={(error, info) => {
-        Sentry.captureException(error, {
-          extra: { componentStack: info.componentStack ?? undefined },
-        })
-      }}
-      extraContext={{ mode: import.meta.env.MODE, app }}
-    >
-      {children}
-    </ErrorBoundary>
-  )
-}
-
-/**
  * The top-level root every self-hosted SMART app mounts: the telemetry consent
  * gate, then one `QueryClientProvider` around two branches in shared
  * Wildflower chrome.
@@ -124,9 +91,9 @@ function CrashReportingBoundary({
  * **Nothing starts before the visitor answers the consent dialog.** Both
  * branches render inside `TelemetryConsentGate`, so until an answer is stored
  * the page is the dialog alone: neither the connect menu nor the app mounts,
- * and no query runs. The answer goes to `initConsentedTelemetry` with
- * `telemetry`'s DSN and the tags `app` and `launch`, and the SDK starts only
- * if a switch is on. Once it runs, the root tags events with the FHIR server's
+ * and no query runs. The answer goes to `telemetry-react`'s
+ * `useConsentedTelemetryStart` with `telemetry`'s DSN and the tags `app` and
+ * `launch`, and the SDK starts only if a switch is on. Once it runs, the root tags events with the FHIR server's
  * host when the handshake completes, reports every failed read on its client,
  * and reports the launch failure the page arrived with (a failed handshake
  * among them), once.
@@ -170,28 +137,16 @@ function SmartAppRoot({
     })
   )
 
-  // Whether the visitor's answer has started Sentry. It stays started for the
-  // page's life, whatever later answers say: the SDK's own hooks drop what a
-  // withdrawn switch no longer covers.
-  const [telemetryStarted, setTelemetryStarted] = useState(false)
-  const launchFailureReported = useRef(false)
-
-  const startTelemetry = (consent: TelemetryConsent): void => {
-    const started = initConsentedTelemetry({
-      consent,
-      config: configFromViteEnv({
-        sentry: { dsn: telemetry.dsn },
-        otel: { serviceName: telemetry.app },
-      }),
-      tags: { app: telemetry.app, launch: isLaunched ? 'launched' : 'standalone' },
-    })
-    if (!started) return
-    setTelemetryStarted(true)
-    if (launchFailure !== null && !launchFailureReported.current) {
-      launchFailureReported.current = true
+  // The launch failure the page arrived with is reported once, as soon as an
+  // answer starts Sentry.
+  const { telemetryStarted, startTelemetry } = useConsentedTelemetryStart({
+    dsn: telemetry.dsn,
+    tags: { app: telemetry.app, launch: isLaunched ? 'launched' : 'standalone' },
+    onFirstStart: () => {
+      if (launchFailure === null) return
       Sentry.captureException(launchFailure, { tags: { source: 'launch-error' } })
-    }
-  }
+    },
+  })
 
   // Once Sentry runs, tag its events with the FHIR server the app's handshake
   // connected to, as soon as that handshake completes on the shared client.
@@ -224,11 +179,13 @@ function SmartAppRoot({
         {isLaunched ? (
           <>
             <BrandBar trailing={<ConsentStatusControl />} />
-            <CrashReportingBoundary app={telemetry.app}>{children}</CrashReportingBoundary>
+            <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
+              {children}
+            </CrashReportingBoundary>
           </>
         ) : (
           <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
-            <CrashReportingBoundary app={telemetry.app} headingLevel={2}>
+            <CrashReportingBoundary extraContext={{ app: telemetry.app }} headingLevel={2}>
               <ConnectMenu
                 target="fhir-r4"
                 clientId={standalone.clientId}

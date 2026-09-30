@@ -1,4 +1,3 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient, useQueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
@@ -92,16 +91,6 @@ vi.mock('./har-recorder-sender-forwarder.tsx', () => ({
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
-  webTelemetryLayerFromEnv: () => Layer.empty,
-}))
-// Bare `HttpClient` so the authed runtime constructs offline.
-vi.mock('telemetry-react', () => ({
-  webHttpClientLayer: Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) =>
-      Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
-    )
-  ),
 }))
 // Minimal route tree; leaf records the `QueryClient` it sees.
 vi.mock('../routeTree.gen.ts', () => {
@@ -151,6 +140,7 @@ describe('in-memory QueryClientProvider', () => {
         tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
+        effectTelemetryLayer: Layer.empty,
         externalLinkRoot: () => 'https://example.test',
         platformSettingsItems: [],
         platformTabs: [],

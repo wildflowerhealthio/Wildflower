@@ -2,6 +2,7 @@ import type { TelemetryConsentCopy } from 'branding-core'
 import type { JSX } from 'react'
 import type { TelemetryConsent } from 'telemetry-core'
 
+import { telemetryConsentSummary } from './telemetry-consent-summary.ts'
 import styles from './telemetry-status-control.module.css'
 
 type TelemetryStatusControlProps = {
@@ -13,19 +14,13 @@ type TelemetryStatusControlProps = {
   readonly onPress: () => void
 }
 
-/** How the status control reads one switch. */
-const onOff = (switchedOn: boolean): string => (switchedOn ? 'on' : 'off')
-
 /**
- * What the status control reads for `consent`: each switch by its label with
- * on or off, or just "off" when both are.
+ * What the status control reads for `consent`: the
+ * {@link telemetryConsentSummary}, or just "off" when both switches are.
  */
 const telemetryStatusText = (consent: TelemetryConsent, copy: TelemetryConsentCopy): string => {
   if (!consent.crashReports && !consent.performance) return 'Telemetry: off'
-  return (
-    `Telemetry: ${copy.crashReports.label} ${onOff(consent.crashReports)}` +
-    ` · ${copy.performance.label} ${onOff(consent.performance)}`
-  )
+  return `Telemetry: ${telemetryConsentSummary(consent, copy)}`
 }
 
 /**

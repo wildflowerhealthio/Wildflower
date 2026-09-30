@@ -1,6 +1,6 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
-import { Effect, type Fiber, type Subscribable, Stream } from 'effect'
+import { Effect, type Fiber, type Layer, type Subscribable, Stream } from 'effect'
 import {
   ActivePendingConsentProvider,
   buildDeviceLoginTarget,
@@ -10,7 +10,7 @@ import {
   TokenResponseHandlerContext,
   type TokenResponseHandler,
 } from 'gatekeeper-react'
-import { StrictMode } from 'react'
+import { StrictMode, type JSX, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { type AuthState, AuthStateProvider, type AuthStateStore } from 'react-kitchen-sink'
 import { ErrorBoundary } from 'react-tundraish'
@@ -73,7 +73,7 @@ type MakeAwaitAuthReady = (transportReady: Promise<void>) => BaseRouterContext.A
  * so the first subscribe does NOT flush the cache — invalidating at
  * boot would be a wasted full cache flush before anything is cached.
  *
- * Extracted from {@link renderApp} (which builds its own `QueryClient`)
+ * Extracted from {@link buildAppTree} (which builds its own `QueryClient`)
  * so the boot-skip / rotate-flush contract is unit-testable against a
  * real `Subscribable` and a spy-able `QueryClient` without mounting the
  * whole app. Returns the forked fiber so callers (or tests) can await /
@@ -109,7 +109,7 @@ interface RenderAppOptions {
   readonly tokenStore: AuthStateStore
   /**
    * Environment-specific auth-readiness factory, injected per entry.
-   * Called once at `renderApp` time with `transportReady`; the
+   * Called once at `buildAppTree` time with `transportReady`; the
    * resolved function is threaded into router context so the
    * `beforeLoad` gate calls it without knowing the environment — the
    * entry, not a context flag, encodes the behavior.
@@ -123,6 +123,15 @@ interface RenderAppOptions {
    * seed `TransportContext`.
    */
   readonly makeTransport: MakeTransport
+  /**
+   * The Effect telemetry layer every authed request runs under, binding its
+   * spans to the page's tracer provider. The entry decides whether that needs
+   * the visitor's consent: `main-web` passes `telemetry-web`'s
+   * `consentedTelemetryLayer` (empty until an answer turns performance on);
+   * `main-tauri` passes `webTelemetryLayerFromEnv()`, which starts telemetry
+   * from the build's env.
+   */
+  readonly effectTelemetryLayer: Layer.Layer<never>
   /**
    * Absolute API origin for entries whose page is not served by the
    * API server (the Tauri webview loads from the dev server / asset
@@ -219,7 +228,10 @@ interface RenderAppOptions {
 }
 
 /**
- * Mount the app under `#root`. Called once per entry point.
+ * Build the app: its query runtime, transport and router, and the React tree
+ * over them, ready to mount. Called once per entry point, by
+ * {@link renderApp} or by an entry that mounts the tree inside its own root
+ * (`main-web`, behind the telemetry consent gate).
  *
  * The same `QueryClient` is given to both `<QueryClientProvider>` and
  * `createRouter`'s `context`, so loaders' `ensureQueryData` and
@@ -241,12 +253,13 @@ interface RenderAppOptions {
  * is encoded inside `awaitAuthReady` itself rather than in a separate
  * `transportReady` field on router context.
  */
-const renderApp = ({
+const buildAppTree = ({
   history,
   entry,
   tokenStore,
   awaitAuthReady,
   makeTransport,
+  effectTelemetryLayer,
   apiBaseUrl,
   localGrantedScopes,
   firstPartyClientId,
@@ -258,7 +271,7 @@ const renderApp = ({
   tokenResponseHandler,
   signInProblem,
   basepath,
-}: RenderAppOptions): void => {
+}: RenderAppOptions): JSX.Element => {
   // Router isn't built until after the query runtime (its context needs the
   // runtime), so the closures that navigate imperatively read it through this
   // deferred cell, populated right after `createRouter`.
@@ -283,6 +296,7 @@ const renderApp = ({
   const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
     apiBaseUrl,
     onUnauthorized,
+    effectTelemetryLayer,
     readBearer
   )
 
@@ -290,7 +304,7 @@ const renderApp = ({
   // sign-in flips the bearer store's signal and should flush the cache.
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
-  // Built once per renderApp. Only the Tauri host ever pushes
+  // Built once per app. Only the Tauri host ever pushes
   // `PendingConsentRequested`, but the store and provider are wired in
   // every entry so the modal host's hook contract is identical
   // everywhere (no per-entry guard inside the gatekeeper-react surface).
@@ -339,43 +353,60 @@ const renderApp = ({
   })
   routerHandle.current = router
 
+  return (
+    <ErrorBoundary
+      onError={(error, info) => {
+        // oxlint-disable-next-line no-console
+        console.error(`[${entry}] Uncaught error:`, error, info)
+        // A no-op while Sentry has not been initialized: on `main-web`, until
+        // the visitor's answer turns a switch on.
+        Sentry.captureException(error, {
+          extra: { componentStack: info.componentStack ?? undefined },
+        })
+      }}
+      extraContext={{
+        mode: import.meta.env.MODE,
+        entry,
+      }}
+    >
+      <QueryClientProvider client={queryClient}>
+        <AuthStateProvider store={tokenStore}>
+          <TokenResponseHandlerContext value={tokenResponseHandler}>
+            <ActivePendingConsentProvider store={activePendingConsentStore}>
+              <AppRootTree
+                router={router}
+                transportPromise={transportPromise}
+                platformSettingsItems={platformSettingsItems}
+                platformTabs={platformTabs}
+              />
+            </ActivePendingConsentProvider>
+          </TokenResponseHandlerContext>
+        </AuthStateProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  )
+}
+
+/**
+ * Mount `appTree` under the page's `#root`, in `StrictMode`.
+ *
+ * @throws When the page has no `#root` element
+ */
+const mountAtRoot = (appTree: ReactNode): void => {
   const container = document.getElementById('root')
   if (container === null) {
     throw new Error('root element not found')
   }
-  createRoot(container).render(
-    <StrictMode>
-      <ErrorBoundary
-        onError={(error, info) => {
-          // oxlint-disable-next-line no-console
-          console.error(`[${entry}] Uncaught error:`, error, info)
-          Sentry.captureException(error, {
-            extra: { componentStack: info.componentStack ?? undefined },
-          })
-        }}
-        extraContext={{
-          mode: import.meta.env.MODE,
-          entry,
-        }}
-      >
-        <QueryClientProvider client={queryClient}>
-          <AuthStateProvider store={tokenStore}>
-            <TokenResponseHandlerContext value={tokenResponseHandler}>
-              <ActivePendingConsentProvider store={activePendingConsentStore}>
-                <AppRootTree
-                  router={router}
-                  transportPromise={transportPromise}
-                  platformSettingsItems={platformSettingsItems}
-                  platformTabs={platformTabs}
-                />
-              </ActivePendingConsentProvider>
-            </TokenResponseHandlerContext>
-          </AuthStateProvider>
-        </QueryClientProvider>
-      </ErrorBoundary>
-    </StrictMode>
-  )
+  createRoot(container).render(<StrictMode>{appTree}</StrictMode>)
 }
 
-export { forkTokenRotationInvalidator, renderApp }
+/**
+ * Build the app with {@link buildAppTree} and mount it under `#root`: the
+ * whole boot of an entry that asks nothing first (`main-tauri`).
+ */
+const renderApp = (options: RenderAppOptions): void => {
+  mountAtRoot(buildAppTree(options))
+}
+
+export { buildAppTree, forkTokenRotationInvalidator, mountAtRoot, renderApp }
 export type { MakeAwaitAuthReady, MakeTransport, RenderAppOptions }

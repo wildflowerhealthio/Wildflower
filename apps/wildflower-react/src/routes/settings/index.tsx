@@ -8,14 +8,14 @@ import type { SettingsItem } from 'shared-structures-react'
 import { tunnelSettingsItemsFragment } from 'tunnel-react'
 
 import { usePlatformSettingsItems } from '../../session/platform-settings-items-context.ts'
+import { useTelemetrySettingsItems } from '../../session/telemetry-settings-items.ts'
 
 /**
  * Compile-time concatenation of every slice's
  * `<slice>SettingsItemsFragment`. Fragment-declaration order is
  * canonical for v1 — sorting and grouping are v2 concerns (issue #47).
- * Platform-specific rows (e.g. the web logout POST) are appended after
- * these from `context.platformSettingsItems` — the entry, not this
- * route, decides those.
+ * The entry's rows (the Telemetry row, the web logout POST) are
+ * appended after these — the entry, not this route, decides those.
  */
 const sliceSettingsItems: readonly SettingsItem[] = [
   ...tunnelSettingsItemsFragment,
@@ -27,36 +27,40 @@ const sliceSettingsItems: readonly SettingsItem[] = [
 /**
  * Index of `/settings`. Renders the section's single "Settings" header
  * (this is a top-level tab, so no back link) followed by one row per
- * slice that opts in via `*SettingsItemsFragment`, then the entry's
- * `platformSettingsItems` (e.g. the web logout row).
+ * slice that opts in via `*SettingsItemsFragment`, then the entry's own
+ * rows, `entrySettingsItems` (e.g. the Telemetry row and the web logout row).
  *
  * Presentational and prop-driven — the route binding below feeds
- * `platformSettingsItems` from router context, so this component stays
+ * `entrySettingsItems` from the entry's providers, so this component stays
  * trivially testable without standing up the app's full context.
  */
 function SettingsIndex({
-  platformSettingsItems,
+  entrySettingsItems,
 }: {
-  readonly platformSettingsItems: readonly SettingsItem[]
+  readonly entrySettingsItems: readonly SettingsItem[]
 }): JSX.Element {
   return (
     <>
       <PageHeader title="Settings" />
-      <ItemList items={[...sliceSettingsItems, ...platformSettingsItems]} />
+      <ItemList items={[...sliceSettingsItems, ...entrySettingsItems]} />
     </>
   )
 }
 
 /**
- * Route binding: reads the entry's platform settings rows from the
- * {@link usePlatformSettingsItems} provider and hands them to the
- * presentational {@link SettingsIndex}.
+ * Route binding: reads the entry's rows and hands them to the presentational
+ * {@link SettingsIndex}: the Telemetry row where the entry mounted the consent
+ * gate ({@link useTelemetrySettingsItems}), then the entry's platform settings
+ * rows from the {@link usePlatformSettingsItems} provider.
  */
 function SettingsIndexRoute(): JSX.Element {
+  const telemetrySettingsItems = useTelemetrySettingsItems()
   const platformSettingsItems = usePlatformSettingsItems()
-  return <SettingsIndex platformSettingsItems={platformSettingsItems} />
+  return (
+    <SettingsIndex entrySettingsItems={[...telemetrySettingsItems, ...platformSettingsItems]} />
+  )
 }
 
 const Route = createFileRoute('/settings/')({ component: SettingsIndexRoute })
 
-export { Route, SettingsIndex }
+export { Route, SettingsIndex, SettingsIndexRoute }
