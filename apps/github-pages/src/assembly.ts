@@ -93,6 +93,16 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
+    packageName: 'synthetic-data-app',
+    // The package lives in `apps/synthetic-data-app`; its published path is
+    // `/${SECTION_PATHS.syntheticData}`.
+    sourceDir: 'apps/synthetic-data-app/dist',
+    destPath: SECTION_PATHS.syntheticData,
+    // Two entries: the EHR launch endpoint and the app root (the redirect target,
+    // which also serves the standalone connect menu on a bare visit).
+    requiredFiles: ['index.html', 'launch.html'],
+  },
+  {
     packageName: 'watch-lifts-web',
     // The package lives in `apps/watch-lifts-web`; its published path is
     // `/${SECTION_PATHS.watchLifts}`.
