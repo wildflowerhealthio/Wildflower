@@ -5,8 +5,10 @@
  *
  * @packageDocumentation
  */
+import { parseDicom, type DataSet } from 'dicom-parser'
 import * as fc from 'fast-check'
 
+import { concatBytes } from './bytes.ts'
 import type * as DicomHeader from './dicom-header.ts'
 import type * as PersonName from './person-name.ts'
 import type * as PixelDataDescription from './pixel-data-description.ts'
@@ -870,7 +872,111 @@ const writeStudy = (
 ): readonly { readonly fileName: string; readonly bytes: Uint8Array }[] =>
   fixture.files.map((file) => ({ fileName: file.fileName, bytes: writeDicom(file.tags) }))
 
+// ---------------------------------------------------------------------------
+// Elements spliced into a written file
+// ---------------------------------------------------------------------------
+
+/** One element written by hand: tag, VR and the value's text, or bytes for a sequence. */
+interface ExtraElement {
+  readonly tag: number
+  readonly vr: string
+  readonly value: string | Uint8Array
+  readonly undefinedLength?: boolean
+}
+
+/** The VRs PS3.5 Table 7.1-1 writes with two reserved bytes and a 32-bit length. */
+const LONG_VRS: ReadonlySet<string> = new Set([
+  'OB',
+  'OD',
+  'OF',
+  'OL',
+  'OV',
+  'OW',
+  'SQ',
+  'SV',
+  'UC',
+  'UN',
+  'UR',
+  'UT',
+  'UV',
+])
+
+/** An Explicit VR Little Endian element's bytes, a text value padded to even length. */
+const elementBytesOf = (element: ExtraElement): Uint8Array => {
+  const raw = typeof element.value === 'string' ? textEncoder.encode(element.value) : element.value
+  const value = new Uint8Array(raw.length + (raw.length % 2))
+  value.set(raw)
+  if (raw.length % 2 === 1) value[raw.length] = element.vr === 'UI' ? 0 : 0x20
+  const long = LONG_VRS.has(element.vr)
+  const header = long ? 12 : 8
+  const bytes = new Uint8Array(header + value.length)
+  const view = new DataView(bytes.buffer)
+  view.setUint16(0, element.tag >>> 16, true)
+  view.setUint16(2, element.tag & 0xffff, true)
+  bytes[4] = element.vr.charCodeAt(0)
+  bytes[5] = element.vr.charCodeAt(1)
+  const length = element.undefinedLength === true ? 0xffff_ffff : value.length
+  if (long) view.setUint32(8, length, true)
+  else view.setUint16(6, length, true)
+  bytes.set(value, header)
+  return bytes
+}
+
+/** `xGGGGEEEE` — `dicom-parser`'s key for a tag. */
+const parserKeyOf = (tag: number): string => `x${tag.toString(16).padStart(8, '0')}`
+
+/** Where a top-level element's header starts, from `dicom-parser`'s value offset. */
+const headerStartOf = (dataSet: DataSet, key: string): number => {
+  const element = dataSet.elements[key]
+  if (element === undefined) throw new Error(`no element ${key}`)
+  return element.dataOffset - (LONG_VRS.has(element.vr ?? '') ? 12 : 8)
+}
+
+/**
+ * `file` (Explicit VR Little Endian) with `extras` inserted before the first
+ * data set element whose tag follows each, located with `dicom-parser`: for
+ * the elements `writeDicom` cannot write (private groups, sequences, any
+ * attribute), without depending on a reader under test.
+ */
+const withElementsSpliced = (file: Uint8Array, extras: readonly ExtraElement[]): Uint8Array => {
+  const dataSet = parseDicom(file)
+  const existing = Object.keys(dataSet.elements)
+    .filter((key) => !key.startsWith('x0002'))
+    .map((key) => ({ tag: Number.parseInt(key.slice(1), 16), start: headerStartOf(dataSet, key) }))
+    .toSorted((left, right) => left.tag - right.tag)
+  const insertions = extras
+    .map((extra) => ({
+      at: existing.find((element) => element.tag > extra.tag)?.start ?? file.length,
+      tag: extra.tag,
+      bytes: elementBytesOf(extra),
+    }))
+    .toSorted((left, right) => left.at - right.at || left.tag - right.tag)
+  const parts: Uint8Array[] = []
+  let from = 0
+  for (const insertion of insertions) {
+    parts.push(file.slice(from, insertion.at), insertion.bytes)
+    from = insertion.at
+  }
+  parts.push(file.slice(from))
+  return concatBytes(parts)
+}
+
+/** A top-level element's value bytes, as `dicom-parser` locates them. */
+const valueBytesOf = (dataSet: DataSet, tag: number): Uint8Array | undefined => {
+  const element = dataSet.elements[parserKeyOf(tag)]
+  return element === undefined
+    ? undefined
+    : dataSet.byteArray.slice(element.dataOffset, element.dataOffset + element.length)
+}
+
+/** A top-level element's whole value as text — every value, backslashes kept — padding trimmed. */
+const textOf = (dataSet: DataSet, tag: number): string | undefined => {
+  const bytes = valueBytesOf(dataSet, tag)
+  return bytes === undefined ? undefined : new TextDecoder().decode(bytes).replace(/[\0 ]+$/, '')
+}
+
 export {
+  concatBytes,
   describePixelDataFixture,
   dicomDateArb,
   dicomStudyArb,
@@ -878,12 +984,18 @@ export {
   dicomTimeArb,
   dicomUidArb,
   type DicomTagMap,
+  elementBytesOf,
+  type ExtraElement,
   formatPersonName,
   headerToTagMap,
   nativePixelDataArb,
+  parserKeyOf,
   personNameArb,
   type PixelDataFixture,
   pixelDataFragmentLengthsArb,
+  textOf,
+  valueBytesOf,
+  withElementsSpliced,
   writeDicom,
   writeStudy,
 }

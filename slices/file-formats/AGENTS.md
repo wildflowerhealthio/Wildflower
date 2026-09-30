@@ -27,7 +27,7 @@ consumer slices.
   (non-React) `extractPositionedText` seam that fills the schema from PDF bytes
   via `pdfjs-dist`. Moved out of `pdf-anonymizer-react`. The one place PDF
   extraction is integrated, shared by the anonymizer and a future PDF importer.
-- **`dicom`** — pure DICOM Part 10 tag reader: `DicomHeader.tryFromDicomFile`
+- **`dicom`** — pure DICOM Part 10 tag reader and element-stream writer: `DicomHeader.tryFromDicomFile`
   wraps `dicom-parser` into a typed `DicomHeader.Type` of the tags the importer
   cares about (patient, study, series, instance, equipment modules) plus the
   Image Pixel module and a `PixelDataDescription.Type` of the (7FE0,0010)
@@ -43,6 +43,12 @@ consumer slices.
   derive from a value rather than reading a tag, so they are functions beside
   the header, not fields in it — and they live here, not in a view, because
   what the standard says a value means is not a presentation choice.
+  `Part10` is the production writer: `Part10.tryFromBytes` reads a file whose data
+  set is Explicit VR Little Endian (`TransferSyntax.encodesExplicitVrLittleEndianDataSet`)
+  into its preamble, file meta group and top-level `DataElement.Type`s, their
+  values kept as raw bytes (sequences and encapsulated Pixel Data walked only
+  to find their end), and `Part10.toBytes` writes them back, recounting the
+  file meta group length; an element left alone writes back byte for byte.
   `effect` + `dicom-parser` only. The `test-helpers` subpath exports
   `writeDicom` (a minimal explicit-VR little-endian writer, which also emits
   native or encapsulated Pixel Data) and fast-check arbitraries for
@@ -53,7 +59,9 @@ consumer slices.
   oracle a property asserts against. Its `SeriesNumber`s and `InstanceNumber`s
   are a permutation rather than the index order, so "ordered by number" and
   "ordered by UID" are different sequences and a consumer that orders by the
-  wrong one fails.
+  wrong one fails. `withElementsSpliced` adds the elements `writeDicom` cannot
+  write (private groups, sequences, any attribute) at their place in tag
+  order, located with `dicom-parser` rather than `Part10`.
 - **[`dicom-react`](./dicom-react/AGENTS.md)** — browser-side DICOM rendering:
   `DicomFilePreview` (identifying patient and study tags, plus an Encoding
   block, under a cornerstone-rendered image pane) and the `renderInstance`

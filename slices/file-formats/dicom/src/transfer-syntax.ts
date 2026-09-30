@@ -47,4 +47,25 @@ const NAMES: Readonly<Record<string, string>> = {
 const name = (uid: string): string | undefined =>
   Object.hasOwn(NAMES, uid) ? NAMES[uid] : undefined
 
-export { name }
+/**
+ * The two JPIP Referenced Deflate syntaxes: under `1.2.840.10008.1.2.4.` like
+ * the encapsulated ones, but their data set is deflated.
+ */
+const DEFLATED_JPIP_UIDS: ReadonlySet<string> = new Set([
+  '1.2.840.10008.1.2.4.95',
+  '1.2.840.10008.1.2.4.205',
+])
+
+/**
+ * Whether a transfer syntax writes its data set as Explicit VR Little Endian:
+ * that syntax itself, and every encapsulated one — the JPEG family, JPEG-LS,
+ * JPEG 2000, HTJ2K, MPEG, HEVC (`1.2.840.10008.1.2.4.*`, less the deflated
+ * JPIP ones) and RLE (`1.2.840.10008.1.2.5`), which differ from it only in how
+ * Pixel Data is carried.
+ */
+const encodesExplicitVrLittleEndianDataSet = (uid: string): boolean =>
+  uid === '1.2.840.10008.1.2.1' ||
+  (uid.startsWith('1.2.840.10008.1.2.4.') && !DEFLATED_JPIP_UIDS.has(uid)) ||
+  uid === '1.2.840.10008.1.2.5'
+
+export { encodesExplicitVrLittleEndianDataSet, name }
