@@ -1,0 +1,19 @@
+{
+  "name": "watch-lifts-pkjs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The WatchLifts watchapp's PebbleKit JS, in TypeScript: the glue from Pebble's events, AppMessage and localStorage to watch-lifts-core, bundled to ES5 as ../src/pkjs/index.js for the Pebble SDK.",
+  "type": "module",
+  "scripts": {
+    "build": "vp pack",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "pebble-pkjs": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "watch-lifts-core": "workspace:*"
+  }
+}

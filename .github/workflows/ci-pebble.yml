@@ -49,12 +49,12 @@ jobs:
         run: vp run -F watch-lifts -F fhir-sync-pebble fmt:c:check
 
       # The C builds with the host `cc` under ASan and UBSan; no SDK needed.
-      # watch-lifts-test covers watch-lifts; fhir-sync-pebble-test and
-      # fhir-sync-pebble-pkjs cover fhir-sync-pebble's C and PebbleKit JS;
-      # pebble-pkjs and pebble-configuration, the shared PebbleKit JS tooling
-      # and hand-off.
+      # watch-lifts-test and watch-lifts-pkjs cover watch-lifts' C and
+      # PebbleKit JS; fhir-sync-pebble-test and fhir-sync-pebble-pkjs cover
+      # fhir-sync-pebble's; pebble-pkjs and pebble-configuration, the shared
+      # PebbleKit JS tooling and hand-off.
       - name: Run host-side tests
-        run: vp run -F watch-lifts-test -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs -F pebble-pkjs -F pebble-configuration test
+        run: vp run -F watch-lifts-test -F watch-lifts-pkjs -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs -F pebble-pkjs -F pebble-configuration test
 
   # One job for `pebble build` of both watch apps: the SDK is installed (or
   # restored) ONCE and both .pbw files come from it, each uploaded as an
@@ -73,7 +73,7 @@ jobs:
         with:
           cache: true
 
-      # fhir-sync-pebble's wscript runs `vp pack` in pkjs/ first, through the
+      # Both apps' wscripts run `vp pack` in pkjs/ first, through the
       # node_modules/.bin/vp that `vp install` puts there.
       - name: Install dependencies
         run: vp install

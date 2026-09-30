@@ -4,6 +4,7 @@
 # Feel free to customize this to your needs.
 #
 import os.path
+import sys
 
 top = '.'
 out = 'build'
@@ -25,6 +26,12 @@ def configure(ctx):
 
 def build(ctx):
     ctx.load('pebble_sdk')
+
+    # The PebbleKit JS is TypeScript in pkjs/; pebble-pkjs's waf helpers bundle
+    # it to src/pkjs/index.js, which the bundle step below reads.
+    sys.path.insert(0, ctx.path.find_dir('../../global/pebble/pebble-pkjs/waf').abspath())
+    import pebble_pkjs
+    pebble_pkjs.bundle_pkjs(ctx)
 
     build_worker = os.path.exists('worker_src')
     binaries = []

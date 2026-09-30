@@ -17,6 +17,7 @@
     "sdkVersion": "3",
     "enableMultiJS": true,
     "capabilities": [
+      "configurable",
       "health"
     ],
     "targetPlatforms": [
@@ -26,7 +27,7 @@
       "watchface": false
     },
     "messageKeys": [
-      "dummy"
+      "Weights"
     ],
     "resources": {
       "media": []

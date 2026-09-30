@@ -58,8 +58,17 @@ static void prv_window_unload(Window *window) {
   window_destroy(window);
 }
 
-void select_exercise_window_push(void) {
+void select_exercise_window_reload(Window *window) {
+  SelectExerciseWindow *select_exercise_window = window_get_user_data(window);
+  if (select_exercise_window->exercise_list_layer != NULL) {
+    exercise_list_layer_reload(select_exercise_window->exercise_list_layer);
+  }
+}
+
+Window *select_exercise_window_push(void) {
   SelectExerciseWindow *select_exercise_window = malloc(sizeof(SelectExerciseWindow));
+  // The layers are created when the window loads.
+  *select_exercise_window = (SelectExerciseWindow){ 0 };
   Window *window = window_create();
   window_set_user_data(window, select_exercise_window);
   window_set_window_handlers(
@@ -70,4 +79,5 @@ void select_exercise_window_push(void) {
     }
   );
   window_stack_push(window, true);
+  return window;
 }
