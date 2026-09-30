@@ -81,6 +81,14 @@ generator package per source on top of it.
   `deidentifiedFileArbitrary`. See its
   [AGENTS.md](./synthetic-data-dicom/AGENTS.md).
 
+- **`synthetic-data-core`** (pure) — the data set assembler, over any
+  generator's importer output: `DataSetLayout` (a file per resource under
+  `fhir/<ResourceType>/<id>.json`, each source file an importer read under
+  `har/` or `dicom/` linked from its `DocumentReference`, and the reading half
+  that carries it inline again), `DataSetManifest` (`index.json`, each
+  person's files) and `DataSet.assemble` (every file to write, in path
+  order). See its [AGENTS.md](./synthetic-data-core/AGENTS.md).
+
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's
 account on that source, and writes the source's own wire shape, spelled from
