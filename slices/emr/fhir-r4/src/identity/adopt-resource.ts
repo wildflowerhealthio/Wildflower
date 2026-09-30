@@ -4,17 +4,21 @@ import type {
   IdentifierType,
   ReferenceType,
 } from '../data-types/complex/identifier-and-reference.ts'
-import type * as Binary from '../resources/binary/binary.ts'
-import type * as DiagnosticReport from '../resources/diagnostic-report/diagnostic-report.ts'
-import type * as DocumentReference from '../resources/document-reference/document-reference.ts'
-import type { FhirResource } from '../resources/fhir-resource.ts'
-import type * as ImagingStudy from '../resources/imaging-study/imaging-study.ts'
-import type * as MedicationDispense from '../resources/medication-dispense/medication-dispense.ts'
-import type * as MedicationRequest from '../resources/medication-request/medication-request.ts'
-import type * as Observation from '../resources/observation/observation.ts'
-import type * as Patient from '../resources/patient/patient.ts'
-import type * as Practitioner from '../resources/practitioner/practitioner.ts'
-import type * as ServiceRequest from '../resources/service-request/service-request.ts'
+import type {
+  Binary,
+  CarePlan,
+  DiagnosticReport,
+  DocumentReference,
+  FhirResource,
+  Goal,
+  ImagingStudy,
+  MedicationDispense,
+  MedicationRequest,
+  Observation,
+  Patient,
+  Practitioner,
+  ServiceRequest,
+} from '../resources/index.ts'
 import { localResourceId } from './local-resource-id.ts'
 
 /**
@@ -102,7 +106,7 @@ const sourceIdentifier = (prepared: PreparedSource, value: string): IdentifierTy
  * Rewrite one `Reference` so it names the local id of the resource it points at.
  *
  * @remarks
- * Rewrites apply to **any** resource-type token, not only the eight types this
+ * Rewrites apply to **any** resource-type token, not only the types this
  * package stores. The derivation is deterministic, so a `Practitioner/x` link
  * resolves retroactively if that type is ever imported from the same source, and
  * dangles exactly as it did before if it never is — with the original id still
@@ -146,12 +150,13 @@ const rewriteNullable = (
 ): ReferenceType | null => (reference === null ? null : rewrite(reference))
 
 /** An `Annotation`'s reference-bearing half, named structurally. */
-interface Annotated {
-  readonly note: readonly { readonly authorReference: ReferenceType | null }[]
+interface AnnotationAuthor {
+  readonly authorReference: ReferenceType | null
 }
 
 /**
- * Rewrite the `authorReference` of every note on a resource that carries them.
+ * Rewrite the `authorReference` of every annotation in a list — a resource's
+ * `note`, or `CarePlan.activity.progress`.
  *
  * @remarks
  * `Annotation.author[x]` is a `Reference` when it is not the `authorString`
@@ -159,13 +164,13 @@ interface Annotated {
  * one level down inside an array, which is why a hand audit missed it and the
  * schema-derived coverage property in `adopt-resource.test.ts` did not.
  */
-const rewriteNotes = <TResource extends Annotated>(
+const rewriteAnnotationAuthors = <TAnnotation extends AnnotationAuthor>(
   rewrite: (reference: ReferenceType) => ReferenceType,
-  resource: TResource
-): TResource['note'] =>
-  resource.note.map((note) => ({
-    ...note,
-    authorReference: rewriteNullable(rewrite, note.authorReference),
+  annotations: readonly TAnnotation[]
+): TAnnotation[] =>
+  annotations.map((annotation) => ({
+    ...annotation,
+    authorReference: rewriteNullable(rewrite, annotation.authorReference),
   }))
 
 const adoptBinary = (
@@ -211,7 +216,7 @@ const adoptObservation = (
     ...observation,
     id: localResourceId(prepared.source.system, 'Observation', originalId),
     identifier: [sourceIdentifier(prepared, originalId), ...observation.identifier],
-    note: rewriteNotes(rewrite, observation),
+    note: rewriteAnnotationAuthors(rewrite, observation.note),
     subject: rewriteNullable(rewrite, observation.subject),
     encounter: rewriteNullable(rewrite, observation.encounter),
     device: rewriteNullable(rewrite, observation.device),
@@ -235,7 +240,7 @@ const adoptMedicationRequest = (
     ...request,
     id: localResourceId(prepared.source.system, 'MedicationRequest', originalId),
     identifier: [sourceIdentifier(prepared, originalId), ...request.identifier],
-    note: rewriteNotes(rewrite, request),
+    note: rewriteAnnotationAuthors(rewrite, request.note),
     subject: rewrite(request.subject),
     encounter: rewriteNullable(rewrite, request.encounter),
     requester: rewriteNullable(rewrite, request.requester),
@@ -270,7 +275,7 @@ const adoptMedicationDispense = (
     ...dispense,
     id: localResourceId(prepared.source.system, 'MedicationDispense', originalId),
     identifier: [sourceIdentifier(prepared, originalId), ...dispense.identifier],
-    note: rewriteNotes(rewrite, dispense),
+    note: rewriteAnnotationAuthors(rewrite, dispense.note),
     subject: rewriteNullable(rewrite, dispense.subject),
     context: rewriteNullable(rewrite, dispense.context),
     location: rewriteNullable(rewrite, dispense.location),
@@ -418,6 +423,66 @@ const adoptImagingStudy = (
   }
 }
 
+const adoptCarePlan = (
+  prepared: PreparedSource,
+  originalId: string,
+  plan: typeof CarePlan.Schema.Type
+): typeof CarePlan.Schema.Type => {
+  const rewrite = rewriteReference(prepared)
+  return {
+    ...plan,
+    id: localResourceId(prepared.source.system, 'CarePlan', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...plan.identifier],
+    note: rewriteAnnotationAuthors(rewrite, plan.note),
+    subject: rewrite(plan.subject),
+    encounter: rewriteNullable(rewrite, plan.encounter),
+    author: rewriteNullable(rewrite, plan.author),
+    basedOn: plan.basedOn.map(rewrite),
+    replaces: plan.replaces.map(rewrite),
+    partOf: plan.partOf.map(rewrite),
+    contributor: plan.contributor.map(rewrite),
+    careTeam: plan.careTeam.map(rewrite),
+    addresses: plan.addresses.map(rewrite),
+    supportingInfo: plan.supportingInfo.map(rewrite),
+    goal: plan.goal.map(rewrite),
+    activity: plan.activity.map((activity) => ({
+      ...activity,
+      outcomeReference: activity.outcomeReference.map(rewrite),
+      progress: rewriteAnnotationAuthors(rewrite, activity.progress),
+      reference: rewriteNullable(rewrite, activity.reference),
+      detail:
+        activity.detail === null
+          ? null
+          : {
+              ...activity.detail,
+              reasonReference: activity.detail.reasonReference.map(rewrite),
+              goal: activity.detail.goal.map(rewrite),
+              location: rewriteNullable(rewrite, activity.detail.location),
+              performer: activity.detail.performer.map(rewrite),
+              productReference: rewriteNullable(rewrite, activity.detail.productReference),
+            },
+    })),
+  }
+}
+
+const adoptGoal = (
+  prepared: PreparedSource,
+  originalId: string,
+  goal: typeof Goal.Schema.Type
+): typeof Goal.Schema.Type => {
+  const rewrite = rewriteReference(prepared)
+  return {
+    ...goal,
+    id: localResourceId(prepared.source.system, 'Goal', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...goal.identifier],
+    note: rewriteAnnotationAuthors(rewrite, goal.note),
+    subject: rewrite(goal.subject),
+    expressedBy: rewriteNullable(rewrite, goal.expressedBy),
+    addresses: goal.addresses.map(rewrite),
+    outcomeReference: goal.outcomeReference.map(rewrite),
+  }
+}
+
 /**
  * Re-key a resource under this source's namespace: derive its local id, record
  * the source's own id as `identifier[0]`, and rewrite its references so they
@@ -485,6 +550,10 @@ const adoptResource = (source: SourceIdentity) => {
       Match.discriminator('resourceType')('ImagingStudy', (study) =>
         adoptImagingStudy(prepared, originalId, study)
       ),
+      Match.discriminator('resourceType')('CarePlan', (plan) =>
+        adoptCarePlan(prepared, originalId, plan)
+      ),
+      Match.discriminator('resourceType')('Goal', (goal) => adoptGoal(prepared, originalId, goal)),
       Match.exhaustive
     )
   }

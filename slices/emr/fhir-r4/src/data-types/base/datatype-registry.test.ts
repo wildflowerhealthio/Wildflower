@@ -1,4 +1,6 @@
-import { Effect, Schema } from 'effect'
+import { Arbitrary, Effect, Schema } from 'effect'
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 // side-effect: the data-types barrel re-exports every complex datatype
@@ -7,6 +9,7 @@ import '../index.ts'
 import * as Extension from '../special-purpose/extension.ts'
 import { baseDatatypes, registeredNames, resolveDatatypeSchema } from './datatype-registry.ts'
 import * as Datatype from './datatype.ts'
+import { DateSchema } from './primitives.ts'
 
 describe('fhir-r4 datatype registry', () => {
   test.each(registeredNames)('%s is registered after barrel load', (name) => {
@@ -77,4 +80,43 @@ describe('fhir-r4 datatype registry', () => {
       expect(() => Schema.decodeSync(Extension.Schema)(positiveIntExtension(1.5))).toThrow()
     })
   })
+
+  describe('date', () => {
+    const dateExtension = (
+      value: string
+    ): { readonly url: string; readonly valueDate: string } => ({
+      url: 'http://example.org/ext/when',
+      valueDate: value,
+    })
+
+    // A FHIR `date` is a wire string at one of three precisions; decoding to a
+    // JS `Date` would re-encode it as a `dateTime` and invent the missing parts.
+    test.each(['2026-01-15', '2026-01', '2026'])(
+      'round-trips %s byte for byte, keeping its precision',
+      (wire) => {
+        const decoded = Schema.decodeSync(Extension.Schema)(dateExtension(wire))
+        expect(Schema.encodeSync(Extension.Schema)(decoded)).toMatchObject({ valueDate: wire })
+      }
+    )
+
+    test.each(['2026-1-5', '20260115', '2026-01-15T00:00:00Z', '0000', '2026-13'])(
+      'rejects %s, which is not a FHIR date',
+      (wire) => {
+        expect(() => Schema.decodeSync(Extension.Schema)(dateExtension(wire))).toThrow()
+      }
+    )
+
+    test('property: every generated date matches the FHIR date grammar', () => {
+      fc.assert(
+        fc.property(Arbitrary.make(DateSchema), (date) => {
+          expect(date).toMatch(FHIR_DATE)
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+  })
 })
+
+// The FHIR R4 `date` regex, verbatim from the spec, anchored.
+const FHIR_DATE =
+  /^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1]))?)?$/

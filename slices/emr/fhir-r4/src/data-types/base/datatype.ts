@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { IdSchema, InstantSchema, TimeSchema, UriSchema } from './primitives.ts'
+import { DateSchema, IdSchema, InstantSchema, TimeSchema, UriSchema } from './primitives.ts'
 
 /**
  * Base names of FHIR R4 data types, used in choice-element field
@@ -121,7 +121,7 @@ const names = [
 const baseSchemas = {
   boolean: Schema.Boolean,
   canonical: UriSchema,
-  date: Schema.Date,
+  date: DateSchema,
   dateTime: Schema.DateTimeUtc,
   decimal: Schema.Finite,
   id: IdSchema,

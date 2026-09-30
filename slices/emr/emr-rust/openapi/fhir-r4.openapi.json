@@ -15589,6 +15589,3187 @@
         }
       }
     },
+    "/fhir-r4/CarePlan": {
+      "get": {
+        "tags": [
+          "CarePlan"
+        ],
+        "operationId": "CarePlan.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "on-hold",
+                "revoked",
+                "completed",
+                "entered-in-error",
+                "unknown"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "intent",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "proposal",
+                "plan",
+                "order",
+                "option"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "CarePlan"
+        ],
+        "operationId": "CarePlan.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "CarePlan",
+                  "description": "Describes the intention of how one or more practitioners intend to deliver care for a particular patient, group or community for a period of time, possibly limited to care for a specific condition or set of conditions.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "CarePlan"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Business identifiers assigned to this care plan by the performer or other systems."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to a FHIR-defined protocol, guideline, questionnaire or other definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to an externally maintained protocol, guideline, questionnaire or other definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A care plan that is fulfilled in whole or in part by this care plan."
+                    },
+                    "replaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Completed or terminated care plan whose function is taken by this new care plan."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A larger care plan of which this particular care plan is a component or step."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "on-hold",
+                        "revoked",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "Indicates whether the plan is currently being acted upon."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "order",
+                        "option"
+                      ],
+                      "description": "Indicates the level of authority/intentionality associated with the care plan."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies what \"kind\" of plan this is to support differentiation between plans."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Human-friendly name for the care plan."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "A description of the scope and nature of the plan."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Identifies the patient or group whose intended care is described by the plan."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The Encounter during which this CarePlan was created."
+                    },
+                    "period": {
+                      "type": "object",
+                      "description": "Indicates when the plan did (or is intended to) come into effect and end."
+                    },
+                    "created": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Represents when this particular CarePlan record was created in the system."
+                    },
+                    "author": {
+                      "type": "object",
+                      "description": "The individual, organization or device primarily responsible for the plan."
+                    },
+                    "contributor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the individual(s) or organization who provided the contents of the care plan."
+                    },
+                    "careTeam": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies all people and organizations who are expected to be involved in the care."
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the conditions/problems/concerns/diagnoses/etc. this plan addresses."
+                    },
+                    "supportingInfo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Other resources that provide context for the plan."
+                    },
+                    "goal": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Describes the intended objective(s) of carrying out the care plan."
+                    },
+                    "activity": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies a planned action to occur as part of the plan."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "General notes about the care plan not covered elsewhere."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "CarePlan",
+                "description": "Describes the intention of how one or more practitioners intend to deliver care for a particular patient, group or community for a period of time, possibly limited to care for a specific condition or set of conditions.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "intent",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "CarePlan"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Business identifiers assigned to this care plan by the performer or other systems."
+                  },
+                  "instantiatesCanonical": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "The URL pointing to a FHIR-defined protocol, guideline, questionnaire or other definition."
+                  },
+                  "instantiatesUri": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "The URL pointing to an externally maintained protocol, guideline, questionnaire or other definition."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A care plan that is fulfilled in whole or in part by this care plan."
+                  },
+                  "replaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Completed or terminated care plan whose function is taken by this new care plan."
+                  },
+                  "partOf": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A larger care plan of which this particular care plan is a component or step."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "on-hold",
+                      "revoked",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "Indicates whether the plan is currently being acted upon."
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "proposal",
+                      "plan",
+                      "order",
+                      "option"
+                    ],
+                    "description": "Indicates the level of authority/intentionality associated with the care plan."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies what \"kind\" of plan this is to support differentiation between plans."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Human-friendly name for the care plan."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "A description of the scope and nature of the plan."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "Identifies the patient or group whose intended care is described by the plan."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "The Encounter during which this CarePlan was created."
+                  },
+                  "period": {
+                    "type": "object",
+                    "description": "Indicates when the plan did (or is intended to) come into effect and end."
+                  },
+                  "created": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Represents when this particular CarePlan record was created in the system."
+                  },
+                  "author": {
+                    "type": "object",
+                    "description": "The individual, organization or device primarily responsible for the plan."
+                  },
+                  "contributor": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies the individual(s) or organization who provided the contents of the care plan."
+                  },
+                  "careTeam": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies all people and organizations who are expected to be involved in the care."
+                  },
+                  "addresses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies the conditions/problems/concerns/diagnoses/etc. this plan addresses."
+                  },
+                  "supportingInfo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Other resources that provide context for the plan."
+                  },
+                  "goal": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Describes the intended objective(s) of carrying out the care plan."
+                  },
+                  "activity": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies a planned action to occur as part of the plan."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "General notes about the care plan not covered elsewhere."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/CarePlan/{id}": {
+      "get": {
+        "tags": [
+          "CarePlan"
+        ],
+        "operationId": "CarePlan.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "CarePlan",
+                  "description": "Describes the intention of how one or more practitioners intend to deliver care for a particular patient, group or community for a period of time, possibly limited to care for a specific condition or set of conditions.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "CarePlan"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Business identifiers assigned to this care plan by the performer or other systems."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to a FHIR-defined protocol, guideline, questionnaire or other definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to an externally maintained protocol, guideline, questionnaire or other definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A care plan that is fulfilled in whole or in part by this care plan."
+                    },
+                    "replaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Completed or terminated care plan whose function is taken by this new care plan."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A larger care plan of which this particular care plan is a component or step."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "on-hold",
+                        "revoked",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "Indicates whether the plan is currently being acted upon."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "order",
+                        "option"
+                      ],
+                      "description": "Indicates the level of authority/intentionality associated with the care plan."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies what \"kind\" of plan this is to support differentiation between plans."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Human-friendly name for the care plan."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "A description of the scope and nature of the plan."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Identifies the patient or group whose intended care is described by the plan."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The Encounter during which this CarePlan was created."
+                    },
+                    "period": {
+                      "type": "object",
+                      "description": "Indicates when the plan did (or is intended to) come into effect and end."
+                    },
+                    "created": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Represents when this particular CarePlan record was created in the system."
+                    },
+                    "author": {
+                      "type": "object",
+                      "description": "The individual, organization or device primarily responsible for the plan."
+                    },
+                    "contributor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the individual(s) or organization who provided the contents of the care plan."
+                    },
+                    "careTeam": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies all people and organizations who are expected to be involved in the care."
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the conditions/problems/concerns/diagnoses/etc. this plan addresses."
+                    },
+                    "supportingInfo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Other resources that provide context for the plan."
+                    },
+                    "goal": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Describes the intended objective(s) of carrying out the care plan."
+                    },
+                    "activity": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies a planned action to occur as part of the plan."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "General notes about the care plan not covered elsewhere."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "CarePlan"
+        ],
+        "operationId": "CarePlan.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "CarePlan",
+                  "description": "Describes the intention of how one or more practitioners intend to deliver care for a particular patient, group or community for a period of time, possibly limited to care for a specific condition or set of conditions.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "CarePlan"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Business identifiers assigned to this care plan by the performer or other systems."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to a FHIR-defined protocol, guideline, questionnaire or other definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to an externally maintained protocol, guideline, questionnaire or other definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A care plan that is fulfilled in whole or in part by this care plan."
+                    },
+                    "replaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Completed or terminated care plan whose function is taken by this new care plan."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A larger care plan of which this particular care plan is a component or step."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "on-hold",
+                        "revoked",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "Indicates whether the plan is currently being acted upon."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "order",
+                        "option"
+                      ],
+                      "description": "Indicates the level of authority/intentionality associated with the care plan."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies what \"kind\" of plan this is to support differentiation between plans."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Human-friendly name for the care plan."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "A description of the scope and nature of the plan."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Identifies the patient or group whose intended care is described by the plan."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The Encounter during which this CarePlan was created."
+                    },
+                    "period": {
+                      "type": "object",
+                      "description": "Indicates when the plan did (or is intended to) come into effect and end."
+                    },
+                    "created": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Represents when this particular CarePlan record was created in the system."
+                    },
+                    "author": {
+                      "type": "object",
+                      "description": "The individual, organization or device primarily responsible for the plan."
+                    },
+                    "contributor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the individual(s) or organization who provided the contents of the care plan."
+                    },
+                    "careTeam": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies all people and organizations who are expected to be involved in the care."
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the conditions/problems/concerns/diagnoses/etc. this plan addresses."
+                    },
+                    "supportingInfo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Other resources that provide context for the plan."
+                    },
+                    "goal": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Describes the intended objective(s) of carrying out the care plan."
+                    },
+                    "activity": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies a planned action to occur as part of the plan."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "General notes about the care plan not covered elsewhere."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "CarePlan",
+                  "description": "Describes the intention of how one or more practitioners intend to deliver care for a particular patient, group or community for a period of time, possibly limited to care for a specific condition or set of conditions.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "CarePlan"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Business identifiers assigned to this care plan by the performer or other systems."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to a FHIR-defined protocol, guideline, questionnaire or other definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to an externally maintained protocol, guideline, questionnaire or other definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A care plan that is fulfilled in whole or in part by this care plan."
+                    },
+                    "replaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Completed or terminated care plan whose function is taken by this new care plan."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A larger care plan of which this particular care plan is a component or step."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "on-hold",
+                        "revoked",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "Indicates whether the plan is currently being acted upon."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "order",
+                        "option"
+                      ],
+                      "description": "Indicates the level of authority/intentionality associated with the care plan."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies what \"kind\" of plan this is to support differentiation between plans."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Human-friendly name for the care plan."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "A description of the scope and nature of the plan."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Identifies the patient or group whose intended care is described by the plan."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The Encounter during which this CarePlan was created."
+                    },
+                    "period": {
+                      "type": "object",
+                      "description": "Indicates when the plan did (or is intended to) come into effect and end."
+                    },
+                    "created": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Represents when this particular CarePlan record was created in the system."
+                    },
+                    "author": {
+                      "type": "object",
+                      "description": "The individual, organization or device primarily responsible for the plan."
+                    },
+                    "contributor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the individual(s) or organization who provided the contents of the care plan."
+                    },
+                    "careTeam": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies all people and organizations who are expected to be involved in the care."
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the conditions/problems/concerns/diagnoses/etc. this plan addresses."
+                    },
+                    "supportingInfo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Other resources that provide context for the plan."
+                    },
+                    "goal": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Describes the intended objective(s) of carrying out the care plan."
+                    },
+                    "activity": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies a planned action to occur as part of the plan."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "General notes about the care plan not covered elsewhere."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "CarePlan",
+                "description": "Describes the intention of how one or more practitioners intend to deliver care for a particular patient, group or community for a period of time, possibly limited to care for a specific condition or set of conditions.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "intent",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "CarePlan"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Business identifiers assigned to this care plan by the performer or other systems."
+                  },
+                  "instantiatesCanonical": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "The URL pointing to a FHIR-defined protocol, guideline, questionnaire or other definition."
+                  },
+                  "instantiatesUri": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "The URL pointing to an externally maintained protocol, guideline, questionnaire or other definition."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A care plan that is fulfilled in whole or in part by this care plan."
+                  },
+                  "replaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Completed or terminated care plan whose function is taken by this new care plan."
+                  },
+                  "partOf": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A larger care plan of which this particular care plan is a component or step."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "on-hold",
+                      "revoked",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "Indicates whether the plan is currently being acted upon."
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "proposal",
+                      "plan",
+                      "order",
+                      "option"
+                    ],
+                    "description": "Indicates the level of authority/intentionality associated with the care plan."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies what \"kind\" of plan this is to support differentiation between plans."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Human-friendly name for the care plan."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "A description of the scope and nature of the plan."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "Identifies the patient or group whose intended care is described by the plan."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "The Encounter during which this CarePlan was created."
+                  },
+                  "period": {
+                    "type": "object",
+                    "description": "Indicates when the plan did (or is intended to) come into effect and end."
+                  },
+                  "created": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Represents when this particular CarePlan record was created in the system."
+                  },
+                  "author": {
+                    "type": "object",
+                    "description": "The individual, organization or device primarily responsible for the plan."
+                  },
+                  "contributor": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies the individual(s) or organization who provided the contents of the care plan."
+                  },
+                  "careTeam": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies all people and organizations who are expected to be involved in the care."
+                  },
+                  "addresses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies the conditions/problems/concerns/diagnoses/etc. this plan addresses."
+                  },
+                  "supportingInfo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Other resources that provide context for the plan."
+                  },
+                  "goal": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Describes the intended objective(s) of carrying out the care plan."
+                  },
+                  "activity": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies a planned action to occur as part of the plan."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "General notes about the care plan not covered elsewhere."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/CarePlan/_search": {
+      "post": {
+        "tags": [
+          "CarePlan"
+        ],
+        "operationId": "CarePlan.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "on-hold",
+                      "revoked",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ]
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "proposal",
+                      "plan",
+                      "order",
+                      "option"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "patient": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "$ref": "#/components/schemas/FhirDateSearch"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Goal": {
+      "get": {
+        "tags": [
+          "Goal"
+        ],
+        "operationId": "Goal.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "lifecycle-status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "planned",
+                "accepted",
+                "active",
+                "on-hold",
+                "completed",
+                "cancelled",
+                "entered-in-error",
+                "rejected"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Goal"
+        ],
+        "operationId": "Goal.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Goal",
+                  "description": "Describes the intended objective(s) for a patient, group or organization care, for example, weight loss, restoring an activity of daily living, obtaining herd immunity via immunization, meeting a process improvement objective, etc.",
+                  "required": [
+                    "resourceType",
+                    "lifecycleStatus",
+                    "description",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Goal"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Business identifiers assigned to this goal by the performer or other systems."
+                    },
+                    "lifecycleStatus": {
+                      "type": "string",
+                      "enum": [
+                        "proposed",
+                        "planned",
+                        "accepted",
+                        "active",
+                        "on-hold",
+                        "completed",
+                        "cancelled",
+                        "entered-in-error",
+                        "rejected"
+                      ],
+                      "description": "The state of the goal throughout its lifecycle."
+                    },
+                    "achievementStatus": {
+                      "type": "object",
+                      "description": "Describes the progression, or lack thereof, towards the goal against the target."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates a category the goal falls within."
+                    },
+                    "priority": {
+                      "type": "object",
+                      "description": "Identifies the mutually agreed level of importance associated with reaching the goal."
+                    },
+                    "description": {
+                      "type": "object",
+                      "description": "Human-readable and/or coded description of a specific desired objective of care."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Identifies the patient, group or organization for whom the goal is being established."
+                    },
+                    "startDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "startCodeableConcept": {
+                      "type": "object"
+                    },
+                    "target": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates what should be done by when."
+                    },
+                    "statusDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "Identifies when the current status was set."
+                    },
+                    "statusReason": {
+                      "type": "string",
+                      "description": "Captures the reason for the current status."
+                    },
+                    "expressedBy": {
+                      "type": "object",
+                      "description": "Indicates whose goal this is — patient goal, practitioner goal, etc."
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The identified conditions and other health record elements that are intended to be addressed by the goal."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any comments related to the goal."
+                    },
+                    "outcomeCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the change (or lack of change) at the point when the status of the goal is assessed."
+                    },
+                    "outcomeReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details of what has happened as a result of the goal being achieved or not."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Goal",
+                "description": "Describes the intended objective(s) for a patient, group or organization care, for example, weight loss, restoring an activity of daily living, obtaining herd immunity via immunization, meeting a process improvement objective, etc.",
+                "required": [
+                  "resourceType",
+                  "lifecycleStatus",
+                  "description",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Goal"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Business identifiers assigned to this goal by the performer or other systems."
+                  },
+                  "lifecycleStatus": {
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "planned",
+                      "accepted",
+                      "active",
+                      "on-hold",
+                      "completed",
+                      "cancelled",
+                      "entered-in-error",
+                      "rejected"
+                    ],
+                    "description": "The state of the goal throughout its lifecycle."
+                  },
+                  "achievementStatus": {
+                    "type": "object",
+                    "description": "Describes the progression, or lack thereof, towards the goal against the target."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Indicates a category the goal falls within."
+                  },
+                  "priority": {
+                    "type": "object",
+                    "description": "Identifies the mutually agreed level of importance associated with reaching the goal."
+                  },
+                  "description": {
+                    "type": "object",
+                    "description": "Human-readable and/or coded description of a specific desired objective of care."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "Identifies the patient, group or organization for whom the goal is being established."
+                  },
+                  "startDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "startCodeableConcept": {
+                    "type": "object"
+                  },
+                  "target": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Indicates what should be done by when."
+                  },
+                  "statusDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Identifies when the current status was set."
+                  },
+                  "statusReason": {
+                    "type": "string",
+                    "description": "Captures the reason for the current status."
+                  },
+                  "expressedBy": {
+                    "type": "object",
+                    "description": "Indicates whose goal this is — patient goal, practitioner goal, etc."
+                  },
+                  "addresses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The identified conditions and other health record elements that are intended to be addressed by the goal."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Any comments related to the goal."
+                  },
+                  "outcomeCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies the change (or lack of change) at the point when the status of the goal is assessed."
+                  },
+                  "outcomeReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Details of what has happened as a result of the goal being achieved or not."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Goal/{id}": {
+      "get": {
+        "tags": [
+          "Goal"
+        ],
+        "operationId": "Goal.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Goal",
+                  "description": "Describes the intended objective(s) for a patient, group or organization care, for example, weight loss, restoring an activity of daily living, obtaining herd immunity via immunization, meeting a process improvement objective, etc.",
+                  "required": [
+                    "resourceType",
+                    "lifecycleStatus",
+                    "description",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Goal"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Business identifiers assigned to this goal by the performer or other systems."
+                    },
+                    "lifecycleStatus": {
+                      "type": "string",
+                      "enum": [
+                        "proposed",
+                        "planned",
+                        "accepted",
+                        "active",
+                        "on-hold",
+                        "completed",
+                        "cancelled",
+                        "entered-in-error",
+                        "rejected"
+                      ],
+                      "description": "The state of the goal throughout its lifecycle."
+                    },
+                    "achievementStatus": {
+                      "type": "object",
+                      "description": "Describes the progression, or lack thereof, towards the goal against the target."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates a category the goal falls within."
+                    },
+                    "priority": {
+                      "type": "object",
+                      "description": "Identifies the mutually agreed level of importance associated with reaching the goal."
+                    },
+                    "description": {
+                      "type": "object",
+                      "description": "Human-readable and/or coded description of a specific desired objective of care."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Identifies the patient, group or organization for whom the goal is being established."
+                    },
+                    "startDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "startCodeableConcept": {
+                      "type": "object"
+                    },
+                    "target": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates what should be done by when."
+                    },
+                    "statusDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "Identifies when the current status was set."
+                    },
+                    "statusReason": {
+                      "type": "string",
+                      "description": "Captures the reason for the current status."
+                    },
+                    "expressedBy": {
+                      "type": "object",
+                      "description": "Indicates whose goal this is — patient goal, practitioner goal, etc."
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The identified conditions and other health record elements that are intended to be addressed by the goal."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any comments related to the goal."
+                    },
+                    "outcomeCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the change (or lack of change) at the point when the status of the goal is assessed."
+                    },
+                    "outcomeReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details of what has happened as a result of the goal being achieved or not."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Goal"
+        ],
+        "operationId": "Goal.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Goal",
+                  "description": "Describes the intended objective(s) for a patient, group or organization care, for example, weight loss, restoring an activity of daily living, obtaining herd immunity via immunization, meeting a process improvement objective, etc.",
+                  "required": [
+                    "resourceType",
+                    "lifecycleStatus",
+                    "description",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Goal"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Business identifiers assigned to this goal by the performer or other systems."
+                    },
+                    "lifecycleStatus": {
+                      "type": "string",
+                      "enum": [
+                        "proposed",
+                        "planned",
+                        "accepted",
+                        "active",
+                        "on-hold",
+                        "completed",
+                        "cancelled",
+                        "entered-in-error",
+                        "rejected"
+                      ],
+                      "description": "The state of the goal throughout its lifecycle."
+                    },
+                    "achievementStatus": {
+                      "type": "object",
+                      "description": "Describes the progression, or lack thereof, towards the goal against the target."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates a category the goal falls within."
+                    },
+                    "priority": {
+                      "type": "object",
+                      "description": "Identifies the mutually agreed level of importance associated with reaching the goal."
+                    },
+                    "description": {
+                      "type": "object",
+                      "description": "Human-readable and/or coded description of a specific desired objective of care."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Identifies the patient, group or organization for whom the goal is being established."
+                    },
+                    "startDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "startCodeableConcept": {
+                      "type": "object"
+                    },
+                    "target": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates what should be done by when."
+                    },
+                    "statusDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "Identifies when the current status was set."
+                    },
+                    "statusReason": {
+                      "type": "string",
+                      "description": "Captures the reason for the current status."
+                    },
+                    "expressedBy": {
+                      "type": "object",
+                      "description": "Indicates whose goal this is — patient goal, practitioner goal, etc."
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The identified conditions and other health record elements that are intended to be addressed by the goal."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any comments related to the goal."
+                    },
+                    "outcomeCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the change (or lack of change) at the point when the status of the goal is assessed."
+                    },
+                    "outcomeReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details of what has happened as a result of the goal being achieved or not."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Goal",
+                  "description": "Describes the intended objective(s) for a patient, group or organization care, for example, weight loss, restoring an activity of daily living, obtaining herd immunity via immunization, meeting a process improvement objective, etc.",
+                  "required": [
+                    "resourceType",
+                    "lifecycleStatus",
+                    "description",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Goal"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Business identifiers assigned to this goal by the performer or other systems."
+                    },
+                    "lifecycleStatus": {
+                      "type": "string",
+                      "enum": [
+                        "proposed",
+                        "planned",
+                        "accepted",
+                        "active",
+                        "on-hold",
+                        "completed",
+                        "cancelled",
+                        "entered-in-error",
+                        "rejected"
+                      ],
+                      "description": "The state of the goal throughout its lifecycle."
+                    },
+                    "achievementStatus": {
+                      "type": "object",
+                      "description": "Describes the progression, or lack thereof, towards the goal against the target."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates a category the goal falls within."
+                    },
+                    "priority": {
+                      "type": "object",
+                      "description": "Identifies the mutually agreed level of importance associated with reaching the goal."
+                    },
+                    "description": {
+                      "type": "object",
+                      "description": "Human-readable and/or coded description of a specific desired objective of care."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Identifies the patient, group or organization for whom the goal is being established."
+                    },
+                    "startDate": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "startCodeableConcept": {
+                      "type": "object"
+                    },
+                    "target": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates what should be done by when."
+                    },
+                    "statusDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "Identifies when the current status was set."
+                    },
+                    "statusReason": {
+                      "type": "string",
+                      "description": "Captures the reason for the current status."
+                    },
+                    "expressedBy": {
+                      "type": "object",
+                      "description": "Indicates whose goal this is — patient goal, practitioner goal, etc."
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The identified conditions and other health record elements that are intended to be addressed by the goal."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any comments related to the goal."
+                    },
+                    "outcomeCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifies the change (or lack of change) at the point when the status of the goal is assessed."
+                    },
+                    "outcomeReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details of what has happened as a result of the goal being achieved or not."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Goal",
+                "description": "Describes the intended objective(s) for a patient, group or organization care, for example, weight loss, restoring an activity of daily living, obtaining herd immunity via immunization, meeting a process improvement objective, etc.",
+                "required": [
+                  "resourceType",
+                  "lifecycleStatus",
+                  "description",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Goal"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Business identifiers assigned to this goal by the performer or other systems."
+                  },
+                  "lifecycleStatus": {
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "planned",
+                      "accepted",
+                      "active",
+                      "on-hold",
+                      "completed",
+                      "cancelled",
+                      "entered-in-error",
+                      "rejected"
+                    ],
+                    "description": "The state of the goal throughout its lifecycle."
+                  },
+                  "achievementStatus": {
+                    "type": "object",
+                    "description": "Describes the progression, or lack thereof, towards the goal against the target."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Indicates a category the goal falls within."
+                  },
+                  "priority": {
+                    "type": "object",
+                    "description": "Identifies the mutually agreed level of importance associated with reaching the goal."
+                  },
+                  "description": {
+                    "type": "object",
+                    "description": "Human-readable and/or coded description of a specific desired objective of care."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "Identifies the patient, group or organization for whom the goal is being established."
+                  },
+                  "startDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "startCodeableConcept": {
+                    "type": "object"
+                  },
+                  "target": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Indicates what should be done by when."
+                  },
+                  "statusDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Identifies when the current status was set."
+                  },
+                  "statusReason": {
+                    "type": "string",
+                    "description": "Captures the reason for the current status."
+                  },
+                  "expressedBy": {
+                    "type": "object",
+                    "description": "Indicates whose goal this is — patient goal, practitioner goal, etc."
+                  },
+                  "addresses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The identified conditions and other health record elements that are intended to be addressed by the goal."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Any comments related to the goal."
+                  },
+                  "outcomeCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifies the change (or lack of change) at the point when the status of the goal is assessed."
+                  },
+                  "outcomeReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Details of what has happened as a result of the goal being achieved or not."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Goal/_search": {
+      "post": {
+        "tags": [
+          "Goal"
+        ],
+        "operationId": "Goal.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "lifecycle-status": {
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "planned",
+                      "accepted",
+                      "active",
+                      "on-hold",
+                      "completed",
+                      "cancelled",
+                      "entered-in-error",
+                      "rejected"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "patient": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/fhir-r4/": {
       "post": {
         "tags": [
@@ -15868,6 +19049,12 @@
     },
     {
       "name": "ImagingStudy"
+    },
+    {
+      "name": "CarePlan"
+    },
+    {
+      "name": "Goal"
     },
     {
       "name": "Bundle"

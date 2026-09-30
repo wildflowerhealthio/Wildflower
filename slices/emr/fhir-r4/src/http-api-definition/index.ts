@@ -1,8 +1,10 @@
 import { HttpApi, type HttpApiError } from '@effect/platform'
 import * as Binary from './binary.ts'
 import * as Bundle from './bundle.ts'
+import * as CarePlan from './care-plan.ts'
 import * as DiagnosticReport from './diagnostic-report.ts'
 import * as DocumentReference from './document-reference.ts'
+import * as Goal from './goal.ts'
 import * as ImagingStudy from './imaging-study.ts'
 import * as MedicationDispense from './medication-dispense.ts'
 import * as MedicationRequest from './medication-request.ts'
@@ -38,6 +40,8 @@ const FhirResourcesApi: HttpApi.HttpApi<
   | typeof Practitioner.httpApiGroup
   | typeof ServiceRequest.httpApiGroup
   | typeof ImagingStudy.httpApiGroup
+  | typeof CarePlan.httpApiGroup
+  | typeof Goal.httpApiGroup
   | typeof Bundle.httpApiGroup,
   HttpApiError.HttpApiDecodeError
 > = HttpApi.make('FhirResourcesApi')
@@ -51,6 +55,8 @@ const FhirResourcesApi: HttpApi.HttpApi<
   .add(Practitioner.httpApiGroup)
   .add(ServiceRequest.httpApiGroup)
   .add(ImagingStudy.httpApiGroup)
+  .add(CarePlan.httpApiGroup)
+  .add(Goal.httpApiGroup)
   .add(Bundle.httpApiGroup)
 
 export {
@@ -58,8 +64,10 @@ export {
   FhirResourcesApiPrefix,
   Binary,
   Bundle,
+  CarePlan,
   DiagnosticReport,
   DocumentReference,
+  Goal,
   ImagingStudy,
   MedicationDispense,
   MedicationRequest,
