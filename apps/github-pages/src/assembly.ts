@@ -93,6 +93,16 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
+    packageName: 'watch-lifts-web',
+    // The package lives in `apps/watch-lifts-web`; its published path is
+    // `/${SECTION_PATHS.watchLifts}`.
+    sourceDir: 'apps/watch-lifts-web/dist',
+    destPath: SECTION_PATHS.watchLifts,
+    // One entry: the WatchLifts watchapp's settings page, opened from the
+    // Pebble phone app with the weights in its query. Not a SMART app.
+    requiredFiles: ['index.html'],
+  },
+  {
     packageName: 'ohif-viewer',
     // The prebuilt OHIF viewer pinned in apps/ohif-viewer/prebuilt.json (or
     // the stub page while nothing is pinned), with Wildflower's runtime

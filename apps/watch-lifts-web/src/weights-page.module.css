@@ -1,0 +1,42 @@
+/*
+ * Colours and spacing read from the Tundra design tokens (`--color-*`,
+ * `--space-*`) that `tundra-css` + `react-tundraish` define globally. The page
+ * is opened inside the Pebble phone app's web view, so it is laid out for a
+ * phone first — one narrow column.
+ */
+.page {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-7) var(--space-13);
+}
+
+.header {
+  margin-bottom: var(--space-9);
+}
+
+.subtitle {
+  margin-top: var(--space-3);
+  color: var(--color-neutral-5);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--space-3);
+  text-align: left;
+}
+
+.weight {
+  width: 100%;
+  min-width: 4rem;
+}

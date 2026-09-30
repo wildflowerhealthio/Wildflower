@@ -25,8 +25,10 @@ on the `PATH`. To build the bundle alone, `vp run -F watch-lifts-pkjs build`.
 
 The weights are set on the phone, on the page at
 `https://wildflowerhealth.io/watch-lifts/`: a table of every person's weight at
-every exercise, in whole pounds from 0 to 999. It follows developer.repebble.com's
-"App Configuration (Static)", as `apps/fhir-sync-pebble` does:
+every exercise, in whole pounds from 0 to 999, built from
+[`apps/watch-lifts-web`](../watch-lifts-web/AGENTS.md). It follows
+developer.repebble.com's "App Configuration (Static)", as
+`apps/fhir-sync-pebble` does:
 
 - `showConfiguration`: the PebbleKit JS (`pkjs/src/index.ts`) opens the page
   with the current weights in its `weights` query parameter
