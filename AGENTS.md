@@ -122,6 +122,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [Documentation Reference](./docs/Documentation/Reference.md) — Naming rules for docs
 - [Bridge Explanation](./docs/Messaging/Bridge%20Explanation.md) — The webview ↔ host bridge; [Wire Pinning How-To](./docs/Messaging/Wire%20Pinning%20How-To.md) for TS ⇄ Rust wire shapes
 - [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why the pnpm `overrides:` exist and when to add/remove one
+- [Required Check Explanation](./docs/CI/Required%20Check%20Explanation.md) — Why every PR's checks funnel into one required `Required` check; [Adding a Check Area How-To](./docs/CI/Adding%20a%20Check%20Area%20How-To.md) to add one
 - [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md) — The Rust cache keys CI jobs share, and what forks them
 - [TypeScript Versions Reference](./docs/TypeScript/Versions%20Reference.md) — Which tool runs on TypeScript 5 (`typescript`) and which on TypeScript 7 (`typescript-7`)
 - [TypeScript CI Build Cache Explanation](./docs/TypeScript/CI%20Build%20Cache%20Explanation.md) — The `vp run pack` cache `ci-typescript.yml` restores and `ts-cache-warm.yml` warms on `main`
@@ -145,7 +146,7 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
 
 ## CI gates and pre-PR parity
 
-`vp run ready` covers the TypeScript side of CI. The full gate set (see `.github/workflows/`):
+`vp run ready` covers the TypeScript side of CI. Every PR runs `.github/workflows/ci.yml`, which calls only the areas' workflows the PR touches and sums them up in the one status check the `main` ruleset requires, `Required`: [Required Check Explanation](./docs/CI/Required%20Check%20Explanation.md). The full gate set:
 
 - **TS format/lint/typecheck/test** — `vp check` + `vp test`. Its `vp run pack` outputs are cached, and `ts-cache-warm.yml` warms that cache on `main`: [TypeScript CI Build Cache Explanation](./docs/TypeScript/CI%20Build%20Cache%20Explanation.md). The enforced lint/format rules are oxlint+oxfmt, configured in `vite.config.ts` under the `lint:`/`fmt:` keys — **not** `eslint.config.mjs`, which runs only the informational TSDoc check (`lint:comments`, `continue-on-error`). Editing eslint config never fixes a lint failure.
 - **Rust fmt + clippy (`-D warnings`) + nextest** — `./scripts/checks/rust.sh` is the canonical Rust check; both the git hooks and CI (`ci-rust.yml`, which compiles the full workspace incl. the Tauri crates in one job) call it. It self-skips when `cargo` is absent, so a frontend-only change stays green locally while CI still gates it on PRs.

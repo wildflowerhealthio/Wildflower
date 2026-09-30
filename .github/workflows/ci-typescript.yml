@@ -1,39 +1,15 @@
 name: TypeScript
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    # PR runs are gated to TS/JS-touching changes at the trigger level, so an
-    # unrelated PR never starts this workflow at all (no change-detection job
-    # needed). This workflow no longer runs on pushes to main — CI is a
-    # pre-merge gate only. Keep this list aligned with where TS/JS source
-    # actually lives.
-    paths:
-      - '**/*.ts'
-      - '**/*.tsx'
-      - '**/*.cts'
-      - '**/*.mts'
-      - '**/*.js'
-      - '**/*.jsx'
-      - '**/*.cjs'
-      - '**/*.mjs'
-      - '**/package.json'
-      - '**/tsconfig*.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.github/workflows/ci-typescript.yml'
-      - '.github/actions/vp-pack-cache/**'
+  # Called by ci.yml, which runs this only on pull requests that touch
+  # TS/JS; the paths are its `changes` filter.
+  workflow_call:
 
 permissions:
   contents: read
   # The ESLint/TSDoc problem matcher surfaces findings as inline PR annotations.
   checks: write
   pull-requests: write
-
-# Cancel superseded PR runs to save the actions budget.
-concurrency:
-  group: typescript-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   # One job for lint + typecheck + test + TSDoc: it installs deps and builds the
