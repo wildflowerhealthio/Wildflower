@@ -104,7 +104,7 @@ const prescriptionJson = (
 const expectedRequest = decodeRequest({
   resourceType: 'MedicationRequest',
   id: 'rx-uuid-1',
-  status: 'unknown',
+  status: 'active',
   intent: 'order',
   subject: { reference: 'Patient/pt-uuid-1' },
   identifier: [{ system: ShoppersIdentifierSystem.PrescriptionNumber, value: '998877' }],
@@ -220,9 +220,94 @@ describe('PrescriptionResponseKind', () => {
       expect(request?.status).toBe(expected)
     })
 
-    it('leaves status unknown when neither expired nor archived is set', () => {
-      const [request] = byType(parse(prescriptionJson({ renewable: true })), 'MedicationRequest')
-      expect(request?.status).toBe('unknown')
+    it.each([
+      { case: 'refillable', status: { type: 'READY_FOR_REFILL' }, renewable: false },
+      { case: 'renewable', status: { type: 'READY_FOR_RENEW' }, renewable: true },
+      {
+        case: 'unable to renew online',
+        status: { type: 'UNABLE_TO_RENEW_ONLINE' },
+        renewable: false,
+      },
+      { case: 'no status block', status: undefined, renewable: undefined },
+    ])(
+      'maps a prescription neither expired nor archived onto MedicationRequest.status active ($case)',
+      ({ status, renewable }) => {
+        // Act
+        const [request] = byType(
+          parse(prescriptionJson({ status, renewable, expired: false, archived: false })),
+          'MedicationRequest'
+        )
+
+        // Assert
+        expect(request?.status).toBe('active')
+      }
+    )
+
+    it('maps a prescription with no expired or archived flag onto MedicationRequest.status active', () => {
+      const [request] = byType(
+        parse(prescriptionJson({ expired: undefined, archived: undefined })),
+        'MedicationRequest'
+      )
+      expect(request?.status).toBe('active')
+    })
+
+    it('should state one fill as the days from lastFillDate to nextFillDate, in UCUM days', () => {
+      fc.assert(
+        fc.property(fc.integer({ min: 1, max: 400 }), (supplyDays) => {
+          // Arrange — the base fixture's last fill, and the next fill `supplyDays` on.
+          const nextFillDate = new Date(
+            Date.parse('2026-01-10T00:00:00Z') + supplyDays * 86_400_000
+          ).toISOString()
+
+          // Act
+          const [request] = byType(parse(prescriptionJson({ nextFillDate })), 'MedicationRequest')
+
+          // Assert
+          expect(request?.dispenseRequest?.expectedSupplyDuration).toMatchObject({
+            value: supplyDays,
+            unit: 'day',
+            system: 'http://unitsofmeasure.org',
+            code: 'd',
+          })
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+
+    it('should state the supply for date-only fill dates, as the portal writes them', () => {
+      const [request] = byType(
+        parse(prescriptionJson({ lastFillDate: '2026-01-10', nextFillDate: '2026-04-10' })),
+        'MedicationRequest'
+      )
+      expect(request?.dispenseRequest?.expectedSupplyDuration?.value).toBe(90)
+    })
+
+    it.each([
+      { case: 'no nextFillDate', overrides: { nextFillDate: undefined } },
+      {
+        case: 'no lastFillDate',
+        overrides: { lastFillDate: undefined, nextFillDate: '2026-02-09T00:00:00Z' },
+      },
+      { case: 'an unparseable nextFillDate', overrides: { nextFillDate: 'next tuesday' } },
+      {
+        case: 'an unparseable lastFillDate',
+        overrides: { lastFillDate: 'last week', nextFillDate: '2026-02-09T00:00:00Z' },
+      },
+      {
+        case: 'a nextFillDate on the last fill day',
+        overrides: { nextFillDate: '2026-01-10T00:00:00Z' },
+      },
+      {
+        case: 'a nextFillDate before the last fill',
+        overrides: { nextFillDate: '2025-12-11T00:00:00Z' },
+      },
+    ])('should state no supply duration given $case', ({ overrides }) => {
+      // Act
+      const [request] = byType(parse(prescriptionJson(overrides)), 'MedicationRequest')
+
+      // Assert — the rest of the dispenseRequest is still there.
+      expect(request?.dispenseRequest?.expectedSupplyDuration).toBeNull()
+      expect(request?.dispenseRequest?.quantity?.value).toBe(90)
     })
 
     it('accepts the numeric-keyed dispense wrapper too (belt-and-braces)', () => {
@@ -291,7 +376,7 @@ describe('PrescriptionResponseKind', () => {
       expect(request?.dispenseRequest?.validityPeriod).toStrictEqual(
         decodeRequest({
           resourceType: 'MedicationRequest',
-          status: 'unknown',
+          status: 'active',
           intent: 'order',
           subject: { reference: 'Patient/x' },
           dispenseRequest: {
@@ -311,7 +396,7 @@ describe('PrescriptionResponseKind', () => {
       expect(period).toStrictEqual(
         decodeRequest({
           resourceType: 'MedicationRequest',
-          status: 'unknown',
+          status: 'active',
           intent: 'order',
           subject: { reference: 'Patient/x' },
           dispenseRequest: {

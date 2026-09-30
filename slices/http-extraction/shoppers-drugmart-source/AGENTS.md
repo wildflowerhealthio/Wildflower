@@ -86,6 +86,18 @@ and `rexall-be-well-source` alike:
   `Shoppers Drug Mart (store <id>)` (`shoppersStoreDisplay`). A request whose
   payload carries a store but nothing else for `dispenseRequest` still gets a
   `dispenseRequest` holding just the `performer`.
+- **Status** — `MedicationRequest.status` is `stopped` for a prescription
+  the portal flags `expired` or `archived`, else `active`. The portal's own
+  `status.type` and label ride `statusReason`, and never change the status.
+- **Supply per fill** — `MedicationRequest.dispenseRequest.expectedSupplyDuration`
+  in UCUM days (`unit: 'day'`, `system: http://unitsofmeasure.org`,
+  `code: 'd'`), as `rexall-be-well-source` states it: the whole days from
+  `lastFillDate` to `nextFillDate`. With `dispenseRequest.quantity` (the
+  `refillQuantity`, unitless) it is what `medication-core` amortizes a daily
+  dose from, since the dose is otherwise only the sig in
+  `dosageInstruction[0].text`. It is omitted unless both dates parse and the
+  next fill is at least a day after the last, so a prescription the portal
+  names no next fill for states no supply.
 
 ## Traps
 

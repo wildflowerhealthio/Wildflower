@@ -84,10 +84,11 @@ dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
 
 ## Traps
 
-- **medication-core reads no dose from a Shoppers import yet (#798).** The
-  importer writes current prescriptions with status `unknown` and the dose as
-  sig text only, so no regimen plots. The round-trip test pins that; flip it
-  when #798 lands.
+- **Only a current prescription with a repeat left imports with a dose.**
+  The importer reads one fill's supply from `lastFillDate` to `nextFillDate`,
+  and the generator writes a `nextFillDate` only while a repeat is left, so
+  medication-core amortizes a dose (tablets a day, unitless) for those alone
+  and drops the rest. The round-trip test reckons it that way.
 - **A prescription's latest fill is in both feeds under one `dispenseId`
   (#803).** The import yields it twice; the test counts it that way.
 - **The importer dates a request by its last fill** (`authoredOn` is
