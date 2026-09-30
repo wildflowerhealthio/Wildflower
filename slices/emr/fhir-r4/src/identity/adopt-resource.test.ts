@@ -1,4 +1,5 @@
 import { Arbitrary, FastCheck as fc, SchemaAST, type Schema } from 'effect'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
@@ -663,7 +664,8 @@ describe('reference rewriting', () => {
             subjectOf(source, reference({ reference: `${resourceType}/${originalId}` }))
           )
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
