@@ -48,6 +48,14 @@ generator package per source on top of it.
   holds `rexallAccountArbitrary`. See its
   [AGENTS.md](./synthetic-data-rexall-be-well/AGENTS.md).
 
+- **`synthetic-data-shoppers-drugmart`** (pure) — `ShoppersHar.render`: a
+  family `ShoppersAccount`, each managed person with a `Story`, as the HAR a
+  mypharmacy.shoppersdrugmart.ca session exports (the customers body, a
+  prescription-status body per prescription, and the prescription history),
+  written as `shoppers-drugmart-source`'s schemas encode them. Its
+  `./test-helpers` subpath holds `shoppersCaseArbitrary`. See its
+  [AGENTS.md](./synthetic-data-shoppers-drugmart/AGENTS.md).
+
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's
 account on that source, and writes the source's own wire shape, spelled from
