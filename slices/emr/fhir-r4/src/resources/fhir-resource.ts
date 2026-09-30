@@ -10,7 +10,9 @@ import * as MedicationDispense from './medication-dispense/medication-dispense.t
 import * as MedicationRequest from './medication-request/medication-request.ts'
 import * as Observation from './observation/observation.ts'
 import * as Patient from './patient/patient.ts'
+import * as PlanDefinition from './plan-definition/plan-definition.ts'
 import * as Practitioner from './practitioner/practitioner.ts'
+import * as Procedure from './procedure/procedure.ts'
 import * as ServiceRequest from './service-request/service-request.ts'
 
 /**
@@ -38,7 +40,9 @@ const FhirResourceSchema = Schema.Union(
   ServiceRequest.Schema,
   ImagingStudy.Schema,
   CarePlan.Schema,
-  Goal.Schema
+  Goal.Schema,
+  PlanDefinition.Schema,
+  Procedure.Schema
 )
 
 /**

@@ -3,8 +3,8 @@ import type { FhirResource } from './fhir-resource.ts'
 
 /**
  * The resource types that name the patient they are about as `subject`: the
- * results, reports, orders, studies, documents, medication records, care plans
- * and goals an import files on a Patient.
+ * results, reports, orders, procedures, studies, documents, medication records,
+ * care plans and goals an import files on a Patient.
  */
 const SUBJECT_RESOURCE_TYPES = [
   'CarePlan',
@@ -15,6 +15,7 @@ const SUBJECT_RESOURCE_TYPES = [
   'MedicationDispense',
   'MedicationRequest',
   'Observation',
+  'Procedure',
   'ServiceRequest',
 ] as const satisfies readonly FhirResource['resourceType'][]
 

@@ -17,7 +17,10 @@ import type {
   MedicationRequest,
   Observation,
   Patient,
+  PlanDefinition,
+  PlanDefinitionAction,
   Practitioner,
+  Procedure,
   ServiceRequest,
 } from '../resources/index.ts'
 import { localResourceId } from './local-resource-id.ts'
@@ -484,6 +487,66 @@ const adoptGoal = (
   }
 }
 
+/** Rewrite the `subjectReference` of every action in a list, and of every action nested in one. */
+const rewriteActionSubjects = (
+  rewrite: (reference: ReferenceType) => ReferenceType,
+  actions: readonly PlanDefinitionAction.Type[]
+): PlanDefinitionAction.Type[] =>
+  actions.map((action) => ({
+    ...action,
+    subjectReference: rewriteNullable(rewrite, action.subjectReference),
+    action: rewriteActionSubjects(rewrite, action.action),
+  }))
+
+const adoptPlanDefinition = (
+  prepared: PreparedSource,
+  originalId: string,
+  plan: typeof PlanDefinition.Schema.Type
+): typeof PlanDefinition.Schema.Type => {
+  const rewrite = rewriteReference(prepared)
+  return {
+    ...plan,
+    id: localResourceId(prepared.source.system, 'PlanDefinition', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...plan.identifier],
+    subjectReference: rewriteNullable(rewrite, plan.subjectReference),
+    action: rewriteActionSubjects(rewrite, plan.action),
+  }
+}
+
+const adoptProcedure = (
+  prepared: PreparedSource,
+  originalId: string,
+  procedure: typeof Procedure.Schema.Type
+): typeof Procedure.Schema.Type => {
+  const rewrite = rewriteReference(prepared)
+  return {
+    ...procedure,
+    id: localResourceId(prepared.source.system, 'Procedure', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...procedure.identifier],
+    note: rewriteAnnotationAuthors(rewrite, procedure.note),
+    subject: rewrite(procedure.subject),
+    encounter: rewriteNullable(rewrite, procedure.encounter),
+    recorder: rewriteNullable(rewrite, procedure.recorder),
+    asserter: rewriteNullable(rewrite, procedure.asserter),
+    location: rewriteNullable(rewrite, procedure.location),
+    basedOn: procedure.basedOn.map(rewrite),
+    partOf: procedure.partOf.map(rewrite),
+    performer: procedure.performer.map((performer) => ({
+      ...performer,
+      actor: rewrite(performer.actor),
+      onBehalfOf: rewriteNullable(rewrite, performer.onBehalfOf),
+    })),
+    reasonReference: procedure.reasonReference.map(rewrite),
+    report: procedure.report.map(rewrite),
+    complicationDetail: procedure.complicationDetail.map(rewrite),
+    focalDevice: procedure.focalDevice.map((device) => ({
+      ...device,
+      manipulated: rewrite(device.manipulated),
+    })),
+    usedReference: procedure.usedReference.map(rewrite),
+  }
+}
+
 /**
  * Re-key a resource under this source's namespace: derive its local id, record
  * the source's own id as `identifier[0]`, and rewrite its references so they
@@ -555,6 +618,12 @@ const adoptResource = (source: SourceIdentity) => {
         adoptCarePlan(prepared, originalId, plan)
       ),
       Match.discriminator('resourceType')('Goal', (goal) => adoptGoal(prepared, originalId, goal)),
+      Match.discriminator('resourceType')('PlanDefinition', (plan) =>
+        adoptPlanDefinition(prepared, originalId, plan)
+      ),
+      Match.discriminator('resourceType')('Procedure', (procedure) =>
+        adoptProcedure(prepared, originalId, procedure)
+      ),
       Match.exhaustive
     )
   }

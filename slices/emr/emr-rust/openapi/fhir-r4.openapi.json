@@ -18770,6 +18770,3881 @@
         }
       }
     },
+    "/fhir-r4/PlanDefinition": {
+      "get": {
+        "tags": [
+          "PlanDefinition"
+        ],
+        "operationId": "PlanDefinition.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "retired",
+                "unknown"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "PlanDefinition"
+        ],
+        "operationId": "PlanDefinition.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "PlanDefinition",
+                  "description": "A pre-defined group of actions to be taken in particular circumstances, often including conditional elements, options, and other decision points.",
+                  "required": [
+                    "resourceType",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "PlanDefinition"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Canonical identifier for this plan definition, represented as a URI."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional identifier for the plan definition."
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "Business version of the plan definition."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Name for this plan definition (computer friendly)."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Name for this plan definition (human friendly)."
+                    },
+                    "subtitle": {
+                      "type": "string",
+                      "description": "Subordinate title of the plan definition."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "order-set | clinical-protocol | eca-rule | workflow-definition."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "retired",
+                        "unknown"
+                      ],
+                      "description": "The status of this plan definition."
+                    },
+                    "experimental": {
+                      "type": "boolean",
+                      "description": "For testing purposes, not real usage."
+                    },
+                    "subjectCodeableConcept": {
+                      "type": "object"
+                    },
+                    "subjectReference": {
+                      "type": "object"
+                    },
+                    "date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Date last changed."
+                    },
+                    "publisher": {
+                      "type": "string",
+                      "description": "Name of the publisher (organization or individual)."
+                    },
+                    "contact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Contact details for the publisher."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Natural language description of the plan definition."
+                    },
+                    "useContext": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The context that the content is intended to support."
+                    },
+                    "jurisdiction": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Intended jurisdiction for plan definition (if applicable)."
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "Why this plan definition is defined."
+                    },
+                    "usage": {
+                      "type": "string",
+                      "description": "Describes the clinical usage of the plan."
+                    },
+                    "copyright": {
+                      "type": "string",
+                      "description": "Use and/or publishing restrictions."
+                    },
+                    "approvalDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "When the plan definition was approved by publisher."
+                    },
+                    "lastReviewDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "When the plan definition was last reviewed."
+                    },
+                    "effectivePeriod": {
+                      "type": "object",
+                      "description": "When the plan definition is expected to be used."
+                    },
+                    "topic": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "E.g. Education, Treatment, Assessment."
+                    },
+                    "author": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who authored the content."
+                    },
+                    "editor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who edited the content."
+                    },
+                    "reviewer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who reviewed the content."
+                    },
+                    "endorser": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who endorsed the content."
+                    },
+                    "relatedArtifact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional documentation, citations."
+                    },
+                    "library": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Logic used by the plan definition."
+                    },
+                    "goal": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "What the plan is trying to accomplish."
+                    },
+                    "action": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Action defined by the plan."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "PlanDefinition",
+                "description": "A pre-defined group of actions to be taken in particular circumstances, often including conditional elements, options, and other decision points.",
+                "required": [
+                  "resourceType",
+                  "status"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "PlanDefinition"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Canonical identifier for this plan definition, represented as a URI."
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional identifier for the plan definition."
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "Business version of the plan definition."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Name for this plan definition (computer friendly)."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Name for this plan definition (human friendly)."
+                  },
+                  "subtitle": {
+                    "type": "string",
+                    "description": "Subordinate title of the plan definition."
+                  },
+                  "type": {
+                    "type": "object",
+                    "description": "order-set | clinical-protocol | eca-rule | workflow-definition."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "retired",
+                      "unknown"
+                    ],
+                    "description": "The status of this plan definition."
+                  },
+                  "experimental": {
+                    "type": "boolean",
+                    "description": "For testing purposes, not real usage."
+                  },
+                  "subjectCodeableConcept": {
+                    "type": "object"
+                  },
+                  "subjectReference": {
+                    "type": "object"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Date last changed."
+                  },
+                  "publisher": {
+                    "type": "string",
+                    "description": "Name of the publisher (organization or individual)."
+                  },
+                  "contact": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Contact details for the publisher."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Natural language description of the plan definition."
+                  },
+                  "useContext": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The context that the content is intended to support."
+                  },
+                  "jurisdiction": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Intended jurisdiction for plan definition (if applicable)."
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "description": "Why this plan definition is defined."
+                  },
+                  "usage": {
+                    "type": "string",
+                    "description": "Describes the clinical usage of the plan."
+                  },
+                  "copyright": {
+                    "type": "string",
+                    "description": "Use and/or publishing restrictions."
+                  },
+                  "approvalDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "When the plan definition was approved by publisher."
+                  },
+                  "lastReviewDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "When the plan definition was last reviewed."
+                  },
+                  "effectivePeriod": {
+                    "type": "object",
+                    "description": "When the plan definition is expected to be used."
+                  },
+                  "topic": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "E.g. Education, Treatment, Assessment."
+                  },
+                  "author": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who authored the content."
+                  },
+                  "editor": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who edited the content."
+                  },
+                  "reviewer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who reviewed the content."
+                  },
+                  "endorser": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who endorsed the content."
+                  },
+                  "relatedArtifact": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional documentation, citations."
+                  },
+                  "library": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "Logic used by the plan definition."
+                  },
+                  "goal": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "What the plan is trying to accomplish."
+                  },
+                  "action": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Action defined by the plan."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/PlanDefinition/{id}": {
+      "get": {
+        "tags": [
+          "PlanDefinition"
+        ],
+        "operationId": "PlanDefinition.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "PlanDefinition",
+                  "description": "A pre-defined group of actions to be taken in particular circumstances, often including conditional elements, options, and other decision points.",
+                  "required": [
+                    "resourceType",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "PlanDefinition"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Canonical identifier for this plan definition, represented as a URI."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional identifier for the plan definition."
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "Business version of the plan definition."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Name for this plan definition (computer friendly)."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Name for this plan definition (human friendly)."
+                    },
+                    "subtitle": {
+                      "type": "string",
+                      "description": "Subordinate title of the plan definition."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "order-set | clinical-protocol | eca-rule | workflow-definition."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "retired",
+                        "unknown"
+                      ],
+                      "description": "The status of this plan definition."
+                    },
+                    "experimental": {
+                      "type": "boolean",
+                      "description": "For testing purposes, not real usage."
+                    },
+                    "subjectCodeableConcept": {
+                      "type": "object"
+                    },
+                    "subjectReference": {
+                      "type": "object"
+                    },
+                    "date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Date last changed."
+                    },
+                    "publisher": {
+                      "type": "string",
+                      "description": "Name of the publisher (organization or individual)."
+                    },
+                    "contact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Contact details for the publisher."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Natural language description of the plan definition."
+                    },
+                    "useContext": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The context that the content is intended to support."
+                    },
+                    "jurisdiction": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Intended jurisdiction for plan definition (if applicable)."
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "Why this plan definition is defined."
+                    },
+                    "usage": {
+                      "type": "string",
+                      "description": "Describes the clinical usage of the plan."
+                    },
+                    "copyright": {
+                      "type": "string",
+                      "description": "Use and/or publishing restrictions."
+                    },
+                    "approvalDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "When the plan definition was approved by publisher."
+                    },
+                    "lastReviewDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "When the plan definition was last reviewed."
+                    },
+                    "effectivePeriod": {
+                      "type": "object",
+                      "description": "When the plan definition is expected to be used."
+                    },
+                    "topic": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "E.g. Education, Treatment, Assessment."
+                    },
+                    "author": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who authored the content."
+                    },
+                    "editor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who edited the content."
+                    },
+                    "reviewer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who reviewed the content."
+                    },
+                    "endorser": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who endorsed the content."
+                    },
+                    "relatedArtifact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional documentation, citations."
+                    },
+                    "library": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Logic used by the plan definition."
+                    },
+                    "goal": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "What the plan is trying to accomplish."
+                    },
+                    "action": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Action defined by the plan."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "PlanDefinition"
+        ],
+        "operationId": "PlanDefinition.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "PlanDefinition",
+                  "description": "A pre-defined group of actions to be taken in particular circumstances, often including conditional elements, options, and other decision points.",
+                  "required": [
+                    "resourceType",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "PlanDefinition"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Canonical identifier for this plan definition, represented as a URI."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional identifier for the plan definition."
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "Business version of the plan definition."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Name for this plan definition (computer friendly)."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Name for this plan definition (human friendly)."
+                    },
+                    "subtitle": {
+                      "type": "string",
+                      "description": "Subordinate title of the plan definition."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "order-set | clinical-protocol | eca-rule | workflow-definition."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "retired",
+                        "unknown"
+                      ],
+                      "description": "The status of this plan definition."
+                    },
+                    "experimental": {
+                      "type": "boolean",
+                      "description": "For testing purposes, not real usage."
+                    },
+                    "subjectCodeableConcept": {
+                      "type": "object"
+                    },
+                    "subjectReference": {
+                      "type": "object"
+                    },
+                    "date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Date last changed."
+                    },
+                    "publisher": {
+                      "type": "string",
+                      "description": "Name of the publisher (organization or individual)."
+                    },
+                    "contact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Contact details for the publisher."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Natural language description of the plan definition."
+                    },
+                    "useContext": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The context that the content is intended to support."
+                    },
+                    "jurisdiction": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Intended jurisdiction for plan definition (if applicable)."
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "Why this plan definition is defined."
+                    },
+                    "usage": {
+                      "type": "string",
+                      "description": "Describes the clinical usage of the plan."
+                    },
+                    "copyright": {
+                      "type": "string",
+                      "description": "Use and/or publishing restrictions."
+                    },
+                    "approvalDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "When the plan definition was approved by publisher."
+                    },
+                    "lastReviewDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "When the plan definition was last reviewed."
+                    },
+                    "effectivePeriod": {
+                      "type": "object",
+                      "description": "When the plan definition is expected to be used."
+                    },
+                    "topic": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "E.g. Education, Treatment, Assessment."
+                    },
+                    "author": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who authored the content."
+                    },
+                    "editor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who edited the content."
+                    },
+                    "reviewer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who reviewed the content."
+                    },
+                    "endorser": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who endorsed the content."
+                    },
+                    "relatedArtifact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional documentation, citations."
+                    },
+                    "library": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Logic used by the plan definition."
+                    },
+                    "goal": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "What the plan is trying to accomplish."
+                    },
+                    "action": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Action defined by the plan."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "PlanDefinition",
+                  "description": "A pre-defined group of actions to be taken in particular circumstances, often including conditional elements, options, and other decision points.",
+                  "required": [
+                    "resourceType",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "PlanDefinition"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Canonical identifier for this plan definition, represented as a URI."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional identifier for the plan definition."
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "Business version of the plan definition."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Name for this plan definition (computer friendly)."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Name for this plan definition (human friendly)."
+                    },
+                    "subtitle": {
+                      "type": "string",
+                      "description": "Subordinate title of the plan definition."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "order-set | clinical-protocol | eca-rule | workflow-definition."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "retired",
+                        "unknown"
+                      ],
+                      "description": "The status of this plan definition."
+                    },
+                    "experimental": {
+                      "type": "boolean",
+                      "description": "For testing purposes, not real usage."
+                    },
+                    "subjectCodeableConcept": {
+                      "type": "object"
+                    },
+                    "subjectReference": {
+                      "type": "object"
+                    },
+                    "date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Date last changed."
+                    },
+                    "publisher": {
+                      "type": "string",
+                      "description": "Name of the publisher (organization or individual)."
+                    },
+                    "contact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Contact details for the publisher."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Natural language description of the plan definition."
+                    },
+                    "useContext": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The context that the content is intended to support."
+                    },
+                    "jurisdiction": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Intended jurisdiction for plan definition (if applicable)."
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "Why this plan definition is defined."
+                    },
+                    "usage": {
+                      "type": "string",
+                      "description": "Describes the clinical usage of the plan."
+                    },
+                    "copyright": {
+                      "type": "string",
+                      "description": "Use and/or publishing restrictions."
+                    },
+                    "approvalDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "When the plan definition was approved by publisher."
+                    },
+                    "lastReviewDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "When the plan definition was last reviewed."
+                    },
+                    "effectivePeriod": {
+                      "type": "object",
+                      "description": "When the plan definition is expected to be used."
+                    },
+                    "topic": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "E.g. Education, Treatment, Assessment."
+                    },
+                    "author": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who authored the content."
+                    },
+                    "editor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who edited the content."
+                    },
+                    "reviewer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who reviewed the content."
+                    },
+                    "endorser": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who endorsed the content."
+                    },
+                    "relatedArtifact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional documentation, citations."
+                    },
+                    "library": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Logic used by the plan definition."
+                    },
+                    "goal": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "What the plan is trying to accomplish."
+                    },
+                    "action": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Action defined by the plan."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "PlanDefinition",
+                "description": "A pre-defined group of actions to be taken in particular circumstances, often including conditional elements, options, and other decision points.",
+                "required": [
+                  "resourceType",
+                  "status"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "PlanDefinition"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Canonical identifier for this plan definition, represented as a URI."
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional identifier for the plan definition."
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "Business version of the plan definition."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Name for this plan definition (computer friendly)."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Name for this plan definition (human friendly)."
+                  },
+                  "subtitle": {
+                    "type": "string",
+                    "description": "Subordinate title of the plan definition."
+                  },
+                  "type": {
+                    "type": "object",
+                    "description": "order-set | clinical-protocol | eca-rule | workflow-definition."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "retired",
+                      "unknown"
+                    ],
+                    "description": "The status of this plan definition."
+                  },
+                  "experimental": {
+                    "type": "boolean",
+                    "description": "For testing purposes, not real usage."
+                  },
+                  "subjectCodeableConcept": {
+                    "type": "object"
+                  },
+                  "subjectReference": {
+                    "type": "object"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Date last changed."
+                  },
+                  "publisher": {
+                    "type": "string",
+                    "description": "Name of the publisher (organization or individual)."
+                  },
+                  "contact": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Contact details for the publisher."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Natural language description of the plan definition."
+                  },
+                  "useContext": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The context that the content is intended to support."
+                  },
+                  "jurisdiction": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Intended jurisdiction for plan definition (if applicable)."
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "description": "Why this plan definition is defined."
+                  },
+                  "usage": {
+                    "type": "string",
+                    "description": "Describes the clinical usage of the plan."
+                  },
+                  "copyright": {
+                    "type": "string",
+                    "description": "Use and/or publishing restrictions."
+                  },
+                  "approvalDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "When the plan definition was approved by publisher."
+                  },
+                  "lastReviewDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "When the plan definition was last reviewed."
+                  },
+                  "effectivePeriod": {
+                    "type": "object",
+                    "description": "When the plan definition is expected to be used."
+                  },
+                  "topic": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "E.g. Education, Treatment, Assessment."
+                  },
+                  "author": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who authored the content."
+                  },
+                  "editor": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who edited the content."
+                  },
+                  "reviewer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who reviewed the content."
+                  },
+                  "endorser": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who endorsed the content."
+                  },
+                  "relatedArtifact": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional documentation, citations."
+                  },
+                  "library": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "Logic used by the plan definition."
+                  },
+                  "goal": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "What the plan is trying to accomplish."
+                  },
+                  "action": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Action defined by the plan."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/PlanDefinition/_search": {
+      "post": {
+        "tags": [
+          "PlanDefinition"
+        ],
+        "operationId": "PlanDefinition.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "retired",
+                      "unknown"
+                    ]
+                  },
+                  "date": {
+                    "$ref": "#/components/schemas/FhirDateSearch"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Procedure": {
+      "get": {
+        "tags": [
+          "Procedure"
+        ],
+        "operationId": "Procedure.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "preparation",
+                "in-progress",
+                "not-done",
+                "on-hold",
+                "stopped",
+                "completed",
+                "entered-in-error",
+                "unknown"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
+          },
+          {
+            "name": "based-on",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "part-of",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Procedure"
+        ],
+        "operationId": "Procedure.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Procedure",
+                  "description": "An action that is or was performed on or for a patient. This can be a physical intervention like an operation, or less invasive like long term services, counseling, or hypnotherapy.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Procedure"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "External Identifiers for this procedure."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Instantiates FHIR protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Instantiates external protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A request for this procedure."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Part of referenced event."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "preparation",
+                        "in-progress",
+                        "not-done",
+                        "on-hold",
+                        "stopped",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "A code specifying the state of the procedure."
+                    },
+                    "statusReason": {
+                      "type": "object",
+                      "description": "Reason for current status."
+                    },
+                    "category": {
+                      "type": "object",
+                      "description": "Classification of the procedure."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "Identification of the procedure."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who the procedure was performed on."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "Encounter created as part of."
+                    },
+                    "performedDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "performedPeriod": {
+                      "type": "object"
+                    },
+                    "performedString": {
+                      "type": "string"
+                    },
+                    "performedAge": {
+                      "type": "object"
+                    },
+                    "performedRange": {
+                      "type": "object"
+                    },
+                    "recorder": {
+                      "type": "object",
+                      "description": "Who recorded the procedure."
+                    },
+                    "asserter": {
+                      "type": "object",
+                      "description": "Person who asserts this procedure."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The people who performed the procedure."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "Where the procedure happened."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Coded reason procedure performed."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The justification that the procedure was performed."
+                    },
+                    "bodySite": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Target body sites."
+                    },
+                    "outcome": {
+                      "type": "object",
+                      "description": "The result of procedure."
+                    },
+                    "report": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any report resulting from the procedure."
+                    },
+                    "complication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Complication following the procedure."
+                    },
+                    "complicationDetail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A condition that is a result of the procedure."
+                    },
+                    "followUp": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Instructions for follow up."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional information about the procedure."
+                    },
+                    "focalDevice": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Manipulated, implanted, or removed device."
+                    },
+                    "usedReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Items used during procedure."
+                    },
+                    "usedCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Coded items used during the procedure."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Procedure",
+                "description": "An action that is or was performed on or for a patient. This can be a physical intervention like an operation, or less invasive like long term services, counseling, or hypnotherapy.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Procedure"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "External Identifiers for this procedure."
+                  },
+                  "instantiatesCanonical": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "Instantiates FHIR protocol or definition."
+                  },
+                  "instantiatesUri": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "Instantiates external protocol or definition."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A request for this procedure."
+                  },
+                  "partOf": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Part of referenced event."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "preparation",
+                      "in-progress",
+                      "not-done",
+                      "on-hold",
+                      "stopped",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "A code specifying the state of the procedure."
+                  },
+                  "statusReason": {
+                    "type": "object",
+                    "description": "Reason for current status."
+                  },
+                  "category": {
+                    "type": "object",
+                    "description": "Classification of the procedure."
+                  },
+                  "code": {
+                    "type": "object",
+                    "description": "Identification of the procedure."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "Who the procedure was performed on."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "Encounter created as part of."
+                  },
+                  "performedDateTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "performedPeriod": {
+                    "type": "object"
+                  },
+                  "performedString": {
+                    "type": "string"
+                  },
+                  "performedAge": {
+                    "type": "object"
+                  },
+                  "performedRange": {
+                    "type": "object"
+                  },
+                  "recorder": {
+                    "type": "object",
+                    "description": "Who recorded the procedure."
+                  },
+                  "asserter": {
+                    "type": "object",
+                    "description": "Person who asserts this procedure."
+                  },
+                  "performer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The people who performed the procedure."
+                  },
+                  "location": {
+                    "type": "object",
+                    "description": "Where the procedure happened."
+                  },
+                  "reasonCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Coded reason procedure performed."
+                  },
+                  "reasonReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The justification that the procedure was performed."
+                  },
+                  "bodySite": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Target body sites."
+                  },
+                  "outcome": {
+                    "type": "object",
+                    "description": "The result of procedure."
+                  },
+                  "report": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Any report resulting from the procedure."
+                  },
+                  "complication": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Complication following the procedure."
+                  },
+                  "complicationDetail": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A condition that is a result of the procedure."
+                  },
+                  "followUp": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Instructions for follow up."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional information about the procedure."
+                  },
+                  "focalDevice": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Manipulated, implanted, or removed device."
+                  },
+                  "usedReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Items used during procedure."
+                  },
+                  "usedCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Coded items used during the procedure."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Procedure/{id}": {
+      "get": {
+        "tags": [
+          "Procedure"
+        ],
+        "operationId": "Procedure.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Procedure",
+                  "description": "An action that is or was performed on or for a patient. This can be a physical intervention like an operation, or less invasive like long term services, counseling, or hypnotherapy.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Procedure"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "External Identifiers for this procedure."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Instantiates FHIR protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Instantiates external protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A request for this procedure."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Part of referenced event."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "preparation",
+                        "in-progress",
+                        "not-done",
+                        "on-hold",
+                        "stopped",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "A code specifying the state of the procedure."
+                    },
+                    "statusReason": {
+                      "type": "object",
+                      "description": "Reason for current status."
+                    },
+                    "category": {
+                      "type": "object",
+                      "description": "Classification of the procedure."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "Identification of the procedure."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who the procedure was performed on."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "Encounter created as part of."
+                    },
+                    "performedDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "performedPeriod": {
+                      "type": "object"
+                    },
+                    "performedString": {
+                      "type": "string"
+                    },
+                    "performedAge": {
+                      "type": "object"
+                    },
+                    "performedRange": {
+                      "type": "object"
+                    },
+                    "recorder": {
+                      "type": "object",
+                      "description": "Who recorded the procedure."
+                    },
+                    "asserter": {
+                      "type": "object",
+                      "description": "Person who asserts this procedure."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The people who performed the procedure."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "Where the procedure happened."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Coded reason procedure performed."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The justification that the procedure was performed."
+                    },
+                    "bodySite": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Target body sites."
+                    },
+                    "outcome": {
+                      "type": "object",
+                      "description": "The result of procedure."
+                    },
+                    "report": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any report resulting from the procedure."
+                    },
+                    "complication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Complication following the procedure."
+                    },
+                    "complicationDetail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A condition that is a result of the procedure."
+                    },
+                    "followUp": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Instructions for follow up."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional information about the procedure."
+                    },
+                    "focalDevice": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Manipulated, implanted, or removed device."
+                    },
+                    "usedReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Items used during procedure."
+                    },
+                    "usedCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Coded items used during the procedure."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Procedure"
+        ],
+        "operationId": "Procedure.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Procedure",
+                  "description": "An action that is or was performed on or for a patient. This can be a physical intervention like an operation, or less invasive like long term services, counseling, or hypnotherapy.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Procedure"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "External Identifiers for this procedure."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Instantiates FHIR protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Instantiates external protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A request for this procedure."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Part of referenced event."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "preparation",
+                        "in-progress",
+                        "not-done",
+                        "on-hold",
+                        "stopped",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "A code specifying the state of the procedure."
+                    },
+                    "statusReason": {
+                      "type": "object",
+                      "description": "Reason for current status."
+                    },
+                    "category": {
+                      "type": "object",
+                      "description": "Classification of the procedure."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "Identification of the procedure."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who the procedure was performed on."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "Encounter created as part of."
+                    },
+                    "performedDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "performedPeriod": {
+                      "type": "object"
+                    },
+                    "performedString": {
+                      "type": "string"
+                    },
+                    "performedAge": {
+                      "type": "object"
+                    },
+                    "performedRange": {
+                      "type": "object"
+                    },
+                    "recorder": {
+                      "type": "object",
+                      "description": "Who recorded the procedure."
+                    },
+                    "asserter": {
+                      "type": "object",
+                      "description": "Person who asserts this procedure."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The people who performed the procedure."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "Where the procedure happened."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Coded reason procedure performed."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The justification that the procedure was performed."
+                    },
+                    "bodySite": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Target body sites."
+                    },
+                    "outcome": {
+                      "type": "object",
+                      "description": "The result of procedure."
+                    },
+                    "report": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any report resulting from the procedure."
+                    },
+                    "complication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Complication following the procedure."
+                    },
+                    "complicationDetail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A condition that is a result of the procedure."
+                    },
+                    "followUp": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Instructions for follow up."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional information about the procedure."
+                    },
+                    "focalDevice": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Manipulated, implanted, or removed device."
+                    },
+                    "usedReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Items used during procedure."
+                    },
+                    "usedCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Coded items used during the procedure."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Procedure",
+                  "description": "An action that is or was performed on or for a patient. This can be a physical intervention like an operation, or less invasive like long term services, counseling, or hypnotherapy.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Procedure"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "External Identifiers for this procedure."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Instantiates FHIR protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "Instantiates external protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A request for this procedure."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Part of referenced event."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "preparation",
+                        "in-progress",
+                        "not-done",
+                        "on-hold",
+                        "stopped",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "A code specifying the state of the procedure."
+                    },
+                    "statusReason": {
+                      "type": "object",
+                      "description": "Reason for current status."
+                    },
+                    "category": {
+                      "type": "object",
+                      "description": "Classification of the procedure."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "Identification of the procedure."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who the procedure was performed on."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "Encounter created as part of."
+                    },
+                    "performedDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "performedPeriod": {
+                      "type": "object"
+                    },
+                    "performedString": {
+                      "type": "string"
+                    },
+                    "performedAge": {
+                      "type": "object"
+                    },
+                    "performedRange": {
+                      "type": "object"
+                    },
+                    "recorder": {
+                      "type": "object",
+                      "description": "Who recorded the procedure."
+                    },
+                    "asserter": {
+                      "type": "object",
+                      "description": "Person who asserts this procedure."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The people who performed the procedure."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "Where the procedure happened."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Coded reason procedure performed."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The justification that the procedure was performed."
+                    },
+                    "bodySite": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Target body sites."
+                    },
+                    "outcome": {
+                      "type": "object",
+                      "description": "The result of procedure."
+                    },
+                    "report": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any report resulting from the procedure."
+                    },
+                    "complication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Complication following the procedure."
+                    },
+                    "complicationDetail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A condition that is a result of the procedure."
+                    },
+                    "followUp": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Instructions for follow up."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional information about the procedure."
+                    },
+                    "focalDevice": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Manipulated, implanted, or removed device."
+                    },
+                    "usedReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Items used during procedure."
+                    },
+                    "usedCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Coded items used during the procedure."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Procedure",
+                "description": "An action that is or was performed on or for a patient. This can be a physical intervention like an operation, or less invasive like long term services, counseling, or hypnotherapy.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Procedure"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "External Identifiers for this procedure."
+                  },
+                  "instantiatesCanonical": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "Instantiates FHIR protocol or definition."
+                  },
+                  "instantiatesUri": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "Instantiates external protocol or definition."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A request for this procedure."
+                  },
+                  "partOf": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Part of referenced event."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "preparation",
+                      "in-progress",
+                      "not-done",
+                      "on-hold",
+                      "stopped",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "A code specifying the state of the procedure."
+                  },
+                  "statusReason": {
+                    "type": "object",
+                    "description": "Reason for current status."
+                  },
+                  "category": {
+                    "type": "object",
+                    "description": "Classification of the procedure."
+                  },
+                  "code": {
+                    "type": "object",
+                    "description": "Identification of the procedure."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "Who the procedure was performed on."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "Encounter created as part of."
+                  },
+                  "performedDateTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "performedPeriod": {
+                    "type": "object"
+                  },
+                  "performedString": {
+                    "type": "string"
+                  },
+                  "performedAge": {
+                    "type": "object"
+                  },
+                  "performedRange": {
+                    "type": "object"
+                  },
+                  "recorder": {
+                    "type": "object",
+                    "description": "Who recorded the procedure."
+                  },
+                  "asserter": {
+                    "type": "object",
+                    "description": "Person who asserts this procedure."
+                  },
+                  "performer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The people who performed the procedure."
+                  },
+                  "location": {
+                    "type": "object",
+                    "description": "Where the procedure happened."
+                  },
+                  "reasonCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Coded reason procedure performed."
+                  },
+                  "reasonReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The justification that the procedure was performed."
+                  },
+                  "bodySite": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Target body sites."
+                  },
+                  "outcome": {
+                    "type": "object",
+                    "description": "The result of procedure."
+                  },
+                  "report": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Any report resulting from the procedure."
+                  },
+                  "complication": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Complication following the procedure."
+                  },
+                  "complicationDetail": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A condition that is a result of the procedure."
+                  },
+                  "followUp": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Instructions for follow up."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional information about the procedure."
+                  },
+                  "focalDevice": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Manipulated, implanted, or removed device."
+                  },
+                  "usedReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Items used during procedure."
+                  },
+                  "usedCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Coded items used during the procedure."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Procedure/_search": {
+      "post": {
+        "tags": [
+          "Procedure"
+        ],
+        "operationId": "Procedure.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "preparation",
+                      "in-progress",
+                      "not-done",
+                      "on-hold",
+                      "stopped",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ]
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "patient": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "$ref": "#/components/schemas/FhirDateSearch"
+                  },
+                  "based-on": {
+                    "type": "string"
+                  },
+                  "part-of": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/fhir-r4/": {
       "post": {
         "tags": [
@@ -19055,6 +22930,12 @@
     },
     {
       "name": "Goal"
+    },
+    {
+      "name": "PlanDefinition"
+    },
+    {
+      "name": "Procedure"
     },
     {
       "name": "Bundle"

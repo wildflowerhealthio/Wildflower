@@ -1,4 +1,4 @@
-import { Arbitrary, FastCheck as fc, SchemaAST, type Schema } from 'effect'
+import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -21,7 +21,10 @@ import {
   MedicationRequest,
   Observation,
   Patient,
+  PlanDefinition,
+  PlanDefinitionAction,
   Practitioner,
+  Procedure,
   ServiceRequest,
 } from '../resources/index.ts'
 import {
@@ -224,6 +227,25 @@ const ADOPTED_FIELDS = {
     'note',
   ],
   Goal: ['id', 'identifier', 'subject', 'expressedBy', 'addresses', 'note', 'outcomeReference'],
+  PlanDefinition: ['id', 'identifier', 'subjectReference', 'action'],
+  Procedure: [
+    'id',
+    'identifier',
+    'subject',
+    'encounter',
+    'recorder',
+    'asserter',
+    'location',
+    'basedOn',
+    'partOf',
+    'performer',
+    'reasonReference',
+    'report',
+    'complicationDetail',
+    'focalDevice',
+    'usedReference',
+    'note',
+  ],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
 // ---------------------------------------------------------------------------
@@ -277,7 +299,10 @@ const IDENTIFIER_SHAPE = declaredShapeOf(IdentifierSchema.ast)
  * @remarks
  * Stops at a `Reference` (that is the find) and at an `Identifier` — whose
  * `assigner` adoption never rewrites, wherever it is reached from. Those two
- * stops also break the `Reference` ⇄ `Identifier` cycle.
+ * stops also break the `Reference` ⇄ `Identifier` cycle. A struct nested in
+ * one of its own shape stops too: a recursive element (`PlanDefinition.action`)
+ * reports its references once, at its outermost path, and adoption rewrites
+ * them at every depth.
  *
  * Throws rather than truncating at {@link MAX_WALK_DEPTH}: a silently-cut walk
  * reports *fewer* references than exist, which is the failure this guard exists
@@ -285,7 +310,12 @@ const IDENTIFIER_SHAPE = declaredShapeOf(IdentifierSchema.ast)
  */
 const referencePathsIn = (schema: { readonly ast: SchemaAST.AST }): readonly string[] => {
   const found: string[] = []
-  const walk = (node: SchemaAST.AST, path: readonly string[], depth: number): void => {
+  const walk = (
+    node: SchemaAST.AST,
+    path: readonly string[],
+    depth: number,
+    enclosing: readonly string[] = []
+  ): void => {
     if (depth > MAX_WALK_DEPTH) {
       throw new Error(`reference walk exceeded ${MAX_WALK_DEPTH} at ${path.join('.')}`)
     }
@@ -295,29 +325,33 @@ const referencePathsIn = (schema: { readonly ast: SchemaAST.AST }): readonly str
       return
     }
     if (shape !== '' && shape === IDENTIFIER_SHAPE) return
-    if (SchemaAST.isSuspend(node)) return walk(node.f(), path, depth + 1)
+    // A struct nested in one of its own shape (`PlanDefinition.action.action`)
+    // declares the references its enclosing copy already reported.
+    if (shape !== '' && enclosing.includes(shape)) return
+    const within = shape === '' ? enclosing : [...enclosing, shape]
+    if (SchemaAST.isSuspend(node)) return walk(node.f(), path, depth + 1, within)
     if (SchemaAST.isTypeLiteral(node)) {
       for (const property of node.propertySignatures) {
         const name = String(property.name)
-        if (!EXEMPT_SUBTREES.has(name)) walk(property.type, [...path, name], depth + 1)
+        if (!EXEMPT_SUBTREES.has(name)) walk(property.type, [...path, name], depth + 1, within)
       }
       return
     }
     if (SchemaAST.isUnion(node)) {
-      for (const member of node.types) walk(member, path, depth + 1)
+      for (const member of node.types) walk(member, path, depth + 1, within)
       return
     }
     if (SchemaAST.isTupleType(node)) {
-      for (const element of node.elements) walk(element.type, path, depth + 1)
-      for (const rest of node.rest) walk(rest.type, path, depth + 1)
+      for (const element of node.elements) walk(element.type, path, depth + 1, within)
+      for (const rest of node.rest) walk(rest.type, path, depth + 1, within)
       return
     }
-    if (SchemaAST.isTransformation(node)) return walk(node.to, path, depth + 1)
-    if (SchemaAST.isRefinement(node)) return walk(node.from, path, depth + 1)
+    if (SchemaAST.isTransformation(node)) return walk(node.to, path, depth + 1, within)
+    if (SchemaAST.isRefinement(node)) return walk(node.from, path, depth + 1, within)
     // `OrNullAsOptional` is a `Declaration` wrapping the real schema, so the
     // inner type hides in its type parameters rather than under a `from`/`to`.
     if (SchemaAST.isDeclaration(node)) {
-      for (const parameter of node.typeParameters) walk(parameter, path, depth + 1)
+      for (const parameter of node.typeParameters) walk(parameter, path, depth + 1, within)
       return
     }
   }
@@ -456,6 +490,24 @@ const REWRITTEN_REFERENCE_PATHS = {
     'supportingInfo',
   ],
   Goal: ['addresses', 'expressedBy', 'note.authorReference', 'outcomeReference', 'subject'],
+  PlanDefinition: ['action.subjectReference', 'subjectReference'],
+  Procedure: [
+    'asserter',
+    'basedOn',
+    'complicationDetail',
+    'encounter',
+    'focalDevice.manipulated',
+    'location',
+    'note.authorReference',
+    'partOf',
+    'performer.actor',
+    'performer.onBehalfOf',
+    'reasonReference',
+    'recorder',
+    'report',
+    'subject',
+    'usedReference',
+  ],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
 const SCHEMA_FOR = {
@@ -471,6 +523,8 @@ const SCHEMA_FOR = {
   ImagingStudy: ImagingStudy.Schema,
   CarePlan: CarePlan.Schema,
   Goal: Goal.Schema,
+  PlanDefinition: PlanDefinition.Schema,
+  Procedure: Procedure.Schema,
 } as const satisfies Record<FhirResource['resourceType'], Schema.Schema.Any>
 
 describe('reference coverage is derived from the schemas, not asserted by hand', () => {
@@ -538,6 +592,8 @@ const resources: readonly FhirResource[] = [
   { ...sample(ImagingStudy.Schema, 20), id: 'src-1' },
   { ...sample(CarePlan.Schema, 21), id: 'src-1' },
   { ...sample(Goal.Schema, 22), id: 'src-1' },
+  { ...sample(PlanDefinition.Schema, 23), id: 'src-1' },
+  { ...sample(Procedure.Schema, 24), id: 'src-1' },
 ]
 
 describe('adoptResource', () => {
@@ -861,6 +917,76 @@ describe('reference rewriting', () => {
     if (plan.resourceType !== 'CarePlan') throw new Error('unreachable: adopted a CarePlan')
 
     expect(plan.goal[0]?.reference).toBe(`Goal/${goal.id}`)
+  })
+
+  // `PlanDefinition.action` nests itself, and the coverage guard reports its
+  // references once, at the outermost path — so the rewrite at depth is
+  // pinned here.
+  test('rewrites the subject of a PlanDefinition action at every depth', () => {
+    const emptyAction = Schema.decodeSync(PlanDefinitionAction.Schema)({})
+    const nested = {
+      ...emptyAction,
+      subjectReference: reference({ reference: 'Group/inner' }),
+    }
+    const adopted = adopt({
+      ...sample(PlanDefinition.Schema, 23),
+      id: 'plan-1',
+      action: [
+        {
+          ...emptyAction,
+          subjectReference: reference({ reference: 'Group/outer' }),
+          action: [nested],
+        },
+      ],
+    })
+    if (adopted.resourceType !== 'PlanDefinition')
+      throw new Error('unreachable: adopted a PlanDefinition')
+
+    const [outer] = adopted.action
+    expect(outer?.subjectReference?.reference).toBe(
+      `Group/${localResourceId(SOURCE.system, 'Group', 'outer')}`
+    )
+    expect(outer?.action[0]?.subjectReference?.reference).toBe(
+      `Group/${localResourceId(SOURCE.system, 'Group', 'inner')}`
+    )
+  })
+
+  // A workout `Procedure` carries out `ServiceRequest`s; its `basedOn` must
+  // land on the ids those requests are adopted to.
+  test('rewrites the references nested in a Procedure performer and focal device', () => {
+    const request = adopt({ ...sample(ServiceRequest.Schema, 19), id: 'sr-1' })
+    const adopted = adopt({
+      ...sample(Procedure.Schema, 24),
+      id: 'proc-1',
+      basedOn: [reference({ reference: 'ServiceRequest/sr-1' })],
+      performer: [
+        {
+          id: null,
+          extension: [],
+          modifierExtension: [],
+          function: null,
+          actor: reference({ reference: 'Practitioner/prac-1' }),
+          onBehalfOf: reference({ reference: 'Organization/org-1' }),
+        },
+      ],
+      focalDevice: [
+        {
+          id: null,
+          extension: [],
+          modifierExtension: [],
+          action: null,
+          manipulated: reference({ reference: 'Device/dev-1' }),
+        },
+      ],
+    })
+    if (adopted.resourceType !== 'Procedure') throw new Error('unreachable: adopted a Procedure')
+
+    const localRef = (resourceType: string, sourceId: string): string =>
+      `${resourceType}/${localResourceId(SOURCE.system, resourceType, sourceId)}`
+    expect(adopted.basedOn[0]?.reference).toBe(`ServiceRequest/${request.id}`)
+    expect(adopted.performer[0]?.actor.reference).toBe(localRef('Practitioner', 'prac-1'))
+    expect(adopted.performer[0]?.onBehalfOf?.reference).toBe(localRef('Organization', 'org-1'))
+    expect(adopted.focalDevice[0]?.manipulated.reference).toBe(localRef('Device', 'dev-1'))
   })
 
   // The standing exemption the coverage guard encodes by stopping at every

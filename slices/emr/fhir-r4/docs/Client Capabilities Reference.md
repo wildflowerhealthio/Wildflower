@@ -296,7 +296,7 @@ Required `lifecycleStatus`, `description` (CodeableConcept), and `subject` are m
 
 ## PlanDefinition search parameters (subset declared)
 
-Per FHIR R4 § PlanDefinition.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `url`, `version`, `name`, `title`, `status`, `date`, `description`, `publisher`, `jurisdiction`, `topic`, `context`, `context-type`, `context-quantity`, `effective`, `type`, `definition`, `composed-of`, `depends-on`, `derived-from`, `predecessor`, `successor`. The `search-params.ts` schema declares: `_count`, `_pageToken`, `_id`, `identifier`, `url`, `name`, `title`, `status`, `date`. No `HttpApi` group is declared for `PlanDefinition` yet, so the typed client cannot search it.
+Per FHIR R4 § PlanDefinition.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `url`, `version`, `name`, `title`, `status`, `date`, `description`, `publisher`, `jurisdiction`, `topic`, `context`, `context-type`, `context-quantity`, `effective`, `type`, `definition`, `composed-of`, `depends-on`, `derived-from`, `predecessor`, `successor`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `url`, `name`, `title`, `status`, `date`.
 
 `status` is narrowed to the `PlanDefinition.status` value set (`draft | active | retired | unknown`). `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above). `identifier`, `url`, `name`, and `title` are plain strings passed through as written.
 
@@ -312,7 +312,7 @@ The recursive `action` array's arbitrary is pinned to `[]`, so property tests ne
 
 ## Procedure search parameters (subset declared)
 
-Per FHIR R4 § Procedure.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `code`, `patient`, `subject`, `encounter`, `date`, `performer`, `location`, `reason-code`, `reason-reference`, `based-on`, `part-of`, `category`, `status`, `instantiates-canonical`, `instantiates-uri`. The `search-params.ts` schema declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `code`, `subject`, `patient`, `date`, `based-on`, `part-of`, `category`. No `HttpApi` group is declared for `Procedure` yet, so the typed client cannot search it.
+Per FHIR R4 § Procedure.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `code`, `patient`, `subject`, `encounter`, `date`, `performer`, `location`, `reason-code`, `reason-reference`, `based-on`, `part-of`, `category`, `status`, `instantiates-canonical`, `instantiates-uri`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `code`, `subject`, `patient`, `date`, `based-on`, `part-of`, `category`.
 
 `status` is narrowed to the `Procedure.status` value set (`preparation | in-progress | not-done | on-hold | stopped | completed | entered-in-error | unknown`). `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above), matched by the server against `Procedure.performed[x]`. `identifier`, `code`, `subject`, `patient`, `based-on`, `part-of`, and `category` are plain strings passed through as written.
 

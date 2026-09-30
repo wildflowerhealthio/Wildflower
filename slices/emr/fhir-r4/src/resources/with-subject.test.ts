@@ -14,7 +14,9 @@ import {
   MedicationRequest,
   Observation,
   Patient,
+  PlanDefinition,
   Practitioner,
+  Procedure,
   ServiceRequest,
 } from './index.ts'
 import { SUBJECT_RESOURCE_TYPES, withSubject } from './with-subject.ts'
@@ -40,6 +42,8 @@ const SAMPLES = {
   ServiceRequest: sample(ServiceRequest.Schema, 10),
   CarePlan: sample(CarePlan.Schema, 11),
   Goal: sample(Goal.Schema, 12),
+  PlanDefinition: sample(PlanDefinition.Schema, 13),
+  Procedure: sample(Procedure.Schema, 14),
 } satisfies Record<FhirResource['resourceType'], FhirResource>
 
 const resources: readonly FhirResource[] = Object.values(SAMPLES)
