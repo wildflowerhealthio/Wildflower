@@ -653,6 +653,8 @@ jobs:
             -T /usr/bin/productbuild -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: \
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          # Splitting is the point: each existing keychain is its own argument.
+          # shellcheck disable=SC2046
           security list-keychain -d user -s "$KEYCHAIN" $(security list-keychain -d user | tr -d '"')
 
           PKG="$RUNNER_TEMP/WildflowerHost.pkg"

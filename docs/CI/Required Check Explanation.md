@@ -10,7 +10,7 @@ The `main` ruleset requires one status check, `Required`, which `ci.yml` reports
 on every pull request. It passes only when every CI job that applies to the pull
 request has passed. With an approving review, that is enough to merge. Turning
 on auto-merge merges a pull request as soon as both hold. Nothing lands on
-`main` with a failing TypeScript, Rust, Pebble, Markdown or API Sync check.
+`main` with a failing TypeScript, Rust, Pebble, Markdown, API Sync, Actions Lint or Shell Lint check.
 
 ## Why one check and not one per job
 
@@ -27,7 +27,7 @@ workflow's checks.
 1. **`Detect changes`** runs `dorny/paths-filter` with one filter per area, the
    lists that used to be each workflow's trigger `paths`.
 2. **One job per area** calls that area's workflow (`ci-typescript.yml`,
-   `ci-rust.yml`, `ci-pebble.yml`, `lint-markdown.yml`, `api-sync.yml`) through
+   `ci-rust.yml`, `ci-pebble.yml`, `lint-markdown.yml`, `api-sync.yml`, `lint-actions.yml`, `lint-shell.yml`) through
    `workflow_call`, gated on its filter. An untouched area's job is skipped.
 3. **`Required`** needs all of them and runs with `if: always()`. It fails when
    any job failed or was cancelled and passes otherwise, so a skipped area counts

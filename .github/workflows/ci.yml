@@ -41,6 +41,8 @@ jobs:
       pebble: ${{ steps.filter.outputs.pebble }}
       markdown: ${{ steps.filter.outputs.markdown }}
       api-sync: ${{ steps.filter.outputs.api-sync }}
+      actions: ${{ steps.filter.outputs.actions }}
+      shell: ${{ steps.filter.outputs.shell }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
@@ -123,6 +125,18 @@ jobs:
               - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/api-sync.yml'
+            # actionlint reads local composite actions' inputs to check their
+            # callers, so a change under actions/ can break a workflow.
+            actions:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - '.github/actionlint.yaml'
+            shell:
+              - '**/*.sh'
+              - '**/*.bash'
+              - '.vite-hooks/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/lint-shell.yml'
 
   # A called workflow gets at most the permissions its calling job grants, so
   # each job below grants what its workflow's own `permissions` block asks for.
@@ -171,13 +185,29 @@ jobs:
       contents: read
     uses: ./.github/workflows/api-sync.yml
 
+  actions:
+    name: Actions Lint
+    needs: changes
+    if: needs.changes.outputs.actions == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lint-actions.yml
+
+  shell:
+    name: Shell Lint
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lint-shell.yml
+
   # The status check the `main` ruleset requires. A skipped area (the PR doesn't
   # touch it) counts as passing; a failed or cancelled job anywhere fails it.
   # `always()`, not `!cancelled()`: a cancelled run must still report a
   # failure here, because a skipped `Required` would count as passing.
   required:
     name: Required
-    needs: [changes, typescript, rust, pebble, markdown, api-sync]
+    needs: [changes, typescript, rust, pebble, markdown, api-sync, actions, shell]
     if: always()
     runs-on: ubuntu-latest
     steps:
