@@ -210,6 +210,10 @@ interface ExpectedPrescription {
   /** Generic name, strength and form: `'Alvastatin 20 mg tablet'`. */
   readonly name: string
   readonly din: string
+  /** The key of the prescription for the same drug this one follows, or `null` for the first. */
+  readonly previousKey: string | null
+  /** The key of the prescription for the same drug that follows this one, or `null` for the last. */
+  readonly nextKey: string | null
   /** Tablets per fill. */
   readonly quantity: number
   readonly supplyDays: number
@@ -322,6 +326,10 @@ interface LaidOut {
   readonly prescription: Prescription.Prescription
   /** Repeats filled after the first fill. */
   readonly refills: number
+  /** The episode's prescription before this one, or `null` for its first. */
+  readonly previousKey: string | null
+  /** The episode's prescription after this one, or `null` for its last. */
+  readonly nextKey: string | null
 }
 
 /** A DIN for a new product that is never the one it replaces. */
@@ -447,6 +455,8 @@ const layOutEpisode = (episodeKey: string, episode: EpisodeInputs): readonly Lai
     const ended = endedBefore(nextReason, episode.stoppedAtEnd, endDay)
     laidOut.push({
       refills,
+      previousKey: index === 0 ? null : `${episodeKey}-${index}`,
+      nextKey: nextReason === undefined ? null : `${episodeKey}-${index + 2}`,
       prescription: {
         key: `${episodeKey}-${index + 1}`,
         product,
@@ -488,7 +498,12 @@ const shifted = (laidOut: LaidOut, days: number): LaidOut => {
 }
 
 /** What a prescription's record must say, from its generated fields by this module's arithmetic. */
-const expectedOf = ({ prescription, refills }: LaidOut): ExpectedPrescription => {
+const expectedOf = ({
+  prescription,
+  refills,
+  previousKey,
+  nextKey,
+}: LaidOut): ExpectedPrescription => {
   const { product, dosing, supplyDaysPerFill, repeatsAllowed } = prescription
   const tabletsPerDay = dosing.tabletsPerDose * dosing.dosesPerDay
   const lastFillDay = prescription.fillDays.at(-1) ?? prescription.written.day
@@ -502,6 +517,8 @@ const expectedOf = ({ prescription, refills }: LaidOut): ExpectedPrescription =>
     lastFillDay,
     name: expectedNameOf(product),
     din: product.din,
+    previousKey,
+    nextKey,
     quantity: tabletsPerDay * supplyDaysPerFill,
     supplyDays: supplyDaysPerFill,
     repeatsAllowed,
@@ -523,14 +540,19 @@ const expectedOf = ({ prescription, refills }: LaidOut): ExpectedPrescription =>
  * The whole story is shifted so its last event falls before the as-of day,
  * leaving some prescriptions running on it and some long done. Every
  * prescription is filled at least once, and no two are written on the same
- * day, so a test can find a record by its written date. Lab draws are left
- * empty; a lab source's tests generate their own.
+ * day, so a test can find a record by its written date. Each drug has its own
+ * generic name, so a drug's prescriptions are exactly one episode. Lab draws
+ * are left empty; a lab source's tests generate their own.
  */
 const storyCaseArbitrary = (personKey: string): fc.Arbitrary<StoryCase> =>
   fc
     .record({
       person: personArbitrary(personKey),
-      episodes: fc.array(episodeInputsArbitrary, { minLength: 1, maxLength: 4 }),
+      episodes: fc.uniqueArray(episodeInputsArbitrary, {
+        minLength: 1,
+        maxLength: 4,
+        selector: ({ genericName }) => genericName,
+      }),
       tailGap: fc.integer({ min: 0, max: 120 }),
     })
     .map(({ person, episodes, tailGap }) => {

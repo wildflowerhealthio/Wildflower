@@ -2,7 +2,7 @@
   "name": "shoppers-drugmart-source",
   "version": "0.0.0",
   "private": true,
-  "description": "The Shoppers Drug Mart source: Customer / Prescription / PrescriptionHistory response kinds that synthesize FHIR R4 Patient / MedicationRequest / MedicationDispense from the portal's bespoke JSON, each with its own tryRecognize, and the assembled shoppersDrugMartSource descriptor consumers extract with. No DOM, no fs, no React.",
+  "description": "The Shoppers Drug Mart source: Customer / Prescription / PrescriptionHistory response kinds that synthesize FHIR R4 Patient / MedicationRequest / MedicationDispense from the portal's bespoke JSON, each with its own tryRecognize, the assembled shoppersDrugMartSource descriptor consumers extract with, and the portal JSON's schemas, API URLs and identifier catalogue for a producer to spell it from. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

@@ -1,7 +1,15 @@
-import { Array as Arr, Effect, type Option, type ParseResult, Schema } from 'effect'
+import {
+  Array as Arr,
+  Effect,
+  type Option,
+  type ParseResult,
+  RegExp as EffectRegExp,
+  Schema,
+} from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
+import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 
@@ -170,12 +178,14 @@ const demographicPatientOf = (
 const patientIdOf = (patient: SourcePatient): string => patient.id
 
 /**
- * The exact customers XHR URL, anchored and pinned to host + `v1` + full path
- * with an optional query; `[^/?#]+(?:\?|$)` keeps the uuid a single segment (so
- * `…/pcid/<uuid>/toasts` is rejected). Disjoint from the sibling kinds.
+ * The exact customers XHR URL (`customerUrlOf`), anchored and pinned to
+ * {@link SHOPPERS_API_BASE_URL} + full path with an optional query;
+ * `[^/?#]+(?:\?|$)` keeps the uuid a single segment (so `…/pcid/<uuid>/toasts`
+ * is rejected). Disjoint from the sibling kinds.
  */
-const customerUrl =
-  /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/customers\/pcid\/[^/?#]+(?:\?|$)/
+const customerUrl = new RegExp(
+  `^${EffectRegExp.escape(SHOPPERS_API_BASE_URL)}/customers/pcid/[^/?#]+(?:\\?|$)`
+)
 
 /**
  * Entity for the Shoppers customers XHR: one bespoke JSON object carrying the

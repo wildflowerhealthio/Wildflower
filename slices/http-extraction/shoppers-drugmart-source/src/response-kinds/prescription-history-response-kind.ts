@@ -1,9 +1,18 @@
-import { Array as Arr, Effect, Option, pipe, Schema, String as Str } from 'effect'
+import {
+  Array as Arr,
+  Effect,
+  Option,
+  pipe,
+  RegExp as EffectRegExp,
+  Schema,
+  String as Str,
+} from 'effect'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime } from '../dates.ts'
+import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import {
   ShoppersIdentifierSystem,
   shoppersStoreDisplay,
@@ -130,12 +139,14 @@ const dispenseWireFrom = (raw: unknown): Option.Option<Record<string, unknown>> 
   )
 
 /**
- * The exact prescription-history XHR URL, anchored and pinned to host + `v1` +
- * full path; the required `?…customerId=` query matches the API XHR but not the
- * user-facing page. Disjoint from the sibling kinds.
+ * The exact prescription-history XHR URL (`prescriptionHistoryUrlOf`), anchored
+ * and pinned to {@link SHOPPERS_API_BASE_URL} + full path; the required
+ * `?…customerId=` query matches the API XHR but not the user-facing page.
+ * Disjoint from the sibling kinds.
  */
-const historyUrl =
-  /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/prescription-history\?(?:[^#]*&)?customerId=/
+const historyUrl = new RegExp(
+  `^${EffectRegExp.escape(SHOPPERS_API_BASE_URL)}/prescription-history\\?(?:[^#]*&)?customerId=`
+)
 
 /**
  * Entity for the Shoppers prescription-history XHR: one payload carrying **every**

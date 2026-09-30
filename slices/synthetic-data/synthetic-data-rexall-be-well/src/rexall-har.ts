@@ -29,25 +29,14 @@ const SIGN_IN_IP = '203.0.113.10'
 const APP_IP = '203.0.113.11'
 const TUNNEL_IP = '203.0.113.12'
 
-const HTML = 'text/html; charset=utf-8'
 const JSON_MIME = 'application/json; charset=utf-8'
 
-type RequestHeaders = ChromeHar.ExchangeSpec['requestHeaders']
-
 /** The headers the single-page app sends on its API calls. */
-const XHR_REQUEST_HEADERS: RequestHeaders = [
+const XHR_REQUEST_HEADERS: ChromeHar.ExchangeSpec['requestHeaders'] = [
   ['accept', 'application/json, text/plain, */*'],
   ['origin', 'https://app.letsbewell.ca'],
   ['referer', 'https://app.letsbewell.ca/'],
 ]
-
-const DOCUMENT_REQUEST_HEADERS: RequestHeaders = [
-  ['accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'],
-]
-
-/** A single-page app's shell document. */
-const appShellOf = (title: string): string =>
-  `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body><div id="root"></div></body></html>`
 
 /** Milliseconds from the sign-in navigation to each later request. */
 const PRESCRIPTIONS_PAGE_AFTER_MILLIS = 18_400
@@ -96,25 +85,19 @@ const render = (
         }),
       ],
       [
-        ChromeHar.entryOf({
+        ChromeHar.navigationEntryOf({
           pageref: signInPage,
-          resourceType: 'document',
           startedAt: captureStart,
           url: SIGN_IN_URL,
-          requestHeaders: DOCUMENT_REQUEST_HEADERS,
-          mimeType: HTML,
-          body: appShellOf('Sign in | Be Well'),
+          title: 'Sign in | Be Well',
           waitMillis: 88.4,
           serverIPAddress: SIGN_IN_IP,
         }),
-        ChromeHar.entryOf({
+        ChromeHar.navigationEntryOf({
           pageref: prescriptionsPage,
-          resourceType: 'document',
           startedAt: after(PRESCRIPTIONS_PAGE_AFTER_MILLIS),
           url: PRESCRIPTIONS_URL,
-          requestHeaders: DOCUMENT_REQUEST_HEADERS,
-          mimeType: HTML,
-          body: appShellOf('Prescriptions | Be Well'),
+          title: 'Prescriptions | Be Well',
           waitMillis: 64.9,
           serverIPAddress: APP_IP,
         }),

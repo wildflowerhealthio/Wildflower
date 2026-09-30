@@ -39,7 +39,9 @@ navigation, persistence, HAR, files, or apps.
 - **`shoppers-drugmart-source`** — the Shoppers Drug Mart source: three response
   kinds (Customer, Prescription, PrescriptionHistory) that synthesize FHIR R4
   Patient / MedicationRequest / MedicationDispense from the portal's bespoke
-  JSON. See its [AGENTS.md](./shoppers-drugmart-source/AGENTS.md).
+  JSON, plus that JSON's schemas, API URLs and identifier catalogue for a
+  producer of portal traffic to spell it from. See its
+  [AGENTS.md](./shoppers-drugmart-source/AGENTS.md).
 
 ## There is deliberately no `http-extraction-core`
 
