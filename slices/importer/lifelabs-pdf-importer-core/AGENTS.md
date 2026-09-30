@@ -88,10 +88,12 @@ function.
 - `src/synthesis.ts` — **the FHIR synthesis without the PDF decoder**,
   exported as the `/synthesis` subpath: the `Report` model's types,
   `toFhirResources`, **`adoptedResourcesOf`** (synthesis then adoption under
-  `LIFELABS_SYSTEM`, the resources a decode yields), `LIFELABS_SYSTEM` and
-  `defaultLifeLabsPdfSettings`, none of which reaches `positioned-text-web`
-  (pdfjs). For callers that build reports themselves
-  (`synthetic-data-lifelabs`); the main entry re-exports it.
+  `LIFELABS_SYSTEM`, the resources a decode yields) and the
+  `ReportResources` / `SynthesisOptions` types, none of which reaches
+  `positioned-text-web` (pdfjs). For callers that build reports themselves
+  (`synthetic-data-lifelabs`). The main entry does not re-export it: it
+  carries the importer's own surface (decode, detect, the importer, `Report`,
+  the settings and the source-system constants).
 - `src/detect.ts` — **`detectLifeLabsPdf`**, the importer's `detect`:
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition
