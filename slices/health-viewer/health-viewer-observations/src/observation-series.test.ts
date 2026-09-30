@@ -140,8 +140,8 @@ describe('observationsToSeries', () => {
       )
     })
 
-    test('the excluded set is exactly the two FHIR "never happened" statuses', () => {
-      expect([...EXCLUDED_STATUSES].toSorted()).toEqual(['cancelled', 'entered-in-error'])
+    test("the excluded set is fhir-r4's retracted-status set itself", () => {
+      expect(EXCLUDED_STATUSES).toBe(Observation.RETRACTED_STATUSES)
     })
   })
 

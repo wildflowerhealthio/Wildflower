@@ -49,7 +49,10 @@ export * as Bundle from './resources/bundle.ts'
 // Terminology — canonical coding-system and extension URLs
 export {
   CanadianCodingSystem,
+  WILDFLOWER_CANONICAL_BASE,
+  WILDFLOWER_CODE_SYSTEM_BASE,
   WILDFLOWER_EXTENSION_BASE,
+  WildflowerCodeSystem,
   WildflowerExtension,
 } from './terminology.ts'
 

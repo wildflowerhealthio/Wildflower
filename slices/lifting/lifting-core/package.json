@@ -1,0 +1,41 @@
+{
+  "name": "lifting-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure strength-training plans: planned exercises with their progression rule, workouts in cycle order, the prescription a lifter works at, logged sets grouped into sessions, the increment / hold / deload decision and the StrongLifts 5x5 template — plus, behind the `lifting-core/fhir` subpath, the FHIR R4 `PlanDefinition` / `ServiceRequest` / `Observation` adapters. No DOM, no platform imports.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./fhir": {
+      "source": "./src/fhir/index.ts",
+      "types": "./dist/fhir/index.d.ts",
+      "default": "./dist/fhir/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*"
+  }
+}
