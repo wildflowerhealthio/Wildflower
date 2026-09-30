@@ -15,10 +15,12 @@ import {
   useLaunchFailureRedirect,
   useSmartHandshake,
 } from 'fhir-r4-react/smart'
-import { PebbleSettings, ReturnTargetStore } from 'fhir-sync-pebble-core'
+import { PebbleSettings } from 'fhir-sync-pebble-core'
+import { ReturnTargetStore } from 'pebble-configuration'
 import { useMemo, useState, type JSX } from 'react'
 import { ErrorBanner, PageLoading } from 'react-tundraish'
 
+import { RETURN_TO_STORAGE_KEY } from './config.ts'
 import { SettingsPage, type SettingsPageProps } from './settings-page.tsx'
 import styles from './app.module.css'
 
@@ -119,7 +121,9 @@ const App = (): JSX.Element => {
   const queryClient = useQueryClient()
   const handshake = useSmartHandshake()
   useLaunchFailureRedirect(handshake)
-  const [returnTargets] = useState(() => ReturnTargetStore.fromWebStorage(window.sessionStorage))
+  const [returnTargets] = useState(() =>
+    ReturnTargetStore.fromWebStorage(window.sessionStorage, RETURN_TO_STORAGE_KEY)
+  )
 
   const client = handshake.kind === 'ready' ? handshake.client : undefined
   const session = useMemo<Session | undefined>(() => {

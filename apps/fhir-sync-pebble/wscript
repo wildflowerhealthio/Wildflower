@@ -4,7 +4,7 @@
 # Feel free to customize this to your needs.
 #
 import os.path
-import shutil
+import sys
 
 top = '.'
 out = 'build'
@@ -24,32 +24,14 @@ def configure(ctx):
     ctx.load('pebble_sdk')
 
 
-def find_vp(ctx):
-    """The repo's own `vp` (node_modules/.bin, which `vp install` fills), else the one on PATH."""
-    repo_vp = ctx.path.find_node('../../node_modules/.bin/vp')
-    if repo_vp is not None:
-        return repo_vp.abspath()
-    return shutil.which('vp')
-
-
-def bundle_pkjs(ctx):
-    """
-    The PebbleKit JS is TypeScript in pkjs/, bundled to ES5 as src/pkjs/index.js,
-    which the bundle step in build() reads. Build it first so a plain
-    `pebble build` never packs a stale or missing bundle.
-    """
-    vp = find_vp(ctx)
-    if vp is None:
-        ctx.fatal('Bundling the PebbleKit JS needs Vite+ (`vp`): run `vp install` at the '
-                  'repository root, or put `vp` on the PATH')
-    if ctx.exec_command([vp, 'pack'], cwd=ctx.path.find_dir('pkjs').abspath()) != 0:
-        ctx.fatal('Bundling the PebbleKit JS (`vp pack` in pkjs/) failed')
-
-
 def build(ctx):
     ctx.load('pebble_sdk')
 
-    bundle_pkjs(ctx)
+    # The PebbleKit JS is TypeScript in pkjs/; pebble-pkjs's waf helpers bundle
+    # it to src/pkjs/index.js, which the bundle step below reads.
+    sys.path.insert(0, ctx.path.find_dir('../../global/pebble/pebble-pkjs/waf').abspath())
+    import pebble_pkjs
+    pebble_pkjs.bundle_pkjs(ctx)
 
     build_worker = os.path.exists('worker_src')
     binaries = []

@@ -50,4 +50,11 @@ const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   scope: 'openid fhirUser system/Patient.rs system/Observation.cu',
 }
 
-export { standaloneSmartConfig }
+/**
+ * The `sessionStorage` key the Pebble phone app's `return_to` is kept under
+ * across the SMART login: `main.tsx` keeps it before the login navigates away,
+ * and `App` recalls it once the callback lands.
+ */
+const RETURN_TO_STORAGE_KEY = 'fhir-sync-pebble:return-to'
+
+export { RETURN_TO_STORAGE_KEY, standaloneSmartConfig }

@@ -15,6 +15,9 @@ on:
       # fhir-sync-pebble's PebbleKit JS bundles this core into the .pbw, and
       # the host-side tests decode the watch's bytes with it.
       - 'slices/fhir-sync-pebble/**'
+      # The PebbleKit JS build tooling and the App Configuration hand-off both
+      # apps' PebbleKit JS and settings pages build on.
+      - 'global/pebble/**'
       # The host-side tests build the C through `buildHostCDriver`.
       - 'global/kitchen-sink/src/test/**'
       - '.github/workflows/ci-pebble.yml'
@@ -70,9 +73,11 @@ jobs:
 
       # The C builds with the host `cc` under ASan and UBSan; no SDK needed.
       # watch-lifts-test covers watch-lifts; fhir-sync-pebble-test and
-      # fhir-sync-pebble-pkjs cover fhir-sync-pebble's C and PebbleKit JS.
+      # fhir-sync-pebble-pkjs cover fhir-sync-pebble's C and PebbleKit JS;
+      # pebble-pkjs and pebble-configuration, the shared PebbleKit JS tooling
+      # and hand-off.
       - name: Run host-side tests
-        run: vp run -F watch-lifts-test -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs test
+        run: vp run -F watch-lifts-test -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs -F pebble-pkjs -F pebble-configuration test
 
   # One job for `pebble build` of both watch apps: the SDK is installed (or
   # restored) ONCE and both .pbw files come from it, each uploaded as an

@@ -54,7 +54,7 @@ describe('checkEs5Library', () => {
   let projectDir: string
 
   beforeAll(() => {
-    projectDir = mkdtempSync(join(tmpdir(), 'fhir-sync-pebble-es5-'))
+    projectDir = mkdtempSync(join(tmpdir(), 'pebble-pkjs-es5-'))
     writeFileSync(
       join(projectDir, 'tsconfig.json'),
       JSON.stringify({ compilerOptions: { lib: ['es5'], types: [], strict: true, noEmit: true } })

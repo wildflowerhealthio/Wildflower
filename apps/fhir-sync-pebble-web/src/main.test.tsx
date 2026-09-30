@@ -1,5 +1,6 @@
-import { ReturnTargetStore } from 'fhir-sync-pebble-core'
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+
+import { RETURN_TO_STORAGE_KEY } from './config.ts'
 
 /**
  * The entry module's URL work, which must happen before anything reads the URL
@@ -44,6 +45,6 @@ describe('main.tsx', () => {
   it("should keep the Pebble app's return_to for after the SMART login", async () => {
     await importEntry('/fhir-sync-pebble/?return_to=pebblejs%3A%2F%2Fclose%23')
 
-    expect(window.sessionStorage.getItem(ReturnTargetStore.STORAGE_KEY)).toBe('pebblejs://close#')
+    expect(window.sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBe('pebblejs://close#')
   })
 })

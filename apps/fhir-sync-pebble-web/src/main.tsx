@@ -7,9 +7,10 @@ import { createRoot } from 'react-dom/client'
 import 'react-tundraish/styles'
 
 import { restoreRedirectedUrl } from 'branding-core'
-import { ReturnTargetStore } from 'fhir-sync-pebble-core'
+import { ReturnTargetStore } from 'pebble-configuration'
 import { addOsColorSchemeListener } from 'react-tundraish'
 import { AppRoot } from './app-root.tsx'
+import { RETURN_TO_STORAGE_KEY } from './config.ts'
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see
 // "The 404 redirect" in `slices/branding/AGENTS.md`.
@@ -17,7 +18,9 @@ restoreRedirectedUrl(window)
 
 // Keep the Pebble phone app's `?return_to` before the SMART login navigates
 // away: the OAuth callback lands back here without it.
-ReturnTargetStore.fromWebStorage(window.sessionStorage).rememberFrom(new URL(window.location.href))
+ReturnTargetStore.fromWebStorage(window.sessionStorage, RETURN_TO_STORAGE_KEY).rememberFrom(
+  new URL(window.location.href)
+)
 
 // Mirror the OS colour preference onto `data-color-scheme` so tundra's dark
 // palette (keyed off that attribute, not `prefers-color-scheme`) tracks the OS.

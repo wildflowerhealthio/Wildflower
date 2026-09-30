@@ -1,5 +1,6 @@
 import { HumanName } from 'fhir-r4/data-types'
-import { PebbleSettings, ReturnTarget } from 'fhir-sync-pebble-core'
+import { PebbleSettings } from 'fhir-sync-pebble-core'
+import { ReturnTarget } from 'pebble-configuration'
 import { useState, type JSX } from 'react'
 import { ErrorBanner, PageLoading } from 'react-tundraish'
 import { PatientPillPicker, type PatientOption } from 'scopes-react'
@@ -84,7 +85,7 @@ const PatientConfirmation = ({
             navigate(
               ReturnTarget.handoffUrl(
                 returnTarget,
-                PebbleSettings.withPatient(connection, pickedPatient)
+                PebbleSettings.toJson(PebbleSettings.withPatient(connection, pickedPatient))
               )
             )
           }}
