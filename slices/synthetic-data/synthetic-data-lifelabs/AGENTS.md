@@ -35,7 +35,8 @@ module as in `synthetic-data-fundamentals/story`:
   fails with `UncataloguedLabTest` for a draw the laboratory does not print.
   `LifeLabs.render(…, pharmacyPatient)`: those reports through the importer's
   `adoptedResourcesOf`, without the report's `Patient`, every `Observation`
-  and `DiagnosticReport` `subject` replaced by `pharmacyPatient`.
+  and `DiagnosticReport` filed on `pharmacyPatient` (`fhir-r4/resources`'
+  `withSubject`).
 
 `synthetic-data-lifelabs/test-helpers` (`src/test-helpers.ts`) holds
 `laboratoryArbitrary`, `labDrawsArbitrary`, `labStoryArbitrary` and

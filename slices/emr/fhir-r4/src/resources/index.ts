@@ -1,6 +1,7 @@
 export { FhirResourceSchema } from './fhir-resource.ts'
 export type { FhirResource } from './fhir-resource.ts'
 export * as DateSearchParam from './search/date-search-param.ts'
+export { SUBJECT_RESOURCE_TYPES, withSubject } from './with-subject.ts'
 export * from './binary/index.ts'
 export * from './care-plan/index.ts'
 export * from './diagnostic-report/index.ts'

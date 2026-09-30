@@ -1,6 +1,6 @@
 import { Data, DateTime, Effect, type ParseResult } from 'effect'
 import type { ReferenceType } from 'fhir-r4/data-types'
-import type { FhirResource } from 'fhir-r4/resources'
+import { type FhirResource, withSubject } from 'fhir-r4/resources'
 import {
   adoptedResourcesOf,
   type LifeLabsReport,
@@ -259,15 +259,6 @@ const reportsOf = (
         }
       )
   )
-
-/** `resource` with its subject replaced, if it is a result that has one. */
-const withSubject =
-  (subject: ReferenceType) =>
-  (resource: FhirResource): FhirResource => {
-    if (resource.resourceType === 'Observation') return { ...resource, subject }
-    if (resource.resourceType === 'DiagnosticReport') return { ...resource, subject }
-    return resource
-  }
 
 /**
  * The story's lab results as the LifeLabs import makes them, on the person's
