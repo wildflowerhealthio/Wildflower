@@ -11,6 +11,11 @@ decodes native FHIR JSON) and `rexall-be-well-source` (which decodes a carebook
 STU3 dialect), this source **synthesizes** R4 resources directly from
 non-FHIR portal JSON.
 
+It also exports the portal's dialect itself — the API URLs, the payload
+schemas and the identifier catalogue — so a producer of portal traffic
+(`synthetic-data`'s Shoppers generator) spells the dialect from this package
+rather than a copy, and what it writes is what the response kinds read.
+
 ## Shape
 
 - `src/response-kinds/customer-response-kind.ts` —
@@ -25,6 +30,17 @@ non-FHIR portal JSON.
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
   builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
+- `src/portal-url.ts` — the API's URLs: `SHOPPERS_API_BASE_URL` and the
+  three XHR builders `customerUrlOf`, `prescriptionStatusUrlOf` and
+  `prescriptionHistoryUrlOf`. The response kinds build their matchers from
+  `SHOPPERS_API_BASE_URL`, so a built URL is one exactly one kind recognizes
+  (`portal-url.test.ts` pins that).
+- The payload schemas, exported for a producer to type its bodies as their
+  `.Encoded`: `CustomerPayload` and `SourcePatient` (the customers body and one
+  managed person), `SourcePrescription` and `SourceDispense` (the status body
+  and one of its dispenses), `HistoryPayload` and `SourceHistoryDispense` (the
+  history body and one entry). Lenient: only the ids each kind keys by are
+  required, and each list is decoded entry by entry.
 - `src/shoppers.ts` — the identifier/coding-system URL catalogue
   (`ShoppersIdentifierSystem`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`). There is no
   Shoppers DIN system — DINs use the canonical `CanadianCodingSystem.Din`.

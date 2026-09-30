@@ -1,9 +1,10 @@
-import { Array as Arr, Effect, Option, pipe, Schema } from 'effect'
+import { Array as Arr, Effect, Option, pipe, RegExp as EffectRegExp, Schema } from 'effect'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime, firstDateTime } from '../dates.ts'
+import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import {
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   ShoppersIdentifierSystem,
@@ -275,12 +276,14 @@ const dispenseWireFrom =
     )
 
 /**
- * The exact prescription-status XHR URL, anchored and pinned to host + `v1` +
- * full path with an optional query; only the `<uuid>` path parameter and query
- * vary. Disjoint from the sibling kinds.
+ * The exact prescription-status XHR URL (`prescriptionStatusUrlOf`), anchored
+ * and pinned to {@link SHOPPERS_API_BASE_URL} + full path with an optional
+ * query; only the `<uuid>` path parameter and query vary. Disjoint from the
+ * sibling kinds.
  */
-const prescriptionStatusUrl =
-  /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/prescriptions\/[^/?#]+\/prescription-status(?:\?|$)/
+const prescriptionStatusUrl = new RegExp(
+  `^${EffectRegExp.escape(SHOPPERS_API_BASE_URL)}/prescriptions/[^/?#]+/prescription-status(?:\\?|$)`
+)
 
 /**
  * Entity for one Shoppers prescription XHR: the `prescription-status` payload the

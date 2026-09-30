@@ -4,8 +4,8 @@ import { SourceDescriptor } from 'http-extraction-fundamentals'
 import { shoppersDrugMartResponseKinds } from './response-kinds.ts'
 
 /**
- * The Shoppers Drug Mart source as one value — the package's whole public
- * surface. Both the live plan and the archive importer reach the same
+ * The Shoppers Drug Mart source as one value — what a consumer extracts
+ * with. Both the live plan and the archive importer reach the same
  * pre-adopted `responseKinds` tuple through it by reference. See
  * `response-kinds.ts`.
  */
