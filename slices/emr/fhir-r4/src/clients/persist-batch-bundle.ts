@@ -226,11 +226,63 @@ const persistBatchBundle = (
     })
   )
 
+/**
+ * One response status across a set of batch outcomes, with the outcomes that
+ * resolved to it.
+ */
+interface StatusGroup<TOutcome extends BatchEntryOutcome> {
+  /** The echoed status (`"201 Created"`, `"422 Unprocessable Entity"`, {@link NO_RESPONSE_STATUS}). */
+  readonly status: string
+  /** Whether this status is a success (a 2xx). */
+  readonly ok: boolean
+  /** The outcomes that resolved to this status, in encounter order. */
+  readonly outcomes: readonly TOutcome[]
+}
+
+/** The leading numeric HTTP code of a status string, or `NaN` when it has none. */
+const statusCode = (status: string): number => Number.parseInt(status, 10)
+
+/**
+ * Group batch outcomes by their response status, for a results view: failures
+ * first, then by ascending HTTP code, a status with no numeric code (the
+ * {@link NO_RESPONSE_STATUS} sentinel) last within its success or failure
+ * band.
+ *
+ * @param outcomes - Every outcome to group, from one bundle or several
+ * @returns One {@link StatusGroup} per distinct status, sorted for display
+ */
+const groupByStatus = <TOutcome extends BatchEntryOutcome>(
+  outcomes: readonly TOutcome[]
+): readonly StatusGroup<TOutcome>[] => {
+  const groups = new Map<string, TOutcome[]>()
+  for (const outcome of outcomes) {
+    const bucket = groups.get(outcome.status)
+    if (bucket === undefined) groups.set(outcome.status, [outcome])
+    else bucket.push(outcome)
+  }
+  return [...groups.entries()]
+    .map(([status, grouped]): StatusGroup<TOutcome> => ({
+      status,
+      ok: grouped[0]?.ok ?? true,
+      outcomes: grouped,
+    }))
+    .toSorted((a, b) => {
+      if (a.ok !== b.ok) return a.ok ? 1 : -1
+      const codeA = statusCode(a.status)
+      const codeB = statusCode(b.status)
+      if (Number.isNaN(codeA)) return Number.isNaN(codeB) ? 0 : 1
+      if (Number.isNaN(codeB)) return -1
+      return codeA - codeB
+    })
+}
+
 export {
   type BatchEntryOutcome,
   entryUrl,
+  groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
   statusOk,
+  type StatusGroup,
   type WriteIssue,
 }

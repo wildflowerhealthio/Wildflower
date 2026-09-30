@@ -1,5 +1,6 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { Arbitrary, Effect, FastCheck as fc, Layer, type Schema } from 'effect'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { Patient, Observation, type FhirResource } from '../resources/index.ts'
@@ -7,6 +8,7 @@ import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-clien
 import {
   type BatchEntryOutcome,
   entryUrl,
+  groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
 } from './persist-batch-bundle.ts'
@@ -109,6 +111,60 @@ describe('persistBatchBundle', () => {
     expect(captured.outcomes).toEqual([])
   })
 })
+
+describe('groupByStatus', () => {
+  const outcome = (id: string, status: string, ok: boolean): BatchEntryOutcome => ({
+    target: { label: 'Observation', id },
+    status,
+    ok,
+    issues: [],
+  })
+
+  it('groups outcomes by status, failures first, then by ascending code, the sentinel last in its band', () => {
+    const outcomes = [
+      outcome('a', '200 OK', true),
+      outcome('b', NO_RESPONSE_STATUS, false),
+      outcome('c', '422 Unprocessable Entity', false),
+      outcome('d', '201 Created', true),
+      outcome('e', '200 OK', true),
+      outcome('f', '404 Not Found', false),
+    ]
+
+    const groups = groupByStatus(outcomes)
+
+    expect(groups.map((group) => [group.status, group.ok])).toEqual([
+      ['404 Not Found', false],
+      ['422 Unprocessable Entity', false],
+      [NO_RESPONSE_STATUS, false],
+      ['200 OK', true],
+      ['201 Created', true],
+    ])
+    expect(groups[3]?.outcomes.map((one) => one.target.id)).toEqual(['a', 'e'])
+  })
+
+  it('keeps every outcome exactly once', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            id: fc.string(),
+            status: fc.constantFrom('200 OK', '201 Created', '404 Not Found', NO_RESPONSE_STATUS),
+          })
+        ),
+        (rows) => {
+          const outcomes = rows.map(({ id, status }) => outcome(id, status, status.startsWith('2')))
+          const grouped = groupByStatus(outcomes).flatMap((group) => group.outcomes)
+          expect(asMultiset(grouped)).toEqual(asMultiset(outcomes))
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+/** `outcomes` as a sorted list of their JSON, to compare as multisets. */
+const asMultiset = (outcomes: readonly BatchEntryOutcome[]): readonly string[] =>
+  outcomes.map((outcome) => JSON.stringify(outcome)).toSorted()
 
 describe('entryUrl', () => {
   it('is the resource type and logical id, joined by a slash', () => {
