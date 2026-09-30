@@ -89,8 +89,6 @@ dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
   and the generator writes a `nextFillDate` only while a repeat is left, so
   medication-core amortizes a dose (tablets a day, unitless) for those alone
   and drops the rest. The round-trip test reckons it that way.
-- **A prescription's latest fill is in both feeds under one `dispenseId`
-  (#803).** The import yields it twice; the test counts it that way.
 - **The importer dates a request by its last fill** (`authoredOn` is
   `lastFillDate`), so the test finds a request by its last fill day, and its
   stories give each prescription its own.

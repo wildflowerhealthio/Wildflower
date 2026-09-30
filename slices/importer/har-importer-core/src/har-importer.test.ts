@@ -1,10 +1,15 @@
 import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import type { DocumentReference } from 'fhir-r4/resources'
+import type { DocumentReference, FhirResource } from 'fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from 'http-archive'
 import { SourceDescriptor } from 'http-extraction-fundamentals'
 import { MetaSource, PickedFile, FormatDecode, type DecodedFile } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
+import {
+  customerUrlOf,
+  prescriptionHistoryUrlOf,
+  prescriptionStatusUrlOf,
+} from 'shoppers-drugmart-source'
 import { describe, expect, it, test } from 'vite-plus/test'
 import { type TraceBody, type TraceExchange } from 'web-trace-core'
 import {
@@ -235,6 +240,94 @@ describe('harImporter.decode', () => {
     expect(result.unreadableFiles[0]?.title).toBe('archive.har')
     expect(result.unreadableFiles[0]?.error._tag).toBe('ParseError')
   })
+})
+
+/** A Shoppers account that manages one person, whose one fill is in both prescription feeds. */
+const SHOPPERS_ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
+const SHOPPERS_PERSON_ID = 'c0ffee00-0000-4000-8000-000000000001'
+const SHOPPERS_PRESCRIPTION_ID = 'rx-uuid-1'
+const SHOPPERS_STORE_NAME = 'SDM Pharmacy #9000'
+
+/** The Shoppers portal's three XHRs for that account, in the collector's page order. */
+const shoppersExchanges = (): readonly TraceExchange[] =>
+  [
+    {
+      url: customerUrlOf(SHOPPERS_ACCOUNT_ID),
+      body: {
+        customer: {
+          pcid: SHOPPERS_ACCOUNT_ID,
+          patients: [{ id: SHOPPERS_PERSON_ID, firstName: 'Ada' }],
+        },
+      },
+    },
+    {
+      url: prescriptionStatusUrlOf(SHOPPERS_PRESCRIPTION_ID),
+      body: {
+        id: SHOPPERS_PRESCRIPTION_ID,
+        patientId: SHOPPERS_PERSON_ID,
+        storeId: 9000,
+        dispenses: [{ dispenseId: 'disp-1', status: 'COMPLETE', quantityDispensed: 30 }],
+      },
+    },
+    {
+      url: prescriptionHistoryUrlOf(SHOPPERS_ACCOUNT_ID),
+      body: {
+        dispenses: [
+          {
+            prescriptionId: SHOPPERS_PRESCRIPTION_ID,
+            dispenseId: 'disp-1',
+            din: '80717730',
+            store: { id: 9000, storeName: SHOPPERS_STORE_NAME },
+          },
+        ],
+      },
+    },
+  ].map(({ url, body }, index) =>
+    traceExchange({
+      requestId: `req-${index}`,
+      url,
+      body: storedJson(body),
+      startedAtMillis: CAPTURE_FLOOR + index * 1000,
+    })
+  )
+
+/** Every extracted resource of a Shoppers capture of `exchanges`, source file excluded. */
+const shoppersResourcesOf = async (
+  exchanges: readonly TraceExchange[]
+): Promise<readonly FhirResource[]> =>
+  extractedSections(
+    (
+      await readOne({
+        id: '0:shoppers.har',
+        fileName: 'shoppers.har',
+        bytes: harBytesOf(exchanges),
+      })
+    ).decoded.sections
+  ).flatMap((section) => section.resources.map((entry) => entry.resource))
+
+describe('harImporter.decode over a Shoppers capture', () => {
+  it.each([
+    { order: 'status feed first', exchanges: shoppersExchanges() },
+    { order: 'history feed first', exchanges: shoppersExchanges().toReversed() },
+  ])(
+    'should import a fill in both feeds as one dispense naming the person ($order)',
+    async ({ exchanges }) => {
+      const resources = await shoppersResourcesOf(exchanges)
+      const person = resources.find(
+        (resource) => resource.resourceType === 'Patient' && resource.link.length === 0
+      )
+      const dispenses = resources.flatMap((resource) =>
+        resource.resourceType === 'MedicationDispense' ? [resource] : []
+      )
+
+      expect(
+        dispenses.map((dispense) => ({
+          subject: dispense.subject?.reference,
+          store: dispense.location?.display,
+        }))
+      ).toEqual([{ subject: `Patient/${person?.id}`, store: SHOPPERS_STORE_NAME }])
+    }
+  )
 })
 
 // ---------------------------------------------------------------------------

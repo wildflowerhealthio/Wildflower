@@ -31,8 +31,8 @@ import { type ShoppersCase, shoppersCaseArbitrary } from './test-helpers.ts'
  * @remarks
  * Every expectation — the Patients, each request's name, DIN, sig, fills left,
  * quantity, supply, status, prescriber and prior-prescription link, every
- * fill's day and DIN, the status feed's latest fill, and each dose regimen —
- * is `storyCaseArbitrary`'s own reckoning from the generated inputs, or the
+ * fill's day, DIN and subject, and each dose regimen — is
+ * `storyCaseArbitrary`'s own reckoning from the generated inputs, or the
  * portal's rules applied to it here, not the payload builders' code.
  */
 
@@ -269,7 +269,7 @@ describe(
       })
     })
 
-    test('property: yields a request per prescription, and every fill once per feed it is in', async () => {
+    test('property: yields a request per prescription, and a dispense per fill', async () => {
       await assertRoundTrip(({ shoppersCase }, imported) => {
         const prescriptions = prescriptionsOf(shoppersCase)
         const fillCount = prescriptions.reduce(
@@ -277,11 +277,12 @@ describe(
           0
         )
         expect(imported.requests).toHaveLength(prescriptions.length)
-        // The history feed lists every fill; the status feed each prescription's latest again.
-        expect(imported.dispenses).toHaveLength(fillCount + prescriptions.length)
+        // The history feed lists every fill and the status feed each latest again; the
+        // import merges the two copies of a latest fill into one.
+        expect(imported.dispenses).toHaveLength(fillCount)
         expect(new Set(imported.dispenses.map((dispense) => dispense.id)).size).toBe(fillCount)
         expect(imported.resources).toHaveLength(
-          shoppersCase.patients.length + 1 + prescriptions.length + imported.dispenses.length
+          shoppersCase.patients.length + 1 + prescriptions.length + fillCount
         )
       })
     })
@@ -344,9 +345,8 @@ describe(
           const { expected } = each
           const request = requestFor(asOf, imported, each)
           const dispenses = request === undefined ? [] : dispensesOf(imported, request)
-          const byId = new Map(dispenses.map((dispense) => [dispense.id, dispense]))
           expect(
-            [...byId.values()]
+            dispenses
               .map((dispense) => [
                 isoDateOf(dispense.whenHandedOver),
                 dispense.medicationCodeableConcept?.coding[0]?.code,
@@ -361,24 +361,29 @@ describe(
       })
     })
 
-    test('property: every request has its latest fill in the status feed, naming the patient', async () => {
+    test('property: every latest fill names the patient, and every earlier fill the account', async () => {
       await assertRoundTrip(({ asOf, shoppersCase }, imported) => {
+        const accountReference = `Patient/${imported.accountPatients[0]?.id}`
         for (const each of prescriptionsOf(shoppersCase)) {
           const request = requestFor(asOf, imported, each)
-          const statusDispenses = imported.sections
-            .filter((section) =>
-              section.some(
-                (resource) =>
-                  resource.resourceType === 'MedicationRequest' && resource.id === request?.id
+          const lastFillDate = isoDateOn(asOf, each.expected.lastFillDay)
+          expect(
+            (request === undefined ? [] : dispensesOf(imported, request))
+              .map(
+                (dispense) => `${isoDateOf(dispense.whenHandedOver)} ${dispense.subject?.reference}`
               )
-            )
-            .flat()
-            .filter(isDispense)
-          expect(statusDispenses, each.expected.key).toHaveLength(1)
-          expect(isoDateOf(statusDispenses[0]?.whenHandedOver)).toBe(
-            isoDateOn(asOf, each.expected.lastFillDay)
+              .toSorted(),
+            each.expected.key
+          ).toEqual(
+            each.expected.fillDays
+              .map((day) => {
+                const fillDate = isoDateOn(asOf, day)
+                const subject =
+                  fillDate === lastFillDate ? request?.subject.reference : accountReference
+                return `${fillDate} ${subject}`
+              })
+              .toSorted()
           )
-          expect(statusDispenses[0]?.subject?.reference).toBe(request?.subject.reference)
         }
       })
     })

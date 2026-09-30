@@ -257,10 +257,6 @@ const byPath: Order.Order<{ readonly path: string }> = Order.mapInput(
  * The resources an import writes, one per `<ResourceType>/<id>`: where one
  * repeats, the last copy, as a batch of PUTs applied in order leaves the
  * store.
- *
- * @remarks
- * The Shoppers import holds a prescription's latest fill twice under one id
- * (from the status feed and the history feed), and the copies differ.
  */
 const storedResourcesOf = (
   resources: readonly FhirResource[]
