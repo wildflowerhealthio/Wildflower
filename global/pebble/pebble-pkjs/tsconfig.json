@@ -1,18 +1,22 @@
 {
   "compilerOptions": {
-    "target": "es2015",
-    "lib": ["es5"],
-    "types": ["pebble-pkjs/pebble-kit-js"],
+    "target": "esnext",
+    "lib": ["es2024"],
+    "moduleDetection": "force",
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "customConditions": ["source"],
+    "resolveJsonModule": true,
+    "types": ["node"],
     "strict": true,
     "noUnusedLocals": true,
+    "declaration": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
-  "include": ["."]
+  "include": ["src"]
 }

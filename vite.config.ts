@@ -70,6 +70,8 @@ export default defineConfig({
       'global/effect-messaging/effect-messaging-core/vite.config.ts',
       'global/effect-messaging/effect-messaging-react/vite.config.ts',
       'global/kitchen-sink/vite.config.ts',
+      'global/pebble/pebble-configuration/vite.config.ts',
+      'global/pebble/pebble-pkjs/vite.config.ts',
       'global/react-kitchen-sink/vite.config.ts',
       'global/react-tundraish/vite.config.ts',
       'scripts/vite.config.ts',

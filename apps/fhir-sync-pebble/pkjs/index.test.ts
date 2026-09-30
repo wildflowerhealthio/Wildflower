@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 // src/index.ts is the glue between PebbleKit JS and the core: what it does
 // with each message is WatchSync.receive's, tested in the core. These run the
 // glue itself, loaded fresh per test over stand-ins for the PebbleKit JS
-// globals (src/pebble-kit-js.d.ts), with fake timers: the settings sent again,
-// the answer sent exactly once, the request's timeout.
+// globals (pebble-pkjs/pebble-kit-js), with fake timers: the settings sent
+// again, the answer sent exactly once, the request's timeout.
 
 /** src/index.ts, imported by URL so the Node-side type-check never loads its ES5 globals. */
 const INDEX_URL = new URL('src/index.ts', import.meta.url).href

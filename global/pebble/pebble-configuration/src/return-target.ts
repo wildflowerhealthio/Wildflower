@@ -1,9 +1,7 @@
 import { Data, Either, Option, Schema } from 'effect'
 
-import * as PebbleSettings from './pebble-settings.ts'
-
 /**
- * Where the settings page hands its result back to: the Pebble phone app's
+ * Where a settings page hands its result back to: the Pebble phone app's
  * `return_to`, per the Pebble "App Configuration (Static)" guide. The phone app
  * opens the page with `?return_to=<url>`; the page finishes by navigating to
  * that URL with the settings JSON, URI-encoded, appended, and the phone app
@@ -13,11 +11,11 @@ import * as PebbleSettings from './pebble-settings.ts'
  * A namespace module — consumers speak `ReturnTarget.Type`,
  * `ReturnTarget.decode`, `ReturnTarget.handoffUrl`.
  *
- * The settings carry a live access token, so `return_to` is an exfiltration
- * target: an arbitrary one would let anyone who can get a user to open a
- * crafted link collect a token for that user's record. So only the Pebble phone
- * app's own `pebblejs:` scheme and loopback `http(s)` (the `pebble` tool's
- * emulator configuration server) decode.
+ * Settings may carry secrets, so `return_to` is an exfiltration target: an
+ * arbitrary one would let anyone who can get a user to open a crafted link
+ * collect that user's settings. So only the Pebble phone app's own `pebblejs:`
+ * scheme and loopback `http(s)` (the `pebble` tool's emulator configuration
+ * server) decode.
  *
  * @packageDocumentation
  */
@@ -70,9 +68,11 @@ const decodeTarget = Schema.decodeUnknownEither(ReturnTargetSchema)
 const decode = (returnTo: string): Either.Either<Type, ForeignReturnTargetError> =>
   Either.mapLeft(decodeTarget(returnTo), () => new ForeignReturnTargetError({ returnTo }))
 
-/** The URL that hands `settings` back to the Pebble phone app. */
-const handoffUrl = (target: Type, settings: PebbleSettings.Type): string =>
-  target + encodeURIComponent(PebbleSettings.toJson(settings))
+/**
+ * The URL that hands `json`, the settings as the watchapp's `webviewclosed`
+ * handler parses them, back to the Pebble phone app.
+ */
+const handoffUrl = (target: Type, json: string): string => target + encodeURIComponent(json)
 
 export {
   decode,

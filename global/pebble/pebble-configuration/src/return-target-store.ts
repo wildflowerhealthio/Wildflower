@@ -3,15 +3,15 @@ import type { Either } from 'effect'
 import * as ReturnTarget from './return-target.ts'
 
 /**
- * Keeps the Pebble phone app's `return_to` across the SMART login, which leaves
- * the page for the server's authorize screen and lands back on the app root
+ * Keeps the Pebble phone app's `return_to` across a sign-in, such as an OAuth
+ * login, which leaves the page for another site and lands back on the app root
  * without the query the page was opened with.
  *
  * @remarks
  * A namespace module — consumers speak `ReturnTargetStore.Store` and build one
  * with `ReturnTargetStore.fromWebStorage`. Pure: the storage it keeps the
- * target in is a parameter, so the browser's `sessionStorage` is named only by
- * the app.
+ * target in, and the key it keeps it under, are parameters, so the browser's
+ * `sessionStorage` is named only by the app.
  *
  * @packageDocumentation
  */
@@ -20,7 +20,7 @@ import * as ReturnTarget from './return-target.ts'
 interface Store {
   /**
    * Keep the return target the page was opened with. A page URL without one —
-   * the OAuth callback landing — leaves what is kept alone.
+   * the sign-in's callback landing — leaves what is kept alone.
    */
   readonly rememberFrom: (pageUrl: URL) => void
   /**
@@ -40,22 +40,21 @@ interface WebStorage {
   setItem(key: string, value: string): void
 }
 
-/** The key the return target is kept under. */
-const STORAGE_KEY = 'fhir-sync-pebble:return-to'
-
 /**
  * A {@link Store} over Web Storage. The app hands it `sessionStorage`: the
- * target must outlive the OAuth round trip in this tab, and nothing longer —
+ * target must outlive the sign-in's round trip in this tab, and nothing longer —
  * a target kept past the phone app's web view could send a later session's
  * settings somewhere the phone app no longer expects.
+ *
+ * @param key - The key the return target is kept under, one of the app's own
  */
-const fromWebStorage = (storage: WebStorage): Store => ({
+const fromWebStorage = (storage: WebStorage, key: string): Store => ({
   rememberFrom: (pageUrl) => {
     const returnTo = pageUrl.searchParams.get(ReturnTarget.PARAM)
-    if (returnTo !== null) storage.setItem(STORAGE_KEY, returnTo)
+    if (returnTo !== null) storage.setItem(key, returnTo)
   },
-  recall: () => ReturnTarget.decode(storage.getItem(STORAGE_KEY) ?? ReturnTarget.DEFAULT),
+  recall: () => ReturnTarget.decode(storage.getItem(key) ?? ReturnTarget.DEFAULT),
 })
 
-export { fromWebStorage, STORAGE_KEY }
+export { fromWebStorage }
 export type { Store, WebStorage }
