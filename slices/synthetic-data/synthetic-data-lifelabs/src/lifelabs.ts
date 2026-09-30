@@ -3,7 +3,6 @@ import type { ReferenceType } from 'fhir-r4/data-types'
 import type { FhirResource } from 'fhir-r4/resources'
 import {
   adoptedResourcesOf,
-  defaultLifeLabsPdfSettings,
   type LifeLabsReport,
   type ReportPatient,
   type ReportRow,
@@ -12,8 +11,7 @@ import {
 import * as Seeding from 'synthetic-data-fundamentals/seeding'
 import { type LabDraw, Person, type Story, StoryDay } from 'synthetic-data-fundamentals/story'
 
-import type { LabRequisition } from './lab-requisition.ts'
-import * as Laboratory from './laboratory.ts'
+import { type LabRequisition, Laboratory, PrintedRange } from './story/index.ts'
 
 /**
  * The LifeLabs generator: a story's lab draws as the FHIR resources the LifeLabs
@@ -40,11 +38,8 @@ import * as Laboratory from './laboratory.ts'
  *
  * Specimens are collected in the morning (fasting) and reported the same
  * evening, at minutes hashed from the person and day; the report's printed
- * clock is Toronto time, as the importer's default settings read it.
+ * clock is in the laboratory's zone.
  */
-
-/** The printed clock's zone, as the importer reads a report by default. */
-const TIME_ZONE = defaultLifeLabsPdfSettings.timeZone
 
 const FINAL_RESULTS = 'FINAL RESULTS'
 
@@ -156,9 +151,9 @@ const rowOf = (
   const result = draw.value.toFixed(test.decimals)
   return {
     name: test.name,
-    flag: Laboratory.flagOf(Number(result), range),
+    flag: PrintedRange.flagOf(Number(result), range),
     result,
-    referenceRange: Laboratory.printRange(range),
+    referenceRange: PrintedRange.print(range),
     unit: printedUnitOf(draw.unit),
     labLicence: laboratory.licence,
     comments: test.comments,
@@ -222,7 +217,7 @@ const reportsOf = (
   asOf: DateTime.Utc,
   story: Story.Story,
   laboratory: Laboratory.Laboratory,
-  requisition: LabRequisition
+  requisition: LabRequisition.LabRequisition
 ): Effect.Effect<readonly LifeLabsReport[], UncataloguedLabTest> =>
   Effect.forEach(
     [...new Set(story.labDraws.map((draw) => draw.day))].toSorted((left, right) => left - right),
@@ -297,12 +292,12 @@ const render = (
   asOf: DateTime.Utc,
   story: Story.Story,
   laboratory: Laboratory.Laboratory,
-  requisition: LabRequisition,
+  requisition: LabRequisition.LabRequisition,
   pharmacyPatient: ReferenceType
 ): Effect.Effect<readonly FhirResource[], UncataloguedLabTest | ParseResult.ParseError> =>
   Effect.gen(function* () {
     const reports = yield* reportsOf(asOf, story, laboratory, requisition)
-    const groups = yield* adoptedResourcesOf(reports, { timeZone: TIME_ZONE })
+    const groups = yield* adoptedResourcesOf(reports, { timeZone: laboratory.timeZone })
     return groups
       .flatMap((group) => group.resources)
       .filter((resource) => resource.resourceType !== 'Patient')

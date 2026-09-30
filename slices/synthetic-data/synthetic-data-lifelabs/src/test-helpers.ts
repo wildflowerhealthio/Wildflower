@@ -10,8 +10,7 @@ import * as fc from 'fast-check'
 import type { LabDraw, Story } from 'synthetic-data-fundamentals/story'
 import { personArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 
-import type { LabRequisition } from './lab-requisition.ts'
-import type { Laboratory, LifeLabsTest, PrintedRange } from './laboratory.ts'
+import { type LabRequisition, type Laboratory, PrintedRange } from './story/index.ts'
 
 /*
  * Drawn from the LifeLabs print's alphabet so that a report laid out and read
@@ -57,20 +56,20 @@ const LAB_ADDRESSES = [
 const printedNumberArbitrary = (decimals: number): fc.Arbitrary<string> =>
   fc.integer({ min: 0, max: 99_999 }).map((scaled) => (scaled / 10 ** decimals).toFixed(decimals))
 
-const printedRangeArbitrary: fc.Arbitrary<PrintedRange> = fc
+const printedRangeArbitrary: fc.Arbitrary<PrintedRange.PrintedRange> = fc
   .integer({ min: 0, max: 3 })
   .chain((decimals) =>
     fc.oneof(
       fc
         .tuple(printedNumberArbitrary(decimals), printedNumberArbitrary(decimals))
-        .map(([one, other]): PrintedRange => {
+        .map(([one, other]): PrintedRange.PrintedRange => {
           const [low = one, high = other] = [one, other].toSorted(
             (left, right) => Number(left) - Number(right)
           )
-          return { _tag: 'between', low, high }
+          return PrintedRange.between(low, high)
         }),
-      printedNumberArbitrary(decimals).map((high): PrintedRange => ({ _tag: 'below', high })),
-      printedNumberArbitrary(decimals).map((low): PrintedRange => ({ _tag: 'atLeast', low }))
+      printedNumberArbitrary(decimals).map(PrintedRange.below),
+      printedNumberArbitrary(decimals).map(PrintedRange.atLeast)
     )
   )
 
@@ -83,10 +82,11 @@ const groupNamesArbitrary: fc.Arbitrary<readonly string[]> = fc
  * A laboratory printing up to about a dozen tests, each with its own story
  * name (`analyte-<n>`), under distinct sections.
  */
-const laboratoryArbitrary: fc.Arbitrary<Laboratory> = fc
+const laboratoryArbitrary: fc.Arbitrary<Laboratory.Laboratory> = fc
   .record({
     addressLines: fc.constantFrom(...LAB_ADDRESSES),
     licence: fc.constantFrom('#5687', '#5407'),
+    timeZone: fc.constantFrom('America/Toronto', 'America/Vancouver'),
     headings: fc
       .uniqueArray(fc.constantFrom(...LAB_SECTIONS), { minLength: 1, maxLength: 3 })
       .chain((sections) =>
@@ -98,7 +98,7 @@ const laboratoryArbitrary: fc.Arbitrary<Laboratory> = fc
       )
       .map((perSection) => perSection.flat()),
   })
-  .chain(({ addressLines, licence, headings }) =>
+  .chain(({ addressLines, licence, timeZone, headings }) =>
     fc
       .tuple(
         ...headings.map((heading) =>
@@ -118,10 +118,11 @@ const laboratoryArbitrary: fc.Arbitrary<Laboratory> = fc
             .map((tests) => tests.map((test) => ({ ...heading, ...test })))
         )
       )
-      .map((perHeading): Laboratory => ({
+      .map((perHeading): Laboratory.Laboratory => ({
         addressLines,
         licence,
-        tests: perHeading.flat().map((test, index): LifeLabsTest => ({
+        timeZone,
+        tests: perHeading.flat().map((test, index): Laboratory.LifeLabsTest => ({
           storyTest: `analyte-${index}`,
           name: test.name,
           section: test.section,
@@ -138,7 +139,9 @@ const laboratoryArbitrary: fc.Arbitrary<Laboratory> = fc
  * subset of the laboratory's tests, every value printable at its test's
  * decimals.
  */
-const labDrawsArbitrary = (laboratory: Laboratory): fc.Arbitrary<readonly LabDraw.LabDraw[]> =>
+const labDrawsArbitrary = (
+  laboratory: Laboratory.Laboratory
+): fc.Arbitrary<readonly LabDraw.LabDraw[]> =>
   fc
     .uniqueArray(fc.integer({ min: -1000, max: -1 }), { minLength: 1, maxLength: 5 })
     .chain((days) =>
@@ -170,7 +173,7 @@ const labDrawsArbitrary = (laboratory: Laboratory): fc.Arbitrary<readonly LabDra
 
 /** A laboratory, and a person's story of lab draws it prints (no prescriptions). */
 const labStoryArbitrary: fc.Arbitrary<{
-  readonly laboratory: Laboratory
+  readonly laboratory: Laboratory.Laboratory
   readonly story: Story.Story
 }> = laboratoryArbitrary.chain((laboratory) =>
   fc
@@ -179,11 +182,13 @@ const labStoryArbitrary: fc.Arbitrary<{
 )
 
 /** Ordered by one practitioner, copied to at most one other (the print joins a longer list). */
-const requisitionArbitrary: fc.Arbitrary<LabRequisition> = fc.record({
+const requisitionArbitrary: fc.Arbitrary<LabRequisition.LabRequisition> = fc.record({
   orderedBy: fc.constantFrom(...ORDERING_PRACTITIONERS),
   copyTo: fc
     .option(fc.constantFrom(...ORDERING_PRACTITIONERS), { nil: undefined })
-    .map((copied): LabRequisition['copyTo'] => (copied === undefined ? [] : [copied])),
+    .map((copied): LabRequisition.LabRequisition['copyTo'] =>
+      copied === undefined ? [] : [copied]
+    ),
 })
 
 export { labDrawsArbitrary, laboratoryArbitrary, labStoryArbitrary, requisitionArbitrary }

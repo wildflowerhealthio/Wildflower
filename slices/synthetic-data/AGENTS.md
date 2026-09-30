@@ -59,8 +59,10 @@ generator package per source on top of it.
 - **`synthetic-data-lifelabs`** (pure) — `LifeLabs.render`: a `Story`'s lab
   draws, printed by a `Laboratory`, as the FHIR resources the LifeLabs PDF
   import makes of the reports (`lifelabs-pdf-importer-core/synthesis`), filed
-  on the Patient the person's pharmacy import made. Its `./test-helpers`
-  subpath holds `laboratoryArbitrary` and the lab-draw arbitraries. See its
+  on the Patient the person's pharmacy import made. Its `./story` subpath
+  holds the `Laboratory`, `PrintedRange` and `LabRequisition` a data set
+  writes beside the story; its `./test-helpers` subpath holds
+  `laboratoryArbitrary` and the lab-draw arbitraries. See its
   [AGENTS.md](./synthetic-data-lifelabs/AGENTS.md).
 
 - **`synthetic-data-fhir-sync-pebble`** (pure) — `PebbleObservations.render`:

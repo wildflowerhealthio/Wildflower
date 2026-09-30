@@ -6,7 +6,9 @@
  *
  * @remarks
  * For callers that build `Report` values themselves rather than reading them
- * off a PDF, such as `synthetic-data-lifelabs`.
+ * off a PDF, such as `synthetic-data-lifelabs`. Only the synthesis: the
+ * importer's settings and source-system constants are the main entry's (and
+ * `LIFELABS_SYSTEM` also `/source-file`'s).
  *
  * @packageDocumentation
  */
@@ -44,5 +46,3 @@ export type { Type as LifeLabsReport } from './entities/report.ts'
 export type { Type as ReportSection } from './entities/section.ts'
 export type { Type as ReportRow } from './entities/test-table-row.ts'
 export { toFhirResources, type ReportResources, type SynthesisOptions } from './fhir/to-fhir.ts'
-export { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
-export { LIFELABS_SYSTEM } from './source-system.ts'
