@@ -41,6 +41,17 @@ describe('decodeMessage', () => {
     expect(activity.coding).toEqual({ system: HEALTH_SERVICE_SYSTEM, code, display })
   })
 
+  it('should name each HealthActivityType by the code its activity is coded with', () => {
+    for (const [name, activityType] of Object.entries(HealthActivity.HealthActivityType)) {
+      const activity = HealthActivity.decodeMessage({
+        ActivityType: activityType,
+        ActivityStart: 0,
+        ActivityEnd: 0,
+      })
+      expect(activity.coding.code).toBe(`HealthActivity${name}`)
+    }
+  })
+
   it('should keep any span that does not end before it starts', () => {
     fc.assert(
       fc.property(activityTypeArbitrary, spanArbitrary, (activityType, [start, end]) => {

@@ -44,21 +44,49 @@ const ACTIVITY_CATEGORY_CODING: Coding = {
 }
 
 /**
- * The value coding for each `HealthActivity`, keyed by its value in pebble.h
- * (one bit each). `HealthActivityNone` (0) is never recorded, so it has none.
- * Each code is part of its Observations' ids (see {@link toObservation}):
- * never change one.
+ * pebble.h's `HealthActivity` values (one bit each), as the watch sends them in
+ * an activity message's `ActivityType`. `HealthActivityNone` (0) is never
+ * recorded, so it is not here.
+ */
+const HealthActivityType = {
+  Sleep: 1,
+  RestfulSleep: 2,
+  Walk: 4,
+  Run: 8,
+  OpenWorkout: 16,
+} as const
+
+/**
+ * The value coding for each `HealthActivity`, keyed by its
+ * {@link HealthActivityType} value. Each code is part of its Observations' ids
+ * (see {@link toObservation}): never change one.
  */
 const ACTIVITY_CODINGS: Readonly<Record<number, Coding>> = {
-  1: { system: HEALTH_SERVICE_SYSTEM, code: 'HealthActivitySleep', display: 'Sleeping' },
-  2: {
+  [HealthActivityType.Sleep]: {
+    system: HEALTH_SERVICE_SYSTEM,
+    code: 'HealthActivitySleep',
+    display: 'Sleeping',
+  },
+  [HealthActivityType.RestfulSleep]: {
     system: HEALTH_SERVICE_SYSTEM,
     code: 'HealthActivityRestfulSleep',
     display: 'Restful Sleeping',
   },
-  4: { system: HEALTH_SERVICE_SYSTEM, code: 'HealthActivityWalk', display: 'Walking' },
-  8: { system: HEALTH_SERVICE_SYSTEM, code: 'HealthActivityRun', display: 'Running' },
-  16: { system: HEALTH_SERVICE_SYSTEM, code: 'HealthActivityOpenWorkout', display: 'Open Workout' },
+  [HealthActivityType.Walk]: {
+    system: HEALTH_SERVICE_SYSTEM,
+    code: 'HealthActivityWalk',
+    display: 'Walking',
+  },
+  [HealthActivityType.Run]: {
+    system: HEALTH_SERVICE_SYSTEM,
+    code: 'HealthActivityRun',
+    display: 'Running',
+  },
+  [HealthActivityType.OpenWorkout]: {
+    system: HEALTH_SERVICE_SYSTEM,
+    code: 'HealthActivityOpenWorkout',
+    display: 'Open Workout',
+  },
 }
 
 /** One activity the watch recorded, decoded from its AppMessage. */
@@ -162,6 +190,7 @@ export {
   decodeCount,
   decodeMessage,
   HEALTH_SERVICE_SYSTEM,
+  HealthActivityType,
   toDateTime,
   toObservation,
 }

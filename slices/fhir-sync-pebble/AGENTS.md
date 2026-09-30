@@ -18,8 +18,9 @@ the PebbleKit JS glue is [`apps/fhir-sync-pebble`](../../apps/fhir-sync-pebble/A
   exported alone as `fhir-sync-pebble-core/pkjs`: `PhoneSettings` (the
   settings decoded on the phone, and the watch's part), `HealthActivity` and
   `MinuteHistory` (the watch's activity and hour messages decoded, and the
-  Observations each becomes), `WatchDevice` (the watch as the Observations'
-  `device`, and the deterministic id each Observation is PUT under), and
+  Observations each becomes; `HealthActivityType` names pebble.h's activity
+  values), `WatchDevice` (the watch as the Observations' `device`, from a
+  `WatchInfo`, and the deterministic id each Observation is PUT under), and
   `WatchSync` (the phone's side of a sync as a pure reducer, `receive`: each
   message folded into the sync under way from its `SyncStart`, checked against
   the watch's counts, and what to do next; then `planWrite`, which checks the
