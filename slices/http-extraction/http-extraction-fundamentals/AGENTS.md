@@ -53,11 +53,19 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   review replaced it in production — it survives as the executable reference
   model the parity and fixture suites pin against.
 - **`SourceDescriptor`** (`src/source-descriptor.ts`) — "a source package" as
-  one first-class value: `name`, `display` strings, and the `responseKinds` the
-  source contributes, the per-source analogue of `CollectorDescriptor` /
-  `FileImporterDescriptor`. Packaging **only** — recognition and identity stay
-  on each kind's `tryRecognize`; this must never grow back the deleted
+  one first-class value: `name`, `display` strings, the `responseKinds` the
+  source contributes, and an optional `mergeResources`, the per-source analogue
+  of `CollectorDescriptor` / `FileImporterDescriptor`. Recognition and identity
+  stay on each kind's `tryRecognize`; this must never grow back the deleted
   recognition-carrying `Source`'s role. `make` shallow-clones and deep-freezes.
+- **`SourceDescriptor.ResourceMerge`** — the `mergeResources` hook,
+  `(earlier, later) => TParsed`: how a source combines two resources its kinds
+  emitted in one extraction under one identity (for FHIR, one `resourceType`
+  and `id`), for a source whose feeds each know part of one record. It spans
+  kinds, which is why it sits on the source and not on a kind. Only a consumer
+  that holds a whole extraction before writing applies it: `har-importer-core`
+  does, over the whole preview. The live collector writes each response as it
+  arrives, so its later copy still wins. A source without one keeps every copy.
 - **`Specificity`** (`src/specificity.ts`) — the exported cross-source tier
   constants a kind's `tryRecognize` draws its `specificity` from and routing
   ranks by, **highest wins**: `PORTAL` (100, a named patient portal) > `PROTOCOL`

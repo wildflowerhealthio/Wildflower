@@ -15,10 +15,11 @@ navigation, persistence, HAR, files, or apps.
   `HttpResponse` (how one response is recognized and decoded into resources),
   `Extraction` (`routeTo` / `recognize` / `parseWith` over
   archived responses), `SourceDescriptor` ("a source package" as one value —
-  name, display strings, kinds), and `Specificity` (the cross-source tier
-  constants routing ranks a claim by). A response kind carries its own
-  recognition + identity on `tryRecognize(url)`; there is no separate
-  recognition-carrying `Source` value (a `SourceDescriptor` is packaging only).
+  name, display strings, kinds, and an optional merge for resources its kinds
+  emit under one id), and `Specificity` (the cross-source tier constants
+  routing ranks a claim by). A response kind carries its own recognition +
+  identity on `tryRecognize(url)`; there is no separate recognition-carrying
+  `Source` value (a `SourceDescriptor` recognizes nothing).
   Imports from no slice. See its
   [AGENTS.md](./http-extraction-fundamentals/AGENTS.md).
 - **`fhir-r4-source`** — the first per-source package: `fhirR4Source`, a

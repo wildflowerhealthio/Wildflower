@@ -48,7 +48,8 @@ shell's shared `persistBatchBundle`.
   `Patient/$everything`). Its `decodeFileSet` runs the whole read half for one
   archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
-  settings' enabled kinds, folded into the `DecodedFile` the shell reviews —
+  settings' enabled kinds, then `mergeSharedResources`, folded into the
+  `DecodedFile` the shell reviews —
   one section per URL (first-seen order, only responses that parsed to at
   least one resource) plus one diagnostic note per response that yielded
   nothing (no kind matched, every matching kind disabled, parse failure, body
@@ -67,6 +68,12 @@ enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
   every non-resource outcome to data so one bad response cannot abort the
   batch. Consumed by the importer's `decodeFileSet`; the per-resource selection
   (exclude/edit) lives in `importer-fundamentals`' `StagedImport`.
+- `src/merge-shared-resources.ts` — **`mergeSharedResources`**, where a
+  source's `mergeResources` runs. Over the whole preview, for each source that
+  gives one, the resources sharing a `resourceType/id` become one: the merged
+  resource under the first copy's key and in its place, the later copies
+  dropped. A response's pick is matched to its source by kind name. A source
+  without a merge keeps every copy, and the batch write's later PUT wins.
 - `src/decode-har.ts` — **`decodeHar`** (the byte-level parse step) and
   `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the
   archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated

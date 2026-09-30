@@ -15,6 +15,7 @@ import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
+import { mergeSharedResources } from './merge-shared-resources.ts'
 import { preview, type PreviewedResponse } from './review.ts'
 
 type FhirPreview = PreviewedResponse<HttpResponseKind.HttpResponseKind<FhirResource>, FhirResource>
@@ -93,6 +94,7 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
     decodeFileSet: (members, settings) =>
       decodeHar(members[0].bytes, settings).pipe(
         Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
+        Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
         Effect.map((previews): DecodedFile.DecodedFile => ({
           sections: sectionsByUrl(previews),
           notes: notesFor(previews),
