@@ -185,9 +185,9 @@ const historyUrl = new RegExp(
  * was for: the payload does not say which person that is. A prescription's
  * latest fill also appears in the status feed under the same `dispenseId`,
  * which names the person; the source's `mergeResources` combines the two
- * copies wherever one extraction holds both (`merge-resources.ts`). A dispense with no `dispenseId`
- * drops-and-counts via `Effect.logInfo`; a URL with no `customerId` fails the
- * parse.
+ * copies wherever one extraction holds both (`merge-resources.ts`). A
+ * dispense with no `dispenseId` drops-and-counts via `Effect.logInfo`; a URL
+ * with no `customerId` fails the parse.
  */
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({

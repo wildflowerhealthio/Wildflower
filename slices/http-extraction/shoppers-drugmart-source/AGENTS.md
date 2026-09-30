@@ -84,7 +84,6 @@ and `rexall-be-well-source` alike:
   `ShoppersIdentifierSystem.PcId`: the history payload does not say which
   managed person a fill was for. Adoption lands that reference on the account
   `Patient` `CustomerResponseKind` emits, which `link.seealso`s every person.
-
 - **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
   canonical `CanadianCodingSystem.Din`
   (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
@@ -123,7 +122,6 @@ and `rexall-be-well-source` alike:
   arrival order. Only a consumer that holds both copies applies it (the HAR
   import); the live collector writes each response as it arrives, and its
   later copy wins.
-
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:
   `customers/pcid/<uuid>`, `prescriptions/<uuid>/prescription-status`,
