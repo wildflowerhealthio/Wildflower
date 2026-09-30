@@ -16,7 +16,8 @@ Nothing here names a person or tells a particular story.
 ## Packages
 
 The slice is layered like `health-viewer`: a source-free base, with one
-generator package per source on top of it.
+generator package per source on top of it, the data set assembler over their
+importer output, and the browser layer that loads a published data set.
 
 - **`synthetic-data-fundamentals`** (pure) — the source-free base. Its root
   exports nothing; it has one sub-entry per role:
@@ -81,13 +82,25 @@ generator package per source on top of it.
   `deidentifiedFileArbitrary`. See its
   [AGENTS.md](./synthetic-data-dicom/AGENTS.md).
 
-- **`synthetic-data-core`** (pure) — the data set assembler, over any
-  generator's importer output: `DataSetLayout` (a file per resource under
+- **`synthetic-data-core`** (pure) — the data set assembler and reader, over
+  any generator's importer output: `DataSetLayout` (a file per resource under
   `fhir/<ResourceType>/<id>.json`, each source file an importer read under
   `har/` or `dicom/` linked from its `DocumentReference`, and the reading half
   that carries it inline again), `DataSetManifest` (`index.json`, each
-  person's files) and `DataSet.assemble` (every file to write, in path
-  order). See its [AGENTS.md](./synthetic-data-core/AGENTS.md).
+  person's files), `DataSet` (`assemble`: every file to write, in path order;
+  `readManifest` and `readResource`: a file, fetched through the caller's
+  `FileSource`, read back into what the import wrote, its source file checked
+  against its size and hash) and `WriteOrder` (the batch bundles to write the
+  resources in, each after what it references). Its `./test-helpers` subpath
+  imports generated records through the real importers and serves a data set
+  from memory. See its [AGENTS.md](./synthetic-data-core/AGENTS.md).
+
+- **`synthetic-data-react`** — `SyntheticDataScreen`: reads a published data
+  set from its address, lists its people to choose from, reads the chosen
+  people's files back through `synthetic-data-core` and, only when every file
+  reads, writes them to the connected FHIR server in reference order,
+  showing each resource's outcome. `apps/synthetic-data-app` is the SMART app
+  that mounts it. See its [AGENTS.md](./synthetic-data-react/AGENTS.md).
 
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's
