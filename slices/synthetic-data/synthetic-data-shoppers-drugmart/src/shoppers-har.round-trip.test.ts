@@ -32,9 +32,8 @@ import { type ShoppersCase, shoppersCaseArbitrary } from './test-helpers.ts'
  * Every expectation — the Patients, each request's name, DIN, sig, fills left,
  * quantity, supply, status, prescriber and prior-prescription link, every
  * fill's day and DIN, the status feed's latest fill, and each dose regimen —
- * is `storyCaseArbitrary`'s own
- * reckoning from the generated inputs, or the portal's rules applied to it
- * here, not the payload builders' code.
+ * is `storyCaseArbitrary`'s own reckoning from the generated inputs, or the
+ * portal's rules applied to it here, not the payload builders' code.
  */
 
 const RUNS = numRunsFor({ base: 15 })
