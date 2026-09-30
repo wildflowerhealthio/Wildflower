@@ -50,6 +50,26 @@ describe('storyCaseArbitrary', () => {
     )
   })
 
+  test("property: previousKey and nextKey chain each generic name's prescriptions in written order", () => {
+    fc.assert(
+      fc.property(storyCaseArb, ({ story, expected }) => {
+        const byGenericName = Map.groupBy(
+          story.prescriptions.map((prescription, index) => ({
+            genericName: prescription.product.genericName,
+            links: expected[index],
+          })),
+          ({ genericName }) => genericName
+        )
+        for (const drug of byGenericName.values()) {
+          const keys = drug.map(({ links }) => links?.key)
+          expect(drug.map(({ links }) => links?.previousKey)).toEqual([null, ...keys.slice(0, -1)])
+          expect(drug.map(({ links }) => links?.nextKey)).toEqual([...keys.slice(1), null])
+        }
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
   test('property: its independent reckoning agrees with the model functions', () => {
     fc.assert(
       fc.property(storyCaseArb, ({ story, expected }) => {
@@ -62,6 +82,8 @@ describe('storyCaseArbitrary', () => {
             lastFillDay: prescription.fillDays.at(-1),
             name: DrugProduct.labelOf(prescription.product),
             din: prescription.product.din,
+            previousKey: expected[index]?.previousKey,
+            nextKey: expected[index]?.nextKey,
             quantity: Prescription.quantityPerFillOf(prescription),
             supplyDays: prescription.supplyDaysPerFill,
             repeatsAllowed: prescription.repeatsAllowed,

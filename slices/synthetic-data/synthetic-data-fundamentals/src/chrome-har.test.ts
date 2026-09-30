@@ -142,6 +142,34 @@ describe('ChromeHar', () => {
     )
   })
 
+  test('property: a navigation is a document fetch of an HTML shell titled as given', () => {
+    fc.assert(
+      fc.property(
+        exchangeSpecArbitrary('page_1'),
+        fc.stringMatching(/^[A-Za-z |]{1,40}$/),
+        ({ pageref, startedAt, url, waitMillis, serverIPAddress }, title) => {
+          const entry = ChromeHar.navigationEntryOf({
+            pageref,
+            startedAt,
+            url,
+            title,
+            waitMillis,
+            serverIPAddress,
+          })
+          expect(entry._resourceType).toBe('document')
+          expect(entry.request.url).toBe(url)
+          expect(entry.request.headers.map(([name]) => name)).toEqual(['accept'])
+          expect(entry.response.content.mimeType).toBe('text/html; charset=utf-8')
+          const { body } = entry.response.content
+          expect(body?._tag === 'HarTextBody' ? body.text : null).toContain(
+            `<title>${title}</title>`
+          )
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
   test('its entries write under the DevTools creator, two-space indented', () => {
     const startedAt = DateTime.unsafeMake('2026-03-11T16:54:30.000Z')
     const archive = chromeHarOf(

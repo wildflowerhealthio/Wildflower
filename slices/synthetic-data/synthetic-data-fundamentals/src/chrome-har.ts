@@ -20,8 +20,8 @@ import { utf8Bytes } from 'kitchen-sink'
  * what a generator does not choose and a recording would have measured: every
  * exchange is a `200` `GET` over a reused HTTP/2 connection, with fixed phase
  * timings around a chosen `wait` and its body stored as text. Every HAR
- * generator builds its entries with {@link entryOf}, so those defaults are
- * written in one place.
+ * generator builds its entries with {@link entryOf}, and its page navigations
+ * with {@link navigationEntryOf}, so those defaults are written in one place.
  */
 
 /**
@@ -111,5 +111,39 @@ const entryOf = (spec: ExchangeSpec): Entry => {
   }
 }
 
-export { entryOf }
-export type { Entry, ExchangeSpec }
+/** A top-level navigation {@link navigationEntryOf} writes: a page's shell document. */
+interface NavigationSpec extends Omit<
+  ExchangeSpec,
+  'resourceType' | 'requestHeaders' | 'mimeType' | 'body'
+> {
+  /** The document's `<title>`. */
+  readonly title: string
+}
+
+/** The `accept` header a browser sends on a top-level navigation. */
+const NAVIGATION_REQUEST_HEADERS: ExchangeSpec['requestHeaders'] = [
+  ['accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'],
+]
+
+const HTML_MIME = 'text/html; charset=utf-8'
+
+/**
+ * A HAR entry for a page navigation, from a {@link NavigationSpec}: a
+ * `document` fetch whose body is a single-page app's empty shell.
+ *
+ * @remarks
+ * A generated portal session opens its pages with these. The shell carries
+ * nothing a response kind claims, as a real export's navigations don't, so an
+ * import notes each as unmatched and reads only the XHRs.
+ */
+const navigationEntryOf = ({ title, ...spec }: NavigationSpec): Entry =>
+  entryOf({
+    ...spec,
+    resourceType: 'document',
+    requestHeaders: NAVIGATION_REQUEST_HEADERS,
+    mimeType: HTML_MIME,
+    body: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body><div id="root"></div></body></html>`,
+  })
+
+export { entryOf, navigationEntryOf }
+export type { Entry, ExchangeSpec, NavigationSpec }

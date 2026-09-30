@@ -28,7 +28,8 @@ The root entry exports `RexallHar` and the `RexallAccount` type:
 - `src/rexall-har.ts` — `RexallHar.render(asOf, story, account)`: the sign-in
   and prescriptions page navigations, then the profile and searchset XHRs, on
   the as-of day, built with `http-archive`'s `chromePageOf` / `chromeHarOf`
-  and `synthetic-data-fundamentals/chrome-har`'s `ChromeHar.entryOf`, and
+  and `synthetic-data-fundamentals/chrome-har`'s `ChromeHar.navigationEntryOf`
+  (the pages) and `ChromeHar.entryOf` (the XHRs), and
   returned as an `Effect` of the `.har` text (`chromeHarToJson`, pretty, as a
   DevTools export writes it).
 

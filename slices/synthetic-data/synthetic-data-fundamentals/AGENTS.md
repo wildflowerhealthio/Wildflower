@@ -86,6 +86,9 @@ one's ids and times untouched.
   a `ChromeHarEntry` that is always a `200` `GET` over a reused HTTP/2
   connection (`connection: '0'`, no DNS, connect or TLS phases), with fixed
   phase timings around the chosen `wait` and the body as a `HarTextBody`.
+  `NavigationSpec` and `navigationEntryOf` write a page navigation on top of
+  it: a `document` fetch of a single-page app's empty shell, which no
+  response kind claims.
 - **Borrows** everything else from `http-archive`: the format
   (`ChromeHarEntry`, `chromeHarToJson`), the DevTools vocabulary
   (`ChromeResourceType`, and `chromeExtrasOf`, which `entryOf` uses for
@@ -107,11 +110,12 @@ one's ids and times untouched.
 `src/test-helpers.ts`: the fast-check arbitraries — as-of instants, people,
 products (plausible 8-digit DINs, strengths, manufacturers), dosings,
 prescribers, and `storyCaseArbitrary`, which lays out one to four drug
-episodes — a start, then dose changes, renewals once the repeats run out,
+episodes, each drug under its own generic name — a start, then dose changes, renewals once the repeats run out,
 holds and resumes, generic switches — with on-time, late and missed refills,
 shifted to end before the as-of day. Each story comes paired with what its
 pharmacy records must say (name, DIN, quantity, supply, repeats, status, sig,
-last fill, amortized daily dose), worked out from the generated inputs rather
+last fill, amortized daily dose, and the keys of the prescriptions before and
+after it in its episode), worked out from the generated inputs rather
 than by the model functions a generator calls, so a generator's round-trip
 test compares an importer's output against an independent reckoning.
 
