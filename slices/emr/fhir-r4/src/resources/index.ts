@@ -15,6 +15,7 @@ export * from './observation/index.ts'
 export * from './patient/index.ts'
 export * from './plan-definition/index.ts'
 export * from './practitioner/index.ts'
+export * from './procedure/index.ts'
 export * from './service-request/index.ts'
 
 // Named decoded interfaces, re-exported at the top level so a downstream

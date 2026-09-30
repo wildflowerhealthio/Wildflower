@@ -41,6 +41,14 @@ const nullableUri = Schema.transform(
 
 Better still, skip the local schema: when the slot is merely typed `any` on an already-decoded resource (a `medication[x]` choice slot), decode it with `Schema.typeSchema(<fhir-r4 schema>)`, which expects exactly the decoded shape (`URL`, `DateTime.Utc`); and decode a raw-wire `contained` entry with the full fhir-r4 resource schema. `medication-core`'s `src/fhir/medication-slots.ts` accessors do this — an earlier version hand-coerced `Coding.system` after a string-typed local `system` silently disabled its DIN and display-name fallbacks. The same asymmetry hits `dateTime` fields, which decode to an Effect `DateTime.Utc` on the typed top level.
 
+## `dateTime` and `Period` bounds re-encode as UTC instants
+
+Every FHIR `dateTime` a typed `fhir-r4` schema decodes — `Period.start`/`end` (so `Procedure.performedPeriod` and `CarePlan.period`) and the `…DateTime` choice slots (`Procedure.performedDateTime`, `Observation.effectiveDateTime`) — becomes an Effect `DateTime.Utc`, and encodes back through `toISOString`. The wire literal does not survive a decode → encode: an offset is folded into UTC (`2026-09-30T18:00:00-04:00` → `2026-09-30T22:00:00.000Z`), and a partial-precision value is widened to midnight UTC (`2026-09-30` → `2026-09-30T00:00:00.000Z`). The instant is preserved; the patient's local offset and the stated precision are not.
+
+A consumer that needs the local time of day (a workout's start as the lifter saw it) must carry the zone separately rather than read it back off a stored `Procedure`. `date`-typed `[x]` slots are the exception: they decode to the branded wire string and round-trip byte for byte (see "`date` choice slots keep the wire string" in the [Client Capabilities Reference](./Client%20Capabilities%20Reference.md)). `procedure.test.ts` pins the `performedPeriod` case.
+
+A complex-typed choice slot (`performedPeriod`, `performedRange`, `effectivePeriod`) is typed `any` on the decoded resource even though its runtime value is the decoded datatype, so `start` there is a `DateTime.Utc` the compiler does not know about. Read it through `Schema.decodeUnknownOption(Schema.typeSchema(Period.Schema))` to get the typed shape back, as `procedure.test.ts` does.
+
 ## See Also
 
 - [Client Capabilities Reference](./Client%20Capabilities%20Reference.md) — where the client narrows or postpones the FHIR R4 spec
