@@ -14,6 +14,7 @@ that owns it, and this package places those outputs at their public URLs.
 | `/ohif-viewer`            | `ohif-viewer` (`apps/ohif-viewer`)                       |
 | `/fhir-sync-pebble`       | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble-web`)     |
 | `/health-viewer-app`      | `health-viewer-app` (`apps/health-viewer`)               |
+| `/synthetic-data-app`     | `synthetic-data-app` (`apps/synthetic-data-app`)         |
 | `/watch-lifts`            | `watch-lifts-web` (`apps/watch-lifts-web`)               |
 | `/app`                    | `wildflower-react` (`apps/wildflower-react`, `dist-web`) |
 

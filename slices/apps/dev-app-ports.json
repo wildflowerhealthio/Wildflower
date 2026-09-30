@@ -7,5 +7,6 @@
   "ohif-viewer-dev": 5194,
   "fhir-sync-pebble-dev": 5195,
   "health-viewer-app-dev": 5196,
-  "watch-lifts-web-dev": 5197
+  "watch-lifts-web-dev": 5197,
+  "synthetic-data-app-dev": 5198
 }

@@ -412,6 +412,9 @@ importers:
       ohif-viewer:
         specifier: workspace:*
         version: link:../ohif-viewer
+      synthetic-data-app:
+        specifier: workspace:*
+        version: link:../synthetic-data-app
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
