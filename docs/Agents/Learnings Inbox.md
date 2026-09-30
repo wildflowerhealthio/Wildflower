@@ -472,3 +472,15 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: ruthmarks/add-fhir-sync-pebble-app (minute-history sync in `apps/fhir-sync-pebble`)
 **Learning**: In Core Devices' PebbleOS the activity service stores each minute's light as screen-compensated lux ÷ 16 (`light_get_ambient_lux`, `ALG_RAW_LIGHT_SENSOR_DIVIDE_BY`). `health_service_get_minute_history` only returns `ambient_light_level_to_enum(stored × 16)`, which compares against the board's `ambient_light_dark_threshold` ± `ambient_k_delta_threshold`, both in lux. On the Pebble Time 2 (`board_obelix.c`: 800 ± 100, raw → lux = raw × 100 / 483) that means VeryDark < 700, Dark 700–800, Light 800–900, VeryLight ≥ 900 lux. The QEMU boards are uncalibrated, so the emulator's levels don't map to lux. Orientation (`kalg_minute_stats`) is yaw, atan2(y, x), in 16 rounded bins in the low nibble; the high nibble is the angle from the watch's +z axis, which only spans bins 0–8 (0–180°), with 0 or 8 meaning flat. VMC is ActiGraph-scaled counts per minute. `pebble build` also doesn't regenerate `message_keys.auto.h` when `messageKeys` grows; `pebble clean` first.
 **Suggested destination**: a shared Pebble watchapp How-To once there are two
+
+## `vp fmt` and `vp check` from a package directory use oxfmt's defaults, not the root config
+
+**Discovered during**: claude/lifting-2-core (remodelling `lifting-core` onto `ServiceRequest` / `PlanDefinition`)
+**Learning**: The enforced format and lint rules live under `fmt:` / `lint:` in the root `vite.config.ts`. Run from inside a package directory (`cd slices/lifting/lifting-core && vp fmt`), `vp` reads that package's `vite.config.ts`, which spreads `vite.config.base.ts` and carries no `fmt` block, so oxfmt falls back to its defaults — double quotes, semicolons, trailing commas — and `vp check` flags every correctly formatted file. Worse, `vp fmt` then rewrites them all into the wrong style. Always format and check from the repo root, scoping by path (`vp fmt slices/lifting/lifting-core`); `vp test` from a package directory is fine.
+**Suggested destination**: CONTRIBUTING.md (formatting), or the Commands block in the root AGENTS.md
+
+## An `Extension.valueCode` never encodes: fhir-r4 leaves the `code` datatype unregistered
+
+**Discovered during**: claude/lifting-2-core (writing a progression rule's unit as a sub-extension)
+**Learning**: `Extension.value[x]` carries every FHIR datatype slot, but a non-null `valueCode` fails `Schema.encode` with "fhir-r4 datatype "code" is intentionally unregistered; encoding a non-null value[x] slot for it is rejected". `vp check` cannot catch it — the slot is typed and assignable — so it surfaces only when a resource is first encoded, e.g. in the wire round-trip test. Write a coded value as a `valueString` (what `lifting-core`'s progression `unit` part does) or as a `valueCodeableConcept` when the system matters.
+**Suggested destination**: fhir-r4 Consumer Gotchas Reference

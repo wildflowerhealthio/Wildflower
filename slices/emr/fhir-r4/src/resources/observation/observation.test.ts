@@ -418,3 +418,15 @@ const wireSlot = (key: string, value: unknown): unknown => {
   })
   return encoded[key]
 }
+
+describe('RETRACTED_STATUSES', () => {
+  test('is exactly the two FHIR "never happened" statuses, each a valid status', () => {
+    expect([...Observation.RETRACTED_STATUSES].toSorted()).toEqual([
+      'cancelled',
+      'entered-in-error',
+    ])
+    for (const status of Observation.RETRACTED_STATUSES) {
+      expect(Schema.is(Observation.StatusSchema)(status)).toBe(true)
+    }
+  })
+})

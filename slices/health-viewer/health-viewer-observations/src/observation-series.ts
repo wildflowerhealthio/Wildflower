@@ -1,5 +1,5 @@
 import { DateTime, Option, Schema } from 'effect'
-import type { Observation } from 'fhir-r4/resources'
+import { Observation } from 'fhir-r4/resources'
 import type { PointSeries, SeriesSource } from 'health-viewer-fundamentals'
 
 import { type ObservationSeriesKey, observationSeriesIdOf } from './observation-series-key.ts'
@@ -112,14 +112,17 @@ type ValueSlots = Schema.Schema.Type<typeof ComponentView>
 const decodeObservationView = Schema.decodeUnknownOption(ObservationView)
 
 /**
- * `Observation.status` codes whose readings are never plotted — FHIR's own
- * "this never happened" pair.
+ * `Observation.status` codes whose readings are never plotted — fhir-r4's
+ * `Observation.RETRACTED_STATUSES`, FHIR's own "this never happened" pair.
  *
  * @remarks
  * Every other status, `preliminary` and `unknown` included, is plotted: a
  * patient-facing viewer that hid unverified results would under-report.
  */
-const EXCLUDED_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'entered-in-error'])
+const EXCLUDED_STATUSES: typeof Observation.RETRACTED_STATUSES = Observation.RETRACTED_STATUSES
+
+/** Whether a status read through the permissive local schema is a known `Observation.status` code. */
+const isObservationStatus = Schema.is(Observation.StatusSchema)
 
 /** The coding system a series key prefers when an `Observation.code` carries several. */
 const LOINC_SYSTEM = 'http://loinc.org'
@@ -458,7 +461,8 @@ const observationsToSeries = (
       continue
     }
     const observation = decoded.value
-    if (EXCLUDED_STATUSES.has(observation.status ?? '')) {
+    const { status } = observation
+    if (status !== null && isObservationStatus(status) && EXCLUDED_STATUSES.has(status)) {
       dropped += 1
       continue
     }

@@ -203,6 +203,18 @@ const StatusSchema = Schema.Enums({
   unknown: 'unknown',
 } as const)
 
+/**
+ * The `Observation.status` values meaning the observation is to be
+ * disregarded: `cancelled` (it never completed) and `entered-in-error` (it
+ * should not have been recorded) — FHIR's two "never happened" statuses. A
+ * reader skips an observation with one of them rather than treating it as a
+ * result.
+ */
+const RETRACTED_STATUSES: ReadonlySet<typeof StatusSchema.Type> = new Set([
+  'cancelled',
+  'entered-in-error',
+])
+
 const ObservationStruct = Schema.extend(
   Schema.Struct({ resourceType: Schema.Literal('Observation') }),
   mutableEncoded(
@@ -328,5 +340,5 @@ const ObservationSchema: Schema.Schema<
 /** A decoded `Observation` — the type {@link ObservationSchema} produces. */
 type Type = typeof ObservationSchema.Type
 
-export { ObservationSchema as Schema, StatusSchema }
+export { ObservationSchema as Schema, RETRACTED_STATUSES, StatusSchema }
 export type { Type }
