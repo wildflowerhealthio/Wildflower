@@ -9,18 +9,25 @@ restates either. No PDF is written. No DOM, no `fs`, no React.
 
 ## Shape
 
-The root entry exports `LifeLabs`, `Laboratory` and the `LabRequisition` type:
-`import { LifeLabs, Laboratory } from 'synthetic-data-lifelabs'`.
+The root entry exports only `LifeLabs`:
+`import { LifeLabs } from 'synthetic-data-lifelabs'`. The story objects it
+reads are the `/story` subpath (`src/story/index.ts`), one namespace per
+module as in `synthetic-data-fundamentals/story`:
+`import { Laboratory, LabRequisition, PrintedRange } from 'synthetic-data-lifelabs/story'`.
 
-- `src/laboratory.ts` — `Laboratory`: a generator input naming how a lab
-  prints each test a story draws (`LifeLabsTest`: the story's test name, the
-  printed name, section and group heading, decimals, the reference range per
-  administrative gender, comment lines), its address block and licence.
-  `between` / `below` / `atLeast` / `eitherSex` build ranges; `printRange` and
-  `flagOf` print a range and flag a result against it. A catalogue of real
-  tests is data, and lives with the stories.
-- `src/lab-requisition.ts` — `LabRequisition`: the `Ordered by:` clinician and
-  at most one `Copy To:` clinician, as the report prints them.
+- `src/story/laboratory.ts` — `Laboratory`: a generator input naming how a
+  lab prints each test a story draws (`LifeLabsTest`: the story's test name,
+  the printed name, section and group heading, decimals, the reference range
+  per administrative gender, comment lines), its address block, licence, and
+  `timeZone` (the IANA zone its printed clock is in); `testOf` finds the test
+  a story's draw prints as. A catalogue of real tests is data, and lives with
+  the stories.
+- `src/story/printed-range.ts` — `PrintedRange`: a reference range as its
+  printed text (`between` / `below` / `atLeast`, `eitherSex` for the same
+  range for every gender); `print` prints it and `flagOf` flags a result
+  against it.
+- `src/story/lab-requisition.ts` — `LabRequisition`: the `Ordered by:`
+  clinician and at most one `Copy To:` clinician, as the report prints them.
 - `src/lifelabs.ts` — `LifeLabs.reportsOf`, given the as-of date, the story,
   the laboratory and the requisition: one `LifeLabsReport` per day drawn, rows in the laboratory's
   print order, the flag read off the printed (rounded) result, specimens
@@ -39,7 +46,7 @@ and read back is the same report.
 
 Depends on `synthetic-data-fundamentals` (the story model and `StoryDay` from
 `/story`, `Seeding` from `/seeding`), `lifelabs-pdf-importer-core/synthesis`
-(the `Report` types, `adoptedResourcesOf`, `defaultLifeLabsPdfSettings`) and
+(the `Report` types, `adoptedResourcesOf`) and
 `fhir-r4` (`AdministrativeGender`, the resource and `Reference` types). The
 `/synthesis` subpath keeps the PDF extraction (pdfjs) out. The tests also use
 `lifelabs-pdf-importer-core`'s main entry and `/test-helpers` (to print a
@@ -60,8 +67,9 @@ the Rexall and Shoppers generators, as dev dependencies only. Never imports a
   `Report.tryFromDocument`, and checks the read-back equals the report and
   `render` equals `decodeLifeLabsPdfDocument` of the print, apart from the
   Patient and the subject.
-- **The printed clock is Toronto's**, `defaultLifeLabsPdfSettings.timeZone`,
-  as the importer reads a report by default.
+- **The printed clock is the laboratory's**: `render` synthesizes with
+  `{ timeZone: laboratory.timeZone }`, the setting the importer would be given
+  to read the print, and the tests decode the print with the same zone.
 
 ## Traps
 
@@ -71,7 +79,7 @@ the Rexall and Shoppers generators, as dev dependencies only. Never imports a
   that printed value, so a value that rounds onto a bound flags as the result
   beside it reads.
 - **`package.json` `exports` and `vite.config.ts` `pack.entry` must stay in
-  sync** (`index`, `test-helpers`).
+  sync** (`index`, `story/index`, `test-helpers`).
 
 ## References
 

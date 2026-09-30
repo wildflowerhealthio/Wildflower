@@ -10,6 +10,7 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
+      'story/index': 'src/story/index.ts',
       'test-helpers': 'src/test-helpers.ts',
     },
   },

@@ -10,18 +10,14 @@ import {
   Practitioner,
 } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
-import {
-  decodeLifeLabsPdfDocument,
-  defaultLifeLabsPdfSettings,
-  Report,
-} from 'lifelabs-pdf-importer-core'
+import { decodeLifeLabsPdfDocument, Report } from 'lifelabs-pdf-importer-core'
 import { layoutDocument } from 'lifelabs-pdf-importer-core/test-helpers'
 import { type Story, StoryDay } from 'synthetic-data-fundamentals/story'
 import { asOfArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 
-import * as Laboratory from './laboratory.ts'
 import * as LifeLabs from './lifelabs.ts'
+import { Laboratory, PrintedRange } from './story/index.ts'
 import { labStoryArbitrary, requisitionArbitrary } from './test-helpers.ts'
 
 /**
@@ -191,7 +187,7 @@ describe('LifeLabs.render', () => {
             }
             const quantity = quantityOf(observation)
             const [referenceRange] = observation.referenceRange
-            const flag = Laboratory.flagOf(draw.value, range)
+            const flag = PrintedRange.flagOf(draw.value, range)
             expect({
               name: observation.code.text,
               category: observation.category[0]?.coding[0]?.code,
@@ -212,7 +208,7 @@ describe('LifeLabs.render', () => {
               unit: draw.unit === null ? null : draw.unit.replaceAll('µ', 'u'),
               low: range._tag === 'below' ? null : Number(range.low),
               high: range._tag === 'atLeast' ? null : Number(range.high),
-              rangeText: Laboratory.printRange(range),
+              rangeText: PrintedRange.print(range),
               interpretation: INTERPRETATION_OF_FLAG[flag],
               comments: labTest.comments.length === 0 ? null : labTest.comments.join('\n'),
               effective: StoryDay.toIsoDate(inputs.asOf, draw.day),
@@ -239,7 +235,7 @@ describe('LifeLabs.render', () => {
       fc.property(inputsArbitrary, fc.integer({ min: -400, max: 400 }), (inputs, shiftDays) => {
         const localClockOf = (instant: DateTime.Utc | null): readonly [string, string] => {
           const zoned = DateTime.unsafeMakeZoned(instant ?? 0, {
-            timeZone: defaultLifeLabsPdfSettings.timeZone,
+            timeZone: inputs.storyWithLaboratory.laboratory.timeZone,
           })
           const iso = DateTime.formatIsoZoned(zoned)
           return [iso.slice(0, 10), iso.slice(11, 16)]
@@ -281,7 +277,7 @@ describe('LifeLabs.reportsOf', () => {
         )
 
         const decoded = Effect.runSync(
-          decodeLifeLabsPdfDocument(printed, defaultLifeLabsPdfSettings)
+          decodeLifeLabsPdfDocument(printed, { timeZone: laboratory.timeZone })
         )
         const imported = decoded.sections.flatMap((section) =>
           section.resources.map((entry) => entry.resource)
@@ -299,7 +295,12 @@ describe('LifeLabs.reportsOf', () => {
   })
 
   test('fails when a draw names a test the laboratory does not print', () => {
-    const laboratory: Laboratory.Laboratory = { addressLines: [], licence: '#5687', tests: [] }
+    const laboratory: Laboratory.Laboratory = {
+      addressLines: [],
+      licence: '#5687',
+      timeZone: 'America/Toronto',
+      tests: [],
+    }
     const story = storyDrawing({ day: -1, test: 'Sodium', value: 140, unit: 'mmol/L' })
     const failure = Effect.runSync(
       Effect.flip(
@@ -314,27 +315,12 @@ describe('LifeLabs.reportsOf', () => {
   })
 })
 
-describe('LifeLabsLaboratory.flagOf and printRange', () => {
-  test.each([
-    { range: Laboratory.between('3.50', '5.00'), value: 3.49, flag: 'LO', printed: '3.50 - 5.00' },
-    { range: Laboratory.between('3.50', '5.00'), value: 3.5, flag: '', printed: '3.50 - 5.00' },
-    { range: Laboratory.between('3.50', '5.00'), value: 5, flag: '', printed: '3.50 - 5.00' },
-    { range: Laboratory.between('3.50', '5.00'), value: 5.01, flag: 'HI', printed: '3.50 - 5.00' },
-    { range: Laboratory.below('3.50'), value: 3.49, flag: '', printed: '<3.50' },
-    { range: Laboratory.below('3.50'), value: 3.5, flag: 'HI', printed: '<3.50' },
-    { range: Laboratory.atLeast('60'), value: 59, flag: 'LO', printed: '>=60' },
-    { range: Laboratory.atLeast('60'), value: 60, flag: '', printed: '>=60' },
-  ] as const)('$value against $printed flags "$flag"', ({ range, value, flag, printed }) => {
-    expect(Laboratory.flagOf(value, range)).toBe(flag)
-    expect(Laboratory.printRange(range)).toBe(printed)
-  })
-})
-
 describe('LifeLabs.reportsOf flag', () => {
   test('is read off the printed result when the value rounds onto a bound', () => {
     const laboratory: Laboratory.Laboratory = {
       addressLines: [],
       licence: '#5687',
+      timeZone: 'America/Toronto',
       tests: [
         {
           storyTest: 'TSH',
@@ -342,7 +328,7 @@ describe('LifeLabs.reportsOf flag', () => {
           section: 'Endocrinology',
           group: '',
           decimals: 2,
-          range: Laboratory.eitherSex(Laboratory.between('0.32', '4.00')),
+          range: PrintedRange.eitherSex(PrintedRange.between('0.32', '4.00')),
           comments: [],
         },
       ],

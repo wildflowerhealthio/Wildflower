@@ -14,7 +14,8 @@ import { ShoppersHar, shoppersPatientReferenceOf } from 'synthetic-data-shoppers
 import { shoppersCaseArbitrary } from 'synthetic-data-shoppers-drugmart/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { type LabRequisition, type Laboratory, LifeLabs } from './index.ts'
+import { LifeLabs } from './index.ts'
+import type { LabRequisition, Laboratory } from './story/index.ts'
 import { labDrawsArbitrary, laboratoryArbitrary, requisitionArbitrary } from './test-helpers.ts'
 
 /**
@@ -72,7 +73,7 @@ const labSubjectsOf = (
   asOf: DateTime.Utc,
   story: Story.Story,
   laboratory: Laboratory.Laboratory,
-  requisition: LabRequisition,
+  requisition: LabRequisition.LabRequisition,
   pharmacyPatient: ReferenceType
 ): readonly (ReferenceType | null)[] =>
   Effect.runSync(LifeLabs.render(asOf, story, laboratory, requisition, pharmacyPatient)).flatMap(
