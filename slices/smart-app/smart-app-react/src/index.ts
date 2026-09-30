@@ -12,5 +12,5 @@ export {
   type LoadingLineProps,
   type ReadFailureLineProps,
 } from './read-status-lines.tsx'
-export { SmartAppRoot, type SmartAppRootProps } from './smart-app-root.tsx'
+export { SmartAppRoot, type SmartAppRootProps, type SmartAppTelemetry } from './smart-app-root.tsx'
 export { runSmartLaunchEntry, type SmartLaunchEntryConfig } from './smart-launch-entry.ts'

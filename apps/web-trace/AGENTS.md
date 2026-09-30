@@ -19,8 +19,11 @@ tundra → tundraish → fonts; branding's tokens arrive through `branding-react
 JS entry), completes a GitHub Pages 404 redirect, installs the OS colour-scheme
 listener, and renders `<AppRoot />`. `launch-main.tsx` imports the same module
 and makes one `runSmartLaunchEntry` call. `AppRoot` (from `app-root.tsx`) is
-`<SmartAppRoot app="webTrace" standalone={standaloneSmartConfig}>` around
-`<App />`; `SmartAppRoot` owns the one `QueryClientProvider` and picks between
+`<SmartAppRoot app="webTrace" standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>`
+around `<App />`; `SmartAppRoot` holds both branches behind the telemetry
+consent dialog (`smartAppTelemetry` in `config.ts` names the app's Sentry
+project through the `VITE_SENTRY_DSN_WEB_TRACE` build variable; see
+`.env.example`), owns the one `QueryClientProvider`, and picks between
 the launched viewer (slim `BrandBar` + `App`) and the standalone landing,
 `branding-react`'s `AppLandingPage` (`SiteHeader`, the Web Trace Viewer's
 `AppLanding` beside `ConnectMenu`, `SiteFooter`). The decision is latched on mount inside `SmartAppRoot`; the
@@ -74,11 +77,10 @@ package growing a second, prop-threaded way in.
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
 - **Plain `FetchHttpClient.layer`, not `telemetry-react`'s
-  `webHttpClientLayer`.** The app's `local_only` badge is off since the move to
-  the published site (its assets are remote now), but the property the badge
-  described — this app makes no outbound request of its own — is still worth
-  keeping, and the telemetry layer's OTLP exporter is exactly the kind of
-  outbound request it rules out.
+  `webHttpClientLayer`.** The app is registered `local_only = 0` (its assets are
+  served from the published site). Its only outbound traffic is the FHIR server
+  and, once the visitor says yes in `SmartAppRoot`'s consent dialog, Sentry; the
+  telemetry layer would start reporting from the build's env without asking.
 - **`build` is `vp build`, with no `tsc` step** (unlike `apps/medications-app`).
   The tsconfig sets `customConditions: ["source"]` so `tsc` and the bundler agree on
   which copy of `QueryClient` a slice's router context refers to — without it,
@@ -95,8 +97,8 @@ package growing a second, prop-threaded way in.
 - **The viewer does not redact; the export flow does, and it lives in the
   slice.** Capture is lossless and this runs on the user's own device against
   their own data. Redaction belongs to the export boundary, and the button that
-  reaches it is `RecordingsPanel`'s — this app adds no export surface, so the
-  no-outbound-requests property has no code here to violate it.
+  reaches it is `RecordingsPanel`'s — this app adds no export surface of its
+  own.
 - **The slice's panels own every level, including the exchange detail.** This app
   renders no viewing surface of its own and holds no selection state within a
   panel. It briefly did: the panel used to leave the detail to its host, and

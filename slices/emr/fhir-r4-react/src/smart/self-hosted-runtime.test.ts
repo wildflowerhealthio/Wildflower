@@ -1,8 +1,9 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import type { Query } from '@tanstack/react-query'
 import { Effect, Layer } from 'effect'
 import fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { describe, expect, test } from 'vite-plus/test'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 import {
   buildSmartQueryClient,
@@ -144,5 +145,36 @@ describe('buildSmartRouterContext', () => {
     const first = buildSmartRouterContext(session, deadTransport)
     const second = buildSmartRouterContext(session, deadTransport)
     expect(first.queryClient).not.toBe(second.queryClient)
+  })
+})
+
+describe('buildSmartQueryClient', () => {
+  test('reports each failed query to onQueryError with its error and query, once', async () => {
+    const onQueryError =
+      vi.fn<(queryError: unknown, failedQuery: Query<unknown, unknown, unknown>) => void>()
+    const queryClient = buildSmartQueryClient({ onQueryError })
+    const readFailure = new Error('401 Unauthorized')
+
+    await expect(
+      queryClient.query({
+        queryKey: ['failing-read'],
+        queryFn: () => Promise.reject(readFailure),
+        retry: false,
+      })
+    ).rejects.toBe(readFailure)
+
+    expect(onQueryError).toHaveBeenCalledTimes(1)
+    const [reportedError, failedQuery] = onQueryError.mock.calls[0]
+    expect(reportedError).toBe(readFailure)
+    expect(failedQuery.queryKey).toStrictEqual(['failing-read'])
+  })
+
+  test('reports nothing for a query that succeeds', async () => {
+    const onQueryError = vi.fn<() => void>()
+    const queryClient = buildSmartQueryClient({ onQueryError })
+
+    await queryClient.query({ queryKey: ['read'], queryFn: () => Promise.resolve('ok') })
+
+    expect(onQueryError).not.toHaveBeenCalled()
   })
 })

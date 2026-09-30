@@ -39,7 +39,7 @@ describe('TelemetryStatusControl', () => {
       <TelemetryStatusControl
         consent={consentWith(switches)}
         copy={TELEMETRY_CONSENT_COPY}
-        onChange={vi.fn()}
+        onPress={vi.fn()}
       />
     )
 
@@ -49,14 +49,14 @@ describe('TelemetryStatusControl', () => {
     ).toBeDefined()
   })
 
-  it('should call onChange when pressed', () => {
+  it('should call onPress when pressed', () => {
     // Arrange
-    const onChange = vi.fn()
+    const onPress = vi.fn()
     render(
       <TelemetryStatusControl
         consent={consentWith({ crashReports: true, performance: false })}
         copy={TELEMETRY_CONSENT_COPY}
-        onChange={onChange}
+        onPress={onPress}
       />
     )
 
@@ -64,6 +64,6 @@ describe('TelemetryStatusControl', () => {
     fireEvent.click(screen.getByRole('button', { name: /change telemetry settings/ }))
 
     // Assert
-    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onPress).toHaveBeenCalledTimes(1)
   })
 })

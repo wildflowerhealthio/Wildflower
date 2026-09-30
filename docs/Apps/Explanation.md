@@ -57,8 +57,16 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   — loopback for an on-device launch, the forwarded public origin for a remote
   one — which is always something the caller can reach. The trade-off of the
   move: with the assets remote, a launch of these two now needs the network even
-  on-device, and Web Trace can no longer claim `local_only` (its data still never
-  leaves the device; its assets are no longer local).
+  on-device, and Web Trace does not claim `local_only`: its assets are remote.
+
+  The SMART apps this repository publishes (every app that mounts
+  `smart-app-react`'s `SmartAppRoot`) send
+  nothing from the browser but their FHIR traffic until the visitor answers a
+  telemetry consent dialog, which comes before anything else on the page. Only
+  after a yes do they report to Sentry, each to its own project: crash reports,
+  which can carry data the app loaded, and anonymized performance data, each
+  behind its own switch. See the
+  [Telemetry Explanation](../../slices/telemetry/docs/Telemetry%20Explanation.md).
 
   In **debug builds only** each first-party app additionally gets an `<id>-dev`
   row bound to that app's vite dev-server port (pinned once in

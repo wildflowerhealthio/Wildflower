@@ -140,10 +140,11 @@ accepts the writes and the set has room to grow.
 - **Plain `FetchHttpClient.layer`, not `telemetry-react`'s
   `webHttpClientLayer`.** Not for a `local_only` reason — this app is registered
   `local_only = 0`, because its assets are served from wildflowerhealth.io and it
-  writes to the FHIR base the handshake named. The reason is that the importer
-  talks to exactly one host, the one the handshake named, and adding an OTLP
-  destination would put a second, uninstrumented one into a bundle whose whole
-  job is moving the user's records between two places they chose. `app.tsx` is
+  writes to the FHIR base the handshake named. The reason is that the importer's
+  only outbound traffic is that FHIR server and, once the visitor says yes in
+  `SmartAppRoot`'s consent dialog, Sentry; the telemetry layer would start
+  reporting from the build's env without asking, in a bundle whose whole job is
+  moving the user's records between two places they chose. `app.tsx` is
   the only file that names the real transport; `buildSmartRouterContext` keeps it
   a parameter so `app.test.tsx` can drive a stub.
 - **`build` is `vp build`, with no `tsc` step.** The tsconfig sets
@@ -230,15 +231,19 @@ JS entry), completes a GitHub Pages 404 redirect, calls `addOsColorSchemeListene
 renders `<AppRoot />`. `launch-main.tsx` imports the same module and makes one
 `runSmartLaunchEntry` call. `AppRoot` (exported from `app-root.tsx` and from the
 package's `"."` export as a `source`-only seam) is
-`<SmartAppRoot app="importer" standalone={standaloneSmartConfig}>` around
-`<App />`; `SmartAppRoot` owns the `QueryClientProvider` and the chrome gate:
+`<SmartAppRoot app="importer" standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>`
+around `<App />`; `SmartAppRoot` holds both branches behind the telemetry
+consent dialog and owns the `QueryClientProvider` and the chrome gate:
 
-- **launched** (`shouldCompleteSmartLaunch()` or the prop) → `<BrandBar />` +
-  `<App />`.
+- **launched** (`shouldCompleteSmartLaunch()` or the prop) → `<BrandBar />`
+  (with the telemetry status control at its end) + `<App />`.
 - **not launched** → `<SiteHeader nav={fromApp} />` + `<main>` wrapping the
-  Importer's `<AppLanding>` introduction beside `<ConnectMenu …/>` +
-  `<SiteFooter />`. A launch that failed and landed back here is handed to
-  the `ConnectMenu` as its `arrivalProblem`.
+  Importer's `<AppLanding>` introduction beside `<ConnectMenu …/>` + the
+  telemetry status control + `<SiteFooter />`. A launch that failed and landed
+  back here is handed to the `ConnectMenu` as its `arrivalProblem`.
+
+`smartAppTelemetry` in `src/config.ts` names the app's Sentry project through
+the `VITE_SENTRY_DSN_IMPORTER_WEB` build variable (see `.env.example`).
 
 The decision is **latched on mount** inside `SmartAppRoot`; the shell's
 [`smart-app-root.test.tsx`](../../slices/smart-app/smart-app-react/src/smart-app-root.test.tsx)

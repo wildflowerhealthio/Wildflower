@@ -68,6 +68,23 @@ describe('AppLandingPage', () => {
       'https://wildflowerhealth.io/medications-app'
     )
   })
+
+  it('should put the row above the footer between the main landmark and the footer', () => {
+    // Arrange / Act
+    render(
+      <AppLandingPage app="medications" aboveFooter={<button type="button">Telemetry: off</button>}>
+        <div />
+      </AppLandingPage>
+    )
+
+    // Assert — outside the main landmark and the footer, after one and before the other
+    const row = screen.getByRole('button', { name: 'Telemetry: off' })
+    const main = screen.getByRole('main')
+    const footer = screen.getByRole('contentinfo')
+    expect(main.contains(row) || footer.contains(row)).toBe(false)
+    expect(follows(row, main)).toBe(true)
+    expect(follows(footer, row)).toBe(true)
+  })
 })
 
 // Helpers

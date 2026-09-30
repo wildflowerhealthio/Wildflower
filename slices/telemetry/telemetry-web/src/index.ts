@@ -9,6 +9,10 @@ import { getGlobalTracer, initWebTelemetry, makeWebTelemetryLayer } from './laye
 /**
  * Read VITE_*-prefixed env vars from `import.meta.env` (inlined by Vite at
  * build time) and apply any caller-provided overrides.
+ *
+ * @remarks
+ * A consented app builds the config it hands `initConsentedTelemetry` here,
+ * overriding the DSN with its own project's.
  */
 const configFromViteEnv = (overrides?: TelemetryConfigOverrides): TelemetryConfig =>
   mergeConfig(configFromEnv(import.meta.env, 'VITE_'), overrides)
@@ -27,6 +31,7 @@ const webTelemetryLayerFromEnv = (
 ): ReturnType<typeof makeWebTelemetryLayer> => makeWebTelemetryLayer(configFromViteEnv(overrides))
 
 export {
+  configFromViteEnv,
   getGlobalTracer,
   initWebTelemetry,
   initWebTelemetryFromEnv,

@@ -10,7 +10,10 @@ slice is where the two meet, so neither has to know about the other.
 
 - **`smart-app-react`** — the only package. There is no `-core`: everything
   here is UI or DOM boot code.
-  - `SmartAppRoot({ app, standalone, launched?, children })` — the app root.
+  - `SmartAppRoot({ app, standalone, telemetry, launched?, children })` — the
+    app root. `telemetry` (`SmartAppTelemetry`: `dsn`, `app`) names where the
+    app reports once the visitor consents: its own Sentry project's DSN and
+    the id its events are tagged with.
   - `runSmartLaunchEntry({ launch, loadingMessage })` — the whole `launch.html`
     entry.
   - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
@@ -41,7 +44,10 @@ An app's two entries are each a few lines:
 - `main.tsx` imports `react-tundraish/styles` (the design-system stylesheet
   stack, fonts included) before anything else, completes a GitHub Pages 404
   redirect (`restoreRedirectedUrl`), starts `addOsColorSchemeListener()`, and
-  renders `<SmartAppRoot app="…" standalone={standaloneSmartConfig}><App /></SmartAppRoot>`.
+  renders `<SmartAppRoot app="…" standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}><App /></SmartAppRoot>`.
+  `config.ts` pairs the DSN, read from the app's own `VITE_SENTRY_DSN_<APP>`
+  build variable (typed in `env.d.ts`, named in `.env.example`), with the
+  app's id as `smartAppTelemetry`.
 - `launch-main.tsx` imports the same stylesheet module and calls
   `runSmartLaunchEntry`.
 
@@ -50,6 +56,27 @@ import `branding-react/styles.css` itself.
 
 ## Guardrails
 
+- **The consent dialog comes first, and nothing starts telemetry before a
+  yes.** `SmartAppRoot` renders both branches inside `telemetry-react`'s
+  `TelemetryConsentGate`, so until the visitor has answered the page is the
+  dialog alone: the connect menu does not mount, the app does not mount, and
+  no query runs. The answer goes to `initConsentedTelemetry`, which starts
+  Sentry only when a switch is on. The FHIR host tag waits for Sentry to run;
+  the launch failure the page arrived with is reported once, after it starts.
+  The error boundaries around the launched app and around the connect menu,
+  and the `QueryClient`'s `onQueryError`, call `Sentry.captureException`
+  unconditionally, which does nothing on an SDK that was never initialized.
+  `onQueryError` skips the handshake query (`isSmartHandshakeQuery`): a failed
+  handshake comes back to the root as its launch failure and is reported
+  there, so it is reported once. An app keeps the plain
+  `FetchHttpClient.layer` and never provides `webHttpClientLayer` or calls
+  `webTelemetryLayerFromEnv` / `initWebTelemetryFromEnv`: those start
+  telemetry from the build's env without asking. Tests cover each branch
+  directly (`smart-app-root.test.tsx`).
+- **The telemetry status control is on both branches.** It sits in
+  `BrandBar`'s `trailing` slot on the launched branch and in
+  `AppLandingPage`'s `aboveFooter` row on the standalone branch, and reopens
+  the dialog.
 - **The branch is latched on mount.** `SmartAppRoot` reads
   `shouldCompleteSmartLaunch()` (or the `launched` prop) and `launchErrorFrom()`
   once, in `useState` initializers. fhirclient's `oauth2.ready()` strips
@@ -57,9 +84,11 @@ import `branding-react/styles.css` itself.
   render would flip a finished launch back to the connect menu under the
   authenticated app — and drop the failure banner a launch landed with.
 - **One `QueryClient` per page, built by the shell.** `SmartAppRoot` builds it
-  with `buildSmartQueryClient()` and provides it at the root, where the app's
-  `useSmartHandshake` runs; the app hands that same instance to
-  `buildSmartRouterContext`. See the `useSmartHandshake` guardrail in
+  with `buildSmartQueryClient({ onQueryError })` and provides it at the root,
+  where the app's `useSmartHandshake` runs; the app hands that same instance to
+  `buildSmartRouterContext`. The shell reads the handshake's result off that
+  client with `whenSmartHandshakeReady` rather than running the exchange
+  itself. See the `useSmartHandshake` guardrail in
   [slices/emr/AGENTS.md](../emr/AGENTS.md) for why the exchange must run once.
 - **Redirect targets are derived from the page URL, in render.** The shell's
   `ConnectMenu` redirect, the launch page's, and a failed handshake's return

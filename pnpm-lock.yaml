@@ -306,6 +306,15 @@ importers:
       smart-app-react:
         specifier: workspace:*
         version: link:../../slices/smart-app/smart-app-react
+      telemetry-core:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-core
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-react
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-web
       tundra-css:
         specifier: 'catalog:'
         version: 0.14.0
@@ -484,6 +493,15 @@ importers:
       smart-app-react:
         specifier: workspace:*
         version: link:../../slices/smart-app/smart-app-react
+      telemetry-core:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-core
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-react
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-web
       tundra-css:
         specifier: 'catalog:'
         version: 0.14.0
@@ -581,6 +599,15 @@ importers:
       smart-app-react:
         specifier: workspace:*
         version: link:../../slices/smart-app/smart-app-react
+      telemetry-core:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-core
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-react
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-web
       tundra-css:
         specifier: 'catalog:'
         version: 0.14.0
@@ -760,6 +787,15 @@ importers:
       smart-app-react:
         specifier: workspace:*
         version: link:../../slices/smart-app/smart-app-react
+      telemetry-core:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-core
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-react
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-web
       tundra-css:
         specifier: 'catalog:'
         version: 0.14.0
@@ -974,6 +1010,15 @@ importers:
       smart-app-react:
         specifier: workspace:*
         version: link:../../slices/smart-app/smart-app-react
+      telemetry-core:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-core
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-react
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-web
       tundra-css:
         specifier: 'catalog:'
         version: 0.14.0
@@ -4759,6 +4804,15 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      telemetry-core:
+        specifier: workspace:*
+        version: link:../../telemetry/telemetry-core
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../telemetry/telemetry-react
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../../telemetry/telemetry-web
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

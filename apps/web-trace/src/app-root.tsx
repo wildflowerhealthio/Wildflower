@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
-import { standaloneSmartConfig } from './config.ts'
+import { smartAppTelemetry, standaloneSmartConfig } from './config.ts'
 
 /**
  * The Web Trace Viewer's root: the shared `SmartAppRoot` around `App`. `App`
@@ -10,12 +10,20 @@ import { standaloneSmartConfig } from './config.ts'
  * then hands that same instance to its router context, so the exchange and
  * every viewer read share one cache.
  *
+ * Its telemetry goes to the app's own Sentry project (`smartAppTelemetry`),
+ * and only once the visitor consents to it.
+ *
  * @param launched - Whether the URL carries a SMART callback to complete; see
  *   `SmartAppRoot`. Defaults to the live URL check; tests pass it explicitly.
  */
 function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
   return (
-    <SmartAppRoot app="webTrace" standalone={standaloneSmartConfig} launched={launched}>
+    <SmartAppRoot
+      app="webTrace"
+      standalone={standaloneSmartConfig}
+      telemetry={smartAppTelemetry}
+      launched={launched}
+    >
       <App />
     </SmartAppRoot>
   )

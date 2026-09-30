@@ -12,12 +12,14 @@ import { webTelemetryLayerFromEnv } from 'telemetry-web'
  * (they auto-provide it) and by app composition code that manually
  * merges it into a multi-slice client layer.
  *
- * Built eagerly at module load — the layer description is a value, not
- * a running instance, so this is cheap.
+ * The telemetry half is suspended until the layer is first built: building
+ * it starts telemetry from the build's env, and importing this package must
+ * not, since apps that ask for consent first (the SMART apps' root) import it
+ * for the consent gate.
  */
 const webHttpClientLayer: Layer.Layer<HttpClient.HttpClient, never, never> = Layer.mergeAll(
   FetchHttpClient.layer,
-  webTelemetryLayerFromEnv()
+  Layer.suspend(() => webTelemetryLayerFromEnv())
 ).pipe(Layer.provideMerge(FetchHttpClient.layer))
 
 export { webHttpClientLayer }

@@ -63,12 +63,15 @@ export {
   buildSmartQueryClient,
   buildSmartRouterContext,
   smartHttpClientLayer,
+  type BuildSmartQueryClientOptions,
   type SmartSession,
 } from './self-hosted-runtime.ts'
 
 export {
+  isSmartHandshakeQuery,
   useLaunchFailureRedirect,
   useSmartHandshake,
+  whenSmartHandshakeReady,
   type SmartHandshake,
 } from './use-smart-handshake.ts'
 

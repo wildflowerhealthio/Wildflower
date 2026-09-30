@@ -22,3 +22,14 @@
   margin: 0 auto;
   padding: var(--space-13) var(--page-padding-x);
 }
+
+/* The small row above the footer, aligned with the page's content column. */
+.app-landing-page__above-footer {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-5) var(--page-padding-x);
+  box-sizing: border-box;
+}

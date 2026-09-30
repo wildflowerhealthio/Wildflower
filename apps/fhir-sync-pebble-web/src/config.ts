@@ -1,4 +1,5 @@
 import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
+import type { SmartAppTelemetry } from 'smart-app-react'
 
 /**
  * SMART registration for the standalone connect flow — the only way this app is
@@ -57,4 +58,14 @@ const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
  */
 const RETURN_TO_STORAGE_KEY = 'fhir-sync-pebble:return-to'
 
-export { RETURN_TO_STORAGE_KEY, standaloneSmartConfig }
+/**
+ * Where this app's telemetry goes once the visitor consents to it: its own
+ * Sentry project, whose DSN is the `VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB` build variable, with
+ * `fhir-sync-pebble-web` as the `app` tag. A build that sets no DSN reports nothing.
+ */
+const smartAppTelemetry: SmartAppTelemetry = {
+  dsn: import.meta.env.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB ?? '',
+  app: 'fhir-sync-pebble-web',
+}
+
+export { RETURN_TO_STORAGE_KEY, smartAppTelemetry, standaloneSmartConfig }

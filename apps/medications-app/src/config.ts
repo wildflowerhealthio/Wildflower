@@ -1,4 +1,5 @@
 import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
+import type { SmartAppTelemetry } from 'smart-app-react'
 
 /**
  * SMART registration for the `medications-app` package. The scopes must be a
@@ -55,4 +56,14 @@ const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   scope: 'launch launch/patient openid fhirUser system/MedicationRequest.rs system/Medication.rs',
 }
 
-export { smartConfig, standaloneSmartConfig }
+/**
+ * Where this app's telemetry goes once the visitor consents to it: its own
+ * Sentry project, whose DSN is the `VITE_SENTRY_DSN_MEDICATIONS_APP` build variable, with
+ * `medications-app` as the `app` tag. A build that sets no DSN reports nothing.
+ */
+const smartAppTelemetry: SmartAppTelemetry = {
+  dsn: import.meta.env.VITE_SENTRY_DSN_MEDICATIONS_APP ?? '',
+  app: 'medications-app',
+}
+
+export { smartAppTelemetry, smartConfig, standaloneSmartConfig }

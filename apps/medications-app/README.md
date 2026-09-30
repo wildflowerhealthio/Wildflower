@@ -18,16 +18,22 @@ completes a GitHub Pages 404 redirect, wires the OS colour-scheme listener, and
 renders `<AppRoot />` inside `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="medications"
-standalone={standaloneSmartConfig}>` around `<App />`. `SmartAppRoot` owns the
-single `QueryClientProvider` and branches, latched on mount, on whether a SMART
-callback is in the URL:
+standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>` around
+`<App />`. `SmartAppRoot` shows the telemetry consent dialog before either
+branch, owns the single `QueryClientProvider`, and branches, latched on mount,
+on whether a SMART callback is in the URL:
 
 - **Launched** (OAuth callback present) — renders `<BrandBar />` (a slim brand
-  link back to the marketing site) above `<App />`.
+  link back to the marketing site, with the telemetry status control at its
+  end) above `<App />`.
 - **Standalone** (bare visit) — renders the full Wildflower chrome:
   `<SiteHeader>`, the app's `<AppLanding>` introduction beside `<ConnectMenu>`,
-  `<SiteFooter>`, with nav links resolving as absolute URLs back to
-  `wildflowerhealth.io`.
+  the telemetry status control, `<SiteFooter>`, with nav links resolving as
+  absolute URLs back to `wildflowerhealth.io`.
+
+`smartAppTelemetry` in `src/config.ts` names the app's Sentry project through
+the `VITE_SENTRY_DSN_MEDICATIONS_APP` build variable (see `.env.example`).
+Nothing is reported until the visitor says yes.
 
 `AppRoot` accepts an optional `launched` prop (defaults to the live URL check)
 so both branches are testable without URL manipulation. The package exports
