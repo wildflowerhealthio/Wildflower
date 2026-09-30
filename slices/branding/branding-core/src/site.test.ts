@@ -20,12 +20,13 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'ohifViewer',
   'fhirSyncPebble',
   'healthViewer',
+  'syntheticData',
   'watchLifts',
   'app'
 )
 
 describe('SECTION_PATHS', () => {
-  it('should contain exactly ten sections with the correct deploy-contract paths', () => {
+  it('should contain exactly eleven sections with the correct deploy-contract paths', () => {
     expect(SECTION_PATHS).toStrictEqual({
       marketing: '',
       medications: 'medications-app',
@@ -35,6 +36,7 @@ describe('SECTION_PATHS', () => {
       ohifViewer: 'ohif-viewer',
       fhirSyncPebble: 'fhir-sync-pebble',
       healthViewer: 'health-viewer-app',
+      syntheticData: 'synthetic-data-app',
       watchLifts: 'watch-lifts',
       app: 'app',
     })

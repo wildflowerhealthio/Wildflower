@@ -1,0 +1,26 @@
+/*
+ * App shell. Colours and spacing read from the Tundra design tokens that
+ * `tundra-css` + `react-tundraish` define globally, and the title uses
+ * tundra's `text-heading-3`, so this file only lays out the shell; the
+ * loader's own layout is `synthetic-data-react`'s. Dark mode needs no rule
+ * here — every token flips with `:root[data-color-scheme='dark']`.
+ */
+.app {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-7) var(--space-13);
+}
+
+/* The title and, under it, the server the loader writes to. */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-9);
+}
+
+.server {
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+  overflow-wrap: anywhere;
+}
