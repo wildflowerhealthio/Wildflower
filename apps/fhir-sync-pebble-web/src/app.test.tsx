@@ -5,8 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { Effect, Either, Layer } from 'effect'
 import type * as SmartModule from 'fhir-r4-react/smart'
 import type { SmartHandshake } from 'fhir-r4-react/smart'
-import { type PebbleSettings, ReturnTarget, type ReturnTargetStore } from 'fhir-sync-pebble-core'
+import type { PebbleSettings } from 'fhir-sync-pebble-core'
 import type Client from 'fhirclient/lib/Client'
+import { ReturnTarget, type ReturnTargetStore } from 'pebble-configuration'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 /**

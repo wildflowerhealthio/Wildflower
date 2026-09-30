@@ -52,6 +52,13 @@ const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
 }
 
 /**
+ * The `sessionStorage` key the Pebble phone app's `return_to` is kept under
+ * across the SMART login: `main.tsx` keeps it before the login navigates away,
+ * and `App` recalls it once the callback lands.
+ */
+const RETURN_TO_STORAGE_KEY = 'fhir-sync-pebble:return-to'
+
+/**
  * Where this app's telemetry goes once the visitor consents to it: its own
  * Sentry project, whose DSN is the `VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB` build variable, with
  * `fhir-sync-pebble-web` as the `app` tag. A build that sets no DSN reports nothing.
@@ -61,4 +68,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'fhir-sync-pebble-web',
 }
 
-export { smartAppTelemetry, standaloneSmartConfig }
+export { RETURN_TO_STORAGE_KEY, smartAppTelemetry, standaloneSmartConfig }

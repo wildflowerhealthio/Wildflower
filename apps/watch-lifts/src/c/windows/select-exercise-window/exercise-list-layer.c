@@ -82,6 +82,10 @@ ExerciseListLayer *exercise_list_layer_create(
   return exercise_list_layer;
 }
 
+void exercise_list_layer_reload(ExerciseListLayer *exercise_list_layer) {
+  menu_layer_reload_data(exercise_list_layer->menu_layer);
+}
+
 void exercise_list_layer_destroy(ExerciseListLayer *exercise_list_layer) {
   menu_layer_destroy(exercise_list_layer->menu_layer);
   free(exercise_list_layer);

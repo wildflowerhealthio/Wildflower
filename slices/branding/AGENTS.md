@@ -37,7 +37,7 @@ site-absolute, as `?redirect=<path>` (an app-relative route named like the
 app's own directory, `/app` below `/app/`, would read as the app root).
 `restoreRedirectedUrl(window)` is the other half: each
 first-party SPA entry (`apps/medications-app`, `apps/importer-web`,
-`apps/fhir-sync-pebble-web`, `apps/web-trace`, `apps/wildflower-server-docs`) calls it as its first statement,
+`apps/fhir-sync-pebble-web`, `apps/watch-lifts-web`, `apps/web-trace`, `apps/wildflower-server-docs`) calls it as its first statement,
 before the router, the SMART callback check, or the `?server=` read — it puts
 the route back in the address bar with `history.replaceState` and drops the
 `redirect` parameter, leaving every other parameter and the fragment alone.

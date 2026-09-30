@@ -1,13 +1,15 @@
 packages:
   - apps/*
-  # The watch apps' host-side tests, and fhir-sync-pebble's PebbleKit JS build;
-  # see apps/watch-lifts/test/vite.config.ts for why they aren't part of the
-  # watch app packages themselves.
+  # The watch apps' host-side tests and PebbleKit JS builds; see
+  # apps/watch-lifts/test/vite.config.ts for why they aren't part of the watch
+  # app packages themselves.
   - apps/fhir-sync-pebble/pkjs
   - apps/fhir-sync-pebble/test
+  - apps/watch-lifts/pkjs
   - apps/watch-lifts/test
   - global/*
   - global/effect-messaging/*
+  - global/pebble/*
   - slices/**
   - '!slices/apps/self-hosted-apps/**'
   # `slices/**` otherwise reaches into nested `node_modules`. Most package-local
@@ -65,8 +67,8 @@ catalog:
   # root so ajv 8 wins the hoist: eslint drags in ajv 6, and whichever version
   # lands at the workspace root is the one a root-level `vp lint` resolves for
   # every package.
-  # acorn parses apps/fhir-sync-pebble's PebbleKit JS bundle at ES5 to prove
-  # its language level.
+  # acorn parses a watchapp's PebbleKit JS bundle at ES5 to prove its language
+  # level (global/pebble/pebble-pkjs).
   acorn: ^8.18.0
   ajv: ^8.20.0
   bumpp: ^12.3.0
@@ -99,7 +101,7 @@ catalog:
   # Bare `typescript` is held on 5.x for the tools that need its JS compiler
   # API, which the `typescript` 7 npm package (the Go port) doesn't ship:
   # typescript-eslint (peers on `<6.1.0`), @effect/language-service and editor
-  # tsserver, and the ES5 lowering in apps/fhir-sync-pebble/pkjs (TypeScript 7
+  # tsserver, and the ES5 lowering in global/pebble/pebble-pkjs (TypeScript 7
   # has no ES5 target). Dependabot ignores its majors (.github/dependabot.yml).
   typescript: 5.9.3
   # TypeScript 7, the native compiler, for everything that only runs the

@@ -1,7 +1,7 @@
-import { type Effect, type ParseResult, Schema } from 'effect'
+import { type DateTime, type Effect, type ParseResult, Schema } from 'effect'
 
 import type { HarToJsonOptions } from './emit.ts'
-import { HarEntry, HarLog } from './har.ts'
+import { type HarCreator, HarEntry, HarLog, type HarPage } from './har.ts'
 
 /**
  * HAR 1.2 as Chrome DevTools writes it: {@link Har} plus the `_`-prefixed
@@ -20,12 +20,21 @@ import { HarEntry, HarLog } from './har.ts'
  * {@link chromeHarToJson}: {@link harToJson} would encode it as a plain `Har`
  * and drop the extras.
  *
+ * Alongside the schemas is the vocabulary a producer of a DevTools-shaped
+ * archive writes with: the {@link CHROME_CREATOR}, the extras' literal values
+ * ({@link ChromeResourceType}, {@link ChromePriority},
+ * {@link ChromeInitiatorType}) and {@link chromeExtrasOf} pairing them, and
+ * {@link chromePageOf} / {@link chromeHarOf} for pages and the archive. The
+ * schemas stay open strings, so an export carrying a value not listed here
+ * still reads.
+ *
  * @packageDocumentation
  */
 
 /**
- * Chrome's `_initiator` — what caused the request, e.g. `{ type: 'parser' }`
- * for a navigation or `{ type: 'script', stack: … }` for a script's fetch.
+ * Chrome's `_initiator` — what caused the request, e.g. `{ type: 'other' }`
+ * for a navigation, `{ type: 'parser' }` for a resource the HTML parser found,
+ * or `{ type: 'script', stack: … }` for a script's fetch.
  *
  * @remarks
  * Only `type` is typed. The rest (`url`, `lineNumber`, a call `stack`) is
@@ -85,17 +94,110 @@ const chromeHarToJson = (
 /** Reads the text of a `.har` file into a DevTools archive, extras included. */
 const chromeHarFromJson = Schema.decodeUnknown(ChromeHarFromJson)
 
+/**
+ * The `creator` a DevTools "Save all as HAR" export writes: `WebInspector`,
+ * versioned as the WebKit build Chrome reports itself as.
+ */
+const CHROME_CREATOR: HarCreator = { name: 'WebInspector', version: '537.36' }
+
+/**
+ * The `_resourceType`s a producer writes: a navigation (`document`), an
+ * `XMLHttpRequest` (`xhr`) or a `fetch()` call (`fetch`).
+ *
+ * @remarks
+ * DevTools has more (`image`, `script`, `stylesheet`, …), which
+ * {@link ChromeHarEntry} reads as the open string it declares.
+ */
+type ChromeResourceType = 'document' | 'xhr' | 'fetch'
+
+/** The `_priority` levels DevTools reports, highest first. */
+type ChromePriority = 'VeryHigh' | 'High' | 'Medium' | 'Low' | 'VeryLow'
+
+/**
+ * The `_initiator.type`s a producer writes: the browser itself (`other`, as for
+ * a navigation), the HTML parser (`parser`) or a script (`script`).
+ */
+type ChromeInitiatorType = 'other' | 'parser' | 'script'
+
+/** The DevTools extras of one entry, narrowed to the values a producer writes. */
+type ChromeHarExtras = {
+  readonly _initiator: { readonly type: ChromeInitiatorType }
+  readonly _priority: ChromePriority
+  readonly _resourceType: ChromeResourceType
+}
+
+/** The `_initiator` type and `_priority` DevTools records for each resource type. */
+const EXTRAS_BY_RESOURCE_TYPE: Readonly<
+  Record<
+    ChromeResourceType,
+    { readonly initiator: ChromeInitiatorType; readonly priority: ChromePriority }
+  >
+> = {
+  document: { initiator: 'other', priority: 'VeryHigh' },
+  xhr: { initiator: 'script', priority: 'High' },
+  fetch: { initiator: 'script', priority: 'High' },
+}
+
+/**
+ * The DevTools extras an entry of `resourceType` carries.
+ *
+ * @param resourceType - What the browser fetched
+ * @returns `_initiator`, `_priority` and `_resourceType` as DevTools records
+ *   them: a navigation is initiated by the browser at `VeryHigh`, a script's
+ *   `xhr` or `fetch` by the script at `High`
+ */
+const chromeExtrasOf = (resourceType: ChromeResourceType): ChromeHarExtras => {
+  const { initiator, priority } = EXTRAS_BY_RESOURCE_TYPE[resourceType]
+  return { _initiator: { type: initiator }, _priority: priority, _resourceType: resourceType }
+}
+
+/** The navigation {@link chromePageOf} writes. */
+interface ChromePageSpec {
+  readonly id: string
+  /** The page's URL, which DevTools also uses as its title. */
+  readonly url: string
+  readonly startedAt: DateTime.Utc
+  /** Milliseconds from `startedAt` to `DOMContentLoaded`. */
+  readonly onContentLoadMillis: number
+  /** Milliseconds from `startedAt` to `load`. */
+  readonly onLoadMillis: number
+}
+
+/** A HAR page as DevTools writes one: titled with its URL. */
+const chromePageOf = (spec: ChromePageSpec): HarPage => ({
+  startedDateTime: spec.startedAt,
+  id: spec.id,
+  title: spec.url,
+  pageTimings: { onContentLoad: spec.onContentLoadMillis, onLoad: spec.onLoadMillis },
+})
+
+/** A HAR 1.2 archive of `pages` and `entries` under the {@link CHROME_CREATOR}. */
+const chromeHarOf = (pages: readonly HarPage[], entries: readonly ChromeHarEntry[]): ChromeHar => ({
+  log: { version: '1.2', creator: CHROME_CREATOR, pages, entries },
+})
+
 type ChromeHar = typeof ChromeHar.Type
 type ChromeHarEntry = typeof ChromeHarEntry.Type
 type ChromeHarInitiator = typeof ChromeHarInitiator.Type
 type ChromeHarLog = typeof ChromeHarLog.Type
 
 export {
+  CHROME_CREATOR,
   ChromeHar,
   ChromeHarEntry,
   ChromeHarFromJson,
   ChromeHarInitiator,
   ChromeHarLog,
+  chromeExtrasOf,
   chromeHarFromJson,
+  chromeHarOf,
   chromeHarToJson,
+  chromePageOf,
+}
+export type {
+  ChromeHarExtras,
+  ChromeInitiatorType,
+  ChromePageSpec,
+  ChromePriority,
+  ChromeResourceType,
 }

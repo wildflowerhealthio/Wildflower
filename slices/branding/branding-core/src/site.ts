@@ -15,6 +15,9 @@ const SECTION_PATHS = {
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',
   healthViewer: 'health-viewer-app',
+  // The WatchLifts watchapp's settings page: not a SMART app, so it has no nav
+  // link and no app description.
+  watchLifts: 'watch-lifts',
   // The hosted copy of the wildflower-react owner UI, published cross-origin to
   // the API. `/app/` was chosen over `/wildflower-react/` and `/wildflower/`.
   app: 'app',

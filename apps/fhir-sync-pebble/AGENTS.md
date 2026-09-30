@@ -24,12 +24,12 @@ pebble emu-app-config --emulator emery  # open the settings page for the emulato
 pebble install --phone <ip>           # install to a paired phone
 ```
 
-`pebble build` first runs `vp pack` in `pkjs/` (the wscript does), which
-bundles the PebbleKit JS into `src/pkjs/index.js`, the one file the SDK packs
-(gitignored). It runs the repository's `node_modules/.bin/vp`, so `vp install`
-must have run (without it, a `vp` on the `PATH`), and Node must be on the
-`PATH`. To build the
-bundle alone, `vp run -F fhir-sync-pebble-pkjs build`; `vp run pack` builds it
+`pebble build` first runs `vp pack` in `pkjs/` (the wscript does, through
+[`pebble-pkjs`](../../global/pebble/pebble-pkjs/README.md)'s waf helpers),
+which bundles the PebbleKit JS into `src/pkjs/index.js`, the one file the SDK
+packs (gitignored). It runs the repository's `node_modules/.bin/vp`, so
+`vp install` must have run (without it, a `vp` on the `PATH`), and Node must be
+on the `PATH`. To build the bundle alone, `vp run -F fhir-sync-pebble-pkjs build`; `vp run pack` builds it
 with the rest of the monorepo.
 
 The Pebble SDK and the `pebble` tool are needed only for these; the tests use
@@ -48,10 +48,10 @@ the host `cc`.
   `WatchSync.planWrite`, and its transaction Bundle is posted with a 60 s
   timeout. It answers the watch exactly once per sync, with the sync's id.
   Everything it calls comes from `fhir-sync-pebble-core/pkjs`.
-- `pkjs/src/pebble-kit-js.d.ts` — types for the PebbleKit JS globals it uses
-  (`Pebble`, `localStorage`, `XMLHttpRequest`, `setTimeout`, `console`), since
-  its `tsconfig.json` has ES5's library and no DOM.
-- `pkjs/vite.config.ts` and `pkjs/es5.ts` — the bundle: `vp pack` bundles
+- `pkjs/src/tsconfig.json` — the ES5 program: ES5's library and no DOM, with
+  the PebbleKit JS globals (`Pebble`, `localStorage`, `XMLHttpRequest`,
+  `setTimeout`, `console`) from `pebble-pkjs/pebble-kit-js` in its `types`.
+- `pkjs/vite.config.ts` — the bundle: `pebble-pkjs`'s `pkjsPack` bundles
   `src/index.ts` and the core into `../src/pkjs/index.js` as an IIFE, then
   lowers it to ES5, without comments, and checks it (see Traps).
 - `src/pkjs/index.js` — that bundle, generated and gitignored.
@@ -271,9 +271,8 @@ includes it):
 drivers define them. One driver command line is one scenario. Each driver call
 spawns a process, so the C properties run fewer cases than usual.
 
-`vp test --project fhir-sync-pebble-pkjs` tests the ES5 lowering and checks in
-`pkjs/es5.ts`, and runs `src/index.ts` over stand-ins for the PebbleKit JS
-globals with fake timers (`index.test.ts`): the settings sent again, one
+`vp test --project fhir-sync-pebble-pkjs` runs `src/index.ts` over stand-ins
+for the PebbleKit JS globals with fake timers (`index.test.ts`): the settings sent again, one
 answer per sync, the request timeout. What each message does is the core's
 `WatchSync.receive`, tested there.
 
@@ -285,21 +284,13 @@ than the stand-in has, so only `pebble build` compiles it.
 - **`struct tm` comes from `pebble.h`.** The SDK's libc `time.h` doesn't declare
   it, so `menu-text.h` includes `pebble.h` when `PBL_SDK_3` is defined and
   `<time.h>` otherwise.
-- **PebbleKit JS runs ES5.** The phone's runtime is only assumed to have ES5,
-  and the SDK's webpack 1 parses no further than ES2015 anyway. Rolldown and
-  oxc can't emit ES5, so `pkjs/es5.ts` lowers the finished bundle with
-  TypeScript 5's compiler in `generateBundle` (rolldown reprints what
-  `renderChunk` returns, restoring ES2015 shorthand), then fails the build
-  unless acorn parses it as ES5 and it reads none of `Symbol`, `Map`,
-  `Promise`, `globalThis` and the other later globals `es5.ts` lists. Syntax
-  lowers, but library methods don't: the build also type-checks every bundled
-  source, the core's included, against ES5's library, so
-  `Array.prototype.includes` or `String.prototype.padStart` fails it, and a
-  bundled module outside that check fails it too. TypeScript 7 has no ES5
-  target, so `es5.ts` imports the bare `typescript` package, which the catalog
-  holds on 5.x; `pkjs/src/tsconfig.json` (the ES5 one) says ES2015 only
-  because `vp check`'s TypeScript 7 refuses ES5, and `pkjs/tsconfig.json`
-  covers the Node-side build files and tests.
+- **PebbleKit JS runs ES5.** The build lowers the bundle to ES5 and fails on
+  what ES5 lacks, syntax, globals or library methods alike, in every bundled
+  source, the core's and `pebble-configuration`'s included (see
+  [`pebble-pkjs`](../../global/pebble/pebble-pkjs/README.md)).
+  `pkjs/src/tsconfig.json` (the ES5 one) says ES2015 only because `vp check`'s
+  TypeScript 7 refuses ES5, and `pkjs/tsconfig.json` covers the Node-side
+  build files and tests.
 - **Nothing the phone bundles may import Effect.** Effect needs ES2015 at run
   time, so the core's `pkjs` entry is Effect-free and its decoders are
   hand-written. Import `fhir-sync-pebble-core/pkjs`, not the package root,
@@ -330,8 +321,9 @@ version `ci-pebble.yml` pins: other releases format differently.
 
 ## CI
 
-`.github/workflows/ci-pebble.yml`, on pull requests touching this app, its core
-or `apps/watch-lifts`, runs `fmt:c:check` and both test packages above in its
+`.github/workflows/ci-pebble.yml`, on pull requests touching this app, its core,
+`global/pebble` or `apps/watch-lifts`, runs `fmt:c:check` and both test
+packages above, with `global/pebble`'s, in its
 **Lint + Test** job, and `pebble build` in its **Build** job, which uploads
 `fhir-sync-pebble.pbw` as a workflow artifact. See [`apps/watch-lifts`'s
 README](../watch-lifts/README.md#ci).

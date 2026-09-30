@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 if [ -n "$GIT_NAME" ]; then
   git config --global user.name "$GIT_NAME"
 fi
@@ -5,7 +6,7 @@ if [ -n "$GIT_EMAIL" ]; then
   git config --global user.email "$GIT_EMAIL"
 fi
 gh auth setup-git
-sudo chown -R $(whoami) /workspaces/wildflower/node_modules
+sudo chown -R "$(whoami)" /workspaces/wildflower/node_modules
 
 # /data layout (persistent across rebuilds) — see CLAUDE.md "Parallel Worktrees".
 sudo mkdir -p /data/pnpm-store /data/pnpm-cache /data/pnpm-global /data/worktrees /data/cargo-target/main

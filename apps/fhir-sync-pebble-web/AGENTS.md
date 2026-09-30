@@ -37,10 +37,13 @@ SMART-built context). What differs is below.
 - The decisions live in the slice core,
   [`fhir-sync-pebble-core`](../../slices/fhir-sync-pebble/AGENTS.md), whose
   namespace modules this app imports by name: `PatientSummary` (a listed
-  patient, read leniently), `PebbleSettings` (the watch's wire shape),
-  `ReturnTarget` (the allow-listed `return_to` and the hand-off
-  URL), and `ReturnTargetStore` (the `Store` that keeps `return_to` across the
-  login, over the `sessionStorage` this app hands it). The app holds no
+  patient, read leniently) and `PebbleSettings` (the watch's wire shape).
+  The Pebble side of the hand-off is
+  [`pebble-configuration`](../../global/pebble/pebble-configuration/README.md)'s:
+  `ReturnTarget` (the allow-listed `return_to` and the hand-off URL) and
+  `ReturnTargetStore` (the `Store` that keeps `return_to` across the login,
+  over the `sessionStorage` this app hands it, under `config.ts`'s
+  `RETURN_TO_STORAGE_KEY`). The app holds no
   business logic of its own — it reads the handshake and the patients, and
   renders.
 
@@ -61,7 +64,7 @@ same `index.html`, where `SmartAppRoot`'s launched branch mounts `App`.
 The app implements the Pebble "App Configuration (Static)" contract:
 
 1. The phone app opens the page with `?return_to=<url>`. `main.tsx` keeps it in
-   a `ReturnTargetStore` (from `fhir-sync-pebble-core`) over `sessionStorage`
+   a `ReturnTargetStore` (from `pebble-configuration`) over `sessionStorage`
    before anything navigates,
    because the SMART login leaves for the server's authorize page and the
    callback comes back without it. `sessionStorage`, not `localStorage`: the

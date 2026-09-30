@@ -1,0 +1,2 @@
+# Python caches the waf helpers here when a wscript imports them.
+__pycache__/

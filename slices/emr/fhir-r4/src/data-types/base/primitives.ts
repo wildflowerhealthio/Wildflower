@@ -48,6 +48,47 @@ const UriSchema = Schema.String.pipe(
   })
 )
 
+// The FHIR R4 `date` regex, anchored. Unrefined so `DateSchema`'s arbitrary
+// can brand its generated literals through a decode instead of a cast.
+const DateBaseSchema = Schema.String.pipe(
+  Schema.pattern(
+    /^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1]))?)?$/
+  ),
+  Schema.brand('FhirDate')
+)
+
+/**
+ * FHIR R4 `date`: `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`, with no time or zone.
+ * Decoded as the wire string itself (branded `FhirDate`), so a partial date
+ * keeps its precision and re-encodes byte for byte.
+ *
+ * @remarks
+ * The pattern is the spec's; like the spec regex it does not check that a day
+ * exists in its month (`2026-02-31` passes).
+ */
+const DateSchema = DateBaseSchema.annotations({
+  arbitrary: (): Arbitrary.LazyArbitrary<typeof DateBaseSchema.Type> => (fc: typeof FastCheck) =>
+    fc
+      .tuple(
+        fc.integer({ min: 1, max: 9999 }),
+        fc.integer({ min: 1, max: 12 }),
+        fc.integer({ min: 1, max: 28 }),
+        // How many of year / month / day the literal carries.
+        fc.integer({ min: 1, max: 3 })
+      )
+      .map(([year, month, day, precision]) =>
+        Schema.decodeSync(DateBaseSchema)(
+          [
+            String(year).padStart(4, '0'),
+            String(month).padStart(2, '0'),
+            String(day).padStart(2, '0'),
+          ]
+            .slice(0, precision)
+            .join('-')
+        )
+      ),
+})
+
 /** FHIR R4 `id`: 1-64 chars of `[A-Za-z0-9\-.]`. */
 const IdSchema = Schema.String.pipe(
   Schema.pattern(/^[A-Za-z0-9\-.]{1,64}$/),
@@ -84,4 +125,4 @@ const InstantSchema = pipe(
   })
 )
 
-export { IdSchema, InstantSchema, TimeSchema, UriSchema }
+export { DateSchema, IdSchema, InstantSchema, TimeSchema, UriSchema }

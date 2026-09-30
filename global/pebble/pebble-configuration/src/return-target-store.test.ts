@@ -9,7 +9,7 @@ import * as ReturnTarget from './return-target.ts'
 describe('fromWebStorage', () => {
   it("should recall the Pebble app's close URL when the page was opened without a return_to", () => {
     // Arrange
-    const store = ReturnTargetStore.fromWebStorage(memoryStorage())
+    const store = ReturnTargetStore.fromWebStorage(memoryStorage(), KEY)
 
     // Act
     const target = store.recall()
@@ -20,7 +20,7 @@ describe('fromWebStorage', () => {
 
   it('should recall the return target the page was opened with', () => {
     // Arrange
-    const store = ReturnTargetStore.fromWebStorage(memoryStorage())
+    const store = ReturnTargetStore.fromWebStorage(memoryStorage(), KEY)
     store.rememberFrom(pageOpenedWith('http://localhost:61234/close?'))
 
     // Act
@@ -32,11 +32,11 @@ describe('fromWebStorage', () => {
 
   it('should keep the remembered target when the OAuth callback lands without one', () => {
     // Arrange
-    const store = ReturnTargetStore.fromWebStorage(memoryStorage())
+    const store = ReturnTargetStore.fromWebStorage(memoryStorage(), KEY)
     store.rememberFrom(pageOpenedWith('http://localhost:61234/close?'))
 
     // Act
-    store.rememberFrom(new URL('https://wildflowerhealth.io/fhir-sync-pebble/?code=abc'))
+    store.rememberFrom(new URL('https://settings.example/?code=abc'))
 
     // Assert
     expect(store.recall()).toStrictEqual(Either.right('http://localhost:61234/close?'))
@@ -45,20 +45,31 @@ describe('fromWebStorage', () => {
   it('should keep the target across stores over the same storage, as across a page load', () => {
     // Arrange
     const storage = memoryStorage()
-    ReturnTargetStore.fromWebStorage(storage).rememberFrom(pageOpenedWith('pebblejs://close#'))
+    ReturnTargetStore.fromWebStorage(storage, KEY).rememberFrom(pageOpenedWith('pebblejs://close#'))
 
     // Act
-    const target = ReturnTargetStore.fromWebStorage(storage).recall()
+    const target = ReturnTargetStore.fromWebStorage(storage, KEY).recall()
 
     // Assert
     expect(target).toStrictEqual(Either.right('pebblejs://close#'))
+  })
+
+  it('should keep the target under the key it was given', () => {
+    // Arrange
+    const storage = memoryStorage()
+
+    // Act
+    ReturnTargetStore.fromWebStorage(storage, KEY).rememberFrom(pageOpenedWith('pebblejs://close#'))
+
+    // Assert
+    expect(storage.getItem(KEY)).toBe('pebblejs://close#')
   })
 
   it('should never recall a remembered target that is not the Pebble app or an emulator', () => {
     fc.assert(
       fc.property(fc.webUrl(), (url) => {
         // Arrange
-        const store = ReturnTargetStore.fromWebStorage(memoryStorage())
+        const store = ReturnTargetStore.fromWebStorage(memoryStorage(), KEY)
         store.rememberFrom(pageOpenedWith(url))
 
         // Act
@@ -76,9 +87,12 @@ describe('fromWebStorage', () => {
 
 // Helpers
 
+/** The key the tests keep the return target under. */
+const KEY = 'settings-page:return-to'
+
 /** The page URL the Pebble phone app opens, carrying `returnTo`. */
 const pageOpenedWith = (returnTo: string): URL => {
-  const url = new URL('https://wildflowerhealth.io/fhir-sync-pebble/')
+  const url = new URL('https://settings.example/')
   url.searchParams.set(ReturnTarget.PARAM, returnTo)
   return url
 }

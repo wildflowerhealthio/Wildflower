@@ -22,7 +22,7 @@ The `/fhir-r4` mount path itself is unchanged on the server side — only where 
 
 ## Choice element at-most-one rule
 
-FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Observation.component.value[x]`, `Extension.value[x]`, `MedicationRequest.medication[x]`, `MedicationRequest.reported[x]`, `MedicationRequest.substitution.allowed[x]`, `MedicationDispense.medication[x]`, `MedicationDispense.statusReason[x]`, `DiagnosticReport.effective[x]`, `Dosage.asNeeded[x]`, `ServiceRequest.quantity[x]`, `ServiceRequest.occurrence[x]`, `ServiceRequest.asNeeded[x]`) allow at most one populated slot. Each is modeled as one independent optional field per variant (`choiceElementSetPassthroughFields(prefix, variants)`), and the containing struct is piped through `filterForExclusiveChoiceElementSet(prefix, variants)` — a `Schema.filter` that counts the non-null `${prefix}*` slots and fails when there are two or more. The STU3-as-R4 `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` schemas in `fhir-stu3-as-r4` carry the same guard.
+FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Observation.component.value[x]`, `Extension.value[x]`, `MedicationRequest.medication[x]`, `MedicationRequest.reported[x]`, `MedicationRequest.substitution.allowed[x]`, `MedicationDispense.medication[x]`, `MedicationDispense.statusReason[x]`, `DiagnosticReport.effective[x]`, `Dosage.asNeeded[x]`, `ServiceRequest.quantity[x]`, `ServiceRequest.occurrence[x]`, `ServiceRequest.asNeeded[x]`, `CarePlan.activity.detail.scheduled[x]`, `CarePlan.activity.detail.product[x]`, `Goal.start[x]`, `Goal.target.detail[x]`, `Goal.target.due[x]`) allow at most one populated slot. Each is modeled as one independent optional field per variant (`choiceElementSetPassthroughFields(prefix, variants)`), and the containing struct is piped through `filterForExclusiveChoiceElementSet(prefix, variants)` — a `Schema.filter` that counts the non-null `${prefix}*` slots and fails when there are two or more. The STU3-as-R4 `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` schemas in `fhir-stu3-as-r4` carry the same guard.
 
 The rule is enforced on both sides of the wire:
 
@@ -261,6 +261,38 @@ Notably absent: `patient`, `encounter`, `bodysite`, `dicom-class`, `instance`, `
 `ImagingStudy.series.instance` is a nested backbone element (`imaging-study-series-instance.ts`) with required `uid` and `sopClass` (Coding) plus optional `number` and `title`.
 
 `note` is typed as `Schema.Array(Schema.Any)` — Annotation not individually typed. `procedureReference` is typed as a nullable Reference (no target-type enforcement — same gap as all References here). `ImagingStudy.procedureCode` is typed as CodeableConcept[]; the spec marks it 0..*.
+
+## CarePlan search parameters (subset declared)
+
+Per FHIR R4 § CarePlan.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `intent`, `category`, `subject`, `patient`, `encounter`, `date`, `based-on`, `replaces`, `part-of`, `instantiates-canonical`, `instantiates-uri`, `care-team`, `performer`, `goal`, `condition`, `activity-code`, `activity-date`, `activity-reference`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `status`, `intent`, `subject`, `patient`, `category`, `date`.
+
+`status` is narrowed to the `CarePlan.status` value set (`draft | active | on-hold | revoked | completed | entered-in-error | unknown`). `intent` is narrowed to the `CarePlan.intent` value set (`proposal | plan | order | option`). `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above), matched by the server against `CarePlan.period`. `subject`, `patient`, and `category` are plain strings passed through as written.
+
+Notably absent: `identifier`, `encounter`, `based-on`, `replaces`, `part-of`, `care-team`, `performer`, `goal`, `condition`, and the `activity-*` parameters. Every parameter is single-valued.
+
+## CarePlan choice / required / backbone modeling
+
+`CarePlan` has no top-level choice elements. Required `status`, `intent`, and `subject` are modeled as plain required fields. `created` is a nullable-optional plain string (the wire `dateTime`, not decoded to a `DateTime`, as with `ServiceRequest.authoredOn`). `note` is typed as `Annotation[]`.
+
+`CarePlan.activity` is a backbone element (`care-plan-activity.ts`) carrying `outcomeCodeableConcept` (CodeableConcept[]), `outcomeReference` (Reference[]), `progress` (Annotation[]), `reference` (Reference), and `detail`. The spec's `cpl-3` invariant — an activity carries a `reference` or a `detail`, not both — is not enforced.
+
+`CarePlan.activity.detail` is a nested backbone element (`care-plan-activity-detail.ts`) with required `status` (the `care-plan-activity-status` value set) and optional `kind` (narrowed to the eight request resource types R4 binds it to), `instantiatesCanonical`/`instantiatesUri` (string[]), `code`, `reasonCode`, `reasonReference`, `goal`, `statusReason`, `doNotPerform`, `location`, `performer`, `dailyAmount`/`quantity` (Quantity — `SimpleQuantity` in the spec, not narrowed), and `description`. `scheduled[x]` (Timing | Period | string) and `product[x]` (CodeableConcept | Reference) are choice elements with at most one populated slot each (see "Choice element at-most-one rule" above).
+
+## Goal search parameters (subset declared)
+
+Per FHIR R4 § Goal.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `lifecycle-status`, `achievement-status`, `category`, `subject`, `patient`, `start-date`, `target-date`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `lifecycle-status`, `subject`, `patient`.
+
+`lifecycle-status` is narrowed to the `Goal.lifecycleStatus` value set (`proposed | planned | accepted | active | on-hold | completed | cancelled | entered-in-error | rejected`). `subject` and `patient` are plain strings passed through as written.
+
+Notably absent: `identifier`, `achievement-status`, `category`, `start-date`, `target-date`. Every parameter is single-valued.
+
+## Goal choice / required / backbone modeling
+
+Required `lifecycleStatus`, `description` (CodeableConcept), and `subject` are modeled as plain required fields. `statusDate` is a nullable-optional plain string (the wire `date`), and `statusReason` a plain string. `note` is typed as `Annotation[]`. `Goal.start[x]` (date | CodeableConcept) is a choice element with at most one populated slot.
+
+`Goal.target` is a backbone element (`goal-target.ts`) carrying `measure` (CodeableConcept) and two choice elements, each with at most one populated slot: `detail[x]` (Quantity | Range | CodeableConcept | string | boolean | integer | Ratio) and `due[x]` (date | Duration). The spec's `gol-1` invariant — `detail[x]` requires `measure` — is not enforced.
+
+**`date` choice slots keep the wire string.** `startDate` and `target.dueDate` resolve through the datatype registry, whose `date` entry is `DateSchema` (`data-types/base/primitives.ts`): a string matching the FHIR R4 `date` regex, branded `FhirDate`, not converted to a JS `Date`. `2026-01-15`, `2026-01`, and `2026` each decode to themselves and re-encode byte for byte, so partial precision survives a write; a time-bearing or unpadded value (`2026-01-15T00:00:00Z`, `2026-1-5`) fails to decode. Like the spec regex, the schema does not check that a day exists in its month. The same schema backs every `date` `[x]` slot, `Extension.valueDate` included.
 
 ## Post-merge audit (TODO)
 

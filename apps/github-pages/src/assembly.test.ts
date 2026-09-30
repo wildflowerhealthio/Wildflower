@@ -122,6 +122,12 @@ describe('site layout', () => {
     ])
   })
 
+  it('serves the WatchLifts settings page from /watch-lifts with its one entry', () => {
+    const [watchLifts] = resolveSections(repoRoot, outDir, [sectionFor('watch-lifts-web')])
+    expect(watchLifts?.to).toBe(join(outDir, 'watch-lifts'))
+    expect(watchLifts?.requiredPaths).toEqual([join(outDir, 'watch-lifts', 'index.html')])
+  })
+
   it('serves the hosted owner UI from /app with its SPA entry', () => {
     const [app] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-react')])
     expect(app?.to).toBe(join(outDir, 'app'))
@@ -192,6 +198,7 @@ describe('site layout', () => {
         'medications-app',
         'ohif-viewer',
         'web-trace-app',
+        'watch-lifts',
         'wildflower-server-docs',
       ].toSorted()
     )
@@ -229,8 +236,9 @@ describe('site-wide files', () => {
 
 describe('layout reconciliation with the packages it assembles', () => {
   /**
-   * The four first-party SMART apps: each builds into its own package's
-   * default `dist/` and the site copies it from there. `appDir` is the folder
+   * The four first-party SMART apps and the WatchLifts settings page: each
+   * builds into its own package's default `dist/` and the site copies it from
+   * there. `appDir` is the folder
    * under `apps/`, which differs from the package name for two of them.
    */
   const firstPartyApps = [
@@ -238,6 +246,7 @@ describe('layout reconciliation with the packages it assembles', () => {
     { packageName: 'wildflower-web-trace', appDir: 'web-trace' },
     { packageName: 'wildflower-importer', appDir: 'importer-web' },
     { packageName: 'fhir-sync-pebble-web', appDir: 'fhir-sync-pebble-web' },
+    { packageName: 'watch-lifts-web', appDir: 'watch-lifts-web' },
   ] as const
 
   it.each(firstPartyApps)(

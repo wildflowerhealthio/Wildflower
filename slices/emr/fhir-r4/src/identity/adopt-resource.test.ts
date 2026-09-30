@@ -9,9 +9,12 @@ import {
 } from '../data-types/complex/identifier-and-reference.ts'
 import {
   Binary,
+  CarePlan,
+  type CarePlanActivityDetail,
   DiagnosticReport,
   DocumentReference,
   type FhirResource,
+  Goal,
   ImagingStudy,
   MedicationDispense,
   MedicationRequest,
@@ -197,6 +200,24 @@ const ADOPTED_FIELDS = {
     'reasonReference',
     'series',
   ],
+  CarePlan: [
+    'id',
+    'identifier',
+    'subject',
+    'encounter',
+    'author',
+    'basedOn',
+    'replaces',
+    'partOf',
+    'contributor',
+    'careTeam',
+    'addresses',
+    'supportingInfo',
+    'goal',
+    'activity',
+    'note',
+  ],
+  Goal: ['id', 'identifier', 'subject', 'expressedBy', 'addresses', 'note', 'outcomeReference'],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
 // ---------------------------------------------------------------------------
@@ -406,6 +427,29 @@ const REWRITTEN_REFERENCE_PATHS = {
     'series.specimen',
     'subject',
   ],
+  CarePlan: [
+    'activity.detail.goal',
+    'activity.detail.location',
+    'activity.detail.performer',
+    'activity.detail.productReference',
+    'activity.detail.reasonReference',
+    'activity.outcomeReference',
+    'activity.progress.authorReference',
+    'activity.reference',
+    'addresses',
+    'author',
+    'basedOn',
+    'careTeam',
+    'contributor',
+    'encounter',
+    'goal',
+    'note.authorReference',
+    'partOf',
+    'replaces',
+    'subject',
+    'supportingInfo',
+  ],
+  Goal: ['addresses', 'expressedBy', 'note.authorReference', 'outcomeReference', 'subject'],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
 const SCHEMA_FOR = {
@@ -419,6 +463,8 @@ const SCHEMA_FOR = {
   Practitioner: Practitioner.Schema,
   ServiceRequest: ServiceRequest.Schema,
   ImagingStudy: ImagingStudy.Schema,
+  CarePlan: CarePlan.Schema,
+  Goal: Goal.Schema,
 } as const satisfies Record<FhirResource['resourceType'], Schema.Schema.Any>
 
 describe('reference coverage is derived from the schemas, not asserted by hand', () => {
@@ -484,6 +530,8 @@ const resources: readonly FhirResource[] = [
   { ...sample(Practitioner.Schema, 18), id: 'src-1' },
   { ...sample(ServiceRequest.Schema, 19), id: 'src-1' },
   { ...sample(ImagingStudy.Schema, 20), id: 'src-1' },
+  { ...sample(CarePlan.Schema, 21), id: 'src-1' },
+  { ...sample(Goal.Schema, 22), id: 'src-1' },
 ]
 
 describe('adoptResource', () => {
@@ -698,6 +746,99 @@ describe('reference rewriting', () => {
     if (adopted.resourceType !== 'Observation') throw new Error('unreachable: adopted Observation')
 
     expect(adopted.note[0]).toEqual(note)
+  })
+
+  // `CarePlan.activity` nests references two backbone levels down — including a
+  // `product[x]` choice slot and the `progress` annotations' authors — so each
+  // one is placed explicitly rather than left to whatever the sample generated.
+  test('rewrites every reference nested in a CarePlan activity and its detail', () => {
+    const localRef = (resourceType: string, sourceId: string): string =>
+      `${resourceType}/${localResourceId(SOURCE.system, resourceType, sourceId)}`
+    const detail = {
+      id: null,
+      extension: [],
+      modifierExtension: [],
+      kind: null,
+      instantiatesCanonical: [],
+      instantiatesUri: [],
+      code: null,
+      reasonCode: [],
+      reasonReference: [reference({ reference: 'Condition/cond-1' })],
+      goal: [reference({ reference: 'Goal/goal-1' })],
+      status: 'in-progress',
+      statusReason: null,
+      doNotPerform: null,
+      scheduledTiming: null,
+      scheduledPeriod: null,
+      scheduledString: null,
+      location: reference({ reference: 'Location/loc-1' }),
+      performer: [reference({ reference: 'Practitioner/prac-1' })],
+      productCodeableConcept: null,
+      productReference: reference({ reference: 'Medication/med-1' }),
+      dailyAmount: null,
+      quantity: null,
+      description: 'Walk 30 minutes daily',
+    } as const satisfies typeof CarePlanActivityDetail.Schema.Type
+    const adopted = adopt({
+      ...sample(CarePlan.Schema, 21),
+      id: 'plan-1',
+      activity: [
+        {
+          id: null,
+          extension: [],
+          modifierExtension: [],
+          outcomeCodeableConcept: [],
+          outcomeReference: [reference({ reference: 'Observation/obs-1' })],
+          progress: [
+            {
+              id: null,
+              extension: [],
+              authorReference: reference({ reference: 'Practitioner/prac-2' }),
+              authorString: null,
+              text: 'On track.',
+              time: null,
+            },
+          ],
+          reference: reference({ reference: 'ServiceRequest/sr-1' }),
+          detail,
+        },
+      ],
+    })
+    if (adopted.resourceType !== 'CarePlan') throw new Error('unreachable: adopted a CarePlan')
+
+    const [adoptedActivity] = adopted.activity
+    expect(adoptedActivity?.outcomeReference[0]?.reference).toBe(localRef('Observation', 'obs-1'))
+    expect(adoptedActivity?.progress[0]?.authorReference?.reference).toBe(
+      localRef('Practitioner', 'prac-2')
+    )
+    expect(adoptedActivity?.progress[0]?.text).toBe('On track.')
+    expect(adoptedActivity?.reference?.reference).toBe(localRef('ServiceRequest', 'sr-1'))
+    expect(adoptedActivity?.detail?.reasonReference[0]?.reference).toBe(
+      localRef('Condition', 'cond-1')
+    )
+    expect(adoptedActivity?.detail?.goal[0]?.reference).toBe(localRef('Goal', 'goal-1'))
+    expect(adoptedActivity?.detail?.location?.reference).toBe(localRef('Location', 'loc-1'))
+    expect(adoptedActivity?.detail?.performer[0]?.reference).toBe(
+      localRef('Practitioner', 'prac-1')
+    )
+    expect(adoptedActivity?.detail?.productReference?.reference).toBe(
+      localRef('Medication', 'med-1')
+    )
+    expect(adoptedActivity?.detail?.description).toBe('Walk 30 minutes daily')
+  })
+
+  // A CarePlan's `goal` and the Goal it names must land on the same local id,
+  // or the plan loses its objectives on import.
+  test('a CarePlan goal reference lands on the id its Goal is adopted to', () => {
+    const goal = adopt({ ...sample(Goal.Schema, 22), id: 'goal-7' })
+    const plan = adopt({
+      ...sample(CarePlan.Schema, 21),
+      id: 'plan-1',
+      goal: [reference({ reference: 'Goal/goal-7' })],
+    })
+    if (plan.resourceType !== 'CarePlan') throw new Error('unreachable: adopted a CarePlan')
+
+    expect(plan.goal[0]?.reference).toBe(`Goal/${goal.id}`)
   })
 
   // The standing exemption the coverage guard encodes by stopping at every

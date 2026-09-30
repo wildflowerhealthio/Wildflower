@@ -1,5 +1,6 @@
 import { Either, Match } from 'effect'
-import type { PebbleSettings, ReturnTarget, ReturnTargetStore } from 'fhir-sync-pebble-core'
+import type { PebbleSettings } from 'fhir-sync-pebble-core'
+import type { ReturnTarget, ReturnTargetStore } from 'pebble-configuration'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner } from 'react-tundraish'

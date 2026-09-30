@@ -21,6 +21,7 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",
+    "watch-lifts-web": "workspace:*",
     "wildflower-importer": "workspace:*",
     "wildflower-react": "workspace:*",
     "wildflower-server-docs": "workspace:*",

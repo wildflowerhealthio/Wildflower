@@ -282,6 +282,9 @@ importers:
       fhir-sync-pebble-core:
         specifier: workspace:*
         version: link:../../slices/fhir-sync-pebble/fhir-sync-pebble-core
+      pebble-configuration:
+        specifier: workspace:*
+        version: link:../../global/pebble/pebble-configuration
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -352,12 +355,12 @@ importers:
       '@types/node':
         specifier: ^26
         version: 26.1.0
-      acorn:
-        specifier: 'catalog:'
-        version: 8.18.0
       fhir-sync-pebble-core:
         specifier: workspace:*
         version: link:../../../slices/fhir-sync-pebble/fhir-sync-pebble-core
+      pebble-pkjs:
+        specifier: workspace:*
+        version: link:../../../global/pebble/pebble-pkjs
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -418,6 +421,9 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+      watch-lifts-web:
+        specifier: workspace:*
+        version: link:../watch-lifts-web
       wildflower-importer:
         specifier: workspace:*
         version: link:../importer-web
@@ -851,6 +857,94 @@ importers:
 
   apps/watch-lifts: {}
 
+  apps/watch-lifts-web:
+    dependencies:
+      '@fontsource-variable/atkinson-hyperlegible-mono':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/atkinson-hyperlegible-next':
+        specifier: 'catalog:'
+        version: 5.3.0
+      branding-core:
+        specifier: workspace:*
+        version: link:../../slices/branding/branding-core
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      pebble-configuration:
+        specifier: workspace:*
+        version: link:../../global/pebble/pebble-configuration
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../global/react-tundraish
+      tundra-css:
+        specifier: 'catalog:'
+        version: 0.14.0
+      watch-lifts-core:
+        specifier: workspace:*
+        version: link:../../slices/watch-lifts/watch-lifts-core
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.1.1(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(babel-plugin-react-compiler@1.0.0)
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
+  apps/watch-lifts/pkjs:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      pebble-pkjs:
+        specifier: workspace:*
+        version: link:../../../global/pebble/pebble-pkjs
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+      watch-lifts-core:
+        specifier: workspace:*
+        version: link:../../../slices/watch-lifts/watch-lifts-core
+
   apps/watch-lifts/test:
     devDependencies:
       '@types/node':
@@ -862,6 +956,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      watch-lifts-core:
+        specifier: workspace:*
+        version: link:../../../slices/watch-lifts/watch-lifts-core
 
   apps/web-trace:
     dependencies:
@@ -1340,6 +1437,55 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
+  global/pebble/pebble-configuration:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../kitchen-sink
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
+  global/pebble/pebble-pkjs:
+    dependencies:
+      acorn:
+        specifier: 'catalog:'
+        version: 8.18.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
       vite:
         specifier: 'catalog:'
         version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
@@ -2794,6 +2940,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      pebble-configuration:
+        specifier: workspace:*
+        version: link:../../../global/pebble/pebble-configuration
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -4674,6 +4823,93 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
 
+  slices/synthetic-data/synthetic-data-fundamentals:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
+      http-archive:
+        specifier: workspace:*
+        version: link:../../file-formats/http-archive
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
+  slices/synthetic-data/synthetic-data-rexall-be-well:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
+      fhir-stu3-as-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-stu3-as-r4
+      har-importer-core:
+        specifier: workspace:*
+        version: link:../../importer/har-importer-core
+      http-archive:
+        specifier: workspace:*
+        version: link:../../file-formats/http-archive
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../http-extraction/http-extraction-fundamentals
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../../importer/importer-fundamentals
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      medication-core:
+        specifier: workspace:*
+        version: link:../../medication/medication-core
+      rexall-be-well-source:
+        specifier: workspace:*
+        version: link:../../http-extraction/rexall-be-well-source
+      synthetic-data-fundamentals:
+        specifier: workspace:*
+        version: link:../synthetic-data-fundamentals
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
   slices/telemetry/telemetry-core:
     devDependencies:
       '@effect/opentelemetry':
@@ -4976,6 +5212,36 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
+  slices/watch-lifts/watch-lifts-core:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      pebble-configuration:
+        specifier: workspace:*
+        version: link:../../../global/pebble/pebble-configuration
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
       vite:
         specifier: 'catalog:'
         version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'

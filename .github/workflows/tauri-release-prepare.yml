@@ -189,7 +189,6 @@ jobs:
         # `tauri-release-publish.yml`.
         run: |
           set -euo pipefail
-          version='${{ steps.vars.outputs.version }}'
           tag='${{ steps.vars.outputs.tag }}'
           changelog='apps/wildflower-tauri/CHANGELOG.md'
           date="$(date -u +%Y-%m-%d)"

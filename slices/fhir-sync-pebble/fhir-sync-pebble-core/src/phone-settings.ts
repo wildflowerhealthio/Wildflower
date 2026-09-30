@@ -1,3 +1,5 @@
+import { decodeWebviewResponse } from 'pebble-configuration/pkjs'
+
 import { type Fields, isFields } from './fields.ts'
 import { localResourceId } from './local-resource-id.ts'
 import { truncateUtf8 } from './utf8.ts'
@@ -116,10 +118,11 @@ const decodeSettings = (settings: unknown): Settings => {
 
 /**
  * Decodes the settings page's `webviewclosed` response — the settings JSON,
- * URI-encoded. Throws when the response is not that shape.
+ * URI-encoded (`pebble-configuration`'s `decodeWebviewResponse`). Throws when
+ * the response is not that shape.
  */
 const decodeResponse = (response: string): Settings =>
-  decodeSettings(JSON.parse(decodeURIComponent(response)))
+  decodeSettings(decodeWebviewResponse(response))
 
 /** The `localStorage` text keeping `settings`, received at `receivedAtMs`. */
 const toStored = (settings: Settings, receivedAtMs: number): string =>

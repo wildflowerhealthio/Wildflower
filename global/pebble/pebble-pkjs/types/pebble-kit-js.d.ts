@@ -1,12 +1,13 @@
-// The globals PebbleKit JS provides, as far as this app uses them, per
-// developer.repebble.com's PebbleKit JS reference. The phone's runtime is ES5
-// with no DOM, so tsconfig.json's `lib` is ES5 alone and these stand in for
-// the browser's declarations.
+// The globals PebbleKit JS provides, as far as the apps built with this
+// package use them, per developer.repebble.com's PebbleKit JS reference. The
+// phone's runtime is ES5 with no DOM, so an app's ES5 tsconfig.json has ES5's
+// `lib` alone and lists this file in its `types` (as `pebble-pkjs/pebble-kit-js`)
+// to stand in for the browser's declarations.
 
 interface AppMessageEvent {
   /**
    * The AppMessage dictionary, keyed by `messageKeys` name. Typed `unknown` for
-   * what it is, data from the watch; the core's decoders check its shape.
+   * what it is, data from the watch; the app's decoders check its shape.
    */
   readonly payload: unknown
 }
@@ -29,8 +30,8 @@ interface PebbleKitJs {
   getActiveWatchInfo(): unknown
   /**
    * A token unique to the connected watch and this app. Typed `unknown`: an
-   * older phone app may lack it or return something else, which the core's
-   * `WatchDevice.toReference` rejects.
+   * older phone app may lack it or return something else, which the app's
+   * decoders reject.
    */
   getWatchToken(): unknown
 }
