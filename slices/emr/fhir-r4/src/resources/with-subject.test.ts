@@ -4,9 +4,11 @@ import { describe, expect, test } from 'vite-plus/test'
 import type { ReferenceType } from '../data-types/complex/identifier-and-reference.ts'
 import {
   Binary,
+  CarePlan,
   DiagnosticReport,
   DocumentReference,
   type FhirResource,
+  Goal,
   ImagingStudy,
   MedicationDispense,
   MedicationRequest,
@@ -36,6 +38,8 @@ const SAMPLES = {
   Patient: sample(Patient.Schema, 8),
   Practitioner: sample(Practitioner.Schema, 9),
   ServiceRequest: sample(ServiceRequest.Schema, 10),
+  CarePlan: sample(CarePlan.Schema, 11),
+  Goal: sample(Goal.Schema, 12),
 } satisfies Record<FhirResource['resourceType'], FhirResource>
 
 const resources: readonly FhirResource[] = Object.values(SAMPLES)

@@ -3,12 +3,14 @@ import type { FhirResource } from './fhir-resource.ts'
 
 /**
  * The resource types that name the patient they are about as `subject`: the
- * results, reports, orders, studies, documents and medication records an
- * import files on a Patient.
+ * results, reports, orders, studies, documents, medication records, care plans
+ * and goals an import files on a Patient.
  */
 const SUBJECT_RESOURCE_TYPES = [
+  'CarePlan',
   'DiagnosticReport',
   'DocumentReference',
+  'Goal',
   'ImagingStudy',
   'MedicationDispense',
   'MedicationRequest',
