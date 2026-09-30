@@ -711,9 +711,8 @@ jobs:
           done
           exit "$status"
 
-      # fhir-sync-pebble's wscript runs `vp pack` in pkjs/ through the
-      # node_modules/.bin/vp that `vp install` puts there. watch-lifts is C
-      # alone.
+      # Both apps' wscripts run `vp pack` in pkjs/ through the
+      # node_modules/.bin/vp that `vp install` puts there.
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1.21.1
         with:

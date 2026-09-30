@@ -99,9 +99,10 @@ jobs:
             pebble:
               - 'apps/watch-lifts/**'
               - 'apps/fhir-sync-pebble/**'
-              # fhir-sync-pebble's PebbleKit JS bundles this core into the
-              # .pbw, and the host-side tests decode the watch's bytes with it.
+              # Each app's PebbleKit JS bundles its core into the .pbw, and
+              # the host-side tests check the watch's bytes against it.
               - 'slices/fhir-sync-pebble/**'
+              - 'slices/watch-lifts/**'
               # The PebbleKit JS build tooling and the App Configuration
               # hand-off both apps' PebbleKit JS and settings pages build on.
               - 'global/pebble/**'

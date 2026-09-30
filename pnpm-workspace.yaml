@@ -1,10 +1,11 @@
 packages:
   - apps/*
-  # The watch apps' host-side tests, and fhir-sync-pebble's PebbleKit JS build;
-  # see apps/watch-lifts/test/vite.config.ts for why they aren't part of the
-  # watch app packages themselves.
+  # The watch apps' host-side tests and PebbleKit JS builds; see
+  # apps/watch-lifts/test/vite.config.ts for why they aren't part of the watch
+  # app packages themselves.
   - apps/fhir-sync-pebble/pkjs
   - apps/fhir-sync-pebble/test
+  - apps/watch-lifts/pkjs
   - apps/watch-lifts/test
   - global/*
   - global/effect-messaging/*

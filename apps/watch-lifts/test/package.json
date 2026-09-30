@@ -9,6 +9,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*"
+    "kitchen-sink": "workspace:*",
+    "watch-lifts-core": "workspace:*"
   }
 }
