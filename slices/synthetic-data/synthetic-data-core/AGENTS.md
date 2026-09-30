@@ -80,8 +80,6 @@ package.
   `Attachment.url` as an absolute `URL`: decode a resource file with
   `ResourceJsonSchema`, and carry its static file inline
   (`withStaticFileData`) before decoding it as a resource.
-- **The Shoppers import holds a prescription's latest fill twice under one
-  id** (#803); the layout keeps the last copy.
 - **Only `harImporter`'s and `dicomImporter`'s source files become static
   files.** Another importer's source file would be laid out with its data
   inline; add its importer to `SOURCE_FILE_IMPORTERS`.

@@ -183,11 +183,14 @@ describe('DataSetLayout.layOut', () => {
   )
 
   test(
-    'property: a Shoppers import keeps the last copy of a resource it holds twice',
+    'property: a resource imported twice keeps its last copy',
     async () => {
       await fc.assert(
         fc.asyncProperty(shoppersFamilyCaseArbitrary, async (familyCase) => {
-          const { resources } = await importShoppersFamily(familyCase, 'family.har')
+          // The same family from two picked files: each copy names its own source file.
+          const { resources: first } = await importShoppersFamily(familyCase, 'family.har')
+          const { resources: again } = await importShoppersFamily(familyCase, 'again.har')
+          const resources = [...first, ...again]
           const files = layOut(resources)
 
           const lastByLabel = new Map(resources.map((resource) => [labelOf(resource), resource]))

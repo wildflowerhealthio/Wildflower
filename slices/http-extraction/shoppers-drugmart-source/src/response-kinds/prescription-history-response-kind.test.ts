@@ -1,6 +1,6 @@
 import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { CanadianCodingSystem } from 'fhir-r4/data-types'
+import { CanadianCodingSystem, IdentifierAndReference } from 'fhir-r4/data-types'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
@@ -16,12 +16,18 @@ const BASE = 'https://mypharmacy.shoppersdrugmart.ca'
 const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
 
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
+const decodeReference = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)
 
-const makeResponse = (body: string): HttpResponse.HttpResponse =>
-  makeHttpResponse({
-    url: `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`,
-    body,
-  })
+const HISTORY_URL = `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`
+
+const makeResponse = (body: string, url: string = HISTORY_URL): HttpResponse.HttpResponse =>
+  makeHttpResponse({ url, body })
+
+/** The account `Patient` every history dispense names as its subject. */
+const accountSubject = {
+  reference: `Patient/${ACCOUNT_ID}`,
+  identifier: { system: ShoppersIdentifierSystem.PcId, value: ACCOUNT_ID },
+}
 
 const parse = (payload: unknown): readonly FhirResource[] =>
   Effect.runSync(PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(payload))))
@@ -117,6 +123,7 @@ describe('PrescriptionHistoryResponseKind', () => {
           id: 'disp-1',
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
           status: 'completed',
+          subject: accountSubject,
           medicationCodeableConcept: {
             coding: [
               { system: CanadianCodingSystem.Din, code: '51480840', display: 'Amoxicillin 500mg' },
@@ -138,6 +145,7 @@ describe('PrescriptionHistoryResponseKind', () => {
           id: 'disp-2',
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-2' }],
           status: 'completed',
+          subject: accountSubject,
           medicationCodeableConcept: {
             coding: [
               { system: CanadianCodingSystem.Din, code: '80717730', display: 'Amoxicillin 500mg' },
@@ -171,13 +179,34 @@ describe('PrescriptionHistoryResponseKind', () => {
       expect(dispense.location?.display).toBe('Shoppers Drug Mart (store 9000)')
     })
 
-    it('emits no subject (the history payload carries no patientId)', () => {
+    it("names the account from the URL's customerId as every dispense's subject", () => {
+      // Arrange — customerId need not be the first query parameter.
+      const url = `${BASE}/api/v1/prescription-history?lang=en&customerId=${ACCOUNT_ID}`
+
       // Act
-      const [dispense] = parse(historyPayload())
+      const result = Effect.runSync(
+        PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(historyPayload()), url))
+      )
 
       // Assert
-      if (dispense?.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
-      expect(dispense.subject).toBeNull()
+      const accountReference = decodeReference(accountSubject)
+      expect(
+        result.map((resource) =>
+          resource.resourceType === 'MedicationDispense' ? resource.subject : null
+        )
+      ).toStrictEqual([accountReference, accountReference])
+    })
+
+    it('fails with ParseError when the URL names no customerId', () => {
+      const url = `${BASE}/api/v1/prescription-history?customerId=`
+
+      const result = Effect.runSync(
+        Effect.either(
+          PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(historyPayload()), url))
+        )
+      )
+
+      expect(result).toMatchObject({ _tag: 'Left', left: { _tag: 'ParseError' } })
     })
 
     it('drops a dispense with no dispenseId and keeps the rest', () => {
@@ -199,6 +228,7 @@ describe('PrescriptionHistoryResponseKind', () => {
           id: 'disp-9',
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-9' }],
           status: 'completed',
+          subject: accountSubject,
           medicationCodeableConcept: {
             coding: [{ system: CanadianCodingSystem.Din, code: '51480840' }],
           },

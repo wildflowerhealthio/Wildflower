@@ -9,12 +9,14 @@ import type * as HttpResponseKind from './http-response-kind.ts'
  * the importer slice's `FileImporterDescriptor`.
  *
  * @remarks
- * Packaging only, deliberately: recognition and identity live on each kind's
- * own `tryRecognize` (the deleted recognition-carrying `Source` value must not
+ * Packaging, deliberately: recognition and identity live on each kind's own
+ * `tryRecognize` (the deleted recognition-carrying `Source` value must not
  * creep back in through this type). A consumer that routes or reviews reads
  * `responseKinds` and works per kind; the descriptor exists so a pool
  * assembles from *sources* ("register a source" is appending one of these)
- * and so a UI can label a source without reaching into its kinds.
+ * and so a UI can label a source without reaching into its kinds. The one
+ * behaviour it carries, `mergeResources`, is one no single kind can own: it
+ * spans the resources several of the source's kinds emit.
  *
  * - `name`: stable identifier for logs and registries (`'fhir-r4'`).
  * - `display`: user-facing strings a review or settings surface shows for the
@@ -23,12 +25,34 @@ import type * as HttpResponseKind from './http-response-kind.ts'
  *   archive import, in the order both the live plan and an importer pool route
  *   by. Consumers share this array by reference — that identity is what the
  *   live==archive parity pins rest on.
+ * - `mergeResources`: optional; see {@link ResourceMerge}. Absent, two
+ *   resources sharing an identity are both written, and the later one wins.
  */
 interface SourceDescriptor<TParsed> {
   readonly name: string
   readonly display: { readonly title: string; readonly description: string }
   readonly responseKinds: readonly HttpResponseKind.HttpResponseKind<TParsed>[]
+  readonly mergeResources?: ResourceMerge<TParsed>
 }
+
+/**
+ * How a source combines two resources its kinds emitted, in one extraction,
+ * under one identity (for a FHIR store, one `resourceType` and `id`): the one
+ * resource to write in their place.
+ *
+ * @param earlier - The copy that arrived first
+ * @param later - The copy that arrived after it
+ * @returns The resource to write, under the same identity
+ *
+ * @remarks
+ * A source needs one when two of its feeds describe the same thing and each
+ * knows fields the other lacks, so neither copy alone is the whole record.
+ * Only a consumer that holds every response's resources before it writes
+ * them can apply it: an archive import does, while a live collector writes
+ * each response as it arrives. Arrival order is passed so a source can keep
+ * last-write-wins, returning `later`, for the resources it has no rule for.
+ */
+type ResourceMerge<TParsed> = (earlier: TParsed, later: TParsed) => TParsed
 
 /**
  * Same clone-and-freeze contract as `HttpResponseKind.make`, for the
@@ -42,6 +66,9 @@ const make = <TParsed>(descriptor: SourceDescriptor<TParsed>): SourceDescriptor<
       description: descriptor.display.description,
     },
     responseKinds: [...descriptor.responseKinds],
+    ...(descriptor.mergeResources === undefined
+      ? {}
+      : { mergeResources: descriptor.mergeResources }),
   })
 
 /**
@@ -57,4 +84,4 @@ const poolOf = <TParsed>(
   sources.flatMap((source) => source.responseKinds)
 
 export { make, poolOf }
-export type { SourceDescriptor }
+export type { ResourceMerge, SourceDescriptor }

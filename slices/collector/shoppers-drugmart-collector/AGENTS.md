@@ -115,10 +115,12 @@ of id** — an account vs a person — but the relationship is **known and joina
 the customers payload carries both together. So `CustomerResponseKind` emits:
 
 - a **demographic** `Patient` per `customer.patients[]` entry, keyed by its `id`
-  (name, phone telecom, address) — the record `MedicationRequest.subject` /
-  `MedicationDispense.subject` resolve to, and
+  (name, phone telecom, address) — the record a status-feed
+  `MedicationRequest.subject` / `MedicationDispense.subject` resolves to, and
 - an **account** `Patient` keyed by `customer.pcid` (account name, email, phone,
-  address) carrying a `link.seealso` to each demographic Patient.
+  address) carrying a `link.seealso` to each demographic Patient — the record a
+  history-feed `MedicationDispense.subject` resolves to, since that feed names
+  only the account (its URL's `customerId`).
 
 Each carries its own id as a FHIR `identifier` (distinct systems in
 `shoppers.ts`). `adoptUnderRecognizedRoot` re-keys each Patient under
@@ -128,11 +130,19 @@ derivation) — and rewrites the `link.seealso` relative reference onto the
 demographic Patient's derived id, so the join is **materialized** in the store and
 lands on the same id `subject` resolves to.
 
-**`PrescriptionResponseKind` no longer emits a subject Patient.** `CustomerResponseKind` owns
+**`PrescriptionResponseKind` emits no subject Patient.** `CustomerResponseKind` owns
 those records, and the same run always visits a page that fires the customers XHR.
 The trade-off (documented in the entity): a run where the customers XHR fails
 leaves the prescriptions' `subject` references dangling, which the store tolerates
 (references are not FK-enforced).
+
+**A latest fill is written twice, and the history copy wins.** The status and
+history feeds each carry a prescription's latest fill under one `dispenseId`.
+The source's `mergeResources` makes the two one where a consumer holds both (a
+HAR import), but this collector writes each response as it arrives, and the
+prescription-history page comes last. So the stored latest fill names the
+account, not the person, and carries the history feed's flat `completed`
+status.
 
 ## Fixtures & open questions caveat
 
