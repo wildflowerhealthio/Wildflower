@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type * as PebbleSettings from './pebble-settings.ts'
+import { decodeWebviewResponse } from './pkjs.ts'
 import * as ReturnTarget from './return-target.ts'
 
 afterEach(() => {
@@ -34,7 +34,7 @@ describe('isAllowed', () => {
     expect(ReturnTarget.isAllowed('close')).toBe(false)
   })
 
-  it('should never allow a web address off this machine, where the token would leak', () => {
+  it('should never allow a web address off this machine, where the settings would leak', () => {
     fc.assert(
       fc.property(fc.webUrl({ withQueryParameters: true, withFragments: true }), (url) => {
         expect(ReturnTarget.isAllowed(url)).toBe(false)
@@ -78,41 +78,32 @@ describe('decode', () => {
 })
 
 describe('handoffUrl', () => {
-  it('should append the URI-encoded settings JSON to the return target', () => {
+  it('should append the URI-encoded JSON to the return target', () => {
     // Arrange
     const target = allowed('pebblejs://close#')
 
     // Act
-    const url = ReturnTarget.handoffUrl(target, {
-      patientId: 'ada',
-      patientName: 'Ada Lovelace',
-      patientBirthDate: '1815-12-10',
-      accessToken: 'watch-token',
-      fhirBaseUrl: 'https://fhir.example/r4',
-    })
+    const url = ReturnTarget.handoffUrl(target, '{"name":"Ada Lovelace","token":"a&b#c"}')
 
     // Assert
     expect(url).toBe(
-      'pebblejs://close#' +
-        encodeURIComponent(
-          '{"patientId":"ada","patientName":"Ada Lovelace","patientBirthDate":"1815-12-10",' +
-            '"accessToken":"watch-token","fhirBaseUrl":"https://fhir.example/r4"}'
-        )
+      'pebblejs://close#' + encodeURIComponent('{"name":"Ada Lovelace","token":"a&b#c"}')
     )
   })
 
-  it('should always hand the watch back exactly the settings it was given', () => {
+  it('should always hand the watchapp back exactly the JSON it was given', () => {
     fc.assert(
-      fc.property(settingsArb, (settings) => {
+      fc.property(fc.json(), (json) => {
         // Arrange
         const target = allowed(ReturnTarget.DEFAULT)
 
         // Act
-        const url = ReturnTarget.handoffUrl(target, settings)
+        const url = ReturnTarget.handoffUrl(target, json)
 
-        // Assert — what the watch's `webviewclosed` handler parses
-        const payload = decodeURIComponent(url.slice(ReturnTarget.DEFAULT.length))
-        expect(JSON.parse(payload)).toStrictEqual(settings)
+        // Assert — what the watchapp's `webviewclosed` handler parses
+        expect(decodeWebviewResponse(url.slice(ReturnTarget.DEFAULT.length))).toStrictEqual(
+          JSON.parse(json)
+        )
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -120,14 +111,6 @@ describe('handoffUrl', () => {
 })
 
 // Helpers
-
-const settingsArb: fc.Arbitrary<PebbleSettings.Type> = fc.record({
-  patientId: fc.string({ minLength: 1 }),
-  patientName: fc.option(fc.string(), { nil: null }),
-  patientBirthDate: fc.option(fc.string(), { nil: null }),
-  accessToken: fc.string({ minLength: 1 }),
-  fhirBaseUrl: fc.webUrl(),
-})
 
 /** The platform `URL` class with no static `canParse`, as an older web view ships it. */
 const urlWithoutCanParse = (): typeof URL => {

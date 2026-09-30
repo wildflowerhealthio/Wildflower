@@ -33,4 +33,7 @@ export {
   makeWebTelemetryLayer,
   webTelemetryLayerFromEnv,
 }
+export type { InitConsentedTelemetryOptions, TelemetryTags } from './consented.ts'
+export { initConsentedTelemetry, setFhirServerHost } from './consented.ts'
+export type { InitSentryWebOptions } from './sentry.ts'
 export { initSentryWeb, Sentry } from './sentry.ts'

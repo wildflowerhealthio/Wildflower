@@ -6,12 +6,13 @@ import {
   type SentryAdapter,
   type TelemetryConfig,
 } from 'telemetry-core'
-import { initSentryWeb, Sentry } from './sentry.ts'
+import { initSentryWeb, type InitSentryWebOptions, Sentry } from './sentry.ts'
 
-const sentryAdapter: SentryAdapter = {
-  init: initSentryWeb,
+/** The adapter `telemetry-core` initializes Sentry through, with `sentryOptions` added to `Sentry.init`. */
+const sentryAdapterWith = (sentryOptions: InitSentryWebOptions): SentryAdapter => ({
+  init: (config) => initSentryWeb(config, sentryOptions),
   getClient: () => Sentry.getClient(),
-}
+})
 
 /**
  * Builds the browser's synchronous OTel `ContextManager` for
@@ -26,12 +27,21 @@ const sentryAdapter: SentryAdapter = {
  */
 const createWebContextManager = (): StackContextManager => new StackContextManager()
 
-const initWebTelemetry = (config: TelemetryConfig): ReturnType<typeof initClientTelemetry> =>
-  initClientTelemetry(config, sentryAdapter, createWebContextManager)
+/**
+ * Eagerly initialize Sentry and the global OTel tracer provider for the
+ * browser.
+ *
+ * @param sentryOptions - Added to the `Sentry.init` options `config` sets
+ */
+const initWebTelemetry = (
+  config: TelemetryConfig,
+  sentryOptions: InitSentryWebOptions = {}
+): ReturnType<typeof initClientTelemetry> =>
+  initClientTelemetry(config, sentryAdapterWith(sentryOptions), createWebContextManager)
 
 const makeWebTelemetryLayer = (
   config: TelemetryConfig
 ): ReturnType<typeof makeClientTelemetryLayer> =>
-  makeClientTelemetryLayer(config, sentryAdapter, createWebContextManager)
+  makeClientTelemetryLayer(config, sentryAdapterWith({}), createWebContextManager)
 
 export { getGlobalTracer, initWebTelemetry, makeWebTelemetryLayer }

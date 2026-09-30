@@ -10,8 +10,8 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "acorn": "catalog:",
     "fhir-sync-pebble-core": "workspace:*",
+    "pebble-pkjs": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
