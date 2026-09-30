@@ -36,7 +36,7 @@ Remaining gaps:
 - **Unregistered slots are invisible to the check.** A slot whose datatype has no fhir-r4 wire schema decodes to `null` (see [Unregistered choice-element datatypes](#unregistered-choice-element-datatypes-valuex--effectivex)), so a wire payload pairing, say, `valueMoney` with `valueString` decodes with only `valueString` set. Encoding a non-null unregistered slot still fails.
 - **`Dosage.doseAndRate` `dose[x]` / `rate[x]` are not guarded.** Their `SimpleQuantity` variant is named `…Quantity` on the wire, so they are modeled as explicit `doseRange`/`doseQuantity`/`rateRatio`/`rateRange`/`rateQuantity` fields rather than through the choice-element helpers, and a payload setting two of them validates.
 - **Required choice elements are not required.** FHIR marks `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` as 1..1; with every variant optional, a payload with no medication slot set also validates.
-- **`Schema.omit` / `Schema.pick` drop the guard.** Effect rebuilds the struct without its refinements. `withMandatoryId` — the `id`-narrowing wrapper the HTTP API definition applies to every resource — re-applies them; any other schema derived that way from a guarded resource has no guard.
+- **`Schema.omit` / `Schema.pick` drop the guard.** Effect rebuilds the struct without its refinements. `withMandatoryId` — the `id`-narrowing wrapper the HTTP API definition applies to every resource — and `narrowFields`, which narrows any fields the same way, re-apply them; any other schema derived that way from a guarded resource has no guard.
 
 ## `Observation.status` defaulted to `unknown` when absent
 

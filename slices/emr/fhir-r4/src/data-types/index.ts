@@ -3,6 +3,7 @@
 // adapter-side schema used to encode/decode FHIR R4 JSON. Add a new entry
 // here whenever a new datatype file lands.
 
+export { narrowFields } from './narrow-fields.ts'
 export { withMandatoryId } from './with-mandatory-id.ts'
 
 // Base

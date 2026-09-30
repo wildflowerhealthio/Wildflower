@@ -1,12 +1,6 @@
-import { Schema, SchemaAST } from 'effect'
+import { Schema } from 'effect'
 
-// Wraps `target` in every refinement layer at the top of `source`, innermost
-// first, so the rebuilt AST nests the filters in their original order. The
-// source annotations are left behind, as `Schema.omit` leaves them behind.
-const reapplyRefinements = (source: SchemaAST.AST, target: SchemaAST.AST): SchemaAST.AST =>
-  SchemaAST.isRefinement(source)
-    ? new SchemaAST.Refinement(reapplyRefinements(source.from, target), source.filter)
-    : target
+import { reapplyRefinements } from './narrow-fields.ts'
 
 /**
  * Narrows a resource schema's `id` from optional to a required `string`, on

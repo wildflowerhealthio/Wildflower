@@ -4,6 +4,7 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 import * as Coding from './coding.ts'
@@ -57,4 +58,47 @@ const label = (concept: Labelled): Option.Option<string> =>
     )
   )
 
-export { CodeableConceptSchema as Schema, label }
+/** A decoded `CodeableConcept` — the type {@link CodeableConceptSchema} produces. */
+type Type = typeof CodeableConceptStruct.Type
+
+/**
+ * A concept of one coding: `code` under `system`, with its `display`, and the
+ * concept's own `text`.
+ *
+ * @param coding - The system url and code, and the display and text to write
+ *   (`null` to leave either out)
+ * @returns The decoded concept, every other slot empty
+ */
+const make = (coding: {
+  readonly system: string
+  readonly code: string
+  readonly display: string | null
+  readonly text: string | null
+}): Type => ({
+  id: null,
+  extension: [],
+  coding: [
+    {
+      id: null,
+      extension: [],
+      system: new URL(coding.system),
+      code: Code.make(coding.code),
+      display: coding.display,
+      userSelected: null,
+      version: null,
+    },
+  ],
+  text: coding.text,
+})
+
+/**
+ * The single coding of `concept` under `system`; `None` when it has none
+ * there, or several — a concept coded twice in one system names no one code.
+ */
+const onlyCodingIn = (concept: Type, system: string): Option.Option<Coding.Type> => {
+  const inSystem = concept.coding.filter(Coding.isInSystem(system))
+  return inSystem.length === 1 ? Arr.head(inSystem) : Option.none()
+}
+
+export { CodeableConceptSchema as Schema, label, make, onlyCodingIn }
+export type { Type }

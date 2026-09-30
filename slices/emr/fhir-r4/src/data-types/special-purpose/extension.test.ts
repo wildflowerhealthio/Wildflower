@@ -1,4 +1,4 @@
-import { Arbitrary, Schema } from 'effect'
+import { Arbitrary, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
@@ -72,6 +72,42 @@ describe('hasUrl', () => {
 
           // Assert
           expect(matches).toBe(false)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('emptyAt', () => {
+  it('should be an extension at the url with no value, its wire JSON the url alone', () => {
+    fc.assert(
+      fc.property(fc.string(), (url) => {
+        const wire: unknown = JSON.parse(
+          JSON.stringify(Schema.encodeSync(Extension.Schema)(Extension.emptyAt(url)))
+        )
+        expect(wire).toEqual({ url, extension: [] })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('onlyAt', () => {
+  it('should find the one extension at a url among others, and none when it is absent or repeated', () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.string(), { minLength: 2, maxLength: 4 }),
+        fc.string(),
+        ([queried = '', ...others], text) => {
+          // Arrange
+          const target = { ...Extension.emptyAt(queried), valueString: text }
+          const rest = others.map(Extension.emptyAt)
+
+          // Act / Assert
+          expect(Extension.onlyAt([...rest, target], queried)).toEqual(Option.some(target))
+          expect(Extension.onlyAt(rest, queried)).toEqual(Option.none())
+          expect(Extension.onlyAt([target, ...rest, target], queried)).toEqual(Option.none())
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }

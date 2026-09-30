@@ -430,3 +430,20 @@ describe('RETRACTED_STATUSES', () => {
     }
   })
 })
+
+describe('ACTIVITY_CATEGORY', () => {
+  test('is the one `activity` coding of the HL7 observation-category system', () => {
+    const wire = Schema.encodeSync(CodeableConcept.Schema)(Observation.ACTIVITY_CATEGORY)
+    expect(wire).toMatchObject({
+      coding: [
+        {
+          system: 'http://terminology.hl7.org/CodeSystem/observation-category',
+          code: 'activity',
+          display: 'Activity',
+        },
+      ],
+    })
+    expect(wire.coding).toHaveLength(1)
+    expect(Observation.CATEGORY_SYSTEM).toBe(wire.coding?.[0]?.system)
+  })
+})

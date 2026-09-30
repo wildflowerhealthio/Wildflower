@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { Option, pipe, Schema } from 'effect'
 
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
@@ -93,8 +93,35 @@ const fragmentIdOf = (reference: string): Option.Option<string> =>
 /** The `#id` reference to the contained resource with `id`. */
 const fragmentReferenceTo = (id: string): string => `#${id}`
 
+/**
+ * A relative literal reference to the resource of `resourceType` stored under
+ * `id` — `Patient/p-1`, `ServiceRequest/sr-2`.
+ */
+const referenceTo = (target: {
+  readonly resourceType: string
+  readonly id: string
+}): ReferenceType => ({
+  ...emptyReference,
+  reference: `${target.resourceType}/${target.id}`,
+})
+
+/**
+ * The id a relative literal reference to `resourceType` names — `sr-2` from
+ * `ServiceRequest/sr-2` — or `None` for a reference to another type, an
+ * empty id, or no literal reference at all.
+ */
+const referencedIdOf = (reference: ReferenceType, resourceType: string): Option.Option<string> =>
+  pipe(
+    Option.fromNullable(reference.reference),
+    Option.filter((literal) => literal.startsWith(`${resourceType}/`)),
+    Option.map((literal) => literal.slice(resourceType.length + 1)),
+    Option.filter((id) => id.length > 0)
+  )
+
 export {
   ReferenceSchema,
+  referenceTo,
+  referencedIdOf,
   IdentifierSchema,
   emptyReference,
   fragmentIdOf,

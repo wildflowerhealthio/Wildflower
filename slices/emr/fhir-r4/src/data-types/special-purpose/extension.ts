@@ -1,4 +1,4 @@
-import { type Arbitrary, type FastCheck, Schema } from 'effect'
+import { type Arbitrary, Array as Arr, type FastCheck, Option, Schema } from 'effect'
 
 import { mutableEncoded, OrNullAsOptional, StructNoContext } from 'kitchen-sink/schema'
 
@@ -60,4 +60,35 @@ const hasUrl =
   (extension: ExtensionType): boolean =>
     extension.url === url
 
-export { ExtensionSchema as Schema, emptyValueChoice, hasUrl, type ExtensionType as Type }
+/**
+ * An extension at `url` with no value and no nested extensions — a shell for
+ * one `value[x]` slot, or a complex extension's parts, to be spread onto.
+ */
+const emptyAt = (url: string): ExtensionType => ({
+  ...emptyValueChoice,
+  id: null,
+  extension: [],
+  url,
+})
+
+/**
+ * The single extension at `url` in an `extension` or `modifierExtension`
+ * list; `None` when there is none, or several — a repeated extension names no
+ * one value.
+ */
+const onlyAt = (
+  extensions: readonly ExtensionType[],
+  url: string
+): Option.Option<ExtensionType> => {
+  const atUrl = extensions.filter(hasUrl(url))
+  return atUrl.length === 1 ? Arr.head(atUrl) : Option.none()
+}
+
+export {
+  ExtensionSchema as Schema,
+  emptyAt,
+  emptyValueChoice,
+  hasUrl,
+  onlyAt,
+  type ExtensionType as Type,
+}
