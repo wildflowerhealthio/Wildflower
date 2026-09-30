@@ -37,6 +37,30 @@ describe('parsePrintedDate', () => {
   })
 })
 
+/**
+ * Whether a wall-clock time happens in `timeZone` at all: the hour a
+ * spring-forward skips (02:00–02:59 in Toronto on a DST start day) never
+ * does, so no instant reads back as it.
+ */
+const existsInZone = (
+  wall: {
+    readonly year: number
+    readonly month: number
+    readonly day: number
+    readonly hours: number
+    readonly minutes: number
+  },
+  timeZone: string
+): boolean => {
+  const zoned = DateTime.unsafeMakeZoned(wall, {
+    timeZone: DateTime.zoneUnsafeMakeNamed(timeZone),
+    adjustForTimeZone: true,
+    disambiguation: 'earlier',
+  })
+  const parts = DateTime.toParts(zoned)
+  return parts.hours === wall.hours && parts.minutes === wall.minutes
+}
+
 describe('parsePrintedDateTime', () => {
   it('property: a printed clock time in a zone is that wall-clock time when read back in the zone', () => {
     const zone = fc.constantFrom('America/Toronto', 'America/Vancouver', 'UTC')
@@ -46,6 +70,7 @@ describe('parsePrintedDateTime', () => {
     })
     fc.assert(
       fc.property(calendarDate, clock, zone, (date, time, timeZone) => {
+        fc.pre(existsInZone({ ...date, ...time }, timeZone))
         const printed = `${date.printed} ${String(time.hours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}`
 
         const utc = parsePrintedDateTime(printed, timeZone)
@@ -70,6 +95,12 @@ describe('parsePrintedDateTime', () => {
     expect(
       Option.map(parsePrintedDateTime('Aug 13 2026 13:02', 'America/Toronto'), DateTime.formatIso)
     ).toEqual(Option.some('2026-08-13T17:02:00.000Z'))
+  })
+
+  it('reads a clock time the spring-forward skips as the time after the gap', () => {
+    expect(
+      Option.map(parsePrintedDateTime('Apr 3 1994 02:00', 'America/Toronto'), DateTime.formatIso)
+    ).toEqual(Option.some('1994-04-03T07:00:00.000Z'))
   })
 
   it('reads a printed date with no time as midnight in the zone', () => {
