@@ -150,6 +150,11 @@ template rather than a special case.
   day row, an exercise row) the part of the state it edits; the parsing of a
   numeric field's text; and the `ProblemLine` under a field.
 
+The app is [`apps/lifting-app`](../../apps/lifting-app/AGENTS.md)
+(`lifting-app`), which composes core and react around a SMART shell: it reads
+the lifter's record, mints the ids, reads the clock and writes what core
+returns.
+
 ## Rules
 
 - **Code passes the FHIR resource around.** A program is a

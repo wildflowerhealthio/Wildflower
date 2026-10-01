@@ -21,6 +21,7 @@ const DESCRIBED_APP_IDS: readonly AppSectionId[] = [
   ...APP_SECTION_IDS,
   'healthViewer',
   'syntheticData',
+  'lifting',
   'app',
 ]
 

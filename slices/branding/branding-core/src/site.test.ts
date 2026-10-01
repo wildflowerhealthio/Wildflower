@@ -21,6 +21,7 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'fhirSyncPebble',
   'healthViewer',
   'syntheticData',
+  'lifting',
   'watchLifts',
   'app'
 )
@@ -37,6 +38,7 @@ describe('SECTION_PATHS', () => {
       fhirSyncPebble: 'fhir-sync-pebble',
       healthViewer: 'health-viewer-app',
       syntheticData: 'synthetic-data-app',
+      lifting: 'lifting-app',
       watchLifts: 'watch-lifts',
       app: 'app',
     })

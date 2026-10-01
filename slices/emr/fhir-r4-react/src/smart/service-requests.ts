@@ -29,7 +29,7 @@ type ServiceRequestResource = Schema.Schema.Type<typeof ServiceRequestWithIdSche
  */
 type ServiceRequestPage = ResourcePage<ServiceRequestResource>
 
-/** The first-page input for {@link fetchActiveServiceRequestPage}. */
+/** The first-page input for {@link fetchActiveServiceRequestPage} and {@link fetchServiceRequestPage}. */
 interface ServiceRequestFirstPage {
   /**
    * The patient to scope the search to, or `null` for an unscoped search that
@@ -47,17 +47,36 @@ interface ServiceRequestFirstPage {
 }
 
 /**
- * The cursor {@link fetchActiveServiceRequestPage} reads from. `first` carries
+ * The cursor {@link fetchActiveServiceRequestPage} and
+ * {@link fetchServiceRequestPage} read from. `first` carries
  * the patient scope, category and definition; `{ pageUrl }` continues from a
  * previous page's `nextPageUrl`.
  */
 type ServiceRequestPageCursor = ResourcePageCursor<ServiceRequestFirstPage>
 
-// Only requests still in force, oldest-authored first, server-side, so scroll
-// paging can append each page without reordering rows already on screen
-// (`authored` is the FHIR R4 `ServiceRequest` search parameter backing
-// `authoredOn`).
-const SEARCH_PARAMS = `status=active&_sort=authored&_count=${RESOURCE_PAGE_SIZE}`
+// Oldest-authored first, server-side, so scroll paging can append each page
+// without reordering rows already on screen (`authored` is the FHIR R4
+// `ServiceRequest` search parameter backing `authoredOn`).
+const SEARCH_PARAMS = `_sort=authored&_count=${RESOURCE_PAGE_SIZE}`
+
+/**
+ * The first page's search parameters: the patient scope, category and
+ * definition, then `extraParams` (already URL-encoded) before the sort and
+ * page size.
+ */
+const serviceRequestFirstPageQuery = (
+  { patientId, categoryToken, instantiatesCanonicalUrl }: ServiceRequestFirstPage,
+  extraParams: readonly string[]
+): string => {
+  const parts: string[] = []
+  if (patientId !== null) parts.push(`patient=${encodeURIComponent(patientId)}`)
+  parts.push(`category=${encodeURIComponent(categoryToken)}`)
+  if (instantiatesCanonicalUrl !== null) {
+    parts.push(`instantiates-canonical=${encodeURIComponent(instantiatesCanonicalUrl)}`)
+  }
+  parts.push(...extraParams, SEARCH_PARAMS)
+  return parts.join('&')
+}
 
 /** The `ServiceRequest` read: the active requests of one category carrying out one definition. */
 const activeServiceRequestRead: PagedResourceRead<
@@ -67,20 +86,21 @@ const activeServiceRequestRead: PagedResourceRead<
 > = {
   resourceType: 'ServiceRequest',
   schema: ServiceRequestWithIdSchema,
-  firstPageQuery: ({
-    patientId,
-    categoryToken,
-    instantiatesCanonicalUrl,
-  }: ServiceRequestFirstPage): string => {
-    const parts: string[] = []
-    if (patientId !== null) parts.push(`patient=${encodeURIComponent(patientId)}`)
-    parts.push(`category=${encodeURIComponent(categoryToken)}`)
-    if (instantiatesCanonicalUrl !== null) {
-      parts.push(`instantiates-canonical=${encodeURIComponent(instantiatesCanonicalUrl)}`)
-    }
-    parts.push(SEARCH_PARAMS)
-    return parts.join('&')
-  },
+  // Only requests still in force.
+  firstPageQuery: (first: ServiceRequestFirstPage): string =>
+    serviceRequestFirstPageQuery(first, ['status=active']),
+}
+
+/** The `ServiceRequest` read: the requests of one category carrying out one definition, in any status. */
+const serviceRequestRead: PagedResourceRead<
+  ServiceRequestResource,
+  Schema.Schema.Encoded<typeof ServiceRequestWithIdSchema>,
+  ServiceRequestFirstPage
+> = {
+  resourceType: 'ServiceRequest',
+  schema: ServiceRequestWithIdSchema,
+  firstPageQuery: (first: ServiceRequestFirstPage): string =>
+    serviceRequestFirstPageQuery(first, []),
 }
 
 /**
@@ -108,8 +128,29 @@ const fetchActiveServiceRequestPage = (
 ): Effect.Effect<ServiceRequestPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(client, activeServiceRequestRead, cursor)
 
+/**
+ * Fetch a single page of the `ServiceRequest`s of one category that carry out
+ * one definition, in every `status`, and report the cursor to the next page.
+ *
+ * @param client - The SMART client the search is issued through
+ * @param cursor - Patient scope, category and definition for the first page,
+ *   or a previous page's `nextPageUrl`
+ * @returns An effect yielding the page's decoded `ServiceRequest`s and the next page's cursor
+ *
+ * @remarks
+ * {@link fetchActiveServiceRequestPage} without the `status=active` filter,
+ * for a caller that reads closed requests too — a history judged against the
+ * request each event carried out. Which statuses it uses is its own decision.
+ */
+const fetchServiceRequestPage = (
+  client: Client,
+  cursor: ServiceRequestPageCursor
+): Effect.Effect<ServiceRequestPage, ResourcePageRequestError | BundleDecodeError> =>
+  fetchResourcePage(client, serviceRequestRead, cursor)
+
 export {
   fetchActiveServiceRequestPage,
+  fetchServiceRequestPage,
   type ServiceRequestFirstPage,
   type ServiceRequestPage,
   type ServiceRequestPageCursor,

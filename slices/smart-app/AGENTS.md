@@ -30,10 +30,10 @@ slice is where the two meet, so neither has to know about the other.
     `Could not load <subject>: <reason>` for a failed read. Pair them with
     `react-kitchen-sink`'s `pagedQueryStatusOf` for a paged read.
 
-Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/importer-web`,
-`apps/web-trace` and `apps/synthetic-data-app` mount `SmartAppRoot` and
-`runSmartLaunchEntry`; the first two speak the read-status lines, as does
-`synthetic-data-react`'s screen; `apps/fhir-sync-pebble-web` is
+Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/lifting-app`,
+`apps/importer-web`, `apps/web-trace` and `apps/synthetic-data-app` mount
+`SmartAppRoot` and `runSmartLaunchEntry`; the first three speak the read-status
+lines, as does `synthetic-data-react`'s screen; `apps/fhir-sync-pebble-web` is
 standalone-only, so it mounts `SmartAppRoot` with no launch entry;
 `apps/wildflower-react`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.

@@ -13,16 +13,21 @@ type AppSectionId = Extract<
   | 'webTrace'
   | 'healthViewer'
   | 'syntheticData'
+  | 'lifting'
   | 'app'
 >
 
 /**
  * The app sections the marketing homepage has a launcher row for: all but the
  * owner UI; the Synthesized Health Viewer, whose homepage row keeps its own
- * inline copy until the app is registered on the Wildflower host; and the
- * Synthetic Data Loader, which has no homepage row.
+ * inline copy until the app is registered on the Wildflower host; the Synthetic
+ * Data Loader, which has no homepage row; and Lifting, which has no homepage
+ * row until it is registered there.
  */
-type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'healthViewer' | 'syntheticData'>
+type HomepageAppSectionId = Exclude<
+  AppSectionId,
+  'app' | 'healthViewer' | 'syntheticData' | 'lifting'
+>
 
 /**
  * The four SMART app sections, in the order the marketing homepage presents
@@ -262,6 +267,24 @@ const APP_DESCRIPTIONS: {
     },
     anchor: 'developers',
     smartLaunchPage: 'launch.html',
+  },
+  lifting: {
+    name: 'Lifting',
+    tagline:
+      'A strength-training program, the workout due today and every set you lift, ' +
+      'kept on your own FHIR record.',
+    paragraphs: [
+      'I want my training log to live with the rest of my health record, ' +
+        'not in one more app that keeps it to itself.',
+      'A program is a cycle of workout days, each a list of exercises with their sets, reps ' +
+        'and how the load moves. You tap off each set as you lift it, and after the workout ' +
+        'the app raises, holds or deloads each lift from how it went. ' +
+        'StrongLifts 5×5 is built in as a template.',
+      'The program, the load you are at on each lift, each workout and each set are stored ' +
+        'on your FHIR server as PlanDefinition, ServiceRequest, Procedure and Observation ' +
+        'resources, so any other app you connect can read your training too.',
+    ],
+    anchor: 'built',
   },
   app: {
     name: 'Wildflower',

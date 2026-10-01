@@ -16,6 +16,7 @@ const SECTION_PATHS = {
   fhirSyncPebble: 'fhir-sync-pebble',
   healthViewer: 'health-viewer-app',
   syntheticData: 'synthetic-data-app',
+  lifting: 'lifting-app',
   // The WatchLifts watchapp's settings page: not a SMART app, so it has no nav
   // link and no app description.
   watchLifts: 'watch-lifts',

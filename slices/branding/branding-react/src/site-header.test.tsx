@@ -17,7 +17,7 @@ describe('SiteHeader', () => {
     expect(container.querySelector('#top')).not.toBeNull()
   })
 
-  it('should link directly into the six apps with current-URL-relative hrefs on the marketing site', () => {
+  it('should link directly into the seven apps with current-URL-relative hrefs on the marketing site', () => {
     // Arrange / Act
     render(<SiteHeader nav={onMarketingSite} />)
 
@@ -31,6 +31,7 @@ describe('SiteHeader', () => {
     expect(hrefs).toStrictEqual([
       sectionHref(onMarketingSite, 'medications'),
       sectionHref(onMarketingSite, 'healthViewer'),
+      sectionHref(onMarketingSite, 'lifting'),
       sectionHref(onMarketingSite, 'importer'),
       sectionHref(onMarketingSite, 'webTrace'),
       sectionHref(onMarketingSite, 'serverDocs'),
@@ -38,7 +39,7 @@ describe('SiteHeader', () => {
     ])
   })
 
-  it('should link into the six apps with absolute hrefs from an app', () => {
+  it('should link into the seven apps with absolute hrefs from an app', () => {
     // Arrange / Act
     render(<SiteHeader nav={fromApp} />)
 
@@ -50,6 +51,7 @@ describe('SiteHeader', () => {
     expect(hrefs).toStrictEqual([
       sectionUrl('medications'),
       sectionUrl('healthViewer'),
+      sectionUrl('lifting'),
       sectionUrl('importer'),
       sectionUrl('webTrace'),
       sectionUrl('serverDocs'),

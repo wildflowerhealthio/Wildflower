@@ -15,6 +15,7 @@ that owns it, and this package places those outputs at their public URLs.
 | `/fhir-sync-pebble`       | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble-web`)     |
 | `/health-viewer-app`      | `health-viewer-app` (`apps/health-viewer`)               |
 | `/synthetic-data-app`     | `synthetic-data-app` (`apps/synthetic-data-app`)         |
+| `/lifting-app`            | `lifting-app` (`apps/lifting-app`)                       |
 | `/watch-lifts`            | `watch-lifts-web` (`apps/watch-lifts-web`)               |
 | `/app`                    | `wildflower-react` (`apps/wildflower-react`, `dist-web`) |
 
@@ -60,8 +61,8 @@ workspace `devDependency` of this package, so the workspace's own build ordering
 (`vp run pack`, i.e. `vp run --cache -r build`) builds every section before this
 package's build stages them. Doing that here keeps each app's own build config
 untouched: every section builds into its own package — the medications app, the
-Web Trace app, the Importer, FHIR Sync for Pebble and the server-docs console into
-their default `dist/`, the owner UI into `dist-web/` — and this package only copies
+Web Trace app, the Importer, FHIR Sync for Pebble, the lifting app and the
+server-docs console into their default `dist/`, the owner UI into `dist-web/` — and this package only copies
 from there. The OHIF viewer's `dist/` is a downloaded prebuilt bundle (or a stub
 page while none is pinned) rather than a Vite build, and is copied verbatim too.
 
