@@ -2,7 +2,7 @@
   "name": "lifting-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure strength-training plans as FHIR R4 resources: a PlanDefinition of workouts and planned exercises with their progression rule, an exercise ServiceRequest at one load, each workout performed as a Procedure and each set as an Observation part of it, the increment / hold / deload decision over completed workouts, and the StrongLifts 5x5 template — each a schema narrowing the decoded fhir-r4 type, with a make and getters. No DOM, no platform imports.",
+  "description": "Pure strength-training plans as FHIR R4 resources: a training plan definition (a PlanDefinition) of days and exercise definitions with their progression rule, an exercise ServiceRequest at one load, each workout performed as a Procedure and each set as an Observation part of it, the increment / hold / deload decision over completed workouts, and the StrongLifts 5x5 template — each a schema narrowing the decoded fhir-r4 type, with a make and getters. No DOM, no platform imports.",
   "license": "MIT",
   "type": "module",
   "exports": {

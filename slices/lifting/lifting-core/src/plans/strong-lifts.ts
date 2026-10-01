@@ -2,10 +2,7 @@ import { Either } from 'effect'
 
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import * as Load from '../load/load.ts'
-import * as Plan from '../plan/plan.ts'
-import * as PlannedExercise from '../plan/planned-exercise.ts'
-import * as ProgressionRule from '../plan/progression-rule.ts'
-import * as Workout from '../plan/workout.ts'
+import * as TrainingPlanDefinition from '../training-plan-definition/training-plan-definition.ts'
 
 // Every `Either.getOrThrow` here unwraps a make over a fixed literal that the
 // tests prove each make accepts, so it can only fire if the template itself
@@ -53,9 +50,9 @@ const STARTING_LOADS: { readonly [L in Lift]: Load.Type } = {
  * workouts at one load take 10% off, in steps of one 2.5 lb plate pair, never
  * below the empty 45 lb bar.
  */
-const barbellRule = (increment: number): ProgressionRule.Type =>
+const barbellProgressionRule = (increment: number): TrainingPlanDefinition.ProgressionRule.Type =>
   Either.getOrThrow(
-    ProgressionRule.make({
+    TrainingPlanDefinition.ProgressionRule.make({
       unit: '[lb_av]',
       increment,
       failuresBeforeDeload: 3,
@@ -65,54 +62,79 @@ const barbellRule = (increment: number): ProgressionRule.Type =>
     })
   )
 
-/** A StrongLifts lift as planned: `sets` × 5, +10 lb per success for the deadlift and +5 lb for the rest. */
-const plannedLift = (lift: Lift, sets: number): PlannedExercise.Type =>
+/**
+ * A StrongLifts lift's exercise (definition): `sets` × 5, +10 lb per success
+ * for the deadlift and +5 lb for the rest.
+ */
+const trainingPlanDefinitionExerciseOf = ({
+  lift,
+  sets,
+}: {
+  readonly lift: Lift
+  readonly sets: number
+}): TrainingPlanDefinition.Exercise.Type =>
   Either.getOrThrow(
-    PlannedExercise.make({
-      exercise: EXERCISES[lift],
+    TrainingPlanDefinition.Exercise.make({
+      exerciseConcept: EXERCISES[lift],
       sets,
       reps: 5,
-      progressionRule: barbellRule(lift === 'deadlift' ? 10 : 5),
+      progressionRule: barbellProgressionRule(lift === 'deadlift' ? 10 : 5),
     })
   )
 
-/** A StrongLifts workout: its label and lifts, in order. */
-const workout = (label: string, lifts: readonly (readonly [Lift, number])[]): Workout.Type =>
+/** A StrongLifts day: its label and lifts, each with its sets, in order. */
+const trainingPlanDefinitionDayOf = ({
+  label,
+  lifts,
+}: {
+  readonly label: string
+  readonly lifts: readonly { readonly lift: Lift; readonly sets: number }[]
+}): TrainingPlanDefinition.Day.Type =>
   Either.getOrThrow(
-    Workout.make({ label, plannedExercises: lifts.map(([lift, sets]) => plannedLift(lift, sets)) })
+    TrainingPlanDefinition.Day.make({
+      label,
+      trainingPlanDefinitionExercises: lifts.map(trainingPlanDefinitionExerciseOf),
+    })
   )
 
 /**
- * The StrongLifts 5×5 program as a plan stored under `planDefinitionId`:
- * workout A — squat, bench press, barbell row — and workout B — squat,
- * overhead press, deadlift — alternating. Every lift is 5 sets of 5 except
- * the deadlift's single set of 5; every lift gains 5 lb per success except the
- * deadlift's 10 lb; three failures at a load deload by 10% in 5 lb steps,
- * never below the empty bar. Starting loads are {@link STARTING_LOADS}.
+ * The StrongLifts 5×5 program as a training plan definition stored under
+ * `planDefinitionId`: day A — squat, bench press, barbell row — and day B —
+ * squat, overhead press, deadlift — alternating. Every lift is 5 sets of 5
+ * except the deadlift's single set of 5; every lift gains 5 lb per success
+ * except the deadlift's 10 lb; three failures at a load deload by 10% in 5 lb
+ * steps, never below the empty bar. Starting loads are {@link STARTING_LOADS}.
  *
  * @remarks
- * A template, not a special case: the result is an ordinary plan built by
- * `Plan.make`, and nothing else in this package knows StrongLifts exists.
+ * A template, not a special case: the result is an ordinary training plan
+ * definition built by `TrainingPlanDefinition.make`, and nothing else in this
+ * package knows StrongLifts exists.
  */
-const plan = (planDefinitionId: string): Plan.Type =>
+const trainingPlanDefinition = (planDefinitionId: string): TrainingPlanDefinition.Type =>
   Either.getOrThrow(
-    Plan.make({
+    TrainingPlanDefinition.make({
       planDefinitionId,
       title: 'StrongLifts 5×5',
-      workouts: [
-        workout('A', [
-          ['squat', 5],
-          ['bench-press', 5],
-          ['barbell-row', 5],
-        ]),
-        workout('B', [
-          ['squat', 5],
-          ['overhead-press', 5],
-          ['deadlift', 1],
-        ]),
+      trainingPlanDefinitionDays: [
+        trainingPlanDefinitionDayOf({
+          label: 'A',
+          lifts: [
+            { lift: 'squat', sets: 5 },
+            { lift: 'bench-press', sets: 5 },
+            { lift: 'barbell-row', sets: 5 },
+          ],
+        }),
+        trainingPlanDefinitionDayOf({
+          label: 'B',
+          lifts: [
+            { lift: 'squat', sets: 5 },
+            { lift: 'overhead-press', sets: 5 },
+            { lift: 'deadlift', sets: 1 },
+          ],
+        }),
       ],
     })
   )
 
-export { EXERCISES, plan, STARTING_LOADS }
+export { EXERCISES, STARTING_LOADS, trainingPlanDefinition }
 export type { Lift }

@@ -6,11 +6,8 @@ import * as ExerciseRequest from './exercise-request/exercise-request.ts'
 import * as ExerciseSetObservation from './exercise-set-observation/exercise-set-observation.ts'
 import * as ExerciseConcept from './exercise/exercise-concept.ts'
 import * as Load from './load/load.ts'
-import * as Plan from './plan/plan.ts'
-import * as PlannedExercise from './plan/planned-exercise.ts'
-import * as ProgressionRule from './plan/progression-rule.ts'
-import * as Workout from './plan/workout.ts'
 import * as StrongLifts5x5 from './plans/strong-lifts.ts'
+import * as TrainingPlanDefinition from './training-plan-definition/training-plan-definition.ts'
 import * as WorkoutProcedure from './workout-procedure/workout-procedure.ts'
 
 /** The value of a make a test built from valid inputs; a refusal is a bug in the test and fails loudly. */
@@ -56,7 +53,7 @@ const nonEmptyTrimmedStringArb: fc.Arbitrary<string> = fc
 const exerciseIdArb: fc.Arbitrary<string> = fc.stringMatching(/^[a-z]{1,8}(-[a-z]{1,8}){0,2}$/)
 
 /** An exercise with a slug id and a non-empty, trimmed display name. */
-const exerciseArb: fc.Arbitrary<ExerciseConcept.Type> = fc
+const exerciseConceptArb: fc.Arbitrary<ExerciseConcept.Type> = fc
   .record({ id: exerciseIdArb, name: nonEmptyTrimmedStringArb })
   .map((exercise) => made(ExerciseConcept.make(exercise)))
 
@@ -85,144 +82,193 @@ const progressionRuleInputArb = fc.record({
 })
 
 /** A progression rule within the ranges `ProgressionRule.make` accepts. */
-const progressionRuleArb: fc.Arbitrary<ProgressionRule.Type> = progressionRuleInputArb.map((rule) =>
-  made(ProgressionRule.make(rule))
-)
+const progressionRuleArb: fc.Arbitrary<TrainingPlanDefinition.ProgressionRule.Type> =
+  progressionRuleInputArb.map((progressionRuleParameters) =>
+    made(TrainingPlanDefinition.ProgressionRule.make(progressionRuleParameters))
+  )
 
-/** A planned exercise for `exercise`, in range. */
-const plannedForArb = (exercise: ExerciseConcept.Type): fc.Arbitrary<PlannedExercise.Type> =>
+/** An exercise (definition) running `exerciseConcept`, in range. */
+const trainingPlanDefinitionExerciseForArb = (
+  exerciseConcept: ExerciseConcept.Type
+): fc.Arbitrary<TrainingPlanDefinition.Exercise.Type> =>
   fc
     .record({
       sets: fc.integer({ min: 1, max: 10 }),
       reps: fc.integer({ min: 1, max: 20 }),
       progressionRule: progressionRuleArb,
     })
-    .map((planned) => made(PlannedExercise.make({ exercise, ...planned })))
+    .map((trainingPlanDefinitionExercise) =>
+      made(
+        TrainingPlanDefinition.Exercise.make({ exerciseConcept, ...trainingPlanDefinitionExercise })
+      )
+    )
 
-/** A planned exercise, in range. */
-const plannedArb: fc.Arbitrary<PlannedExercise.Type> = exerciseArb.chain(plannedForArb)
+/** An exercise (definition), in range. */
+const trainingPlanDefinitionExerciseArb: fc.Arbitrary<TrainingPlanDefinition.Exercise.Type> =
+  exerciseConceptArb.chain(trainingPlanDefinitionExerciseForArb)
 
 /** An instant with millisecond precision, the precision a FHIR `dateTime` keeps. */
 const instantArb: fc.Arbitrary<DateTime.Utc> = fc
   .integer({ min: Date.UTC(2000, 0, 1), max: Date.UTC(2100, 0, 1) })
   .map((epochMillis) => DateTime.unsafeMake(epochMillis))
 
-/** A workout label, e.g. `A` or `B2`. */
-const workoutLabelArb: fc.Arbitrary<string> = fc.stringMatching(/^[A-Z][0-9]?$/)
+/** A day label, e.g. `A` or `B2`. */
+const dayLabelArb: fc.Arbitrary<string> = fc.stringMatching(/^[A-Z][0-9]?$/)
 
 /**
- * Caps on a generated plan's size. Decoding a plan checks every planned
- * exercise's rule extension in every workout, so its cost grows with the plan;
- * a bigger plan exercises no path a small one misses.
+ * Caps on a generated training plan definition's size. Decoding one checks
+ * every exercise (definition)'s rule extension on every day, so its cost
+ * grows with its size; a bigger one exercises no path a small one misses.
  */
-interface PlanSize {
+interface TrainingPlanDefinitionSize {
   readonly maxExercises: number
-  readonly maxWorkouts: number
+  readonly maxDays: number
 }
 
 /**
- * A valid plan: distinct exercises, each planned once and shared by every
- * workout that runs it, and workouts with distinct labels.
+ * A valid training plan definition: distinct exercises, each defined once
+ * and shared by every day that runs it, and days with distinct labels.
  */
-const planOfSizeArb = (size: PlanSize): fc.Arbitrary<Plan.Type> =>
+const trainingPlanDefinitionOfSizeArb = (
+  size: TrainingPlanDefinitionSize
+): fc.Arbitrary<TrainingPlanDefinition.Type> =>
   fc
-    .uniqueArray(exerciseArb, {
+    .uniqueArray(exerciseConceptArb, {
       minLength: 1,
       maxLength: size.maxExercises,
       selector: ExerciseConcept.idOf,
     })
-    .chain((exercises) =>
+    .chain((exerciseConcepts) =>
       fc.record({
         title: nonEmptyTrimmedStringArb,
-        planned: fc.tuple(...exercises.map(plannedForArb)),
-        labels: fc.uniqueArray(workoutLabelArb, { minLength: 1, maxLength: size.maxWorkouts }),
+        distinctTrainingPlanDefinitionExercises: fc.tuple(
+          ...exerciseConcepts.map(trainingPlanDefinitionExerciseForArb)
+        ),
+        labels: fc.uniqueArray(dayLabelArb, { minLength: 1, maxLength: size.maxDays }),
       })
     )
-    .chain(({ title, planned, labels }) =>
+    .chain(({ title, distinctTrainingPlanDefinitionExercises, labels }) =>
       fc
         .tuple(
           ...labels.map((label) =>
             fc
-              .array(fc.constantFrom(...planned), { minLength: 1, maxLength: size.maxExercises })
-              .map((plannedExercises) => made(Workout.make({ label, plannedExercises })))
+              .array(fc.constantFrom(...distinctTrainingPlanDefinitionExercises), {
+                minLength: 1,
+                maxLength: size.maxExercises,
+              })
+              .map((trainingPlanDefinitionExercises) =>
+                made(TrainingPlanDefinition.Day.make({ label, trainingPlanDefinitionExercises }))
+              )
           )
         )
-        .map((workouts) => made(Plan.make({ planDefinitionId: 'plan-1', title, workouts })))
+        .map((trainingPlanDefinitionDays) =>
+          made(
+            TrainingPlanDefinition.make({
+              planDefinitionId: 'plan-1',
+              title,
+              trainingPlanDefinitionDays,
+            })
+          )
+        )
     )
 
-/** A valid plan of up to four exercises and three workouts. */
-const planArb: fc.Arbitrary<Plan.Type> = planOfSizeArb({ maxExercises: 4, maxWorkouts: 3 })
+/** A valid training plan definition of up to four exercises and three days. */
+const trainingPlanDefinitionArb: fc.Arbitrary<TrainingPlanDefinition.Type> =
+  trainingPlanDefinitionOfSizeArb({ maxExercises: 4, maxDays: 3 })
 
 /**
- * A valid plan of at most three exercises and two workouts, for the wire
+ * A valid training plan definition of at most three exercises and two days, for the wire
  * round-trip: its cost grows with every action encoded and decoded.
  */
-const smallPlanArb: fc.Arbitrary<Plan.Type> = planOfSizeArb({ maxExercises: 3, maxWorkouts: 2 })
+const smallTrainingPlanDefinitionArb: fc.Arbitrary<TrainingPlanDefinition.Type> =
+  trainingPlanDefinitionOfSizeArb({ maxExercises: 3, maxDays: 2 })
 
-/** A one-workout plan running `planned`. */
-const planRunning = (planned: PlannedExercise.Type): Plan.Type =>
+/** A one-day training plan definition running `trainingPlanDefinitionExercise`. */
+const trainingPlanDefinitionRunning = (
+  trainingPlanDefinitionExercise: TrainingPlanDefinition.Exercise.Type
+): TrainingPlanDefinition.Type =>
   made(
-    Plan.make({
+    TrainingPlanDefinition.make({
       planDefinitionId: 'plan-1',
       title: 'Plan',
-      workouts: [made(Workout.make({ label: 'A', plannedExercises: [planned] }))],
+      trainingPlanDefinitionDays: [
+        made(
+          TrainingPlanDefinition.Day.make({
+            label: 'A',
+            trainingPlanDefinitionExercises: [trainingPlanDefinitionExercise],
+          })
+        ),
+      ],
     })
   )
 
 /** When every generated `ExerciseRequest` was issued. */
 const AUTHORED_ON = DateTime.unsafeMake('2026-01-05T18:00:00Z')
 
-/** The `ExerciseRequest` `planned` makes, stored as `sr-1`, at a load of `value` in the rule's unit. */
-const exerciseRequestAt = (planned: PlannedExercise.Type, value: number): ExerciseRequest.Type =>
+/**
+ * The `ExerciseRequest` for `trainingPlanDefinitionExercise`, stored as
+ * `sr-1`, at a load of `value` in the rule's unit.
+ */
+const exerciseRequestAt = (
+  trainingPlanDefinitionExercise: TrainingPlanDefinition.Exercise.Type,
+  value: number
+): ExerciseRequest.Type =>
   made(
     ExerciseRequest.make({
       serviceRequestId: 'sr-1',
       subject: SUBJECT,
-      plan: planRunning(planned),
-      exerciseId: PlannedExercise.exerciseIdOf(planned),
+      trainingPlanDefinition: trainingPlanDefinitionRunning(trainingPlanDefinitionExercise),
+      exerciseId: TrainingPlanDefinition.Exercise.exerciseIdOf(trainingPlanDefinitionExercise),
       load: made(
         Load.make({
           value,
-          unit: ProgressionRule.unitOf(PlannedExercise.progressionRuleOf(planned)),
+          unit: TrainingPlanDefinition.ProgressionRule.unitOf(
+            TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+          ),
         })
       ),
       authoredOn: AUTHORED_ON,
     })
   )
 
-/** A planned exercise and an `ExerciseRequest` it makes. */
-interface PlannedExerciseRequest {
-  readonly planned: PlannedExercise.Type
+/** An exercise (definition) and an `ExerciseRequest` made from it. */
+interface TrainingPlanDefinitionExerciseAndRequest {
+  readonly trainingPlanDefinitionExercise: TrainingPlanDefinition.Exercise.Type
   readonly exerciseRequest: ExerciseRequest.Type
 }
 
-/** An `ExerciseRequest` for `planned`, its load at least `above` over the rule's floor. */
-const plannedExerciseRequestForArb = (
-  planned: PlannedExercise.Type,
+/**
+ * An `ExerciseRequest` for `trainingPlanDefinitionExercise`, its load at
+ * least `above` over the rule's floor.
+ */
+const trainingPlanDefinitionExerciseAndRequestForArb = (
+  trainingPlanDefinitionExercise: TrainingPlanDefinition.Exercise.Type,
   above = 0
-): fc.Arbitrary<PlannedExerciseRequest> =>
+): fc.Arbitrary<TrainingPlanDefinitionExerciseAndRequest> =>
   fc
     .oneof(
       fc.constant(above),
       amountArb.map((amount) => amount + above)
     )
     .map((extra) => ({
-      planned,
+      trainingPlanDefinitionExercise,
       exerciseRequest: exerciseRequestAt(
-        planned,
-        ProgressionRule.minimumLoadOf(PlannedExercise.progressionRuleOf(planned)) + extra
+        trainingPlanDefinitionExercise,
+        TrainingPlanDefinition.ProgressionRule.minimumLoadOf(
+          TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+        ) + extra
       ),
     }))
 
-/** A planned exercise and an `ExerciseRequest` in range for it. */
-const plannedExerciseRequestArb: fc.Arbitrary<PlannedExerciseRequest> = plannedArb.chain(
-  (planned) => plannedExerciseRequestForArb(planned)
-)
+/** An exercise (definition) and an `ExerciseRequest` in range for it. */
+const trainingPlanDefinitionExerciseAndRequestArb: fc.Arbitrary<TrainingPlanDefinitionExerciseAndRequest> =
+  trainingPlanDefinitionExerciseArb.chain((trainingPlanDefinitionExercise) =>
+    trainingPlanDefinitionExerciseAndRequestForArb(trainingPlanDefinitionExercise)
+  )
 
 /** Any `ExerciseRequest`, in range, at either unit. */
-const exerciseRequestArb: fc.Arbitrary<ExerciseRequest.Type> = plannedExerciseRequestArb.map(
-  ({ exerciseRequest }) => exerciseRequest
-)
+const exerciseRequestArb: fc.Arbitrary<ExerciseRequest.Type> =
+  trainingPlanDefinitionExerciseAndRequestArb.map(({ exerciseRequest }) => exerciseRequest)
 
 /** Milliseconds one generated set takes, start to end. */
 const SET_LENGTH_MS = 60_000
@@ -233,8 +279,12 @@ const SET_GAP_MS = 180_000
 /** Milliseconds one generated workout takes, start to end: long enough for twenty sets. */
 const WORKOUT_LENGTH_MS = 20 * SET_GAP_MS
 
-/** The plan generated workouts are workouts of: StrongLifts' `A` and `B`, stored as `plan-1`. */
-const WORKOUT_PLAN: Plan.Type = StrongLifts5x5.plan('plan-1')
+/**
+ * The training plan definition generated workouts perform the days of:
+ * StrongLifts' `A` and `B`, stored as `plan-1`.
+ */
+const WORKOUT_TRAINING_PLAN_DEFINITION: TrainingPlanDefinition.Type =
+  StrongLifts5x5.trainingPlanDefinition('plan-1')
 
 /** The 18:00 UTC instant the `index`th workout of a generated history starts at, one day apart. */
 const workoutStartAt = (index: number): DateTime.Utc =>
@@ -256,9 +306,10 @@ const startedWorkoutAt = ({
     WorkoutProcedure.make({
       procedureId: `workout-${index}`,
       subject: SUBJECT,
-      plan: WORKOUT_PLAN,
-      workout:
-        Plan.workoutsOf(WORKOUT_PLAN)[index % 2] ?? Arr.headNonEmpty(Plan.workoutsOf(WORKOUT_PLAN)),
+      trainingPlanDefinition: WORKOUT_TRAINING_PLAN_DEFINITION,
+      trainingPlanDefinitionDay:
+        TrainingPlanDefinition.daysOf(WORKOUT_TRAINING_PLAN_DEFINITION)[index % 2] ??
+        Arr.headNonEmpty(TrainingPlanDefinition.daysOf(WORKOUT_TRAINING_PLAN_DEFINITION)),
       exerciseRequests: [exerciseRequest],
       start: workoutStartAt(index),
     })
@@ -379,7 +430,7 @@ const failedRepsArb = (exerciseRequest: ExerciseRequest.Type): fc.Arbitrary<read
 /** An `ExerciseRequest`, the workouts and sets performed against it, and the decision they call for. */
 interface ProgressionCase {
   readonly expected: ExerciseRequest.Decision
-  readonly planned: PlannedExercise.Type
+  readonly trainingPlanDefinitionExercise: TrainingPlanDefinition.Exercise.Type
   readonly exerciseRequest: ExerciseRequest.Type
   readonly workoutProcedures: readonly WorkoutProcedure.Type[]
   readonly exerciseSetObservations: readonly ExerciseSetObservation.Type[]
@@ -394,11 +445,12 @@ interface ProgressionCase {
  */
 const caseFrom = (spec: {
   readonly expected: ExerciseRequest.Decision
-  readonly plannedExerciseRequest: PlannedExerciseRequest
+  readonly trainingPlanDefinitionExerciseAndRequest: TrainingPlanDefinitionExerciseAndRequest
   readonly tail: fc.Arbitrary<readonly (readonly number[])[]>
   readonly trailingFailures: (tailLength: number) => number
 }): fc.Arbitrary<ProgressionCase> => {
-  const { exerciseRequest, planned } = spec.plannedExerciseRequest
+  const { exerciseRequest, trainingPlanDefinitionExercise } =
+    spec.trainingPlanDefinitionExerciseAndRequest
   return fc
     .tuple(
       fc.array(fc.oneof(successfulRepsArb(exerciseRequest), failedRepsArb(exerciseRequest)), {
@@ -412,7 +464,7 @@ const caseFrom = (spec: {
       )
       return {
         expected: spec.expected,
-        planned,
+        trainingPlanDefinitionExercise,
         exerciseRequest,
         workoutProcedures: performed.map(({ workoutProcedure }) => workoutProcedure),
         exerciseSetObservations: performed.flatMap(
@@ -423,30 +475,34 @@ const caseFrom = (spec: {
     })
 }
 
-/** The rule of a planned exercise. */
-const ruleOf = (planned: PlannedExercise.Type): ProgressionRule.Type =>
-  PlannedExercise.progressionRuleOf(planned)
-
 /** The latest workout met the `ExerciseRequest`. */
-const incrementCaseArb: fc.Arbitrary<ProgressionCase> = plannedExerciseRequestArb.chain(
-  (plannedExerciseRequest) =>
+const incrementCaseArb: fc.Arbitrary<ProgressionCase> =
+  trainingPlanDefinitionExerciseAndRequestArb.chain((trainingPlanDefinitionExerciseAndRequest) =>
     caseFrom({
       expected: 'increment',
-      plannedExerciseRequest,
-      tail: successfulRepsArb(plannedExerciseRequest.exerciseRequest).map((reps) => [reps]),
+      trainingPlanDefinitionExerciseAndRequest,
+      tail: successfulRepsArb(trainingPlanDefinitionExerciseAndRequest.exerciseRequest).map(
+        (reps) => [reps]
+      ),
       trailingFailures: () => 0,
     })
-)
+  )
 
 /** Enough trailing failures at a load with room above its floor. */
-const deloadCaseArb: fc.Arbitrary<ProgressionCase> = plannedArb
-  .chain((planned) => plannedExerciseRequestForArb(planned, 1))
-  .chain((plannedExerciseRequest) => {
-    const failures = ProgressionRule.failuresBeforeDeloadOf(ruleOf(plannedExerciseRequest.planned))
+const deloadCaseArb: fc.Arbitrary<ProgressionCase> = trainingPlanDefinitionExerciseArb
+  .chain((trainingPlanDefinitionExercise) =>
+    trainingPlanDefinitionExerciseAndRequestForArb(trainingPlanDefinitionExercise, 1)
+  )
+  .chain((trainingPlanDefinitionExerciseAndRequest) => {
+    const failures = TrainingPlanDefinition.ProgressionRule.failuresBeforeDeloadOf(
+      TrainingPlanDefinition.Exercise.progressionRuleOf(
+        trainingPlanDefinitionExerciseAndRequest.trainingPlanDefinitionExercise
+      )
+    )
     return caseFrom({
       expected: 'deload',
-      plannedExerciseRequest,
-      tail: fc.array(failedRepsArb(plannedExerciseRequest.exerciseRequest), {
+      trainingPlanDefinitionExerciseAndRequest,
+      tail: fc.array(failedRepsArb(trainingPlanDefinitionExerciseAndRequest.exerciseRequest), {
         minLength: failures,
         maxLength: failures + 2,
       }),
@@ -460,36 +516,44 @@ const deloadCaseArb: fc.Arbitrary<ProgressionCase> = plannedArb
  */
 const fewFailuresCaseArb: fc.Arbitrary<ProgressionCase> = fc
   .record({
-    exercise: exerciseArb,
-    rule: progressionRuleInputArb.map((rule) => ({
-      ...rule,
-      failuresBeforeDeload: Math.max(2, rule.failuresBeforeDeload),
+    exerciseConcept: exerciseConceptArb,
+    progressionRuleParameters: progressionRuleInputArb.map((progressionRuleParameters) => ({
+      ...progressionRuleParameters,
+      failuresBeforeDeload: Math.max(2, progressionRuleParameters.failuresBeforeDeload),
     })),
     sets: fc.integer({ min: 1, max: 10 }),
     reps: fc.integer({ min: 1, max: 20 }),
   })
-  .map(({ exercise, rule, sets, reps }) =>
+  .map(({ exerciseConcept, progressionRuleParameters, sets, reps }) =>
     made(
-      PlannedExercise.make({
-        exercise,
+      TrainingPlanDefinition.Exercise.make({
+        exerciseConcept,
         sets,
         reps,
-        progressionRule: made(ProgressionRule.make(rule)),
+        progressionRule: made(
+          TrainingPlanDefinition.ProgressionRule.make(progressionRuleParameters)
+        ),
       })
     )
   )
-  .chain((planned) => plannedExerciseRequestForArb(planned))
-  .chain((plannedExerciseRequest) =>
+  .chain((trainingPlanDefinitionExercise) =>
+    trainingPlanDefinitionExerciseAndRequestForArb(trainingPlanDefinitionExercise)
+  )
+  .chain((trainingPlanDefinitionExerciseAndRequest) =>
     caseFrom({
       expected: 'hold',
-      plannedExerciseRequest,
+      trainingPlanDefinitionExerciseAndRequest,
       tail: fc
         .tuple(
-          successfulRepsArb(plannedExerciseRequest.exerciseRequest),
-          fc.array(failedRepsArb(plannedExerciseRequest.exerciseRequest), {
+          successfulRepsArb(trainingPlanDefinitionExerciseAndRequest.exerciseRequest),
+          fc.array(failedRepsArb(trainingPlanDefinitionExerciseAndRequest.exerciseRequest), {
             minLength: 1,
             maxLength:
-              ProgressionRule.failuresBeforeDeloadOf(ruleOf(plannedExerciseRequest.planned)) - 1,
+              TrainingPlanDefinition.ProgressionRule.failuresBeforeDeloadOf(
+                TrainingPlanDefinition.Exercise.progressionRuleOf(
+                  trainingPlanDefinitionExerciseAndRequest.trainingPlanDefinitionExercise
+                )
+              ) - 1,
           })
         )
         .map(([met, failures]) => [met, ...failures]),
@@ -498,17 +562,26 @@ const fewFailuresCaseArb: fc.Arbitrary<ProgressionCase> = fc
   )
 
 /** Enough trailing failures, but the load is already at its floor. */
-const atFloorCaseArb: fc.Arbitrary<ProgressionCase> = plannedArb
-  .map((planned) => ({
-    planned,
-    exerciseRequest: exerciseRequestAt(planned, ProgressionRule.minimumLoadOf(ruleOf(planned))),
+const atFloorCaseArb: fc.Arbitrary<ProgressionCase> = trainingPlanDefinitionExerciseArb
+  .map((trainingPlanDefinitionExercise) => ({
+    trainingPlanDefinitionExercise,
+    exerciseRequest: exerciseRequestAt(
+      trainingPlanDefinitionExercise,
+      TrainingPlanDefinition.ProgressionRule.minimumLoadOf(
+        TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+      )
+    ),
   }))
-  .chain((plannedExerciseRequest) => {
-    const failures = ProgressionRule.failuresBeforeDeloadOf(ruleOf(plannedExerciseRequest.planned))
+  .chain((trainingPlanDefinitionExerciseAndRequest) => {
+    const failures = TrainingPlanDefinition.ProgressionRule.failuresBeforeDeloadOf(
+      TrainingPlanDefinition.Exercise.progressionRuleOf(
+        trainingPlanDefinitionExerciseAndRequest.trainingPlanDefinitionExercise
+      )
+    )
     return caseFrom({
       expected: 'hold',
-      plannedExerciseRequest,
-      tail: fc.array(failedRepsArb(plannedExerciseRequest.exerciseRequest), {
+      trainingPlanDefinitionExerciseAndRequest,
+      tail: fc.array(failedRepsArb(trainingPlanDefinitionExerciseAndRequest.exerciseRequest), {
         minLength: failures,
         maxLength: failures + 2,
       }),
@@ -517,16 +590,17 @@ const atFloorCaseArb: fc.Arbitrary<ProgressionCase> = plannedArb
   })
 
 /** Never attempted: no sets at all. */
-const unattemptedCaseArb: fc.Arbitrary<ProgressionCase> = plannedExerciseRequestArb.map(
-  ({ planned, exerciseRequest }) => ({
-    expected: 'hold' as const,
-    planned,
-    exerciseRequest,
-    workoutProcedures: [],
-    exerciseSetObservations: [],
-    trailingFailures: 0,
-  })
-)
+const unattemptedCaseArb: fc.Arbitrary<ProgressionCase> =
+  trainingPlanDefinitionExerciseAndRequestArb.map(
+    ({ trainingPlanDefinitionExercise, exerciseRequest }) => ({
+      expected: 'hold' as const,
+      trainingPlanDefinitionExercise,
+      exerciseRequest,
+      workoutProcedures: [],
+      exerciseSetObservations: [],
+      trailingFailures: 0,
+    })
+  )
 
 /** A history from any of the classes. */
 const progressionCaseArb: fc.Arbitrary<ProgressionCase> = fc.oneof(
@@ -545,7 +619,7 @@ export {
   amountArb,
   AUTHORED_ON,
   deloadCaseArb,
-  exerciseArb,
+  exerciseConceptArb,
   exerciseIdArb,
   exerciseRequestArb,
   exerciseRequestAt,
@@ -558,22 +632,21 @@ export {
   loadUnitArb,
   made,
   nonEmptyTrimmedStringArb,
-  planArb,
-  plannedArb,
+  trainingPlanDefinitionArb,
+  trainingPlanDefinitionExerciseArb,
   progressionCaseArb,
   progressionRuleArb,
   progressionRuleInputArb,
-  plannedExerciseRequestArb,
-  ruleOf,
+  trainingPlanDefinitionExerciseAndRequestArb,
   completedWorkoutAt,
   performedWorkoutAt,
   exerciseSetObservationAt,
-  smallPlanArb,
+  smallTrainingPlanDefinitionArb,
   someOrFail,
   startedWorkoutAt,
   SUBJECT,
   successfulRepsArb,
   throughWire,
-  workoutLabelArb,
+  dayLabelArb,
 }
-export type { PerformedWorkout, ProgressionCase, PlannedExerciseRequest }
+export type { PerformedWorkout, ProgressionCase, TrainingPlanDefinitionExerciseAndRequest }

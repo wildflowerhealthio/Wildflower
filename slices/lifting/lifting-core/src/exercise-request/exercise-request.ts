@@ -31,16 +31,15 @@ import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
 import * as Load from '../load/load.ts'
-import * as Plan from '../plan/plan.ts'
-import * as PlannedExercise from '../plan/planned-exercise.ts'
-import * as ProgressionRule from '../plan/progression-rule.ts'
+import * as TrainingPlanDefinition from '../training-plan-definition/training-plan-definition.ts'
 import * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 
 /**
  * What a lifter is to do at one exercise until it moves, as FHIR orders it: a
  * `ServiceRequest` whose service is an exercise, narrowed to an `id`, an
  * {@link ExerciseConcept.Type} as its `code`, exactly one
- * `instantiatesCanonical` — the url of the plan it follows — and exactly one
+ * `instantiatesCanonical` — the url of the training plan definition it
+ * follows — and exactly one
  * `load`, one `sets` and one `reps` `orderDetail`, each carrying its value in
  * range: lift the load for sets × reps.
  *
@@ -48,9 +47,9 @@ import * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
  * Each one is one load: a met workout closes it (`completed`) and issues the
  * next one heavier, a deload closes it (`revoked`) and issues the next one
  * lighter, and a change of program revokes them all. It carries no rule:
- * how its load moves is the plan's, on the `PlannedExercise` for the same
- * exercise. Its `status` is not narrowed — the app searches `status=active`.
- * Other order details ride along untouched.
+ * how its load moves is the training plan definition's, on its exercise
+ * (definition) for the same exercise. Its `status` is not narrowed — the app
+ * searches `status=active`. Other order details ride along untouched.
  */
 interface Type
   extends
@@ -60,14 +59,15 @@ interface Type
   readonly id: string
   /** The exercise the `ServiceRequest` asks for. */
   readonly code: ExerciseConcept.Type
-  /** The canonical url of the plan the `ServiceRequest` follows; see {@link planUrlOf}. */
+  /** The canonical url of the training plan definition the `ServiceRequest` follows; see {@link trainingPlanDefinitionUrlOf}. */
   readonly instantiatesCanonical: readonly [string]
 }
 
 /**
  * Decodes a `ServiceRequest` into a {@link Type} — fails, naming the field, on
- * no `id`, no single plan url, no exercise `code`, or a `load`, `sets` or
- * `reps` order detail missing, repeated, malformed or out of range.
+ * no `id`, no single training plan definition url, no exercise `code`, or a
+ * `load`, `sets` or `reps` order detail missing, repeated, malformed or out of
+ * range.
  */
 const ExerciseRequestSchema: Schema.Schema<Type, ServiceRequest.Type> =
   narrowedFrom<ServiceRequest.Type>()(
@@ -82,15 +82,23 @@ const ExerciseRequestSchema: Schema.Schema<Type, ServiceRequest.Type> =
     }).pipe(Schema.brand('ExerciseRequest'))
   )
 
-/** `ExerciseRequest.make` was asked for an exercise the plan does not run. */
-class ExerciseUnplanned extends Data.TaggedError('ExerciseUnplanned')<{
+/**
+ * `ExerciseRequest.make` was asked for an exercise the training plan
+ * definition does not run — none of its days has an exercise (definition) for
+ * it.
+ */
+class ExerciseNotInTrainingPlanDefinition extends Data.TaggedError(
+  'ExerciseNotInTrainingPlanDefinition'
+)<{
   /** The exercise asked for, by id. */
   readonly exerciseId: string
+  /** The canonical url of the training plan definition it is not in. */
+  readonly trainingPlanDefinitionUrl: string
 }> {
   // Data.TaggedError leaves `.message` empty by default; name the exercise so
   // a logged or thrown refusal says what was wrong.
   override get message(): string {
-    return `the plan does not run the exercise ${JSON.stringify(this.exerciseId)}`
+    return `the training plan definition ${this.trainingPlanDefinitionUrl} does not run the exercise ${JSON.stringify(this.exerciseId)}`
   }
 }
 
@@ -124,63 +132,76 @@ const decodeServiceRequest = (
   })
 
 /**
- * The first `ExerciseRequest` at one exercise of a plan: `active`, intent
- * `plan`, priority `routine`, filed under the `strength-training` feature
- * `category`, the exercise as its `code`, one `orderDetail` per exercise
- * parameter — `load` as a UCUM `valueQuantity`, `sets` and `reps` as a
- * `valueInteger`, each in the concept's `ExerciseParameterValue` extension —
- * instantiating the plan's url, `authoredOn` when it was issued. Its sets and reps are the
- * plan's for the exercise. Made from the id the app minted for the
- * `ServiceRequest`, the lifter it is for as its `subject`, the plan and the
- * exercise in it, the load to start at, and when it was issued.
+ * The first `ExerciseRequest` at one exercise of a training plan definition:
+ * `active`, intent `plan`, priority `routine`, filed under the
+ * `strength-training` feature `category`, the exercise as its `code`, one
+ * `orderDetail` per exercise parameter — `load` as a UCUM `valueQuantity`,
+ * `sets` and `reps` as a `valueInteger`, each in the concept's
+ * `ExerciseParameterValue` extension — instantiating the training plan
+ * definition's url, `authoredOn` when it was issued. Its sets and reps are
+ * the training plan definition's for the exercise. Made from the id the app
+ * minted for the `ServiceRequest`, the lifter it is for as its `subject`, the
+ * training plan definition and the exercise in it, the load to start at, and
+ * when it was issued.
  *
- * @returns The new `ExerciseRequest`; {@link ExerciseUnplanned} when the plan does
- *   not run the exercise; or a `ParseError` when the load is in another unit
- *   than the exercise's rule moves, or under the rule's minimum load
+ * @returns The new `ExerciseRequest`;
+ *   {@link ExerciseNotInTrainingPlanDefinition} when the training plan
+ *   definition does not run the exercise; or a `ParseError` when the load is
+ *   in another unit than the exercise's rule moves, or under the rule's
+ *   minimum load
  *
  * @remarks
  * This is how a lifter's starting load is set, and how one is re-made after a
- * plan edit. Between workouts, {@link progress} issues the next one.
+ * training plan definition edit. Between workouts, {@link progress} issues
+ * the next one.
  */
 const make = ({
   serviceRequestId,
   subject,
-  plan,
+  trainingPlanDefinition,
   exerciseId,
   load,
   authoredOn,
 }: {
   readonly serviceRequestId: string
   readonly subject: IdentifierAndReference.ReferenceType
-  readonly plan: Plan.Type
+  readonly trainingPlanDefinition: TrainingPlanDefinition.Type
   readonly exerciseId: string
   readonly load: Load.Type
   readonly authoredOn: DateTime.Utc
-}): Either.Either<Type, ExerciseUnplanned | ParseResult.ParseError> =>
+}): Either.Either<Type, ExerciseNotInTrainingPlanDefinition | ParseResult.ParseError> =>
   pipe(
-    Plan.plannedExerciseOf(plan, exerciseId),
-    Either.fromOption(() => new ExerciseUnplanned({ exerciseId })),
-    Either.flatMap((planned) =>
+    TrainingPlanDefinition.exerciseOf({ trainingPlanDefinition, exerciseId }),
+    Either.fromOption(
+      () =>
+        new ExerciseNotInTrainingPlanDefinition({
+          exerciseId,
+          trainingPlanDefinitionUrl: trainingPlanDefinition.url,
+        })
+    ),
+    Either.flatMap((trainingPlanDefinitionExercise) =>
       pipe(
         Schema.validateEither(
-          ProgressionRule.startingLoadSchema(PlannedExercise.progressionRuleOf(planned)),
+          TrainingPlanDefinition.ProgressionRule.startingLoadSchema(
+            TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+          ),
           { errors: 'all' }
         )(load),
         Either.flatMap((startingLoad) =>
           decodeServiceRequest({
             id: serviceRequestId,
             subject,
-            instantiatesCanonical: [plan.url],
-            code: PlannedExercise.exerciseOf(planned),
+            instantiatesCanonical: [trainingPlanDefinition.url],
+            code: TrainingPlanDefinition.Exercise.exerciseConceptOf(trainingPlanDefinitionExercise),
             orderDetail: [
               loadExerciseParameterConcept(startingLoad),
               countExerciseParameterConcept({
                 code: ExerciseParameter.Code.Sets,
-                value: PlannedExercise.setsOf(planned),
+                value: TrainingPlanDefinition.Exercise.setsOf(trainingPlanDefinitionExercise),
               }),
               countExerciseParameterConcept({
                 code: ExerciseParameter.Code.Reps,
-                value: PlannedExercise.repsOf(planned),
+                value: TrainingPlanDefinition.Exercise.repsOf(trainingPlanDefinitionExercise),
               }),
             ],
             replaces: [],
@@ -206,15 +227,17 @@ const setsOf = (exerciseRequest: Type): number =>
 const repsOf = (exerciseRequest: Type): number =>
   countExerciseParameterAmong(exerciseRequest.orderDetail, ExerciseParameter.Code.Reps)
 
-/** The canonical url of the plan the `ServiceRequest` follows: its one `instantiatesCanonical`. */
-const planUrlOf = (exerciseRequest: Type): string => exerciseRequest.instantiatesCanonical[0]
+/** The canonical url of the training plan definition the `ServiceRequest` follows: its one `instantiatesCanonical`. */
+const trainingPlanDefinitionUrlOf = (exerciseRequest: Type): string =>
+  exerciseRequest.instantiatesCanonical[0]
 
 /** The `ServiceRequest.status`es that close an `ExerciseRequest`. */
 type ClosingStatus = Extract<ServiceRequest.Type['status'], 'completed' | 'revoked'>
 
 /**
  * An `ExerciseRequest` closed: `completed` when met, or `revoked` when
- * abandoned — on a deload, and for every active one of a plan being left.
+ * abandoned — on a deload, and for every active one of a training plan
+ * definition being left.
  */
 const close = (exerciseRequest: Type, status: ClosingStatus): Type => ({
   ...exerciseRequest,
@@ -374,15 +397,19 @@ const roundDownToStep = ({
  * with no tolerance, so the tolerance can never lift a load that sits a hair
  * under a step multiple.
  */
-const deloadedLoad = (rule: ProgressionRule.Type, load: number): number =>
+const deloadedLoad = (
+  progressionRule: TrainingPlanDefinition.ProgressionRule.Type,
+  load: number
+): number =>
   Math.max(
-    ProgressionRule.minimumLoadOf(rule),
+    TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule),
     Math.min(
       roundDownToStep({
-        load: load * (1 - ProgressionRule.deloadFractionOf(rule)),
-        step: ProgressionRule.loadStepOf(rule),
+        load: load * (1 - TrainingPlanDefinition.ProgressionRule.deloadFractionOf(progressionRule)),
+        step: TrainingPlanDefinition.ProgressionRule.loadStepOf(progressionRule),
       }),
-      Math.floor(load / ProgressionRule.loadStepOf(rule)) * ProgressionRule.loadStepOf(rule)
+      Math.floor(load / TrainingPlanDefinition.ProgressionRule.loadStepOf(progressionRule)) *
+        TrainingPlanDefinition.ProgressionRule.loadStepOf(progressionRule)
     )
   )
 
@@ -397,8 +424,8 @@ const CLOSING_STATUS_OF: { readonly [Moved in Exclude<Decision, 'hold'>]: Closin
  * whether its load goes up, stays, or deloads, and write the
  * `ServiceRequest`s that apply the decision.
  *
- * @param step - The current `ExerciseRequest`; the plan's rule for its
- *   exercise; the lifter's workouts and sets, in any order (see
+ * @param step - The current `ExerciseRequest`; the training plan definition's
+ *   rule for its exercise; the lifter's workouts and sets, in any order (see
  *   {@link attemptsAt}); the id the app minted for the next `ServiceRequest`,
  *   when one is issued; and when the step was taken, its `authoredOn`
  * @returns The decision, the current one closed as it says, and the next
@@ -425,7 +452,7 @@ const CLOSING_STATUS_OF: { readonly [Moved in Exclude<Decision, 'hold'>]: Closin
  */
 const progress = (step: {
   readonly exerciseRequest: Type
-  readonly progressionRule: ProgressionRule.Type
+  readonly progressionRule: TrainingPlanDefinition.ProgressionRule.Type
   readonly workoutProcedures: readonly WorkoutProcedure.Type[]
   readonly exerciseSetObservations: readonly ExerciseSetObservation.Type[]
   readonly nextServiceRequestId: string
@@ -433,9 +460,9 @@ const progress = (step: {
 }): Either.Either<Progress, ParseResult.ParseError> => {
   const { exerciseRequest, progressionRule } = step
   return pipe(
-    Schema.validateEither(ProgressionRule.movableLoadSchema(progressionRule))(
-      loadOf(exerciseRequest)
-    ),
+    Schema.validateEither(
+      TrainingPlanDefinition.ProgressionRule.movableLoadSchema(progressionRule)
+    )(loadOf(exerciseRequest)),
     Either.flatMap((load) => {
       const attempts = attemptsAt(exerciseRequest, step)
       const value = Load.valueOf(load)
@@ -444,7 +471,7 @@ const progress = (step: {
         Option.filter((latest) => isMetBy(exerciseRequest, latest)),
         Option.map(() => ({
           decision: 'increment' as const,
-          value: value + ProgressionRule.incrementOf(progressionRule),
+          value: value + TrainingPlanDefinition.ProgressionRule.incrementOf(progressionRule),
         })),
         Option.orElse(() =>
           pipe(
@@ -453,7 +480,7 @@ const progress = (step: {
               (deloaded) =>
                 deloaded < value &&
                 consecutiveFailures(exerciseRequest, attempts) >=
-                  ProgressionRule.failuresBeforeDeloadOf(progressionRule)
+                  TrainingPlanDefinition.ProgressionRule.failuresBeforeDeloadOf(progressionRule)
             ),
             Option.map((deloaded) => ({ decision: 'deload' as const, value: deloaded }))
           )
@@ -501,13 +528,13 @@ export {
   close,
   consecutiveFailures,
   ExerciseRequestSchema as Schema,
-  ExerciseUnplanned,
+  ExerciseNotInTrainingPlanDefinition,
   exerciseOf,
   forExercise,
   isMetBy,
   loadOf,
   make,
-  planUrlOf,
+  trainingPlanDefinitionUrlOf,
   progress,
   repsOf,
   setsOf,

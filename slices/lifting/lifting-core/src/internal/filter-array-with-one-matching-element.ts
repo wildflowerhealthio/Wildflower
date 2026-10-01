@@ -47,7 +47,7 @@ const filterArrayWithOneMatchingElement = <A>({
   readonly matches: (element: A) => boolean
   /** What the one candidate must satisfy. */
   readonly schema: Schema.Schema.AnyNoContext
-  /** What the candidate is, for the message: `"load" order detail`. */
+  /** What the candidate is, for the message: `exercise concept`. */
   readonly expected: string
 }): ArrayFilter<A> => {
   const validate = ParseResult.validateEither(schema, { errors: 'all' })

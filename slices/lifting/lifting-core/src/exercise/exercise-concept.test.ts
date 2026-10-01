@@ -5,7 +5,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  exerciseArb,
+  exerciseConceptArb,
   exerciseIdArb,
   issuePathsOf,
   made,
@@ -58,7 +58,7 @@ describe('ExerciseConcept', () => {
 
   it('should read an exercise beside codings in other systems, and refuse none or two', () => {
     fc.assert(
-      fc.property(exerciseArb, fc.webUrl(), (exercise, otherSystem) => {
+      fc.property(exerciseConceptArb, fc.webUrl(), (exercise, otherSystem) => {
         // Arrange
         const [foreign] = CodeableConcept.make({
           system: otherSystem,

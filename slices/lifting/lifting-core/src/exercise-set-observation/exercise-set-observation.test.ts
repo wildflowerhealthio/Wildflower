@@ -63,7 +63,7 @@ const squatExerciseRequest = made(
   ExerciseRequest.make({
     serviceRequestId: 'sr-2',
     subject: SUBJECT,
-    plan: StrongLifts5x5.plan('plan-1'),
+    trainingPlanDefinition: StrongLifts5x5.trainingPlanDefinition('plan-1'),
     exerciseId: 'squat',
     load: StrongLifts5x5.STARTING_LOADS.squat,
     authoredOn: AUTHORED_ON,

@@ -6,9 +6,6 @@ import { assert, describe, expect, it } from 'vite-plus/test'
 
 import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as Load from '../load/load.ts'
-import * as Plan from '../plan/plan.ts'
-import * as PlannedExercise from '../plan/planned-exercise.ts'
-import * as ProgressionRule from '../plan/progression-rule.ts'
 import * as StrongLifts5x5 from '../plans/strong-lifts.ts'
 import {
   AUTHORED_ON,
@@ -18,11 +15,11 @@ import {
   made,
   type ProgressionCase,
   progressionCaseArb,
-  ruleOf,
   performedWorkoutAt,
   someOrFail,
   SUBJECT,
 } from '../test-helpers.ts'
+import * as TrainingPlanDefinition from '../training-plan-definition/training-plan-definition.ts'
 import * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 import * as ExerciseRequest from './exercise-request.ts'
 
@@ -32,10 +29,12 @@ const RUNS = numRunsFor({ base: 60 })
 
 const STEP_AUTHORED_ON = DateTime.unsafeMake('2026-01-07T18:00:00Z')
 
-const plan = StrongLifts5x5.plan('plan-1')
+const trainingPlanDefinition = StrongLifts5x5.trainingPlanDefinition('plan-1')
 
 /** The StrongLifts barbell rule: +5 lb, three failures deload 10% in 5 lb steps, never below 45 lb. */
-const barbell = PlannedExercise.progressionRuleOf(someOrFail(Plan.plannedExerciseOf(plan, 'squat')))
+const barbell = TrainingPlanDefinition.Exercise.progressionRuleOf(
+  someOrFail(TrainingPlanDefinition.exerciseOf({ trainingPlanDefinition, exerciseId: 'squat' }))
+)
 
 /** The StrongLifts squat at `value` lb, stored as `sr-2`. */
 const squatAt = (value: number): ExerciseRequest.Type =>
@@ -43,7 +42,7 @@ const squatAt = (value: number): ExerciseRequest.Type =>
     ExerciseRequest.make({
       serviceRequestId: 'sr-2',
       subject: SUBJECT,
-      plan,
+      trainingPlanDefinition,
       exerciseId: 'squat',
       load: made(Load.make({ value, unit: '[lb_av]' })),
       authoredOn: AUTHORED_ON,
@@ -60,7 +59,7 @@ interface Performed {
 const step = (
   spec: {
     readonly exerciseRequest: ExerciseRequest.Type
-    readonly progressionRule: ProgressionRule.Type
+    readonly progressionRule: TrainingPlanDefinition.ProgressionRule.Type
   } & Performed
 ): Either.Either<ExerciseRequest.Progress, unknown> =>
   ExerciseRequest.progress({
@@ -71,7 +70,14 @@ const step = (
 
 /** The step a generated case calls for, which must succeed. */
 const stepOf = (progressionCase: ProgressionCase): ExerciseRequest.Progress =>
-  made(step({ ...progressionCase, progressionRule: ruleOf(progressionCase.planned) }))
+  made(
+    step({
+      ...progressionCase,
+      progressionRule: TrainingPlanDefinition.Exercise.progressionRuleOf(
+        progressionCase.trainingPlanDefinitionExercise
+      ),
+    })
+  )
 
 /** Nothing performed yet. */
 const NOTHING: Performed = { workoutProcedures: [], exerciseSetObservations: [] }
@@ -186,7 +192,7 @@ describe('ExerciseRequest.progress', () => {
 
   it('should refuse a load in a unit the rule does not move', () => {
     const kilograms = made(
-      ProgressionRule.make({
+      TrainingPlanDefinition.ProgressionRule.make({
         unit: 'kg',
         increment: 2.5,
         failuresBeforeDeload: 3,
@@ -215,17 +221,22 @@ describe('ExerciseRequest.progress', () => {
         const { decision, current, next } = stepOf(progressionCase)
 
         // Assert
-        const { expected, exerciseRequest, planned } = progressionCase
+        const { expected, exerciseRequest, trainingPlanDefinitionExercise } = progressionCase
         expect(decision).toBe(expected)
         if (expected === 'increment') {
           expect(current.status).toBe('completed')
           expect(loadValueOf(someOrFail(next))).toBe(
-            loadValueOf(exerciseRequest) + ProgressionRule.incrementOf(ruleOf(planned))
+            loadValueOf(exerciseRequest) +
+              TrainingPlanDefinition.ProgressionRule.incrementOf(
+                TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+              )
           )
         } else if (expected === 'deload') {
           expect(current.status).toBe('revoked')
           expectDeloadedWithinRule({
-            rule: ruleOf(planned),
+            progressionRule: TrainingPlanDefinition.Exercise.progressionRuleOf(
+              trainingPlanDefinitionExercise
+            ),
             load: loadValueOf(exerciseRequest),
             deloaded: loadValueOf(someOrFail(next)),
           })
@@ -245,7 +256,11 @@ describe('ExerciseRequest.progress', () => {
       fc.property(deloadCaseArb, (progressionCase) => {
         const deloaded = loadValueOf(someOrFail(stepOf(progressionCase).next))
         expect(deloaded).toBeGreaterThanOrEqual(
-          ProgressionRule.minimumLoadOf(ruleOf(progressionCase.planned))
+          TrainingPlanDefinition.ProgressionRule.minimumLoadOf(
+            TrainingPlanDefinition.Exercise.progressionRuleOf(
+              progressionCase.trainingPlanDefinitionExercise
+            )
+          )
         )
         expect(deloaded).toBeLessThan(loadValueOf(progressionCase.exerciseRequest))
       }),
@@ -267,7 +282,9 @@ describe('ExerciseRequest.progress', () => {
             ExerciseRequest.repsOf(current),
           ])
           expect(issued.subject).toEqual(current.subject)
-          expect(ExerciseRequest.planUrlOf(issued)).toBe(ExerciseRequest.planUrlOf(current))
+          expect(ExerciseRequest.trainingPlanDefinitionUrlOf(issued)).toBe(
+            ExerciseRequest.trainingPlanDefinitionUrlOf(current)
+          )
         })
       }),
       { numRuns: RUNS }
@@ -282,7 +299,9 @@ describe('ExerciseRequest.progress', () => {
             Either.map(
               step({
                 exerciseRequest: issued,
-                progressionRule: ruleOf(progressionCase.planned),
+                progressionRule: TrainingPlanDefinition.Exercise.progressionRuleOf(
+                  progressionCase.trainingPlanDefinitionExercise
+                ),
                 ...NOTHING,
               }),
               (progress) => progress.decision
@@ -408,7 +427,12 @@ describe('ExerciseRequest.consecutiveFailures', () => {
     fc.assert(
       fc.property(
         deloadCaseArb,
-        ({ planned, exerciseRequest, workoutProcedures, exerciseSetObservations }) => {
+        ({
+          trainingPlanDefinitionExercise,
+          exerciseRequest,
+          workoutProcedures,
+          exerciseSetObservations,
+        }) => {
           expect(
             ExerciseRequest.consecutiveFailures(
               exerciseRequest,
@@ -417,7 +441,11 @@ describe('ExerciseRequest.consecutiveFailures', () => {
                 exerciseSetObservations,
               })
             )
-          ).toBeGreaterThanOrEqual(ProgressionRule.failuresBeforeDeloadOf(ruleOf(planned)))
+          ).toBeGreaterThanOrEqual(
+            TrainingPlanDefinition.ProgressionRule.failuresBeforeDeloadOf(
+              TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+            )
+          )
         }
       ),
       { numRuns: RUNS }
@@ -433,17 +461,17 @@ describe('ExerciseRequest.consecutiveFailures', () => {
  * no more than one step under the fraction.
  */
 function expectDeloadedWithinRule({
-  rule,
+  progressionRule,
   load,
   deloaded,
 }: {
-  readonly rule: ProgressionRule.Type
+  readonly progressionRule: TrainingPlanDefinition.ProgressionRule.Type
   readonly load: number
   readonly deloaded: number
 }): void {
-  const deloadFraction = ProgressionRule.deloadFractionOf(rule)
-  const loadStep = ProgressionRule.loadStepOf(rule)
-  const minimumLoad = ProgressionRule.minimumLoadOf(rule)
+  const deloadFraction = TrainingPlanDefinition.ProgressionRule.deloadFractionOf(progressionRule)
+  const loadStep = TrainingPlanDefinition.ProgressionRule.loadStepOf(progressionRule)
+  const minimumLoad = TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule)
   expect(deloaded).toBeLessThan(load)
   expect(deloaded).toBeGreaterThanOrEqual(minimumLoad)
   if (deloaded !== minimumLoad) {

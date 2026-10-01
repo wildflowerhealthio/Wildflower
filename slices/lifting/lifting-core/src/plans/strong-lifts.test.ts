@@ -4,11 +4,8 @@ import { describe, expect, it } from 'vite-plus/test'
 import * as ExerciseRequest from '../exercise-request/exercise-request.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import * as Load from '../load/load.ts'
-import * as Plan from '../plan/plan.ts'
-import * as PlannedExercise from '../plan/planned-exercise.ts'
-import * as ProgressionRule from '../plan/progression-rule.ts'
-import * as Workout from '../plan/workout.ts'
 import { AUTHORED_ON, SUBJECT } from '../test-helpers.ts'
+import * as TrainingPlanDefinition from '../training-plan-definition/training-plan-definition.ts'
 import * as StrongLifts5x5 from './strong-lifts.ts'
 
 const LIFTS = Record.keys(StrongLifts5x5.EXERCISES)
@@ -16,10 +13,14 @@ const LIFTS = Record.keys(StrongLifts5x5.EXERCISES)
 describe('StrongLifts5x5', () => {
   it('should alternate A (squat, bench, row) with B (squat, press, deadlift)', () => {
     expect(
-      Plan.workoutsOf(StrongLifts5x5.plan('plan-1')).map((workout) => [
-        Workout.labelOf(workout),
-        Workout.plannedExercisesOf(workout).map(PlannedExercise.exerciseIdOf),
-      ])
+      TrainingPlanDefinition.daysOf(StrongLifts5x5.trainingPlanDefinition('plan-1')).map(
+        (trainingPlanDefinitionDay) => [
+          TrainingPlanDefinition.Day.labelOf(trainingPlanDefinitionDay),
+          TrainingPlanDefinition.Day.exercisesOf(trainingPlanDefinitionDay).map(
+            TrainingPlanDefinition.Exercise.exerciseIdOf
+          ),
+        ]
+      )
     ).toEqual([
       ['A', ['squat', 'bench-press', 'barbell-row']],
       ['B', ['squat', 'overhead-press', 'deadlift']],
@@ -28,13 +29,19 @@ describe('StrongLifts5x5', () => {
 
   it('should run 5×5 at +5 lb for every lift but the deadlift, which is 1×5 at +10 lb', () => {
     expect(
-      Plan.plannedExercisesOf(StrongLifts5x5.plan('plan-1')).map((planned) => [
-        PlannedExercise.exerciseIdOf(planned),
-        PlannedExercise.setsOf(planned),
-        PlannedExercise.repsOf(planned),
-        ProgressionRule.incrementOf(PlannedExercise.progressionRuleOf(planned)),
-        ProgressionRule.unitOf(PlannedExercise.progressionRuleOf(planned)),
-      ])
+      TrainingPlanDefinition.exercisesOf(StrongLifts5x5.trainingPlanDefinition('plan-1')).map(
+        (trainingPlanDefinitionExercise) => [
+          TrainingPlanDefinition.Exercise.exerciseIdOf(trainingPlanDefinitionExercise),
+          TrainingPlanDefinition.Exercise.setsOf(trainingPlanDefinitionExercise),
+          TrainingPlanDefinition.Exercise.repsOf(trainingPlanDefinitionExercise),
+          TrainingPlanDefinition.ProgressionRule.incrementOf(
+            TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+          ),
+          TrainingPlanDefinition.ProgressionRule.unitOf(
+            TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+          ),
+        ]
+      )
     ).toEqual([
       ['squat', 5, 5, 5, '[lb_av]'],
       ['bench-press', 5, 5, 5, '[lb_av]'],
@@ -45,13 +52,17 @@ describe('StrongLifts5x5', () => {
   })
 
   it('should deload every lift by 10% after three failures, in 5 lb steps, never below the bar', () => {
-    for (const planned of Plan.plannedExercisesOf(StrongLifts5x5.plan('plan-1'))) {
-      const rule = PlannedExercise.progressionRuleOf(planned)
+    for (const trainingPlanDefinitionExercise of TrainingPlanDefinition.exercisesOf(
+      StrongLifts5x5.trainingPlanDefinition('plan-1')
+    )) {
+      const progressionRule = TrainingPlanDefinition.Exercise.progressionRuleOf(
+        trainingPlanDefinitionExercise
+      )
       expect([
-        ProgressionRule.failuresBeforeDeloadOf(rule),
-        ProgressionRule.deloadFractionOf(rule),
-        ProgressionRule.minimumLoadOf(rule),
-        ProgressionRule.loadStepOf(rule),
+        TrainingPlanDefinition.ProgressionRule.failuresBeforeDeloadOf(progressionRule),
+        TrainingPlanDefinition.ProgressionRule.deloadFractionOf(progressionRule),
+        TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule),
+        TrainingPlanDefinition.ProgressionRule.loadStepOf(progressionRule),
       ]).toEqual([3, 0.1, 45, 5])
     }
   })
@@ -66,12 +77,12 @@ describe('StrongLifts5x5', () => {
       'overhead-press': [45, '[lb_av]'],
       deadlift: [95, '[lb_av]'],
     })
-    const plan = StrongLifts5x5.plan('plan-1')
+    const trainingPlanDefinition = StrongLifts5x5.trainingPlanDefinition('plan-1')
     for (const lift of LIFTS) {
       const made = ExerciseRequest.make({
         serviceRequestId: `sr-${lift}`,
         subject: SUBJECT,
-        plan,
+        trainingPlanDefinition,
         exerciseId: lift,
         load: StrongLifts5x5.STARTING_LOADS[lift],
         authoredOn: AUTHORED_ON,

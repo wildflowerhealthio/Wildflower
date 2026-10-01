@@ -21,16 +21,16 @@ import {
 } from 'fhir-r4/data-types'
 import { Procedure } from 'fhir-r4/resources'
 
-// Type-only: a workout is made from its plan and the `ExerciseRequest`s it
-// carries out, but both modules read workouts at runtime, so importing them
-// back would be a cycle.
+// Type-only: a workout is made from its training plan definition and the
+// `ExerciseRequest`s it carries out, but both modules read workouts at
+// runtime, so importing them back would be a cycle.
 import type * as ExerciseRequest from '../exercise-request/exercise-request.ts'
 import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
 import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
-import type * as Plan from '../plan/plan.ts'
-import * as Workout from '../plan/workout.ts'
+import * as TrainingPlanDefinitionDay from '../training-plan-definition/day.ts'
+import type * as TrainingPlanDefinition from '../training-plan-definition/training-plan-definition.ts'
 
 /** The statuses of a workout this package reasons about: under way, or done. */
 const StatusSchema = Schema.Literal('in-progress', 'completed').annotations({
@@ -42,12 +42,12 @@ const StatusSchema = Schema.Literal('in-progress', 'completed').annotations({
 })
 
 /**
- * What the one coding of a workout's `code` must carry: its label as a
- * non-empty, trimmed `code`.
+ * What the one coding of a workout's `code` must carry: the label of the day
+ * it performs as a non-empty, trimmed `code`.
  */
 const WorkoutCodingSchema = Schema.Struct({ code: Schema.NonEmptyTrimmedString })
 
-/** A workout's `code`: exactly one coding in `WildflowerCodeSystem.Workout`, its label. */
+/** A workout's `code`: exactly one coding in `WildflowerCodeSystem.Workout`, its day label. */
 const WorkoutCodeSchema = narrowFields(Schema.typeSchema(CodeableConcept.Schema), {
   coding: Schema.Array(Schema.typeSchema(Coding.Schema)).pipe(
     filterArrayWithOneMatchingElement({
@@ -80,11 +80,11 @@ const ServiceRequestReferenceSchema = Schema.typeSchema(
 )
 
 /**
- * One workout of a strength-training plan as the lifter performs it, as FHIR
- * records it: a `Procedure` narrowed to an `id`, a status of `in-progress` or
- * `completed`, the workout as its `code` — its label in
- * `WildflowerCodeSystem.Workout` — the plan's url as its one
- * `instantiatesCanonical`, a `performedPeriod` with a `start` (and an `end`
+ * One workout as the lifter performs it — a day of a strength-training
+ * training plan definition — as FHIR records it: a `Procedure` narrowed to an
+ * `id`, a status of `in-progress` or `completed`, the day's label as its
+ * `code` in `WildflowerCodeSystem.Workout`, the training plan definition's
+ * url as its one `instantiatesCanonical`, a `performedPeriod` with a `start` (and an `end`
  * exactly when it is completed), and at least one `basedOn`, each a
  * `ServiceRequest`: the `ExerciseRequest`s it carries out.
  *
@@ -104,9 +104,9 @@ interface Type
   readonly id: string
   /** Under way, or done. */
   readonly status: typeof StatusSchema.Type
-  /** The workout of the plan, by its label; see {@link workoutLabelOf}. */
+  /** The day of the training plan definition it performs, by label; see {@link dayLabelOf}. */
   readonly code: CodeableConcept.Type
-  /** The canonical url of the plan the workout belongs to; see {@link planUrlOf}. */
+  /** The canonical url of the training plan definition it follows; see {@link trainingPlanDefinitionUrlOf}. */
   readonly instantiatesCanonical: readonly [string]
   /** When the workout started, and when it ended once it is completed. */
   readonly performedPeriod: typeof WorkoutPeriodSchema.Type
@@ -119,12 +119,12 @@ interface Type
  * its `performedPeriod.end`.
  */
 const endedExactlyWhenCompleted = (
-  procedure: Pick<Type, 'status' | 'performedPeriod'>
+  workoutProcedure: Pick<Type, 'status' | 'performedPeriod'>
 ): Schema.FilterOutput =>
-  (procedure.status === 'completed') === (procedure.performedPeriod.end !== null) || {
+  (workoutProcedure.status === 'completed') === (workoutProcedure.performedPeriod.end !== null) || {
     path: ['performedPeriod', 'end'],
     message:
-      procedure.status === 'completed'
+      workoutProcedure.status === 'completed'
         ? 'expected a completed workout to have ended'
         : 'expected an in-progress workout not to have ended',
   }
@@ -132,8 +132,9 @@ const endedExactlyWhenCompleted = (
 /**
  * Decodes a `Procedure` into a {@link Type} — fails, naming the field, on no
  * `id`, a status other than `in-progress` or `completed`, no single workout
- * coding, no single plan url, no start, an end on an in-progress workout or
- * none on a completed one, or no `basedOn` `ServiceRequest`.
+ * coding, no single training plan definition url, no start, an end on an
+ * in-progress workout or none on a completed one, or no `basedOn`
+ * `ServiceRequest`.
  */
 const WorkoutProcedureSchema: Schema.Schema<Type, Procedure.Type> = narrowedFrom<Procedure.Type>()(
   narrowFields(Schema.typeSchema(withMandatoryId(Procedure.Schema)), {
@@ -146,46 +147,48 @@ const WorkoutProcedureSchema: Schema.Schema<Type, Procedure.Type> = narrowedFrom
 )
 
 /**
- * `WorkoutProcedure.make` was asked for a workout the plan does not cycle
- * through — no workout of the plan has its label.
+ * `WorkoutProcedure.make` was asked for a day the training plan definition
+ * does not cycle through — none of its days has the day's label.
  *
  * @remarks
  * A tagged error rather than a schema refinement: it relates the workout to a
- * plan the `Procedure` names only by url, which no single value's schema can
- * see.
+ * training plan definition the `Procedure` names only by url, which no single
+ * value's schema can see.
  */
-class WorkoutNotInPlan extends Data.TaggedError('WorkoutNotInPlan')<{
-  /** The label of the workout asked for. */
-  readonly workoutLabel: string
-  /** The canonical url of the plan it is not in. */
-  readonly planUrl: string
+class DayNotInTrainingPlanDefinition extends Data.TaggedError('DayNotInTrainingPlanDefinition')<{
+  /** The label of the day asked for. */
+  readonly dayLabel: string
+  /** The canonical url of the training plan definition it is not in. */
+  readonly trainingPlanDefinitionUrl: string
 }> {
-  // Data.TaggedError leaves `.message` empty by default; name the workout so
-  // a logged or thrown refusal says what was wrong.
+  // Data.TaggedError leaves `.message` empty by default; name the day so a
+  // logged or thrown refusal says what was wrong.
   override get message(): string {
-    return `the plan ${this.planUrl} has no workout labelled ${JSON.stringify(this.workoutLabel)}`
+    return `the training plan definition ${this.trainingPlanDefinitionUrl} has no day labelled ${JSON.stringify(this.dayLabel)}`
   }
 }
 
 /**
  * `WorkoutProcedure.make` was asked to carry out `ExerciseRequest`s that
- * follow another plan — their `instantiatesCanonical` is not the plan's url —
- * listing every one of them.
+ * follow another training plan definition — their `instantiatesCanonical` is
+ * not its url — listing every one of them.
  *
  * @remarks
  * A tagged error rather than a schema refinement, for the same reason as
- * {@link WorkoutNotInPlan}: it relates two resources.
+ * {@link DayNotInTrainingPlanDefinition}: it relates two resources.
  */
-class ExerciseRequestNotOfPlan extends Data.TaggedError('ExerciseRequestNotOfPlan')<{
-  /** The ids of every `ServiceRequest` asked for that follows another plan. */
+class ExerciseRequestNotOfTrainingPlanDefinition extends Data.TaggedError(
+  'ExerciseRequestNotOfTrainingPlanDefinition'
+)<{
+  /** The ids of every `ServiceRequest` asked for that follows another training plan definition. */
   readonly serviceRequestIds: Arr.NonEmptyReadonlyArray<string>
-  /** The canonical url of the plan it does not follow. */
-  readonly planUrl: string
+  /** The canonical url of the training plan definition they do not follow. */
+  readonly trainingPlanDefinitionUrl: string
 }> {
   // Data.TaggedError leaves `.message` empty by default; name the
   // `ServiceRequest`s so a logged or thrown refusal says what was wrong.
   override get message(): string {
-    return `the ServiceRequests ${this.serviceRequestIds.map((id) => JSON.stringify(id)).join(', ')} do not follow the plan ${this.planUrl}`
+    return `the ServiceRequests ${this.serviceRequestIds.map((id) => JSON.stringify(id)).join(', ')} do not follow the training plan definition ${this.trainingPlanDefinitionUrl}`
   }
 }
 
@@ -197,41 +200,63 @@ const emptyProcedure: Procedure.Type = Schema.decodeSync(Procedure.Schema)({
 })
 
 /**
- * A workout of `plan` the lifter has started: `in-progress`, filed under the
- * `strength-training` feature `category`, the workout's label as its `code`,
- * the plan's url as its `instantiatesCanonical`, `basedOn` each of
+ * A workout the lifter has started, performing `trainingPlanDefinitionDay` of
+ * `trainingPlanDefinition`: `in-progress`, filed under the `strength-training`
+ * feature `category`, the day's label as its `code`, the training plan
+ * definition's url as its `instantiatesCanonical`, `basedOn` each of
  * `exerciseRequests`, and `performedPeriod` starting at `start`.
  *
  * @returns The workout, stored under `procedureId` (the app mints it);
- *   {@link WorkoutNotInPlan} when `workout` is not one of `plan`'s;
- *   {@link ExerciseRequestNotOfPlan} listing every one of `exerciseRequests`
- *   that follows another plan; or a `ParseError` when it carries out no
- *   `ExerciseRequest`
+ *   {@link DayNotInTrainingPlanDefinition} when `trainingPlanDefinitionDay` is
+ *   not one of `trainingPlanDefinition`'s;
+ *   {@link ExerciseRequestNotOfTrainingPlanDefinition} listing every one of
+ *   `exerciseRequests` that follows another training plan definition; or a
+ *   `ParseError` when it carries out no `ExerciseRequest`
  */
 const make = ({
   procedureId,
   subject,
-  plan,
-  workout,
+  trainingPlanDefinition,
+  trainingPlanDefinitionDay,
   exerciseRequests,
   start,
 }: {
   readonly procedureId: string
   readonly subject: IdentifierAndReference.ReferenceType
-  readonly plan: Plan.Type
-  readonly workout: Workout.Type
+  readonly trainingPlanDefinition: TrainingPlanDefinition.Type
+  readonly trainingPlanDefinitionDay: TrainingPlanDefinitionDay.Type
   readonly exerciseRequests: readonly ExerciseRequest.Type[]
   readonly start: DateTime.Utc
-}): Either.Either<Type, WorkoutNotInPlan | ExerciseRequestNotOfPlan | ParseResult.ParseError> => {
-  const label = Workout.labelOf(workout)
-  if (!plan.action.some((planned) => Workout.labelOf(planned) === label))
-    return Either.left(new WorkoutNotInPlan({ workoutLabel: label, planUrl: plan.url }))
+}): Either.Either<
+  Type,
+  | DayNotInTrainingPlanDefinition
+  | ExerciseRequestNotOfTrainingPlanDefinition
+  | ParseResult.ParseError
+> => {
+  const dayLabel = TrainingPlanDefinitionDay.labelOf(trainingPlanDefinitionDay)
+  if (
+    !trainingPlanDefinition.action.some(
+      (otherTrainingPlanDefinitionDay) =>
+        TrainingPlanDefinitionDay.labelOf(otherTrainingPlanDefinitionDay) === dayLabel
+    )
+  )
+    return Either.left(
+      new DayNotInTrainingPlanDefinition({
+        dayLabel,
+        trainingPlanDefinitionUrl: trainingPlanDefinition.url,
+      })
+    )
   const strayServiceRequestIds = exerciseRequests
-    .filter((exerciseRequest) => exerciseRequest.instantiatesCanonical[0] !== plan.url)
+    .filter(
+      (exerciseRequest) => exerciseRequest.instantiatesCanonical[0] !== trainingPlanDefinition.url
+    )
     .map((exerciseRequest) => exerciseRequest.id)
   if (Arr.isNonEmptyReadonlyArray(strayServiceRequestIds))
     return Either.left(
-      new ExerciseRequestNotOfPlan({ serviceRequestIds: strayServiceRequestIds, planUrl: plan.url })
+      new ExerciseRequestNotOfTrainingPlanDefinition({
+        serviceRequestIds: strayServiceRequestIds,
+        trainingPlanDefinitionUrl: trainingPlanDefinition.url,
+      })
     )
   return Schema.decodeEither(WorkoutProcedureSchema, { errors: 'all' })({
     ...emptyProcedure,
@@ -240,12 +265,12 @@ const make = ({
     category: LiftingFeature.concept,
     code: CodeableConcept.make({
       system: WildflowerCodeSystem.Workout,
-      code: label,
-      display: label,
+      code: dayLabel,
+      display: dayLabel,
       text: null,
     }),
     subject,
-    instantiatesCanonical: [plan.url],
+    instantiatesCanonical: [trainingPlanDefinition.url],
     basedOn: exerciseRequests.map((exerciseRequest) =>
       IdentifierAndReference.referenceTo({ resourceType: 'ServiceRequest', id: exerciseRequest.id })
     ),
@@ -271,8 +296,8 @@ const complete = (
 /** The workout's coding, as {@link WorkoutCodingSchema} reads it. */
 const readWorkoutCoding = Schema.validateOption(WorkoutCodingSchema)
 
-/** The label of the plan's workout this is, from its one workout coding. */
-const workoutLabelOf = (workoutProcedure: Type): string =>
+/** The label of the training plan definition's day the workout performs, from its one workout coding. */
+const dayLabelOf = (workoutProcedure: Type): string =>
   guaranteed(
     pipe(
       CodeableConcept.onlyCodingIn(workoutProcedure.code, WildflowerCodeSystem.Workout),
@@ -288,8 +313,9 @@ const startOf = (workoutProcedure: Type): DateTime.Utc => workoutProcedure.perfo
 const endOf = (workoutProcedure: Type): Option.Option<DateTime.Utc> =>
   Option.fromNullable(workoutProcedure.performedPeriod.end)
 
-/** The canonical url of the plan the workout belongs to: its one `instantiatesCanonical`. */
-const planUrlOf = (workoutProcedure: Type): string => workoutProcedure.instantiatesCanonical[0]
+/** The canonical url of the training plan definition the workout follows: its one `instantiatesCanonical`. */
+const trainingPlanDefinitionUrlOf = (workoutProcedure: Type): string =>
+  workoutProcedure.instantiatesCanonical[0]
 
 /** The ids of the `ServiceRequest`s the workout carries out, in its `basedOn` order. */
 const serviceRequestIdsOf = (workoutProcedure: Type): Arr.NonEmptyReadonlyArray<string> =>
@@ -318,17 +344,17 @@ const latestCompleted = (workoutProcedures: readonly Type[]): Option.Option<Type
 
 export {
   complete,
-  ExerciseRequestNotOfPlan,
+  ExerciseRequestNotOfTrainingPlanDefinition,
+  dayLabelOf,
+  DayNotInTrainingPlanDefinition,
   completedByStart,
   endOf,
   isCompleted,
   latestCompleted,
   make,
-  planUrlOf,
+  trainingPlanDefinitionUrlOf,
   WorkoutProcedureSchema as Schema,
   serviceRequestIdsOf,
   startOf,
-  WorkoutNotInPlan,
-  workoutLabelOf,
 }
 export type { Type }

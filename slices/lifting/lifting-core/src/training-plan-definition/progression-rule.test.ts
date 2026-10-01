@@ -12,14 +12,17 @@ import {
   progressionRuleInputArb,
   throughWire,
 } from '../test-helpers.ts'
-import * as ProgressionRule from './progression-rule.ts'
+import * as TrainingPlanDefinition from './training-plan-definition.ts'
 
 const RUNS = numRunsFor({ base: 100 })
 
 /** A rule as the wire carries it: an `Extension`, decoded and then narrowed. */
-const WireProgressionRule = Schema.compose(Extension.Schema, ProgressionRule.Schema)
+const WireProgressionRule = Schema.compose(
+  Extension.Schema,
+  TrainingPlanDefinition.ProgressionRule.Schema
+)
 
-type RuleInput = Parameters<typeof ProgressionRule.make>[0]
+type RuleInput = Parameters<typeof TrainingPlanDefinition.ProgressionRule.make>[0]
 
 /** One in-type but out-of-range value per parameter, and the index of the part it lands in. */
 const breakPart: {
@@ -33,18 +36,22 @@ const breakPart: {
 }
 const PARAMETERS = Record.keys(breakPart)
 
-describe('ProgressionRule', () => {
+describe('TrainingPlanDefinition.ProgressionRule', () => {
   it('should read back every parameter of every rule it makes, through the wire', () => {
     fc.assert(
       fc.property(progressionRuleInputArb, (input) => {
-        const rule = throughWire(WireProgressionRule, made(ProgressionRule.make(input)))
+        const progressionRule = throughWire(
+          WireProgressionRule,
+          made(TrainingPlanDefinition.ProgressionRule.make(input))
+        )
         expect({
-          unit: ProgressionRule.unitOf(rule),
-          increment: ProgressionRule.incrementOf(rule),
-          failuresBeforeDeload: ProgressionRule.failuresBeforeDeloadOf(rule),
-          deloadFraction: ProgressionRule.deloadFractionOf(rule),
-          minimumLoad: ProgressionRule.minimumLoadOf(rule),
-          loadStep: ProgressionRule.loadStepOf(rule),
+          unit: TrainingPlanDefinition.ProgressionRule.unitOf(progressionRule),
+          increment: TrainingPlanDefinition.ProgressionRule.incrementOf(progressionRule),
+          failuresBeforeDeload:
+            TrainingPlanDefinition.ProgressionRule.failuresBeforeDeloadOf(progressionRule),
+          deloadFraction: TrainingPlanDefinition.ProgressionRule.deloadFractionOf(progressionRule),
+          minimumLoad: TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule),
+          loadStep: TrainingPlanDefinition.ProgressionRule.loadStepOf(progressionRule),
         }).toEqual(input)
       }),
       { numRuns: RUNS }
@@ -54,7 +61,7 @@ describe('ProgressionRule', () => {
   it('should write each parameter as a sub-extension of a LiftingProgression extension', () => {
     const wire = Schema.encodeSync(WireProgressionRule)(
       made(
-        ProgressionRule.make({
+        TrainingPlanDefinition.ProgressionRule.make({
           unit: '[lb_av]',
           increment: 5,
           failuresBeforeDeload: 3,
@@ -90,7 +97,7 @@ describe('ProgressionRule', () => {
           }
 
           // Act / Assert
-          expect(issuePathsOf(ProgressionRule.make(edited))).toEqual(
+          expect(issuePathsOf(TrainingPlanDefinition.ProgressionRule.make(edited))).toEqual(
             broken
               .map((parameter) => breakPart[parameter][0])
               .toSorted((a, b) => a - b)
@@ -104,23 +111,31 @@ describe('ProgressionRule', () => {
 
   it('should refuse a missing or repeated part, and another extension url', () => {
     fc.assert(
-      fc.property(progressionRuleArb, fc.nat({ max: 5 }), (rule, index) => {
-        const decode = Schema.decodeEither(ProgressionRule.Schema)
+      fc.property(progressionRuleArb, fc.nat({ max: 5 }), (progressionRule, index) => {
+        const decode = Schema.decodeEither(TrainingPlanDefinition.ProgressionRule.Schema)
         expect(
           issuePathsOf(
-            decode({ ...rule, extension: rule.extension.filter((_, at) => at !== index) })
+            decode({
+              ...progressionRule,
+              extension: progressionRule.extension.filter((_, at) => at !== index),
+            })
           )
         ).toEqual(['extension'])
         expect(
           issuePathsOf(
             decode({
-              ...rule,
-              extension: [...rule.extension, ...rule.extension.slice(index, index + 1)],
+              ...progressionRule,
+              extension: [
+                ...progressionRule.extension,
+                ...progressionRule.extension.slice(index, index + 1),
+              ],
             })
           )
         ).toEqual(['extension'])
         expect(
-          issuePathsOf(decode({ ...rule, url: WildflowerExtension.ExerciseParameterValue }))
+          issuePathsOf(
+            decode({ ...progressionRule, url: WildflowerExtension.ExerciseParameterValue })
+          )
         ).toEqual(['url'])
       }),
       { numRuns: RUNS }
@@ -131,11 +146,13 @@ describe('ProgressionRule', () => {
 describe('movableLoadSchema / startingLoadSchema', () => {
   it("should accept a load in the rule's unit, and refuse one in the other", () => {
     fc.assert(
-      fc.property(progressionRuleArb, (rule) => {
-        const unit = ProgressionRule.unitOf(rule)
+      fc.property(progressionRuleArb, (progressionRule) => {
+        const unit = TrainingPlanDefinition.ProgressionRule.unitOf(progressionRule)
         const other = unit === '[lb_av]' ? 'kg' : '[lb_av]'
-        const at = ProgressionRule.minimumLoadOf(rule) + 1
-        const validate = Schema.validateEither(ProgressionRule.movableLoadSchema(rule))
+        const at = TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule) + 1
+        const validate = Schema.validateEither(
+          TrainingPlanDefinition.ProgressionRule.movableLoadSchema(progressionRule)
+        )
         expect(Either.isRight(validate(made(Load.make({ value: at, unit }))))).toBe(true)
         expect(Either.isLeft(validate(made(Load.make({ value: at, unit: other }))))).toBe(true)
       }),
@@ -145,21 +162,24 @@ describe('movableLoadSchema / startingLoadSchema', () => {
 
   it("should refuse a starting load under the floor in the rule's unit, and only the unit in the other", () => {
     fc.assert(
-      fc.property(progressionRuleArb, fc.boolean(), (rule, wrongUnit) => {
+      fc.property(progressionRuleArb, fc.boolean(), (progressionRule, wrongUnit) => {
         // Arrange
-        fc.pre(ProgressionRule.minimumLoadOf(rule) > 0)
-        const unit = ProgressionRule.unitOf(rule)
+        fc.pre(TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule) > 0)
+        const unit = TrainingPlanDefinition.ProgressionRule.unitOf(progressionRule)
         const otherUnit = unit === '[lb_av]' ? 'kg' : '[lb_av]'
         const load = made(
           Load.make({
-            value: ProgressionRule.minimumLoadOf(rule) / 2,
+            value: TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule) / 2,
             unit: wrongUnit ? otherUnit : unit,
           })
         )
 
         // Act
         const messages = Either.match(
-          Schema.validateEither(ProgressionRule.startingLoadSchema(rule), { errors: 'all' })(load),
+          Schema.validateEither(
+            TrainingPlanDefinition.ProgressionRule.startingLoadSchema(progressionRule),
+            { errors: 'all' }
+          )(load),
           { onLeft: (error) => error.message, onRight: () => '' }
         )
 

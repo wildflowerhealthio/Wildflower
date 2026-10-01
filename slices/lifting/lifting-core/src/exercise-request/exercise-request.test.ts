@@ -9,8 +9,6 @@ import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
 import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import * as Load from '../load/load.ts'
-import * as Plan from '../plan/plan.ts'
-import * as PlannedExercise from '../plan/planned-exercise.ts'
 import * as StrongLifts5x5 from '../plans/strong-lifts.ts'
 import {
   AUTHORED_ON,
@@ -19,8 +17,8 @@ import {
   failedRepsArb,
   issuePathsOf,
   made,
-  planArb,
-  plannedExerciseRequestArb,
+  trainingPlanDefinitionArb,
+  trainingPlanDefinitionExerciseAndRequestArb,
   performedWorkoutAt,
   exerciseSetObservationAt,
   startedWorkoutAt,
@@ -28,6 +26,7 @@ import {
   successfulRepsArb,
   throughWire,
 } from '../test-helpers.ts'
+import * as TrainingPlanDefinition from '../training-plan-definition/training-plan-definition.ts'
 import * as ExerciseRequest from './exercise-request.ts'
 
 const RUNS = numRunsFor({ base: 100 })
@@ -41,7 +40,7 @@ const WireExerciseRequest = Schema.compose(ServiceRequest.Schema, ExerciseReques
 
 const decode = Schema.decodeEither(ExerciseRequest.Schema, { errors: 'all' })
 
-const plan = StrongLifts5x5.plan('plan-1')
+const trainingPlanDefinition = StrongLifts5x5.trainingPlanDefinition('plan-1')
 
 /** The StrongLifts squat at `value` lb, stored as `sr-2`. */
 const squatAt = (value: number): ExerciseRequest.Type =>
@@ -49,7 +48,7 @@ const squatAt = (value: number): ExerciseRequest.Type =>
     ExerciseRequest.make({
       serviceRequestId: 'sr-2',
       subject: SUBJECT,
-      plan,
+      trainingPlanDefinition,
       exerciseId: 'squat',
       load: made(Load.make({ value, unit: '[lb_av]' })),
       authoredOn: AUTHORED_ON,
@@ -79,7 +78,7 @@ describe('ExerciseRequest.make', () => {
       category: [{ coding: [{ code: 'strength-training' }] }],
       code: { text: 'Squat', coding: [{ code: 'squat', display: 'Squat' }] },
       subject: { reference: 'Patient/p-1' },
-      instantiatesCanonical: [plan.url],
+      instantiatesCanonical: [trainingPlanDefinition.url],
       authoredOn: '2026-01-05T18:00:00.000Z',
     })
     expect(wire.replaces ?? []).toEqual([])
@@ -100,40 +99,58 @@ describe('ExerciseRequest.make', () => {
     ])
   })
 
-  it("should take the plan's sets and reps for the exercise, at the given load, and read them back through the wire", () => {
+  it("should take the training plan definition's sets and reps for the exercise, at the given load, and read them back through the wire", () => {
     fc.assert(
-      fc.property(plannedExerciseRequestArb, ({ planned, exerciseRequest }) => {
-        const read = throughWire(WireExerciseRequest, exerciseRequest)
-        expect(summaryOf(read)).toEqual(summaryOf(exerciseRequest))
-        expect([ExerciseRequest.setsOf(read), ExerciseRequest.repsOf(read)]).toEqual([
-          PlannedExercise.setsOf(planned),
-          PlannedExercise.repsOf(planned),
-        ])
-        expect(ExerciseRequest.planUrlOf(read)).toBe(ExerciseRequest.planUrlOf(exerciseRequest))
-        expect(read.id).toBe(exerciseRequest.id)
-      }),
+      fc.property(
+        trainingPlanDefinitionExerciseAndRequestArb,
+        ({ trainingPlanDefinitionExercise, exerciseRequest }) => {
+          const read = throughWire(WireExerciseRequest, exerciseRequest)
+          expect(summaryOf(read)).toEqual(summaryOf(exerciseRequest))
+          expect([ExerciseRequest.setsOf(read), ExerciseRequest.repsOf(read)]).toEqual([
+            TrainingPlanDefinition.Exercise.setsOf(trainingPlanDefinitionExercise),
+            TrainingPlanDefinition.Exercise.repsOf(trainingPlanDefinitionExercise),
+          ])
+          expect(ExerciseRequest.trainingPlanDefinitionUrlOf(read)).toBe(
+            ExerciseRequest.trainingPlanDefinitionUrlOf(exerciseRequest)
+          )
+          expect(read.id).toBe(exerciseRequest.id)
+        }
+      ),
       { numRuns: WIRE_RUNS }
     )
   })
 
-  it('should refuse an exercise the plan does not run, naming it', () => {
+  it('should refuse an exercise the training plan definition does not run, naming it', () => {
     fc.assert(
-      fc.property(planArb, exerciseIdArb, (anyPlan, exerciseId) => {
-        fc.pre(Option.isNone(Plan.plannedExerciseOf(anyPlan, exerciseId)))
-        const refused = Either.flip(
-          ExerciseRequest.make({
-            serviceRequestId: 'sr-1',
-            subject: SUBJECT,
-            plan: anyPlan,
-            exerciseId,
-            load: made(Load.make({ value: 0, unit: '[lb_av]' })),
-            authoredOn: AUTHORED_ON,
-          })
-        )
-        expect(Either.map(refused, (error) => error.message)).toEqual(
-          Either.right(`the plan does not run the exercise ${JSON.stringify(exerciseId)}`)
-        )
-      }),
+      fc.property(
+        trainingPlanDefinitionArb,
+        exerciseIdArb,
+        (anyTrainingPlanDefinition, exerciseId) => {
+          fc.pre(
+            Option.isNone(
+              TrainingPlanDefinition.exerciseOf({
+                trainingPlanDefinition: anyTrainingPlanDefinition,
+                exerciseId,
+              })
+            )
+          )
+          const refused = Either.flip(
+            ExerciseRequest.make({
+              serviceRequestId: 'sr-1',
+              subject: SUBJECT,
+              trainingPlanDefinition: anyTrainingPlanDefinition,
+              exerciseId,
+              load: made(Load.make({ value: 0, unit: '[lb_av]' })),
+              authoredOn: AUTHORED_ON,
+            })
+          )
+          expect(Either.map(refused, (error) => error.message)).toEqual(
+            Either.right(
+              `the training plan definition ${anyTrainingPlanDefinition.url} does not run the exercise ${JSON.stringify(exerciseId)}`
+            )
+          )
+        }
+      ),
       { numRuns: RUNS }
     )
   })
@@ -143,7 +160,7 @@ describe('ExerciseRequest.make', () => {
       ExerciseRequest.make({
         serviceRequestId: 'sr-1',
         subject: SUBJECT,
-        plan,
+        trainingPlanDefinition,
         exerciseId: 'squat',
         load: made(Load.make({ value, unit })),
         authoredOn: AUTHORED_ON,
@@ -159,7 +176,7 @@ describe('ExerciseRequest.make', () => {
 })
 
 describe('ExerciseRequest.Schema', () => {
-  it('should refuse a `ServiceRequest` with no id, or without a single plan url, naming each', () => {
+  it('should refuse a `ServiceRequest` with no id, or without a single training plan definition url, naming each', () => {
     fc.assert(
       fc.property(
         exerciseRequestArb,
@@ -335,7 +352,7 @@ describe('ExerciseRequest.close / forExercise', () => {
       ExerciseRequest.make({
         serviceRequestId: 'sr-3',
         subject: SUBJECT,
-        plan,
+        trainingPlanDefinition,
         exerciseId: 'deadlift',
         load: StrongLifts5x5.STARTING_LOADS.deadlift,
         authoredOn: AUTHORED_ON,

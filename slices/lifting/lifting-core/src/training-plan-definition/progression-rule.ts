@@ -76,7 +76,8 @@ const filterArrayWithOneProgressionRulePart = (part: PartName): ArrayFilter<Exte
   })
 
 /**
- * How one exercise's load moves between workouts, as FHIR carries it: a
+ * How an exercise (definition)'s load moves between workouts, as FHIR
+ * carries it on that exercise (definition)'s action: a
  * {@link WildflowerExtension.LiftingProgression} extension narrowed to exactly
  * one sub-extension per {@link Part}, each in range. Up by the increment after
  * a success; after enough consecutive failed workouts at one load, down by
@@ -84,17 +85,22 @@ const filterArrayWithOneProgressionRulePart = (part: PartName): ArrayFilter<Exte
  * below the minimum load. Every amount is in the rule's unit, and only a load
  * in that unit progresses by this rule.
  */
-interface Type extends Omit<Extension.Type, 'url'>, Brand.Brand<'ProgressionRule'> {
+interface TrainingPlanDefinitionProgressionRule
+  extends Omit<Extension.Type, 'url'>, Brand.Brand<'TrainingPlanDefinitionProgressionRule'> {
   /** Always the `LiftingProgression` url. */
   readonly url: typeof WildflowerExtension.LiftingProgression
 }
 
 /**
- * Decodes an `Extension` into a {@link Type} — fails, naming the part, when
- * it is not at the `LiftingProgression` url, or a part is missing, repeated,
- * or out of range.
+ * Decodes an `Extension` into a
+ * {@link TrainingPlanDefinitionProgressionRule} — fails, naming the part,
+ * when it is not at the `LiftingProgression` url, or a part is missing,
+ * repeated, or out of range.
  */
-const ProgressionRuleSchema: Schema.Schema<Type, Extension.Type> = narrowedFrom<Extension.Type>()(
+const TrainingPlanDefinitionProgressionRuleSchema: Schema.Schema<
+  TrainingPlanDefinitionProgressionRule,
+  Extension.Type
+> = narrowedFrom<Extension.Type>()(
   narrowFields(Schema.typeSchema(Extension.Schema), {
     url: Schema.Literal(WildflowerExtension.LiftingProgression),
     extension: Schema.Array(Schema.typeSchema(Extension.Schema)).pipe(
@@ -105,7 +111,7 @@ const ProgressionRuleSchema: Schema.Schema<Type, Extension.Type> = narrowedFrom<
       filterArrayWithOneProgressionRulePart(Part.MinimumLoad),
       filterArrayWithOneProgressionRulePart(Part.LoadStep)
     ),
-  }).pipe(Schema.brand('ProgressionRule'))
+  }).pipe(Schema.brand('TrainingPlanDefinitionProgressionRule'))
 )
 
 /**
@@ -116,84 +122,102 @@ const ProgressionRuleSchema: Schema.Schema<Type, Extension.Type> = narrowedFrom<
  *   `failuresBeforeDeload` a positive integer, `deloadFraction` strictly
  *   between 0 and 1, `minimumLoad` finite and non-negative
  */
-const make = (rule: {
+const make = (progressionRuleParameters: {
   readonly unit: Load.Unit
   readonly increment: number
   readonly failuresBeforeDeload: number
   readonly deloadFraction: number
   readonly minimumLoad: number
   readonly loadStep: number
-}): Either.Either<Type, ParseResult.ParseError> =>
-  Schema.decodeEither(ProgressionRuleSchema, { errors: 'all' })({
+}): Either.Either<TrainingPlanDefinitionProgressionRule, ParseResult.ParseError> =>
+  Schema.decodeEither(TrainingPlanDefinitionProgressionRuleSchema, { errors: 'all' })({
     ...Extension.emptyAt(WildflowerExtension.LiftingProgression),
     extension: [
-      { ...Extension.emptyAt(Part.Unit), valueString: rule.unit },
-      { ...Extension.emptyAt(Part.Increment), valueDecimal: rule.increment },
-      { ...Extension.emptyAt(Part.FailuresBeforeDeload), valueInteger: rule.failuresBeforeDeload },
-      { ...Extension.emptyAt(Part.DeloadFraction), valueDecimal: rule.deloadFraction },
-      { ...Extension.emptyAt(Part.MinimumLoad), valueDecimal: rule.minimumLoad },
-      { ...Extension.emptyAt(Part.LoadStep), valueDecimal: rule.loadStep },
+      { ...Extension.emptyAt(Part.Unit), valueString: progressionRuleParameters.unit },
+      { ...Extension.emptyAt(Part.Increment), valueDecimal: progressionRuleParameters.increment },
+      {
+        ...Extension.emptyAt(Part.FailuresBeforeDeload),
+        valueInteger: progressionRuleParameters.failuresBeforeDeload,
+      },
+      {
+        ...Extension.emptyAt(Part.DeloadFraction),
+        valueDecimal: progressionRuleParameters.deloadFraction,
+      },
+      {
+        ...Extension.emptyAt(Part.MinimumLoad),
+        valueDecimal: progressionRuleParameters.minimumLoad,
+      },
+      { ...Extension.emptyAt(Part.LoadStep), valueDecimal: progressionRuleParameters.loadStep },
     ],
   })
 
-/** The one sub-extension at `part` of `rule`, as `schema` reads it. */
+/** The one sub-extension at `part` of `progressionRule`, as `schema` reads it. */
 const partOf = <A>(read: {
-  readonly rule: Type
+  readonly progressionRule: TrainingPlanDefinitionProgressionRule
   readonly part: PartName
   readonly schema: Schema.Schema<A>
 }): A =>
   guaranteed(
     pipe(
-      Extension.onlyAt(read.rule.extension, read.part),
+      Extension.onlyAt(read.progressionRule.extension, read.part),
       Option.flatMap(Schema.validateOption(read.schema))
     )
   )
 
 /** The unit the rule's amounts are in, and the only unit a load it moves may be in. */
-const unitOf = (rule: Type): Load.Unit =>
-  partOf({ rule, part: Part.Unit, schema: PART_SCHEMAS.unit }).valueString
+const unitOf = (progressionRule: TrainingPlanDefinitionProgressionRule): Load.Unit =>
+  partOf({ progressionRule, part: Part.Unit, schema: PART_SCHEMAS.unit }).valueString
 
 /** Added to the load after a successful workout. */
-const incrementOf = (rule: Type): number =>
-  partOf({ rule, part: Part.Increment, schema: PART_SCHEMAS.increment }).valueDecimal
+const incrementOf = (progressionRule: TrainingPlanDefinitionProgressionRule): number =>
+  partOf({ progressionRule, part: Part.Increment, schema: PART_SCHEMAS.increment }).valueDecimal
 
 /** Consecutive failed workouts at one load that trigger a deload. */
-const failuresBeforeDeloadOf = (rule: Type): number =>
-  partOf({ rule, part: Part.FailuresBeforeDeload, schema: PART_SCHEMAS.failuresBeforeDeload })
-    .valueInteger
+const failuresBeforeDeloadOf = (progressionRule: TrainingPlanDefinitionProgressionRule): number =>
+  partOf({
+    progressionRule,
+    part: Part.FailuresBeforeDeload,
+    schema: PART_SCHEMAS.failuresBeforeDeload,
+  }).valueInteger
 
 /** The fraction of the load a deload takes off. */
-const deloadFractionOf = (rule: Type): number =>
-  partOf({ rule, part: Part.DeloadFraction, schema: PART_SCHEMAS.deloadFraction }).valueDecimal
+const deloadFractionOf = (progressionRule: TrainingPlanDefinitionProgressionRule): number =>
+  partOf({ progressionRule, part: Part.DeloadFraction, schema: PART_SCHEMAS.deloadFraction })
+    .valueDecimal
 
 /** The lightest load a deload may reach. */
-const minimumLoadOf = (rule: Type): number =>
-  partOf({ rule, part: Part.MinimumLoad, schema: PART_SCHEMAS.minimumLoad }).valueDecimal
+const minimumLoadOf = (progressionRule: TrainingPlanDefinitionProgressionRule): number =>
+  partOf({ progressionRule, part: Part.MinimumLoad, schema: PART_SCHEMAS.minimumLoad }).valueDecimal
 
 /** The smallest change the equipment can make to the load. */
-const loadStepOf = (rule: Type): number =>
-  partOf({ rule, part: Part.LoadStep, schema: PART_SCHEMAS.loadStep }).valueDecimal
+const loadStepOf = (progressionRule: TrainingPlanDefinitionProgressionRule): number =>
+  partOf({ progressionRule, part: Part.LoadStep, schema: PART_SCHEMAS.loadStep }).valueDecimal
 
 /**
- * The loads `rule` moves: a {@link Load.Type} in the rule's unit — a rule
+ * The loads `progressionRule` moves: a {@link Load.Type} in the rule's unit — a rule
  * never converts between pounds and kilograms.
  */
-const movableLoadSchema = (rule: Type): Schema.Schema<Load.Type> =>
+const movableLoadSchema = (
+  progressionRule: TrainingPlanDefinitionProgressionRule
+): Schema.Schema<Load.Type> =>
   Schema.typeSchema(Load.Schema).pipe(
-    Schema.filter((load) => Load.unitOf(load) === unitOf(rule), {
+    Schema.filter((load) => Load.unitOf(load) === unitOf(progressionRule), {
       message: (issue) =>
-        `expected a load in ${unitOf(rule)}, the unit the rule moves, actual ${JSON.stringify(issue.actual)}`,
+        `expected a load in ${unitOf(progressionRule)}, the unit the rule moves, actual ${JSON.stringify(issue.actual)}`,
     })
   )
 
 /**
- * The loads a lifter may start `rule`'s exercise at: {@link movableLoadSchema},
+ * The loads a lifter may start `progressionRule`'s exercise at: {@link movableLoadSchema},
  * and at or above the rule's minimum load.
  */
-const startingLoadSchema = (rule: Type): Schema.Schema<Load.Type> =>
-  movableLoadSchema(rule).pipe(
-    Schema.filter((load) => Load.valueOf(load) >= minimumLoadOf(rule), {
-      message: () => `expected a load of at least ${minimumLoadOf(rule)} ${unitOf(rule)}`,
+const startingLoadSchema = (
+  progressionRule: TrainingPlanDefinitionProgressionRule
+): Schema.Schema<Load.Type> =>
+  movableLoadSchema(progressionRule).pipe(
+    Schema.filter((load) => Load.valueOf(load) >= minimumLoadOf(progressionRule), {
+      message: () =>
+        `expected a load of at least ${minimumLoadOf(progressionRule)} ${unitOf(progressionRule)}`,
     })
   )
 
@@ -206,8 +230,8 @@ export {
   minimumLoadOf,
   movableLoadSchema,
   Part,
-  ProgressionRuleSchema as Schema,
+  TrainingPlanDefinitionProgressionRuleSchema as Schema,
   startingLoadSchema,
   unitOf,
 }
-export type { PartName, Type }
+export type { PartName, TrainingPlanDefinitionProgressionRule as Type }

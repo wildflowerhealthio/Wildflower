@@ -70,10 +70,10 @@ const WildflowerCodeSystem = {
    */
   Feature: `${WILDFLOWER_CODE_SYSTEM_BASE}/feature`,
   /**
-   * Which workout of a strength-training plan a `Procedure` is, as its
-   * `code`: the workout's label within the plan (`A`, `B`) as the code and the
-   * display. A label names a workout only within one plan, so the plan is the
-   * `Procedure.instantiatesCanonical` beside it.
+   * Which day of a strength-training training plan definition a workout
+   * `Procedure` performs, as its `code`: the day's label (`A`, `B`) as the
+   * code and the display. A label names a day only within one training plan
+   * definition, so its url is the `Procedure.instantiatesCanonical` beside it.
    */
   Workout: `${WILDFLOWER_CODE_SYSTEM_BASE}/workout`,
 } as const
