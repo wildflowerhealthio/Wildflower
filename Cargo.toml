@@ -22,6 +22,7 @@ members = [
   "slices/shared-structures/shared-structures-server-rust",
   "slices/shared-structures/shared-structures-tauri-rust",
   "slices/tunnel/tunnel-rust",
+  "slices/wildflower-server/wildflower-server-rust",
 ]
 
 [workspace.package]

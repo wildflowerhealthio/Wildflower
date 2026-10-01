@@ -12,7 +12,7 @@
 //! The popup starts with an empty cookie jar and nothing is seeded into it: a
 //! launched app authenticates to the API with its own SMART bearer, or — for a
 //! loopback app calling the loopback API — by the host's loopback-provenance
-//! owner trust (`inject_loopback_owner_token`).
+//! owner trust (`wildflower-server-rust`'s `inject_loopback_owner_token`).
 
 use apps_rust::OnDeviceWebviewHandle;
 use tauri::AppHandle;

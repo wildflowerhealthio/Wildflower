@@ -200,7 +200,7 @@ fn raise_main_window(_handle: &AppHandle) {}
 /// - Token delivery: the bearer never reaches the JS side at all — the
 ///   desktop webview authenticates by *connection provenance* (the host
 ///   presents its own owner token for direct-loopback requests; see
-///   `inject_loopback_owner_token` in `lib.rs`, which reads the same
+///   `inject_loopback_owner_token` in `wildflower-server-rust`, which reads the same
 ///   token watch channel this bridge feeds). The only
 ///   thing that rides the multiplexed bridge channel is a contentless
 ///   `bridge:AuthTokenIssued` notify, emitted whenever the webview

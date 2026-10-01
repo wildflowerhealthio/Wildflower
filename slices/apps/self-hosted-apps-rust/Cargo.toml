@@ -12,7 +12,8 @@ publish.workspace = true
 # — or dropping a new one in — needs no recompile. The patient-browser SMART
 # config is the one exception: it's embedded (committed) and served verbatim.
 # No tauri/GTK dependency, so it builds in the main (non-Tauri) Rust CI;
-# wildflower-tauri spawns one `axum::serve(listener, …)` per installed app and
+# the server (`wildflower-server-rust`, through the apps slice's
+# `SelfHostedAppsService`) spawns one `axum::serve(listener, …)` per installed app and
 # points each at its directory under app-data. When the directory is
 # absent/empty the routes 404 — the crate still compiles.
 [dependencies]

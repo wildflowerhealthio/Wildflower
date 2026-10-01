@@ -203,8 +203,8 @@ ones — including the rename of both first-party apps, which moves `id` and
 by its own seed test, rather than by the database.
 
 A **self-hosted** app's `client_id` additionally has to _equal_ its app id: the
-host resolves that kind of app's app-relative redirect URI by looking the app up
-by `client_id` (`self_hosted_redirect_resolver.rs`). A cloud app has no such
+server resolves that kind of app's app-relative redirect URI by looking the app up
+by `client_id` (`wildflower-server-rust`'s `self_hosted_redirect_resolver.rs`). A cloud app has no such
 resolution, so its client must register an **absolute** redirect URI — which is
 why the first-party clients gained
 `https://wildflowerhealth.io/<app>/` alongside the app-relative `"/"` they keep

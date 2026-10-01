@@ -1,4 +1,4 @@
-//! The Tauri host's [`gatekeeper_rust::SelfHostedRedirectResolver`].
+//! The server's [`gatekeeper_rust::SelfHostedRedirectResolver`].
 //!
 //! A self-hosted SMART app registers an **app-relative** redirect URI (a
 //! leading-`/` path) instead of an absolute one, because its origin varies by
@@ -10,12 +10,11 @@
 //! `client_id` (a self-hosted app's OAuth `client_id` equals its app id).
 //!
 //! It reads the apps store directly. The gatekeeper slice owns the trait; the
-//! apps slice owns the topology; the host is the only place that depends on both,
-//! so the adapter lives here rather than in either slice.
+//! apps slice owns the topology; the server that composes them is the only place
+//! that depends on both, so the adapter lives here rather than in either slice.
 
 use apps_rust::{AppConfiguration, AppsStore, SqliteAppsStore};
 use gatekeeper_rust::{SelfHostedRedirectResolver, SelfHostedRedirectTopology};
-use tauri_plugin_log::log;
 
 /// Resolves a `client_id` to a self-hosted app's redirect topology by reading
 /// the apps store. Holds its own [`SqliteAppsStore`] over the shared pool (cheap
@@ -47,7 +46,7 @@ impl SelfHostedRedirectResolver for AppsStoreRedirectResolver {
             }
             Ok(_) => None,
             Err(error) => {
-                log::warn!(
+                tracing::warn!(
                     "[authorize] self-hosted redirect resolve failed for {client_id}: {error} \
                      — treating as no app-relative redirect"
                 );

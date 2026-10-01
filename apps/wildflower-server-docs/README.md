@@ -194,10 +194,11 @@ lets the published HTTPS console drive a desktop host at all.
 Requests are sent **straight from the reader's browser** to the chosen server —
 there is no proxy — so they are cross-origin and subject to the browser's rules:
 
-- The Wildflower API applies `CorsLayer::very_permissive()` across its whole
-  surface (`apps/wildflower-tauri/src-tauri/src/lib.rs`), which mirrors the
-  requesting origin back rather than sending `*`, so the `Authorization` header
-  is allowed and a cross-origin call from this page is accepted by the server.
+- The Wildflower API applies one CORS layer across its whole surface
+  (`api_cors_layer` in `slices/wildflower-server/wildflower-server-rust/src/lib.rs`),
+  which mirrors the requesting origin and headers back rather than sending `*`,
+  so the `Authorization` header is allowed and a cross-origin call from this
+  page is accepted by the server.
 - Targeting a **loopback** server from the HTTPS-published console is
   mixed content. Chromium and Safari treat `http://127.0.0.1` as a
   potentially-trustworthy origin and allow it; other browsers may block it. When
