@@ -12,8 +12,7 @@ template rather than a special case.
 
 ## Packages
 
-- `lifting-core` — the pure lifting layer, and currently the whole slice. Its
-  root export is one namespace per concept, each mirroring a `fhir-r4`
+- `lifting-core` — the pure lifting layer. Its root export is one namespace per concept, each mirroring a `fhir-r4`
   namespace: a `Schema` that decodes the decoded `fhir-r4` type into a `Type`
   narrowing it, a `make` that builds one from the domain inputs (returning the
   `Type` or a `ParseError`), and getters for the domain values it holds.
@@ -103,9 +102,37 @@ template rather than a special case.
     `LiftingFeature` (the `strength-training` feature `CODE`, its `concept`,
     and the `TOKEN` that searches for lifting resources).
 
-  No DOM, no platform imports, no clock of its own.
+  No DOM, no platform imports, no clock of its own. Its arbitraries and
+  test helpers, each built through the `make`s, are the
+  `lifting-core/test-helpers` subpath, for its consumers' tests too.
 
-The React layer and the app route are not built yet.
+- `lifting-react` — the screens, over `lifting-core`'s types as plain props
+  and callbacks:
+  - `PlannedWorkoutView` — the `PlannedWorkout` due: its day, and per
+    exercise the load, sets × reps and "failure N of M", with a button per
+    set (tap to enter the reps asked for, again to take one off). One "Submit
+    workout" hands back a `WorkoutSubmission` — the reps per set by exercise
+    id and the workout's span, read from the `now` it is passed — which is
+    what `PlannedWorkout.submit` takes beside the lifter and `mintId`.
+  - `SubmittedWorkoutView` — what `PlannedWorkout.submit` returned: per
+    exercise its decision, old → new load and the reps entered.
+  - `StartTrainingPlanDefinitionView` — choose among training plan
+    definitions and enter a starting load per exercise, each checked by its
+    rule's `startingLoadSchema`; hands back the training plan definition and
+    its `ExerciseRequest.StartingLoads` for `makeForEachExercise` or
+    `changeTrainingPlanDefinition`. It starts the editor's training plan
+    definitions too, with the lifter's current loads suggested.
+  - `TrainingPlanDefinitionEditor` — a draft of title, days and exercise
+    rows (name, sets, reps, unit and rule), made level by level through each
+    `make`, every refusal shown under the field its issue path names, with a
+    `role="alert"` count; hands back the made `TrainingPlanDefinition.Type`.
+  - `WorkoutHistoryView` — the completed workouts, newest first, one group
+    per workout: its day and date, and per exercise the load, sets × reps,
+    reps per set and met / failed (`ExerciseRequest.isMetBy`).
+
+  Writing screens take `pending` (controls disabled) and `error` (an
+  `ErrorBanner`). Nothing here fetches, mints an id or reads a clock it was
+  not passed.
 
 ## Rules
 
@@ -269,7 +296,9 @@ The React layer and the app route are not built yet.
   a random resource almost never meets). fhir-r4's `Extension` schema is
   costly to check, and decoding a training plan definition checks every
   exercise (definition)'s rule extension on every day, so keep generated
-  ones small and wire round trips few.
+  ones small and wire round trips few. `lifting-react`'s tests build a
+  lifter's record the same way, workout by workout through
+  `PlannedWorkout.submit`.
 
 ## References
 

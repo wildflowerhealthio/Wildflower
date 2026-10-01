@@ -4249,6 +4249,63 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
 
+  slices/lifting/lifting-react:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      lifting-core:
+        specifier: workspace:*
+        version: link:../lifting-core
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
   slices/medication/medication-calendar-core:
     devDependencies:
       '@types/node':

@@ -1,0 +1,19 @@
+/*
+ * WorkoutHistoryView skin — one hairline list per workout, stacked newest
+ * first. Tokens only, so dark mode needs no rule here.
+ */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.heading {
+  margin: 0;
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-neutral-5);
+}

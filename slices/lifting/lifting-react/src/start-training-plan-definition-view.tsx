@@ -1,0 +1,192 @@
+import { Array as Arr, Either, Option, pipe, Record as EffectRecord } from 'effect'
+import {
+  ExerciseConcept,
+  type ExerciseRequest,
+  type Load,
+  TrainingPlanDefinition,
+} from 'lifting-core'
+import type { JSX, SubmitEvent } from 'react'
+import { useId, useState } from 'react'
+import { cn } from 'react-kitchen-sink'
+import { ErrorBanner, RadioGroup, TextField } from 'react-tundraish'
+
+import { formatUnit } from './load-format.ts'
+import { startingLoadFromText, suggestedStartingLoadText } from './starting-load.ts'
+import styles from './start-training-plan-definition-view.module.css'
+
+/**
+ * A training plan definition to start and the load to start each exercise
+ * at: what `ExerciseRequest.makeForEachExercise` (or
+ * `changeTrainingPlanDefinition`) needs beside the lifter, the ids the app
+ * mints and when.
+ */
+interface TrainingPlanDefinitionStart {
+  /** The training plan definition chosen. */
+  readonly trainingPlanDefinition: TrainingPlanDefinition.Type
+  /** A starting load for every exercise it runs, by exercise id, each one its rule accepts. */
+  readonly startingLoads: ExerciseRequest.StartingLoads
+}
+
+interface StartTrainingPlanDefinitionViewProps {
+  /**
+   * The training plan definitions to choose from, the first chosen to begin
+   * with — e.g. `StrongLifts5x5.trainingPlanDefinition(...)` under an id the
+   * app minted, or the one the editor just saved. A choice is offered only
+   * when there are several.
+   */
+  readonly trainingPlanDefinitions: Arr.NonEmptyReadonlyArray<TrainingPlanDefinition.Type>
+  /**
+   * The loads each field begins at, by exercise id — `StrongLifts5x5.STARTING_LOADS`,
+   * or the lifter's current loads when restarting; a load in another unit
+   * than the exercise's rule is not offered.
+   */
+  readonly suggestedStartingLoads: ExerciseRequest.StartingLoads
+  /** Called with the chosen training plan definition and a starting load for each of its exercises. */
+  readonly onStart: (trainingPlanDefinitionStart: TrainingPlanDefinitionStart) => void
+  /** The start is being written: the whole form is disabled until it settles. */
+  readonly pending?: boolean
+  /**
+   * Why the last write failed — e.g. a mutation's `error`, passed straight
+   * through — shown in an `ErrorBanner`; `null` or absent when it didn't.
+   */
+  readonly error?: unknown
+}
+
+/**
+ * The **start-program view**: choose a training plan definition and enter the
+ * load to start each of its exercises at.
+ *
+ * @remarks
+ * Each field is the amount in its exercise's rule's unit. Its text is checked
+ * as `lifting-core` checks a starting load
+ * (`TrainingPlanDefinition.ProgressionRule.startingLoadSchema` — in the
+ * rule's unit, at or above its minimum load); the first start that finds a
+ * problem shows each one under its field with a `role="alert"` summary, and
+ * from then on the problems track the form. `onStart` only ever receives a
+ * load per exercise that `ExerciseRequest.makeForEachExercise` accepts.
+ *
+ * A load entered for an exercise is kept across a change of choice, so two
+ * training plan definitions that share an exercise share its field.
+ */
+const StartTrainingPlanDefinitionView = ({
+  trainingPlanDefinitions,
+  suggestedStartingLoads,
+  onStart,
+  pending = false,
+  error,
+}: StartTrainingPlanDefinitionViewProps): JSX.Element => {
+  const headingId = useId()
+  const choiceName = useId()
+  const [chosenPlanDefinitionId, setChosenPlanDefinitionId] = useState(
+    Arr.headNonEmpty(trainingPlanDefinitions).id
+  )
+  const [loadTextByExerciseId, setLoadTextByExerciseId] = useState<
+    EffectRecord.ReadonlyRecord<string, string>
+  >({})
+  const [startAttempted, setStartAttempted] = useState(false)
+
+  const trainingPlanDefinition = pipe(
+    Arr.findFirst(trainingPlanDefinitions, ({ id }) => id === chosenPlanDefinitionId),
+    Option.getOrElse(() => Arr.headNonEmpty(trainingPlanDefinitions))
+  )
+  const rows = TrainingPlanDefinition.exercisesOf(trainingPlanDefinition).map(
+    (trainingPlanDefinitionExercise) => {
+      const exerciseId = TrainingPlanDefinition.Exercise.exerciseIdOf(
+        trainingPlanDefinitionExercise
+      )
+      const text = Option.getOrElse(EffectRecord.get(loadTextByExerciseId, exerciseId), () =>
+        suggestedStartingLoadText({ trainingPlanDefinitionExercise, suggestedStartingLoads })
+      )
+      return {
+        exerciseId,
+        trainingPlanDefinitionExercise,
+        text,
+        startingLoad: startingLoadFromText({ text, trainingPlanDefinitionExercise }),
+      }
+    }
+  )
+  const problemCount = rows.filter(({ startingLoad }) => Either.isLeft(startingLoad)).length
+
+  const start = (event: SubmitEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    setStartAttempted(true)
+    Either.match(
+      Either.all(
+        rows.map(({ exerciseId, startingLoad }) =>
+          Either.map(startingLoad, (load): readonly [string, Load.Type] => [exerciseId, load])
+        )
+      ),
+      {
+        onLeft: () => undefined,
+        onRight: (startingLoadEntries) => {
+          onStart({
+            trainingPlanDefinition,
+            startingLoads: Object.fromEntries(startingLoadEntries),
+          })
+        },
+      }
+    )
+  }
+
+  return (
+    <form className={styles.start} aria-labelledby={headingId} noValidate onSubmit={start}>
+      <fieldset className={styles.body} disabled={pending}>
+        <h2 id={headingId} className={cn('text-heading-6', styles.heading)}>
+          Start a program
+        </h2>
+        {trainingPlanDefinitions.length > 1 ? (
+          <RadioGroup
+            name={choiceName}
+            legend="Program"
+            value={trainingPlanDefinition.id}
+            onChange={setChosenPlanDefinitionId}
+            options={trainingPlanDefinitions.map(({ id, title }) => ({ value: id, label: title }))}
+          />
+        ) : (
+          <p className={cn('text-body-2', styles.title)}>{trainingPlanDefinition.title}</p>
+        )}
+        <fieldset className={styles.loads}>
+          <legend className="text-label-2">Starting loads</legend>
+          {rows.map(({ exerciseId, trainingPlanDefinitionExercise, text, startingLoad }) => (
+            <TextField
+              key={exerciseId}
+              label={`${ExerciseConcept.nameOf(
+                TrainingPlanDefinition.Exercise.exerciseConceptOf(trainingPlanDefinitionExercise)
+              )} (${formatUnit(
+                TrainingPlanDefinition.ProgressionRule.unitOf(
+                  TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+                )
+              )})`}
+              value={text}
+              inputMode="decimal"
+              onChange={(loadText) => {
+                setLoadTextByExerciseId((current) => ({ ...current, [exerciseId]: loadText }))
+              }}
+              description={
+                startAttempted && Either.isLeft(startingLoad) ? (
+                  <span className={styles.problem}>{startingLoad.left}</span>
+                ) : undefined
+              }
+            />
+          ))}
+        </fieldset>
+        {startAttempted && problemCount > 0 ? (
+          <p role="alert" className={cn('text-body-3', styles.problem, styles.summary)}>
+            {problemCount === 1
+              ? '1 starting load to fix — see the highlighted field.'
+              : `${problemCount} starting loads to fix — see the highlighted fields.`}
+          </p>
+        ) : null}
+        <ErrorBanner error={error} />
+        <div className={styles.actions}>
+          <button type="submit" className="button-2 filled">
+            {pending ? 'Starting…' : 'Start program'}
+          </button>
+        </div>
+      </fieldset>
+    </form>
+  )
+}
+
+export { StartTrainingPlanDefinitionView }
+export type { StartTrainingPlanDefinitionViewProps, TrainingPlanDefinitionStart }

@@ -1,0 +1,14 @@
+/*
+ * SubmittedWorkoutView skin — the exercises as a hairline list with their
+ * decision badges. Tokens only, so dark mode needs no rule here.
+ */
+
+.submitted {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.heading {
+  margin: 0;
+}
