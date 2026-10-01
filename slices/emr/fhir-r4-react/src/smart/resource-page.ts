@@ -1,4 +1,4 @@
-import { Data, Effect, Either, Array as Arr, Schema } from 'effect'
+import { Data, Effect, Either, Array as Arr, Schema, Schedule } from 'effect'
 import type { ParseError } from 'effect/ParseResult'
 import type Client from 'fhirclient/lib/Client'
 
@@ -12,6 +12,31 @@ import type Client from 'fhirclient/lib/Client'
  * Every reader here pins it.
  */
 const RESOURCE_PAGE_SIZE = 200
+
+/**
+ * How a page request the network dropped is retried: up to 3 more attempts,
+ * backing off 250 ms → 500 ms → 1 s, so a read gives up about 2 s after its
+ * first try. `Schedule.intersect` stops on whichever of "3 retries" and
+ * "exponential" says stop first — `Schedule.union` would retry forever.
+ */
+const DROPPED_REQUEST_RETRY_SCHEDULE = Schedule.exponential('250 millis').pipe(
+  Schedule.intersect(Schedule.recurs(3))
+)
+
+/**
+ * Whether `client.request` rejected because no HTTP response arrived at all,
+ * rather than with an HTTP error.
+ *
+ * @remarks
+ * fhirclient's `request` is `fetch(...).then(checkResponse)`: any response that
+ * is not `ok` rejects with its `HttpError` (an `Error` carrying the `status`),
+ * while `fetch` itself rejects with a `TypeError` when the request never got a
+ * response — a CORS or Local Network Access block, a dropped connection, a
+ * server that is down. An aborted request rejects with a `DOMException` named
+ * `AbortError`, which is not a `TypeError` and so is not a dropped request:
+ * whoever aborted it does not want it reissued.
+ */
+const isDroppedRequest = (cause: unknown): boolean => cause instanceof TypeError
 
 class ResourcePageRequestError extends Data.TaggedError('ResourcePageRequestError')<{
   readonly cause: unknown
@@ -115,9 +140,16 @@ interface PagedResourceRead<A, I, First> {
  * `next` link already carries scope, sort and paging state. fhirclient's default
  * `pageLimit: 1` means each call returns exactly one bundle page.
  *
+ * A request the network dropped — no HTTP response arrived, as when a browser's
+ * CORS or Local Network Access check fails it — is reissued with exponential
+ * backoff ({@link DROPPED_REQUEST_RETRY_SCHEDULE}); the search is a GET, so
+ * reissuing it is safe. An HTTP error (401, 403, 404, 5xx, …) and an aborted
+ * request are not retried.
+ *
  * Both the request itself and the bundle decode surface failures through the
- * error channel: a transport/HTTP failure yields {@link ResourcePageRequestError},
- * and a response that does not decode as a bundle page yields
+ * error channel: an HTTP error, or a dropped request still failing after its
+ * retries, yields {@link ResourcePageRequestError} carrying the last attempt's
+ * cause, and a response that does not decode as a bundle page yields
  * {@link BundleDecodeError}. Per-entry decode failures are tracked in the
  * returned {@link ResourcePage.droppedEntryCount} so the caller can report
  * partial results without losing the page.
@@ -136,7 +168,12 @@ const fetchResourcePage = <A, I, First>(
     const bundle = yield* Effect.tryPromise({
       try: () => client.request<unknown>(query),
       catch: (cause) => new ResourcePageRequestError({ cause }),
-    })
+    }).pipe(
+      Effect.retry({
+        schedule: DROPPED_REQUEST_RETRY_SCHEDULE,
+        while: (error) => isDroppedRequest(error.cause),
+      })
+    )
 
     const page = yield* decodeBundlePage(bundle).pipe(
       Effect.mapError((cause) => new BundleDecodeError({ cause, response: bundle }))
