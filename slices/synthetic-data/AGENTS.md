@@ -16,7 +16,8 @@ Nothing here names a person or tells a particular story.
 ## Packages
 
 The slice is layered like `health-viewer`: a source-free base, with one
-generator package per source on top of it.
+generator package per source on top of it, the snapshot assembler over their
+importer output, and the browser layer that loads a published snapshot.
 
 - **`synthetic-data-fundamentals`** (pure) — the source-free base. Its root
   exports nothing; it has one sub-entry per role:
@@ -91,7 +92,16 @@ generator package per source on top of it.
   `Snapshot.Reader` reads them back, checked, through a caller's
   `FileFetcher`, and `Snapshot.WriteOrder` orders the resources read into the
   batch bundles to write to a FHIR server, each after every resource it
-  references. See its [AGENTS.md](./synthetic-data-core/AGENTS.md).
+  references. Its `./test-helpers` subpath imports generated records through
+  the real importers and serves a snapshot from memory. See its
+  [AGENTS.md](./synthetic-data-core/AGENTS.md).
+
+- **`synthetic-data-react`** — `SyntheticDataScreen`: reads a published
+  snapshot from its address, lists its members to choose from, reads the
+  chosen members' files back through `Snapshot.Reader` and, only when every
+  file reads, writes them to the connected FHIR server in reference order,
+  showing each resource's outcome. `apps/synthetic-data-app` is the SMART app
+  that mounts it. See its [AGENTS.md](./synthetic-data-react/AGENTS.md).
 
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's

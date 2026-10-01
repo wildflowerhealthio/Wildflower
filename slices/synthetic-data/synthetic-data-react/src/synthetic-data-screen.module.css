@@ -1,0 +1,73 @@
+/*
+ * The loader screen: the address form, then the snapshot and its members, then
+ * the load's progress or results. Colours and spacing are Tundra tokens, so
+ * dark mode needs no rule here.
+ */
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.addressForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 40rem;
+}
+
+.problem {
+  font-size: var(--font-size-2);
+  color: var(--color-red-3);
+}
+
+.snapshot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.snapshotLine {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+.member {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+}
+
+.memberName {
+  font-weight: var(--font-weight-3);
+}
+
+.memberSummary {
+  color: var(--color-neutral-5);
+}
+
+.memberCount {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-5);
+}
+
+.status {
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}
+
+.unreadable {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  color: var(--color-red-3);
+}
+
+.failures {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--font-size-2);
+  overflow-wrap: anywhere;
+}
