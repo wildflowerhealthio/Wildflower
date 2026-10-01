@@ -125,9 +125,13 @@ does it try `{serverUrl}/.well-known/smart-configuration`, reading `serverUrl`
 as a plain SMART server's FHIR base (the SmartHealthIT demo's). Any other
 failure — unreachable, blocked by CORS, another status — is reported as it is,
 never sent on to the second URL, and two 404s fail naming both. It returns the
-base that answered with the endpoints, and `beginSignIn` names that base as the
-`aud`. Only the discovered token endpoint and `serverUrl` ride the pending
-record, so the return leg is the same either way.
+`SmartServer` that answered — `WildflowerServer` or `PlainSmartServer`, each
+carrying its `fhirBaseUrl` — with the endpoints, and `beginSignIn` names that
+base as the `aud`. The discovered token endpoint, `serverUrl` and the
+`SmartServer` ride the pending record, so the return leg is the same either way
+and the redeemed `Session` says which kind of server it signed in to. The
+`Session` also carries the token response's `patient`, the launch context a
+plain SMART server names once the reader picks a patient.
 
 `internal/pkce.ts`'s `computeCodeChallenge` is a thin wrapper that binds
 `codeChallengeS256`'s digest argument to the ambient Web Crypto; there is one

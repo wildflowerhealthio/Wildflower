@@ -31,8 +31,14 @@ import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-fil
  * Because `/settings` is a sibling of `_auth` (not a child), it is not
  * auth-gated by the `_auth` layout's `beforeLoad`. The `/settings`
  * route re-applies the same gate via the shared
- * `authGatedRouteOptions`, so the runtime behavior (settings requires
- * auth) is preserved.
+ * `wildflowerRouteOptions`, so the runtime behavior (settings requires
+ * auth, on a Wildflower server) is preserved.
+ *
+ * `/fhir-home`, a plain SMART server's Home, is a sibling of `_auth` for
+ * the same reason the other way round: everything under `_auth` calls
+ * Wildflower-only endpoints, so `_auth` redirects a plain SMART server's
+ * session to `/fhir-home`, which gates itself with
+ * `plainSmartRouteOptions`.
  *
  * Paths passed to `physical()` are resolved relative to
  * `routesDirectory` (`src/routes`), so `../../../../slices` reaches the
@@ -52,6 +58,7 @@ export const routes = rootRoute('__root.tsx', [
     physical('', routesDir('apps', 'settings')),
   ]),
   index('index.tsx'),
+  route('/fhir-home', 'fhir-home.tsx'),
   layout('_auth', '_auth.tsx', [
     physical('', routesDir('collector', '_auth')),
     physical('', routesDir('har-recorder', '_auth')),

@@ -7,7 +7,7 @@ import { Sentry } from 'telemetry-web'
 import { tunnelStateQueryOptions } from 'tunnel-react'
 
 import type { RouterContext } from '../router-context.ts'
-import { authGatedRouteOptions } from '../session/auth-gated-route-options.ts'
+import { wildflowerRouteOptions } from '../session/auth-gated-route-options.ts'
 import { AppTabShell } from '../session/tab-bar.tsx'
 
 /**
@@ -16,8 +16,11 @@ import { AppTabShell } from '../session/tab-bar.tsx'
  * `context.awaitAuthReady()` — standalone web with no token bubbles a
  * TanStack `redirect` into the device-login flow, embedded waits the
  * host handshake (and on timeout renders the `TokenTimeoutRetry`
- * screen). Once the gate passes the matched child route renders
- * through `<Outlet>`, with its authed loaders guaranteed a token.
+ * screen). Every route under it calls Wildflower-only endpoints, so the
+ * same `beforeLoad` then redirects a session on a plain SMART server to
+ * its own Home, `/fhir-home` (`wildflowerRouteOptions`). Once the gate
+ * passes the matched child route renders through `<Outlet>`, with its
+ * authed loaders guaranteed a token and a Wildflower server.
  *
  * The route's `loader` runs once per gate-pass and:
  *
@@ -60,7 +63,7 @@ function AuthLayout(): JSX.Element {
 }
 
 export const Route = createFileRoute('/_auth')({
-  ...authGatedRouteOptions,
+  ...wildflowerRouteOptions,
   loader: authLoader,
   component: AuthLayout,
 })

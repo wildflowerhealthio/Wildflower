@@ -18,6 +18,8 @@
 
 import { Data, Either, Option, Schema } from 'effect'
 
+import { SmartServer } from './smart-discovery.ts'
+
 /**
  * Raised when a returning authorization cannot be completed: the server refused
  * it, or the response does not match the request this tab made.
@@ -56,6 +58,11 @@ const PendingAuthorization = Schema.Struct({
   state: Schema.NonEmptyString,
   codeVerifier: Schema.NonEmptyString,
   serverUrl: Schema.NonEmptyString,
+  /**
+   * The kind of server discovery found at `serverUrl`, and its FHIR base: the
+   * return leg hands it to the `Session`, since only the outbound leg asked.
+   */
+  smartServer: SmartServer,
   tokenEndpoint: Schema.NonEmptyString,
   /**
    * The in-app path to land on after the sign-in, as the app handed it to
@@ -259,6 +266,7 @@ const BearerTokenResponse = Schema.Struct({
   token_type: Schema.String.pipe(Schema.filter((type) => type.toLowerCase() === 'bearer')),
   scope: Schema.optionalWith(Schema.String, { nullable: true, default: () => '' }),
   expires_in: Schema.optionalWith(Schema.Finite, { nullable: true }),
+  patient: Schema.optionalWith(Schema.String, { nullable: true }),
 })
 
 const decodeBearerTokenResponse = Schema.decodeUnknownEither(BearerTokenResponse)
@@ -270,6 +278,12 @@ interface AccessGrant {
   readonly scope: string
   /** Seconds the token is good for, when the server said. */
   readonly expiresInSeconds: number | undefined
+  /**
+   * The id of the patient in context (SMART App Launch's `patient` launch
+   * context), when the server named one — a plain SMART server does once the
+   * reader picks a patient during authorization.
+   */
+  readonly patient: string | undefined
 }
 
 /**
@@ -291,6 +305,7 @@ const parseTokenResponse = (body: unknown): Either.Either<AccessGrant, TokenExch
       accessToken: response.access_token,
       scope: response.scope,
       expiresInSeconds: response.expires_in,
+      patient: response.patient,
     })),
     Either.mapLeft(
       () =>

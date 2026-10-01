@@ -21,6 +21,7 @@ import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
 import { AppRootTree, type AppRootTreeProps } from './bridges/app-root-tree.tsx'
 import type { ReactTransport } from './bridges/transport-context.ts'
 import { routeTree } from './routeTree.gen.ts'
+import type { ServerKind } from './session/server-kind.ts'
 // The design-system stylesheet stack, fonts included — imported here so every
 // entry (web and the Tauri shell via `wildflower-react/app-root`) picks it up.
 // An entry that already imported part of it gets no second copy: the bundler
@@ -190,6 +191,17 @@ interface RenderAppOptions {
    */
   readonly redirectToDeviceLoginOnUnauthorized: boolean
   /**
+   * Which kind of server the tree is for, and so which surfaces it offers.
+   * `main-tauri` passes `ServerKind.Wildflower()`: its host is a Wildflower server.
+   * `main-web` passes what its redeemed SMART sign-in found
+   * (`sign-in.ts`'s `serverKindForSession`), and `ServerKind.Wildflower()` when no
+   * sign-in was redeemed on this load — the shell is then reached only by the
+   * device-code flow, which only a Wildflower server serves. Threaded into
+   * router context for the route guards and the plain SMART Home, and into
+   * the tree for `<TabBar>`.
+   */
+  readonly serverKind: ServerKind
+  /**
    * Lazy bearer reader for `main-web`, the cross-origin entry. When provided,
    * every relative HTTP request carries `Authorization: Bearer <token>`.
    * Omitted for `main-tauri`, which the host authenticates.
@@ -267,6 +279,7 @@ const buildAppTree = ({
   platformSettingsItems,
   platformTabs,
   redirectToDeviceLoginOnUnauthorized,
+  serverKind,
   readBearer,
   tokenResponseHandler,
   signInProblem,
@@ -348,6 +361,9 @@ const buildAppTree = ({
       // Threaded so the landing page can report a sign-in that failed before
       // the tree existed — see `RouterContext.signInProblem`.
       signInProblem,
+      // Threaded so the auth-gated routes serve only this kind of server's
+      // surfaces — see `RouterContext.serverKind`.
+      serverKind,
     },
     defaultPreload: 'intent',
   })
@@ -378,6 +394,7 @@ const buildAppTree = ({
                 transportPromise={transportPromise}
                 platformSettingsItems={platformSettingsItems}
                 platformTabs={platformTabs}
+                serverKind={serverKind}
               />
             </ActivePendingConsentProvider>
           </TokenResponseHandlerContext>

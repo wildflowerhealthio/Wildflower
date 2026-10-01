@@ -60,9 +60,11 @@ export {
   DiscoveryFailed,
   insecureTargetReason,
   isLoopbackHost,
+  PlainSmartServer,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
   smartEndpointsFrom,
   usableEndpointUrl,
+  WildflowerServer,
 } from './smart-discovery.ts'
-export type { SmartEndpoints, SmartIssuer } from './smart-discovery.ts'
+export type { SmartEndpoints, SmartIssuer, SmartServer } from './smart-discovery.ts'

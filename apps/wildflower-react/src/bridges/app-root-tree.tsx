@@ -9,6 +9,7 @@ import type { SettingsItem } from 'shared-structures-react'
 import { renderScopeError } from '../scope-error-renderer.tsx'
 import { PlatformSettingsItemsProvider } from '../session/platform-settings-items.tsx'
 import { PlatformTabsProvider } from '../session/platform-tabs.tsx'
+import { ServerKindContext, type ServerKind } from '../session/server-kind.ts'
 import type { TabSpec } from '../session/tabs.ts'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { HarRecorderSenderForwarder } from './har-recorder-sender-forwarder.tsx'
@@ -23,6 +24,9 @@ interface AppRootTreeProps {
   /** The entry's platform-specific tabs, provided to the tree so the primary
    * bar can render them after the shared ones. See {@link PlatformTabsProvider}. */
   readonly platformTabs: readonly TabSpec[]
+  /** The kind of server the tree is for, provided so the primary bar renders
+   * only the tabs it serves. See {@link ServerKindContext}. */
+  readonly serverKind: ServerKind
 }
 
 /**
@@ -43,6 +47,7 @@ const AppRootTree = ({
   transportPromise,
   platformSettingsItems,
   platformTabs,
+  serverKind,
 }: AppRootTreeProps): JSX.Element => {
   const transport = usePromiseOrDefault(transportPromise, stubTransport, () => stubTransport)
 
@@ -68,11 +73,13 @@ const AppRootTree = ({
     <ErrorBodyRendererContext.Provider value={renderScopeError}>
       <PlatformSettingsItemsProvider items={platformSettingsItems}>
         <PlatformTabsProvider tabs={platformTabs}>
-          <TransportContext.Provider value={transport}>
-            <HandlerCoordinatorContext.Provider value={transport.coordinator}>
-              <RouterProvider router={router} InnerWrap={InnerWrap} />
-            </HandlerCoordinatorContext.Provider>
-          </TransportContext.Provider>
+          <ServerKindContext value={serverKind}>
+            <TransportContext.Provider value={transport}>
+              <HandlerCoordinatorContext.Provider value={transport.coordinator}>
+                <RouterProvider router={router} InnerWrap={InnerWrap} />
+              </HandlerCoordinatorContext.Provider>
+            </TransportContext.Provider>
+          </ServerKindContext>
         </PlatformTabsProvider>
       </PlatformSettingsItemsProvider>
     </ErrorBodyRendererContext.Provider>

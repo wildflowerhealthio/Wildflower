@@ -6,10 +6,12 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   discoverSmartEndpoints,
   insecureTargetReason,
+  PlainSmartServer,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
   smartEndpointsFrom,
   usableEndpointUrl,
+  WildflowerServer,
 } from './smart-discovery.ts'
 
 /**
@@ -220,7 +222,7 @@ describe('smartEndpointsFrom', () => {
 })
 
 describe('discoverSmartEndpoints', () => {
-  it('finds a Wildflower server’s configuration under its /fhir-r4 mount, and names that base', async () => {
+  it('finds a Wildflower server’s configuration under its /fhir-r4 mount, and names it a Wildflower server at that base', async () => {
     // Arrange
     const requested: string[] = []
     const fetchStub = respondingWith((url) => {
@@ -240,8 +242,10 @@ describe('discoverSmartEndpoints', () => {
     expect(requested).toEqual([
       'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration',
     ])
-    expect(Either.map(result, (issuer) => issuer.fhirBaseUrl)).toEqual(
-      Either.right('https://ruth.wildflowerhealth.io/fhir-r4')
+    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+      Either.right(
+        WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io/fhir-r4' })
+      )
     )
   })
 
@@ -262,12 +266,12 @@ describe('discoverSmartEndpoints', () => {
     )
 
     // Assert
-    expect(Either.map(result, (issuer) => issuer.fhirBaseUrl)).toEqual(
-      Either.right('https://example.org/wildflower/fhir-r4')
+    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+      Either.right(WildflowerServer.make({ fhirBaseUrl: 'https://example.org/wildflower/fhir-r4' }))
     )
   })
 
-  it('reads the URL as a plain FHIR base when there is nothing under /fhir-r4', async () => {
+  it('reads the URL as a plain SMART server’s FHIR base when there is nothing under /fhir-r4', async () => {
     // Arrange — the SmartHealthIT demo: its base is the URL itself.
     const demo = 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiJd/fhir'
     const requested: string[] = []
@@ -288,7 +292,9 @@ describe('discoverSmartEndpoints', () => {
       `${demo}/fhir-r4/.well-known/smart-configuration`,
       `${demo}/.well-known/smart-configuration`,
     ])
-    expect(Either.map(result, (issuer) => issuer.fhirBaseUrl)).toEqual(Either.right(demo))
+    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+      Either.right(PlainSmartServer.make({ fhirBaseUrl: demo }))
+    )
   })
 
   it('does not look anywhere else when the server cannot be reached', async () => {

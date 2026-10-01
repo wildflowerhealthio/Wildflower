@@ -2,7 +2,7 @@ import { createFileRoute, Outlet } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { pageLayoutStyles } from 'react-tundraish'
 
-import { authGatedRouteOptions } from '../session/auth-gated-route-options.ts'
+import { wildflowerRouteOptions } from '../session/auth-gated-route-options.ts'
 import { AppTabShell } from '../session/tab-bar.tsx'
 
 /**
@@ -17,8 +17,10 @@ import { AppTabShell } from '../session/tab-bar.tsx'
  * Mounted as a root-level sibling of `_auth` (not under it) so the id
  * (`/settings`) matches what each slice's own generator computes from its
  * top-level `settings/` folder. To preserve auth-gating, this layout
- * re-applies the shared `authGatedRouteOptions` (same `beforeLoad` +
- * `errorComponent` pair the `_auth` layout uses).
+ * re-applies the shared `wildflowerRouteOptions` (same `beforeLoad` +
+ * `errorComponent` pair the `_auth` layout uses), which also redirects a
+ * session on a plain SMART server, which has none of these settings, to
+ * its own Home.
  */
 function SettingsLayout(): JSX.Element {
   return (
@@ -31,7 +33,7 @@ function SettingsLayout(): JSX.Element {
 }
 
 const Route = createFileRoute('/settings')({
-  ...authGatedRouteOptions,
+  ...wildflowerRouteOptions,
   component: SettingsLayout,
 })
 

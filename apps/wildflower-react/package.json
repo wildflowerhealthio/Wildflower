@@ -25,6 +25,9 @@
     "./bridges": {
       "source": "./src/bridges/bridges.ts"
     },
+    "./server-kind": {
+      "source": "./src/session/server-kind.ts"
+    },
     "./global.css": {
       "source": "./src/styles/global.css"
     },

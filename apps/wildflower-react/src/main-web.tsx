@@ -17,12 +17,14 @@ import { addOsColorSchemeListener } from 'react-tundraish'
 import { consentedTelemetryLayer } from 'telemetry-web'
 import './styles/global.css'
 import { buildAppTree, mountAtRoot } from './app-root.tsx'
+import { ServerKind } from './session/server-kind.ts'
 import { WebEntryRoot } from './session/web-entry-root.tsx'
 import {
   authStateForSession,
   finishSignIn,
   postSignInUrl,
   scheduleExpiry,
+  serverKindForSession,
   signInEnvironment,
 } from './sign-in.ts'
 import {
@@ -156,6 +158,11 @@ const bootApp = async (): Promise<JSX.Element> => {
     // starts telemetry from the build's env.
     effectTelemetryLayer: consentedTelemetryLayer,
     tokenResponseHandler,
+    // What the sign-in redeemed on this load found. With none, the shell is
+    // reached only through the device-code flow, which only a Wildflower
+    // server serves. A reload drops the bearer, and the landing signs back in
+    // on arrival, so the kind is found again rather than remembered.
+    serverKind: session === undefined ? ServerKind.Wildflower() : serverKindForSession(session),
     ...(completed.tag === 'Failed' ? { signInProblem: completed.problem } : {}),
   })
 }

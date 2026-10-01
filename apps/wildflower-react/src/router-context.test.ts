@@ -6,6 +6,7 @@ import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 import { buildQueryClient } from './query-client.ts'
 import type { RouterContext } from './router-context.ts'
 import { buildRunAuthed } from './runtime-layer.ts'
+import { ServerKind } from './session/server-kind.ts'
 
 // Pins `RouterContext['awaitAuthReady']` to the shared structural type
 // — drift between the app-level context and the slice-published shape
@@ -33,6 +34,7 @@ describe('RouterContext assembly', () => {
       }),
       entry: 'main-web',
       externalLinkRoot: () => 'https://example.test',
+      serverKind: ServerKind.Wildflower(),
     } satisfies RouterContext
 
     // Assert

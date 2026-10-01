@@ -161,6 +161,7 @@ vi.mock('../routeTree.gen.ts', () => {
 // `vi.mock` above this line at compile time, so the static `import`
 // order here is just for human readers.)
 import { RootShell } from './root-shell.tsx'
+import { ServerKind } from './server-kind.ts'
 
 const LeafA = (): JSX.Element => <div data-testid="leaf-a">A</div>
 const LeafB = (): JSX.Element => <div data-testid="leaf-b">B</div>
@@ -224,6 +225,7 @@ describe('renderApp InnerWrap lifecycle', () => {
         platformSettingsItems: [],
         platformTabs: [],
         redirectToDeviceLoginOnUnauthorized: false,
+        serverKind: ServerKind.Wildflower(),
       })
     })
 
