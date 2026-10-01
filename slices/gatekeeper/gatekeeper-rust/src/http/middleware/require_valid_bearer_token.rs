@@ -5,6 +5,7 @@ use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue};
 use axum::middleware::{FromFnLayer, Next};
+use shared_structures_rust::request_caller::RequestCaller;
 
 use crate::http::middleware::require_auth::{try_bearer_token_from_headers, verify_request_claims};
 
@@ -25,7 +26,9 @@ pub type GatekeeperAuthMiddleware =
 
 /// The downstream-slice authN middleware — `401` for a missing/invalid bearer
 /// token, except `exempt_paths` which pass through (pass `&[]` to gate every
-/// path). Inserts `ScopeClaims` for downstream `Scoped<…>` capabilities.
+/// path). Inserts `ScopeClaims` for downstream `Scoped<…>` capabilities, and
+/// stamps the response with the verified [`RequestCaller::OAuthClient`] (an
+/// exempt path's response carries none).
 /// `Clone` — build once, clone per router. See
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`.
 pub fn gatekeeper_auth_middleware(
@@ -56,7 +59,15 @@ pub fn gatekeeper_auth_middleware(
                 .insert(scope_capabilities_rust::ScopeClaims::new(
                     claims.scope.clone(),
                 ));
-            next.run(req).await
+            let mut response = next.run(req).await;
+            // Name the verified caller on the response, as `require_valid_session`
+            // does, for the host's forwarded-request observer.
+            response
+                .extensions_mut()
+                .insert(RequestCaller::OAuthClient {
+                    client_id: claims.subject,
+                });
+            response
         })
     };
     axum::middleware::from_fn_with_state(gate, handler)

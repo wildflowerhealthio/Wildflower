@@ -7,6 +7,7 @@ mod device_code;
 mod grant_flows;
 mod loopback_dialog;
 mod oauth_endpoints;
+mod request_caller;
 mod revocation;
 mod scope_gating;
 mod smoke;
