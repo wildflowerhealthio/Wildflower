@@ -30,7 +30,7 @@ template rather than a special case.
     `startingLoadSchema`, the loads a rule moves and the loads a lifter may
     start at.
   - `PlannedExercise` — a `PlanDefinition.action` narrowed to one
-    `ExerciseConcept`, one `sets` and one `reps` lifting-measure concept among
+    `ExerciseConcept`, one `sets` and one `reps` exercise parameter concept among
     its `code`s, and one `ProgressionRule` among its extensions.
   - `Workout` — a `PlanDefinition.action` narrowed to a non-empty, trimmed `title` (the
     label) and a non-empty nested `action` of `PlannedExercise`s, in order.
@@ -66,7 +66,7 @@ template rather than a special case.
     set was performed against and the `WorkoutProcedure` it was part of.
   - `StrongLifts5x5` — the template: `plan(planDefinitionId)`, `EXERCISES`
     and `STARTING_LOADS`.
-  - `LiftingMeasure` (`Code`, the lifting-measure codes) and `LiftingFeature`
+  - `ExerciseParameter` (`Code`, the exercise parameter codes) and `LiftingFeature`
     (the `strength-training` feature `CODE`, its `concept`, and the `TOKEN`
     that searches for lifting resources).
 
@@ -155,10 +155,10 @@ The React layer and the app route are not built yet.
   `WILDFLOWER_CANONICAL_BASE/PlanDefinition/<id>`, the `strength-training`
   feature as `topic`, one `action` per workout (the label as its `title`),
   each with one nested `action` per exercise: the `ExerciseConcept`, `sets`
-  and `reps` lifting-measure concepts as its `code`, and the rule as a
+  and `reps` exercise parameter concepts as its `code`, and the rule as a
   `LiftingProgression` extension. An exercise `ServiceRequest` is `active`,
   intent `plan`, priority `routine`, the `strength-training` feature as
-  `category`, the exercise as `code`, one `orderDetail` per measure (`load`,
+  `category`, the exercise as `code`, one `orderDetail` per exercise parameter (`load`,
   `sets`, `reps`), `instantiatesCanonical` the plan url, `replaces` the
   `ServiceRequest` it succeeds, `authoredOn` when issued. A workout
   `Procedure` is `in-progress` until `completed`, the `strength-training`
@@ -171,17 +171,17 @@ The React layer and the app route are not built yet.
   exercise) with the exercise name as `code.text` so a generic viewer can
   label it, `basedOn` its `ServiceRequest`, `partOf` its workout's
   `Procedure`, `effectivePeriod` the set's span and `valueInteger` the reps.
-  A lifting-measure concept carries its value in a `LiftingMeasureValue`
+  An exercise parameter concept carries its value in an `ExerciseParameterValue`
   extension — `valueQuantity` for a load, `valueInteger` for a count.
 - **Instants are UTC.** Every `performedPeriod` and `effectivePeriod` bound
   decodes to a `DateTime.Utc` and re-encodes as a UTC instant (see the
   consumer gotcha below), and nothing here reads a local time of day: which
   sets belong together is the workout they are `partOf`, not a calendar date.
 - **Wire urls live in `fhir-r4`, codes here.** The extension urls
-  (`WildflowerExtension.LiftingProgression`, `.LiftingMeasureValue`), the
-  code-system urls (`WildflowerCodeSystem.Exercise`, `.LiftingMeasure`,
+  (`WildflowerExtension.LiftingProgression`, `.ExerciseParameterValue`), the
+  code-system urls (`WildflowerCodeSystem.Exercise`, `.ExerciseParameter`,
   `.Feature`, `.Workout`) and `WILDFLOWER_CANONICAL_BASE` are in `fhir-r4`'s
-  `terminology.ts`; the lifting-measure codes (`LiftingMeasure.Code`), the
+  `terminology.ts`; the exercise parameter codes (`ExerciseParameter.Code`), the
   feature code (`LiftingFeature.CODE`) and the rule's sub-extension names
   (`ProgressionRule.Part`) are here. All of them are persisted wire format —
   append, don't rename. The rule's `unit` part is a `valueString`, not a

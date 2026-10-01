@@ -12,19 +12,19 @@ import {
 import { IdentifierAndReference, narrowFields, withMandatoryId } from 'fhir-r4/data-types'
 import { ServiceRequest } from 'fhir-r4/resources'
 
+import {
+  countExerciseParameterAmong,
+  countExerciseParameterConcept,
+  loadExerciseParameterAmong,
+  loadExerciseParameterConcept,
+  exerciseParameterIssues,
+  isExerciseParameterConcept,
+} from '../exercise-parameter/exercise-parameter-concept.ts'
+import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
 import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
-import * as LiftingMeasure from '../lifting-measure/lifting-measure.ts'
-import {
-  countAmong,
-  countConcept,
-  loadAmong,
-  loadConcept,
-  measureIssues,
-  measures,
-} from '../lifting-measure/measure-concept.ts'
 import * as Load from '../load/load.ts'
 import * as Plan from '../plan/plan.ts'
 import * as PlannedExercise from '../plan/planned-exercise.ts'
@@ -71,9 +71,16 @@ const ExerciseRequestSchema: Schema.Schema<Type, ServiceRequest.Type> =
       instantiatesCanonical: Schema.Tuple(Schema.String),
     }).pipe(
       Schema.filter((serviceRequest) =>
-        [LiftingMeasure.Code.Load, LiftingMeasure.Code.Sets, LiftingMeasure.Code.Reps].flatMap(
-          (measure) =>
-            measureIssues({ concepts: serviceRequest.orderDetail, measure, path: ['orderDetail'] })
+        [
+          ExerciseParameter.Code.Load,
+          ExerciseParameter.Code.Sets,
+          ExerciseParameter.Code.Reps,
+        ].flatMap((code) =>
+          exerciseParameterIssues({
+            concepts: serviceRequest.orderDetail,
+            code,
+            path: ['orderDetail'],
+          })
         )
       ),
       Schema.brand('ExerciseRequest')
@@ -124,10 +131,10 @@ const decodeServiceRequest = (
 /**
  * The first `ExerciseRequest` at one exercise of a plan: `active`, intent
  * `plan`, priority `routine`, filed under the `strength-training` feature
- * `category`, the exercise as its `code`, one `orderDetail` per measure —
- * `load` as a UCUM `valueQuantity`, `sets` and `reps` as a `valueInteger`,
- * each in the concept's `LiftingMeasureValue` extension — instantiating the
- * plan's url, `authoredOn` when it was issued. Its sets and reps are the
+ * `category`, the exercise as its `code`, one `orderDetail` per exercise
+ * parameter — `load` as a UCUM `valueQuantity`, `sets` and `reps` as a
+ * `valueInteger`, each in the concept's `ExerciseParameterValue` extension —
+ * instantiating the plan's url, `authoredOn` when it was issued. Its sets and reps are the
  * plan's for the exercise. Made from the id the app minted for the
  * `ServiceRequest`, the lifter it is for as its `subject`, the plan and the
  * exercise in it, the load to start at, and when it was issued.
@@ -171,13 +178,13 @@ const make = ({
             instantiatesCanonical: [plan.url],
             code: PlannedExercise.exerciseOf(planned),
             orderDetail: [
-              loadConcept(startingLoad),
-              countConcept({
-                measure: LiftingMeasure.Code.Sets,
+              loadExerciseParameterConcept(startingLoad),
+              countExerciseParameterConcept({
+                code: ExerciseParameter.Code.Sets,
                 value: PlannedExercise.setsOf(planned),
               }),
-              countConcept({
-                measure: LiftingMeasure.Code.Reps,
+              countExerciseParameterConcept({
+                code: ExerciseParameter.Code.Reps,
                 value: PlannedExercise.repsOf(planned),
               }),
             ],
@@ -193,15 +200,16 @@ const make = ({
 const exerciseOf = (exerciseRequest: Type): ExerciseConcept.Type => exerciseRequest.code
 
 /** The load to lift, from the `load` order detail. */
-const loadOf = (exerciseRequest: Type): Load.Type => loadAmong(exerciseRequest.orderDetail)
+const loadOf = (exerciseRequest: Type): Load.Type =>
+  loadExerciseParameterAmong(exerciseRequest.orderDetail)
 
 /** Sets to perform each workout, from the `sets` order detail; a positive integer. */
 const setsOf = (exerciseRequest: Type): number =>
-  countAmong(exerciseRequest.orderDetail, LiftingMeasure.Code.Sets)
+  countExerciseParameterAmong(exerciseRequest.orderDetail, ExerciseParameter.Code.Sets)
 
 /** Reps per set, from the `reps` order detail; a positive integer. */
 const repsOf = (exerciseRequest: Type): number =>
-  countAmong(exerciseRequest.orderDetail, LiftingMeasure.Code.Reps)
+  countExerciseParameterAmong(exerciseRequest.orderDetail, ExerciseParameter.Code.Reps)
 
 /** The canonical url of the plan the `ServiceRequest` follows: its one `instantiatesCanonical`. */
 const planUrlOf = (exerciseRequest: Type): string => exerciseRequest.instantiatesCanonical[0]
@@ -469,7 +477,9 @@ const progress = (step: {
                 instantiatesCanonical: exerciseRequest.instantiatesCanonical,
                 code: exerciseOf(exerciseRequest),
                 orderDetail: exerciseRequest.orderDetail.map((detail) =>
-                  measures(LiftingMeasure.Code.Load)(detail) ? loadConcept(nextLoad) : detail
+                  isExerciseParameterConcept(ExerciseParameter.Code.Load)(detail)
+                    ? loadExerciseParameterConcept(nextLoad)
+                    : detail
                 ),
                 replaces: [
                   IdentifierAndReference.referenceTo({

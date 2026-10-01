@@ -11,11 +11,15 @@ import type { CodeableConcept } from 'fhir-r4/data-types'
 import { Coding, Extension, WildflowerCodeSystem, WildflowerExtension } from 'fhir-r4/data-types'
 import { PlanDefinitionAction } from 'fhir-r4/resources'
 
+import {
+  countExerciseParameterAmong,
+  countExerciseParameterConcept,
+  exerciseParameterIssues,
+} from '../exercise-parameter/exercise-parameter-concept.ts'
+import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
-import * as LiftingMeasure from '../lifting-measure/lifting-measure.ts'
-import { countAmong, countConcept, measureIssues } from '../lifting-measure/measure-concept.ts'
 import * as ProgressionRule from './progression-rule.ts'
 
 /** Whether a concept is coded in the exercise system at all — a candidate for the action's exercise. */
@@ -37,8 +41,8 @@ const isProgressionRule = Schema.is(ProgressionRule.Schema)
 /**
  * How a plan runs one exercise, as FHIR carries it: a `PlanDefinition.action`
  * narrowed to exactly one {@link ExerciseConcept.Type} among its `code`s, one
- * `sets` and one `reps` lifting-measure concept (each a positive integer in its
- * value extension), and exactly one {@link ProgressionRule.Type} among its
+ * `sets` and one `reps` exercise parameter concept (each a positive integer
+ * in its value extension), and exactly one {@link ProgressionRule.Type} among its
  * extensions — `sets` × `reps` each workout, the load moved by the rule.
  *
  * @remarks
@@ -49,7 +53,7 @@ interface Type extends PlanDefinitionAction.Type, Brand.Brand<'PlannedExercise'>
 
 /**
  * Decodes a `PlanDefinition.action` into a {@link Type} — fails, naming the
- * code or extension, on a missing or repeated exercise, measure or rule, or
+ * code or extension, on a missing or repeated exercise, exercise parameter or rule, or
  * one that is malformed or out of range.
  */
 const PlannedExerciseSchema: Schema.Schema<Type, PlanDefinitionAction.Type> =
@@ -63,14 +67,14 @@ const PlannedExerciseSchema: Schema.Schema<Type, PlanDefinitionAction.Type> =
           path: ['code'],
           expected: 'exercise concept',
         }),
-        ...measureIssues({
+        ...exerciseParameterIssues({
           concepts: action.code,
-          measure: LiftingMeasure.Code.Sets,
+          code: ExerciseParameter.Code.Sets,
           path: ['code'],
         }),
-        ...measureIssues({
+        ...exerciseParameterIssues({
           concepts: action.code,
-          measure: LiftingMeasure.Code.Reps,
+          code: ExerciseParameter.Code.Reps,
           path: ['code'],
         }),
         ...onlyOneIssues({
@@ -105,8 +109,8 @@ const make = (planned: {
     ...emptyAction,
     code: [
       planned.exercise,
-      countConcept({ measure: LiftingMeasure.Code.Sets, value: planned.sets }),
-      countConcept({ measure: LiftingMeasure.Code.Reps, value: planned.reps }),
+      countExerciseParameterConcept({ code: ExerciseParameter.Code.Sets, value: planned.sets }),
+      countExerciseParameterConcept({ code: ExerciseParameter.Code.Reps, value: planned.reps }),
     ],
     extension: [planned.progressionRule],
   })
@@ -119,10 +123,12 @@ const exerciseOf = (planned: Type): ExerciseConcept.Type =>
 const exerciseIdOf = (planned: Type): string => ExerciseConcept.idOf(exerciseOf(planned))
 
 /** Sets to perform each workout; a positive integer. */
-const setsOf = (planned: Type): number => countAmong(planned.code, LiftingMeasure.Code.Sets)
+const setsOf = (planned: Type): number =>
+  countExerciseParameterAmong(planned.code, ExerciseParameter.Code.Sets)
 
 /** Reps per set; a positive integer. */
-const repsOf = (planned: Type): number => countAmong(planned.code, LiftingMeasure.Code.Reps)
+const repsOf = (planned: Type): number =>
+  countExerciseParameterAmong(planned.code, ExerciseParameter.Code.Reps)
 
 /** How the exercise's load moves after each workout. */
 const progressionRuleOf = (planned: Type): ProgressionRule.Type =>

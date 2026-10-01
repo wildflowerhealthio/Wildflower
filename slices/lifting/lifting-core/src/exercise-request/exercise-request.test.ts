@@ -5,9 +5,9 @@ import { ServiceRequest } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
 import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
-import * as LiftingMeasure from '../lifting-measure/lifting-measure.ts'
 import * as Load from '../load/load.ts'
 import * as Plan from '../plan/plan.ts'
 import * as PlannedExercise from '../plan/planned-exercise.ts'
@@ -91,12 +91,12 @@ describe('ExerciseRequest.make', () => {
       ])
     ).toEqual([
       [
-        LiftingMeasure.Code.Load,
-        WildflowerExtension.LiftingMeasureValue,
+        ExerciseParameter.Code.Load,
+        WildflowerExtension.ExerciseParameterValue,
         { value: 45, unit: 'lb', system: 'http://unitsofmeasure.org', code: '[lb_av]' },
       ],
-      [LiftingMeasure.Code.Sets, WildflowerExtension.LiftingMeasureValue, 5],
-      [LiftingMeasure.Code.Reps, WildflowerExtension.LiftingMeasureValue, 5],
+      [ExerciseParameter.Code.Sets, WildflowerExtension.ExerciseParameterValue, 5],
+      [ExerciseParameter.Code.Reps, WildflowerExtension.ExerciseParameterValue, 5],
     ])
   })
 
@@ -182,7 +182,7 @@ describe('ExerciseRequest.Schema', () => {
     )
   })
 
-  it('should refuse a missing or doubled measure, naming the order details', () => {
+  it('should refuse a missing or doubled exercise parameter, naming the order details', () => {
     fc.assert(
       fc.property(
         exerciseRequestArb,
@@ -243,9 +243,9 @@ describe('ExerciseRequest.Schema', () => {
       fc.property(
         exerciseRequestArb,
         fc.constantFrom('sets' as const, 'reps' as const),
-        (exerciseRequest, measure) => {
+        (exerciseRequest, exerciseParameterCode) => {
           // Arrange: the sets and reps are order details 1 and 2.
-          const index = measure === 'sets' ? 1 : 2
+          const index = exerciseParameterCode === 'sets' ? 1 : 2
           const edited = {
             ...exerciseRequest,
             orderDetail: exerciseRequest.orderDetail.map((detail, at) =>
@@ -254,7 +254,7 @@ describe('ExerciseRequest.Schema', () => {
                     ...detail,
                     extension: detail.extension.map((extension) => ({
                       ...extension,
-                      valueInteger: measure === 'sets' ? 0 : -3,
+                      valueInteger: exerciseParameterCode === 'sets' ? 0 : -3,
                     })),
                   }
                 : detail
@@ -271,7 +271,7 @@ describe('ExerciseRequest.Schema', () => {
     )
   })
 
-  it('should ignore order details that measure something foreign', () => {
+  it('should ignore order details that are not exercise parameters', () => {
     fc.assert(
       fc.property(
         exerciseRequestArb,

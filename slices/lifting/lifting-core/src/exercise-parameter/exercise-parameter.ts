@@ -1,8 +1,9 @@
 /**
- * The codes of `WildflowerCodeSystem.LiftingMeasure`: what an exercise
- * `ServiceRequest.orderDetail` or a planned exercise's
- * `PlanDefinition.action.code` concept measures. Each such concept carries
- * its value in a `WildflowerExtension.LiftingMeasureValue` extension.
+ * The codes of `WildflowerCodeSystem.ExerciseParameter`: which parameter of
+ * an exercise an exercise `ServiceRequest.orderDetail` or an exercise
+ * definition's `PlanDefinition.action.code` concept gives. Each such concept
+ * carries its value in a `WildflowerExtension.ExerciseParameterValue`
+ * extension.
  *
  * @remarks
  * Persisted wire format, like the system url itself — a code written here is
@@ -18,7 +19,6 @@ const Code = {
 } as const
 
 /** One of the {@link Code} codes. */
-type Measure = (typeof Code)[keyof typeof Code]
+type Code = (typeof Code)[keyof typeof Code]
 
 export { Code }
-export type { Measure }

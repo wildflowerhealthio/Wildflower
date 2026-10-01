@@ -55,12 +55,12 @@ const WildflowerCodeSystem = {
    */
   Exercise: `${WILDFLOWER_CODE_SYSTEM_BASE}/exercise`,
   /**
-   * What a strength-training `ServiceRequest.orderDetail` or
-   * `PlanDefinition.action.code` concept measures: the load, the sets, the
-   * reps. Each such concept carries its value in a
-   * {@link WildflowerExtension.LiftingMeasureValue} extension.
+   * Which parameter of an exercise a strength-training
+   * `ServiceRequest.orderDetail` or `PlanDefinition.action.code` concept
+   * gives: the load, the sets, the reps. Each such concept carries its value
+   * in a {@link WildflowerExtension.ExerciseParameterValue} extension.
    */
-  LiftingMeasure: `${WILDFLOWER_CODE_SYSTEM_BASE}/lifting-measure`,
+  ExerciseParameter: `${WILDFLOWER_CODE_SYSTEM_BASE}/exercise-parameter`,
   /**
    * Which Wildflower feature a resource belongs to (`strength-training`), as
    * a `ServiceRequest.category`, a `Procedure.category` or a
@@ -108,12 +108,13 @@ const WildflowerExtension = {
    */
   LiftingProgression: `${WILDFLOWER_EXTENSION_BASE}/lifting-progression`,
   /**
-   * On a `CodeableConcept` coded in {@link WildflowerCodeSystem.LiftingMeasure}
-   * — a `ServiceRequest.orderDetail` or `PlanDefinition.action.code` entry:
-   * the measure's value, a `valueQuantity` for a load and a `valueInteger` for
-   * sets or reps.
+   * On a `CodeableConcept` coded in
+   * {@link WildflowerCodeSystem.ExerciseParameter} — a
+   * `ServiceRequest.orderDetail` or `PlanDefinition.action.code` entry: the
+   * exercise parameter's value, a `valueQuantity` for a load and a
+   * `valueInteger` for sets or reps.
    */
-  LiftingMeasureValue: `${WILDFLOWER_EXTENSION_BASE}/lifting-measure-value`,
+  ExerciseParameterValue: `${WILDFLOWER_EXTENSION_BASE}/exercise-parameter-value`,
 } as const
 
 export {

@@ -5,8 +5,8 @@ import { PlanDefinitionAction } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
-import * as LiftingMeasure from '../lifting-measure/lifting-measure.ts'
 import {
   exerciseArb,
   issuePathsOf,
@@ -54,14 +54,14 @@ describe('PlannedExercise', () => {
     )
   })
 
-  it('should write the exercise, then the sets and reps measures, as the action code', () => {
+  it('should write the exercise, then the sets and reps exercise parameters, as the action code', () => {
     fc.assert(
       fc.property(plannedArb, (planned) => {
         const wire = Schema.encodeSync(WirePlannedExercise)(planned)
         expect(wire.code?.map((concept) => concept.coding?.[0]?.code)).toEqual([
           PlannedExercise.exerciseIdOf(planned),
-          LiftingMeasure.Code.Sets,
-          LiftingMeasure.Code.Reps,
+          ExerciseParameter.Code.Sets,
+          ExerciseParameter.Code.Reps,
         ])
       }),
       { numRuns: RUNS }
@@ -93,7 +93,7 @@ describe('PlannedExercise', () => {
     )
   })
 
-  it('should refuse a missing or repeated exercise, measure or rule, naming the list', () => {
+  it('should refuse a missing or repeated exercise, exercise parameter or rule, naming the list', () => {
     fc.assert(
       fc.property(plannedArb, fc.nat({ max: 2 }), fc.boolean(), (planned, index, doubled) => {
         // Arrange
@@ -110,7 +110,7 @@ describe('PlannedExercise', () => {
     )
   })
 
-  it('should ignore codes that are neither an exercise nor a lifting measure', () => {
+  it('should ignore codes that are neither an exercise nor an exercise parameter', () => {
     fc.assert(
       fc.property(
         plannedArb,
