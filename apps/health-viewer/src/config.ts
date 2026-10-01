@@ -3,10 +3,12 @@ import type { SmartAppTelemetry } from 'smart-app-react'
 
 /**
  * The scopes the health viewer asks for, the same for an EHR launch and a
- * standalone connect: EHR launch + patient context, then read the patient and
- * their Observations and MedicationRequests. The `system/` scopes support a
- * launch with no patient in context, where the app offers a patient picker
- * and filters every read by the patient picked (see `app.tsx`).
+ * standalone connect: EHR launch, then read Patients, Observations and
+ * MedicationRequests. `system/` scopes only, with no `launch/patient`: the
+ * reader picks the patient in the app (`smart-app-react`'s `PatientPicker`),
+ * and every read is filtered by the patient picked, or unscoped for "All
+ * patients" (see `app.tsx`). An EHR launch that puts a patient in context
+ * opens on that patient.
  *
  * The seeded OAuth clients carry exactly this set — the debug-only
  * `health-viewer-app-dev` client in `gatekeeper-rust`'s `seed_dev_app_clients`
@@ -19,7 +21,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * authorize request over it, dropping `launch` is the first thing to try.
  */
 const HEALTH_VIEWER_SCOPE =
-  'launch launch/patient openid fhirUser system/Observation.rs system/MedicationRequest.rs system/Patient.rs'
+  'launch openid fhirUser system/Observation.rs system/MedicationRequest.rs system/Patient.rs'
 
 /**
  * The OAuth client the build launches as, which depends on how it is served:

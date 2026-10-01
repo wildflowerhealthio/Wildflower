@@ -42,10 +42,23 @@ then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call.
 ## The page
 
 `src/app.tsx`'s `App` completes the handshake and builds the write runner
-(`buildSmartRouterContext` over `FetchHttpClient.layer`). A launch with no
-patient in context stops at a "Lifting needs a patient" gate. Otherwise
-`src/lifting-app/lifting-app.tsx`'s `LiftingApp` reads the lifter's training
-record and shows it under a **Today | Plan | History** toggle.
+(`buildSmartRouterContext` over `FetchHttpClient.layer`). The patient is
+`smart-app-react`'s `usePatientChoice`: the URL's `?patient=`, else the
+launch's `client.patient.id`, else its `PatientPicker` ("All patients" first,
+then every patient by name and birth date), whose choice is written to the URL
+as `?patient=<id>` or `?patient=*`. Then
+`src/lifting-app/lifting-app.tsx`'s `LiftingApp`, remounted per choice, shows
+the record under a **Today | Plan | History** toggle, with the choice named
+under the title by `PatientChoiceLine` and a "Change patient" link back to the
+picker.
+
+- **A lifter** (one patient): their training record, read and written as
+  below.
+- **All patients**: read-only. The page opens on History, every patient's
+  completed workouts read unscoped. Today and Plan write, and a write names
+  one lifter, so each shows a "Choose a patient to train" card whose action
+  goes back to the picker; no write control mounts. Only a chosen lifter has a
+  `LiftingSession` (`src/session/`), the one thing the writes take.
 
 ### Reads (`src/record/`)
 
@@ -99,7 +112,7 @@ withdrawn, not unreadable.
   loads: `ExerciseRequest.changeTrainingPlanDefinition`'s revoked and started
   requests in one batch.
 - **History** (`src/history/history-tab.tsx`). `WorkoutHistoryView` over the
-  history read.
+  history read: the lifter's, or every patient's for All patients.
 
 ### Writes
 
@@ -129,13 +142,18 @@ The same scope string for the EHR launch (`smartConfig`) and the standalone
 connect (`standaloneSmartConfig`), in `src/config.ts`:
 
 ```text
-launch launch/patient openid fhirUser system/Patient.rs system/PlanDefinition.crus system/ServiceRequest.crus system/Procedure.crus system/Observation.crus
+launch openid fhirUser system/Patient.rs system/PlanDefinition.crus system/ServiceRequest.crus system/Procedure.crus system/Observation.crus
 ```
 
-`crus` is create + read + update + search: every write is an update to a
-client-minted id that creates the resource the first time, and the app never
-deletes. That one string is what the `lifting-app` OAuth client (gatekeeper
-migration `0019_seed_lifting_app_client`) and the debug-only `lifting-app-dev`
+`system/` scopes only, with no `launch/patient`: the lifter is picked in the
+app, so the authorization server binds no patient to the token, and each
+search is scoped with `patient=` (or unscoped for All patients).
+`system/Patient.rs` reads the patients the picker lists and the one named
+under the title. `crus` is create + read + update + search: every write is an
+update to a client-minted id that creates the resource the first time, and the
+app never deletes. That one string is what the `lifting-app` OAuth client
+(gatekeeper migrations `0019_seed_lifting_app_client` and
+`0020_first_party_apps_pick_the_patient`) and the debug-only `lifting-app-dev`
 client (`seed_dev_app_clients` in `gatekeeper-rust/src/seeding.rs`) allow,
 exactly; a test there reads `src/config.ts` and pins both clients to it.
 
@@ -162,8 +180,9 @@ launched through — the host's redirect resolver looks an app up by
   launching
   `https://wildflowerhealth.io/lifting-app/launch.html?launch={launch}&iss={origin}/fhir-r4`
   with `requires_tunnel` set, as every first-party cloud row has. Its public
-  OAuth client (gatekeeper migration `0019_seed_lifting_app_client`) redirects
-  to `/` and `https://wildflowerhealth.io/lifting-app/`.
+  OAuth client (gatekeeper migration `0019_seed_lifting_app_client`, its
+  scopes as `0020_first_party_apps_pick_the_patient` left them) redirects to
+  `/` and `https://wildflowerhealth.io/lifting-app/`.
 - **`lifting-app-dev`** is seeded in debug builds only, at runtime rather than
   by a migration: a cloud row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
@@ -176,6 +195,6 @@ vp run -F lifting-app dev     # strictPort, from slices/apps/dev-app-ports.json
 ```
 
 Open the printed `http://localhost:<port>/`, pick a server on the connect menu,
-and choose a patient there. The port has a single source,
+sign in, and choose a patient (or All patients) in the app. The port has a single source,
 `slices/apps/dev-app-ports.json` (`lifting-app-dev`): `vite.config.ts` reads it
 through the shared `devAppServer` helper in the root `vite.config.base.ts`.

@@ -1,50 +1,35 @@
-import { useQuery } from '@tanstack/react-query'
-import { DateTime, Effect, Match, Option } from 'effect'
-import { fetchPatient, useLaunchFailureRedirect, useSmartHandshake } from 'fhir-r4-react/smart'
+import { DateTime, Match, Option } from 'effect'
+import { useLaunchFailureRedirect, useSmartHandshake } from 'fhir-r4-react/smart'
 import type { JSX } from 'react'
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { ErrorBanner } from 'react-tundraish'
-import { LoadingLine, ReadFailureLine } from 'smart-app-react'
+import {
+  LoadingLine,
+  PatientChoiceLine,
+  PatientPicker,
+  patientChoiceKeyOf,
+  patientScopeOf,
+  usePatientChoice,
+} from 'smart-app-react'
 
-import { patientLineOf } from './patient-line.ts'
-import { PatientPicker } from './patient-picker.tsx'
 import { PatientRecord } from './patient-record.tsx'
-import type { SmartClient } from './smart-client.ts'
 import { useUrlSelection } from './use-url-selection.ts'
 import styles from './app.module.css'
 
-/** The patient's name and birth date under the page title, from one `Patient` read. */
-const PatientLine = ({
-  client,
-  patientId,
-}: {
-  readonly client: SmartClient
-  readonly patientId: string
-}): JSX.Element | null => {
-  const patient = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: () => Effect.runPromise(fetchPatient(client, patientId)),
-  })
-  if (patient.isError) return <ReadFailureLine subject="the patient" error={patient.error} />
-  if (patient.data === undefined) return null
-  if (Option.isNone(patient.data)) {
-    return <ReadFailureLine subject={`patient ${patientId}`} error="not a FHIR Patient" />
-  }
-  return <p className={styles.patient}>{patientLineOf(patient.data.value)}</p>
-}
-
 /**
- * The redirect-target app: completes the SMART handshake, settles on a
- * patient, and hands their record to {@link PatientRecord}.
+ * The redirect-target app: completes the SMART handshake, settles on whose
+ * record to read, and hands it to {@link PatientRecord}.
  *
  * @remarks
- * The patient is the launch's (`client.patient.id`) or, with none in
- * context, the URL's `?patient=`; with neither the page is a patient picker,
- * and picking one sets `?patient=`.
+ * Whose record is `smart-app-react`'s `usePatientChoice`: the URL's
+ * `?patient=`, else the launch's patient (`client.patient.id`); with neither
+ * the page is the `PatientPicker`. "All patients" reads every patient's
+ * Observations and MedicationRequests unscoped, charted together. The title's
+ * `PatientChoiceLine` names the choice and goes back to the picker.
  *
- * The selection lives only in the URL ({@link useUrlSelection}); every change
- * — a pick here, a series or a range in the record — is an updater over the
- * latest selection, so changes made in one tick compose.
+ * The selection lives only in the URL ({@link useUrlSelection}) beside the
+ * patient; every change — a series or a range in the record — is an updater
+ * over the latest selection, so changes made in one tick compose.
  */
 export const App = (): JSX.Element => {
   const handshake = useSmartHandshake()
@@ -57,26 +42,22 @@ export const App = (): JSX.Element => {
   const [openedAt] = useState(() => DateTime.unsafeNow())
 
   const client = handshake.kind === 'ready' ? handshake.client : undefined
-  const patientId = client?.patient.id ?? selection.patient
-
-  const pickPatient = useCallback(
-    (pickedPatientId: string) => {
-      updateSelection((latestSelection) => ({ ...latestSelection, patient: pickedPatientId }))
-    },
-    [updateSelection]
+  const { patientChoice, choosePatient, changePatient } = usePatientChoice(
+    client?.patient.id ?? null
   )
 
   const body = Match.value(handshake).pipe(
     Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error} />),
     Match.when({ kind: 'connecting' }, () => <LoadingLine />),
     Match.when({ kind: 'ready' }, ({ client: readyClient }) =>
-      patientId === null ? (
-        <PatientPicker client={readyClient} onPatientPick={pickPatient} />
+      Option.isNone(patientChoice) ? (
+        <PatientPicker client={readyClient} onPatientChoice={choosePatient} />
       ) : (
         <PatientRecord
-          key={patientId}
+          // Remounted per choice, so no read or reconciliation carries over.
+          key={patientChoiceKeyOf(patientChoice.value)}
           client={readyClient}
-          patientId={patientId}
+          patientId={patientScopeOf(patientChoice.value)}
           selection={selection}
           onSelectionUpdate={updateSelection}
           openedAt={openedAt}
@@ -90,8 +71,12 @@ export const App = (): JSX.Element => {
     <main className={styles.app}>
       <header className={styles.header}>
         <h1 className="text-heading-3">Synthesized Health Viewer</h1>
-        {client !== undefined && patientId !== null && (
-          <PatientLine client={client} patientId={patientId} />
+        {client !== undefined && Option.isSome(patientChoice) && (
+          <PatientChoiceLine
+            client={client}
+            patientChoice={patientChoice.value}
+            onPatientChange={changePatient}
+          />
         )}
       </header>
       {body}

@@ -4,9 +4,9 @@ import { Array as Arr, Effect, Layer, Option, Order, Schema } from 'effect'
 import type { SmartClient } from './smart-client.ts'
 
 /**
- * An in-memory FHIR server for driving the app end to end: searches answered
- * from its store through a stub fhirclient client, and batch `Bundle`s applied
- * to the same store through a stub transport the real
+ * An in-memory FHIR server for driving the app end to end: searches and reads
+ * answered from its store through a stub fhirclient client, and batch
+ * `Bundle`s applied to the same store through a stub transport the real
  * `buildSmartRouterContext` writes over.
  */
 
@@ -87,6 +87,8 @@ interface RecordedRequest {
 interface FakeFhirServer {
   /** Every search query the readers issued, in order. */
   readonly searches: string[]
+  /** Every read (`Type/id`) the readers issued, in order. */
+  readonly reads: string[]
   /** Every request that reached the transport (the batch writes), in order. */
   readonly requests: RecordedRequest[]
   /** Every batch `Bundle`'s resources, one array per batch, in order. */
@@ -152,6 +154,7 @@ const matches = (fields: StoredResourceFields, params: URLSearchParams): boolean
 const fakeFhirServer = (): FakeFhirServer => {
   const store = new Map<string, unknown>()
   const searches: string[] = []
+  const reads: string[] = []
   const requests: RecordedRequest[] = []
   const writes: (readonly unknown[])[] = []
   let rejectOnceType: string | null = null
@@ -184,12 +187,23 @@ const fakeFhirServer = (): FakeFhirServer => {
     }
   }
 
+  /** A read of one resource, `Type/id`: what the store holds under it, or a refusal. */
+  const read = (reference: string): Promise<unknown> => {
+    reads.push(reference)
+    const wire = store.get(reference)
+    return wire === undefined
+      ? Promise.reject(new Error(`${reference} not found on the test server`))
+      : Promise.resolve(wire)
+  }
+
   const clientFor = (patientId: string | null): SmartClient => {
     const stub = {
-      request: (query: string): Promise<unknown> =>
-        searchesFail
+      request: (query: string): Promise<unknown> => {
+        if (!query.includes('?')) return read(query)
+        return searchesFail
           ? Promise.reject(new Error('search refused by test server'))
-          : Promise.resolve(searchset(query)),
+          : Promise.resolve(searchset(query))
+      },
       patient: { id: patientId },
       state: { serverUrl: SERVER_URL, tokenResponse: { access_token: ACCESS_TOKEN } },
     }
@@ -229,6 +243,7 @@ const fakeFhirServer = (): FakeFhirServer => {
 
   return {
     searches,
+    reads,
     requests,
     writes,
     transport,

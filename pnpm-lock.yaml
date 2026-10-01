@@ -5088,6 +5088,15 @@ importers:
       branding-react:
         specifier: workspace:*
         version: link:../../branding/branding-react
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
         version: link:../../emr/fhir-r4-react
@@ -5103,6 +5112,9 @@ importers:
       react-dom:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/react-kitchen-sink
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish

@@ -2,12 +2,33 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
 import type { SmartAppTelemetry } from 'smart-app-react'
 
 /**
- * SMART registration for the `medications-app` package. The scopes must be a
- * subset of the seeded OAuth client's allowed scopes: EHR launch + patient
- * context, then read the patient plus their MedicationRequests (and any
- * referenced Medication resources). The `system/` scopes support a launch with
- * no patient in context, where the app reads MedicationRequests across every
- * patient the granted scopes expose (see `app.tsx`).
+ * The scopes the medications app asks for, the same for an EHR launch and a
+ * standalone connect: EHR launch, then read MedicationRequests (and any
+ * referenced Medication resources) and Patients. `system/` scopes only, with
+ * no `launch/patient`: the reader picks the patient in the app
+ * (`smart-app-react`'s `PatientPicker`, which reads `Patient`; an EHR launch
+ * that puts a patient in context opens on them), and the MedicationRequest
+ * read is filtered with `patient=`, or unscoped for "All patients" (see
+ * `app.tsx`).
+ *
+ * The seeded OAuth clients carry exactly this set — `medications-app`
+ * (gatekeeper migration `0020_first_party_apps_pick_the_patient`) and the
+ * debug-only `medications-app-dev` (`gatekeeper-rust`'s
+ * `seed_dev_app_clients`, whose test reads this file) — so a scope added here
+ * alone fails `/authorize` against a Wildflower host.
+ *
+ * The bare `launch` scope is formally EHR-context-only per the SMART App
+ * Launch IG (a standalone launch has no EHR context to launch into);
+ * sandboxes such as SmartHealthIT tolerate it, and it is kept on the
+ * standalone connect as the sibling apps keep it. If a server rejects the
+ * authorize request over it, dropping `launch` is the first thing to try.
+ */
+const MEDICATIONS_SCOPE =
+  'launch openid fhirUser system/MedicationRequest.rs system/Medication.rs system/Patient.rs'
+
+/**
+ * SMART registration for the `medications-app` package, with
+ * {@link MEDICATIONS_SCOPE}.
  *
  * `clientId` depends on how this build is being served, because the two ways it
  * is served are two different registrations:
@@ -34,7 +55,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  */
 const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'medications-app-dev' : 'medications-app',
-  scope: 'launch openid fhirUser system/MedicationRequest.rs system/Medication.rs',
+  scope: MEDICATIONS_SCOPE,
 }
 
 /**
@@ -43,17 +64,11 @@ const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
  * the FHIR server rather than the EHR naming it. Same `clientId` selection as
  * {@link smartConfig} — the standalone
  * launch runs through the same registered client, so its redirect URI (the app
- * root) still resolves.
- *
- * The scopes match {@link smartConfig}'s. Note the bare `launch` scope is
- * formally EHR-context-only per the SMART App Launch IG (a standalone launch has
- * no EHR context to launch into); sandboxes such as SmartHealthIT tolerate it,
- * and it is kept here deliberately per the app's scope set. If a server rejects
- * the authorize request over it, dropping `launch` is the first thing to try.
+ * root) still resolves — and the same scopes.
  */
 const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'medications-app-dev' : 'medications-app',
-  scope: 'launch launch/patient openid fhirUser system/MedicationRequest.rs system/Medication.rs',
+  scope: MEDICATIONS_SCOPE,
 }
 
 /**
@@ -66,4 +81,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'medications-app',
 }
 
-export { smartAppTelemetry, smartConfig, standaloneSmartConfig }
+export { MEDICATIONS_SCOPE, smartAppTelemetry, smartConfig, standaloneSmartConfig }

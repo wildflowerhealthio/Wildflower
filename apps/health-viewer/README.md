@@ -45,18 +45,22 @@ then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call.
 The page is three steps, one component or hook each: settle on a patient, read
 their record, lay it out.
 
-- **Patient** (`src/app.tsx`'s `App`). The launch's `client.patient.id`, else
-  the URL's `?patient=`. With neither, the page is a patient picker
-  (`src/patient-picker.tsx`, `fetchPatientPage`: name and birth date per row,
-  a "More patients" button while the server has more); choosing one writes
-  `?patient=` to the URL. The title's subtitle is the patient from one
-  `fetchPatient` read, as `Name · born YYYY-MM-DD`.
+- **Patient** (`src/app.tsx`'s `App`, over `smart-app-react`'s
+  `usePatientChoice`). The URL's `?patient=`, else the launch's
+  `client.patient.id`. With neither, the page is `smart-app-react`'s
+  `PatientPicker` ("All patients" first, then name and birth date per row from
+  `fetchPatientPage`, a "More patients" button while the server has more);
+  choosing writes `?patient=<id>`, or `?patient=*` for All patients, to the
+  URL. All patients reads every patient's Observations and MedicationRequests
+  unscoped and charts them together. Under the title, `PatientChoiceLine`
+  names the choice — `Name · born YYYY-MM-DD` from one `fetchPatient` read, or
+  "All patients" — with a "Change patient" link back to the picker.
 - **Record read** (`src/use-record-read.ts`'s `useRecordRead`). One
-  `useInfiniteQuery` per record source — `fetchObservationPage` and
-  `fetchMedicationRequestPage` (MedicationRequests decode with a required
-  `id`) — each drained to its last page by `react-kitchen-sink`'s
-  `useFetchEveryPage`, so the sources page concurrently and the chart
-  re-renders as pages arrive. There is no scroll sentinel. Each read's
+  `useInfiniteQuery` per record source, scoped to the patient (`null` for All
+  patients) — `fetchObservationPage` and `fetchMedicationRequestPage`
+  (MedicationRequests decode with a required `id`) — each drained to its last
+  page by `react-kitchen-sink`'s `useFetchEveryPage`, so the sources page
+  concurrently and the chart re-renders as pages arrive. There is no scroll sentinel. Each read's
   `pagedQueryStatusOf` is folded into one `RecordRead` — `loading`, `failed`
   (a first page failed) or `read` — with `readRecord` over what has landed,
   whether the record is complete, whether more is loading, which reads a later
@@ -65,12 +69,13 @@ their record, lay it out.
   for `SeriesPanel` (observation categories first, Medications last); the
   selected series, in selection order, go through `ValueAxis.assign` to
   `MultiAxisChart`, over `xDomain(range, now, Series.extentOfAll(selected))`.
-- **URL state** (`src/use-url-selection.ts`). The selection, the range and the
-  patient live only in the URL: read once with `decodeSelection`, written back
-  with `encodeSelection` through `history.replaceState` after every change.
-  Every change is an updater over the latest selection, so two made in one
-  tick both land. Once every read has its last page, selected ids with no
-  series in this record are dropped from the selection and the URL.
+- **URL state** (`src/use-url-selection.ts`). The selection and the range
+  live only in the URL, beside `usePatientChoice`'s `?patient=`: read once
+  with `decodeSelection`, written back with `withSelection` (which keeps every
+  other key) through `history.replaceState` after every change. Every change
+  is an updater over the latest selection, so two made in one tick both land.
+  Once every read has its last page, selected ids with no series in this
+  record are dropped from the selection and the URL.
 - **Status**, in `smart-app-react`'s read-status lines, shared with the
   medications app: `Loading…` until every read has its first page;
   `Loading more…` in the layout's status slot while any still pages; a failed
@@ -86,7 +91,7 @@ their record, lay it out.
 When `health-viewer-core` adds a source to `SERIES_SOURCES` and
 `RecordResources`, `useRecordRead` stops compiling until the source's read is
 wired: a `RecordSourceRead` (its query name, its status-line subject, and how
-to fetch a page from the patient or a `next` link), its line in
+to fetch a page from the patient scope or a `next` link), its line in
 `sourceReadings`, and its resources in the `readRecord` call. Status,
 completeness, failures and the left-out counts are folded over every source
 alike; the page components do not change.
@@ -122,15 +127,16 @@ vp run -F health-viewer-app dev     # strictPort, from slices/apps/dev-app-ports
 ```
 
 **Standalone**: open the printed `http://localhost:<port>/`, pick a server on the
-connect menu (the SMART Health IT sandbox works), and choose a patient there.
+connect menu (the SMART Health IT sandbox works), sign in, and choose a patient
+(or All patients) in the app.
 
 **From a Wildflower host**: debug builds of the host seed a
 `health-viewer-app-dev` **cloud** row on that port plus its own OAuth client
 (`apps-rust`'s `seed_dev_apps` / `gatekeeper-rust`'s `seed_dev_app_clients`),
 so the homescreen carries a "Health Viewer (Dev)" tile that launches whatever is
-serving that port with the host's patient in context — the vite dev server when
-it is up, nothing when it is down. The port has a single source,
-`slices/apps/dev-app-ports.json`: `vite.config.ts` reads it through the shared
+serving that port — the vite dev server when it is up, nothing when it is down.
+A launch with a patient in context opens on that patient. The port has a
+single source, `slices/apps/dev-app-ports.json`: `vite.config.ts` reads it through the shared
 `devAppServer` helper in the root `vite.config.base.ts` and `apps-rust` embeds
 it, so the dev server and the row cannot drift.
 

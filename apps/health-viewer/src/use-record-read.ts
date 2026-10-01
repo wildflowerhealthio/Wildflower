@@ -12,10 +12,11 @@ import { type PagedQueryStatus, pagedQueryStatusOf, useFetchEveryPage } from 're
 import type { SmartClient } from './smart-client.ts'
 
 /**
- * Where a record read's page comes from: the patient, for the first page, or
- * a previous page's `next` link, which already carries the patient scope.
+ * Where a record read's page comes from: the patient scope, for the first
+ * page — a patient's id, or `null` for every patient's — or a previous page's
+ * `next` link, which already carries the scope.
  */
-type RecordPageCursor = { readonly patientId: string } | { readonly pageUrl: string }
+type RecordPageCursor = { readonly patientId: string | null } | { readonly pageUrl: string }
 
 /**
  * One paged FHIR read feeding a record source: what the record read needs to
@@ -28,7 +29,7 @@ interface RecordSourceRead<TResource> {
   readonly queryName: string
   /** What a status line calls the read: `Could not load <subject>: …`. */
   readonly subject: string
-  /** Fetch one page: the patient's first, or the one a `next` link points to. */
+  /** Fetch one page: the scope's first, or the one a `next` link points to. */
   readonly fetchPage: (
     client: SmartClient,
     cursor: RecordPageCursor
@@ -94,13 +95,13 @@ type RecordRead =
     }
 
 /**
- * Open `read` for `patientId` and page it to the end, concurrently with every
- * other read, re-rendering as each page lands.
+ * Open `read` for `patientId` (`null` for every patient) and page it to the
+ * end, concurrently with every other read, re-rendering as each page lands.
  */
 const useRecordSourceRead = <TResource>(
   read: RecordSourceRead<TResource>,
   client: SmartClient,
-  patientId: string
+  patientId: string | null
 ): RecordSourceReading<TResource> => {
   const firstPageCursor: RecordPageCursor = { patientId }
   const pagedQuery = useInfiniteQuery({
@@ -176,7 +177,8 @@ const recordReadProgressOf = (
  * concurrently, and what has landed read into series with `readRecord`.
  *
  * @param client - The SMART client every read is issued through.
- * @param patientId - The patient whose record is read.
+ * @param patientId - The patient whose record is read, or `null` to read
+ *   every patient's unscoped, as one record.
  * @returns The one {@link RecordRead} the page renders from.
  *
  * @remarks
@@ -190,7 +192,7 @@ const recordReadProgressOf = (
  * The progress is folded before `readRecord` is memoised, so nothing reads
  * the landed resources after the memo captures them.
  */
-const useRecordRead = (client: SmartClient, patientId: string): RecordRead => {
+const useRecordRead = (client: SmartClient, patientId: string | null): RecordRead => {
   const sourceReadings = {
     observations: useRecordSourceRead(observationRead, client, patientId),
     medicationRequests: useRecordSourceRead(medicationRequestRead, client, patientId),

@@ -424,6 +424,23 @@ mod tests {
                 ),
             ],
         );
+        // Its scopes are `system/` reads only, with no `launch/patient`: the app
+        // picks the patient itself, reading `Patient` for the picker (`0020`).
+        // This vector must stay element-for-element equal to
+        // `MEDICATIONS_SCOPE` in `apps/medications-app/src/config.ts`;
+        // `seeding.rs`'s `seeds_the_medications_dev_client_with_the_apps_own_scopes`
+        // reads that file and pins this client to it.
+        assert_eq!(
+            medications.allowed_scopes,
+            vec![
+                "launch".to_string(),
+                "openid".to_string(),
+                "fhirUser".to_string(),
+                "system/MedicationRequest.rs".to_string(),
+                "system/Medication.rs".to_string(),
+                "system/Patient.rs".to_string(),
+            ],
+        );
 
         // The server-docs API console is a standalone-launch client, so it is
         // registered with the MAXIMAL scope vocabulary and narrowed at consent
@@ -606,8 +623,8 @@ mod tests {
         // `lifting-app` (Lifting) is a cloud client like the ones above, seeded
         // by `0019`, and its scopes carry writes: the training plan
         // definition's `PlanDefinition`, a `ServiceRequest` per exercise, and
-        // each workout's `Procedure` and per-set `Observation`s. `launch/patient`
-        // rides along as on `medications-app`, for the standalone connect flow.
+        // each workout's `Procedure` and per-set `Observation`s. There is no
+        // `launch/patient`: the app picks the lifter itself (`0020`).
         // This vector must stay element-for-element equal to `LIFTING_SCOPE` in
         // `apps/lifting-app/src/config.ts`; `seeding.rs`'s
         // `seeds_the_lifting_dev_client_with_the_apps_own_scopes` reads that
@@ -628,7 +645,6 @@ mod tests {
             lifting.allowed_scopes,
             vec![
                 "launch".to_string(),
-                "launch/patient".to_string(),
                 "openid".to_string(),
                 "fhirUser".to_string(),
                 "system/Patient.rs".to_string(),

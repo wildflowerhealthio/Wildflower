@@ -12,24 +12,29 @@ same paged-read drain (`useFetchEveryPage`) and read-status lines.
 ## Rules
 
 - **Compose; decide nothing.** The app wires `health-viewer-core` and
-  `health-viewer-react` together and owns only the SMART shell, the reads, the
-  patient and the URL. Which series a record holds, how they are grouped, what
-  each axis spans and what window a preset selects are the slice's functions —
+  `health-viewer-react` together and owns only the SMART shell, the reads and
+  the URL; the patient is `smart-app-react`'s (`usePatientChoice`,
+  `PatientPicker`, `PatientChoiceLine`). Which series a record holds, how they
+  are grouped, what each axis spans and what window a preset selects are the
+  slice's functions —
   `readRecord`, `groupForPanel`, `ValueAxis.assign`, `Series.extentOfAll`,
   `xDomain`. No domain package is imported here: `health-viewer-observations`
   and `health-viewer-medications` arrive through core.
 - **The page is patient → record read → layout.** `App` settles on the
-  patient; `useRecordRead` owns every record read and folds them into one
-  `RecordRead`; `PatientRecord` renders from it. A new record source is a
+  patient — one patient, or All patients, whose reads are unscoped (`null`)
+  and charted as one record; `useRecordRead` owns every record read and folds
+  them into one `RecordRead`; `PatientRecord` renders from it, remounted per
+  choice. A new record source is a
   `RecordSourceRead` and its lines in `useRecordRead` — never a branch in a
   component. See the README's "Adding a record source".
 - **The URL is the selection's only home.** `useUrlSelection` initialises from
-  `decodeSelection` and writes every change back with `encodeSelection`
+  `decodeSelection` and writes every change back with `withSelection`
   through `history.replaceState` (never `pushState` — a checkbox is not a
-  navigation). Nothing writes the URL on mount: before the handshake completes
-  the URL still carries the OAuth `code` / `state` fhirclient reads, and
-  replacing the query would lose them.
-- **Every selection change is an updater.** Series, range, patient and the
+  navigation), touching only its own keys: `?patient=` beside them is
+  `usePatientChoice`'s. Nothing writes the URL on mount: before the handshake
+  completes the URL still carries the OAuth `code` / `state` fhirclient reads,
+  and replacing the query would lose them.
+- **Every selection change is an updater.** Series, range and the
   reconciliation all go through `updateSelection((latest) => …)`, never a
   copy of the selection a render saw, so changes made in one tick compose.
 - **Reconcile only a complete record.** Selected ids with no series are
@@ -38,9 +43,10 @@ same paged-read drain (`useFetchEveryPage`) and read-status lines.
   page, which leaves the record incomplete.
 - **Every read pages to the end, concurrently.** Each is drained by
   `react-kitchen-sink`'s `useFetchEveryPage`, which halts on a failed page
-  rather than retrying it. The patient picker's read is the exception: it
-  pages on its "More patients" button. Every paged read's status is
-  `pagedQueryStatusOf`, rendered with `smart-app-react`'s read-status lines.
+  rather than retrying it. The patient picker's read (`smart-app-react`'s) is
+  the exception: it pages on its "More patients" button. Every paged read's
+  status is `pagedQueryStatusOf`, rendered with `smart-app-react`'s
+  read-status lines.
 - **A MedicationRequest's `id` is required.** `fetchMedicationRequestPage`
   decodes through `withMandatoryId(MedicationRequest.Schema)`, so an entry
   without one is dropped and counted in the page's `droppedEntryCount`, which
@@ -48,14 +54,17 @@ same paged-read drain (`useFetchEveryPage`) and read-status lines.
 
 ## Testing
 
-- `use-url-selection.test.ts` — the URL is left alone on mount, and two
-  updates issued from one render both land.
+- `use-url-selection.test.ts` — the URL is left alone on mount, two updates
+  issued from one render both land, and `?patient=` survives a write.
 - `app.test.tsx` stubs only the handshake. The page reads are the real
   `fhir-r4-react/smart` ones over a stub client whose `request` answers from a
   table of FHIR JSON by URL prefix, so decoding is exercised end to end. Series
   ids and labels in assertions come from core's `readRecord` over the same
   fixtures, never hand-written, so a change to a domain's id grammar or label
-  does not silently desynchronise the tests.
+  does not silently desynchronise the tests. They cover the patient as the
+  page uses it — the launch's, the URL's, a pick, a change, and All patients'
+  unscoped reads; the picker, the line and the hook themselves are tested in
+  `smart-app-react`.
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the health
   viewer (the landing `h1` is `APP_DESCRIPTIONS.healthViewer.name`); the shell
   itself is tested in `smart-app-react`.

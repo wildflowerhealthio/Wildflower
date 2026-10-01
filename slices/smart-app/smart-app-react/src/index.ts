@@ -12,5 +12,9 @@ export {
   type LoadingLineProps,
   type ReadFailureLineProps,
 } from './read-status-lines.tsx'
+export { type PatientChoice, patientChoiceKeyOf, patientScopeOf } from './patient-choice.ts'
+export { PatientChoiceLine, type PatientChoiceLineProps } from './patient-choice-line.tsx'
+export { PatientPicker, type PatientPickerProps } from './patient-picker.tsx'
+export { type PatientChoosing, usePatientChoice } from './use-patient-choice.ts'
 export { SmartAppRoot, type SmartAppRootProps, type SmartAppTelemetry } from './smart-app-root.tsx'
 export { runSmartLaunchEntry, type SmartLaunchEntryConfig } from './smart-launch-entry.ts'

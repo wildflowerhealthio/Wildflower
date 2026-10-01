@@ -12,6 +12,7 @@ import {
   type Selection,
   decodeSelection,
   encodeSelection,
+  withSelection,
 } from './selection-url.ts'
 
 import { RANGE_PRESETS } from './time-range.ts'
@@ -38,8 +39,18 @@ const seriesIdArb: fc.Arbitrary<string> = fc.oneof(
 const selection: fc.Arbitrary<Selection> = fc.record({
   series: fc.uniqueArray(seriesIdArb, { maxLength: ValueAxis.CAP }),
   range: fc.constantFrom(...RANGE_PRESETS),
-  patient: fc.option(fc.string({ maxLength: 12 }), { nil: null }),
 })
+
+/** Query parameters the page's URL carries beside the selection, e.g. `?patient=`. */
+const otherParams: fc.Arbitrary<URLSearchParams> = fc
+  .array(
+    fc.tuple(
+      fc.string({ maxLength: 8 }).filter((key) => key !== SERIES_PARAM && key !== RANGE_PARAM),
+      fc.string({ maxLength: 8 })
+    ),
+    { maxLength: 6 }
+  )
+  .map((entries) => new URLSearchParams(entries))
 
 describe('encodeSelection / decodeSelection', () => {
   test('decode inverts encode for every selection', () => {
@@ -66,9 +77,7 @@ describe('encodeSelection / decodeSelection', () => {
       fc.property(
         fc.uniqueArray(seriesIdArb, { minLength: 2, maxLength: ValueAxis.CAP }),
         (ids) => {
-          const decoded = decodeSelection(
-            encodeSelection({ series: ids, range: 'all', patient: null })
-          )
+          const decoded = decodeSelection(encodeSelection({ series: ids, range: 'all' }))
           expect(decoded.series).toEqual(ids)
         }
       ),
@@ -77,21 +86,22 @@ describe('encodeSelection / decodeSelection', () => {
   })
 
   test.each(RANGE_PRESETS)('the %s preset is written as its own name and read back', (range) => {
-    const query = encodeSelection({ series: [], range, patient: null }).toString()
+    const query = encodeSelection({ series: [], range }).toString()
     expect(query).toBe(`${RANGE_PARAM}=${range}`)
     expect(decodeSelection(new URLSearchParams(query)).range).toBe(range)
   })
 
-  test('an absent patient stays absent rather than becoming an empty string', () => {
-    const params = encodeSelection({ series: [], range: 'all', patient: null })
-    expect(params.has('patient')).toBe(false)
-    expect(decodeSelection(params).patient).toBeNull()
-  })
-
-  test('an empty-string patient is distinguishable from an absent one', () => {
-    expect(
-      decodeSelection(encodeSelection({ series: [], range: 'all', patient: '' })).patient
-    ).toBe('')
+  test('withSelection replaces the selection and keeps every other key as it was', () => {
+    fc.assert(
+      fc.property(otherParams, selection, selection, (others, earlier, later) => {
+        const written = withSelection(withSelection(others, earlier), later)
+        expect(decodeSelection(written)).toEqual(later)
+        written.delete(SERIES_PARAM)
+        written.delete(RANGE_PARAM)
+        expect(written.toString()).toBe(others.toString())
+      }),
+      { numRuns: RUNS }
+    )
   })
 
   describe('malformed input is dropped, never thrown', () => {

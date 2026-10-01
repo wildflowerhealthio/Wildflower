@@ -33,7 +33,7 @@ type PatientPageCursor = ResourcePageCursor<null>
 // `family` is the FHIR R4 `Patient` search parameter backing `name.family`.
 const FIRST_PAGE_QUERY = `_sort=family&_count=${RESOURCE_PAGE_SIZE}`
 
-/** The `Patient` read backing the no-context picker. */
+/** The `Patient` read backing the patient picker. */
 const patientRead: PagedResourceRead<
   PatientResource,
   Schema.Schema.Encoded<typeof Patient.Schema>,
@@ -55,9 +55,9 @@ const decodePatient = Schema.decodeUnknownOption(Patient.Schema)
  * @returns An effect yielding the page's decoded `Patient`s and the next page's cursor
  *
  * @remarks
- * This is the picker's read: what a launch with no patient in context offers the
- * user to choose from. A launch that _does_ carry a patient reads that one
- * directly with {@link fetchPatient} instead.
+ * This is the patient picker's read (`smart-app-react`'s `PatientPicker`):
+ * every patient the session can see, for the user to choose whose records the
+ * app reads. The one chosen is read directly with {@link fetchPatient}.
  */
 const fetchPatientPage = (
   client: Client,

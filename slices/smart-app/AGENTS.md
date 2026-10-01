@@ -29,11 +29,29 @@ slice is where the two meet, so neither has to know about the other.
     before anything lands, `Loading more…` while later pages arrive, and
     `Could not load <subject>: <reason>` for a failed read. Pair them with
     `react-kitchen-sink`'s `pagedQueryStatusOf` for a paged read.
+  - The patient choice, for an app that picks the patient itself after
+    sign-in rather than asking the authorization server for `launch/patient`:
+    - `PatientChoice` — one patient (`{ kind: 'patient', patientId }`) or
+      every patient (`{ kind: 'all-patients' }`). `patientScopeOf` turns it
+      into the `patientId: string | null` a `fhir-r4-react/smart` reader
+      takes (`null` reads unscoped); `patientChoiceKeyOf` into one string,
+      distinct per choice, for a React key or a query key.
+    - `usePatientChoice(launchPatientId)` — the choice the page reads under,
+      `None` while the reader is choosing, with `choosePatient` and
+      `changePatient`.
+    - `PatientPicker({ client, onPatientChoice })` — "All patients" first,
+      then every patient the session can see (`fetchPatientPage`, name and
+      birth date per row, sorted by family name, "More patients" while the
+      server has more).
+    - `PatientChoiceLine({ client, patientChoice, onPatientChange })` — the
+      line under an app's title: `Name · born YYYY-MM-DD` (one `fetchPatient`
+      read) or "All patients", and a "Change patient" link.
 
 Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/lifting-app`,
 `apps/importer-web`, `apps/web-trace` and `apps/synthetic-data-app` mount
 `SmartAppRoot` and `runSmartLaunchEntry`; the first three speak the read-status
-lines, as does `synthetic-data-react`'s screen; `apps/fhir-sync-pebble-web` is
+lines, as does `synthetic-data-react`'s screen, and pick the patient with the
+patient choice; `apps/fhir-sync-pebble-web` is
 standalone-only, so it mounts `SmartAppRoot` with no launch entry;
 `apps/wildflower-react`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.
@@ -152,6 +170,27 @@ import `branding-react/styles.css` itself.
   where it started, at the top for the chosen server and at the bottom for a
   pick. A page keeps only the policy (which server, whether to sign in on
   arrival, what `connect` means) and holds no sign-in state of its own.
+
+## The patient choice
+
+- **`?patient=` is the choice's only home.** `?patient=<id>` is one patient,
+  `?patient=*` every patient (`*` is outside FHIR's id grammar, so no id is
+  ever it), and an absent or empty `patient` is no choice yet
+  (`decodePatientChoice` / `withPatientChoice` in `patient-choice.ts`).
+- **The URL wins over the launch.** `usePatientChoice` reads the URL once, on
+  mount; without a choice there it opens on the launch's `client.patient.id`
+  (an EHR launch from a patient's record), and with neither it has none and
+  the page shows the picker. A reload keeps the reader's own pick.
+- **Nothing is written until the reader chooses**, and a write touches only
+  `patient`: before the handshake completes the URL still carries the OAuth
+  `code` / `state` fhirclient reads, and an app's own query state (the health
+  viewer's selection) sits beside it. A choice is written with
+  `history.replaceState`, never `pushState`.
+- **Changing the patient only reopens the picker.** The URL keeps the last
+  choice until another is made, so a reload mid-change returns to it.
+- **An app decides what "All patients" means for it.** The readers take
+  `null` and read unscoped; an app that writes (Lifting) keeps its write
+  screens behind a chosen patient.
 
 ## References
 

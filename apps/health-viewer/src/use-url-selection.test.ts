@@ -29,15 +29,31 @@ describe('useUrlSelection', () => {
     const { result } = renderHook(() => useUrlSelection())
     const { updateSelection } = result.current
 
-    // Act — both updates are issued from the same render
+    // Act — both updates are issued from the same render, the second reading the first
     act(() => {
       updateSelection((latest) => ({ ...latest, range: '90d' }))
-      updateSelection((latest) => ({ ...latest, patient: 'p1' }))
+      updateSelection((latest) => ({ ...latest, range: latest.range === '90d' ? '28d' : '1y' }))
     })
 
-    // Assert — neither overwrote the other, in state or in the URL
-    const expected = { series: [], range: '90d', patient: 'p1' }
+    // Assert — the second saw the first, in state and in the URL
+    const expected = { series: [], range: '28d' }
     expect(result.current.selection).toEqual(expected)
     expect(selectionInUrl()).toEqual(expected)
+  })
+
+  it("keeps the patient's query key when it writes the selection", () => {
+    // Arrange
+    window.history.replaceState(null, '', '/health-viewer-app/?patient=p1&r=1y')
+    const { result } = renderHook(() => useUrlSelection())
+
+    // Act
+    act(() => {
+      result.current.updateSelection((latest) => ({ ...latest, range: '90d' }))
+    })
+
+    // Assert
+    const params = new URLSearchParams(window.location.search)
+    expect(params.get('patient')).toBe('p1')
+    expect(params.get('r')).toBe('90d')
   })
 })

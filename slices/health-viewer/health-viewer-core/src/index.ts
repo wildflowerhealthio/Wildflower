@@ -23,9 +23,9 @@ export { groupForPanel, matchesSearch, normaliseForSearch } from './catalog.ts'
 export type { Selection } from './selection-url.ts'
 export {
   DEFAULT_RANGE,
-  PATIENT_PARAM,
   RANGE_PARAM,
   SERIES_PARAM,
   decodeSelection,
   encodeSelection,
+  withSelection,
 } from './selection-url.ts'

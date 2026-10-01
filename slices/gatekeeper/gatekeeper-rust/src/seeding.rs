@@ -138,7 +138,6 @@ struct DevAppPorts {
 #[cfg(debug_assertions)]
 const HEALTH_VIEWER_DEV_SCOPES: &[&str] = &[
     "launch",
-    "launch/patient",
     "openid",
     "fhirUser",
     "system/Observation.rs",
@@ -167,17 +166,33 @@ const SYNTHETIC_DATA_DEV_SCOPES: &[&str] = &[
     "system/ImagingStudy.cu",
 ];
 
+/// The `medications-app-dev` client's scopes: exactly `MEDICATIONS_SCOPE` in
+/// `apps/medications-app/src/config.ts`, which requests the same set for an
+/// EHR launch and a standalone connect, and the same set the production
+/// `medications-app` client allows (gatekeeper migration
+/// `0020_first_party_apps_pick_the_patient`). A test below reads that file and
+/// pins all three together.
+#[cfg(debug_assertions)]
+const MEDICATIONS_DEV_SCOPES: &[&str] = &[
+    "launch",
+    "openid",
+    "fhirUser",
+    "system/MedicationRequest.rs",
+    "system/Medication.rs",
+    "system/Patient.rs",
+];
+
 /// The `lifting-app-dev` client's scopes: exactly `LIFTING_SCOPE` in
 /// `apps/lifting-app/src/config.ts`, which requests the same set for an EHR
 /// launch and a standalone connect, and the same set the production
-/// `lifting-app` client is seeded with (gatekeeper migration
-/// `0019_seed_lifting_app_client`). A test below reads that file and pins all
-/// three together. Writes are `.crus`: every write is an update-as-create to a
-/// client-minted id, and the app never deletes.
+/// `lifting-app` client allows (gatekeeper migrations
+/// `0019_seed_lifting_app_client` and `0020_first_party_apps_pick_the_patient`).
+/// A test below reads that file and pins all three together. Writes are
+/// `.crus`: every write is an update-as-create to a client-minted id, and the
+/// app never deletes.
 #[cfg(debug_assertions)]
 const LIFTING_DEV_SCOPES: &[&str] = &[
     "launch",
-    "launch/patient",
     "openid",
     "fhirUser",
     "system/Patient.rs",
@@ -242,15 +257,9 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
         (
             "medications-app-dev",
             "Medications (Dev)",
-            [
-                "launch",
-                "launch/patient",
-                "openid",
-                "fhirUser",
-                "system/MedicationRequest.rs",
-                "system/Medication.rs",
-            ]
-            .as_slice(),
+            // `apps/medications-app/src/config.ts`'s `MEDICATIONS_SCOPE` — see
+            // [`MEDICATIONS_DEV_SCOPES`].
+            MEDICATIONS_DEV_SCOPES,
             ports.medications_app_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
@@ -527,9 +536,58 @@ mod tests {
         );
     }
 
+    /// The Medications dev client is seeded on its dev server's loopback root
+    /// with exactly the scopes the app requests, and the production
+    /// `medications-app` client (gatekeeper migrations `0004` / `0011`, then
+    /// `0020`) allows the same set. The app's `MEDICATIONS_SCOPE` is read out of
+    /// `config.ts` itself, the one place it is written, so neither client can
+    /// drift from it unnoticed.
+    #[test]
+    fn seeds_the_medications_dev_client_with_the_apps_own_scopes() {
+        use crate::domain::client::RegisteredRedirectUri;
+
+        const MEDICATIONS_CONFIG_TS: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../apps/medications-app/src/config.ts"
+        ));
+        let scope_string = format!("'{}'", MEDICATIONS_DEV_SCOPES.join(" "));
+        assert!(
+            MEDICATIONS_CONFIG_TS.contains(&scope_string),
+            "apps/medications-app/src/config.ts must request exactly {scope_string}",
+        );
+
+        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+        seed_dev_app_clients(pool.clone()).expect("seed dev clients");
+        let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
+        let client = store
+            .client_by_id("medications-app-dev")
+            .expect("query client")
+            .expect("medications dev client seeded");
+        let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
+        assert_eq!(client.kind, ClientKind::Public);
+        assert_eq!(client.allowed_scopes, MEDICATIONS_DEV_SCOPES);
+        assert_eq!(
+            client.redirect_uris,
+            vec![
+                RegisteredRedirectUri::AppRelative("/".to_owned()),
+                RegisteredRedirectUri::Absolute(
+                    format!("http://localhost:{}/", ports.medications_app_dev)
+                        .parse()
+                        .expect("a valid absolute redirect"),
+                ),
+            ],
+        );
+
+        let production = store
+            .client_by_id("medications-app")
+            .expect("query client")
+            .expect("the migrations seed the medications-app client");
+        assert_eq!(production.allowed_scopes, MEDICATIONS_DEV_SCOPES);
+    }
+
     /// The Lifting dev client is seeded on its dev server's loopback root with
     /// exactly the scopes the app requests, and the production `lifting-app`
-    /// client (gatekeeper migration `0019`) allows the same set. The app's
+    /// client (gatekeeper migrations `0019` and `0020`) allows the same set. The app's
     /// `LIFTING_SCOPE` is read out of `config.ts` itself, the one place it is
     /// written, so neither client can drift from it unnoticed.
     #[test]

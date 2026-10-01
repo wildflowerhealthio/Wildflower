@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Match } from 'effect'
+import { Match, Option } from 'effect'
 import { useLaunchFailureRedirect, useSmartHandshake } from 'fhir-r4-react/smart'
 import { CalendarView } from 'medication-calendar-react'
 import { InteractionsView } from 'medication-interaction-react'
@@ -19,7 +19,14 @@ import {
   SegmentedToggle,
   type ChunkBarPhase,
 } from 'react-tundraish'
-import { LoadingLine, LoadingMoreLine, ReadFailureLine } from 'smart-app-react'
+import {
+  LoadingLine,
+  LoadingMoreLine,
+  PatientChoiceLine,
+  PatientPicker,
+  ReadFailureLine,
+  usePatientChoice,
+} from 'smart-app-react'
 
 import { catalogs } from './catalogs.ts'
 import { getInteractionCatalog } from './interaction-catalog.ts'
@@ -73,14 +80,22 @@ const useDelayedFlag = (active: boolean, delayMs: number): boolean => {
 }
 
 /**
- * The redirect-target app: completes the SMART handshake, loads the patient's
- * MedicationRequests a page at a time, and renders them as one of four views
- * per the header toggle — the medications list, the prescription calendar,
- * the interactions report over the active ones (gated on the full list), or
- * the savings-program breakdown (province picker included). A chunk bar under
- * the H1 tracks the paged load on every view.
+ * The redirect-target app: completes the SMART handshake, settles on whose
+ * medications to read, loads their MedicationRequests a page at a time, and
+ * renders them as one of four views per the header toggle — the medications
+ * list, the prescription calendar, the interactions report over the active
+ * ones (gated on the full list), or the savings-program breakdown (province
+ * picker included). A chunk bar under the H1 tracks the paged load on every
+ * view.
  *
  * @remarks
+ * Whose medications is `smart-app-react`'s `usePatientChoice`: the URL's
+ * `?patient=`, else the launch's patient (`client.patient.id`); with neither
+ * the body is the `PatientPicker`. One patient's requests are read with
+ * `patient=`, "All patients" reads every patient's unscoped. The
+ * `PatientChoiceLine` under the H1 names the choice and goes back to the
+ * picker.
+ *
  * Both async legs are TanStack Queries on the page's shared client: the token
  * exchange (`useSmartHandshake`, keyed and deduped so StrictMode's double-mount
  * exchanges the single-use code once) and the paged MedicationRequest read that
@@ -105,8 +120,11 @@ export const App = (): JSX.Element => {
   // carry the reason to the app root, which can offer the connect menu.
   useLaunchFailureRedirect(handshake)
   const client = handshake.kind === 'ready' ? handshake.client : undefined
+  const { patientChoice, choosePatient, changePatient } = usePatientChoice(
+    client?.patient.id ?? null
+  )
 
-  const { pagedQuery: medications, views } = useMedicationRequests(client, {
+  const { pagedQuery: medications, views } = useMedicationRequests(client, patientChoice, {
     loadAll: loadAllActive,
   })
   const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = medications
@@ -318,18 +336,23 @@ export const App = (): JSX.Element => {
   )
 
   // Either leg can fail — the token exchange or the read that follows it. Surface
-  // whichever did; loading covers both the exchange and the first page. A failure
+  // whichever did; with the exchange done and no patient chosen, the body is the
+  // patient picker; loading covers both the exchange and the first page. A failure
   // while fetching a *later* page keeps the rows already loaded and shows an inline
   // line rather than discarding them. Each arm matches on the packed control
   // fields; earlier arms win, so order is priority order.
   const body = Match.value({
     handshakeError: handshake.kind === 'error' ? handshake.error : undefined,
+    pickerClient: Option.isNone(patientChoice) ? client : undefined,
     firstPageError: medications.isError && !hasPages ? medications.error : undefined,
     hasPages,
     tab,
   }).pipe(
     Match.when({ handshakeError: Match.defined }, ({ handshakeError }): JSX.Element => (
       <ErrorBanner error={handshakeError} />
+    )),
+    Match.when({ pickerClient: Match.defined }, ({ pickerClient }): JSX.Element => (
+      <PatientPicker client={pickerClient} onPatientChoice={choosePatient} />
     )),
     Match.when({ firstPageError: Match.defined }, ({ firstPageError }): JSX.Element => (
       <ReadFailureLine subject="medications" error={firstPageError} />
@@ -382,13 +405,22 @@ export const App = (): JSX.Element => {
             />
           </div>
         </div>
-        <ChunkBar
-          phase={barPhase}
-          pagesReceived={pagesReceived}
-          loadedCount={views.length}
-          onLoadAll={startLoadAll}
-          labels={chunkBarLabels}
-        />
+        {client !== undefined && Option.isSome(patientChoice) && (
+          <>
+            <PatientChoiceLine
+              client={client}
+              patientChoice={patientChoice.value}
+              onPatientChange={changePatient}
+            />
+            <ChunkBar
+              phase={barPhase}
+              pagesReceived={pagesReceived}
+              loadedCount={views.length}
+              onLoadAll={startLoadAll}
+              labels={chunkBarLabels}
+            />
+          </>
+        )}
       </header>
       {body}
     </main>
