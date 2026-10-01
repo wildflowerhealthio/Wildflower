@@ -93,6 +93,7 @@ jobs:
               - 'scripts/ci/stub-embedded-bundles.sh'
               - '.github/workflows/ci.yml'
               - '.github/workflows/ci-rust.yml'
+              - '.github/actions/setup-tauri-linux-deps/**'
             # The C and the wscripts live only under the two apps, so a C-only
             # change runs nothing else: ci-typescript.yml runs the same
             # host-side tests, but only when TS/JS changes.

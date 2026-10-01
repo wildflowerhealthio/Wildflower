@@ -1,7 +1,8 @@
 # CI Build Cache Explanation
 
 Why every GitHub Actions job that runs cargo names its build environment with a
-`cache-shared-key`, which jobs share one cache entry, and why the rest can't.
+`cache-shared-key`, which jobs share one cache entry, and why the rest can't, plus
+how the GTK/webkit system packages those jobs install are cached.
 
 ## What the cache key is made of
 
@@ -108,6 +109,39 @@ builds per lockfile bump would cost far more than the handful of cold release
 builds it would save. A `workflow_dispatch` publish run from `main` does save
 into main's scope, so back-to-back dispatched rebuilds hit; a run triggered by
 the merged release PR can only read.
+
+## The Tauri system packages
+
+The Tauri crates link against GTK and webkit, so every Linux job that compiles
+them first installs the `-dev` packages through
+`.github/actions/setup-tauri-linux-deps`. That is about 70 MB of `.deb` files
+from the Ubuntu mirror, which usually takes half a minute but can stall for
+10–15 minutes when the mirror is slow. The action caches the downloaded `.deb`
+files, not the installed result, under:
+
+```text
+tauri-apt-<image os>-<image version>-<runner arch>-<package list hash>
+```
+
+- **Image version** — `ImageVersion` from the runner, such as `20260927.320`.
+  The cached files are exactly the packages that image lacked, at the versions
+  its package index named at download time. A different image could have other
+  packages preinstalled, so it gets its own entry. A new image is a cold install.
+- **Package list hash** — the list lives only in the action, so adding a package
+  forks the key.
+
+The cold install downloads straight into the cached directory (`apt-get
+install -o Dir::Cache::Archives=…`), with a short HTTP timeout and retries so a
+stalled download is cut off rather than waited on. The action saves straight
+afterwards, so a failing compile doesn't lose the entry. A hit installs the
+cached files with `apt-get install --no-download` and no `apt-get update`, so it
+touches no mirror at all.
+
+The same scoping applies as for the build cache. `rust-cache-warm.yml` runs the
+action on `main`, so pull requests restore main's entry while its image is
+current. When the warm entry is missing, or the image has moved on, a pull
+request's first run installs cold and its later runs hit. The release build on
+`ubuntu-22.04` uses the same action under its own image's key.
 
 ## See Also
 
