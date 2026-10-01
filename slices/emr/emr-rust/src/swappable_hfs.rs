@@ -1,5 +1,4 @@
-//! The base URL HFS advertises in its responses, and the hot-swap that changes
-//! it.
+//! HFS behind a lock, rebuilt with a new `base_url` on demand.
 //!
 //! HFS writes one fixed `ServerConfig::base_url` into every URL it emits — the
 //! search Bundle's `self`/`next`/`first` links, each `entry.fullUrl`, the
@@ -9,11 +8,11 @@
 //! names, so the host points it at the public origin remote clients reach the
 //! FHIR server through, falling back to loopback while there is none.
 //!
-//! The host can change that origin at runtime, while HFS bakes its base in when
-//! its router is built. So [`setup_fhir_r4`](crate::setup_fhir_r4) serves HFS
-//! through a router that forwards each request to the *current* HFS build, and
-//! [`HfsAdvertisedBase::set_public_origin`] rebuilds HFS over the same backend
-//! with the new base and swaps it in. A request already in flight finishes on
+//! The host can change that origin at runtime, while HFS reads `base_url` once,
+//! when its router is built. So [`setup_fhir_r4`](crate::setup_fhir_r4) serves
+//! HFS through a router that forwards each request to the *current* HFS build,
+//! and [`SwappableHfs::set_base_url`] rebuilds HFS over the same backend with
+//! the new `base_url` and swaps it in. A request already in flight finishes on
 //! the build it started on. Search `_cursor` tokens carry only sort values and a
 //! resource id, never the base, so a page cursor issued by one build resumes on
 //! the next.
@@ -62,25 +61,25 @@ impl HfsBuilder {
     }
 }
 
-/// A handle onto the base URL HFS advertises. Cheap to clone; every clone
-/// drives the same HFS build. See the [module docs](self).
+/// The running HFS, swappable for a build with a different `base_url`. Cheap to
+/// clone; every clone drives the same HFS build. See the [module docs](self).
 #[derive(Clone)]
-pub struct HfsAdvertisedBase {
+pub struct SwappableHfs {
     inner: Arc<Inner>,
 }
 
 struct Inner {
     builder: HfsBuilder,
     loopback_base: Url,
-    /// The base the current build advertises. Held for the whole of a
-    /// [`HfsAdvertisedBase::set_public_origin`], so concurrent calls rebuild one
+    /// The current build's `base_url`. Held for the whole of a
+    /// [`SwappableHfs::set_base_url`], so concurrent calls rebuild one
     /// at a time and the base always names the build in `router`.
     base: Mutex<Url>,
     router: RwLock<Router>,
 }
 
-impl HfsAdvertisedBase {
-    /// Build HFS advertising the loopback FHIR base.
+impl SwappableHfs {
+    /// Build HFS with the loopback FHIR base as its `base_url`.
     pub(crate) fn new(
         backend: SqliteBackend,
         server_config: ServerConfig,
@@ -106,26 +105,26 @@ impl HfsAdvertisedBase {
         }
     }
 
-    /// Advertise `{public_origin}/fhir-r4`, or the loopback FHIR base when
-    /// `public_origin` is `None`. A no-op when that is already the base;
-    /// otherwise HFS is rebuilt with the new base and swapped in.
+    /// Set HFS's `base_url` to `{origin}/fhir-r4`, or to the loopback FHIR base
+    /// when `origin` is `None`. A no-op when that is already the `base_url`;
+    /// otherwise HFS is rebuilt with the new one and swapped in.
     ///
     /// # Errors
     ///
-    /// Returns an error, leaving the current base in place, if `public_origin`
+    /// Returns an error, leaving the current `base_url` in place, if `origin`
     /// isn't an `http`/`https` URL with a host and no credentials — HFS refuses
     /// such a base.
-    pub fn set_public_origin(&self, public_origin: Option<&Url>) -> anyhow::Result<()> {
-        let next_base = match public_origin {
+    pub fn set_base_url(&self, origin: Option<&Url>) -> anyhow::Result<()> {
+        let next_base = match origin {
             Some(origin) => {
                 if !matches!(origin.scheme(), "http" | "https") {
-                    bail!("public origin {origin} must use the http or https scheme");
+                    bail!("origin {origin} must use the http or https scheme");
                 }
                 if origin.host().is_none() {
-                    bail!("public origin {origin} must include a host");
+                    bail!("origin {origin} must include a host");
                 }
                 if !origin.username().is_empty() || origin.password().is_some() {
-                    bail!("public origin must not include user information");
+                    bail!("origin must not include user information");
                 }
                 fhir_base(origin)
             }
@@ -146,7 +145,7 @@ impl HfsAdvertisedBase {
             .router
             .write()
             .unwrap_or_else(PoisonError::into_inner) = router;
-        tracing::info!(base = %next_base, "emr: HFS now advertises a new base URL");
+        tracing::info!(base = %next_base, "emr: HFS rebuilt with a new base_url");
         *base = next_base;
         Ok(())
     }

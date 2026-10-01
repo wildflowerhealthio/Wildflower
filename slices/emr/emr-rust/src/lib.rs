@@ -5,13 +5,13 @@
 //! (optionally) wires HFS's bearer-JWT auth + SMART v2 scope policy against
 //! gatekeeper's JWKS.
 
-mod advertised_base;
 mod auth;
 mod config;
 mod delegate;
 mod openapi;
 mod patient_everything;
 mod smart_configuration;
+mod swappable_hfs;
 
 use anyhow::Context;
 use axum::extract::DefaultBodyLimit;
@@ -26,21 +26,21 @@ use crate::auth::build_auth;
 use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
-pub use crate::advertised_base::HfsAdvertisedBase;
 pub use crate::config::EmrConfig;
 pub use crate::openapi::openapi_spec;
+pub use crate::swappable_hfs::SwappableHfs;
 
 const FHIR_R4_PATH: &str = "/fhir-r4";
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
 /// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router, the bare HFS
-/// router for in-process delegation by other slices, and the handle that sets
-/// the base URL HFS advertises (see [`HfsAdvertisedBase`]). Both routers serve
-/// the current HFS build, so a base change reaches every one of them.
+/// router for in-process delegation by other slices, and the [`SwappableHfs`]
+/// both of them serve, which sets HFS's `base_url`. A `base_url` change reaches
+/// both routers.
 pub struct FhirR4Routers {
     pub augmented_fhir_r4_router: Router,
     pub raw_hfs_router: Router,
-    pub advertised_base: HfsAdvertisedBase,
+    pub hfs: SwappableHfs,
 }
 
 /// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
@@ -82,9 +82,9 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 /// wrapper (per-`jti` denylist — defense-in-depth behind gatekeeper's gate). See
 /// [`crate::auth`].
 ///
-/// HFS starts out advertising the loopback FHIR base in the URLs it emits
-/// (Bundle links, `fullUrl`s, `Location`); the returned
-/// [`FhirR4Routers::advertised_base`] points it at a public origin instead.
+/// HFS's `base_url`, the prefix of every URL it emits (Bundle links,
+/// `fullUrl`s, `Location`), starts as the loopback FHIR base;
+/// [`FhirR4Routers::hfs`] points it at a public origin instead.
 ///
 /// # Errors
 ///
@@ -132,7 +132,7 @@ pub fn setup_fhir_r4(
         .context("failed to init sqlite schema")?;
     let loopback_base_url = runtime.loopback_base_url();
 
-    // No `base_url`: `HfsAdvertisedBase` sets it on each build of HFS.
+    // No `base_url`: `SwappableHfs` sets it on each build of HFS.
     let server_config = ServerConfig {
         // The host param only expects the ip to bind to
         host: runtime
@@ -148,14 +148,14 @@ pub fn setup_fhir_r4(
     };
 
     let (auth_config, auth_state) = build_auth(config.jwks_url.as_deref(), revocation_store);
-    let advertised_base = HfsAdvertisedBase::new(
+    let hfs = SwappableHfs::new(
         sqlite_backend,
         server_config,
         auth_config,
         auth_state,
         &loopback_base_url,
     );
-    let hfs_router = advertised_base.router();
+    let hfs_router = hfs.router();
 
     // Specific routes win over fallback: our SMART App Launch discovery doc and
     // the `$everything` operation intercept their paths; everything else under
@@ -197,7 +197,7 @@ pub fn setup_fhir_r4(
     Ok(FhirR4Routers {
         augmented_fhir_r4_router: Router::new().nest_service(FHIR_R4_PATH, fhir_with_override),
         raw_hfs_router: hfs_router_for_delegation,
-        advertised_base,
+        hfs,
     })
 }
 

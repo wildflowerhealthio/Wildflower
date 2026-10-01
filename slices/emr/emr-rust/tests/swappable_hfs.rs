@@ -1,8 +1,7 @@
-//! The base URL HFS advertises — in search Bundle links, `entry.fullUrl`s and a
-//! create's `Location` — follows `FhirR4Routers::advertised_base`: loopback
-//! until a public origin is set, then that origin, swapped in without
-//! rebuilding the routers the host already mounted. See
-//! `emr_rust::HfsAdvertisedBase`.
+//! HFS's `base_url` — the prefix of its search Bundle links, `entry.fullUrl`s
+//! and a create's `Location` — follows `FhirR4Routers::hfs`: loopback until a
+//! public origin is set, then that origin, swapped in under the routers the
+//! host already mounted. See `emr_rust::SwappableHfs`.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -37,10 +36,8 @@ impl Drop for TempDb {
 /// Build fresh FHIR routers backed by a throwaway sqlite db. HFS auth is off.
 fn build_routers() -> (FhirR4Routers, TempDb) {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "emr-rust-advertised-base-{}-{n}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("emr-rust-swappable-hfs-{}-{n}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("create temp dir");
 
     let runtime = ServerRuntimeConfig {
@@ -138,7 +135,7 @@ fn public_origin() -> Url {
 }
 
 #[tokio::test]
-async fn advertises_the_loopback_base_by_default() {
+async fn the_base_url_is_loopback_by_default() {
     let (routers, _db) = build_routers();
     let router = &routers.augmented_fhir_r4_router;
     put_patients(router, &["a", "b"]).await;
@@ -154,14 +151,14 @@ async fn advertises_the_loopback_base_by_default() {
 }
 
 #[tokio::test]
-async fn a_public_origin_moves_every_advertised_url() {
+async fn a_public_origin_moves_every_emitted_url() {
     let (routers, _db) = build_routers();
     let router = &routers.augmented_fhir_r4_router;
     put_patients(router, &["a", "b"]).await;
 
     routers
-        .advertised_base
-        .set_public_origin(Some(&public_origin()))
+        .hfs
+        .set_base_url(Some(&public_origin()))
         .expect("set public origin");
 
     let (_, _, bundle) = send(router, "GET", "/fhir-r4/Patient?_count=1", None).await;
@@ -203,8 +200,8 @@ async fn the_delegation_router_follows_the_swap() {
     put_patients(&routers.augmented_fhir_r4_router, &["a"]).await;
 
     routers
-        .advertised_base
-        .set_public_origin(Some(&public_origin()))
+        .hfs
+        .set_base_url(Some(&public_origin()))
         .expect("set public origin");
 
     let (_, _, bundle) = send(&routers.raw_hfs_router, "GET", "/Patient", None).await;
@@ -225,8 +222,8 @@ async fn a_cursor_from_before_the_swap_resumes_after_it() {
     let first_id = first["entry"][0]["resource"]["id"].clone();
 
     routers
-        .advertised_base
-        .set_public_origin(Some(&public_origin()))
+        .hfs
+        .set_base_url(Some(&public_origin()))
         .expect("set public origin");
 
     let (status, _, second) = send(router, "GET", &path_and_query(next), None).await;
@@ -242,10 +239,10 @@ async fn clearing_the_public_origin_returns_to_loopback() {
     let router = &routers.augmented_fhir_r4_router;
     put_patients(router, &["a"]).await;
 
-    let base = &routers.advertised_base;
-    base.set_public_origin(Some(&public_origin()))
+    let hfs = &routers.hfs;
+    hfs.set_base_url(Some(&public_origin()))
         .expect("set public origin");
-    base.set_public_origin(None).expect("clear public origin");
+    hfs.set_base_url(None).expect("clear public origin");
 
     let (_, _, bundle) = send(router, "GET", "/fhir-r4/Patient", None).await;
     let self_link = link(&bundle, "self").unwrap_or_else(|| panic!("no self link: {bundle}"));
@@ -258,8 +255,8 @@ async fn an_unusable_public_origin_is_refused_and_keeps_the_base() {
     let router = &routers.augmented_fhir_r4_router;
     put_patients(router, &["a"]).await;
 
-    let base = &routers.advertised_base;
-    base.set_public_origin(Some(&public_origin()))
+    let hfs = &routers.hfs;
+    hfs.set_base_url(Some(&public_origin()))
         .expect("set public origin");
     for refused in [
         "ftp://abc.tunnel.example",
@@ -267,7 +264,7 @@ async fn an_unusable_public_origin_is_refused_and_keeps_the_base() {
     ] {
         let origin: Url = refused.parse().expect("parse refused origin");
         assert!(
-            base.set_public_origin(Some(&origin)).is_err(),
+            hfs.set_base_url(Some(&origin)).is_err(),
             "accepted {refused}"
         );
     }
