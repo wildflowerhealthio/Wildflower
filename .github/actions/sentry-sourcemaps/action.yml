@@ -1,0 +1,79 @@
+name: Upload Sentry source maps
+description: >-
+  Creates the Sentry release a site build reports under, uploads the source
+  maps of every app that reports to Sentry, and then deletes those maps from the
+  assembled site so they are never published. Runs between `vp run pack` and
+  the step that publishes apps/github-pages/dist, in both
+  deploy-github-pages.yml and pr-preview.yml.
+
+inputs:
+  environment:
+    description: The `VITE_SENTRY_ENVIRONMENT` the site was built with.
+    required: true
+  release:
+    description: The `VITE_SENTRY_RELEASE` the site was built with.
+    required: true
+  auth-token:
+    description: >-
+      A Sentry organization auth token (`project:releases` scope). Empty skips
+      the upload, so a repository without Sentry configured still deploys; the
+      maps are deleted either way.
+    required: false
+    default: ''
+  org:
+    description: The Sentry organization slug.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # The paths are the apps' sections in the assembled site (branding-core's
+    # SECTION_PATHS) and the projects are their Sentry projects, one per app,
+    # in the same order. The upload works on the assembled site rather than
+    # each app's own dist because injecting debug IDs rewrites the JavaScript:
+    # the files that get published must be the ones that carry them. Debug IDs
+    # also make the files' URLs irrelevant, so no `url_prefix` is needed.
+    # Every project gets every app's bundle; a stack trace only ever matches
+    # its own app's debug IDs.
+    - name: Create Sentry release and upload source maps
+      if: inputs.auth-token != ''
+      uses: getsentry/action-release@v3.7.0
+      env:
+        SENTRY_AUTH_TOKEN: ${{ inputs.auth-token }}
+        SENTRY_ORG: ${{ inputs.org }}
+      with:
+        environment: ${{ inputs.environment }}
+        release: ${{ inputs.release }}
+        sourcemaps: >-
+          apps/github-pages/dist/medications-app
+          apps/github-pages/dist/importer-app
+          apps/github-pages/dist/web-trace-app
+          apps/github-pages/dist/health-viewer-app
+          apps/github-pages/dist/fhir-sync-pebble
+          apps/github-pages/dist/app
+        projects: >-
+          medications-app
+          wildflower-importer
+          web-trace
+          health-viewer
+          fhir-sync-pebble-web
+          wildflower-react
+        # Sentry's GitHub integration is not installed and the checkout is
+        # shallow, so there are no commits to associate.
+        set_commits: skip
+        disable_telemetry: true
+
+    # The apps build with `sourcemap: 'hidden'`: maps are emitted for this
+    # upload but nothing in the bundle points at them. Delete them so the
+    # site never serves the original source.
+    - name: Delete source maps from the site
+      shell: bash
+      run: |
+        find apps/github-pages/dist/medications-app \
+          apps/github-pages/dist/importer-app \
+          apps/github-pages/dist/web-trace-app \
+          apps/github-pages/dist/health-viewer-app \
+          apps/github-pages/dist/fhir-sync-pebble \
+          apps/github-pages/dist/app \
+          -name '*.map' -type f -print -delete

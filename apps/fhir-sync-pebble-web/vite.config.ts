@@ -22,6 +22,9 @@ export default defineConfig({
   // `vp run -F fhir-sync-pebble-web dev`.
   server: devAppServer('fhir-sync-pebble-dev'),
   build: {
+    // Emitted for the deploy's Sentry upload, unreferenced from the bundle;
+    // the deploy deletes them before publishing (.github/actions/sentry-sourcemaps).
+    sourcemap: 'hidden',
     rolldownOptions: {
       input: {
         main: './index.html',
