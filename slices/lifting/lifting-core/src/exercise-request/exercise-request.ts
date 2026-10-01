@@ -9,12 +9,7 @@ import {
   pipe,
   Schema,
 } from 'effect'
-import {
-  type CodeableConcept,
-  IdentifierAndReference,
-  narrowFields,
-  withMandatoryId,
-} from 'fhir-r4/data-types'
+import { IdentifierAndReference, narrowFields, withMandatoryId } from 'fhir-r4/data-types'
 import { ServiceRequest } from 'fhir-r4/resources'
 
 import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
@@ -111,15 +106,12 @@ const emptyServiceRequest: ServiceRequest.Type = Schema.decodeSync(ServiceReques
  * other slot empty — decoded, so what {@link make} and {@link progress} issue
  * is checked alike.
  */
-const decodeServiceRequest = (slots: {
-  readonly id: string
-  readonly subject: IdentifierAndReference.ReferenceType
-  readonly instantiatesCanonical: string
-  readonly code: ExerciseConcept.Type
-  readonly orderDetail: readonly CodeableConcept.Type[]
-  readonly replaces: readonly IdentifierAndReference.ReferenceType[]
-  readonly authoredOn: DateTime.Utc
-}): Either.Either<Type, ParseResult.ParseError> =>
+const decodeServiceRequest = (
+  slots: Pick<
+    Type,
+    'id' | 'subject' | 'code' | 'orderDetail' | 'replaces' | 'instantiatesCanonical' | 'authoredOn'
+  >
+): Either.Either<Type, ParseResult.ParseError> =>
   Schema.decodeEither(ExerciseRequestSchema, { errors: 'all' })({
     ...emptyServiceRequest,
     ...slots,
@@ -127,8 +119,6 @@ const decodeServiceRequest = (slots: {
     intent: 'plan',
     priority: 'routine',
     category: [LiftingFeature.concept],
-    instantiatesCanonical: [slots.instantiatesCanonical],
-    authoredOn: DateTime.formatIso(slots.authoredOn),
   })
 
 /**
@@ -178,7 +168,7 @@ const make = ({
           decodeServiceRequest({
             id: serviceRequestId,
             subject,
-            instantiatesCanonical: plan.url,
+            instantiatesCanonical: [plan.url],
             code: PlannedExercise.exerciseOf(planned),
             orderDetail: [
               loadConcept(startingLoad),
@@ -192,7 +182,7 @@ const make = ({
               }),
             ],
             replaces: [],
-            authoredOn,
+            authoredOn: DateTime.formatIso(authoredOn),
           })
         )
       )
@@ -476,7 +466,7 @@ const progress = (step: {
               decodeServiceRequest({
                 id: step.nextServiceRequestId,
                 subject: exerciseRequest.subject,
-                instantiatesCanonical: planUrlOf(exerciseRequest),
+                instantiatesCanonical: exerciseRequest.instantiatesCanonical,
                 code: exerciseOf(exerciseRequest),
                 orderDetail: exerciseRequest.orderDetail.map((detail) =>
                   measures(LiftingMeasure.Code.Load)(detail) ? loadConcept(nextLoad) : detail
@@ -487,7 +477,7 @@ const progress = (step: {
                     id: exerciseRequest.id,
                   }),
                 ],
-                authoredOn: step.authoredOn,
+                authoredOn: DateTime.formatIso(step.authoredOn),
               })
             ),
             Either.map((next): Progress => ({
