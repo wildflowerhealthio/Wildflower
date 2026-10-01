@@ -5,22 +5,18 @@ import { useId, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, Field, TextField } from 'react-tundraish'
 
+import { type FormState, useFormState } from './form/use-form-state.ts'
 import { formatUnit } from './load-format.ts'
 import {
-  addDay,
-  addExercise,
   type DayDraft,
   DraftPath,
   type DraftProblems,
   draftFromTrainingPlanDefinition,
-  editDay,
-  editExercise,
   emptyDraft,
   type ExerciseDraft,
   type ExerciseTextField,
-  moveExercise,
-  removeDay,
-  removeExercise,
+  newDayDraft,
+  newExerciseDraft,
   type TrainingPlanDefinitionDraft,
   trainingPlanDefinitionFromDraft,
 } from './training-plan-definition-draft.ts'
@@ -122,11 +118,11 @@ const TrainingPlanDefinitionEditor = ({
   pending = false,
   error,
 }: TrainingPlanDefinitionEditorProps): JSX.Element => {
-  const [draft, setDraft] = useState<TrainingPlanDefinitionDraft>(() =>
+  const form = useFormState<TrainingPlanDefinitionDraft>(() =>
     initial === null ? emptyDraft : draftFromTrainingPlanDefinition(initial)
   )
   const [saveAttempted, setSaveAttempted] = useState(false)
-  const made = trainingPlanDefinitionFromDraft({ draft, planDefinitionId })
+  const made = trainingPlanDefinitionFromDraft({ draft: form.value, planDefinitionId })
   const shownProblems: DraftProblems = saveAttempted
     ? Either.match(made, { onLeft: (problems) => problems, onRight: () => NO_PROBLEMS })
     : NO_PROBLEMS
@@ -143,9 +139,9 @@ const TrainingPlanDefinitionEditor = ({
         <div className={styles['training-plan-definition-editor__title-row']}>
           <TextField
             label="Title"
-            value={draft.title}
+            value={form.value.title}
             onChange={(title) => {
-              setDraft((current) => ({ ...current, title }))
+              form.set('title', title)
             }}
             autoCapitalize="words"
             description={problemLine(shownProblems.get(DraftPath.title))}
@@ -155,7 +151,7 @@ const TrainingPlanDefinitionEditor = ({
               type="button"
               className="button-2 outline"
               onClick={() => {
-                setDraft(
+                form.replace(
                   draftFromTrainingPlanDefinition(
                     StrongLifts5x5.trainingPlanDefinition(planDefinitionId)
                   )
@@ -177,21 +173,18 @@ const TrainingPlanDefinitionEditor = ({
             Days
           </h2>
           {problemLine(shownProblems.get(DraftPath.days))}
-          {draft.days.map((dayDraft, index) => (
+          {form.list('days').map((day, index) => (
             <DayRow
-              key={dayDraft.key}
-              dayDraft={dayDraft}
+              key={day.value.key}
+              day={day}
               legend={`Day ${index + 1}`}
-              dayName={dayNameOf(dayDraft, index)}
+              dayName={dayNameOf(day.value, index)}
               problems={shownProblems}
-              onEdit={(edit) => {
-                setDraft((current) => editDay({ draft: current, dayKey: dayDraft.key, edit }))
-              }}
               onAddExercise={() => {
-                setDraft((current) => addExercise({ draft: current, dayKey: dayDraft.key }))
+                day.list('exercises').add(newExerciseDraft(form.value))
               }}
               onRemove={() => {
-                setDraft((current) => removeDay({ draft: current, dayKey: dayDraft.key }))
+                form.list('days').remove(index)
               }}
             />
           ))}
@@ -200,7 +193,7 @@ const TrainingPlanDefinitionEditor = ({
               type="button"
               className="button-3 outline"
               onClick={() => {
-                setDraft(addDay)
+                form.list('days').add(newDayDraft(form.value))
               }}
             >
               Add day
@@ -240,104 +233,103 @@ const TrainingPlanDefinitionEditor = ({
 
 /** One day's label and exercise rows in {@link TrainingPlanDefinitionEditor}, with its actions. */
 const DayRow = ({
-  dayDraft,
+  day,
   legend,
   dayName,
   problems,
-  onEdit,
   onAddExercise,
   onRemove,
 }: {
-  readonly dayDraft: DayDraft
+  /** The day's part of the form, which its label and exercise rows are edited through. */
+  readonly day: FormState<DayDraft>
   readonly legend: string
   /** How the day is named in its actions' labels. */
   readonly dayName: string
   readonly problems: DraftProblems
-  readonly onEdit: (edit: (dayDraft: DayDraft) => DayDraft) => void
+  /** Appends a blank exercise row, keyed apart from every row of the form. */
   readonly onAddExercise: () => void
   readonly onRemove: () => void
-}): JSX.Element => (
-  <fieldset className={styles['training-plan-definition-editor__day']}>
-    <legend className={cn('text-label-2', styles['training-plan-definition-editor__legend'])}>
-      {legend}
-    </legend>
-    <TextField
-      label="Label"
-      value={dayDraft.label}
-      onChange={(label) => {
-        onEdit((current) => ({ ...current, label }))
-      }}
-      autoCapitalize="characters"
-      description={problemLine(problems.get(DraftPath.dayLabel(dayDraft.key)))}
-    />
-    {dayDraft.exercises.map((exerciseDraft, index) => (
-      <ExerciseRow
-        key={exerciseDraft.key}
-        exerciseDraft={exerciseDraft}
-        legend={`Exercise ${index + 1}`}
-        exerciseName={`${exerciseNameOf(exerciseDraft, index)} in ${dayName}`}
-        isFirst={index === 0}
-        isLast={index === dayDraft.exercises.length - 1}
-        problems={problems}
-        onEdit={(patch) => {
-          onEdit((current) =>
-            editExercise({ dayDraft: current, exerciseKey: exerciseDraft.key, patch })
-          )
+}): JSX.Element => {
+  const dayDraft = day.value
+  const exercises = day.list('exercises')
+  return (
+    <fieldset className={styles['training-plan-definition-editor__day']}>
+      <legend className={cn('text-label-2', styles['training-plan-definition-editor__legend'])}>
+        {legend}
+      </legend>
+      <TextField
+        label="Label"
+        value={dayDraft.label}
+        onChange={(label) => {
+          day.set('label', label)
         }}
-        onMove={(offset) => {
-          onEdit((current) => moveExercise({ dayDraft: current, index, offset }))
-        }}
-        onRemove={() => {
-          onEdit((current) => removeExercise({ dayDraft: current, exerciseKey: exerciseDraft.key }))
-        }}
+        autoCapitalize="characters"
+        description={problemLine(problems.get(DraftPath.dayLabel(dayDraft.key)))}
       />
-    ))}
-    {problemLine(problems.get(DraftPath.dayExercises(dayDraft.key)))}
-    <div className={styles['training-plan-definition-editor__row-actions']}>
-      <button
-        type="button"
-        className="button-3 outline"
-        aria-label={`Add exercise to ${dayName}`}
-        onClick={onAddExercise}
-      >
-        Add exercise
-      </button>
-      <button
-        type="button"
-        className="button-3 outline accent-red"
-        aria-label={`Remove ${dayName}`}
-        onClick={onRemove}
-      >
-        Remove day
-      </button>
-    </div>
-  </fieldset>
-)
+      {exercises.map((exercise, index) => (
+        <ExerciseRow
+          key={exercise.value.key}
+          exercise={exercise}
+          legend={`Exercise ${index + 1}`}
+          exerciseName={`${exerciseNameOf(exercise.value, index)} in ${dayName}`}
+          isFirst={index === 0}
+          isLast={index === exercises.items.length - 1}
+          problems={problems}
+          onMove={(offset) => {
+            exercises.move(index, offset)
+          }}
+          onRemove={() => {
+            exercises.remove(index)
+          }}
+        />
+      ))}
+      {problemLine(problems.get(DraftPath.dayExercises(dayDraft.key)))}
+      <div className={styles['training-plan-definition-editor__row-actions']}>
+        <button
+          type="button"
+          className="button-3 outline"
+          aria-label={`Add exercise to ${dayName}`}
+          onClick={onAddExercise}
+        >
+          Add exercise
+        </button>
+        <button
+          type="button"
+          className="button-3 outline accent-red"
+          aria-label={`Remove ${dayName}`}
+          onClick={onRemove}
+        >
+          Remove day
+        </button>
+      </div>
+    </fieldset>
+  )
+}
 
 /** One exercise row's fields in {@link TrainingPlanDefinitionEditor}, with its actions. */
 const ExerciseRow = ({
-  exerciseDraft,
+  exercise,
   legend,
   exerciseName,
   isFirst,
   isLast,
   problems,
-  onEdit,
   onMove,
   onRemove,
 }: {
-  readonly exerciseDraft: ExerciseDraft
+  /** The row's part of the form, which its fields are edited through. */
+  readonly exercise: FormState<ExerciseDraft>
   readonly legend: string
   /** How the row is named in its actions' labels, e.g. `"Squat in day A"`. */
   readonly exerciseName: string
   readonly isFirst: boolean
   readonly isLast: boolean
   readonly problems: DraftProblems
-  readonly onEdit: (patch: Partial<Pick<ExerciseDraft, ExerciseTextField | 'unit'>>) => void
   readonly onMove: (offset: -1 | 1) => void
   readonly onRemove: () => void
 }): JSX.Element => {
   const unitSelectId = useId()
+  const exerciseDraft = exercise.value
   const problemAt = (field: ExerciseTextField): JSX.Element | undefined =>
     problemLine(problems.get(DraftPath.exerciseField(exerciseDraft.key, field)))
   const unit = formatUnit(exerciseDraft.unit)
@@ -351,7 +343,7 @@ const ExerciseRow = ({
           label="Name"
           value={exerciseDraft.name}
           onChange={(name) => {
-            onEdit({ name })
+            exercise.set('name', name)
           }}
           autoCapitalize="words"
           description={problemAt('name')}
@@ -365,7 +357,7 @@ const ExerciseRow = ({
               const chosen = Load.UnitSchema.literals.find(
                 (candidate) => candidate === event.currentTarget.value
               )
-              if (chosen !== undefined) onEdit({ unit: chosen })
+              if (chosen !== undefined) exercise.set('unit', chosen)
             }}
           >
             {Load.UnitSchema.literals.map((candidate) => (
@@ -382,7 +374,7 @@ const ExerciseRow = ({
             value={exerciseDraft[field]}
             inputMode={inputMode}
             onChange={(text) => {
-              onEdit({ [field]: text })
+              exercise.set(field, text)
             }}
             description={problemAt(field)}
           />

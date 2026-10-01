@@ -6,18 +6,15 @@ import { someOrFail, trainingPlanDefinitionArb } from 'lifting-core/test-helpers
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  addDay,
-  addExercise,
   type DayDraft,
   DraftPath,
   type DraftProblems,
   draftFromTrainingPlanDefinition,
-  editDay,
-  editExercise,
   emptyDraft,
   type ExerciseDraft,
   type ExerciseTextField,
-  moveExercise,
+  newDayDraft,
+  newExerciseDraft,
   type TrainingPlanDefinitionDraft,
   trainingPlanDefinitionFromDraft,
 } from './training-plan-definition-draft.ts'
@@ -59,15 +56,11 @@ describe('trainingPlanDefinitionFromDraft', () => {
             dayDraft.exercises.map((exerciseDraft) => ({ dayDraft, exerciseDraft }))
           )
           const { dayDraft, exerciseDraft } = someOrFail(Arr.get(rows, rowSeed % rows.length))
-          const edited = editDay({
+          const edited = withRowPatched({
             draft,
             dayKey: dayDraft.key,
-            edit: (current) =>
-              editExercise({
-                dayDraft: current,
-                exerciseKey: exerciseDraft.key,
-                patch: Object.fromEntries(fields.map((field) => [field, text])),
-              }),
+            exerciseKey: exerciseDraft.key,
+            patch: Object.fromEntries(fields.map((field) => [field, text])),
           })
 
           // Act
@@ -150,7 +143,7 @@ describe('trainingPlanDefinitionFromDraft', () => {
   it('should put a repeated day label under the later day, and an exercise defined two ways under the later row', () => {
     // Day B relabelled A, and its squat (row 1) cut to three sets.
     const draft = withStrongLiftsRow({ dayIndex: 1, rowIndex: 0 }, { sets: '3' })
-    const relabelled = editDay({
+    const relabelled = withDay({
       draft,
       dayKey: 'day-2',
       edit: (dayDraft) => ({ ...dayDraft, label: 'A' }),
@@ -168,19 +161,17 @@ describe('trainingPlanDefinitionFromDraft', () => {
 
   it('should give a new row its name slug as its exercise id, and keep an existing id when renamed', () => {
     // The squat is on both days, so it is renamed on both.
-    const renamed = editDay({
+    const renamed = withRowPatched({
       draft: withStrongLiftsRow({ dayIndex: 0, rowIndex: 0 }, { name: 'Back Squat' }),
       dayKey: 'day-2',
-      edit: (dayDraft) =>
-        editExercise({ dayDraft, exerciseKey: 'exercise-2-1', patch: { name: 'Back Squat' } }),
+      exerciseKey: 'exercise-2-1',
+      patch: { name: 'Back Squat' },
     })
-    const withNew = addExercise({ draft: renamed, dayKey: 'day-1' })
-    const newRow = someOrFail(Arr.last(dayAt(withNew, 0).exercises))
-    const named = editDay({
-      draft: withNew,
+    const newRow: ExerciseDraft = { ...newExerciseDraft(renamed), name: 'Front Squat' }
+    const named = withDay({
+      draft: renamed,
       dayKey: 'day-1',
-      edit: (dayDraft) =>
-        editExercise({ dayDraft, exerciseKey: newRow.key, patch: { name: 'Front Squat' } }),
+      edit: (dayDraft) => ({ ...dayDraft, exercises: [...dayDraft.exercises, newRow] }),
     })
 
     const made = Either.getOrThrow(
@@ -200,22 +191,21 @@ describe('trainingPlanDefinitionFromDraft', () => {
   })
 })
 
-describe('the draft edits', () => {
+describe('the new rows', () => {
   it('should label a new day with the first letter no day has', () => {
-    expect(addDay(strongLiftsDraft).days.map(({ label }) => label)).toEqual(['A', 'B', 'C'])
+    expect(
+      [...strongLiftsDraft.days, newDayDraft(strongLiftsDraft)].map(({ label }) => label)
+    ).toEqual(['A', 'B', 'C'])
   })
 
-  it("should swap a row with its neighbour, and leave a day's ends where they are", () => {
-    const dayA = dayAt(strongLiftsDraft, 0)
-    const names = (dayDraft: DayDraft): readonly string[] =>
-      dayDraft.exercises.map(({ name }) => name)
-
-    expect(names(moveExercise({ dayDraft: dayA, index: 2, offset: -1 }))).toEqual([
-      'Squat',
-      'Barbell Row',
-      'Bench Press',
+  it('should key a new day and a new exercise row apart from every row of the draft', () => {
+    const takenKeys = strongLiftsDraft.days.flatMap((dayDraft) => [
+      dayDraft.key,
+      ...dayDraft.exercises.map(({ key }) => key),
     ])
-    expect(moveExercise({ dayDraft: dayA, index: 0, offset: -1 })).toBe(dayA)
+
+    expect(takenKeys).not.toContain(newDayDraft(strongLiftsDraft).key)
+    expect(takenKeys).not.toContain(newExerciseDraft(strongLiftsDraft).key)
   })
 })
 
@@ -236,6 +226,43 @@ const dayAt = (draft: TrainingPlanDefinitionDraft, index: number): DayDraft => {
   return dayDraft
 }
 
+/** The draft with the day `dayKey` changed by `edit`. */
+const withDay = ({
+  draft,
+  dayKey,
+  edit,
+}: {
+  readonly draft: TrainingPlanDefinitionDraft
+  readonly dayKey: string
+  readonly edit: (dayDraft: DayDraft) => DayDraft
+}): TrainingPlanDefinitionDraft => ({
+  ...draft,
+  days: draft.days.map((dayDraft) => (dayDraft.key === dayKey ? edit(dayDraft) : dayDraft)),
+})
+
+/** The draft with the row `exerciseKey` of the day `dayKey` patched. */
+const withRowPatched = ({
+  draft,
+  dayKey,
+  exerciseKey,
+  patch,
+}: {
+  readonly draft: TrainingPlanDefinitionDraft
+  readonly dayKey: string
+  readonly exerciseKey: string
+  readonly patch: Partial<Pick<ExerciseDraft, ExerciseTextField>>
+}): TrainingPlanDefinitionDraft =>
+  withDay({
+    draft,
+    dayKey,
+    edit: (dayDraft) => ({
+      ...dayDraft,
+      exercises: dayDraft.exercises.map((exerciseDraft) =>
+        exerciseDraft.key === exerciseKey ? { ...exerciseDraft, ...patch } : exerciseDraft
+      ),
+    }),
+  })
+
 /** The StrongLifts draft with one row patched. */
 const withStrongLiftsRow = (
   { dayIndex, rowIndex }: { readonly dayIndex: number; readonly rowIndex: number },
@@ -244,9 +271,10 @@ const withStrongLiftsRow = (
   const dayDraft = dayAt(strongLiftsDraft, dayIndex)
   const exerciseDraft = dayDraft.exercises[rowIndex]
   if (exerciseDraft === undefined) throw new Error(`no row ${rowIndex}`)
-  return editDay({
+  return withRowPatched({
     draft: strongLiftsDraft,
     dayKey: dayDraft.key,
-    edit: (current) => editExercise({ dayDraft: current, exerciseKey: exerciseDraft.key, patch }),
+    exerciseKey: exerciseDraft.key,
+    patch,
   })
 }

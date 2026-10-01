@@ -6,10 +6,11 @@ import {
   TrainingPlanDefinition,
 } from 'lifting-core'
 import type { JSX, SubmitEvent } from 'react'
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner } from 'react-tundraish'
 
+import { useFormState } from './form/use-form-state.ts'
 import { formatLoad } from './load-format.ts'
 import styles from './planned-workout-view.module.css'
 
@@ -48,6 +49,20 @@ interface PlannedWorkoutViewProps {
 
 /** The reps entered for each set of one exercise, in set order; `None` for a set not done. */
 type EnteredSetReps = readonly Option.Option<number>[]
+
+/** What the lifter has entered of a planned workout so far. */
+interface WorkoutEntry {
+  /** The sets of each exercise a set has been entered for, by exercise id. */
+  readonly enteredSetRepsByExerciseId: EffectRecord.ReadonlyRecord<string, EnteredSetReps>
+  /** When the first set was entered; `None` until then. */
+  readonly start: Option.Option<DateTime.Utc>
+}
+
+/** Nothing entered yet. */
+const EMPTY_WORKOUT_ENTRY: WorkoutEntry = {
+  enteredSetRepsByExerciseId: {},
+  start: Option.none(),
+}
 
 /**
  * The reps a set button holds after a tap: a set not done starts at the reps
@@ -121,15 +136,12 @@ const PlannedWorkoutForm = ({
   error,
 }: PlannedWorkoutViewProps): JSX.Element => {
   const headingId = useId()
-  const [enteredSetRepsByExerciseId, setEnteredSetRepsByExerciseId] = useState<
-    EffectRecord.ReadonlyRecord<string, EnteredSetReps>
-  >({})
-  const [start, setStart] = useState<Option.Option<DateTime.Utc>>(Option.none())
+  const form = useFormState(EMPTY_WORKOUT_ENTRY)
 
   const enteredSetRepsOf = (plannedWorkoutExercise: PlannedWorkout.Exercise): EnteredSetReps =>
     Option.getOrElse(
       EffectRecord.get(
-        enteredSetRepsByExerciseId,
+        form.value.enteredSetRepsByExerciseId,
         PlannedWorkout.exerciseIdOf(plannedWorkoutExercise)
       ),
       () =>
@@ -149,26 +161,23 @@ const PlannedWorkoutForm = ({
   const anySetEntered = Object.keys(setRepsByExerciseId).length > 0
 
   const tapSet = (plannedWorkoutExercise: PlannedWorkout.Exercise, setIndex: number): void => {
-    if (Option.isNone(start)) setStart(Option.some(now()))
-    setEnteredSetRepsByExerciseId((current) => ({
-      ...current,
-      [PlannedWorkout.exerciseIdOf(plannedWorkoutExercise)]: Arr.modify(
-        enteredSetRepsOf(plannedWorkoutExercise),
-        setIndex,
-        (setReps) =>
-          setRepsAfterTap({
-            setReps,
-            repsAskedFor: ExerciseRequest.repsOf(plannedWorkoutExercise.exerciseRequest),
-          })
-      ),
-    }))
+    if (Option.isNone(form.value.start)) form.set('start', Option.some(now()))
+    form.field('enteredSetRepsByExerciseId').set(
+      PlannedWorkout.exerciseIdOf(plannedWorkoutExercise),
+      Arr.modify(enteredSetRepsOf(plannedWorkoutExercise), setIndex, (setReps) =>
+        setRepsAfterTap({
+          setReps,
+          repsAskedFor: ExerciseRequest.repsOf(plannedWorkoutExercise.exerciseRequest),
+        })
+      )
+    )
   }
 
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
     if (!anySetEntered) return
     const end = now()
-    onSubmit({ setRepsByExerciseId, start: Option.getOrElse(start, () => end), end })
+    onSubmit({ setRepsByExerciseId, start: Option.getOrElse(form.value.start, () => end), end })
   }
 
   const dayLabel = TrainingPlanDefinition.Day.labelOf(plannedWorkout.trainingPlanDefinitionDay)

@@ -444,140 +444,32 @@ const emptyDraft: TrainingPlanDefinitionDraft = {
   days: [{ key: 'day-1', label: 'A', exercises: [] }],
 }
 
-/** The draft with the day `dayKey` changed by `edit`. */
-const editDay = ({
-  draft,
-  dayKey,
-  edit,
-}: {
-  readonly draft: TrainingPlanDefinitionDraft
-  readonly dayKey: string
-  readonly edit: (dayDraft: DayDraft) => DayDraft
-}): TrainingPlanDefinitionDraft => ({
-  ...draft,
-  days: draft.days.map((dayDraft) => (dayDraft.key === dayKey ? edit(dayDraft) : dayDraft)),
-})
-
-/** The draft with a day appended, labelled with the first letter no day has. */
-const addDay = (draft: TrainingPlanDefinitionDraft): TrainingPlanDefinitionDraft => {
+/** The day "Add day" appends: no exercise yet, labelled with the first letter no day has. */
+const newDayDraft = (draft: TrainingPlanDefinitionDraft): DayDraft => {
   const takenLabels = new Set(draft.days.map((dayDraft) => dayDraft.label.trim()))
   return {
-    ...draft,
-    days: [
-      ...draft.days,
-      {
-        key: freshDraftKey({
-          prefix: 'day',
-          takenKeys: draft.days.map((dayDraft) => dayDraft.key),
-        }),
-        label: Option.getOrElse(
-          Arr.findFirst('ABCDEFGHIJKLMNOPQRSTUVWXYZ', (letter) => !takenLabels.has(letter)),
-          () => ''
-        ),
-        exercises: [],
-      },
-    ],
+    key: freshDraftKey({
+      prefix: 'day',
+      takenKeys: draft.days.map((dayDraft) => dayDraft.key),
+    }),
+    label: Option.getOrElse(
+      Arr.findFirst('ABCDEFGHIJKLMNOPQRSTUVWXYZ', (letter) => !takenLabels.has(letter)),
+      () => ''
+    ),
+    exercises: [],
   }
 }
 
-/** The draft without the day `dayKey`. */
-const removeDay = ({
-  draft,
-  dayKey,
-}: {
-  readonly draft: TrainingPlanDefinitionDraft
-  readonly dayKey: string
-}): TrainingPlanDefinitionDraft => ({
-  ...draft,
-  days: draft.days.filter((dayDraft) => dayDraft.key !== dayKey),
-})
-
-/** The draft with a blank exercise row appended to the day `dayKey`. */
-const addExercise = ({
-  draft,
-  dayKey,
-}: {
-  readonly draft: TrainingPlanDefinitionDraft
-  readonly dayKey: string
-}): TrainingPlanDefinitionDraft => {
-  const key = freshDraftKey({ prefix: 'exercise', takenKeys: exerciseKeysOf(draft) })
-  return editDay({
-    draft,
-    dayKey,
-    edit: (dayDraft) => ({
-      ...dayDraft,
-      exercises: [...dayDraft.exercises, blankExerciseDraft(key)],
-    }),
-  })
-}
-
-/** The day with the exercise row `exerciseKey` changed by `patch`. */
-const editExercise = ({
-  dayDraft,
-  exerciseKey,
-  patch,
-}: {
-  readonly dayDraft: DayDraft
-  readonly exerciseKey: string
-  readonly patch: Partial<Pick<ExerciseDraft, ExerciseTextField | 'unit'>>
-}): DayDraft => ({
-  ...dayDraft,
-  exercises: dayDraft.exercises.map((exerciseDraft) =>
-    exerciseDraft.key === exerciseKey ? { ...exerciseDraft, ...patch } : exerciseDraft
-  ),
-})
-
-/** The day without the exercise row `exerciseKey`. */
-const removeExercise = ({
-  dayDraft,
-  exerciseKey,
-}: {
-  readonly dayDraft: DayDraft
-  readonly exerciseKey: string
-}): DayDraft => ({
-  ...dayDraft,
-  exercises: dayDraft.exercises.filter((exerciseDraft) => exerciseDraft.key !== exerciseKey),
-})
-
-/**
- * The day with the exercise row at `index` swapped with its neighbour
- * `offset` away (`-1` earlier, `1` later); unchanged when there is none.
- */
-const moveExercise = ({
-  dayDraft,
-  index,
-  offset,
-}: {
-  readonly dayDraft: DayDraft
-  readonly index: number
-  readonly offset: -1 | 1
-}): DayDraft =>
-  pipe(
-    Option.all([Arr.get(dayDraft.exercises, index), Arr.get(dayDraft.exercises, index + offset)]),
-    Option.match({
-      onNone: () => dayDraft,
-      onSome: ([moving, neighbour]) => ({
-        ...dayDraft,
-        exercises: pipe(
-          dayDraft.exercises,
-          Arr.replace(index, neighbour),
-          Arr.replace(index + offset, moving)
-        ),
-      }),
-    })
-  )
+/** The blank exercise row "Add exercise" appends, keyed apart from every row of `draft`. */
+const newExerciseDraft = (draft: TrainingPlanDefinitionDraft): ExerciseDraft =>
+  blankExerciseDraft(freshDraftKey({ prefix: 'exercise', takenKeys: exerciseKeysOf(draft) }))
 
 export {
-  addDay,
-  addExercise,
   DraftPath,
   draftFromTrainingPlanDefinition,
-  editDay,
-  editExercise,
   emptyDraft,
-  moveExercise,
-  removeDay,
-  removeExercise,
+  newDayDraft,
+  newExerciseDraft,
   trainingPlanDefinitionFromDraft,
 }
 export type {

@@ -10,6 +10,7 @@ import { useId, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, RadioGroup, TextField } from 'react-tundraish'
 
+import { useFormState } from './form/use-form-state.ts'
 import { formatUnit } from './load-format.ts'
 import { startingLoadFromText, suggestedStartingLoadText } from './starting-load.ts'
 import styles from './start-training-plan-definition-view.module.css'
@@ -52,6 +53,14 @@ interface StartTrainingPlanDefinitionViewProps {
   readonly error?: unknown
 }
 
+/** The choices of a {@link StartTrainingPlanDefinitionView} as the lifter makes them. */
+interface StartForm {
+  /** The id of the training plan definition chosen. */
+  readonly chosenPlanDefinitionId: string
+  /** The text of each starting load field the lifter has edited, by exercise id. */
+  readonly loadTextByExerciseId: EffectRecord.ReadonlyRecord<string, string>
+}
+
 /**
  * The **start-program view**: choose a training plan definition and enter the
  * load to start each of its exercises at.
@@ -77,16 +86,14 @@ const StartTrainingPlanDefinitionView = ({
 }: StartTrainingPlanDefinitionViewProps): JSX.Element => {
   const headingId = useId()
   const choiceName = useId()
-  const [chosenPlanDefinitionId, setChosenPlanDefinitionId] = useState(
-    Arr.headNonEmpty(trainingPlanDefinitions).id
-  )
-  const [loadTextByExerciseId, setLoadTextByExerciseId] = useState<
-    EffectRecord.ReadonlyRecord<string, string>
-  >({})
+  const form = useFormState<StartForm>(() => ({
+    chosenPlanDefinitionId: Arr.headNonEmpty(trainingPlanDefinitions).id,
+    loadTextByExerciseId: {},
+  }))
   const [startAttempted, setStartAttempted] = useState(false)
 
   const trainingPlanDefinition = pipe(
-    Arr.findFirst(trainingPlanDefinitions, ({ id }) => id === chosenPlanDefinitionId),
+    Arr.findFirst(trainingPlanDefinitions, ({ id }) => id === form.value.chosenPlanDefinitionId),
     Option.getOrElse(() => Arr.headNonEmpty(trainingPlanDefinitions))
   )
   const rows = TrainingPlanDefinition.exercisesOf(trainingPlanDefinition).map(
@@ -94,8 +101,9 @@ const StartTrainingPlanDefinitionView = ({
       const exerciseId = TrainingPlanDefinition.Exercise.exerciseIdOf(
         trainingPlanDefinitionExercise
       )
-      const text = Option.getOrElse(EffectRecord.get(loadTextByExerciseId, exerciseId), () =>
-        suggestedStartingLoadText({ trainingPlanDefinitionExercise, suggestedStartingLoads })
+      const text = Option.getOrElse(
+        EffectRecord.get(form.value.loadTextByExerciseId, exerciseId),
+        () => suggestedStartingLoadText({ trainingPlanDefinitionExercise, suggestedStartingLoads })
       )
       return {
         exerciseId,
@@ -147,7 +155,9 @@ const StartTrainingPlanDefinitionView = ({
             name={choiceName}
             legend="Program"
             value={trainingPlanDefinition.id}
-            onChange={setChosenPlanDefinitionId}
+            onChange={(planDefinitionId) => {
+              form.set('chosenPlanDefinitionId', planDefinitionId)
+            }}
             options={trainingPlanDefinitions.map(({ id, title }) => ({ value: id, label: title }))}
           />
         ) : (
@@ -170,7 +180,7 @@ const StartTrainingPlanDefinitionView = ({
               value={text}
               inputMode="decimal"
               onChange={(loadText) => {
-                setLoadTextByExerciseId((current) => ({ ...current, [exerciseId]: loadText }))
+                form.field('loadTextByExerciseId').set(exerciseId, loadText)
               }}
               description={
                 startAttempted && Either.isLeft(startingLoad) ? (
