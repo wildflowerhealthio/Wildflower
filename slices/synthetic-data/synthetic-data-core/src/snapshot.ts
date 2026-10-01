@@ -5,7 +5,7 @@ import * as Entry from './snapshot-entry.ts'
 import * as SnapshotFile from './snapshot-file.ts'
 import * as Header from './snapshot-header.ts'
 import * as Layout from './snapshot-layout.ts'
-import * as Source from './snapshot-source.ts'
+import * as Reader from './snapshot-reader.ts'
 
 /**
  * A snapshot of a FHIR store at one as-of date and generator commit: its
@@ -14,7 +14,7 @@ import * as Source from './snapshot-source.ts'
  * ({@link Entry}), laid out from each member's importer output
  * ({@link Layout}). {@link filesOf} gives the files a static host serves it
  * as, so the step that publishes it only writes each file at its path, and
- * {@link Source} reads them back: the header, and each resource as the import
+ * {@link Reader} reads them back: the header, and each resource as the import
  * wrote it.
  */
 
@@ -88,5 +88,5 @@ const filesOf = (
     return [header, ...entries].toSorted(SnapshotFile.byPath)
   })
 
-export { assemble, Entry, filesOf, Header, Layout, Source }
+export { assemble, Entry, filesOf, Header, Layout, Reader }
 export type { MemberRecords, Snapshot }

@@ -90,19 +90,19 @@ const SOURCE_FILE_REFERENCE_PREFIX = MetaSource.makeReference('')
 
 /**
  * A resource that names, as its `meta.source`, a source-file
- * `DocumentReference` other than the `laidOutSources`.
+ * `DocumentReference` other than the `laidOutSourceFiles`.
  */
-const danglingSourceOf =
-  (laidOutSources: ReadonlySet<string>) =>
+const danglingMetaSourceOf =
+  (laidOutSourceFiles: ReadonlySet<string>) =>
   (resource: Entry.StoredResource): UnplaceableResource | undefined => {
-    const source = resource.meta?.source ?? null
-    return source === null ||
-      !source.startsWith(SOURCE_FILE_REFERENCE_PREFIX) ||
-      laidOutSources.has(source)
+    const metaSource = resource.meta?.source ?? null
+    return metaSource === null ||
+      !metaSource.startsWith(SOURCE_FILE_REFERENCE_PREFIX) ||
+      laidOutSourceFiles.has(metaSource)
       ? undefined
       : new UnplaceableResource({
           resource: labelOf(resource),
-          reason: `Its meta.source ${source} is not among the resources laid out with it.`,
+          reason: `Its meta.source ${metaSource} is not among the resources laid out with it.`,
         })
   }
 
@@ -186,7 +186,7 @@ const merge = (
  *   resource with no valid id, a source file with no data or a title that is
  *   not a safe file name, or a resource whose `meta.source` names a
  *   `DocumentReference` not among `resources` (a reader loading this snapshot
- *   would store a dangling source); a {@link ConflictingFiles} for two
+ *   would store a dangling `meta.source`); a {@link ConflictingFiles} for two
  *   different source files at one path
  */
 const layOut = (
@@ -197,12 +197,12 @@ const layOut = (
 > =>
   Either.gen(function* () {
     const stored = yield* storedResourcesOf(resources)
-    const laidOutSources = new Set(
+    const laidOutSourceFiles = new Set(
       stored
         .filter((resource) => resource.resourceType === 'DocumentReference')
         .map((resource) => MetaSource.makeReference(resource.id))
     )
-    const dangling = stored.map(danglingSourceOf(laidOutSources)).find(Boolean)
+    const dangling = stored.map(danglingMetaSourceOf(laidOutSourceFiles)).find(Boolean)
     if (dangling !== undefined) return yield* Either.left(dangling)
     return yield* merge(yield* Either.all(stored.map(entriesOf)))
   })

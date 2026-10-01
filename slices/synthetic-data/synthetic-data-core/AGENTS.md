@@ -4,16 +4,16 @@ The **snapshot assembler**: generated records, run through Wildflower's own
 importers, as a `Snapshot` of a FHIR store at one as-of date and generator
 commit — its header and its entries, and the files a static host serves them
 as — and the reader that fetches them back. It knows nothing of any one
-source: it lays out importer output. No DOM, no `fs`, no React — the data repo's emit step writes
-the files, and the synthetic data app fetches them through a `Snapshot.Source`
-it supplies.
+pharmacy or importer: it lays out importer output. No DOM, no `fs`, no React
+— the data repo's emit step writes the files, and the synthetic data app
+reads them through `Snapshot.Reader`, with a `FileFetcher` it supplies.
 
 ## Shape
 
 The root entry exports two namespaces:
 `import { Snapshot, SnapshotFile } from 'synthetic-data-core'`. `Snapshot`
 nests `Snapshot.Entry`, `Snapshot.Header`, `Snapshot.Layout` and
-`Snapshot.Source`. Each module is a namespace in the `effect` style: the file
+`Snapshot.Reader`. Each module is a namespace in the `effect` style: the file
 is the noun, the principal type shares the namespace's name, a union of cases
 is `Any`, and a value's file codec is a `Schema` transform (decoded value ⇄
 encoded file).
@@ -68,18 +68,19 @@ wildflowerCommit, members)` builds it from each member's laid-out entries:
   with it (`MetaSource.makeReference`), and with `ConflictingFiles` for two
   entries at one path that are not written as the same file, also across the
   lists `merge` joins.
-- `src/snapshot-source.ts` — **`Snapshot.Source`**: reading a published
-  snapshot back. `Source` is where a reader fetches files (`text(path)`,
+- `src/snapshot-reader.ts` — **`Snapshot.Reader`**: reading a published
+  snapshot back. `FileFetcher` is where a reader fetches files (`text(path)`,
   `bytes(path)`, each failing as `UnreadableFile`), supplied by the caller.
-  `readHeader(source)` decodes `index.json` with `Header.FileSchema`.
-  `readResource(source, path)` checks `path` against `ResourcePathSchema`
+  `readHeader(fetcher)` decodes `index.json` with `Header.FileSchema`.
+  `readResource(fetcher, path)` checks `path` against `ResourcePathSchema`
   before fetching anything, decodes the file with `Entry.ResourceFileSchema`
   (it must hold the resource its path names), requires a source-file
   `DocumentReference` of one of `SOURCE_FILE_IMPORTERS` to link its file at
-  `<format>/<title>` (and no other resource to link one), fetches that file, checks it against the attachment's
-  `size` and `hash` (base64 SHA-256), and carries it inline again
-  (`withAttachmentData`): the resource as the import wrote it. Every failure
-  is an `UnreadableFile` (`path`, `reason`) naming the file at fault.
+  `<format>/<title>` (and no other resource to link one), fetches that file,
+  checks it against the attachment's `size` and `hash` (base64 SHA-256), and
+  carries it inline again (`withAttachmentData`): the resource as the import
+  wrote it. Every failure is an `UnreadableFile` (`path`, `reason`) naming
+  the file at fault.
 - `src/snapshot-file.ts` — **`SnapshotFile`**: the encoded side. `Any` is
   `Text` (`path`, `text`) or `Bytes` (`path`, `bytes`); `jsonTextOf(schema)`
   is a file's JSON text, two-space indented with a trailing newline; `same`
@@ -88,7 +89,8 @@ wildflowerCommit, members)` builds it from each member's laid-out entries:
 `src/test-helpers.ts`, the `./test-helpers` sub-entry, runs generated Rexall
 records with a re-identified image, and generated Shoppers family accounts,
 through the real importers, and serves a snapshot's files from memory as a
-`Snapshot.Source` (`sourceOf`) — for this package's tests and its readers'.
+`Snapshot.Reader.FileFetcher` (`fetcherOf`) — for this package's tests and
+its readers'.
 
 ## Layering
 
@@ -110,7 +112,7 @@ package.
 - **The layout is lossless.** Every entry's file decodes back to the entry,
   and a linked source file with its attachment's bytes inline again
   (`withAttachmentData`) encodes as the import wrote it;
-  `snapshot-layout.test.ts` and `snapshot-source.test.ts` (`readResource`
+  `snapshot-layout.test.ts` and `snapshot-reader.test.ts` (`readResource`
   over an assembled snapshot) pin that over real importer output.
 - **A reader takes nothing it could not check.** `readResource` fails a file
   whose resource is not the one its path names, a source file that does not

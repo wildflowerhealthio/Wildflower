@@ -7,7 +7,7 @@
  * and the header, owns its codec to the `SnapshotFile` a static host serves it
  * as — `fhir/<ResourceType>/<id>.json`, `har/…` and `dicom/…`, and
  * `index.json` — and `Snapshot.filesOf` gives them all, in path order.
- * `Snapshot.Source` reads them back through a caller's file source: the
+ * `Snapshot.Reader` reads them back through a caller's `FileFetcher`: the
  * header, and each resource as the import wrote it, its linked file checked
  * and carried inline again.
  *
