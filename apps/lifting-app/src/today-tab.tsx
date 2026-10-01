@@ -16,7 +16,7 @@ import {
 import { submittedWorkoutResources } from './lifting-writes.ts'
 import { workoutIdMinter } from './mint-ids.ts'
 import { StartProgram } from './start-program.tsx'
-import styles from './app.module.css'
+import styles from './today-tab.module.css'
 
 /**
  * What one submission writes from, fixed at its first attempt so a retry
@@ -68,7 +68,7 @@ const TodayTab = ({
 
   if (Option.isSome(submitted)) {
     return (
-      <div className={styles.submitted}>
+      <div className={styles['today-tab__submitted']}>
         <SubmittedWorkoutView submitted={submitted.value} />
         <button
           type="button"

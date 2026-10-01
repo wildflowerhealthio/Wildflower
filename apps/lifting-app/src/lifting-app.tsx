@@ -10,7 +10,7 @@ import { liftingKeyOf, type LiftingSession } from './lifting-session.ts'
 import { mintResourceId } from './mint-ids.ts'
 import { TrainingRecordNotices } from './record-notices.tsx'
 import { type Tab, TabBody } from './tab-body.tsx'
-import styles from './app.module.css'
+import styles from './lifting-app.module.css'
 
 const TAB_OPTIONS: readonly { readonly value: Tab; readonly label: string }[] = [
   { value: 'today', label: 'Today' },
@@ -69,7 +69,7 @@ const LiftingApp = ({ client, patientId, runAuthed }: LiftingSession): JSX.Eleme
 
   return (
     <>
-      <header className={styles.header}>
+      <header className={styles['lifting-app__header']}>
         <h1 className="text-heading-3">Lifting</h1>
         <SegmentedToggle value={tab} options={TAB_OPTIONS} onChange={setTab} aria-label="View" />
       </header>

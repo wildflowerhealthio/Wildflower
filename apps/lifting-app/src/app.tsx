@@ -75,7 +75,7 @@ const App = (): JSX.Element => {
     Match.exhaustive
   )
 
-  return <main className={styles.app}>{body}</main>
+  return <main className={styles['app']}>{body}</main>
 }
 
 export { App }
