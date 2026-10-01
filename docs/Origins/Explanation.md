@@ -89,6 +89,24 @@ The SMART discovery document follows the same split: its `issuer` field is
 [`CANONICAL_ISSUER`], while its endpoint URLs are rendered from the served origin
 so the SMART app can actually reach them from where it is.
 
+### HFS advertises the public origin, not the served one
+
+HFS is the one component that can't render URLs per request. It writes a single
+configured base into every URL it emits (search Bundle `self`/`next` links,
+`entry.fullUrl`, a create's `Location`) and ignores `Forwarded`. A client that
+pages by following `next` therefore goes wherever that base points, and its
+token's `aud` has to match.
+
+So HFS's base follows the tunnel's configured public host,
+`https://<public_host>/fhir-r4`, because that is how remote clients reach the
+FHIR server. It falls back to loopback only while no public host is configured.
+Loopback callers get the public URLs too, which is fine for them: the
+owner token's canonical audience is accepted at every served origin. The host
+watches the tunnel settings and calls [`HfsAdvertisedBase`]`::set_public_origin`
+on each change. That rebuilds HFS over the same store and swaps it in under the
+routers already mounted. emr-rust's own overrides (`$everything`, the SMART
+discovery doc) still render the served origin per request.
+
 ### Discovery is fetched before a token exists
 
 A SMART/FHIR client fetches the discovery documents (`smart-configuration`,
@@ -173,3 +191,4 @@ restate the grammar.
 [`subdomain_host`]: ../../slices/shared-structures/shared-structures-rust/src/subdomain_host.rs
 [`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
 [`UNAUTHENTICATED_FHIR_PATHS`]: ../../slices/emr/emr-rust/src/lib.rs
+[`HfsAdvertisedBase`]: ../../slices/emr/emr-rust/src/advertised_base.rs

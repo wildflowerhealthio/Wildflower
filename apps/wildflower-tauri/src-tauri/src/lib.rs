@@ -191,6 +191,25 @@ fn current_owner_bearer(trust: &LoopbackOwnerTrust) -> Option<axum::http::Header
     token.and_then(|t| axum::http::HeaderValue::from_str(&format!("Bearer {t}")).ok())
 }
 
+/// Point HFS's advertised base at the tunnel's `https://{public_host}`, or back
+/// at loopback when no public host is configured. A host that doesn't make a
+/// usable origin is logged and leaves the current base in place.
+fn advertise_fhir_base(advertised_base: &emr_rust::HfsAdvertisedBase, public_host: Option<&str>) {
+    let public_origin = match public_host.map(|host| url::Url::parse(&format!("https://{host}"))) {
+        None => None,
+        Some(Ok(origin)) => Some(origin),
+        Some(Err(error)) => {
+            tauri_plugin_log::log::warn!(
+                "tunnel public host does not form an origin; FHIR base unchanged: {error}"
+            );
+            return;
+        }
+    };
+    if let Err(error) = advertised_base.set_public_origin(public_origin.as_ref()) {
+        tauri_plugin_log::log::warn!("failed to change the advertised FHIR base: {error:#}");
+    }
+}
+
 /// Resolves the directory the host keeps its databases and saved files in:
 /// `Documents` on iOS, where it is the only part of the app container the Files
 /// app will show, and Tauri's `app_data_dir()` everywhere else. The iOS bundle
@@ -518,6 +537,26 @@ async fn run_server(
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
+
+    // HFS advertises one fixed base in its Bundle links, `fullUrl`s and
+    // `Location`s, and remote clients follow those links through the tunnel —
+    // so the base tracks the configured public host (loopback while there is
+    // none). Set before serving, then re-set whenever the tunnel settings change.
+    let mut tunnel_liveness = tunnel_service.subscribe();
+    let mut public_host = tunnel_liveness.borrow_and_update().public_host.clone();
+    advertise_fhir_base(&fhir_routers.advertised_base, public_host.as_deref());
+    let advertised_fhir_base = fhir_routers.advertised_base.clone();
+    tauri::async_runtime::spawn(async move {
+        // The liveness watch also ticks on every status change and dial attempt;
+        // only a change of public host moves the base.
+        while tunnel_liveness.changed().await.is_ok() {
+            let next_public_host = tunnel_liveness.borrow_and_update().public_host.clone();
+            if next_public_host != public_host {
+                public_host = next_public_host;
+                advertise_fhir_base(&advertised_fhir_base, public_host.as_deref());
+            }
+        }
+    });
     // Install the host's on-device webview handle: a loopback launch hands it the
     // resolved URL to open in a native popup (the server 204s). See
     // `native_webview_handle`.
