@@ -12,8 +12,15 @@ import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { Route as OpenRoute } from '../routes/_open.tsx'
 import { PlatformTabsProvider } from './platform-tabs.tsx'
+import { ServerKind, ServerKindContext } from './server-kind.ts'
 import { AppTabShell, TabBar } from './tab-bar.tsx'
-import { COLLECTOR_TAB, HOME_TAB, SETTINGS_TAB, type TabSpec } from './tabs.ts'
+import {
+  COLLECTOR_TAB,
+  HOME_TAB,
+  PLAIN_SMART_HOME_TAB,
+  SETTINGS_TAB,
+  type TabSpec,
+} from './tabs.ts'
 
 const Stub = (): JSX.Element => <div>stub</div>
 
@@ -23,9 +30,13 @@ const Stub = (): JSX.Element => <div>stub</div>
  * exact-or-prefix active matching can be exercised. The root renders the
  * bar above an `<Outlet>` so the matched leaf is a real (non-404) match;
  * active state is derived from the router location, not the rendered
- * leaf.
+ * leaf. `serverKind` is the tree's, a Wildflower server's unless given.
  */
-const renderTabBarAt = (initialPath: string, platformTabs: readonly TabSpec[] = []): void => {
+const renderTabBarAt = (
+  initialPath: string,
+  platformTabs: readonly TabSpec[] = [],
+  serverKind: ServerKind = ServerKind.Wildflower()
+): void => {
   const rootRoute = createRootRoute({
     component: (): JSX.Element => (
       <>
@@ -35,6 +46,11 @@ const renderTabBarAt = (initialPath: string, platformTabs: readonly TabSpec[] = 
     ),
   })
   const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/home', component: Stub })
+  const fhirHomeRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/fhir-home',
+    component: Stub,
+  })
   const collectorRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/collector',
@@ -58,6 +74,7 @@ const renderTabBarAt = (initialPath: string, platformTabs: readonly TabSpec[] = 
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       homeRoute,
+      fhirHomeRoute,
       collectorRoute.addChildren([collectorDetailRoute]),
       settingsRoute,
       harRecorderRoute,
@@ -65,9 +82,11 @@ const renderTabBarAt = (initialPath: string, platformTabs: readonly TabSpec[] = 
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   })
   render(
-    <PlatformTabsProvider tabs={platformTabs}>
-      <RouterProvider router={router} />
-    </PlatformTabsProvider>
+    <ServerKindContext value={serverKind}>
+      <PlatformTabsProvider tabs={platformTabs}>
+        <RouterProvider router={router} />
+      </PlatformTabsProvider>
+    </ServerKindContext>
   )
 }
 
@@ -118,6 +137,22 @@ describe('TabBar', () => {
     const links = await screen.findAllByRole('link')
     expect(links.map((l) => l.textContent)).toEqual(['Home', 'Collector', 'Settings'])
     expect(screen.queryByRole('link', { name: 'HAR Recorder' })).toBeNull()
+  })
+
+  test('renders only Home, at the plain SMART Home, on a plain SMART server', async () => {
+    // The entry's platform tab is withheld too: every surface but Home calls
+    // Wildflower-only endpoints.
+    renderTabBarAt(
+      '/fhir-home',
+      [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }],
+      ServerKind.PlainSmart({ fhirBaseUrl: 'https://launcher.test/fhir', patient: undefined })
+    )
+    const links = await screen.findAllByRole('link')
+    expect(links.map((l) => l.textContent)).toEqual([PLAIN_SMART_HOME_TAB.label])
+    expect(screen.getByRole('link', { name: 'Home' }).getAttribute('href')).toBe('/fhir-home')
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Home' }).getAttribute('aria-current')).toBe('page')
+    })
   })
 
   test('keeps the tab active on a descendant route (prefix match)', async () => {

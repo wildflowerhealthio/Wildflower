@@ -13,7 +13,8 @@ import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import type { RouterContext } from '../router-context.ts'
-import { authGatedRouteOptions } from './auth-gated-route-options.ts'
+import { wildflowerRouteOptions } from './auth-gated-route-options.ts'
+import { ServerKind } from './server-kind.ts'
 
 /**
  * Pins the retry path: clicking the Retry button must re-fire the
@@ -37,7 +38,7 @@ const renderGate = (
   awaitAuthReady: () => Promise<void>
 ): { findRetryButton: () => Promise<HTMLElement> } => {
   const rootRoute = createRootRouteWithContext<RouterContext>()({
-    ...authGatedRouteOptions,
+    ...wildflowerRouteOptions,
     component: () => <Outlet />,
   })
   const leaf = rootRoute.addChildren([])
@@ -52,6 +53,7 @@ const renderGate = (
     }),
     entry: 'main-web',
     externalLinkRoot: () => 'https://example.test',
+    serverKind: ServerKind.Wildflower(),
   }
   const router = createRouter({
     routeTree: leaf,

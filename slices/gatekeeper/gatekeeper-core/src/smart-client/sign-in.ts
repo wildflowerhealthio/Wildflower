@@ -52,7 +52,11 @@ import {
 } from './authorization-flow.ts'
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
 import type { DigestSource, PkceUnavailable, RandomBytesSource } from './pkce.ts'
-import { discoverSmartEndpoints, type DiscoveryFailed } from './smart-discovery.ts'
+import {
+  discoverSmartEndpoints,
+  type DiscoveryFailed,
+  type SmartServer,
+} from './smart-discovery.ts'
 
 /**
  * Raised when the browser will not carry the pending request across the
@@ -131,7 +135,7 @@ const beginSignIn = (
   environment: SignInEnvironment
 ): Effect.Effect<string, SignInError> =>
   Effect.gen(function* () {
-    const { fhirBaseUrl, endpoints } = yield* discoverSmartEndpoints(serverUrl, {
+    const { smartServer, endpoints } = yield* discoverSmartEndpoints(serverUrl, {
       fetch: environment.fetch,
       pageIsSecure: environment.pageIsSecure,
     })
@@ -147,6 +151,7 @@ const beginSignIn = (
             state,
             codeVerifier,
             serverUrl,
+            smartServer,
             tokenEndpoint: endpoints.tokenEndpoint,
             returnTo,
           })
@@ -165,7 +170,7 @@ const beginSignIn = (
       scope: environment.scope,
       state,
       codeChallenge,
-      audience: fhirBaseUrl,
+      audience: smartServer.fhirBaseUrl,
     })
   })
 
@@ -176,7 +181,11 @@ interface Session {
   readonly scope: string
   /** The server the token was issued by, which requests must go to. */
   readonly serverUrl: string
+  /** Which kind of server `serverUrl` is, and the FHIR base the token is for. */
+  readonly smartServer: SmartServer
   readonly expiresInSeconds: number | undefined
+  /** The patient in context, when the token response named one. */
+  readonly patient: string | undefined
   /**
    * The in-app path the sign-in was started to reach — `beginSignIn`'s
    * `returnTo`, unsanitised. `undefined` when none was named.
@@ -270,7 +279,9 @@ const sessionFrom = (grant: AccessGrant, pending: PendingAuthorization): Session
   accessToken: grant.accessToken,
   scope: grant.scope,
   serverUrl: pending.serverUrl,
+  smartServer: pending.smartServer,
   expiresInSeconds: grant.expiresInSeconds,
+  patient: grant.patient,
   returnTo: pending.returnTo,
 })
 

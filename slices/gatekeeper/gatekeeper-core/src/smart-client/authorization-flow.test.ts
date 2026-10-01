@@ -14,12 +14,14 @@ import {
   tokenRequestBody,
   type PendingAuthorization,
 } from './authorization-flow.ts'
+import { PlainSmartServer, WildflowerServer } from './smart-discovery.ts'
 
 /** A pending record shaped like the one a real sign-in stashes. */
 const pendingRecord: PendingAuthorization = {
   state: 'Zm9vYmFyYmF6cXV4',
   codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
   serverUrl: 'https://ruth.wildflowerhealth.io',
+  smartServer: WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io/fhir-r4' }),
   tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
   returnTo: '/settings/tunnel',
 }
@@ -29,6 +31,10 @@ const pendingArbitrary = fc.record({
   state: fc.string({ minLength: 1 }),
   codeVerifier: fc.string({ minLength: 1 }),
   serverUrl: fc.webUrl(),
+  smartServer: fc.oneof(
+    fc.webUrl().map((fhirBaseUrl) => WildflowerServer.make({ fhirBaseUrl })),
+    fc.webUrl().map((fhirBaseUrl) => PlainSmartServer.make({ fhirBaseUrl }))
+  ),
   tokenEndpoint: fc.webUrl(),
   returnTo: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
 })
@@ -56,7 +62,7 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
     fc.assert(
       fc.property(
         pendingArbitrary,
-        fc.constantFrom('state', 'codeVerifier', 'serverUrl', 'tokenEndpoint'),
+        fc.constantFrom('state', 'codeVerifier', 'serverUrl', 'smartServer', 'tokenEndpoint'),
         (pending, dropped) => {
           // Arrange
           const partial: Record<string, unknown> = { ...pending }
@@ -64,6 +70,28 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
 
           // Act / Assert
           expect(parsePendingAuthorization(JSON.stringify(partial))).toEqual(Option.none())
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('refuses a record whose smartServer is not a kind of server discovery finds', () => {
+    fc.assert(
+      fc.property(
+        pendingArbitrary,
+        fc.oneof(
+          fc.constant({ _tag: 'SomeOtherServer', fhirBaseUrl: 'https://example.org/fhir' }),
+          fc.constant({ _tag: 'WildflowerServer', fhirBaseUrl: '' }),
+          fc.constant({ _tag: 'PlainSmartServer' }),
+          fc.webUrl()
+        ),
+        (pending, smartServer) => {
+          // Arrange
+          const raw = JSON.stringify({ ...pending, smartServer })
+
+          // Act / Assert
+          expect(parsePendingAuthorization(raw)).toEqual(Option.none())
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -110,6 +138,7 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
               'codeVerifier',
               'returnTo',
               'serverUrl',
+              'smartServer',
               'state',
               'tokenEndpoint',
             ])
@@ -397,14 +426,18 @@ describe('parseTokenResponse', () => {
         accessToken: 'header.payload.signature',
         scope: 'openid system/*.cruds',
         expiresInSeconds: 3600,
+        patient: undefined,
       })
     )
   })
 
-  it('reads a null or absent scope and lifetime as unstated', () => {
+  it('reads a null or absent scope, lifetime and patient as unstated', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom<Record<string, unknown>>({}, { scope: null, expires_in: null }),
+        fc.constantFrom<Record<string, unknown>>(
+          {},
+          { scope: null, expires_in: null, patient: null }
+        ),
         (optionals) => {
           // Act
           const result = parseTokenResponse({
@@ -415,11 +448,31 @@ describe('parseTokenResponse', () => {
 
           // Assert
           expect(result).toEqual(
-            Either.right({ accessToken: 'a-token', scope: '', expiresInSeconds: undefined })
+            Either.right({
+              accessToken: 'a-token',
+              scope: '',
+              expiresInSeconds: undefined,
+              patient: undefined,
+            })
           )
         }
       ),
       { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it('reads the patient a plain SMART server names as the launch context', () => {
+    // Act — the SmartHealthIT launcher's answer once the reader picked a patient.
+    const result = parseTokenResponse({
+      access_token: 'a-token',
+      token_type: 'Bearer',
+      scope: 'launch/patient patient/*.read',
+      patient: 'eb3271e1-ae1b-4644-9332-41e32c829486',
+    })
+
+    // Assert
+    expect(Either.map(result, (grant) => grant.patient)).toEqual(
+      Either.right('eb3271e1-ae1b-4644-9332-41e32c829486')
     )
   })
 

@@ -10,7 +10,7 @@ import { Sentry } from 'telemetry-web'
  * thrown error renders a generic retry rather than a blank page.
  *
  * Renders as a fragment, not a page — the surrounding `.page` shell is
- * supplied by `authGatedRouteOptions`' `errorComponent` wrapper so this
+ * supplied by the auth-gated route options' `errorComponent` wrapper so this
  * stays consistent with the rest of the app (route bodies render
  * content; layouts own the shell).
  */

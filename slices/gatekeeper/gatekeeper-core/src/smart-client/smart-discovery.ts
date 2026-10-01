@@ -46,12 +46,36 @@ interface SmartEndpoints {
 const WILDFLOWER_FHIR_PATH = '/fhir-r4'
 
 /**
- * A server's SMART issuer as discovery found it: the FHIR base that served the
- * configuration — the `iss`, and the `aud` a sign-in names — and the endpoints
- * it advertised.
+ * A Wildflower server, found by its SMART configuration answering under
+ * `{serverUrl}/fhir-r4`, which is its FHIR base.
+ */
+const WildflowerServer = Schema.TaggedStruct('WildflowerServer', {
+  fhirBaseUrl: Schema.NonEmptyString,
+})
+
+/**
+ * A plain SMART server, found by its SMART configuration answering under the
+ * server URL itself, which is its FHIR base (the SmartHealthIT demo's `…/fhir`).
+ */
+const PlainSmartServer = Schema.TaggedStruct('PlainSmartServer', {
+  fhirBaseUrl: Schema.NonEmptyString,
+})
+
+/**
+ * Which kind of server discovery found at a server URL, and the FHIR base that
+ * served its configuration — the `iss`, and the `aud` a sign-in names. A Schema
+ * because it rides the pending record across the redirect and comes back on the
+ * `Session`.
+ */
+const SmartServer = Schema.Union(WildflowerServer, PlainSmartServer)
+type SmartServer = Schema.Schema.Type<typeof SmartServer>
+
+/**
+ * A server's SMART issuer as discovery found it: the {@link SmartServer} that
+ * served the configuration and the endpoints it advertised.
  */
 interface SmartIssuer {
-  readonly fhirBaseUrl: string
+  readonly smartServer: SmartServer
   readonly endpoints: SmartEndpoints
 }
 
@@ -231,10 +255,11 @@ const fetchSmartConfiguration = (
  * `serverUrl` (canonical: no trailing slash) is read as a Wildflower server's
  * API base first, so the configuration is asked for under
  * `{serverUrl}/fhir-r4`. Only if that answers 404 is `serverUrl` read as a
- * plain FHIR base and asked directly. The FHIR base that answered is returned
- * with the endpoints, for the sign-in to name as its `aud`. Two 404s fail with
- * one reason naming both URLs; any other failure at the first URL fails
- * without trying the second.
+ * plain FHIR base and asked directly. The {@link SmartServer} that answered is
+ * returned with the endpoints: its FHIR base is the `aud` the sign-in names,
+ * and its kind is what the signed-in app may offer. Two 404s fail with one
+ * reason naming both URLs; any other failure at the first URL fails without
+ * trying the second.
  */
 const discoverSmartEndpoints = (
   serverUrl: string,
@@ -242,14 +267,17 @@ const discoverSmartEndpoints = (
 ): Effect.Effect<SmartIssuer, DiscoveryFailed> =>
   Effect.gen(function* () {
     const wildflowerFhirBaseUrl = `${serverUrl}${WILDFLOWER_FHIR_PATH}`
-    const candidates = [wildflowerFhirBaseUrl, serverUrl]
-    for (const fhirBaseUrl of candidates) {
-      const document = yield* fetchSmartConfiguration(fhirBaseUrl, options)
+    const candidates: readonly SmartServer[] = [
+      WildflowerServer.make({ fhirBaseUrl: wildflowerFhirBaseUrl }),
+      PlainSmartServer.make({ fhirBaseUrl: serverUrl }),
+    ]
+    for (const smartServer of candidates) {
+      const document = yield* fetchSmartConfiguration(smartServer.fhirBaseUrl, options)
       if (Option.isSome(document)) {
         const endpoints = yield* smartEndpointsFrom(document.value, {
           pageIsSecure: options.pageIsSecure,
         })
-        return { fhirBaseUrl, endpoints }
+        return { smartServer, endpoints }
       }
     }
     return yield* new DiscoveryFailed({
@@ -262,6 +290,9 @@ const discoverSmartEndpoints = (
 
 export {
   DiscoveryFailed,
+  PlainSmartServer,
+  SmartServer,
+  WildflowerServer,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
   isLoopbackHost,

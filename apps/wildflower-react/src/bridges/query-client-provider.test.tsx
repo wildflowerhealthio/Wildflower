@@ -104,6 +104,7 @@ vi.mock('../routeTree.gen.ts', () => {
 })
 
 import { RootShell } from '../session/root-shell.tsx'
+import { ServerKind } from '../session/server-kind.ts'
 
 describe('in-memory QueryClientProvider', () => {
   beforeEach(() => {
@@ -145,6 +146,7 @@ describe('in-memory QueryClientProvider', () => {
         platformSettingsItems: [],
         platformTabs: [],
         redirectToDeviceLoginOnUnauthorized: false,
+        serverKind: ServerKind.Wildflower(),
       })
     })
 

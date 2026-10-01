@@ -1,3 +1,5 @@
+import { ServerKind } from './server-kind.ts'
+
 /**
  * The top-level surfaces the authed shell exposes. The order here is a
  * presentation concern (left-to-right in the bar).
@@ -21,12 +23,26 @@ interface TabSpec {
   // (an unsafe-assignment at the `<Link to>` call site) and `RoutePaths`
   // isn't re-exported from `@tanstack/react-router`. With a handful of rarely
   // changing top-level surfaces, the literal union is the safe choice.
-  readonly path: '/home' | '/collector' | '/settings' | '/har-recorder'
+  readonly path: '/home' | '/fhir-home' | '/collector' | '/settings' | '/har-recorder'
 }
 
 const HOME_TAB: TabSpec = { key: 'home', label: 'Home', path: '/home' }
 const COLLECTOR_TAB: TabSpec = { key: 'collector', label: 'Collector', path: '/collector' }
 const SETTINGS_TAB: TabSpec = { key: 'settings', label: 'Settings', path: '/settings' }
 
-export { COLLECTOR_TAB, HOME_TAB, SETTINGS_TAB }
+/**
+ * Home on a plain SMART server: the one tab the shell offers there, since
+ * every other surface calls Wildflower-only endpoints. Its own route rather
+ * than `/home`, whose apps list is the Wildflower server's.
+ */
+const PLAIN_SMART_HOME_TAB: TabSpec = { key: 'home', label: 'Home', path: '/fhir-home' }
+
+/** The Home tab for `serverKind`: where the shell lands, and where the route guards send a reader. */
+const homeTabFor = (serverKind: ServerKind): TabSpec =>
+  ServerKind.$match(serverKind, {
+    Wildflower: () => HOME_TAB,
+    PlainSmart: () => PLAIN_SMART_HOME_TAB,
+  })
+
+export { COLLECTOR_TAB, HOME_TAB, homeTabFor, PLAIN_SMART_HOME_TAB, SETTINGS_TAB }
 export type { TabKey, TabSpec }

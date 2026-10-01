@@ -14,6 +14,7 @@ import { addOsColorSchemeListener } from 'react-tundraish'
 import { webTelemetryLayerFromEnv } from 'telemetry-web'
 import { renderApp } from 'wildflower-react/app-root'
 import { bridges } from 'wildflower-react/bridges'
+import { ServerKind } from 'wildflower-react/server-kind'
 
 addOsColorSchemeListener()
 
@@ -58,6 +59,8 @@ renderApp({
   // takes no 401 action — the query surfaces its error and the boot-race retry
   // covers the common case.
   redirectToDeviceLoginOnUnauthorized: false,
+  // The host is a Wildflower server, so the shell offers every surface.
+  serverKind: ServerKind.Wildflower(),
   // The host's granted scopes, injected by Vite (`vite.config.ts`) from the same
   // `tauri-shared-config.json` gatekeeper-rust reads to seed the first-party
   // client — so `NeedsAuthMessage`'s device-login request can't drift from the

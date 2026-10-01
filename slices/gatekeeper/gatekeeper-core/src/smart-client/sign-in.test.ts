@@ -15,6 +15,7 @@ import {
   type PendingStore,
   type SignInEnvironment,
 } from './sign-in.ts'
+import { PlainSmartServer, WildflowerServer } from './smart-discovery.ts'
 
 const SERVER = 'https://ruth.wildflowerhealth.io'
 
@@ -117,7 +118,9 @@ describe('beginSignIn', () => {
     const discovery = discoveryAt(DEMO_FHIR_BASE, DEMO_AUTH_ORIGIN)
     const fetchStub: typeof globalThis.fetch = (input, init) =>
       requestUrl(input) === `${DEMO_AUTH_ORIGIN}/auth/token`
-        ? Promise.resolve(jsonResponse({ access_token: 'a-token', token_type: 'Bearer' }))
+        ? Promise.resolve(
+            jsonResponse({ access_token: 'a-token', token_type: 'Bearer', patient: 'a-patient' })
+          )
         : discovery(input, init)
     const environment = testEnvironment({ store, fetch: fetchStub })
 
@@ -130,12 +133,23 @@ describe('beginSignIn', () => {
     )
 
     // Assert — the return leg needs only what the pending record carried: the
-    // token endpoint discovery found, and the server the session is for.
+    // token endpoint discovery found, and the server the session is for, which
+    // it names a plain SMART server, with the patient the token response named.
     expect(url.origin + url.pathname).toBe(`${DEMO_AUTH_ORIGIN}/auth/authorize`)
     expect(url.searchParams.get('aud')).toBe(DEMO_FHIR_BASE)
     if (Either.isLeft(completed)) throw new Error(completed.left.reason)
-    expect(Option.map(completed.right, (session) => session.serverUrl)).toEqual(
-      Option.some(DEMO_FHIR_BASE)
+    expect(
+      Option.map(completed.right, ({ serverUrl, smartServer, patient }) => ({
+        serverUrl,
+        smartServer,
+        patient,
+      }))
+    ).toEqual(
+      Option.some({
+        serverUrl: DEMO_FHIR_BASE,
+        smartServer: PlainSmartServer.make({ fhirBaseUrl: DEMO_FHIR_BASE }),
+        patient: 'a-patient',
+      })
     )
   })
 
@@ -190,6 +204,7 @@ describe('beginSignIn', () => {
     expect(url.searchParams.get('state')).toBe(pending.state)
     expect(pending.tokenEndpoint).toBe(`${SERVER}/oauth/token`)
     expect(pending.serverUrl).toBe(SERVER)
+    expect(pending.smartServer).toEqual(WildflowerServer.make({ fhirBaseUrl: `${SERVER}/fhir-r4` }))
   })
 
   it('mints a fresh state and verifier for every sign-in', async () => {
@@ -323,7 +338,9 @@ describe('completeSignIn', () => {
           accessToken: 'header.payload.signature',
           scope: 'openid system/*.cruds',
           serverUrl: SERVER,
+          smartServer: pending.smartServer,
           expiresInSeconds: 3600,
+          patient: undefined,
           returnTo: pending.returnTo,
         })
       )
@@ -604,6 +621,7 @@ const stashedRequest = (): PendingAuthorization => ({
   state: 'a-stashed-state',
   codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
   serverUrl: SERVER,
+  smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER}/fhir-r4` }),
   tokenEndpoint: `${SERVER}/oauth/token`,
   returnTo: '/settings/tunnel',
 })

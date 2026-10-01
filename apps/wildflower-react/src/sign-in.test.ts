@@ -7,6 +7,8 @@ import {
   type PendingStore,
   type Session,
   type SignInPage,
+  PlainSmartServer,
+  WildflowerServer,
 } from 'gatekeeper-core/smart-client'
 import { makeBearerAuthStateStore } from 'gatekeeper-react'
 import { numRunsFor } from 'kitchen-sink/test'
@@ -20,6 +22,7 @@ import {
 } from 'react-kitchen-sink'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { ServerKind } from './session/server-kind.ts'
 import {
   authStateForSession,
   CLIENT_ID,
@@ -29,6 +32,7 @@ import {
   REGISTERED_REDIRECT_URI,
   returnToOnPage,
   scheduleExpiry,
+  serverKindForSession,
   signInEnvironment,
   startSignIn,
 } from './sign-in.ts'
@@ -192,7 +196,9 @@ describe('finishSignIn', () => {
       accessToken: 'tok_hosted',
       scope: 'system/*.cruds',
       serverUrl: SERVER_URL,
+      smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER_URL}/fhir-r4` }),
       expiresInSeconds: 3600,
+      patient: undefined,
       returnTo: '/settings/tunnel',
     })
     // Single-use: the record is gone, so a replayed callback cannot look
@@ -312,6 +318,37 @@ describe('authStateForSession', () => {
         expect(isFreshlyAuthed(signal, nowSeconds)).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('serverKindForSession', () => {
+  it('offers the whole shell for a session on a Wildflower server', () => {
+    // Act
+    const serverKind = serverKindForSession({
+      ...sessionWith(3600),
+      smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER_URL}/fhir-r4` }),
+    })
+
+    // Assert
+    expect(serverKind).toEqual(ServerKind.Wildflower())
+  })
+
+  it('carries a plain SMART server’s FHIR base and patient in context, whichever they are', () => {
+    fc.assert(
+      fc.property(fc.webUrl(), fc.option(fc.uuid(), { nil: undefined }), (fhirBaseUrl, patient) => {
+        // Act
+        const serverKind = serverKindForSession({
+          ...sessionWith(3600),
+          serverUrl: fhirBaseUrl,
+          smartServer: PlainSmartServer.make({ fhirBaseUrl }),
+          patient,
+        })
+
+        // Assert
+        expect(serverKind).toEqual(ServerKind.PlainSmart({ fhirBaseUrl, patient }))
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 })
@@ -439,12 +476,14 @@ const readState = (store: {
 
 const SERVER_URL = 'http://127.0.0.1:8080'
 
-/** A session carrying `expiresInSeconds`; nothing else is read by the subject. */
+/** A Wildflower server's session carrying `expiresInSeconds`. */
 const sessionWith = (expiresInSeconds: number | undefined): Session => ({
   accessToken: 'tok_hosted',
   scope: 'system/*.cruds',
   serverUrl: SERVER_URL,
+  smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER_URL}/fhir-r4` }),
   expiresInSeconds,
+  patient: undefined,
   returnTo: undefined,
 })
 

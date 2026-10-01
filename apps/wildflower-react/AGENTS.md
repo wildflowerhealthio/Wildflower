@@ -34,8 +34,19 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
 - **The entry decides, not a branch on `entry`.** Platform differences reach
   the shared tree as `RenderAppOptions` fields (`effectTelemetryLayer`,
   `platformSettingsItems`, `platformTabs`,
-  `redirectToDeviceLoginOnUnauthorized`), or as a provider the entry mounts
-  (the consent gate).
+  `redirectToDeviceLoginOnUnauthorized`, `serverKind`), or as a provider the
+  entry mounts (the consent gate).
+- **A plain SMART server gets only Home.** `main-web` can sign in to a SMART
+  on FHIR server that is not a Wildflower server (discovery found its
+  configuration at the URL itself, not under `/fhir-r4`). `sign-in.ts`'s
+  `serverKindForSession` turns the redeemed session into
+  `session/server-kind.ts`'s `ServerKind.PlainSmart`, carrying the FHIR base
+  and the token response's `patient`; `main-tauri` and every other `main-web`
+  load pass `ServerKind.Wildflower()`. For `PlainSmart`, `<TabBar>` renders
+  only Home, at `/fhir-home` (`routes/fhir-home.tsx`), and the `_auth` and
+  `/settings` gates redirect there before any loader runs, so nothing calls a
+  Wildflower-only endpoint. `/fhir-home` redirects a Wildflower session to
+  `/home` the same way (`session/auth-gated-route-options.ts`).
 
 ## References
 

@@ -8,6 +8,7 @@ import type { BaseRouterContext } from 'shared-structures-react'
 import type { TunnelRouterContext } from 'tunnel-react'
 
 import type { ReactTransport } from './bridges/transport-context.ts'
+import type { ServerKind } from './session/server-kind.ts'
 import type { SignInProblem } from './sign-in.ts'
 
 /**
@@ -85,6 +86,13 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    * instead. Omitted on every other entry and on an ordinary load.
    */
   readonly signInProblem?: SignInProblem
+  /**
+   * Which kind of server this tree was built for. The auth-gated routes read
+   * it to send a reader to the routes that kind serves
+   * (`session/auth-gated-route-options.ts`), and the plain SMART Home reads
+   * its FHIR base. See `RenderAppOptions.serverKind`.
+   */
+  readonly serverKind: ServerKind
 }
 
 export type { RouterContext, RunAuthed, RuntimeLayer }

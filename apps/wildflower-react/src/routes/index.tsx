@@ -44,7 +44,8 @@ const rememberServer = (serverUrl: string): void => {
  *   introduction beside the server picker), which signs in by SMART standalone
  *   launch — see `../sign-in.ts` for the flow and why this entry uses it
  *   rather than the device-code screen.
- * - **`main-web` + authed**: redirects to `/home`.
+ * - **`main-web` + authed**: redirects to `/home`, whose gate sends a plain
+ *   SMART server's session on to `/fhir-home`.
  * - **`main-tauri`**: redirects to `/home` unconditionally. The host webview
  *   talks to its own loopback server, so there is no server to pick, and the
  *   `_auth` gate handles the auth check.

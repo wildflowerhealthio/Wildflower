@@ -21,7 +21,7 @@ import {
 } from '../session/telemetry-consent.test-helpers.ts'
 
 // The `/settings` auth gate now lives in the route's `beforeLoad`
-// (shared `authGatedRouteOptions`), not inside `SettingsLayout` — so
+// (shared `wildflowerRouteOptions`), not inside `SettingsLayout` — so
 // the component renders the tab shell + `<Outlet>` unconditionally. The
 // "Settings" heading no longer lives in the layout (which used to stack
 // it on top of every child's own header); it's the index page's single

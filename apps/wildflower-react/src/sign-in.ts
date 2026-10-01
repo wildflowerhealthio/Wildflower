@@ -50,6 +50,8 @@ import {
 } from 'gatekeeper-core/smart-client'
 import { AuthedUntil, type AuthState, HostAuthed, Unauthed } from 'react-kitchen-sink'
 
+import { ServerKind } from './session/server-kind.ts'
+
 /**
  * The `client_id` the web entry authorizes as, seeded by
  * `slices/gatekeeper/gatekeeper-rust/migrations/0012_seed_wildflower_react_client`.
@@ -243,6 +245,19 @@ const authStateForSession = (session: Session, nowSeconds: number): AuthState =>
     : AuthedUntil({ exp: nowSeconds + session.expiresInSeconds })
 
 /**
+ * The {@link ServerKind} a redeemed `session` signed in to: a Wildflower server
+ * when discovery found its configuration under `/fhir-r4`, otherwise a plain
+ * SMART server, with the FHIR base the token is for and the patient the token
+ * response put in context.
+ */
+const serverKindForSession = (session: Session): ServerKind => {
+  const { smartServer } = session
+  return smartServer._tag === 'WildflowerServer'
+    ? ServerKind.Wildflower()
+    : ServerKind.PlainSmart({ fhirBaseUrl: smartServer.fhirBaseUrl, patient: session.patient })
+}
+
+/**
  * Return the store to `Unauthed` when the token's reported lifetime runs out.
  *
  * The bearer lives in page memory only and is never refreshed, so a lapsed
@@ -316,6 +331,7 @@ export {
   RETURN_TO_PARAM,
   returnToOnPage,
   scheduleExpiry,
+  serverKindForSession,
   signInEnvironment,
   startSignIn,
 }

@@ -50,7 +50,8 @@ routing, so an authed loader that fired on first paint would `401` before the
 token was minted.
 
 The gate is therefore a **`beforeLoad`** on the pathless `_auth` /
-`/settings` layouts (`apps/wildflower-react`'s `authGatedRouteOptions`),
+`/settings` layouts and the `/fhir-home` route (`apps/wildflower-react`'s
+`session/auth-gated-route-options.ts`),
 which `await`s `context.awaitAuthReady(href)`. Because `beforeLoad` resolves
 before the route's `loader` and children render, every authed loader beneath
 the gate runs once auth is ready; the slice loaders are plain
