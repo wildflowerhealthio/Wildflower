@@ -66,18 +66,23 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     error: patientsError,
   } = usePatientOptions(hasPatientScope)
 
-  // Whether a patient-context scope is still granted in the *current draft*. The
-  // requirement to supply a launch patient tracks this, not the original request:
-  // if the user prunes every patient-context scope, the picker disappears and no
-  // patient is needed (and none is sent). While any patient scope remains, a
-  // patient must be chosen — so the picker offers no "no patient" escape hatch.
-  const draftHasPatientScope = useMemo(
+  // Whether a FHIR patient-context scope is still granted in the *current draft*.
+  // The requirement to supply a launch patient tracks this, not the original
+  // request: while any patient-context scope remains, a patient must be chosen —
+  // so the picker offers no "No patient" escape hatch.
+  const draftHasPatientContextScope = useMemo(
     () =>
       Scope.MultiScope.fhirScopes(draft).some((scope) =>
         scope.hasContext(Scope.Contexts.Fhir.patient)
-      ) || draft.known.some((known) => known.name === 'launch/patient'),
+      ),
     [draft]
   )
+  // Whether the current draft asks for a launch patient at all: a patient-context
+  // scope, or `launch/patient`. With `launch/patient` alone the patient is
+  // optional — the picker offers "No patient". If the user prunes both, the
+  // picker disappears and no patient is sent.
+  const draftHasPatientScope =
+    draftHasPatientContextScope || draft.known.some((known) => known.name === 'launch/patient')
 
   const patientBarRef = useRef<HTMLDivElement>(null)
   const errorRef = useRef<HTMLDivElement>(null)
@@ -106,8 +111,8 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     // A patient-context grant needs a launch patient — surface the miss beside
     // the patient bar instead of sending a patientless approval. This holds even
     // when there is no patient to pick (an empty or unreadable list): the way
-    // forward then is to prune the patient scopes, not to approve without one.
-    if (draftHasPatientScope && draft.patient === null) {
+    // forward then is to prune the patient-context scopes, not to approve without one.
+    if (draftHasPatientContextScope && draft.patient === null) {
       setPatientError('Select a patient to continue.')
       patientBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
@@ -119,7 +124,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
         payload: {
           approvedScopes: GrantDraft.serializeAll(draft),
           // Only bind a launch patient when the draft still grants a patient-context
-          // scope; a patient chosen before pruning all patient scopes is dropped.
+          // scope or `launch/patient`; a patient chosen before pruning both is dropped.
           patient: draftHasPatientScope ? draft.patient : null,
           // `registered` shows no checkbox and always sends `false`; the server
           // ignores the flag for that status anyway.
@@ -182,12 +187,13 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
             loading={patientsLoading}
             error={patientsError}
             value={draft.patient}
+            optional={!draftHasPatientContextScope}
             onChange={(patientId) => {
               setPatientError(null)
               setDraft((previous) => ({ ...previous, patient: patientId }))
             }}
           />
-          {patientError !== null ? (
+          {patientError !== null && draftHasPatientContextScope ? (
             <p
               className={cn(pageLayoutStyles['error'], styles['patient-error'], 'text-body-3')}
               role="alert"

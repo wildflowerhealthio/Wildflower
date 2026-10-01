@@ -507,19 +507,18 @@ describe('OAuthConsentForm — launch patient', () => {
     ])
   })
 
-  test('pruning every patient scope hides the picker and drops the patient requirement', async () => {
-    // A patient-context flag plus a non-patient flag, with a pickable patient.
+  test('pruning every patient scope hides the picker and drops the patient', async () => {
+    // `launch/patient` plus a non-patient flag, with a patient picked.
     patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
     const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+    await user.click(screen.getByRole('button', { name: /No patient/ }))
+    await user.click(screen.getByRole('option', { name: /Jordan Lee/ }))
 
-    // While a patient-context scope is granted, the picker is shown.
-    expect(screen.getByRole('button', { name: /Select a Patient/ })).toBeDefined()
-
-    // Prune the patient-context scope (`launch/patient`); `openid` remains.
+    // Prune `launch/patient`; `openid` remains.
     await user.click(screen.getByRole('switch', { name: /Open a specific patient/ }))
 
-    // The picker is gone and approving no longer requires (or sends) a patient.
-    expect(screen.queryByRole('button', { name: /Select a Patient/ })).toBeNull()
+    // The picker is gone and approving sends no patient.
+    expect(screen.queryByRole('button', { name: /Jordan Lee/ })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     const lastCall = mutate.mock.calls.at(-1)?.[0]
@@ -529,7 +528,7 @@ describe('OAuthConsentForm — launch patient', () => {
 
   test('a server with no patients says so, and a patient-context grant cannot be approved', async () => {
     // Arrange — a patient-context request against an empty patient list.
-    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+    const { user } = renderForm(unboundConsent(['patient/Observation.r']), vi.fn())
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
@@ -544,7 +543,7 @@ describe('OAuthConsentForm — launch patient', () => {
   test('a patient list that could not be read shows why, and blocks a patient-context grant', async () => {
     // Arrange — the Patient search failed (a mis-addressed request, a 403, …).
     patientsError = new Error('Patient search returned 404')
-    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+    const { user } = renderForm(unboundConsent(['patient/Observation.r']), vi.fn())
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
@@ -554,21 +553,148 @@ describe('OAuthConsentForm — launch patient', () => {
     expect(mutate).not.toHaveBeenCalled()
   })
 
-  test('with no patients to pick, pruning the patient scope still lets the rest be approved', async () => {
-    // Arrange — nothing to pick from.
+  test('a patient-context scope alongside launch/patient still requires a patient', async () => {
+    // Arrange
+    patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
+    const { user } = renderForm(
+      unboundConsent(['patient/Observation.r', 'launch/patient']),
+      vi.fn()
+    )
+
+    // Act
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
+
+    // Assert — only the real patients are offered, and approving without one is blocked.
+    expect(screen.queryByRole('option', { name: /No patient/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Select a patient to continue.')
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  test('pruning the patient-context scope leaves launch/patient with an optional patient', async () => {
+    // Arrange — trip the validation error while the patient-context scope is granted.
+    patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
+    const { user } = renderForm(
+      unboundConsent(['patient/Observation.r', 'launch/patient']),
+      vi.fn()
+    )
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+    expect(screen.getByRole('alert').textContent).toBe('Select a patient to continue.')
+
+    // Act — untick the only interaction of the patient-context statement, then approve.
+    await user.click(screen.getByRole('button', { name: /^Read$/ }))
+    await user.click(screen.getByRole('checkbox', { name: /Read/ }))
+
+    // Assert — the stale error is gone, the picker offers "No patient", and the
+    // approval goes out without one.
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('button', { name: /No patient/ })).toBeDefined()
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+    expect(mutate.mock.calls.at(-1)?.[0]).toMatchObject({
+      kind: 'approve',
+      payload: { patient: null },
+    })
+    expect(lastApprovedScopes()).toEqual(['launch/patient'])
+  })
+})
+
+describe('OAuthConsentForm — optional launch patient', () => {
+  test('launch/patient alone defaults to "No patient" and approves without one', async () => {
+    // Arrange — `launch/patient` with no patient-context scope, a patient available.
+    patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
     const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
 
-    // Act — turn off the patient-context scope, then approve.
-    await user.click(screen.getByRole('switch', { name: /Open a specific patient/ }))
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert — no validation error, and the approval carries no patient.
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(mutate.mock.calls.at(-1)?.[0]).toMatchObject({
+      kind: 'approve',
+      payload: { patient: null },
+    })
+    expect(lastApprovedScopes()).toEqual(['launch/patient', 'openid'])
+  })
+
+  test('launch/patient alone sends the patient the owner picks', async () => {
+    // Arrange
+    patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
+    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: /No patient/ }))
+    await user.click(screen.getByRole('option', { name: /Jordan Lee/ }))
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     // Assert
+    expect(mutate.mock.calls.at(-1)?.[0]).toMatchObject({
+      kind: 'approve',
+      payload: { patient: 'pat-1' },
+    })
+  })
+
+  test('choosing "No patient" after a patient drops it from the approval', async () => {
+    // Arrange — the launch already carries a patient.
+    patientResources = [{ id: 'pat-launch', name: [{ given: ['Jordan'], family: 'Lee' }] }]
+    const { user } = renderForm(makeConsent({ scopes: ['launch/patient'] }), vi.fn())
+
+    // Act — the bound patient is preselected; switch to "No patient".
+    await user.click(screen.getByRole('button', { name: /Jordan Lee/ }))
+    await user.click(screen.getByRole('option', { name: /No patient/ }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert
+    expect(mutate.mock.calls.at(-1)?.[0]).toMatchObject({
+      kind: 'approve',
+      payload: { patient: null },
+    })
+  })
+
+  test('a consent that carries a patient preselects and sends it', async () => {
+    // Arrange
+    patientResources = [{ id: 'pat-launch', name: [{ given: ['Jordan'], family: 'Lee' }] }]
+    const { user } = renderForm(makeConsent({ scopes: ['launch/patient'] }), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert
+    expect(screen.getByRole('button', { name: /Jordan Lee/ })).toBeDefined()
+    expect(mutate.mock.calls.at(-1)?.[0]).toMatchObject({
+      kind: 'approve',
+      payload: { patient: 'pat-launch' },
+    })
+  })
+
+  test('with no patients to pick, launch/patient alone still approves', async () => {
+    // Arrange — nothing to pick from.
+    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert — no "turn off patient access" note, and the approval goes out.
     expect(screen.queryByText(/no patients to choose from/)).toBeNull()
     expect(mutate.mock.calls.at(-1)?.[0]).toMatchObject({
       kind: 'approve',
       payload: { patient: null },
     })
-    expect(lastApprovedScopes()).toEqual(['openid'])
+  })
+
+  test('with an unreadable patient list, launch/patient alone still approves', async () => {
+    // Arrange
+    patientsError = new Error('Patient search returned 404')
+    const { user } = renderForm(unboundConsent(['launch/patient', 'openid']), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert
+    expect(screen.getAllByText(/Patient search returned 404/)).not.toHaveLength(0)
+    expect(mutate.mock.calls.at(-1)?.[0]).toMatchObject({
+      kind: 'approve',
+      payload: { patient: null },
+    })
   })
 })
 
