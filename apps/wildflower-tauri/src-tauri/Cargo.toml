@@ -31,6 +31,12 @@ openssl = {version = "0.10.36", features = ["vendored"] }
 serde.workspace = true
 serde_json.workspace = true
 apps-rust = { path = "../../../slices/apps/apps-rust" }
+# The server run the background service drives (`ServerHostContext`), built in
+# `.setup()`.
+background-server-service-rust = { path = "../../../slices/background-server-service/background-server-service-rust" }
+# The background service that runs the server, and its status, restart and
+# notification glue.
+background-server-service-tauri-rust = { path = "../../../slices/background-server-service/background-server-service-tauri-rust" }
 browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
 # Host glue for the HAR Recorder: the `BRIDGE_EVENT` listener that writes a
 # recorded archive into `<app data dir>/saved_data`.
@@ -48,17 +54,21 @@ shared-structures-rust = { path = "../../../slices/shared-structures/shared-stru
 shared-structures-tauri-rust = { path = "../../../slices/shared-structures/shared-structures-tauri-rust" }
 # The build-time tunnel `SettingsSeed` the host hands the server.
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
-# The Wildflower server the host runs from `.setup()`.
+# The Wildflower server's config and ports, which the host builds.
 wildflower-server-rust = { path = "../../../slices/wildflower-server/wildflower-server-rust" }
 anyhow.workspace = true
 # Typed loopback base URL for the server's `ServerRuntimeConfig`.
 url = "2"
 tokio = { workspace = true, features = ["full"] }
-# `CancellationToken`, the server's shutdown signal.
-tokio-util = "0.7"
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
+# Local notifications about the server; registered before the background
+# service, which posts through it.
+tauri-plugin-notification = "2"
+# Runs the server as a background service (in-process on desktop). Pinned
+# exactly, as in `background-server-service-tauri-rust`.
+tauri-plugin-background-service = "=1.0.1"
 dotenvy = "0.15.7"
 
 # Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).

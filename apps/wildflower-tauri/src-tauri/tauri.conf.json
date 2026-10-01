@@ -35,5 +35,11 @@
     "resources": {
       "../../../slices/emr/emr-rust/assets/search-parameters-r4.json": "fhir-search-params/search-parameters-r4.json"
     }
+  },
+  "plugins": {
+    "background-service": {
+      "androidForegroundServiceTypes": ["specialUse"],
+      "iosRequiresNetworkConnectivity": true
+    }
   }
 }

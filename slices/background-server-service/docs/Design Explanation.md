@@ -1,0 +1,166 @@
+# Background Server Service — Design Explanation
+
+Why the Wildflower server runs inside a background service, how the host
+watches it, and what was deliberately left out.
+
+## What it is
+
+The Tauri host runs the Wildflower server (`slices/wildflower-server`) through
+[`tauri-plugin-background-service`](https://github.com/dardourimohamed/tauri-background-service),
+pinned `=1.0.1`. On desktop the service is an in-process task. On Android the
+plugin runs it as a foreground service with a permanent notification, and on
+iOS continuously in the foreground and in `BGProcessingTask`/`BGAppRefreshTask`
+windows in the background.
+
+Around the service the host:
+
+- runs each start of the server on its own OS thread and tokio runtime, so a
+  restart leaves nothing of the previous server behind;
+- publishes the service's state, its last stop reason and its last error to the
+  web app over the bridge, and restarts the server when the page asks;
+- posts local notifications for every stop, for apps using the server through
+  the tunnel, and for the tunnel dropping and coming back;
+- on a phone, starts the server when the app comes back to the foreground with
+  it stopped, and on iOS restarts a running one.
+
+## Packages
+
+| Package                                                       | Role                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`wildflower-server-rust`](../../wildflower-server/AGENTS.md) | The server: `set_up(config, host_ports, observers)` composes and binds it, and `WildflowerServer::serve(shutdown)` serves it. `ServerObservers` carries the host-owned channels the host watches it through, and the outermost `forwarded_request_layer` reports each forwarded request. No `tauri` dependency.                                                                                                                                                                                             |
+| `background-server-service-rust`                              | The serde mirror of the bridge with golden tests, the mirror of the plugin's lifecycle events, and the Tauri-free decisions: `ServerHostContext::run_server` (the run gate and the dedicated runtime), `ServerRunState`, the `ServerServiceStatus` snapshot, the request-notification coalescer, the stop and tunnel-drop notifications, and what a foreground resume does. No `tauri` dependency, so it tests without GTK, the restart included. The same `-rust`/`-tauri-rust` split `har-recorder` uses. |
+| `background-server-service-tauri-rust`                        | The `BackgroundService` impl (`WildflowerServerService`), starting and restarting the service, the `background-service://event` listener for stop reasons and errors, the `RestartServer` listener, the status emitter, notifications through `tauri-plugin-notification`, the native error dialog, and the foreground-resume hook (`WindowEvent::Suspended` → `Resumed`).                                                                                                                                  |
+
+`apps/wildflower-tauri` keeps `.setup()`, plugin registration, the compile-time
+constants from `tauri-shared-config.json` (passed into the server's config, not
+read by the slice), and the plugin's `background-service` config in
+`tauri.conf.json`.
+
+## The flow
+
+```text
+[Tauri host run()]
+  (host_context_sender, host_context) = watch(None)
+  .plugin(tauri_plugin_notification::init())
+  .plugin(background_service::init_with_service(move || WildflowerServerService::new(host_context.clone())))
+  setup():
+    build WildflowerServerConfig + HostPorts (consent dialog, webview handle, bridge publishers)
+    (ServerHostContext, receivers) = ServerHostContext::new(config, host_ports)
+    attach_background_server_service(app, receivers)      // listeners, status emitter, notifications
+    host_context_sender ← Some(context)
+    start_server_service(app)   // ServiceManagerHandle::start(StartConfig { "Wildflower server is running", "specialUse" })
+                                // AlreadyRunning counts as started
+
+[plugin actor] init() ─▶ run(ctx)
+  WildflowerServerService::run
+    ├─ wait for the published ServerHostContext (or ctx.shutdown)
+    └─ ServerHostContext::run_server(&ctx.shutdown)
+         ├─ await RunGate: the previous run's server is gone (its runtime too, port free)
+         ├─ run state ← Starting
+         ├─ std::thread "wildflower-server": multi-thread Runtime ── block_on:
+         │       wildflower_server_rust::set_up(config, host_ports, observers)
+         │         bind 127.0.0.1:<port>, set up slices, publish owner token (host-owned watch)
+         │         observers.tunnel_liveness ◀── copy task (dies with the runtime)
+         │         observers.forwarded_requests ◀── forwarded-request layer (outermost)
+         │       run state ← Running
+         │       WildflowerServer::serve(child of ctx.shutdown)   // graceful shutdown
+         │     runtime.shutdown_timeout(5 s) on the thread ⇒ every slice task cancelled
+         │     result ─▶ oneshot
+         ├─ tunnel liveness ← None; run state ← Stopped { error: "{:#}" or None }
+         └─ release the RunGate; Err bubbles to the plugin (its Error event)
+
+[glue] run state / last stop reason / __Ready ─▶ BRIDGE_EVENT ServerServiceStatus
+[plugin] "background-service://event" Stopped{reason} / Error ─▶ stop notification (+ native dialog on Error)
+[web] RestartServer ─▶ stop_with_reason(AppStop) if running, then start   (the new run waits at the RunGate)
+```
+
+## Decisions
+
+| Topic                   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Restart isolation       | **A dedicated tokio runtime per run**, on its own OS thread. Slices `tokio::spawn` detached tasks that never stop: the tunnel supervisor, gatekeeper's re-mint, revocation purge and retention sweeps, the reverse proxy's per-connection tasks and the static hosts. Shutting the runtime down cancels all of them, so a restart can't leave a second tunnel supervisor dialing the relay. The thread calls `shutdown_timeout(5 s)`, not a plain drop: `Drop` waits forever on in-flight `spawn_blocking` work (gatekeeper's retention sweep can park 30 s on an r2d2 `get()`), and a timeout is logged. Shutdown happens on the server thread, never inside an async context, which would panic. A panic in the server is caught on the thread, so the bounded shutdown still runs and the panic becomes the run's error. Self-hosted apps bind `127.0.0.1:0`, so only the loopback API port has to be free again. `native_webview_handle`'s `spawn_blocking` stays on Tauri's runtime: it is per-call UI work, not server state. |
+| Run gate                | The plugin's `stop()` cancels the token and returns **without awaiting the task**, and `start()` checks only whether a run is registered. So a stop followed by a start would bind the port while the previous run's runtime is still shutting down, and the old run's `Stopped` event can land after the new `Started`. The host therefore shares one `RunGate` (a fair mutex) across runs. Every `run_server` first waits for it and holds it until its server thread has finished and its `Stopped` state is published, so every start path (Restart, resume, the plugin's auto-start) is ordered by construction, with no checks at the call sites. A run whose shutdown is cancelled while it waits never starts.                                                                                                                                                                                                                                                                                                              |
+| Run state               | The page's state comes from the run's own `watch<ServerRunState>` (`Starting` / `Running` / `Stopped { error }`), not the plugin's events. Because the gate orders runs and a run publishes `Stopped` before opening the gate, this watch can't go backwards. `Running` is published once `set_up` has bound the port and composed every slice, just before serving. Plugin `Stopped { reason }` events are used only for the stop reason in notifications and the snapshot. `error` is the server's own `{:#}` anyhow chain, not the plugin's `"Runtime error: …"` string, and it survives the plugin clearing its `last_error` on an explicit stop.                                                                                                                                                                                                                                                                                                                                                                               |
+| Host-owned state        | The owner-token and pending-consent `watch::Sender`s live in the host across runs. Each run's gatekeeper mints a fresh owner token onto the same channel, so the loopback owner trust and the `AuthTokenIssued` notify keep working after a restart without any webview change. Tunnel liveness and forwarded requests flow out through host-owned `ServerObservers` (`watch::Sender<Option<TunnelLiveness>>`, `mpsc::Sender<ForwardedRequest>`). The run copies into them, and resets liveness to `None` when it ends.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Server entry point      | `wildflower_server_rust::set_up(config: WildflowerServerConfig, host: HostPorts, observers: ServerObservers) -> anyhow::Result<WildflowerServer>`, then `WildflowerServer::serve(shutdown: CancellationToken) -> anyhow::Result<()>`. The split is the "bound" signal: `Running` is set between the two, with no side channel. The config carries what the host derives at build time or from Tauri paths. `HostPorts` holds the Tauri adapters as trait objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) plus the bridge publishers. Errors bubble: startup failure and serve failure both return `Err`.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Host context            | The plugin takes its service factory at plugin registration, before `.setup()` can build the server's ports (they need the `AppHandle`). So the factory hands each `WildflowerServerService` a `watch::Receiver<Option<ServerHostContext>>`, `.setup()` publishes the context, and a run waits for it. That also covers a start the plugin makes on its own before `.setup()` finishes (the iOS `BGTask` launch). If the host can't build the server's config, it reports the failure like a failed run and publishes nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Autostart               | The host starts the service from Rust in `setup()` through `ServiceManagerHandle::start`, so the server is up before any JS runs. `AlreadyRunning` counts as started. The `__Ready`-triggered snapshot covers a webview that loads late.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Foreground resume       | Uses the main window's `WindowEvent::Resumed`, which exists only on Android and iOS. `RunEvent::Resumed` is not used: tauri-runtime-wry fires it on `StartCause::Poll`, not on app resume. Only a `Resumed` that follows a `Suspended` counts, so the launch-time `Resumed` does nothing (`ForegroundResume`). It starts the service if it is stopped. On iOS it also **restarts** a running service: a suspended app's listening socket can be reclaimed (TN2277), leaving a server that reports "running" but accepts nothing. The stop half of that restart sends no notification. The hook is gated on `target_os = "ios"`/`"android"`, since the `mobile` cfg exists only in crates whose build script runs `tauri-build`.                                                                                                                                                                                                                                                                                                     |
+| Restart                 | `restart_server_service`: `stop_with_reason(AppStop)` (a `NotRunning` is fine), then `start`. The new run waits at the run gate itself. A start failure the plugin reports through its `Error` event is a failed run like any other; a start the plugin rejects outright (no run begins) is reported through the log, the stop notification and the native dialog, and leaves the snapshot as it was.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Status snapshot         | One host→web message, `ServerServiceStatus`, is emitted by one task on every run-state change, on every plugin stop event (for the reason) and in reply to `__Ready`, so the last snapshot the page receives is always current. The page keeps no state machine of its own. Tunnel state is not on the wire: while the server is running the page reads it through `tunnel-react` (`GET /tunnel`), and while stopped there is no tunnel.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Errors visible          | `lastError` (from the run state, formatted `{:#}` so the anyhow chain survives) and `stopReason`. The native dialog stays for `Error` events, non-blocking (`show`, since the service task must not block), and shows the same run-state text as the snapshot.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Request notifications   | Only **forwarded (tunnel)** requests, using `served_origin::is_forwarded`, the same predicate the owner trust uses. The outermost layer of the served stack reports `ForwardedRequest { caller }` after the response, with `try_send`: a full channel drops the report rather than delay a response. `caller` is the `RequestCaller` the response carries, which is either of two things. It is `OAuthClient { client_id }` when a gatekeeper bearer gate verified the token (`require_valid_bearer_token` and `require_valid_session` both stamp it after `next.run`). It is `SelfHostedApp { app_id }` when the reverse proxy routed by subdomain (it stamps the proxied response, since it knows `app_id` before forwarding). Otherwise it is `None`. The types live in `shared-structures-rust` (`request_caller`), where both producers and the server meet. A notification names its caller by that id.                                                                                                                       |
+| Coalescing              | Pure, in `-rust`, driven by an explicit clock and proptested. There is one notification per caller, with id `server-requests:client:<id>`, `server-requests:app:<id>` or `server-requests:unidentified`, replaced in place. The first request after 5 quiet minutes notifies at once ("lifting is using your Wildflower server"). After that the count updates at most every 30 s ("lifting: 42 requests in the last 5 min"). Unidentified callers are never merged with identified ones, so a probe on the tunnel stays visible.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Stop notifications      | **Every stop notifies**, including each iOS window expiry, user stops, the Android notification's Stop action and app quit. The only exception is the stop half of a restart from the page or a resume, where the server comes straight back: the host stops with `AppStop` for exactly that, and nothing else (the plugin included) stops with it. The text names the reason: for example "Wildflower server paused" with "iOS ended the background window.", or "Wildflower server stopped" with the error itself. The id is `server-stopped`, so a burst of stops replaces one notification instead of stacking.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Tunnel drop             | Tunnel liveness moving from `Verified` to anything other than `Off` notifies "Tunnel disconnected" (id `tunnel`). The tunnel slice publishes `Off` only when its settings say the tunnel is not requested, so `Off` is always the owner's own doing. Liveness going to `None` is the server stopping, which has its own notification. Returning to `Verified` after a drop replaces it with "Tunnel reconnected".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Persistent notification | Android uses the plugin's foreground-service notification ("Wildflower server is running"). Its text is fixed at start because the plugin has no update API. iOS and desktop get nothing persistent.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Notification permission | The snapshot carries `notifications`, read from `tauri-plugin-notification` (`granted`, `denied`, or `unknown` when the OS hasn't asked or the plugin can't say). The server never depends on the permission.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Plugin config           | `plugins.background-service` in `tauri.conf.json`: `androidForegroundServiceTypes: ["specialUse"]` (the plugin checks the start type against it on every platform; a host test reads it through the plugin's own config type) and `iosRequiresNetworkConnectivity: true`. `specialUse`, not `dataSync`: Android 15 caps `dataSync` at 6 h a day, and a server isn't a sync.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Desktop                 | In-process mode only. The plugin's `desktop-service` feature (systemd/launchd daemon) stays off: the server needs the `AppHandle`-backed ports. Desktop notifications stack: the notification plugin has no replace-by-id there.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Webview while stopped   | API queries fail, and the snapshot says why. No query retry changes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Dependencies            | `tauri-plugin-notification` is locked at 2.4.0, the last release that builds on the workspace's `tauri` 2.11; the manifest asks for `"2"`, so a `tauri` upgrade takes it forward.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+
+## Wire (`BackgroundServerServiceBridge`)
+
+```text
+Host → Web  ServerServiceStatus {
+              state: "starting" | "running" | "stopped",
+              stopReason: StopReason | null,        // the plugin's camelCase reasons
+              lastError: string | null,
+              notifications: "granted" | "denied" | "unknown"
+            }
+Web → Host  RestartServer {}
+```
+
+Exact strings:
+
+```text
+{"_tag":"ServerServiceStatus","state":"running","stopReason":null,"lastError":null,"notifications":"granted"}
+{"_tag":"ServerServiceStatus","state":"stopped","stopReason":"platformExpiration","lastError":"failed to bind to 127.0.0.1:8080: Address already in use","notifications":"denied"}
+{"_tag":"RestartServer"}
+```
+
+`-rust`'s golden tests pin these strings (see the
+[Wire Pinning How-To](../../../docs/Messaging/Wire%20Pinning%20How-To.md)).
+The tags join the host boot log's per-slice tag list.
+
+## Not here yet
+
+- The TypeScript side of the bridge: the `-core` schema, which becomes the
+  contract the golden tests above pin, and the `-react` banner and
+  `/settings/server` page that send `RestartServer` and render the snapshot.
+- The mobile packaging: the Android foreground-service type and manifest
+  pruning, the iOS background modes and `BGTask` identifiers, the
+  `enableAutoRestart` call from the Tauri entry and its capability, and the
+  notification permission prompt.
+
+## Verification limits
+
+`-tauri-rust` and the app crate link `webkit2gtk`, so they build only where
+GTK/webkit is installed (CI, and a container that has it). That is why the
+logic, the restart included, lives in `-rust` and `wildflower-server-rust`.
+`-rust`'s restart test runs the real server twice on one port: the second run,
+asked for while the first is still shutting down, waits at the gate and serves
+again. The foreground-resume hook compiles only for Android and iOS, and the
+mobile keepalive (FGS, `BGTask` windows) can only be verified on a device.
+
+## Risks
+
+- **Plugin maturity.** First published in April 2026 by one author, about 19k
+  lines. It is pinned exactly (`=1.0.1`). If it becomes a liability, the
+  surface used here (start, stop, events, the Android FGS and the iOS `BGTask`)
+  is small enough to replace.
+- **Store review.** Play needs a `specialUse` justification. App Store needs
+  justification for `processing`/`fetch` background modes.
+- **Helios globals.** No slice holds process-global state. Helios's `OnceLock`s
+  are immutable caches or per-instance, and it spawns on the current runtime, so
+  a second run in the same process is safe. The restart test exercises a second
+  run end to end.
+
+## Deliberately not here
+
+- iOS Live Activity, a desktop tray icon, or updating the FGS notification text
+  (the plugin has no API for it).
+- OS-service (daemon) mode on desktop.
+- Remote push (APNs/FCM). Every notification is local.
+- Retrying failed queries automatically after a restart.

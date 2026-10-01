@@ -20,6 +20,12 @@ use serde::Deserialize;
 /// (notably the sniffer's chunked page-content stream).
 pub const BRIDGE_EVENT: &str = "bridge";
 
+/// The `_tag` of the web side's one-way ready handshake. The page sends it on
+/// every load and reload; a host listener that replays state (the owner-token
+/// notify, a slice's status snapshot) does so in reply, because Tauri events
+/// emitted before the page listens are lost.
+pub const READY_TAG: &str = "__Ready";
+
 /// Wire shape of the bridge envelope's `_tag` discriminator. Used to
 /// peek the tag without committing to a specific message struct, so a
 /// listener can route by tag and skip payloads it does not react to.
@@ -39,6 +45,15 @@ mod tests {
     #[test]
     fn bridge_event_matches_the_ts_convention() {
         assert_eq!(BRIDGE_EVENT, "bridge");
+    }
+
+    /// Drift guard: the TS transport sends `{"_tag":"__Ready"}`
+    /// (`effect-messaging-core`'s handshake).
+    #[test]
+    fn ready_tag_matches_the_ts_convention() {
+        let decoded: BridgeEnvelope =
+            serde_json::from_str(r#"{"_tag":"__Ready"}"#).expect("decode");
+        assert_eq!(decoded.tag, READY_TAG);
     }
 
     /// The envelope deserializer ignores fields beyond `_tag` so the

@@ -19,7 +19,7 @@ slices/<name>/
 
 Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `wildflower-server`).
 
-Current slices: `anonymizer`, `apps`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
 
 `http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
 
@@ -89,6 +89,14 @@ SMART app around them.
 [wildflower-server/AGENTS.md](./wildflower-server/AGENTS.md). It has no `tauri`
 dependency; the host passes its native adapters in as trait objects, and
 watches the server through host-owned observer channels.
+
+`background-server-service` is how the host runs that server — see
+[background-server-service/AGENTS.md](./background-server-service/AGENTS.md).
+`background-server-service-rust` runs each start on its own OS thread and tokio
+runtime behind a run gate, so a restart leaves nothing of the previous server
+behind, and holds the bridge's status mirror and the notification decisions,
+all without `tauri`; `background-server-service-tauri-rust` drives it from
+`tauri-plugin-background-service` and posts the notifications.
 
 `smart-app` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 

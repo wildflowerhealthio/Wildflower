@@ -461,3 +461,15 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/lifting-2-core (writing a progression rule's unit as a sub-extension)
 **Learning**: `Extension.value[x]` carries every FHIR datatype slot, but a non-null `valueCode` fails `Schema.encode` with "fhir-r4 datatype "code" is intentionally unregistered; encoding a non-null value[x] slot for it is rejected". `vp check` cannot catch it — the slot is typed and assignable — so it surfaces only when a resource is first encoded, e.g. in the wire round-trip test. Write a coded value as a `valueString` (what `lifting-core`'s progression `unit` part does) or as a `valueCodeableConcept` when the system matters.
 **Suggested destination**: fhir-r4 Consumer Gotchas Reference
+
+## `cfg(mobile)` and `cfg(desktop)` exist only in crates whose build script runs tauri-build
+
+**Discovered during**: claude/bg-server-2-service (`background-server-service-tauri-rust`)
+**Learning**: The `mobile`/`desktop` cfg aliases are emitted by `tauri-build` (and `tauri-plugin`'s build helper) from a crate's own `build.rs`. The app crate has one, so `#[cfg(mobile)]` works there; a slice's `-tauri-rust` crate has no build script, so `#[cfg(mobile)]` is never true and the gated code silently never compiles anywhere. Slice crates gate on `any(target_os = "ios", target_os = "android")` instead (as `browser-sniffer-tauri-rust` does). Mobile-only Tauri API such as `WindowEvent::Suspended`/`Resumed` only exists under that gate, so keep the gated block to the event mapping and put the decision in a platform-neutral type the desktop tests reach.
+**Suggested destination**: slices/AGENTS.md (Rules), or a Tauri slice How-To
+
+## `tauri-plugin-notification` 2.5 needs `tauri` 2.12
+
+**Discovered during**: claude/bg-server-2-service (adding local notifications)
+**Learning**: Adding `tauri-plugin-notification = "2"` resolves to the newest 2.x, and 2.5.x requires `tauri` ≥ 2.12, so Cargo quietly moves the whole Tauri stack forward in `Cargo.lock`. To add the plugin without that, pin the manifest to `=2.4.0` once so the lock resolves it on the current `tauri`, then relax the manifest back to `"2"`; the lock keeps 2.4.0 until a deliberate `tauri` upgrade.
+**Suggested destination**: docs/Dependencies (a Rust dependency How-To)

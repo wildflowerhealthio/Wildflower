@@ -1,0 +1,34 @@
+[package]
+name = "background-server-service-tauri-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+# Pinned exactly: one author, first published in 2026. The surface used here is
+# the `BackgroundService` trait, `ServiceManagerHandle` start/stop, and the
+# `background-service://event` events. The `desktop-service` feature (a
+# systemd/launchd daemon) stays off: the server needs the `AppHandle`-backed
+# ports, so it runs in-process.
+tauri-plugin-background-service = "=1.0.1"
+# `BackgroundService` is an `#[async_trait]`.
+async-trait = "0.1"
+serde_json.workspace = true
+# `TunnelLiveness`, and the bridge envelope and channel the listener uses.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
+  "tunnel-service",
+] }
+# `sync` for the host-context watch and the glue's channels; `time` for the
+# request-notification timer; `macros` for `select!`.
+tokio = { workspace = true, features = ["macros", "sync", "time"] }
+# The server run, the wire mirror and every notification decision — the logic,
+# under tests that run without a webview toolkit.
+background-server-service-rust = { path = "../background-server-service-rust" }
+
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true

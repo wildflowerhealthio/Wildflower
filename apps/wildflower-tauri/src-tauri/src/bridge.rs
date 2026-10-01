@@ -3,7 +3,7 @@ use std::sync::Arc;
 use gatekeeper_rust::bridge::{GatekeeperHostToWeb, PendingConsentHeadWire};
 use gatekeeper_rust::PendingConsentHead;
 use serde::Deserialize;
-use shared_structures_rust::bridge::BRIDGE_EVENT;
+use shared_structures_rust::bridge::{BRIDGE_EVENT, READY_TAG};
 use tauri::{AppHandle, Emitter, Listener};
 // `Manager` brings in `get_webview_window`, used only by the desktop
 // `raise_main_window` (the mobile variant is an empty stub), so gating it to
@@ -14,11 +14,9 @@ use tauri::Manager;
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
 
-/// Tag literals dispatched by the bridge listener. Web→host tags we
-/// react to plus host→web tags we emit. Matches the TS-side schemas in
-/// `gatekeeper-core/src/bridge.ts` and
+/// The `Log` tag literal the bridge listener dispatches on (`__Ready` is the
+/// shared [`READY_TAG`]). Matches the TS-side schema in
 /// `effect-messaging-core/src/logging.ts`.
-const READY_TAG: &str = "__Ready";
 const LOG_TAG: &str = "Log";
 
 /// Tauri window label of the main webview, set in

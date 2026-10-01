@@ -35,11 +35,15 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   the report; it never delays a response.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
-  listener, not those tasks; they end when that runtime shuts down.
+  listener, not those tasks. `background-server-service` runs each server on a
+  dedicated runtime it shuts down when the server stops, which is what ends
+  them.
 
 ## References
 
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.
+- [background-server-service AGENTS.md](../background-server-service/AGENTS.md)
+  — how the host runs, restarts and watches the server.
 - [Origins Explanation](../../docs/Origins/Explanation.md) — loopback vs
   forwarded served origins, which the owner trust, the 404 and HFS's base URL
   resolve per request.

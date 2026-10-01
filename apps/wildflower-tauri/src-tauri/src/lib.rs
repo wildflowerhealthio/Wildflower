@@ -3,14 +3,18 @@ mod loopback_consent_dialog;
 mod native_webview_handle;
 
 use anyhow::Context;
+use background_server_service_rust::ServerHostContext;
+use background_server_service_tauri_rust::{
+    attach_background_server_service, report_server_failure, start_server_service,
+    WildflowerServerService,
+};
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::ServerRuntimeConfig;
 use std::sync::Arc;
 use tauri::Manager;
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-use tokio_util::sync::CancellationToken;
+use tokio::sync::watch;
 use url::Url;
-use wildflower_server_rust::{HostPorts, ServerObservers, WildflowerServerConfig};
+use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -109,21 +113,27 @@ fn tunnel_seed_from_build_env() -> tunnel_rust::SettingsSeed {
     }
 }
 
-/// Runs the Wildflower server for the app's lifetime: resolves what it reads
-/// from this build and the platform's paths into its
-/// [`WildflowerServerConfig`], wraps the host's native adapters and bridge
-/// publishers as its [`HostPorts`], and serves.
-async fn run_server(
+/// The host's scopes for its owner token, from `LOCAL_GRANTED_SCOPES`.
+fn host_owner_scopes() -> Vec<String> {
+    LOCAL_GRANTED_SCOPES
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Resolves what the Wildflower server reads from this build and the
+/// platform's paths into its [`WildflowerServerConfig`].
+///
+/// `resource_dir` is Tauri's bundled-resource directory, resolved in
+/// `.setup()` (where the `AppHandle` path API is available) and threaded in
+/// rather than added to `ServerRuntimeConfig`. The desktop/iOS release build
+/// reads the FHIR SearchParameter bundle from it; the dev build ignores it in
+/// favour of the workspace source tree, and Android in favour of the embedded
+/// copy.
+fn server_config(
     runtime: ServerRuntimeConfig,
-    publishers: bridge::BridgePublishers,
-    app_handle: tauri::AppHandle,
-    // Tauri's bundled-resource directory, resolved in `.setup()` (where the
-    // `AppHandle` path API is available) and threaded in rather than added to
-    // `ServerRuntimeConfig`. The desktop/iOS release build reads the FHIR
-    // SearchParameter bundle from it; the dev build ignores it in favour of the
-    // workspace source tree, and Android in favour of the embedded copy.
     resource_dir: std::path::PathBuf,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<WildflowerServerConfig> {
     let owner_ui_base = OwnerUiBase::parse(OWNER_UI_BASE_URL)
         .context("owner_ui_base_url (from tauri-shared-config.json) must be an absolute URL")?;
     // The FHIR R4 SearchParameter bundle HFS indexes from is a deployed asset,
@@ -186,55 +196,40 @@ async fn run_server(
     } else {
         resource_dir.join("fhir-search-params")
     };
-    let host_owner_scopes: Vec<String> = LOCAL_GRANTED_SCOPES
-        .split_whitespace()
-        .map(str::to_owned)
-        .collect();
+    Ok(WildflowerServerConfig {
+        runtime,
+        search_parameter_data_dir,
+        owner_ui_base,
+        host_owner_scopes: host_owner_scopes(),
+        first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
+        tunnel_seed: tunnel_seed_from_build_env(),
+    })
+}
 
-    let host_ports = HostPorts {
+/// Wraps the host's native adapters and bridge publishers as the server's
+/// [`HostPorts`].
+fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublishers) -> HostPorts {
+    HostPorts {
         // The native Approve / Reject dialog gatekeeper raises when the hosted
         // owner UI logs in over direct loopback (see `loopback_consent_dialog`).
         loopback_consent_prompt: Arc::new(
             loopback_consent_dialog::TauriLoopbackConsentPrompt::new(
                 app_handle.clone(),
-                host_owner_scopes.clone(),
+                host_owner_scopes(),
             ),
         ),
         // A loopback launch hands this the resolved URL to open in a native popup
         // (the server 204s). See `native_webview_handle`.
         on_device_webview_handle: Arc::new(native_webview_handle::NativeWebviewHandle::new(
-            app_handle,
+            app_handle.clone(),
         )),
         // The server publishes the host owner token and pending-consent heads
         // here; `bridge::attach_bridge` documents how the resident task delivers
-        // them to the webview.
+        // them to the webview. The senders outlive every server run, so a
+        // restarted server publishes to the same webview.
         host_owner_token_sender: publishers.host_owner_token_sender,
         active_pending_consent_sender: publishers.active_pending_consent_sender,
-    };
-    let config = WildflowerServerConfig {
-        runtime,
-        search_parameter_data_dir,
-        owner_ui_base,
-        host_owner_scopes,
-        first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
-        tunnel_seed: tunnel_seed_from_build_env(),
-    };
-
-    // Nothing watches the server's observers yet, so their receivers are
-    // dropped: the server copies into the liveness watch regardless, and drops
-    // its forwarded-request reports.
-    let (tunnel_liveness_sender, _) = tokio::sync::watch::channel(None);
-    let (forwarded_request_sender, _) = tokio::sync::mpsc::channel(1);
-    let observers = ServerObservers {
-        tunnel_liveness_sender,
-        forwarded_request_sender,
-    };
-    // The server runs for the app's lifetime, so nothing cancels its shutdown
-    // token.
-    wildflower_server_rust::set_up(config, host_ports, observers)
-        .await?
-        .serve(CancellationToken::new())
-        .await
+    }
 }
 
 /// Build and run the Tauri application.
@@ -248,6 +243,11 @@ async fn run_server(
 /// handle still exists.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // The background service builds a fresh `WildflowerServerService` for every
+    // start from the factory registered below, before `.setup()` can build the
+    // server's context (its ports need the `AppHandle`). `.setup()` publishes
+    // the context here, and each run waits for it.
+    let (host_context_sender, host_context) = watch::channel::<Option<ServerHostContext>>(None);
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             // Gated web→host data-plane transport for the desktop sniffer's
@@ -317,20 +317,29 @@ pub fn run() {
                 .level_for("h2", tauri_plugin_log::log::LevelFilter::Warn)
                 .build(),
         )
-        .setup(|app| {
+        // Before the background service, which posts its notifications through
+        // it.
+        .plugin(tauri_plugin_notification::init())
+        // Runs the Wildflower server: in-process on desktop. The plugin's
+        // `background-service` config in `tauri.conf.json` allowlists the
+        // foreground-service type the server starts as.
+        .plugin(tauri_plugin_background_service::init_with_service(
+            move || WildflowerServerService::new(host_context.clone()),
+        ))
+        .setup(move |app| {
             let app_data_dir = resolve_data_dir(app.handle())?;
             std::fs::create_dir_all(&app_data_dir)?;
 
             // Tauri's bundled-resource dir — resolved here (the path API needs
-            // the `AppHandle`) and threaded into the server task, which reads
+            // the `AppHandle`) and threaded into the server config, which reads
             // the FHIR SearchParameter bundle from it in a release build.
             let resource_dir = app.path().resource_dir()?;
 
-            // Attach the bridge before the server task spawns: `listen`
-            // registers synchronously, so the webview's `__Ready` (which
-            // fires much later, once the bundle runs) can't be missed
-            // even if the server is slow to boot. The bridge owns its
-            // channel plumbing; the server task gets the publishers.
+            // Attach the bridge before the server starts: `listen` registers
+            // synchronously, so the webview's `__Ready` (which fires much
+            // later, once the bundle runs) can't be missed even if the server
+            // is slow to boot. The bridge owns its channel plumbing; the server
+            // gets the publishers.
             let publishers = bridge::attach_bridge(app.handle());
 
             // Wire the CollectorBridge.webToHost listeners that manage the
@@ -348,45 +357,37 @@ pub fn run() {
             // directory this `setup()` already resolved rather than its own.
             har_recorder_tauri_rust::attach_har_recorder(app.handle(), app_data_dir.clone());
 
-            let error_handle = app.handle().clone();
-            // The server task installs the apps on-device webview handle once
-            // the apps slice is built; the handle opens launched apps in a
-            // native webview popup, so it needs an app handle.
-            let server_handle = app.handle().clone();
-
             // Hostname/port come from the shared `tauri-shared-config.json`
             // (see `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
             // TS `apiBaseUrl` reads.
             let loopback_base_url =
                 Url::parse(&format!("http://{}:{}", LOOPBACK_HOSTNAME, LOOPBACK_PORT))?;
+            let runtime = ServerRuntimeConfig {
+                // Loopback-only: the OS rejects non-local peers at the socket,
+                // so the bearer secret is never the only thing between LAN
+                // peers and FHIR health data.
+                loopback_base_url,
+                app_data_dir,
+            };
 
-            tauri::async_runtime::spawn(async move {
-                let runtime = ServerRuntimeConfig {
-                    // Loopback-only: the OS rejects non-local peers at the
-                    // socket, so the bearer secret is never the only thing
-                    // between LAN peers and FHIR health data.
-                    loopback_base_url,
-                    app_data_dir,
-                };
-
-                if let Err(error) =
-                    run_server(runtime, publishers, server_handle, resource_dir).await
-                {
-                    tauri_plugin_log::log::error!("Wildflower server stopped: {error:?}");
-                    // A failed/stopped server leaves the webview unable to
-                    // reach the API at all (no token, no FHIR) — surface it
-                    // with a native dialog instead of dying silently in the
-                    // logs. A native dialog (not a webview message) is used
-                    // deliberately: it shows even when the webview itself can't
-                    // load. Blocking is fine here — the server is already dead.
-                    error_handle
-                        .dialog()
-                        .message(format!("Wildflower server stopped: {error:#}"))
-                        .kind(MessageDialogKind::Error)
-                        .title("Wildflower")
-                        .blocking_show();
+            match server_config(runtime, resource_dir) {
+                Ok(config) => {
+                    let (server_host_context, server_receivers) =
+                        ServerHostContext::new(config, host_ports(app.handle(), publishers));
+                    // Wire the server's status, restart and notifications
+                    // before it can start, so no run-state change is missed.
+                    attach_background_server_service(app.handle(), server_receivers);
+                    host_context_sender.send_replace(Some(server_host_context));
+                    // Start the server from Rust, before any page script runs.
+                    let start_handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        start_server_service(&start_handle).await;
+                    });
                 }
-            });
+                // Without a config there is no server to run; say so the way
+                // a failed run does, and keep the app up to show it.
+                Err(error) => report_server_failure(app.handle(), &format!("{error:#}")),
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -395,6 +396,34 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    /// The plugin checks the type the service starts as against its config's
+    /// allowlist on every platform, so a type missing from `tauri.conf.json`
+    /// would stop the server starting at all. Read through the plugin's own
+    /// config type, which is what the plugin validates at startup.
+    #[test]
+    fn the_background_service_config_allows_the_service_s_foreground_type() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let conf: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display())),
+        )
+        .expect("tauri.conf.json is JSON");
+        let plugin_config: tauri_plugin_background_service::PluginConfig =
+            serde_json::from_value(conf["plugins"]["background-service"].clone())
+                .expect("the background-service plugin config decodes");
+        plugin_config
+            .validate()
+            .expect("the background-service plugin config is valid");
+        assert!(
+            plugin_config.android_foreground_service_types.contains(
+                &background_server_service_tauri_rust::FOREGROUND_SERVICE_TYPE.to_owned()
+            ),
+            "androidForegroundServiceTypes {:?} must allow the service's type",
+            plugin_config.android_foreground_service_types
+        );
+        assert!(plugin_config.ios_requires_network_connectivity);
+    }
+
     /// Reads one of the Apple plists next to this crate and flattens it, so a
     /// key and its value compare as one token however the file indents them.
     /// The files' comments name keys in backticks rather than as `<key>`
