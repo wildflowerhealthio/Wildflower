@@ -92,12 +92,26 @@ jobs:
         env:
           VITE_SENTRY_DSN_MEDICATIONS_APP: ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_APP }}
           VITE_SENTRY_DSN_IMPORTER_WEB: ${{ vars.VITE_SENTRY_DSN_IMPORTER_WEB }}
+          VITE_SENTRY_DSN_WEB_TRACE: ${{ vars.VITE_SENTRY_DSN_WEB_TRACE }}
           VITE_SENTRY_DSN_HEALTH_VIEWER: ${{ vars.VITE_SENTRY_DSN_HEALTH_VIEWER }}
           VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB: ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
           VITE_SENTRY_DSN_SYNTHETIC_DATA_APP: ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_APP }}
           VITE_SENTRY_DSN_WILDFLOWER_REACT: ${{ vars.VITE_SENTRY_DSN_WILDFLOWER_REACT }}
           VITE_SENTRY_ENVIRONMENT: staging
           VITE_SENTRY_RELEASE: ${{ github.event.pull_request.head.sha }}
+
+      # Registers the release the build names, uploads the apps' source maps
+      # to it and deletes them from the site. Needs the `SENTRY_AUTH_TOKEN`
+      # secret and the `SENTRY_ORG` variable; without the token it only
+      # deletes the maps.
+      - name: Upload source maps to Sentry
+        if: github.event.action != 'closed'
+        uses: ./.github/actions/sentry-sourcemaps
+        with:
+          environment: staging
+          release: ${{ github.event.pull_request.head.sha }}
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          org: ${{ vars.SENTRY_ORG }}
 
       # Strip the marketing site's CNAME from the preview artifact. It only
       # exists at pr-<n>/CNAME in the target repo (Pages reads CNAME only from

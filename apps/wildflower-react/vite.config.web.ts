@@ -16,6 +16,9 @@ export default defineConfig({
   plugins: [...(baseConfig.plugins ?? []), devDeepLinkRedirect()],
   build: {
     outDir: 'dist-web',
+    // Emitted for the deploy's Sentry upload, unreferenced from the bundle;
+    // the deploy deletes them before publishing (.github/actions/sentry-sourcemaps).
+    sourcemap: 'hidden',
     rolldownOptions: { input: 'index.html' },
   },
   // The hosted dev server binds a fixed port — `owner_ui_dev_base_url`'s, the
