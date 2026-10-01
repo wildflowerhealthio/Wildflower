@@ -1,0 +1,27 @@
+/*
+ * DayRow skin — one bordered fieldset per day, holding its label, an
+ * ExerciseRow per exercise and the day's actions. Tokens only, so dark mode
+ * needs no rule here.
+ */
+
+.day-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+}
+
+.day-row__legend {
+  padding: 0 var(--space-2);
+  color: var(--color-neutral-5);
+}
+
+.day-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}

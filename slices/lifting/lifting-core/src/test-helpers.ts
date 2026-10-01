@@ -1,3 +1,10 @@
+/**
+ * fast-check arbitraries and helpers that build lifting resources through
+ * the `make`s, for this package's tests and, through the
+ * `lifting-core/test-helpers` subpath, for its consumers' tests.
+ *
+ * @packageDocumentation
+ */
 import { Array as Arr, DateTime, Either, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { IdentifierAndReference } from 'fhir-r4/data-types'

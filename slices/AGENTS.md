@@ -78,7 +78,9 @@ FHIR R4 `PlanDefinition` of workouts and planned exercises, the
 workout performed and an `Observation` for each set in it, and the increment /
 hold / deload decision over completed workouts, as pure functions (with
 StrongLifts 5×5 as a template) — each concept a schema narrowing the decoded
-`fhir-r4` type, with a `make` and getters.
+`fhir-r4` type, with a `make` and getters; its `lifting-react` renders the
+planned workout, the submitted workout's outcome, starting a program, the
+plan editor and the workout history over that core.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 

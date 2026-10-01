@@ -1,0 +1,29 @@
+/*
+ * PlannedWorkoutForm skin — the day's heading over a stack of exercise cards,
+ * with the submit action at the foot. Tokens only, so dark mode needs no rule
+ * here.
+ */
+
+.planned-workout-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.planned-workout-form__heading {
+  margin: 0;
+}
+
+.planned-workout-form__exercises {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planned-workout-form__actions {
+  display: flex;
+  justify-content: flex-end;
+}
