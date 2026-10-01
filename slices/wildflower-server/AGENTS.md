@@ -5,14 +5,16 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 
 ## Package roles
 
-- **`wildflower-server-rust`** — `serve(config, host, shutdown)` opens the
+- **`wildflower-server-rust`** — `set_up(config, host, observers)` opens the
   host's databases, sets up every server slice (gatekeeper, emr, OHIF, collector,
-  tunnel, apps, databases, the `/docs` reference), gates them, and serves them on
-  the loopback port behind the loopback owner trust, the loopback-peer gate and
-  the CORS policy, until `shutdown` is cancelled. It also holds the server-side
-  adapters that join two slices: the gatekeeper-backed `AppLaunchScopes` for
-  apps, the reqwest `HealthProbe` for the tunnel, and HFS's base URL following
-  the tunnel's public host. The unmatched-route `404` is here too.
+  tunnel, apps, databases, the `/docs` reference), gates them, wraps them in the
+  loopback owner trust, the loopback-peer gate, the CORS policy and the
+  forwarded-request observer, and binds the loopback port;
+  `WildflowerServer::serve(shutdown)` serves the result until `shutdown` is
+  cancelled. It also holds the server-side adapters that join two slices: the
+  gatekeeper-backed `AppLaunchScopes` for apps, the reqwest `HealthProbe` for the
+  tunnel, and HFS's base URL following the tunnel's public host. The
+  unmatched-route `404` is here too.
 
 ## Layering
 
@@ -25,9 +27,15 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time
   configuration or platform paths itself.
-- **Background tasks follow the runtime.** Slices `tokio::spawn` long-lived tasks
-  onto the runtime that runs `serve`; cancelling `shutdown` stops the listener,
-  not those tasks.
+- **The host watches the server through `ServerObservers`.** Host-owned senders
+  that outlive any one server: the tunnel's liveness, copied by a task on the
+  server's runtime, and each request the trusted front relayed through the
+  tunnel, reported by the outermost layer with the `RequestCaller` the
+  gatekeeper bearer gates stamped on the response. A full report channel drops
+  the report; it never delays a response.
+- **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
+  tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
+  listener, not those tasks; they end when that runtime shuts down.
 
 ## References
 
@@ -36,4 +44,4 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   forwarded served origins, which the owner trust, the 404 and HFS's base URL
   resolve per request.
 - [Shared Diesel Pool Explanation](../../docs/Persistence/Shared%20Diesel%20Pool%20Explanation.md)
-  — the pool `serve` builds and shares across the diesel-backed slices.
+  — the pool `set_up` builds and shares across the diesel-backed slices.

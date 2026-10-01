@@ -84,10 +84,11 @@ plan editor and the workout history over that core; `apps/lifting-app` is the
 SMART app around them.
 
 `wildflower-server` is the server the Tauri host runs: `wildflower-server-rust`'s
-`serve` composes every server slice into the loopback API and serves it until its
-shutdown token is cancelled — see [wildflower-server/AGENTS.md](./wildflower-server/AGENTS.md).
-It has no `tauri` dependency; the host passes its native adapters in as trait
-objects.
+`set_up` composes every server slice into the loopback API and binds it, and
+`WildflowerServer::serve` serves it until its shutdown token is cancelled — see
+[wildflower-server/AGENTS.md](./wildflower-server/AGENTS.md). It has no `tauri`
+dependency; the host passes its native adapters in as trait objects, and
+watches the server through host-owned observer channels.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
