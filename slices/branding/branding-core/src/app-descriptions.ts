@@ -1,5 +1,5 @@
 import type { MarketingAnchor } from './nav.ts'
-import type { SectionId } from './site.ts'
+import { SECTION_PATHS, type SectionId } from './site.ts'
 
 /**
  * The site sections with a standalone app landing page: the SMART on FHIR apps,
@@ -73,6 +73,19 @@ interface AppDescription {
     /** The quiet mono note under the link, about the demo or live server. */
     readonly note: string
   }
+  /**
+   * The page, relative to the app's section, that starts the app's SMART launch
+   * from its own URL: fhirclient reads `iss` there, and `launch` too for an EHR
+   * launch, so `?iss=` alone is a standalone launch against that server. It is
+   * the URL an EHR registers as the app's launch URL, and what a plain SMART
+   * server's Home in the owner UI links each app through
+   * ({@link smartAppLaunchPages}).
+   *
+   * Absent for an app no URL launches: the owner UI is not a SMART app, and FHIR
+   * Sync for Pebble starts only from the Pebble phone app, whose watch hand-off
+   * it needs, with its own connect menu as the sign-in.
+   */
+  readonly smartLaunchPage?: string
 }
 
 /**
@@ -107,6 +120,7 @@ const APP_DESCRIPTIONS: {
       label: 'Open the Medication Viewer',
       note: 'View the medications for a patient on any FHIR server, including our demo',
     },
+    smartLaunchPage: 'launch.html',
   },
   fhirSyncPebble: {
     name: 'FHIR Sync for Pebble',
@@ -175,6 +189,7 @@ const APP_DESCRIPTIONS: {
       label: 'Open the Importer',
       note: 'Import to any FHIR server, including a demo one',
     },
+    smartLaunchPage: 'launch.html',
   },
   webTrace: {
     name: 'Web Trace Viewer',
@@ -194,6 +209,7 @@ const APP_DESCRIPTIONS: {
       label: 'Open the Web Trace Viewer',
       note: 'Load a capture against the demo server — no account, nothing uploaded',
     },
+    smartLaunchPage: 'launch.html',
   },
   healthViewer: {
     name: 'Synthesized Health Viewer',
@@ -213,6 +229,7 @@ const APP_DESCRIPTIONS: {
       label: 'Open the Synthesized Health Viewer',
       note: 'Plot observations and doses for a patient on any FHIR server, including our demo',
     },
+    smartLaunchPage: 'launch.html',
   },
   app: {
     name: 'Wildflower',
@@ -229,5 +246,41 @@ const APP_DESCRIPTIONS: {
   },
 }
 
-export { APP_DESCRIPTIONS, APP_SECTION_IDS }
-export type { AppDescription, AppSectionId }
+/** Whether `key` names a described app: a key of {@link APP_DESCRIPTIONS}. */
+const isAppSectionId = (key: string): key is AppSectionId => Object.hasOwn(APP_DESCRIPTIONS, key)
+
+/** Where one hosted SMART app is launched from, on one copy of the assembled site. */
+interface SmartAppLaunchPage {
+  /** The app, keying its {@link APP_DESCRIPTIONS} entry. */
+  readonly app: AppSectionId
+  /** The absolute URL of the app's {@link AppDescription.smartLaunchPage}. */
+  readonly launchPageUrl: string
+}
+
+/**
+ * Every described app with a {@link AppDescription.smartLaunchPage}, in
+ * {@link APP_DESCRIPTIONS} order, each with its launch page's URL under
+ * `siteRoot`: the first-party SMART on FHIR apps the site hosts that a link
+ * can launch, and nothing else.
+ *
+ * @param siteRoot - The slash-terminated root of the copy of the site to link
+ *   into, from `siteRootFor`.
+ *
+ * @example
+ * ```ts
+ * smartAppLaunchPages('https://wildflowerhealth.io/')[0]
+ * // → { app: 'medications', launchPageUrl: 'https://wildflowerhealth.io/medications-app/launch.html' }
+ * ```
+ */
+const smartAppLaunchPages = (siteRoot: string): readonly SmartAppLaunchPage[] =>
+  Object.keys(APP_DESCRIPTIONS)
+    .filter(isAppSectionId)
+    .flatMap((app) => {
+      const { smartLaunchPage } = APP_DESCRIPTIONS[app]
+      if (smartLaunchPage === undefined) return []
+      const launchPageUrl = new URL(`${SECTION_PATHS[app]}/${smartLaunchPage}`, siteRoot).href
+      return [{ app, launchPageUrl }]
+    })
+
+export { APP_DESCRIPTIONS, APP_SECTION_IDS, smartAppLaunchPages }
+export type { AppDescription, AppSectionId, SmartAppLaunchPage }

@@ -2,9 +2,14 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { APP_DESCRIPTIONS, APP_SECTION_IDS, type AppSectionId } from './app-descriptions.ts'
+import {
+  APP_DESCRIPTIONS,
+  APP_SECTION_IDS,
+  smartAppLaunchPages,
+  type AppSectionId,
+} from './app-descriptions.ts'
 import { MARKETING_ANCHORS } from './nav.ts'
-import { SECTION_PATHS } from './site.ts'
+import { SECTION_PATHS, SITE_ORIGIN, siteRootFor } from './site.ts'
 
 /**
  * Every described app: the homepage's SMART apps, the Synthesized Health Viewer
@@ -61,6 +66,76 @@ describe('APP_DESCRIPTIONS', () => {
         expect(launch.label.endsWith('→')).toBe(false)
       }),
       { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+})
+
+describe('smartAppLaunchPages', () => {
+  it('should list the four first-party SMART apps, at their launch pages on the canonical site', () => {
+    // Act
+    const launchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
+
+    // Assert
+    expect(launchPages).toStrictEqual([
+      {
+        app: 'medications',
+        launchPageUrl: 'https://wildflowerhealth.io/medications-app/launch.html',
+      },
+      { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer-app/launch.html' },
+      { app: 'webTrace', launchPageUrl: 'https://wildflowerhealth.io/web-trace-app/launch.html' },
+      {
+        app: 'healthViewer',
+        launchPageUrl: 'https://wildflowerhealth.io/health-viewer-app/launch.html',
+      },
+    ])
+  })
+
+  it('should list exactly the described apps with a launch page, in description order', () => {
+    // Arrange
+    const launchedApps = DESCRIBED_APP_IDS.filter(
+      (id) => APP_DESCRIPTIONS[id].smartLaunchPage !== undefined
+    )
+
+    // Act
+    const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
+
+    // Assert
+    expect(listedApps.toSorted()).toStrictEqual(launchedApps.toSorted())
+    expect(listedApps).toStrictEqual(
+      Object.keys(APP_DESCRIPTIONS).filter((id) => listedApps.some((app) => app === id))
+    )
+  })
+
+  it('should leave out the owner UI and FHIR Sync for Pebble, which no URL launches', () => {
+    const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
+    expect(listedApps).not.toContain('app')
+    expect(listedApps).not.toContain('fhirSyncPebble')
+  })
+
+  it("should resolve every launch page under the site root it is given, in the app's own section", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(
+          'https://wildflowerhealth.io/app/',
+          'https://wildflowerhealthio.github.io/staging/pr-7/app/',
+          'http://localhost:5173/'
+        ),
+        (ownerUiBaseUrl) => {
+          // Arrange
+          const siteRoot = siteRootFor('app', ownerUiBaseUrl)
+
+          // Act
+          const launchPages = smartAppLaunchPages(siteRoot)
+
+          // Assert
+          for (const { app, launchPageUrl } of launchPages) {
+            expect(launchPageUrl).toBe(
+              `${siteRoot}${SECTION_PATHS[app]}/${APP_DESCRIPTIONS[app].smartLaunchPage ?? ''}`
+            )
+          }
+        }
+      ),
+      { numRuns: numRunsFor({ base: 10 }) }
     )
   })
 })
