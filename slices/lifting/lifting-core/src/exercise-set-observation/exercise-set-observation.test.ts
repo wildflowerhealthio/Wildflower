@@ -316,7 +316,7 @@ describe('ExerciseSetObservation', () => {
 })
 
 describe('sortByStart', () => {
-  it('should order sets earliest first, keeping the input order of sets started together', () => {
+  it('should order sets earliest first, and by id among sets started together', () => {
     fc.assert(
       fc.property(
         fc.array(exerciseSetObservationArb, { maxLength: 6 }),
@@ -332,6 +332,23 @@ describe('sortByStart', () => {
               sorted.includes(exerciseSetObservation)
             )
           ).toBe(true)
+        }
+      ),
+      { numRuns: LIST_RUNS }
+    )
+  })
+
+  it('should give the same order whatever order the sets arrive in', () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(exerciseSetObservationArb, {
+          maxLength: 6,
+          selector: (exerciseSetObservation) => exerciseSetObservation.id,
+        }),
+        (exerciseSetObservations) => {
+          expect(ExerciseSetObservation.sortByStart(exerciseSetObservations.toReversed())).toEqual(
+            ExerciseSetObservation.sortByStart(exerciseSetObservations)
+          )
         }
       ),
       { numRuns: LIST_RUNS }

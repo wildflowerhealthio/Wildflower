@@ -202,6 +202,29 @@ const trainingPlanDefinitionRunning = (
     })
   )
 
+/** A starting load for each exercise `trainingPlanDefinition` runs: its rule's floor, in its rule's unit. */
+const startingLoadsAtFloorOf = (
+  trainingPlanDefinition: TrainingPlanDefinition.Type
+): ExerciseRequest.StartingLoads =>
+  Object.fromEntries(
+    TrainingPlanDefinition.exercisesOf(trainingPlanDefinition).map(
+      (trainingPlanDefinitionExercise) => {
+        const progressionRule = TrainingPlanDefinition.Exercise.progressionRuleOf(
+          trainingPlanDefinitionExercise
+        )
+        return [
+          TrainingPlanDefinition.Exercise.exerciseIdOf(trainingPlanDefinitionExercise),
+          made(
+            Load.make({
+              value: TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule),
+              unit: TrainingPlanDefinition.ProgressionRule.unitOf(progressionRule),
+            })
+          ),
+        ]
+      }
+    )
+  )
+
 /** When every generated `ExerciseRequest` was issued. */
 const AUTHORED_ON = DateTime.unsafeMake('2026-01-05T18:00:00Z')
 
@@ -644,6 +667,7 @@ export {
   smallTrainingPlanDefinitionArb,
   someOrFail,
   startedWorkoutAt,
+  startingLoadsAtFloorOf,
   SUBJECT,
   successfulRepsArb,
   throughWire,

@@ -7,6 +7,7 @@ import {
   Option,
   type ParseResult,
   pipe,
+  Record as EffectRecord,
   Schema,
 } from 'effect'
 import {
@@ -135,6 +136,73 @@ const decodeServiceRequest = (
   })
 
 /**
+ * `ExerciseRequest.makeForEachExercise` was given no starting load for
+ * exercises the training plan definition runs, listing every one of them.
+ */
+class ExerciseWithoutStartingLoad extends Data.TaggedError('ExerciseWithoutStartingLoad')<{
+  /** The ids of every exercise the training plan definition runs that has no starting load. */
+  readonly exerciseIds: Arr.NonEmptyReadonlyArray<string>
+  /** The canonical url of the training plan definition. */
+  readonly trainingPlanDefinitionUrl: string
+}> {
+  // Data.TaggedError leaves `.message` empty by default; name the exercises so
+  // a logged or thrown refusal says what was wrong.
+  override get message(): string {
+    return `no starting load for the exercises ${this.exerciseIds.map((id) => JSON.stringify(id)).join(', ')} of the training plan definition ${this.trainingPlanDefinitionUrl}`
+  }
+}
+
+/**
+ * The first `ExerciseRequest` at `trainingPlanDefinitionExercise`, one of
+ * `trainingPlanDefinition`'s, at `load`; or a `ParseError` when the load is in
+ * another unit than the exercise's rule moves, or under its minimum load.
+ */
+const makeForTrainingPlanDefinitionExercise = ({
+  serviceRequestId,
+  subject,
+  trainingPlanDefinition,
+  trainingPlanDefinitionExercise,
+  load,
+  authoredOn,
+}: {
+  readonly serviceRequestId: string
+  readonly subject: IdentifierAndReference.ReferenceType
+  readonly trainingPlanDefinition: TrainingPlanDefinition.Type
+  readonly trainingPlanDefinitionExercise: TrainingPlanDefinition.Exercise.Type
+  readonly load: Load.Type
+  readonly authoredOn: DateTime.Utc
+}): Either.Either<Type, ParseResult.ParseError> =>
+  pipe(
+    Schema.validateEither(
+      TrainingPlanDefinition.ProgressionRule.startingLoadSchema(
+        TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
+      ),
+      { errors: 'all' }
+    )(load),
+    Either.flatMap((startingLoad) =>
+      decodeServiceRequest({
+        id: serviceRequestId,
+        subject,
+        instantiatesCanonical: [trainingPlanDefinition.url],
+        code: TrainingPlanDefinition.Exercise.exerciseConceptOf(trainingPlanDefinitionExercise),
+        orderDetail: [
+          loadExerciseParameterConcept(startingLoad),
+          countExerciseParameterConcept({
+            code: ExerciseParameter.Code.Sets,
+            value: TrainingPlanDefinition.Exercise.setsOf(trainingPlanDefinitionExercise),
+          }),
+          countExerciseParameterConcept({
+            code: ExerciseParameter.Code.Reps,
+            value: TrainingPlanDefinition.Exercise.repsOf(trainingPlanDefinitionExercise),
+          }),
+        ],
+        replaces: [],
+        authoredOn: DateTime.formatIso(authoredOn),
+      })
+    )
+  )
+
+/**
  * The first `ExerciseRequest` at one exercise of a training plan definition:
  * `active`, intent `plan`, priority `routine`, filed under the
  * `strength-training` feature `category`, the exercise as its `code`, one
@@ -154,17 +222,14 @@ const decodeServiceRequest = (
  *   minimum load
  *
  * @remarks
- * This is how a lifter's starting load is set, and how one is re-made after a
- * training plan definition edit. Between workouts, {@link progress} issues
- * the next one.
+ * This is how one lifter's starting load is set, and how one is re-made after
+ * a training plan definition edit; {@link makeForEachExercise} starts a whole
+ * training plan definition. Between workouts, {@link progress} issues the
+ * next one.
  */
 const make = ({
-  serviceRequestId,
-  subject,
-  trainingPlanDefinition,
   exerciseId,
-  load,
-  authoredOn,
+  ...exerciseRequest
 }: {
   readonly serviceRequestId: string
   readonly subject: IdentifierAndReference.ReferenceType
@@ -174,45 +239,145 @@ const make = ({
   readonly authoredOn: DateTime.Utc
 }): Either.Either<Type, ExerciseNotInTrainingPlanDefinition | ParseResult.ParseError> =>
   pipe(
-    TrainingPlanDefinition.exerciseOf({ trainingPlanDefinition, exerciseId }),
+    TrainingPlanDefinition.exerciseOf({
+      trainingPlanDefinition: exerciseRequest.trainingPlanDefinition,
+      exerciseId,
+    }),
     Either.fromOption(
       () =>
         new ExerciseNotInTrainingPlanDefinition({
           exerciseId,
-          trainingPlanDefinitionUrl: trainingPlanDefinition.url,
+          trainingPlanDefinitionUrl: exerciseRequest.trainingPlanDefinition.url,
         })
     ),
     Either.flatMap((trainingPlanDefinitionExercise) =>
-      pipe(
-        Schema.validateEither(
-          TrainingPlanDefinition.ProgressionRule.startingLoadSchema(
-            TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
-          ),
-          { errors: 'all' }
-        )(load),
-        Either.flatMap((startingLoad) =>
-          decodeServiceRequest({
-            id: serviceRequestId,
-            subject,
-            instantiatesCanonical: [trainingPlanDefinition.url],
-            code: TrainingPlanDefinition.Exercise.exerciseConceptOf(trainingPlanDefinitionExercise),
-            orderDetail: [
-              loadExerciseParameterConcept(startingLoad),
-              countExerciseParameterConcept({
-                code: ExerciseParameter.Code.Sets,
-                value: TrainingPlanDefinition.Exercise.setsOf(trainingPlanDefinitionExercise),
-              }),
-              countExerciseParameterConcept({
-                code: ExerciseParameter.Code.Reps,
-                value: TrainingPlanDefinition.Exercise.repsOf(trainingPlanDefinitionExercise),
-              }),
-            ],
-            replaces: [],
-            authoredOn: DateTime.formatIso(authoredOn),
-          })
-        )
-      )
+      makeForTrainingPlanDefinitionExercise({ ...exerciseRequest, trainingPlanDefinitionExercise })
     )
+  )
+
+/** Starting loads by exercise id, as `StrongLifts5x5.STARTING_LOADS` holds the template's. */
+type StartingLoads = EffectRecord.ReadonlyRecord<string, Load.Type>
+
+/**
+ * A lifter starting a training plan definition: one `ExerciseRequest` per
+ * exercise it runs ({@link TrainingPlanDefinition.exercisesOf}), in that
+ * order, each made as {@link make} makes one at its starting load.
+ *
+ * @param start - The lifter as `subject`; the training plan definition;
+ *   `startingLoads`, by exercise id (entries for exercises it does not run are
+ *   passed over); `mintServiceRequestId`, the id the app mints for the
+ *   `ServiceRequest` at an exercise, called once per exercise — return the
+ *   same id for the same exercise on a retry so writing again overwrites
+ *   rather than duplicates; and when they were issued
+ * @returns The `ExerciseRequest`s; {@link ExerciseWithoutStartingLoad}
+ *   listing every exercise with no starting load; or the `ParseError` of the
+ *   first exercise whose starting load is in another unit than its rule
+ *   moves, or under its minimum load
+ *
+ * @remarks
+ * A form that sets each starting load shows each one's problem as it is
+ * entered through `TrainingPlanDefinition.ProgressionRule.startingLoadSchema`.
+ */
+const makeForEachExercise = ({
+  subject,
+  trainingPlanDefinition,
+  startingLoads,
+  mintServiceRequestId,
+  authoredOn,
+}: {
+  readonly subject: IdentifierAndReference.ReferenceType
+  readonly trainingPlanDefinition: TrainingPlanDefinition.Type
+  readonly startingLoads: StartingLoads
+  readonly mintServiceRequestId: (exerciseId: string) => string
+  readonly authoredOn: DateTime.Utc
+}): Either.Either<readonly Type[], ExerciseWithoutStartingLoad | ParseResult.ParseError> => {
+  const [exerciseIdsWithoutStartingLoad, startingTrainingPlanDefinitionExercises] =
+    Arr.partitionMap(
+      TrainingPlanDefinition.exercisesOf(trainingPlanDefinition),
+      (trainingPlanDefinitionExercise) => {
+        const exerciseId = TrainingPlanDefinition.Exercise.exerciseIdOf(
+          trainingPlanDefinitionExercise
+        )
+        return Option.match(EffectRecord.get(startingLoads, exerciseId), {
+          onNone: () => Either.left(exerciseId),
+          onSome: (load) => Either.right({ exerciseId, trainingPlanDefinitionExercise, load }),
+        })
+      }
+    )
+  if (Arr.isNonEmptyReadonlyArray(exerciseIdsWithoutStartingLoad))
+    return Either.left(
+      new ExerciseWithoutStartingLoad({
+        exerciseIds: exerciseIdsWithoutStartingLoad,
+        trainingPlanDefinitionUrl: trainingPlanDefinition.url,
+      })
+    )
+  return Either.all(
+    startingTrainingPlanDefinitionExercises.map(
+      ({ exerciseId, trainingPlanDefinitionExercise, load }) =>
+        makeForTrainingPlanDefinitionExercise({
+          serviceRequestId: mintServiceRequestId(exerciseId),
+          subject,
+          trainingPlanDefinition,
+          trainingPlanDefinitionExercise,
+          load,
+          authoredOn,
+        })
+    )
+  )
+}
+
+/**
+ * What changing a lifter's training plan definition writes: every
+ * `ExerciseRequest` of the one being left closed, and one per exercise of the
+ * one being started.
+ */
+interface TrainingPlanDefinitionChange {
+  /** The `ExerciseRequest`s that were active, each now `revoked`. */
+  readonly revokedExerciseRequests: readonly Type[]
+  /** The new `ExerciseRequest`s, one per exercise of the training plan definition started. */
+  readonly startedExerciseRequests: readonly Type[]
+}
+
+/**
+ * A lifter leaving their training plan definition for `trainingPlanDefinition`:
+ * each of `exerciseRequests` still `active` is closed as `revoked`
+ * ({@link close}), and the new training plan definition is started as
+ * {@link makeForEachExercise} starts one.
+ *
+ * @param change - The lifter's current `ExerciseRequest`s (those already
+ *   closed are passed over), and the arguments of
+ *   {@link makeForEachExercise} for the training plan definition started —
+ *   mint ids no earlier `ServiceRequest` has, since the same exercise may run
+ *   under both
+ * @returns The `ServiceRequest`s to write; or the refusal of
+ *   {@link makeForEachExercise}
+ *
+ * @remarks
+ * Restarting the same training plan definition (at new starting loads) is a
+ * change to itself.
+ */
+const changeTrainingPlanDefinition = ({
+  exerciseRequests,
+  ...start
+}: {
+  readonly exerciseRequests: readonly Type[]
+  readonly subject: IdentifierAndReference.ReferenceType
+  readonly trainingPlanDefinition: TrainingPlanDefinition.Type
+  readonly startingLoads: StartingLoads
+  readonly mintServiceRequestId: (exerciseId: string) => string
+  readonly authoredOn: DateTime.Utc
+}): Either.Either<
+  TrainingPlanDefinitionChange,
+  ExerciseWithoutStartingLoad | ParseResult.ParseError
+> =>
+  Either.map(
+    makeForEachExercise(start),
+    (startedExerciseRequests): TrainingPlanDefinitionChange => ({
+      revokedExerciseRequests: exerciseRequests
+        .filter((exerciseRequest) => exerciseRequest.status === 'active')
+        .map((exerciseRequest) => close(exerciseRequest, 'revoked')),
+      startedExerciseRequests,
+    })
   )
 
 /** The exercise the `ServiceRequest` asks for. */
@@ -528,18 +693,29 @@ const progress = (step: {
 
 export {
   attemptsAt,
+  changeTrainingPlanDefinition,
   close,
   consecutiveFailures,
   ExerciseRequestSchema as Schema,
   ExerciseNotInTrainingPlanDefinition,
+  ExerciseWithoutStartingLoad,
   exerciseOf,
   forExercise,
   isMetBy,
   loadOf,
   make,
+  makeForEachExercise,
   trainingPlanDefinitionUrlOf,
   progress,
   repsOf,
   setsOf,
 }
-export type { Attempt, ClosingStatus, Decision, Progress, Type }
+export type {
+  Attempt,
+  ClosingStatus,
+  Decision,
+  Progress,
+  StartingLoads,
+  TrainingPlanDefinitionChange,
+  Type,
+}
