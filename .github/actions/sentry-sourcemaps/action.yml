@@ -24,20 +24,43 @@ inputs:
     description: The Sentry organization slug.
     required: false
     default: ''
+  dsns:
+    description: >-
+      The apps' `VITE_SENTRY_DSN_<APP>` values, one per line. Each DSN ends in
+      its Sentry project's ID, which names the project to upload to; an empty
+      line is an app without a project and is skipped.
+    required: true
 
 runs:
   using: composite
   steps:
+    # A DSN's path is its project's numeric ID, which sentry-cli takes in place
+    # of a slug, so the projects come from the same variables the build reads
+    # and an app whose project does not exist yet simply has no DSN.
+    - name: Collect Sentry project IDs from the DSNs
+      id: projects
+      shell: bash
+      env:
+        DSNS: ${{ inputs.dsns }}
+      run: |
+        ids=()
+        while IFS= read -r dsn; do
+          if [ -n "$dsn" ]; then
+            ids+=("${dsn##*/}")
+          fi
+        done <<< "$DSNS"
+        echo "Sentry projects: ${ids[*]:-none}"
+        echo "ids=${ids[*]}" >> "$GITHUB_OUTPUT"
+
     # The paths are the apps' sections in the assembled site (branding-core's
-    # SECTION_PATHS) and the projects are their Sentry projects, one per app,
-    # in the same order. The upload works on the assembled site rather than
-    # each app's own dist because injecting debug IDs rewrites the JavaScript:
-    # the files that get published must be the ones that carry them. Debug IDs
+    # SECTION_PATHS). The upload works on the assembled site rather than each
+    # app's own dist because injecting debug IDs rewrites the JavaScript: the
+    # files that get published must be the ones that carry them. Debug IDs
     # also make the files' URLs irrelevant, so no `url_prefix` is needed.
     # Every project gets every app's bundle; a stack trace only ever matches
     # its own app's debug IDs.
     - name: Create Sentry release and upload source maps
-      if: inputs.auth-token != ''
+      if: inputs.auth-token != '' && steps.projects.outputs.ids != ''
       uses: getsentry/action-release@v3.7.0
       env:
         SENTRY_AUTH_TOKEN: ${{ inputs.auth-token }}
@@ -48,17 +71,11 @@ runs:
         sourcemaps: >-
           apps/github-pages/dist/medications-app
           apps/github-pages/dist/importer-app
-          apps/github-pages/dist/web-trace-app
           apps/github-pages/dist/health-viewer-app
           apps/github-pages/dist/fhir-sync-pebble
+          apps/github-pages/dist/synthetic-data-app
           apps/github-pages/dist/app
-        projects: >-
-          medications-app
-          wildflower-importer
-          web-trace
-          health-viewer
-          fhir-sync-pebble-web
-          wildflower-react
+        projects: ${{ steps.projects.outputs.ids }}
         # Sentry's GitHub integration is not installed and the checkout is
         # shallow, so there are no commits to associate.
         set_commits: skip
@@ -72,8 +89,8 @@ runs:
       run: |
         find apps/github-pages/dist/medications-app \
           apps/github-pages/dist/importer-app \
-          apps/github-pages/dist/web-trace-app \
           apps/github-pages/dist/health-viewer-app \
           apps/github-pages/dist/fhir-sync-pebble \
+          apps/github-pages/dist/synthetic-data-app \
           apps/github-pages/dist/app \
           -name '*.map' -type f -print -delete
