@@ -4,7 +4,6 @@ import { DocumentReference, type FhirResource, FhirResourceSchema } from 'fhir-r
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import * as DataSetLayout from './data-set-layout.ts'
 import {
   HAR_FILE_NAME,
   hashOf,
@@ -14,6 +13,8 @@ import {
   rexallPersonCaseArbitrary,
   shoppersFamilyCaseArbitrary,
 } from './imports.test-helpers.ts'
+import * as Entry from './snapshot-entry.ts'
+import * as Layout from './snapshot-layout.ts'
 
 /**
  * The layout over real importer output: generated Rexall records and a
@@ -26,74 +27,121 @@ const RUNS = numRunsFor({ base: 10 })
 /** Each property imports every generated case: generous, so a slow runner fits. */
 const IMPORT_TIMEOUT_MILLIS = 60_000
 
-const layOut = (resources: readonly FhirResource[]): DataSetLayout.Files =>
-  Either.getOrThrow(DataSetLayout.layOut(resources))
+type ResourceJson = Schema.Schema.Encoded<typeof FhirResourceSchema>
+
+const decodeResourceJson = Schema.decodeUnknownSync(Schema.encodedSchema(FhirResourceSchema))
+
+const encodeFile = Schema.encodeSync(Entry.FileSchema)
+
+const decodeFile = Schema.decodeUnknownSync(Entry.FileSchema)
+
+const layOut = (resources: readonly FhirResource[]): readonly Entry.Any[] =>
+  Either.getOrThrow(Layout.layOut(resources))
 
 const layOutError = (resources: readonly FhirResource[]): unknown =>
-  Either.match(DataSetLayout.layOut(resources), {
+  Either.match(Layout.layOut(resources), {
     onLeft: (error) => error,
     onRight: () => undefined,
   })
 
-const labelOf = (resource: FhirResource): string => `${resource.resourceType}/${resource.id}`
-
-const bytesOf = (bytesByPath: ReadonlyMap<string, Uint8Array>, path: string): Uint8Array => {
-  const bytes = bytesByPath.get(path)
-  if (bytes === undefined) throw new Error(`${path} is not laid out`)
-  return bytes
+/** A laid-out resource: its entry, and the JSON its file holds. */
+interface ResourceFile {
+  readonly path: string
+  readonly entry: Entry.Resource
+  readonly json: ResourceJson
 }
+
+/** A laid-out attachment: its entry, and its path. */
+interface AttachmentFile {
+  readonly path: string
+  readonly entry: Entry.Attachment
+}
+
+/** Entries as their files would be read: each resource's JSON, and each attachment. */
+const filesOf = (
+  entries: readonly Entry.Any[]
+): {
+  readonly resources: readonly ResourceFile[]
+  readonly attachments: readonly AttachmentFile[]
+} => ({
+  resources: entries.flatMap((entry) => {
+    if (entry._tag !== 'Resource') return []
+    const file = encodeFile(entry)
+    if (file._tag !== 'Text') throw new Error(`${file.path} is not text`)
+    return [{ path: file.path, entry, json: decodeResourceJson(JSON.parse(file.text)) }]
+  }),
+  attachments: entries.flatMap((entry) =>
+    entry._tag === 'Attachment' ? [{ path: Entry.pathOf(entry), entry }] : []
+  ),
+})
+
+/** Every file the entries are written as, by path, comparable with `toEqual`. */
+const writtenOf = (entries: readonly Entry.Any[]): readonly (readonly [string, unknown])[] =>
+  entries.map((entry) => {
+    const file = encodeFile(entry)
+    return [file.path, file._tag === 'Text' ? file.text : Buffer.from(file.bytes)] as const
+  })
+
+const labelOf = (resource: FhirResource): string => `${resource.resourceType}/${resource.id}`
 
 const isDocumentReference = (resource: FhirResource): resource is DocumentReference.Type =>
   resource.resourceType === 'DocumentReference'
 
 /** An attachment as its JSON holds it, whatever the fields present. */
-const attachmentOf = (json: DataSetLayout.ResourceJson): Record<string, unknown> => {
+const attachmentOf = (json: ResourceJson): Record<string, unknown> => {
   if (json.resourceType !== 'DocumentReference') throw new Error('expected a DocumentReference')
   const [content] = json.content
   if (content === undefined) throw new Error('expected a content entry')
   return { ...content.attachment }
 }
 
-describe('DataSetLayout.layOut', () => {
+describe('Snapshot.Layout.layOut', () => {
   test(
-    'property: one file per resource at fhir/<Type>/<id>.json, and the HAR and image as static files the source files link to',
+    'property: one entry per resource at fhir/<Type>/<id>.json, and the HAR and image as attachments the source files link to',
     async () => {
       await fc.assert(
         fc.asyncProperty(rexallPersonCaseArbitrary, async (personCase) => {
           const { resources, har, image } = await importRexallPerson(personCase)
-          const files = layOut(resources)
+          const entries = layOut(resources)
+          const files = filesOf(entries)
 
-          // Every resource exactly once, at its path, in path order.
+          // Entries are in path order.
+          const paths = entries.map(Entry.pathOf)
+          expect(paths).toEqual(paths.toSorted())
+
+          // Every resource exactly once, at its path.
           const expectedPaths = [
             ...new Set(resources.map((resource) => `fhir/${labelOf(resource)}.json`)),
           ].toSorted()
           expect(files.resources.map((file) => file.path)).toEqual(expectedPaths)
-          for (const file of files.resources) {
-            expect(Schema.is(DataSetLayout.ResourcePathSchema)(file.path)).toBe(true)
-            expect(file.path).toBe(`fhir/${file.resourceType}/${file.id}.json`)
-            expect(file.json.resourceType).toBe(file.resourceType)
-            expect(file.json.id).toBe(file.id)
+          for (const { path, entry, json } of files.resources) {
+            expect(Schema.is(Entry.ResourcePathSchema)(path)).toBe(true)
+            expect(path).toBe(`fhir/${labelOf(entry.resource)}.json`)
+            expect(json.resourceType).toBe(entry.resource.resourceType)
+            expect(json.id).toBe(entry.resource.id)
           }
 
           // The files the importers read, under their formats' directories.
-          expect(files.staticFiles.map((file) => file.path)).toEqual([
+          expect(files.attachments.map((file) => file.path)).toEqual([
             `dicom/${IMAGE_FILE_NAME}`,
             `har/${HAR_FILE_NAME}`,
           ])
-          expect(files.staticFiles.map((file) => Buffer.from(file.bytes))).toEqual([
+          expect(files.attachments.map((file) => Buffer.from(file.entry.bytes))).toEqual([
             Buffer.from(image),
             Buffer.from(har),
           ])
-          for (const file of files.staticFiles) {
-            expect(Schema.is(DataSetLayout.StaticFilePathSchema)(file.path)).toBe(true)
+          for (const file of files.attachments) {
+            expect(Schema.is(Entry.AttachmentPathSchema)(file.path)).toBe(true)
           }
 
-          // Each source file links to its static file instead of carrying it.
+          // Each source file links to its attachment instead of carrying it.
           const sourceFiles = resources.filter(isDocumentReference)
           expect(sourceFiles).toHaveLength(2)
           const hashByPath = new Map(
             await Promise.all(
-              files.staticFiles.map(async ({ path, bytes }) => [path, await hashOf(bytes)] as const)
+              files.attachments.map(
+                async ({ path, entry }) => [path, await hashOf(entry.bytes)] as const
+              )
             )
           )
           for (const sourceFile of sourceFiles) {
@@ -102,12 +150,13 @@ describe('DataSetLayout.layOut', () => {
             )
             if (file === undefined) throw new Error(`no file for ${labelOf(sourceFile)}`)
             const attachment = attachmentOf(file.json)
-            const staticFile = files.staticFiles.find(({ path }) => path === attachment['url'])
-            if (staticFile === undefined)
+            expect(file.entry.attachmentPath).toBe(attachment['url'])
+            const linked = files.attachments.find(({ path }) => path === attachment['url'])
+            if (linked === undefined)
               throw new Error(`${String(attachment['url'])} is not laid out`)
             expect(attachment).not.toHaveProperty('data')
-            expect(attachment['size']).toBe(staticFile.bytes.length)
-            expect(attachment['hash']).toBe(hashByPath.get(staticFile.path))
+            expect(attachment['size']).toBe(linked.entry.bytes.length)
+            expect(attachment['hash']).toBe(hashByPath.get(linked.path))
             const imported = sourceFile.content[0]?.attachment
             expect(attachment['title']).toBe(imported?.title)
             expect(attachment['contentType']).toBe(imported?.contentType)
@@ -116,12 +165,13 @@ describe('DataSetLayout.layOut', () => {
             expect({ ...file.json, content: [] }).toEqual({ ...importedJson, content: [] })
           }
 
-          // Every other resource's file is its JSON, as imported.
+          // Every other resource's file is its JSON, as imported, and links nothing.
           for (const resource of resources.filter((one) => !isDocumentReference(one))) {
             const file = files.resources.find(
               ({ path }) => path === `fhir/${labelOf(resource)}.json`
             )
             expect(file?.json).toEqual(Schema.encodeSync(FhirResourceSchema)(resource))
+            expect(file?.entry.attachmentPath).toBeUndefined()
           }
 
           // Every meta.source names a laid-out source file.
@@ -140,41 +190,50 @@ describe('DataSetLayout.layOut', () => {
   )
 
   test(
-    'property: a reader of the files gets the import back, each source file carrying its static file inline again',
+    'property: a reader decoding the files gets the import back, each source file carrying its attachment inline again',
     async () => {
       await fc.assert(
         fc.asyncProperty(rexallPersonCaseArbitrary, async (personCase) => {
           const { resources } = await importRexallPerson(personCase)
-          const files = layOut(resources)
-          const bytesByPath = new Map(files.staticFiles.map(({ path, bytes }) => [path, bytes]))
+          // What a reader has: each file, its text parsed and printed again, decoded.
+          const read = layOut(resources).map((entry) => {
+            const file = encodeFile(entry)
+            return decodeFile(
+              file._tag === 'Text'
+                ? { ...file, text: `${JSON.stringify(JSON.parse(file.text), null, 2)}\n` }
+                : file
+            )
+          })
+          const bytesByPath = new Map(
+            read.flatMap((entry) =>
+              entry._tag === 'Attachment' ? [[Entry.pathOf(entry), entry.bytes] as const] : []
+            )
+          )
 
           const importedByPath = new Map(
             resources.map((resource) => [`fhir/${labelOf(resource)}.json`, resource])
           )
-          for (const file of files.resources) {
-            // What a reader has: the file's text, parsed.
-            const json = Schema.decodeUnknownSync(DataSetLayout.ResourceJsonSchema)(
-              JSON.parse(JSON.stringify(file.json))
-            )
-            const link = DataSetLayout.staticFileLinkOf(json)
-            const readJson =
-              link === undefined
-                ? json
-                : DataSetLayout.withStaticFileData(
-                    link.documentReferenceJson,
-                    bytesOf(bytesByPath, link.staticFilePath)
+          const readResources = read.flatMap((entry) => (entry._tag === 'Resource' ? [entry] : []))
+          for (const entry of readResources) {
+            const { attachmentPath } = entry
+            const resource =
+              attachmentPath === undefined
+                ? entry.resource
+                : Entry.withAttachmentData(
+                    entry,
+                    bytesByPath.get(attachmentPath) ?? new Uint8Array()
                   )
-            const read = Schema.decodeUnknownSync(FhirResourceSchema)(readJson)
-            const imported = importedByPath.get(file.path)
-            if (imported === undefined) throw new Error(`${file.path} was not imported`)
-            expect(Schema.encodeSync(FhirResourceSchema)(read)).toEqual(
+            if (attachmentPath !== undefined) expect(bytesByPath.has(attachmentPath)).toBe(true)
+            const imported = importedByPath.get(Entry.pathOf(entry))
+            if (imported === undefined) throw new Error(`${Entry.pathOf(entry)} was not imported`)
+            expect(Schema.encodeSync(FhirResourceSchema)(resource)).toEqual(
               Schema.encodeSync(FhirResourceSchema)(imported)
             )
           }
-          // Only the source files link to a static file.
+          // Only the source files link to an attachment.
           expect(
-            files.resources.filter(({ json }) => DataSetLayout.staticFileLinkOf(json) !== undefined)
-          ).toHaveLength(files.staticFiles.length)
+            readResources.filter(({ attachmentPath }) => attachmentPath !== undefined)
+          ).toHaveLength(bytesByPath.size)
         }),
         { numRuns: RUNS }
       )
@@ -191,7 +250,7 @@ describe('DataSetLayout.layOut', () => {
           const { resources: first } = await importShoppersFamily(familyCase, 'family.har')
           const { resources: again } = await importShoppersFamily(familyCase, 'again.har')
           const resources = [...first, ...again]
-          const files = layOut(resources)
+          const files = filesOf(layOut(resources))
 
           const lastByLabel = new Map(resources.map((resource) => [labelOf(resource), resource]))
           expect(files.resources.map((file) => file.path)).toEqual(
@@ -218,8 +277,8 @@ describe('DataSetLayout.layOut', () => {
           const { resources: again } = await importRexallPerson(personCase)
           const shift = rotation % resources.length
           const rotated = [...resources.slice(shift), ...resources.slice(0, shift)]
-          expect(layOut(again)).toEqual(layOut(resources))
-          expect(layOut(rotated)).toEqual(layOut(resources))
+          expect(writtenOf(layOut(again))).toEqual(writtenOf(layOut(resources)))
+          expect(writtenOf(layOut(rotated))).toEqual(writtenOf(layOut(resources)))
         }),
         { numRuns: RUNS }
       )
@@ -252,14 +311,14 @@ describe('DataSetLayout.layOut', () => {
       const one = await importShoppersFamily(first, 'family.har')
       const other = await importShoppersFamily(second, 'family.har')
       expect(layOutError([...one.resources, ...other.resources])).toEqual(
-        new DataSetLayout.ConflictingFiles({ path: 'har/family.har' })
+        new Layout.ConflictingFiles({ path: 'har/family.har' })
       )
     },
     IMPORT_TIMEOUT_MILLIS
   )
 
   test.each(['../rexall.har', 'nested/rexall.har', '.har', 'rexall har', '-rexall.har'])(
-    'fails for a source file titled %j, which is not a file name a data set can hold',
+    'fails for a source file titled %j, which is not a file name a snapshot can hold',
     async (title) => {
       const [personCase] = fc.sample(rexallPersonCaseArbitrary, { numRuns: 1, seed: 5 })
       if (personCase === undefined) throw new Error('expected a sample')
@@ -298,82 +357,41 @@ describe('DataSetLayout.layOut', () => {
         { attachment: { contentType: 'text/plain', data: 'aGVsbG8=', title: 'report.txt' } },
       ],
     })
-    expect(layOut([report])).toEqual({
-      resources: [
-        {
-          path: 'fhir/DocumentReference/report-1.json',
-          resourceType: 'DocumentReference',
-          id: 'report-1',
-          json: Schema.encodeSync(FhirResourceSchema)(report),
-        },
-      ],
-      staticFiles: [],
-    })
+    const entries = layOut([report])
+    expect(entries).toEqual([{ _tag: 'Resource', resource: report }])
+    expect(filesOf(entries).resources.map(({ path, json }) => ({ path, json }))).toEqual([
+      {
+        path: 'fhir/DocumentReference/report-1.json',
+        json: Schema.encodeSync(FhirResourceSchema)(report),
+      },
+    ])
   })
 })
 
-describe('DataSetLayout.staticFileLinkOf', () => {
-  const documentReferenceJson = (attachment: Record<string, unknown>): DataSetLayout.ResourceJson =>
-    Schema.decodeUnknownSync(DataSetLayout.ResourceJsonSchema)({
-      resourceType: 'DocumentReference',
-      id: 'source-1',
-      status: 'current',
-      content: [{ attachment: { contentType: 'application/json', title: 'a.har', ...attachment } }],
+describe('Snapshot.Layout.merge', () => {
+  const patient = (id: string, gender: string): Entry.Any => {
+    const resource = Schema.decodeUnknownSync(FhirResourceSchema)({
+      resourceType: 'Patient',
+      id,
+      gender,
     })
+    if (resource.id === null) throw new Error('expected an id')
+    return { _tag: 'Resource', resource: { ...resource, id: resource.id } }
+  }
 
-  test('links a DocumentReference whose one attachment names a static file by url alone', () => {
-    const json = documentReferenceJson({ url: 'har/a.har' })
-    expect(DataSetLayout.staticFileLinkOf(json)).toEqual({
-      documentReferenceJson: json,
-      staticFilePath: 'har/a.har',
+  test('keeps an entry two lists share once, in path order', () => {
+    const merged = Either.getOrThrow(
+      Layout.merge([[patient('b', 'male'), patient('a', 'female')], [patient('a', 'female')]])
+    )
+    expect(merged.map(Entry.pathOf)).toEqual(['fhir/Patient/a.json', 'fhir/Patient/b.json'])
+  })
+
+  test('fails for two entries at one path written as different files', () => {
+    expect(
+      Either.getLeft(Layout.merge([[patient('a', 'female')], [patient('a', 'male')]]))
+    ).toMatchObject({
+      _tag: 'Some',
+      value: { _tag: 'ConflictingFiles', path: 'fhir/Patient/a.json' },
     })
-  })
-
-  test.each([
-    ['carries its data inline', { data: 'aGVsbG8=' }],
-    ['carries its data beside a url', { url: 'har/a.har', data: 'aGVsbG8=' }],
-    ['links outside the data set', { url: 'https://example.com/a.har' }],
-    ['links to a parent directory', { url: 'har/../index.json' }],
-  ])('links nothing for a DocumentReference that %s', (_, attachment) => {
-    expect(DataSetLayout.staticFileLinkOf(documentReferenceJson(attachment))).toBeUndefined()
-  })
-})
-
-describe('DataSetLayout path schemas', () => {
-  test.each([
-    'fhir/Patient/abc.json',
-    'fhir/DocumentReference/wf-0123.json',
-    'fhir/Observation/a.b-c.json',
-  ])('accepts the resource path %j', (path) => {
-    expect(Schema.is(DataSetLayout.ResourcePathSchema)(path)).toBe(true)
-  })
-
-  test.each([
-    'fhir/Patient/../index.json',
-    'fhir/Patient/a/b.json',
-    'fhir/patient/abc.json',
-    '/fhir/Patient/abc.json',
-    'fhir/Patient/abc.json/',
-    `fhir/Patient/${'a'.repeat(65)}.json`,
-  ])('rejects the resource path %j', (path) => {
-    expect(Schema.is(DataSetLayout.ResourcePathSchema)(path)).toBe(false)
-  })
-
-  test.each(['har/family.har', 'dicom/chest-x-ray.dcm', 'dicom/IMG_0001.dcm'])(
-    'accepts the static file path %j',
-    (path) => {
-      expect(Schema.is(DataSetLayout.StaticFilePathSchema)(path)).toBe(true)
-    }
-  )
-
-  test.each(['har/../index.json', 'har/.hidden', 'pdf/report.pdf', 'har/a/b.har', 'har/', 'har'])(
-    'rejects the static file path %j',
-    (path) => {
-      expect(Schema.is(DataSetLayout.StaticFilePathSchema)(path)).toBe(false)
-    }
-  )
-
-  test('names the static file directories after the importers’ formats', () => {
-    expect(DataSetLayout.STATIC_FILE_DIRECTORIES).toEqual(['har', 'dicom'])
   })
 })
