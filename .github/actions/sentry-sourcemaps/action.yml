@@ -15,9 +15,9 @@ inputs:
     required: true
   auth-token:
     description: >-
-      A Sentry organization auth token (`project:releases` scope). Empty skips
-      the upload, so a repository without Sentry configured still deploys; the
-      maps are deleted either way.
+      A Sentry organization auth token (its fixed `org:ci` scope covers
+      releases and source maps). Empty skips the upload, so a repository
+      without Sentry configured still deploys; the maps are deleted either way.
     required: false
     default: ''
   org:
