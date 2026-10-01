@@ -1,0 +1,40 @@
+/*
+ * SetRepsButton skin — a round set button. A set not done is an outline; one
+ * entered short of the reps asked for turns the danger tint so a failed set
+ * reads at a glance. Tokens only, so dark mode needs no rule here.
+ */
+
+.set-reps-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--color-accent);
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: var(--font-weight-3);
+  cursor: pointer;
+}
+
+.set-reps-button:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 2px;
+}
+
+.set-reps-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.set-reps-button--short {
+  border-color: var(--color-red-5);
+  background: var(--color-red-9);
+  color: var(--color-red-3);
+}
+
+.set-reps-button--not-done {
+  background: transparent;
+  color: var(--color-accent);
+}

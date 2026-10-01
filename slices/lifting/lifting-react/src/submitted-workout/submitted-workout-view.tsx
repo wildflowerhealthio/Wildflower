@@ -11,7 +11,7 @@ import { useId } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ItemList, StatusBadge, type StatusTone } from 'react-tundraish'
 
-import { formatLoad, formatSetReps } from './load-format.ts'
+import { formatLoad, formatSetReps } from '../load-format.ts'
 import styles from './submitted-workout-view.module.css'
 
 interface SubmittedWorkoutViewProps {

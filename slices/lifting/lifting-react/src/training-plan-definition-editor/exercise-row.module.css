@@ -1,0 +1,33 @@
+/*
+ * ExerciseRow skin — one bordered fieldset per exercise row, its fields in a
+ * wrapping grid over the row's actions. Tokens only, so dark mode needs no
+ * rule here.
+ */
+
+.exercise-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+}
+
+.exercise-row__legend {
+  padding: 0 var(--space-2);
+  color: var(--color-neutral-5);
+}
+
+.exercise-row__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--space-5);
+}
+
+.exercise-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}

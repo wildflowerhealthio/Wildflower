@@ -17,7 +17,7 @@ import {
 } from 'lifting-core/test-helpers'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { afterWorkout, plannedWorkoutOf, startedLifterRecord } from './lifting.test-helpers.ts'
+import { afterWorkout, plannedWorkoutOf, startedLifterRecord } from '../lifting.test-helpers.ts'
 import {
   PlannedWorkoutView,
   type PlannedWorkoutViewProps,

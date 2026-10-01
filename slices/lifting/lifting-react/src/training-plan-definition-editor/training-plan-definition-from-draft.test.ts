@@ -5,19 +5,17 @@ import { StrongLifts5x5 } from 'lifting-core'
 import { someOrFail, trainingPlanDefinitionArb } from 'lifting-core/test-helpers'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { DraftPath, type DraftProblems } from './draft-problems.ts'
 import {
   type DayDraft,
-  DraftPath,
-  type DraftProblems,
   draftFromTrainingPlanDefinition,
   emptyDraft,
   type ExerciseDraft,
   type ExerciseTextField,
-  newDayDraft,
   newExerciseDraft,
   type TrainingPlanDefinitionDraft,
-  trainingPlanDefinitionFromDraft,
 } from './training-plan-definition-draft.ts'
+import { trainingPlanDefinitionFromDraft } from './training-plan-definition-from-draft.ts'
 
 // Each case decodes a training plan definition, checking every exercise
 // (definition)'s rule extension on every day, so properties run fewer
@@ -188,24 +186,6 @@ describe('trainingPlanDefinitionFromDraft', () => {
       [Option.some('barbell-row'), 'Barbell Row'],
       [Option.some('front-squat'), 'Front Squat'],
     ])
-  })
-})
-
-describe('the new rows', () => {
-  it('should label a new day with the first letter no day has', () => {
-    expect(
-      [...strongLiftsDraft.days, newDayDraft(strongLiftsDraft)].map(({ label }) => label)
-    ).toEqual(['A', 'B', 'C'])
-  })
-
-  it('should key a new day and a new exercise row apart from every row of the draft', () => {
-    const takenKeys = strongLiftsDraft.days.flatMap((dayDraft) => [
-      dayDraft.key,
-      ...dayDraft.exercises.map(({ key }) => key),
-    ])
-
-    expect(takenKeys).not.toContain(newDayDraft(strongLiftsDraft).key)
-    expect(takenKeys).not.toContain(newExerciseDraft(strongLiftsDraft).key)
   })
 })
 

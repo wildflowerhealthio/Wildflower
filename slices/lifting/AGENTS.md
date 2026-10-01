@@ -134,6 +134,22 @@ template rather than a special case.
   `ErrorBanner`). Nothing here fetches, mints an id or reads a clock it was
   not passed.
 
+  Each screen is a folder of `src/` — `planned-workout/`,
+  `submitted-workout/`, `start-training-plan-definition/`,
+  `training-plan-definition-editor/` and `workout-history/` — holding its
+  components, one per file named after it in kebab-case, each with its own
+  CSS module (BEM: the block is the file's name, read as
+  `styles['block__element']`), and its tests and local helpers beside them.
+  The editor's folder also holds its draft
+  (`training-plan-definition-draft.ts`), where a draft's problems sit
+  (`draft-problems.ts`) and how a draft is made into a training plan
+  definition (`training-plan-definition-from-draft.ts`). `src/form/` is what
+  the forms share: `useFormState`, a form's state with typed setters —
+  `set(key, value)`, `field(key)`, and `list(key)`'s `add`, `remove`,
+  `update`, `move` and `map` — through which a form hands each sub-form (a
+  day row, an exercise row) the part of the state it edits; the parsing of a
+  numeric field's text; and the `ProblemLine` under a field.
+
 ## Rules
 
 - **Code passes the FHIR resource around.** A program is a

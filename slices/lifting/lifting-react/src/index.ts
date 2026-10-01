@@ -20,15 +20,21 @@ export {
   PlannedWorkoutView,
   type PlannedWorkoutViewProps,
   type WorkoutSubmission,
-} from './planned-workout-view.tsx'
+} from './planned-workout/planned-workout-view.tsx'
 export {
   StartTrainingPlanDefinitionView,
   type StartTrainingPlanDefinitionViewProps,
   type TrainingPlanDefinitionStart,
-} from './start-training-plan-definition-view.tsx'
-export { SubmittedWorkoutView, type SubmittedWorkoutViewProps } from './submitted-workout-view.tsx'
+} from './start-training-plan-definition/start-training-plan-definition-view.tsx'
+export {
+  SubmittedWorkoutView,
+  type SubmittedWorkoutViewProps,
+} from './submitted-workout/submitted-workout-view.tsx'
 export {
   TrainingPlanDefinitionEditor,
   type TrainingPlanDefinitionEditorProps,
-} from './training-plan-definition-editor.tsx'
-export { WorkoutHistoryView, type WorkoutHistoryViewProps } from './workout-history-view.tsx'
+} from './training-plan-definition-editor/training-plan-definition-editor.tsx'
+export {
+  WorkoutHistoryView,
+  type WorkoutHistoryViewProps,
+} from './workout-history/workout-history-view.tsx'

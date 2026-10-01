@@ -6,7 +6,7 @@ import { ExerciseRequest, StrongLifts5x5, WorkoutProcedure } from 'lifting-core'
 import { progressionCaseArb } from 'lifting-core/test-helpers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { afterWorkout, type LifterRecord, startedLifterRecord } from './lifting.test-helpers.ts'
+import { afterWorkout, type LifterRecord, startedLifterRecord } from '../lifting.test-helpers.ts'
 import { WorkoutHistoryView } from './workout-history-view.tsx'
 
 beforeEach(() => {

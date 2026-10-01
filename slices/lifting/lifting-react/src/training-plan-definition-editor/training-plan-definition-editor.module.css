@@ -1,0 +1,47 @@
+/*
+ * TrainingPlanDefinitionEditor skin — the title row, then the days section
+ * (a DayRow per day), with the problem count and the save actions at the
+ * foot. Tokens only, so dark mode needs no rule here.
+ */
+
+.training-plan-definition-editor {
+  display: block;
+}
+
+.training-plan-definition-editor__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.training-plan-definition-editor__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
+}
+
+.training-plan-definition-editor__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.training-plan-definition-editor__section-heading {
+  margin: 0;
+}
+
+.training-plan-definition-editor__summary {
+  margin: 0;
+  color: var(--color-red-3);
+}
+
+.training-plan-definition-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-4);
+}

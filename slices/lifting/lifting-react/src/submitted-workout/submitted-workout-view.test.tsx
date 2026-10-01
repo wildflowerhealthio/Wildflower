@@ -3,7 +3,7 @@ import { Load, StrongLifts5x5 } from 'lifting-core'
 import { made } from 'lifting-core/test-helpers'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import { afterWorkout, startedLifterRecord, submittedOf } from './lifting.test-helpers.ts'
+import { afterWorkout, startedLifterRecord, submittedOf } from '../lifting.test-helpers.ts'
 import { SubmittedWorkoutView } from './submitted-workout-view.tsx'
 
 afterEach(() => {

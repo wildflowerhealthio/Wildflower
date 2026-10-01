@@ -1,17 +1,12 @@
 import { Array as Arr, Either, Option, pipe, Record as EffectRecord } from 'effect'
-import {
-  ExerciseConcept,
-  type ExerciseRequest,
-  type Load,
-  TrainingPlanDefinition,
-} from 'lifting-core'
+import { type ExerciseRequest, type Load, TrainingPlanDefinition } from 'lifting-core'
 import type { JSX, SubmitEvent } from 'react'
 import { useId, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { ErrorBanner, RadioGroup, TextField } from 'react-tundraish'
+import { ErrorBanner, RadioGroup } from 'react-tundraish'
 
-import { useFormState } from './form/use-form-state.ts'
-import { formatUnit } from './load-format.ts'
+import { useFormState } from '../form/use-form-state.ts'
+import { StartingLoadField } from './starting-load-field.tsx'
 import { startingLoadFromText, suggestedStartingLoadText } from './starting-load.ts'
 import styles from './start-training-plan-definition-view.module.css'
 
@@ -168,38 +163,22 @@ const StartTrainingPlanDefinitionView = ({
         <fieldset className={styles['start-training-plan-definition-view__loads']}>
           <legend className="text-label-2">Starting loads</legend>
           {rows.map(({ exerciseId, trainingPlanDefinitionExercise, text, startingLoad }) => (
-            <TextField
+            <StartingLoadField
               key={exerciseId}
-              label={`${ExerciseConcept.nameOf(
-                TrainingPlanDefinition.Exercise.exerciseConceptOf(trainingPlanDefinitionExercise)
-              )} (${formatUnit(
-                TrainingPlanDefinition.ProgressionRule.unitOf(
-                  TrainingPlanDefinition.Exercise.progressionRuleOf(trainingPlanDefinitionExercise)
-                )
-              )})`}
-              value={text}
-              inputMode="decimal"
+              trainingPlanDefinitionExercise={trainingPlanDefinitionExercise}
+              text={text}
+              startingLoad={startingLoad}
+              showProblem={startAttempted}
               onChange={(loadText) => {
                 form.field('loadTextByExerciseId').set(exerciseId, loadText)
               }}
-              description={
-                startAttempted && Either.isLeft(startingLoad) ? (
-                  <span className={styles['start-training-plan-definition-view__problem']}>
-                    {startingLoad.left}
-                  </span>
-                ) : undefined
-              }
             />
           ))}
         </fieldset>
         {startAttempted && problemCount > 0 ? (
           <p
             role="alert"
-            className={cn(
-              'text-body-3',
-              styles['start-training-plan-definition-view__problem'],
-              styles['start-training-plan-definition-view__summary']
-            )}
+            className={cn('text-body-3', styles['start-training-plan-definition-view__summary'])}
           >
             {problemCount === 1
               ? '1 starting load to fix — see the highlighted field.'

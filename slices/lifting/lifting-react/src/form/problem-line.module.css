@@ -1,0 +1,8 @@
+/*
+ * ProblemLine skin — a field's problem in the danger ramp. Tokens only, so
+ * dark mode needs no rule here.
+ */
+
+.problem-line {
+  color: var(--color-red-3);
+}

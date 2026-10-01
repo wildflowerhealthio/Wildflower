@@ -1,8 +1,8 @@
 import { Either, Option, pipe, Record as EffectRecord, Schema } from 'effect'
 import { type ExerciseRequest, Load, TrainingPlanDefinition } from 'lifting-core'
 
-import { enteredNumber, numberText } from './entered-number.ts'
-import { parseIssuesOf } from './parse-issues.ts'
+import { enteredNumber, numberText } from '../form/entered-number.ts'
+import { parseIssuesOf } from '../form/parse-issues.ts'
 
 /**
  * The text a starting load field begins with: the suggested load's amount

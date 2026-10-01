@@ -1,0 +1,38 @@
+/*
+ * PlannedWorkoutExercise skin — one bordered card per exercise: its name and
+ * load on one wrapping line, "failure N of M" in the danger ramp, and a row
+ * of set buttons. Tokens only, so dark mode needs no rule here.
+ */
+
+.planned-workout-exercise {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+}
+
+.planned-workout-exercise__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.planned-workout-exercise__name {
+  margin: 0;
+  font-weight: var(--font-weight-3);
+}
+
+.planned-workout-exercise__failures {
+  margin: 0;
+  color: var(--color-red-3);
+}
+
+.planned-workout-exercise__sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}

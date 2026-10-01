@@ -1,8 +1,8 @@
 /*
  * StartTrainingPlanDefinitionView skin — the choice of program, then its
  * starting loads in a wrapping grid, with the start action at the foot.
- * Problems sit under their field in the danger ramp. Tokens only, so dark
- * mode needs no rule here.
+ * The problem count sits above the action in the danger ramp. Tokens only,
+ * so dark mode needs no rule here.
  */
 
 .start-training-plan-definition-view {
@@ -37,12 +37,9 @@
   border: 0;
 }
 
-.start-training-plan-definition-view__problem {
-  color: var(--color-red-3);
-}
-
 .start-training-plan-definition-view__summary {
   margin: 0;
+  color: var(--color-red-3);
 }
 
 .start-training-plan-definition-view__actions {
