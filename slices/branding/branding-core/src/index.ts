@@ -1,5 +1,5 @@
-export { APP_DESCRIPTIONS, APP_SECTION_IDS } from './app-descriptions.ts'
-export type { AppDescription, AppSectionId } from './app-descriptions.ts'
+export { APP_DESCRIPTIONS, APP_SECTION_IDS, smartAppLaunchPages } from './app-descriptions.ts'
+export type { AppDescription, AppSectionId, SmartAppLaunchPage } from './app-descriptions.ts'
 export {
   HEADER_NAV_LINKS,
   MARKETING_ANCHORS,
@@ -17,7 +17,7 @@ export type {
   NavLink,
   SectionNavLink,
 } from './nav.ts'
-export { SECTION_PATHS, SITE_ORIGIN, sectionRootPath, sectionUrl } from './site.ts'
+export { SECTION_PATHS, SITE_ORIGIN, sectionRootPath, sectionUrl, siteRootFor } from './site.ts'
 export type { SectionId } from './site.ts'
 export {
   REDIRECT_PARAM,

@@ -2,7 +2,14 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SECTION_PATHS, SITE_ORIGIN, sectionRootPath, sectionUrl, type SectionId } from './site.ts'
+import {
+  SECTION_PATHS,
+  SITE_ORIGIN,
+  sectionRootPath,
+  sectionUrl,
+  siteRootFor,
+  type SectionId,
+} from './site.ts'
 
 const sectionIdArb = fc.constantFrom<SectionId>(
   'marketing',
@@ -100,6 +107,61 @@ describe('sectionRootPath', () => {
         const fromRootPath = new URL(sectionRootPath(id), SITE_ORIGIN).href
         expect(fromRootPath).toBe(sectionUrl(id))
       }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+/** A section other than the site root itself: what {@link siteRootFor} takes. */
+const subsectionIdArb = sectionIdArb.filter(
+  (id): id is Exclude<SectionId, 'marketing'> => id !== 'marketing'
+)
+
+/** A path-segment-safe directory name, for a site root's own path. */
+const directoryNameArb = fc.stringMatching(/^[a-z0-9-]{1,12}$/)
+
+describe('siteRootFor', () => {
+  it("should take the section's own path off a URL serving it, under any origin and parent path", () => {
+    fc.assert(
+      fc.property(
+        subsectionIdArb,
+        fc.constantFrom('https://wildflowerhealth.io', 'https://wildflowerhealthio.github.io'),
+        fc.array(directoryNameArb, { maxLength: 3 }),
+        fc.boolean(),
+        (section, origin, parentDirectories, trailingSlash) => {
+          // Arrange
+          const siteRoot = `${origin}/${parentDirectories.map((name) => `${name}/`).join('')}`
+          const sectionBaseUrl = `${siteRoot}${SECTION_PATHS[section]}${trailingSlash ? '/' : ''}`
+
+          // Act / Assert
+          expect(siteRootFor(section, sectionBaseUrl)).toBe(siteRoot)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it("should resolve a PR preview's owner UI to that preview's root", () => {
+    expect(siteRootFor('app', 'https://wildflowerhealthio.github.io/staging/pr-7/app/')).toBe(
+      'https://wildflowerhealthio.github.io/staging/pr-7/'
+    )
+  })
+
+  it('should fall back to the canonical site for a URL that does not end in the section path', () => {
+    fc.assert(
+      fc.property(
+        subsectionIdArb,
+        fc.constantFrom('http://localhost:5173', 'http://127.0.0.1:8080', SITE_ORIGIN),
+        fc.array(directoryNameArb, { maxLength: 3 }),
+        (section, origin, directories) => {
+          // Arrange — a directory path whose last segment is never the section's.
+          const path = directories.filter((name) => name !== SECTION_PATHS[section])
+          const sectionBaseUrl = `${origin}/${path.map((name) => `${name}/`).join('')}`
+
+          // Act / Assert
+          expect(siteRootFor(section, sectionBaseUrl)).toBe(`${SITE_ORIGIN}/`)
+        }
+      ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })

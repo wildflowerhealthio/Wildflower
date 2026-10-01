@@ -20,6 +20,14 @@ export {
 export { withLocalNetworkAccessHint } from './local-network-hint.ts'
 
 export {
+  appLaunchUrl,
+  SMART_LAUNCHER_HOST,
+  smartLauncherEhrIssuer,
+  smartLauncherLaunchCode,
+  type AppLaunchServer,
+} from './app-launch-url.ts'
+
+export {
   BundleDecodeError,
   RESOURCE_PAGE_SIZE,
   ResourcePageCycleError,

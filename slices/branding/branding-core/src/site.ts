@@ -50,5 +50,40 @@ function sectionRootPath(id: SectionId): string {
   return path === '' ? '/' : `/${path}`
 }
 
-export { SECTION_PATHS, SITE_ORIGIN, sectionRootPath, sectionUrl }
+/**
+ * The root of the assembled site a section's copy is published under, as the
+ * base its sibling sections resolve against.
+ *
+ * @param section - The section `sectionBaseUrl` serves; never `marketing`, which
+ *   is the root itself.
+ * @param sectionBaseUrl - The absolute URL of the directory the section's page
+ *   is served from, e.g. the owner UI's origin plus its router basepath.
+ * @returns `sectionBaseUrl` with the section's own path taken off, slash-terminated,
+ *   when it ends in that path — `https://wildflowerhealth.io/` for the published
+ *   site, `https://wildflowerhealthio.github.io/staging/pr-7/` for a PR preview —
+ *   and `https://wildflowerhealth.io/` for any other URL.
+ *
+ * @remarks
+ * A PR preview publishes every section under its own `/staging/pr-<n>/`, so a
+ * link from one preview section reaches the same preview's build of another. A
+ * copy served anywhere else (a dev server at its origin root) is not part of an
+ * assembled site, so its links go to the canonical one, as `fromApp`'s do.
+ *
+ * @example
+ * ```ts
+ * siteRootFor('app', 'https://wildflowerhealthio.github.io/staging/pr-7/app/')
+ * // → 'https://wildflowerhealthio.github.io/staging/pr-7/'
+ * siteRootFor('app', 'http://localhost:5173/') // → 'https://wildflowerhealth.io/'
+ * ```
+ */
+function siteRootFor(section: Exclude<SectionId, 'marketing'>, sectionBaseUrl: string): string {
+  const sectionBase = new URL(sectionBaseUrl)
+  const directory = sectionBase.pathname.replace(/\/+$/, '')
+  const sectionSuffix = `/${SECTION_PATHS[section]}`
+  return directory.endsWith(sectionSuffix)
+    ? `${sectionBase.origin}${directory.slice(0, -sectionSuffix.length)}/`
+    : `${SITE_ORIGIN}/`
+}
+
+export { SECTION_PATHS, SITE_ORIGIN, sectionRootPath, sectionUrl, siteRootFor }
 export type { SectionId }

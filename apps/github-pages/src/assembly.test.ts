@@ -5,7 +5,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SECTION_PATHS } from 'branding-core'
+import { APP_DESCRIPTIONS, SECTION_PATHS, smartAppLaunchPages, SITE_ORIGIN } from 'branding-core'
 
 import type { SiteSection } from './assembly.ts'
 import {
@@ -184,6 +184,22 @@ describe('site layout', () => {
     const destPaths = siteSections.map((s) => s.destPath).toSorted()
     const sectionPathValues = Object.values(SECTION_PATHS).toSorted()
     expect(destPaths).toEqual(sectionPathValues)
+  })
+
+  it("should publish exactly the SMART launch pages the app descriptions name, each in its app's section", () => {
+    // Both sides from their sources: the launch page each described SMART app
+    // names, and every section that publishes a `launch.html`. A new SMART app
+    // published with one but not described as launched from it (so missing
+    // from the owner UI's plain SMART Home), or described but not published,
+    // fails here.
+    const describedLaunchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
+      .map(({ app }) => `${SECTION_PATHS[app]}/${APP_DESCRIPTIONS[app].smartLaunchPage ?? ''}`)
+      .toSorted()
+    const publishedLaunchPages = siteSections
+      .filter((section) => section.requiredFiles.includes('launch.html'))
+      .map((section) => `${section.destPath}/launch.html`)
+      .toSorted()
+    expect(describedLaunchPages).toEqual(publishedLaunchPages)
   })
 
   it('should pin the deploy-contract paths as literal values', () => {
