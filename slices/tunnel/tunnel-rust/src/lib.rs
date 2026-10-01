@@ -53,7 +53,9 @@ pub use db::SqliteTunnelStore;
 // The per-slice grantable-scope vocabulary (`wildflower/TunnelSettings.{r,u}`) —
 // the scopes the `/tunnel` surface enforces, for a future consent/admin surface.
 pub use domain::grantable_tunnel_scopes;
-pub use domain::{RelaySettings, SettingsSeed, TunnelDaemon, TunnelSettings};
+pub use domain::{
+    public_origin_url, InvalidPublicHost, RelaySettings, SettingsSeed, TunnelDaemon, TunnelSettings,
+};
 // The persistence port trait, in scope so `setup_tunnel` can drive the store's
 // `seed_if_absent` / `get_settings` methods directly (the trivial reads/seeds the
 // domain no longer wraps in an action).

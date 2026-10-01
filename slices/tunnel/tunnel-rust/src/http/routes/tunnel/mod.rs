@@ -453,6 +453,28 @@ mod tests {
         assert_eq!(body["publicHost"], serde_json::Value::Null);
     }
 
+    /// A `publicHost` that isn't a bare host is a `400 InvalidPublicHost`, and
+    /// the stored settings are unchanged.
+    #[tokio::test]
+    async fn put_with_a_public_host_that_names_no_origin_is_a_400() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        let (status, body) = send(
+            &st,
+            put(&serde_json::json!({
+                "settingsRevision": 0,
+                "publicHost": "https://dev1.example.com/",
+                "requestedRunning": false,
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+        assert_eq!(body["error"], "InvalidPublicHost");
+
+        let (_, current) = send(&st, get()).await;
+        assert_eq!(current["settingsRevision"], 0, "nothing written: {current}");
+        assert_eq!(current["publicHost"], serde_json::Value::Null);
+    }
+
     #[tokio::test]
     async fn turning_off_stops_the_tunnel_and_returns_to_loopback() {
         let (st, _started) = state(Behavior::HoldUntilCancel);

@@ -40,7 +40,7 @@
           "Configuration"
         ],
         "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. Gated by [`Scoped<LiveTunnelSettingsEditor>`]: the write\nlives behind the `wildflower/TunnelSettings.u` capability, so this handler\nnever touches the store directly (a `403` on an under-scoped token).",
-        "description": "A stale revision returns 409 with the current snapshot so the client can\nrebase; a winning write bumps the revision, reconciles the live supervisor,\nthen — like the launch seam — **awaits the liveness settling** (a `/health`\nprobe verifies, or the verify deadline elapses) before returning, so the\nsnapshot reflects *real* reachability rather than an optimistic `dialing`. A\nno-op change (same dialable config on an already-up tunnel) returns\nimmediately `verified` — `reconcile` leaves the live tunnel untouched, so\nthere's nothing to wait for. Collected into the `OpenAPI` doc via `routes!`\nin the parent module, which reads this `#[utoipa::path]`.",
+        "description": "A stale revision returns 409 with the current snapshot so the client can\nrebase; a winning write bumps the revision, reconciles the live supervisor,\nthen — like the launch seam — **awaits the liveness settling** (a `/health`\nprobe verifies, or the verify deadline elapses) before returning, so the\nsnapshot reflects *real* reachability rather than an optimistic `dialing`. A\nno-op change (same dialable config on an already-up tunnel) returns\nimmediately `verified` — `reconcile` leaves the live tunnel untouched, so\nthere's nothing to wait for. A `publicHost` that isn't a bare `host[:port]`\nis refused with a `400` before anything is written. Collected into the `OpenAPI` doc via `routes!`\nin the parent module, which reads this `#[utoipa::path]`.",
         "operationId": "handle_replace_tunnel",
         "requestBody": {
           "content": {
@@ -59,6 +59,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TunnelStateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`publicHost` isn't a bare `host[:port]` naming an `https://` origin; nothing was written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidPublicHostBody"
                 }
               }
             }
@@ -107,6 +117,22 @@
               "type": "string"
             },
             "description": "The rendered scopes the caller lacks."
+          }
+        }
+      },
+      "InvalidPublicHostBody": {
+        "type": "object",
+        "description": "Wire shape for a 400 `InvalidPublicHost` — a `PUT /tunnel` whose\n`publicHost` isn't a bare `host[:port]`. Matches the TS\n`InvalidPublicHostSchema`.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         }
       },
