@@ -207,8 +207,9 @@ const exerciseIdOf = (plannedWorkoutExercise: PlannedWorkoutExercise): string =>
 /**
  * A resource {@link submit} writes, for the app to mint its id: the workout
  * `Procedure`; the `Observation` of the set at `setIndex` (from 0, in the
- * order entered) of an exercise; or the next `ServiceRequest` at an
- * exercise with sets entered, used only when its load moves.
+ * order entered) of an exercise, whose ids must sort in `setIndex` order
+ * (see {@link submit}); or the next `ServiceRequest` at an exercise with sets
+ * entered, used only when its load moves.
  */
 type IdToMint =
   | { readonly resourceType: 'Procedure' }
@@ -352,8 +353,9 @@ const submitExercise = ({
  * @remarks
  * Sets are not timed one by one: each set's `effectivePeriod` is the
  * workout's span, `start` to `end`, so sets of one workout tie on start and
- * `ExerciseSetObservation.sortByStart` keeps them in the order given — the
- * order entered here, the server's after a search.
+ * `ExerciseSetObservation.sortByStart` orders them by `id`. Mint the
+ * `Observation` ids of an exercise so they sort in `setIndex` order (a
+ * zero-padded index), or a later read judges its sets in another order.
  *
  * An exercise with no set entered is no attempt at it: its `ExerciseRequest`
  * is left untouched, a hold with nothing written, whatever its earlier

@@ -200,15 +200,20 @@ const serviceRequestIdOf = (exerciseSetObservation: Type): string =>
 const procedureIdOf = (exerciseSetObservation: Type): string =>
   referencedIdAmong(exerciseSetObservation.partOf, 'Procedure')
 
-/** Earliest first by {@link startOf}. */
-const byStart: Order.Order<Type> = Order.mapInput(DateTime.Order, startOf)
+/** Earliest first by {@link startOf}, then by `id`. */
+const byStart: Order.Order<Type> = Order.combine(
+  Order.mapInput(DateTime.Order, startOf),
+  Order.mapInput(Order.string, (exerciseSetObservation: Type) => exerciseSetObservation.id)
+)
 
 /**
- * The set observations earliest first, by {@link startOf}.
+ * The set observations earliest first, by {@link startOf}, and by `id` among
+ * sets started at the same instant.
  *
  * @remarks
- * A stable sort: sets started at the same instant keep their input order, so
- * of two such sets the later one in the input counts as the more recent.
+ * The `id` tie-break makes the order independent of the input's, which after
+ * a server search is the server's: the sets of a workout logged in one
+ * submission share its span, so their ids say which set came first.
  */
 const sortByStart = (exerciseSetObservations: readonly Type[]): readonly Type[] =>
   Arr.sort(exerciseSetObservations, byStart)

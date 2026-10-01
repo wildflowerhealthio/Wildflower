@@ -182,7 +182,8 @@ The React layer and the app route are not built yet.
   `ExerciseRequest.makeForEachExercise` asks per exercise) and passed in, so a
   retry that mints the same ids overwrites rather than duplicates. Sets are
   not timed one by one: each set's `effectivePeriod` is the workout's span, so
-  the sets of a workout tie on start and keep the order they are listed in.
+  the sets of a workout tie on start and `ExerciseSetObservation.sortByStart`
+  orders them by `id`: the app mints an exercise's set ids to sort in set order.
   An exercise with no set entered is no attempt: its `ExerciseRequest` is left
   untouched (a hold), while the workout still completes the day.
 - **Loads carry their unit, and a rule moves only its own unit.** A
