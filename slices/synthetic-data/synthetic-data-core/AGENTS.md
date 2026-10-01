@@ -5,8 +5,9 @@ importers, as a `Snapshot` of a FHIR store at one as-of date and generator
 commit — its header and its entries, and the files a static host serves them
 as — and the reader that fetches them back. It knows nothing of any one
 pharmacy or importer: it lays out importer output. No DOM, no `fs`, no React
-— the data repo's emit step writes the files, and the synthetic data app
-reads them through `Snapshot.Reader`, with a `FileFetcher` it supplies.
+— the data repo's emit step writes the files, and the synthetic data loader,
+`synthetic-data-react`, reads them through `Snapshot.Reader`, with a
+`FileFetcher` it supplies, and writes what it reads to a FHIR server.
 
 ## Shape
 
@@ -104,7 +105,7 @@ maxEntries)` orders `StoredResource`s, as `Reader.readResource` gives them,
 records with a re-identified image, and generated Shoppers family accounts,
 through the real importers, and serves a snapshot's files from memory as a
 `Snapshot.Reader.FileFetcher` (`fetcherOf`) — for this package's tests and
-its readers'.
+`synthetic-data-react`'s.
 
 ## Layering
 

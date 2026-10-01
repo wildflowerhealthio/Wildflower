@@ -66,7 +66,9 @@ importer (`synthetic-data-rexall-be-well` writes a letsbewell.ca session HAR,
 `synthetic-data-fhir-sync-pebble` the Observations a Pebble watch syncs, and
 `synthetic-data-dicom` a de-identified image re-identified as a person);
 `synthetic-data-core` assembles their importer output as a `Snapshot`: its
-entries' files and an `index.json` header.
+entries' files and an `index.json` header, and reads them back;
+`synthetic-data-react` loads a published snapshot into a FHIR server, mounted
+by `apps/synthetic-data-app`.
 The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
 `lifting` holds a person's strength-training plan — see

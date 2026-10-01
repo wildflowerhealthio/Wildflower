@@ -1,0 +1,73 @@
+/*
+ * The loader screen: the address form, then the snapshot and its members, then
+ * the load's progress or results. Colours and spacing are Tundra tokens, so
+ * dark mode needs no rule here.
+ */
+.synthetic-data-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.synthetic-data-screen__address-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 40rem;
+}
+
+.synthetic-data-screen__problem {
+  font-size: var(--font-size-2);
+  color: var(--color-red-3);
+}
+
+.synthetic-data-screen__snapshot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.synthetic-data-screen__snapshot-line {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+.synthetic-data-screen__member {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+}
+
+.synthetic-data-screen__member-name {
+  font-weight: var(--font-weight-3);
+}
+
+.synthetic-data-screen__member-summary {
+  color: var(--color-neutral-5);
+}
+
+.synthetic-data-screen__member-count {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-5);
+}
+
+.synthetic-data-screen__status {
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}
+
+.synthetic-data-screen__unreadable {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  color: var(--color-red-3);
+}
+
+.synthetic-data-screen__failures {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--font-size-2);
+  overflow-wrap: anywhere;
+}
