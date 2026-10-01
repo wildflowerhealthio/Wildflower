@@ -179,6 +179,30 @@ const make = (
   }
 }
 
+/** The paths of the entries a reader loads for some of a snapshot's members. */
+interface MemberPaths {
+  /** Resource paths, each once, in path order. */
+  readonly resources: readonly string[]
+  /** Attachment paths, each once, in path order. */
+  readonly staticFiles: readonly string[]
+}
+
+/**
+ * The paths of the entries of the members `memberKeys` names: an entry two of
+ * them share (a family account's HAR, its Patient) is listed once.
+ *
+ * @param header - A decoded header
+ * @param memberKeys - The keys of the members to load; a key the header does
+ *   not list selects nothing
+ */
+const pathsOf = (header: Header, memberKeys: ReadonlySet<string>): MemberPaths => {
+  const members = header.people.filter((member) => memberKeys.has(member.key))
+  return {
+    resources: sortedDistinct(members.flatMap((member) => member.resources)),
+    staticFiles: sortedDistinct(members.flatMap((member) => member.staticFiles)),
+  }
+}
+
 export {
   FileSchema,
   GENERATOR_NAME,
@@ -186,7 +210,8 @@ export {
   MemberListingSchema,
   MemberSchema,
   PATH,
+  pathsOf,
   HeaderSchema as Schema,
   SCHEMA_VERSION,
 }
-export type { Header, Member, MemberEntries, MemberListing }
+export type { Header, Member, MemberEntries, MemberListing, MemberPaths }

@@ -6,6 +6,8 @@ import { MetaSource } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import type * as SnapshotFile from './snapshot-file.ts'
+import * as Snapshot from './snapshot.ts'
 import {
   hashOf,
   importRexallPerson,
@@ -14,9 +16,7 @@ import {
   type RexallPersonCase,
   shoppersFamilyCaseArbitrary,
   type ShoppersFamilyCase,
-} from './imports.test-helpers.ts'
-import type * as SnapshotFile from './snapshot-file.ts'
-import * as Snapshot from './snapshot.ts'
+} from './test-helpers.ts'
 
 /**
  * Whole snapshots assembled from generated records through the real
