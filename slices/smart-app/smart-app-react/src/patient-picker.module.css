@@ -1,0 +1,29 @@
+/*
+ * The patient picker: a heading over the rows, in the page's column. Tokens
+ * only, so dark mode needs no rule here; the heading uses tundra's built-in
+ * `text-heading-5` class and the rows are `react-tundraish`'s `ItemList`.
+ */
+.patient-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 40rem;
+}
+
+/* A server with no patients: a quiet line under the "All patients" row. */
+.patient-picker__empty {
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}
+
+/* "More patients": link text, under the rows. */
+.patient-picker__more {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-3);
+  color: var(--color-accent);
+  cursor: pointer;
+}

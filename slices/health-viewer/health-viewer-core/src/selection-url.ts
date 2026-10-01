@@ -3,7 +3,10 @@ import { ValueAxis } from 'health-viewer-fundamentals'
 import { isKnownSeriesId } from './series-sources.ts'
 import { type RangePreset, isRangePreset } from './time-range.ts'
 
-/** Everything the viewer's URL carries: what is plotted, over what window, for whom. */
+/**
+ * What the viewer's URL carries of its own: what is plotted, and over what
+ * window. Whose record is open is `smart-app-react`'s `?patient=`, beside it.
+ */
 interface Selection {
   /**
    * The plotted series' ids, in selection order — the order that decides axis
@@ -12,8 +15,6 @@ interface Selection {
    */
   readonly series: readonly string[]
   readonly range: RangePreset
-  /** The patient whose record is open, or `null` for the signed-in patient's own. */
-  readonly patient: string | null
 }
 
 /** Query key repeated once per selected series. */
@@ -22,22 +23,27 @@ const SERIES_PARAM = 's'
 /** Query key holding the {@link RangePreset}. */
 const RANGE_PARAM = 'r'
 
-/** Query key holding the patient id. */
-const PATIENT_PARAM = 'patient'
-
 /** The preset a selection falls back to when the URL names none or names a bad one. */
 const DEFAULT_RANGE: RangePreset = 'all'
 
-/**
- * Render a selection as query parameters — one `s` per series in order, one
- * `r`, and a `patient` only when set, so the shortest URL is the common case.
- */
+/** Render a selection as query parameters — one `s` per series in order, and one `r`. */
 const encodeSelection = (selection: Selection): URLSearchParams => {
   const params = new URLSearchParams()
   for (const id of selection.series) params.append(SERIES_PARAM, id)
   params.set(RANGE_PARAM, selection.range)
-  if (selection.patient !== null) params.set(PATIENT_PARAM, selection.patient)
   return params
+}
+
+/**
+ * A copy of `params` with `selection` as its `s` and `r`, and every other key
+ * kept as it was — the page's `?patient=` and anything else the URL carries.
+ */
+const withSelection = (params: URLSearchParams, selection: Selection): URLSearchParams => {
+  const selectionParams = new URLSearchParams(params)
+  selectionParams.delete(SERIES_PARAM)
+  selectionParams.delete(RANGE_PARAM)
+  for (const [key, value] of encodeSelection(selection)) selectionParams.append(key, value)
+  return selectionParams
 }
 
 /**
@@ -63,9 +69,8 @@ const decodeSelection = (params: URLSearchParams): Selection => {
   return {
     series,
     range: range !== null && isRangePreset(range) ? range : DEFAULT_RANGE,
-    patient: params.get(PATIENT_PARAM),
   }
 }
 
 export type { Selection }
-export { DEFAULT_RANGE, PATIENT_PARAM, RANGE_PARAM, SERIES_PARAM, decodeSelection, encodeSelection }
+export { DEFAULT_RANGE, RANGE_PARAM, SERIES_PARAM, decodeSelection, encodeSelection, withSelection }

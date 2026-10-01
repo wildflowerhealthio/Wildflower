@@ -59,8 +59,10 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// any install `0006` left short; `0012` seeds the hosted owner UI's
 /// (`wildflower-react`) client and `0013` returns it to its app root; `0015` /
 /// `0016` repair installs that ran only one of the two `0009`s; `0017` seeds
-/// FHIR Sync for Pebble's client and `0018` widens its Observation scope; and
-/// `0019` seeds Lifting's. Because each migration runs only once
+/// FHIR Sync for Pebble's client and `0018` widens its Observation scope;
+/// `0019` seeds Lifting's; and `0020` drops `launch/patient` from the
+/// Medications and Lifting clients, which pick the patient in the app, giving
+/// Medications `system/Patient.rs` for its picker. Because each migration runs only once
 /// per database, an upgrade neither re-drops nor re-seeds.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -756,8 +758,12 @@ mod tests {
             "no migration through 0018 seeds lifting-app"
         );
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0019");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0019"),
+        )
+        .expect("upgrade through 0019");
 
         let redirects: Vec<Name> =
             diesel::sql_query("SELECT redirect_uris AS name FROM clients WHERE client_id = ?")
@@ -777,6 +783,67 @@ mod tests {
             scopes[0].name,
             r#"["launch","launch/patient","openid","fhirUser","system/Patient.rs","system/PlanDefinition.crus","system/ServiceRequest.crus","system/Procedure.crus","system/Observation.crus"]"#,
         );
+    }
+
+    /// The scopes a client allows, as its stored JSON array.
+    fn allowed_scopes_of(conn: &mut SqliteConnection, client_id: &str) -> String {
+        let scopes: Vec<Name> =
+            diesel::sql_query("SELECT allowed_scopes AS name FROM clients WHERE client_id = ?")
+                .bind::<diesel::sql_types::Text, _>(client_id)
+                .load(conn)
+                .expect("query scopes");
+        scopes
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| panic!("{client_id} is seeded"))
+            .name
+    }
+
+    /// An install already at `0019` — Medications and Lifting allowing
+    /// `launch/patient` — is moved by `0020` onto the in-app patient pick: both
+    /// clients lose `launch/patient`, and Medications gains `system/Patient.rs`
+    /// for its picker. Reverting `0020` restores what `0019` left.
+    #[test]
+    fn an_install_already_at_0019_drops_launch_patient_from_the_app_clients() {
+        const MEDICATIONS_AT_0019: &str = r#"["launch","launch/patient","openid","fhirUser","system/MedicationRequest.rs","system/Medication.rs"]"#;
+        const LIFTING_AT_0019: &str = r#"["launch","launch/patient","openid","fhirUser","system/Patient.rs","system/PlanDefinition.crus","system/ServiceRequest.crus","system/Procedure.crus","system/Observation.crus"]"#;
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0019"),
+        )
+        .expect("migrate to 0019");
+        assert_eq!(
+            allowed_scopes_of(&mut conn, "medications-app"),
+            MEDICATIONS_AT_0019
+        );
+        assert_eq!(allowed_scopes_of(&mut conn, "lifting-app"), LIFTING_AT_0019);
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0020");
+        assert_eq!(
+            allowed_scopes_of(&mut conn, "medications-app"),
+            r#"["launch","openid","fhirUser","system/MedicationRequest.rs","system/Medication.rs","system/Patient.rs"]"#,
+        );
+        assert_eq!(
+            allowed_scopes_of(&mut conn, "lifting-app"),
+            r#"["launch","openid","fhirUser","system/Patient.rs","system/PlanDefinition.crus","system/ServiceRequest.crus","system/Procedure.crus","system/Observation.crus"]"#,
+        );
+
+        let migration_0020 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0020"))
+            .expect("0020 is embedded");
+        migration_0020.revert(&mut conn).expect("revert 0020");
+        assert_eq!(
+            allowed_scopes_of(&mut conn, "medications-app"),
+            MEDICATIONS_AT_0019
+        );
+        assert_eq!(allowed_scopes_of(&mut conn, "lifting-app"), LIFTING_AT_0019);
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced

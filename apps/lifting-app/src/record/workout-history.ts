@@ -37,6 +37,7 @@ interface WorkoutHistory {
 /**
  * Read the lifter's whole workout history: every lifting `ExerciseRequest` in
  * any status and every workout, then the sets `part-of` each completed one.
+ * `patientId` `null` reads every patient's, unscoped.
  *
  * @remarks
  * One set search per completed workout — the groups the history shows. A
@@ -45,7 +46,7 @@ interface WorkoutHistory {
  */
 const readWorkoutHistory = (
   client: SmartClient,
-  patientId: string
+  patientId: string | null
 ): Effect.Effect<WorkoutHistory, ReadFailure> =>
   Effect.gen(function* () {
     const [serviceRequests, procedures] = yield* Effect.all(

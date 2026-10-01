@@ -1,4 +1,4 @@
-import { type Selection, decodeSelection, encodeSelection } from 'health-viewer-core'
+import { type Selection, decodeSelection, withSelection } from 'health-viewer-core'
 import { useCallback, useEffect, useState } from 'react'
 
 /** A change to the selection, computed from the latest one. */
@@ -15,18 +15,19 @@ interface UrlSelection {
   readonly updateSelection: (update: SelectionUpdate) => void
 }
 
-/** Put `selection` in the address bar, replacing the current entry's query. */
+/** Put `selection` in the address bar, keeping every other query key (`?patient=` among them). */
 const writeSelectionToUrl = (selection: Selection): void => {
   const url = new URL(window.location.href)
-  url.search = encodeSelection(selection).toString()
+  url.search = withSelection(url.searchParams, selection).toString()
   window.history.replaceState(window.history.state, '', url)
 }
 
 /**
  * The selection, whose only home is the URL: read once with `decodeSelection`
- * when the page opens, and written back with `encodeSelection` through
+ * when the page opens, and written back with `withSelection` through
  * `history.replaceState` after every change (never `pushState` — a checkbox
- * is not a navigation).
+ * is not a navigation). Only its own keys are written; the patient's
+ * `?patient=` is `smart-app-react`'s `usePatientChoice`'s.
  *
  * @remarks
  * Every change is an updater over the latest selection, so a range change and

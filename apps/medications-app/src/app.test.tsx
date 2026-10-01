@@ -2,34 +2,47 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Schema } from 'effect'
 import { withMandatoryId } from 'fhir-r4/data-types'
-import { MedicationRequest } from 'fhir-r4/resources'
+import { MedicationRequest, Patient } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 import type { InteractionCatalog } from 'medication-interaction-core'
 import { StrictMode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type { MedicationRequestPage, SmartHandshake } from 'fhir-r4-react/smart'
+import type {
+  MedicationRequestCursor,
+  MedicationRequestPage,
+  PatientPage,
+  SmartHandshake,
+} from 'fhir-r4-react/smart'
 
-// The three seams `App` composes: the handshake hook (its state is driven per
-// test), the paged MedicationRequest read (whose page / rejection is stubbed),
-// and the DDInter catalog load (unresolved by default so interaction tests
-// control it). The real `useSmartHandshake` dedup is covered in the slice;
-// here we drive its result to exercise `App`'s own query wiring, paging, the
-// load-everything driver, and error surfacing.
-const { handshakeMock, fetchMock, catalogMock, launchFailureRedirectMock } = vi.hoisted(() => ({
-  handshakeMock: vi.fn<() => SmartHandshake>(),
-  fetchMock: vi.fn<() => Promise<MedicationRequestPage>>(),
-  catalogMock: vi.fn<() => Promise<unknown>>(),
-  launchFailureRedirectMock: vi.fn<(handshake: SmartHandshake) => void>(),
-}))
+// The seams `App` composes: the handshake hook (its state is driven per
+// test), the paged MedicationRequest read (whose page / rejection is stubbed,
+// and whose cursor records the patient scope), the Patient reads behind the
+// patient picker and the patient line, and the DDInter catalog load
+// (unresolved by default so interaction tests control it). The real
+// `useSmartHandshake` dedup is covered in the slice, and the picker in
+// `smart-app-react`; here we drive their results to exercise `App`'s own query
+// wiring, paging, the load-everything driver, and error surfacing.
+const { handshakeMock, fetchMock, patientPageMock, catalogMock, launchFailureRedirectMock } =
+  vi.hoisted(() => ({
+    handshakeMock: vi.fn<() => SmartHandshake>(),
+    fetchMock: vi.fn<(cursor: MedicationRequestCursor) => Promise<MedicationRequestPage>>(),
+    patientPageMock: vi.fn<() => Promise<PatientPage>>(),
+    catalogMock: vi.fn<() => Promise<unknown>>(),
+    launchFailureRedirectMock: vi.fn<(handshake: SmartHandshake) => void>(),
+  }))
 vi.mock('fhir-r4-react/smart', async () => {
-  const { Effect } = await import('effect')
+  const { Effect, Option: EffectOption } = await import('effect')
   return {
     useSmartHandshake: () => handshakeMock(),
     useLaunchFailureRedirect: (handshake: SmartHandshake) => {
       launchFailureRedirectMock(handshake)
     },
-    fetchMedicationRequestPage: () => Effect.promise(() => fetchMock()),
+    fetchMedicationRequestPage: (_client: unknown, cursor: MedicationRequestCursor) =>
+      Effect.promise(() => fetchMock(cursor)),
+    fetchPatientPage: () => Effect.promise(() => patientPageMock()),
+    fetchPatient: (_client: unknown, patientId: string) =>
+      Effect.succeed(EffectOption.some({ resourceType: 'Patient', id: patientId, name: [] })),
   }
 })
 vi.mock('./interaction-catalog.ts', () => ({
@@ -38,12 +51,32 @@ vi.mock('./interaction-catalog.ts', () => ({
 
 const { App } = await import('./app.tsx')
 
-// The client is only ever forwarded to the (mocked) read, so its shape is unused.
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, forwarded to a mock
-const readyHandshake: SmartHandshake = { kind: 'ready', client: {} as unknown as Client }
+/** A completed handshake whose launch put `patientId` in context. */
+const handshakeLaunchedWith = (patientId: string | null): SmartHandshake => ({
+  kind: 'ready',
+  // The client is only forwarded to the (mocked) reads, and its launch patient read.
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, forwarded to a mock
+  client: { patient: { id: patientId } } as unknown as Client,
+})
+
+/** A launch with patient `p1` in context, which the app opens on. */
+const readyHandshake = handshakeLaunchedWith('p1')
 
 /** An empty terminal page — no rows, no further cursor. */
 const lastPage: MedicationRequestPage = { items: [], nextPageUrl: null, droppedEntryCount: 0 }
+
+/** One page of patients for the picker: Ada Lovelace, `p2`. */
+const patientPage: PatientPage = {
+  items: [
+    Schema.decodeUnknownSync(Patient.Schema)({
+      resourceType: 'Patient',
+      id: 'p2',
+      name: [{ given: ['Ada'], family: 'Lovelace' }],
+    }),
+  ],
+  nextPageUrl: null,
+  droppedEntryCount: 0,
+}
 
 /** A non-terminal empty page pointing at the given next cursor. */
 const pageTo = (next: number): MedicationRequestPage => ({
@@ -112,11 +145,16 @@ const awaitFirstPage = async (): Promise<void> => {
   })
 }
 
+beforeEach(() => {
+  window.history.replaceState(null, '', '/medications-app/')
+})
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   handshakeMock.mockReset()
   fetchMock.mockReset()
+  patientPageMock.mockReset()
   catalogMock.mockReset()
   launchFailureRedirectMock.mockReset()
   // Unresolved by default: interaction tests opt into a resolved catalog.
@@ -136,6 +174,72 @@ describe('App', () => {
     await awaitFirstPage()
     expect(screen.queryByText(/Could not load medications/)).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("should read the launch's patient's MedicationRequests, filtered by patient", async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue(lastPage)
+
+    // Act
+    renderApp()
+
+    // Assert
+    await awaitFirstPage()
+    expect(fetchMock).toHaveBeenCalledWith({ patientId: 'p1' })
+    expect(screen.getByRole('button', { name: 'Change patient' })).toBeDefined()
+  })
+
+  it('should offer the patient picker with no patient in context, reading no MedicationRequests', async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(handshakeLaunchedWith(null))
+    patientPageMock.mockResolvedValue(patientPage)
+
+    // Act
+    renderApp()
+
+    // Assert
+    expect(await screen.findByRole('button', { name: /All patients/ })).toBeDefined()
+    expect(screen.getByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { pick: /Ada Lovelace/, patientParam: 'p2', cursor: { patientId: 'p2' } },
+    { pick: /All patients/, patientParam: '*', cursor: { patientId: null } },
+  ])(
+    'should read the MedicationRequests of the choice $patientParam, and write it to the URL',
+    async ({ pick, patientParam, cursor }) => {
+      // Arrange
+      handshakeMock.mockReturnValue(handshakeLaunchedWith(null))
+      patientPageMock.mockResolvedValue(patientPage)
+      fetchMock.mockResolvedValue(lastPage)
+      renderApp()
+
+      // Act
+      fireEvent.click(await screen.findByRole('button', { name: pick }))
+
+      // Assert
+      await awaitFirstPage()
+      expect(fetchMock).toHaveBeenCalledWith(cursor)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(new URLSearchParams(window.location.search).get('patient')).toBe(patientParam)
+    }
+  )
+
+  it('should go back to the picker on Change patient', async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue(lastPage)
+    patientPageMock.mockResolvedValue(patientPage)
+    renderApp()
+    await awaitFirstPage()
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
   })
 
   it('should render one row per request, keyed by its server id', async () => {

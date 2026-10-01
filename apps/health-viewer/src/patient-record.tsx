@@ -134,14 +134,15 @@ const RecordView = ({
 interface PatientRecordProps extends SelectionProps {
   /** The SMART client the record is read through. */
   readonly client: SmartClient
-  /** The patient whose record is read. */
-  readonly patientId: string
+  /** The patient whose record is read, or `null` for every patient's together. */
+  readonly patientId: string | null
 }
 
 /**
- * A patient's record: `Loading…` until every source has a page, the failed
- * read's line if a first page fails, and {@link RecordView} from then on,
- * re-rendering as later pages land.
+ * A patient's record — or every patient's, read unscoped and charted
+ * together: `Loading…` until every source has a page, the failed read's line
+ * if a first page fails, and {@link RecordView} from then on, re-rendering as
+ * later pages land.
  */
 const PatientRecord = ({
   client,

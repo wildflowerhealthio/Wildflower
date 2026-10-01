@@ -3,8 +3,8 @@ import type { SmartAppTelemetry } from 'smart-app-react'
 
 /**
  * The scopes the lifting app asks for, the same for an EHR launch and a
- * standalone connect: EHR launch + patient context, then read the patient and
- * read and write the four resource types a lifter's program is stored as —
+ * standalone connect: EHR launch, then read Patients, and read and write the
+ * four resource types a lifter's program is stored as —
  * the training plan definition (`PlanDefinition`), the `ServiceRequest` per
  * exercise, a `Procedure` per workout and an `Observation` per set.
  *
@@ -12,9 +12,12 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * a `PUT /{type}/{client-minted id}` entry in one batch `Bundle` — an update
  * that creates the resource the first time — so a server that gates
  * update-as-create on `create` accepts it; the app never deletes. `system/`
- * rather than `patient/`, as the sibling apps ask: every search is scoped to
- * the launch's patient with `patient=`, and every resource written names that
- * patient as its `subject` (a `PlanDefinition` names no one).
+ * only, with no `launch/patient`, as the sibling apps ask: the reader picks
+ * the lifter in the app (`smart-app-react`'s `PatientPicker`; an EHR launch
+ * that puts a patient in context opens on them), every search is scoped to
+ * them with `patient=`, and every resource written names them as its
+ * `subject` (a `PlanDefinition` names no one). "All patients" searches
+ * unscoped and writes nothing.
  *
  * The OAuth clients this app launches through must allow exactly this set:
  * a scope added here alone fails `/authorize` against a Wildflower host.
@@ -26,7 +29,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * authorize request over it, dropping `launch` is the first thing to try.
  */
 const LIFTING_SCOPE =
-  'launch launch/patient openid fhirUser system/Patient.rs system/PlanDefinition.crus system/ServiceRequest.crus system/Procedure.crus system/Observation.crus'
+  'launch openid fhirUser system/Patient.rs system/PlanDefinition.crus system/ServiceRequest.crus system/Procedure.crus system/Observation.crus'
 
 /**
  * The OAuth client the build launches as, which depends on how it is served:
@@ -56,7 +59,7 @@ const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
  * app root renders when the URL carries no OAuth callback), where the user
  * picks the FHIR server rather than the EHR naming it. The same client and
  * scopes as {@link smartConfig}, so its redirect URI (the app root) resolves
- * the same way, and `launch/patient` asks the server to pick the lifter.
+ * the same way.
  */
 const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: LIFTING_CLIENT_ID,

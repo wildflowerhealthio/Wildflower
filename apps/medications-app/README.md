@@ -44,9 +44,20 @@ then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call,
 which shows a loading line under `BrandBar` and starts the authorize redirect,
 sending a failed launch back to the app root as `?launchError`.
 
+## The patient
+
+`<App />` reads one patient's `MedicationRequest`s, or every patient's.
+Whose is `smart-app-react`'s `usePatientChoice`: the URL's `?patient=`, else
+the launch's `client.patient.id`, else its `PatientPicker` ("All patients"
+first, then every patient by name and birth date). The choice is written to the
+URL as `?patient=<id>`, or `?patient=*` for All patients. One patient's
+requests are searched with `patient=`; All patients searches unscoped. Under
+the H1, `PatientChoiceLine` names the choice with a "Change patient" link back
+to the picker, above the chunk bar.
+
 ## Views
 
-The header toggle switches `<App />` between two views over the same loaded
+The header toggle switches `<App />` between views over the same loaded
 `MedicationRequest`s:
 
 - **Medications** — `medication-sponsorship-react`'s list with sponsorship
@@ -101,6 +112,21 @@ launch:
 both the production and the dev registration — the host's redirect resolver looks
 an app up by `client_id`, so the app-relative redirect only resolves when the two
 are equal.
+
+Both launches request one scope string, `MEDICATIONS_SCOPE`:
+
+```text
+launch openid fhirUser system/MedicationRequest.rs system/Medication.rs system/Patient.rs
+```
+
+`system/` scopes only, with no `launch/patient`: the patient is picked in the
+app, so the authorization server binds none to the token. `system/Patient.rs`
+reads the patients the picker lists and the one named under the H1. The
+`medications-app` client (its scopes as gatekeeper migration
+`0020_first_party_apps_pick_the_patient` left them) and the debug-only
+`medications-app-dev` client (`seed_dev_app_clients` in
+`gatekeeper-rust/src/seeding.rs`) allow exactly this set; a test there reads
+`src/config.ts` and pins both clients to it.
 
 ## Running the dev server
 

@@ -18,6 +18,7 @@ import {
 } from 'lifting-core'
 import { made } from 'lifting-core/test-helpers'
 import { createElement, type ReactNode, StrictMode } from 'react'
+import type { PatientChoice } from 'smart-app-react'
 import { vi } from 'vite-plus/test'
 
 import {
@@ -47,6 +48,15 @@ import { LiftingApp } from './lifting-app/lifting-app.tsx'
 
 const PATIENT_ID = 'pat-1'
 const SUBJECT = { reference: `Patient/${PATIENT_ID}` }
+/** The lifter's own `Patient`, which the app names under its title. */
+const PATIENT_WIRE = {
+  resourceType: 'Patient',
+  id: PATIENT_ID,
+  name: [{ given: ['Ada'], family: 'Lovelace' }],
+  birthDate: '1990-01-01',
+}
+/** The lifter's choice, as `usePatientChoice` hands it over. */
+const LIFTER_CHOICE: PatientChoice = { kind: 'patient', patientId: PATIENT_ID }
 /** When every workout in these tests is submitted. */
 const SUBMITTED_AT = '2026-09-28T18:30:00.000Z'
 
@@ -62,11 +72,16 @@ const seededTrainingPlanDefinition =
  */
 const END_TO_END_TIMEOUT_MILLIS = 20_000
 
-/** Start a test: an empty server, and the clock stopped at {@link SUBMITTED_AT}. */
+/**
+ * Start a test: a server holding only the lifter's `Patient`, and the clock
+ * stopped at {@link SUBMITTED_AT}.
+ */
 const startLiftingTest = (): FakeFhirServer => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(SUBMITTED_AT))
-  return fakeFhirServer()
+  const server = fakeFhirServer()
+  server.seedWire(PATIENT_WIRE)
+  return server
 }
 
 /** End a test: unmount what it rendered and restart the clock. */
@@ -226,8 +241,14 @@ const renderWithQueryClient = (node: ReactNode, queryClient = testQueryClient())
 const testQueryClient = (): QueryClient =>
   new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-/** Mount the lifting screens for {@link PATIENT_ID} over `server`, through the real runtime. */
-const mountLiftingApp = (server: FakeFhirServer): void => {
+/**
+ * Mount the lifting screens over `server`, through the real runtime, for
+ * `patientChoice` — the lifter {@link PATIENT_ID} unless told otherwise.
+ */
+const mountLiftingApp = (
+  server: FakeFhirServer,
+  patientChoice: PatientChoice = LIFTER_CHOICE
+): void => {
   const queryClient = testQueryClient()
   const { runAuthed } = buildSmartRouterContext(
     { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
@@ -237,8 +258,9 @@ const mountLiftingApp = (server: FakeFhirServer): void => {
   renderWithQueryClient(
     createElement(LiftingApp, {
       client: server.clientFor(PATIENT_ID),
-      patientId: PATIENT_ID,
       runAuthed,
+      patientChoice,
+      onPatientChange: () => undefined,
     }),
     queryClient
   )

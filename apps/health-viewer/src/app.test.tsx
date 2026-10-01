@@ -38,9 +38,13 @@ type FhirResponses = Readonly<Record<string, () => Promise<unknown>>>
 /** A request no entry in the table answers — a test that forgot a response. */
 class UnexpectedRequestError extends Error {}
 
+/** Every URL the stub clients were asked for, in order. */
+const requestedUrls: string[] = []
+
 /** A SMART client whose reads answer from `responses`, launched with `patientId` in context. */
 const stubClient = (patientId: string | null, responses: FhirResponses): SmartClient => {
   const request = (url: string): Promise<unknown> => {
+    requestedUrls.push(url)
     const prefix = Object.keys(responses)
       .filter((candidate) => url.startsWith(candidate))
       .toSorted((left, right) => right.length - left.length)[0]
@@ -87,6 +91,13 @@ const patientWire = {
   id: 'p1',
   name: [{ given: ['Ada'], family: 'Lovelace' }],
   birthDate: '1815-12-10',
+}
+
+const otherPatientWire = {
+  resourceType: 'Patient',
+  id: 'p2',
+  name: [{ given: ['Grace'], family: 'Hopper' }],
+  birthDate: '1906-12-09',
 }
 
 /** A laboratory reading of `code`, e.g. glucose — dated unless `dated` is `false`. */
@@ -192,8 +203,15 @@ const seriesCheckbox = (label: string): HTMLElement =>
 const selectionInUrl = (): ReturnType<typeof decodeSelection> =>
   decodeSelection(new URLSearchParams(window.location.search))
 
+/** The query of each record read the app issued for `resourceType`, in order. */
+const recordReadQueries = (resourceType: string): readonly URLSearchParams[] =>
+  requestedUrls
+    .filter((url) => url.startsWith(`${resourceType}?`))
+    .map((url) => new URLSearchParams(url.slice(url.indexOf('?') + 1)))
+
 beforeEach(() => {
   window.history.replaceState(null, '', '/health-viewer-app/')
+  requestedUrls.length = 0
 })
 
 afterEach(() => {
@@ -255,6 +273,76 @@ describe('App', () => {
     expect(new URLSearchParams(window.location.search).get('patient')).toBe('p1')
     expect(await screen.findByRole('button', { name: /Laboratory/ })).toBeDefined()
     expect(screen.getByText('Ada Lovelace · born 1815-12-10')).toBeDefined()
+    expect(recordReadQueries('Observation').map((query) => query.get('patient'))).toEqual(['p1'])
+  })
+
+  it("should chart every patient's records together for All patients, read unscoped", async () => {
+    // Arrange — the two series belong to different patients
+    launchWith(
+      stubClient(null, {
+        ...recordResponses(),
+        'Patient?': answer(bundleOf([patientWire, otherPatientWire])),
+      })
+    )
+    renderApp()
+
+    // Act
+    fireEvent.click(await screen.findByRole('button', { name: /All patients/ }))
+
+    // Assert — both reads are unscoped, the choice is in the URL and named under the title
+    expect(await waitFor(() => seriesCheckbox(glucoseSeries?.label ?? ''))).toBeDefined()
+    expect(seriesCheckbox(metforminSeries?.label ?? '')).toBeDefined()
+    expect(new URLSearchParams(window.location.search).get('patient')).toBe('*')
+    expect(screen.getByText('All patients')).toBeDefined()
+    for (const resourceType of ['Observation', 'MedicationRequest']) {
+      const queries = recordReadQueries(resourceType)
+      expect(queries).not.toHaveLength(0)
+      expect(queries.every((query) => !query.has('patient'))).toBe(true)
+    }
+  })
+
+  it("should open on the launch's patient, and change to another from the picker", async () => {
+    // Arrange
+    launchWith(
+      stubClient('p1', {
+        ...recordResponses(),
+        'Patient/p2': answer(otherPatientWire),
+        'Patient?': answer(bundleOf([patientWire, otherPatientWire])),
+      })
+    )
+    renderApp()
+    await screen.findByText('Ada Lovelace · born 1815-12-10')
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Grace Hopper/ }))
+
+    // Assert — the other patient's record is read, and the choice is in the URL
+    expect(await screen.findByText('Grace Hopper · born 1906-12-09')).toBeDefined()
+    await screen.findByRole('button', { name: /Laboratory/ })
+    expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
+    expect(recordReadQueries('Observation').map((query) => query.get('patient'))).toEqual([
+      'p1',
+      'p2',
+    ])
+  })
+
+  it("should open on the URL's patient over the launch's", async () => {
+    // Arrange
+    window.history.replaceState(null, '', '/health-viewer-app/?patient=p2')
+    launchWith(
+      stubClient('p1', {
+        ...recordResponses(),
+        'Patient/p2': answer(otherPatientWire),
+      })
+    )
+
+    // Act
+    renderApp()
+
+    // Assert
+    expect(await screen.findByText('Grace Hopper · born 1906-12-09')).toBeDefined()
+    expect(recordReadQueries('Observation').map((query) => query.get('patient'))).toEqual(['p2'])
   })
 
   it('should list an observation category group and a Medications group, and plot a selected dose', async () => {
@@ -380,7 +468,6 @@ describe('App', () => {
     expect(selectionInUrl()).toEqual({
       series: [metforminSeries?.id],
       range: '90d',
-      patient: null,
     })
   })
 
