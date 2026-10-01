@@ -1,4 +1,4 @@
-import { Array as Arr, type Effect, Schema } from 'effect'
+import { Array as Arr, Effect, Schema } from 'effect'
 import {
   type BundleDecodeError,
   fetchAllResourcePages,
@@ -6,6 +6,7 @@ import {
   type ObservationBasedOnOrPartOfFirstPage,
   type ObservationResource,
   type ResourcePage,
+  type ResourcePageCursor,
   type ResourcePageCycleError,
   type ResourcePageRequestError,
 } from 'fhir-r4-react/smart'
@@ -17,7 +18,8 @@ import type { SmartClient } from '../smart-client.ts'
 /**
  * Reading a lifter's record off the FHIR server: every page of each search,
  * each resource decoded into `lifting-core`'s narrowed type, and every
- * resource that did not decode counted rather than dropped in silence.
+ * resource that did not decode counted rather than dropped in silence. Every
+ * page request over one client shares one cap, {@link SEARCH_CONCURRENCY}.
  *
  * @packageDocumentation
  */
@@ -60,24 +62,56 @@ const decodeExerciseSetObservations = (
     ),
   })
 
+/**
+ * How many page requests the reads over one client hold in flight at once,
+ * across every search they run side by side — the training record's, the
+ * history's, and every page each search follows.
+ */
+const SEARCH_CONCURRENCY = 4
+
+/** Each client's permits: one per page request in flight, {@link SEARCH_CONCURRENCY} in all. */
+const requestPermitsByClient = new WeakMap<SmartClient, Effect.Semaphore>()
+
+const requestPermitsOf = (client: SmartClient): Effect.Semaphore => {
+  const known = requestPermitsByClient.get(client)
+  if (known !== undefined) return known
+  const permits = Effect.unsafeMakeSemaphore(SEARCH_CONCURRENCY)
+  requestPermitsByClient.set(client, permits)
+  return permits
+}
+
+/**
+ * Every page of a search over `client`, each page request holding one of the
+ * client's permits while it is in flight — so reads may fan out as wide as
+ * they like and the server still sees at most {@link SEARCH_CONCURRENCY}
+ * requests at once.
+ */
+const fetchEveryPage = <A, First, E>(
+  client: SmartClient,
+  fetchPage: (
+    client: SmartClient,
+    cursor: ResourcePageCursor<First>
+  ) => Effect.Effect<ResourcePage<A>, E>,
+  first: First
+): Effect.Effect<Omit<ResourcePage<A>, 'nextPageUrl'>, E | ResourcePageCycleError> =>
+  fetchAllResourcePages(
+    (cursor) => requestPermitsOf(client).withPermits(1)(fetchPage(client, cursor)),
+    first
+  )
+
 /** Every page of the sets one first page names, over `client`. */
 const fetchEveryObservation = (
   client: SmartClient,
   first: ObservationBasedOnOrPartOfFirstPage
 ): Effect.Effect<Omit<ResourcePage<ObservationResource>, 'nextPageUrl'>, ReadFailure> =>
-  fetchAllResourcePages((cursor) => fetchObservationBasedOnOrPartOfPage(client, cursor), first)
-
-/**
- * How many per-resource searches run at once: one per active
- * `ExerciseRequest` (a handful) or per completed workout (a history's worth).
- */
-const SEARCH_CONCURRENCY = 4
+  fetchEveryPage(client, fetchObservationBasedOnOrPartOfPage, first)
 
 export {
   decodeEvery,
   type DecodedResources,
   decodeExerciseSetObservations,
   fetchEveryObservation,
+  fetchEveryPage,
   type ReadFailure,
   SEARCH_CONCURRENCY,
 }

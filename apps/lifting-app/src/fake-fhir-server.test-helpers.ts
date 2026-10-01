@@ -84,9 +84,19 @@ interface RecordedRequest {
   readonly authorization: string | undefined
 }
 
+/** A search issued (`start`) or answered (`end`). */
+interface SearchEvent {
+  readonly kind: 'start' | 'end'
+  readonly query: string
+}
+
 interface FakeFhirServer {
   /** Every search query the readers issued, in order. */
   readonly searches: string[]
+  /** Every search's start and end, in order: a search is answered a macrotask after it is issued. */
+  readonly searchEvents: SearchEvent[]
+  /** The most searches in flight at once so far. */
+  readonly mostSearchesInFlight: () => number
   /** Every request that reached the transport (the batch writes), in order. */
   readonly requests: RecordedRequest[]
   /** Every batch `Bundle`'s resources, one array per batch, in order. */
@@ -152,6 +162,7 @@ const matches = (fields: StoredResourceFields, params: URLSearchParams): boolean
 const fakeFhirServer = (): FakeFhirServer => {
   const store = new Map<string, unknown>()
   const searches: string[] = []
+  const searchEvents: SearchEvent[] = []
   const requests: RecordedRequest[] = []
   const writes: (readonly unknown[])[] = []
   let rejectOnceType: string | null = null
@@ -164,7 +175,6 @@ const fakeFhirServer = (): FakeFhirServer => {
   }
 
   const searchset = (query: string): unknown => {
-    searches.push(query)
     const resourceType = resourceTypeOfQuery(query)
     const params = searchParamsOf(query)
     const offset = Number(params.get('_offset') ?? '0')
@@ -186,10 +196,17 @@ const fakeFhirServer = (): FakeFhirServer => {
 
   const clientFor = (patientId: string | null): SmartClient => {
     const stub = {
-      request: (query: string): Promise<unknown> =>
-        searchesFail
-          ? Promise.reject(new Error('search refused by test server'))
-          : Promise.resolve(searchset(query)),
+      request: (query: string): Promise<unknown> => {
+        searches.push(query)
+        if (searchesFail) return Promise.reject(new Error('search refused by test server'))
+        searchEvents.push({ kind: 'start', query })
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            searchEvents.push({ kind: 'end', query })
+            resolve(searchset(query))
+          }, 0)
+        })
+      },
       patient: { id: patientId },
       state: { serverUrl: SERVER_URL, tokenResponse: { access_token: ACCESS_TOKEN } },
     }
@@ -229,6 +246,12 @@ const fakeFhirServer = (): FakeFhirServer => {
 
   return {
     searches,
+    searchEvents,
+    mostSearchesInFlight: () =>
+      Arr.reduce(searchEvents, { inFlight: 0, most: 0 }, ({ inFlight, most }, { kind }) => {
+        const next = kind === 'start' ? inFlight + 1 : inFlight - 1
+        return { inFlight: next, most: Math.max(most, next) }
+      }).most,
     requests,
     writes,
     transport,
@@ -275,6 +298,7 @@ export {
   ACCESS_TOKEN,
   type FakeFhirServer,
   fakeFhirServer,
+  type SearchEvent,
   idsOf,
   resourceTypeOfQuery,
   resourceTypeOfWire,

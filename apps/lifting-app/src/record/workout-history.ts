@@ -1,9 +1,5 @@
 import { Array as Arr, Effect } from 'effect'
-import {
-  fetchAllResourcePages,
-  fetchProcedurePage,
-  fetchServiceRequestPage,
-} from 'fhir-r4-react/smart'
+import { fetchProcedurePage, fetchServiceRequestPage } from 'fhir-r4-react/smart'
 import {
   ExerciseRequest,
   type ExerciseSetObservation,
@@ -16,8 +12,8 @@ import {
   decodeEvery,
   decodeExerciseSetObservations,
   fetchEveryObservation,
+  fetchEveryPage,
   type ReadFailure,
-  SEARCH_CONCURRENCY,
 } from './read-every-page.ts'
 import { NO_UNREADABLE, type UnreadableCounts } from './unreadable-counts.ts'
 
@@ -41,7 +37,8 @@ interface WorkoutHistory {
  * @remarks
  * One set search per completed workout — the groups the history shows. A
  * workout still in progress is passed over by the view, so its sets are not
- * read.
+ * read. The searches share the client's cap on requests in flight
+ * (`SEARCH_CONCURRENCY`) with any training record read alongside.
  */
 const readWorkoutHistory = (
   client: SmartClient,
@@ -50,12 +47,12 @@ const readWorkoutHistory = (
   Effect.gen(function* () {
     const [serviceRequests, procedures] = yield* Effect.all(
       [
-        fetchAllResourcePages((cursor) => fetchServiceRequestPage(client, cursor), {
+        fetchEveryPage(client, fetchServiceRequestPage, {
           patientId,
           categoryToken: LiftingFeature.TOKEN,
           instantiatesCanonicalUrl: null,
         }),
-        fetchAllResourcePages((cursor) => fetchProcedurePage(client, cursor), {
+        fetchEveryPage(client, fetchProcedurePage, {
           patientId,
           categoryToken: LiftingFeature.TOKEN,
           instantiatesCanonicalUrl: null,
@@ -73,7 +70,7 @@ const readWorkoutHistory = (
           basedOnReference: null,
           partOfReference: `Procedure/${workoutProcedure.id}`,
         }),
-      { concurrency: SEARCH_CONCURRENCY }
+      { concurrency: 'unbounded' }
     )
     const exerciseSetObservations = exerciseSetObservationReads.map(decodeExerciseSetObservations)
     return {

@@ -49,18 +49,27 @@ record and shows it under a **Today | Plan | History** toggle.
 
 ### Reads (`src/record/`)
 
-Every search is read to its last page (`fetchAllResourcePages`) and every
-resource decoded through `lifting-core`'s `Schema`; what does not decode is
-counted and said in a banner, never dropped in silence. Retracted
-`Observation`s (`Observation.RETRACTED_STATUSES`) are left out before decoding:
-withdrawn, not unreadable.
+Every search is read to its last page (`fetchEveryPage` over
+`fetchAllResourcePages`) and every resource decoded through `lifting-core`'s
+`Schema`; what does not decode is counted and said in a banner, never dropped
+in silence. Retracted `Observation`s (`Observation.RETRACTED_STATUSES`) are
+left out before decoding: withdrawn, not unreadable.
+
+Every page request over one client holds one of `SEARCH_CONCURRENCY` (4)
+permits while in flight (`read-every-page.ts`), so the training record and the
+history together never have more than that many requests at the server, however
+wide they fan out.
 
 - **The training record** (`readTrainingRecord`, `training-record.ts`), what the app opens on:
   1. The patient's active lifting `ServiceRequest`s
      (`fetchActiveServiceRequestPage`, `category` = `LiftingFeature.TOKEN`, any
      definition), decoded as `ExerciseRequest`s. None → no current program.
+     This is the app's first read, and it runs alone, every page of it: the
+     first request to the server settles the browser's network permission and
+     connection for it before anything fans out. If it fails, nothing else is
+     searched.
   2. The training plan definition they follow is the url the latest-authored
-     one instantiates. Then, at once: the lifting `PlanDefinition`s
+     one instantiates. Then, side by side under the cap: the lifting `PlanDefinition`s
      (`fetchPlanDefinitionPage`, `topic` = the same token), the one with that
      url picked; the workouts under it (`fetchProcedurePage` with the url); and
      the sets `based-on` each active request

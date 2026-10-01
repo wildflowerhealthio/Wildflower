@@ -26,7 +26,8 @@ and `smart-client.ts`. Everything else is a folder per screen or concern:
   suggests (`current-loads.ts`).
 - `record/` — the lifter's record and its reads: `training-record.ts`
   (`readTrainingRecord`), `workout-history.ts` (`readWorkoutHistory`), the
-  paging and decoding both share (`read-every-page.ts`), `UnreadableCounts`,
+  paging, decoding and cap on requests in flight both share
+  (`read-every-page.ts`), `UnreadableCounts`,
   and the notices that say what could not be read (`TrainingRecordNotices`,
   `UnreadableNotice`).
 - `session/` — `LiftingSession` (one launch, for one lifter) and the write
@@ -57,6 +58,13 @@ they cover.
   resource core's `Schema` refuses, are counted per type
   (`UnreadableCounts`) and said in a banner. Retracted `Observation`s are
   filtered before decoding and not counted.
+- **Reads queue; they do not flood.** Every page request goes through
+  `fetchEveryPage`, which holds one of the client's `SEARCH_CONCURRENCY`
+  permits while the request is in flight, so nested fan-outs and the history
+  read alongside share one cap. The active `ServiceRequest` read runs alone
+  first: the first request to the server settles the browser's network
+  permission and connection for it, and only once it succeeds does the
+  fan-out start.
 - **Every write is one batch, to minted ids, and refetches when it settles.**
   `useLiftingWrite` writes through `persistBatchBundleOrFail` and invalidates
   the lifter's queries on success and failure alike; `useLiftingWriting`
@@ -79,7 +87,10 @@ they cover.
   FHIR server: the real `fhir-r4-react/smart` readers over a stub client that
   answers searches from the store, and the real `buildSmartRouterContext` and
   `persistBatchBundleOrFail` over a stub transport that applies batches to it
-  (`fake-fhir-server.test-helpers.ts`). Seeded records are built through
+  (`fake-fhir-server.test-helpers.ts`). The stub answers each search a
+  macrotask after it is issued and logs both (`searchEvents`), so a test can
+  read the order of requests and the most in flight at once
+  (`mostSearchesInFlight`). Seeded records are built through
   `lifting-core`'s `make`s and `PlannedWorkout.submit`, and what lands is
   decoded back through core's schemas (`lifting-app.test-helpers.ts`). Each
   feature's test sits in its folder (`today/today-tab.test.tsx`,

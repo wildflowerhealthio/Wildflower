@@ -1,7 +1,6 @@
 import { Array as Arr, Effect, Option } from 'effect'
 import {
   fetchActiveServiceRequestPage,
-  fetchAllResourcePages,
   fetchPlanDefinitionPage,
   fetchProcedurePage,
 } from 'fhir-r4-react/smart'
@@ -18,8 +17,8 @@ import {
   decodeEvery,
   decodeExerciseSetObservations,
   fetchEveryObservation,
+  fetchEveryPage,
   type ReadFailure,
-  SEARCH_CONCURRENCY,
 } from './read-every-page.ts'
 import { NO_UNREADABLE, type UnreadableCounts } from './unreadable-counts.ts'
 
@@ -83,16 +82,23 @@ const currentTrainingPlanDefinitionUrlOf = (
  *
  * Every page is read: the day due and each "failure N of M" are decided over
  * the whole record, so a partial read would get them wrong.
+ *
+ * The active requests are read first and alone; the rest fan out after,
+ * under the client's cap on requests in flight (`SEARCH_CONCURRENCY`).
  */
 const readTrainingRecord = (
   client: SmartClient,
   patientId: string
 ): Effect.Effect<TrainingRecord, ReadFailure> =>
   Effect.gen(function* () {
-    const serviceRequests = yield* fetchAllResourcePages(
-      (cursor) => fetchActiveServiceRequestPage(client, cursor),
-      { patientId, categoryToken: LiftingFeature.TOKEN, instantiatesCanonicalUrl: null }
-    )
+    // The app's first read runs alone, every page of it: the first request to
+    // the server settles the browser's network permission and connection for
+    // it, so the fan-out starts only once that request has succeeded.
+    const serviceRequests = yield* fetchEveryPage(client, fetchActiveServiceRequestPage, {
+      patientId,
+      categoryToken: LiftingFeature.TOKEN,
+      instantiatesCanonicalUrl: null,
+    })
     const activeExerciseRequests = decodeEvery(ExerciseRequest.Schema, serviceRequests)
     const unreadableRequests = {
       ...NO_UNREADABLE,
@@ -116,10 +122,8 @@ const readTrainingRecord = (
     )
     const [planDefinitions, procedures, exerciseSetObservationReads] = yield* Effect.all(
       [
-        fetchAllResourcePages((cursor) => fetchPlanDefinitionPage(client, cursor), {
-          topicToken: LiftingFeature.TOKEN,
-        }),
-        fetchAllResourcePages((cursor) => fetchProcedurePage(client, cursor), {
+        fetchEveryPage(client, fetchPlanDefinitionPage, { topicToken: LiftingFeature.TOKEN }),
+        fetchEveryPage(client, fetchProcedurePage, {
           patientId,
           categoryToken: LiftingFeature.TOKEN,
           instantiatesCanonicalUrl: trainingPlanDefinitionUrl,
@@ -132,7 +136,7 @@ const readTrainingRecord = (
               basedOnReference: `ServiceRequest/${exerciseRequest.id}`,
               partOfReference: null,
             }),
-          { concurrency: SEARCH_CONCURRENCY }
+          { concurrency: 'unbounded' }
         ),
       ],
       { concurrency: 'unbounded' }
