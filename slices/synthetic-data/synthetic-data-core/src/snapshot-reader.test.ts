@@ -7,17 +7,17 @@ import { describe, expect, test } from 'vite-plus/test'
 import type * as SnapshotFile from './snapshot-file.ts'
 import * as Snapshot from './snapshot.ts'
 import {
+  fetcherOf,
   importRexallPerson,
   importShoppersFamily,
   rexallPersonCaseArbitrary,
   type RexallPersonCase,
   shoppersFamilyCaseArbitrary,
   type ShoppersFamilyCase,
-  sourceOf,
 } from './test-helpers.ts'
 
 /**
- * Reading a snapshot back through a `Source`: every file of a snapshot
+ * Reading a snapshot back through a `FileFetcher`: every file of a snapshot
  * assembled from real importer output reads back as the resource the import
  * wrote, and a file that is not what the snapshot wrote fails, naming itself.
  */
@@ -73,14 +73,14 @@ const labelOf = (resource: FhirResource): string => `${resource.resourceType}/${
 
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
-/** What reading `path` through `source` fails with, or `undefined` when it reads. */
+/** What reading `path` through `fetcher` fails with, or `undefined` when it reads. */
 const readFailureOf = async (
-  source: Snapshot.Source.Source,
+  fetcher: Snapshot.Reader.FileFetcher,
   path: string
-): Promise<Snapshot.Source.UnreadableFile | undefined> =>
+): Promise<Snapshot.Reader.UnreadableFile | undefined> =>
   Option.getOrUndefined(
     Either.getLeft(
-      await Effect.runPromise(Effect.either(Snapshot.Source.readResource(source, path)))
+      await Effect.runPromise(Effect.either(Snapshot.Reader.readResource(fetcher, path)))
     )
   )
 
@@ -150,16 +150,16 @@ const withEditedAttachment = (
   )}\n`
 }
 
-describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
+describe('Snapshot.Reader.readHeader and Snapshot.Reader.readResource', () => {
   test(
     'property: every resource of an assembled snapshot reads back as the resource the import wrote',
     async () => {
       await fc.assert(
         fc.asyncProperty(caseArbitrary, async (generated) => {
           const members = await membersOf(generated)
-          const source = sourceOf(filesOf(members))
+          const fetcher = fetcherOf(filesOf(members))
 
-          const header = await Effect.runPromise(Snapshot.Source.readHeader(source))
+          const header = await Effect.runPromise(Snapshot.Reader.readHeader(fetcher))
           expect(header.people.map((member) => member.key)).toEqual(
             members.map(({ member }) => member.key)
           )
@@ -176,7 +176,7 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
             [...importedByLabel.keys()].map((label) => `fhir/${label}.json`).toSorted()
           )
           const read = await Effect.runPromise(
-            Effect.forEach(paths, (path) => Snapshot.Source.readResource(source, path))
+            Effect.forEach(paths, (path) => Snapshot.Reader.readResource(fetcher, path))
           )
           for (const resource of read) {
             const imported = importedByLabel.get(labelOf(resource))
@@ -200,7 +200,7 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
       flipped[flipped.length - 1] = (flipped[flipped.length - 1] ?? 0) ^ 0xff
       expect(
         await readFailureOf(
-          sourceOf(replacing(files, { ...image, bytes: flipped })),
+          fetcherOf(replacing(files, { ...image, bytes: flipped })),
           imageSourceFile.path
         )
       ).toMatchObject({ _tag: 'UnreadableFile', path: image.path, reason: /SHA-256/ })
@@ -208,7 +208,7 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
       // One byte short.
       expect(
         await readFailureOf(
-          sourceOf(replacing(files, { ...image, bytes: image.bytes.subarray(1) })),
+          fetcherOf(replacing(files, { ...image, bytes: image.bytes.subarray(1) })),
           imageSourceFile.path
         )
       ).toMatchObject({ _tag: 'UnreadableFile', path: image.path, reason: /bytes/ })
@@ -216,7 +216,7 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
       // Missing.
       expect(
         await readFailureOf(
-          sourceOf(files.filter((file) => file.path !== image.path)),
+          fetcherOf(files.filter((file) => file.path !== image.path)),
           imageSourceFile.path
         )
       ).toMatchObject({ _tag: 'UnreadableFile', path: image.path })
@@ -230,9 +230,9 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
       const { files, imageSourceFile, image } = await rexallSnapshot()
       const withAttachment = async (
         edit: (attachment: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>
-      ): Promise<Snapshot.Source.UnreadableFile | undefined> =>
+      ): Promise<Snapshot.Reader.UnreadableFile | undefined> =>
         readFailureOf(
-          sourceOf(
+          fetcherOf(
             replacing(files, {
               ...imageSourceFile,
               text: withEditedAttachment(imageSourceFile.text, edit),
@@ -291,7 +291,7 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
       }
       expect(
         await readFailureOf(
-          sourceOf(replacing(files, { _tag: 'Text', path: patient.path, text: textOf(study) })),
+          fetcherOf(replacing(files, { _tag: 'Text', path: patient.path, text: textOf(study) })),
           patient.path
         )
       ).toMatchObject({ _tag: 'UnreadableFile', path: patient.path, reason: /ImagingStudy\// })
@@ -307,8 +307,8 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
       status: 'current',
       content: [{ attachment: { contentType: 'text/plain', data: 'aGk=' } }],
     }
-    const source = sourceOf([{ _tag: 'Text', path, text: JSON.stringify(json) }])
-    const resource = await Effect.runPromise(Snapshot.Source.readResource(source, path))
+    const fetcher = fetcherOf([{ _tag: 'Text', path, text: JSON.stringify(json) }])
+    const resource = await Effect.runPromise(Snapshot.Reader.readResource(fetcher, path))
     expect(resource).toMatchObject({ content: [{ attachment: { data: 'aGk=' } }] })
   })
 
@@ -320,19 +320,19 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
       status: 'current',
       content: [{ attachment: { contentType: 'text/plain', url: 'har/note.har', size: 2 } }],
     }
-    const files = sourceOf([
+    const files = fetcherOf([
       { _tag: 'Text', path, text: JSON.stringify(json) },
       { _tag: 'Bytes', path: 'har/note.har', bytes: new TextEncoder().encode('hi') },
     ])
     const fetchedBytes: string[] = []
-    const source: Snapshot.Source.Source = {
+    const fetcher: Snapshot.Reader.FileFetcher = {
       text: files.text,
       bytes: (bytesPath) => {
         fetchedBytes.push(bytesPath)
         return files.bytes(bytesPath)
       },
     }
-    expect(await readFailureOf(source, path)).toMatchObject({
+    expect(await readFailureOf(fetcher, path)).toMatchObject({
       _tag: 'UnreadableFile',
       path,
       reason: /not a har or dicom source file, and links har\/note\.har/,
@@ -342,17 +342,17 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
 
   test('fails a resource file that is not a FHIR resource, naming the file', async () => {
     const path = 'fhir/Patient/a.json'
-    const source = sourceOf([{ _tag: 'Text', path, text: '{"resourceType":' }])
-    expect(await readFailureOf(source, path)).toMatchObject({ _tag: 'UnreadableFile', path })
+    const fetcher = fetcherOf([{ _tag: 'Text', path, text: '{"resourceType":' }])
+    expect(await readFailureOf(fetcher, path)).toMatchObject({ _tag: 'UnreadableFile', path })
   })
 
   test('fetches nothing at a path outside the resource path grammar', async () => {
     const fetched: string[] = []
-    const fetching = (path: string): Effect.Effect<never, Snapshot.Source.UnreadableFile> => {
+    const fetching = (path: string): Effect.Effect<never, Snapshot.Reader.UnreadableFile> => {
       fetched.push(path)
-      return Effect.fail(new Snapshot.Source.UnreadableFile({ path, reason: 'Not found.' }))
+      return Effect.fail(new Snapshot.Reader.UnreadableFile({ path, reason: 'Not found.' }))
     }
-    const source: Snapshot.Source.Source = { text: fetching, bytes: fetching }
+    const fetcher: Snapshot.Reader.FileFetcher = { text: fetching, bytes: fetching }
     const paths = [
       '../secret.json',
       'fhir/Patient/../../index.json',
@@ -360,15 +360,15 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
       'har/a.har',
       'index.json',
     ]
-    const failures = await Promise.all(paths.map(async (path) => readFailureOf(source, path)))
+    const failures = await Promise.all(paths.map(async (path) => readFailureOf(fetcher, path)))
     expect(failures).toMatchObject(paths.map((path) => ({ _tag: 'UnreadableFile', path })))
     expect(fetched).toEqual([])
   })
 
   test('fails an index.json that is not a header, naming the file', async () => {
     const exit = await Effect.runPromiseExit(
-      Snapshot.Source.readHeader(
-        sourceOf([{ _tag: 'Text', path: 'index.json', text: '{"schemaVersion":2}' }])
+      Snapshot.Reader.readHeader(
+        fetcherOf([{ _tag: 'Text', path: 'index.json', text: '{"schemaVersion":2}' }])
       )
     )
     expect(exit).toMatchObject({
@@ -378,7 +378,7 @@ describe('Snapshot.Source.readHeader and Snapshot.Source.readResource', () => {
   })
 
   test('fails a missing index.json, naming the file', async () => {
-    const exit = await Effect.runPromiseExit(Snapshot.Source.readHeader(sourceOf([])))
+    const exit = await Effect.runPromiseExit(Snapshot.Reader.readHeader(fetcherOf([])))
     expect(exit).toMatchObject({
       _tag: 'Failure',
       cause: { error: { _tag: 'UnreadableFile', path: 'index.json' } },

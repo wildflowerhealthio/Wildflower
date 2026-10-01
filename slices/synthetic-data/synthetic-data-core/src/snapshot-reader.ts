@@ -6,16 +6,17 @@ import * as Header from './snapshot-header.ts'
 
 /**
  * Reading a published snapshot back: its header, and each resource entry as
- * the import wrote it, fetched through a {@link Source} the caller supplies.
+ * the import wrote it, fetched through a {@link FileFetcher} the caller
+ * supplies.
  *
  * @remarks
  * A reader decodes each file with its entry's codec, so a resource file must
  * hold the resource its path names, and checks what the codec cannot: that a
  * source-file `DocumentReference` links its file where the snapshot puts it
- * (and no other resource links one), and that the linked file is the one its attachment describes (its `size`
- * and `hash`, base64 SHA-256). Only then is the file carried inline again
- * (`Entry.withAttachmentData`). Every failure is an {@link UnreadableFile}
- * naming the file at fault.
+ * (and no other resource links one), and that the linked file is the one its
+ * attachment describes (its `size` and `hash`, base64 SHA-256). Only then is
+ * the file carried inline again (`Entry.withAttachmentData`). Every failure
+ * is an {@link UnreadableFile} naming the file at fault.
  */
 
 /** A snapshot's file that cannot be read back, and why. */
@@ -36,7 +37,7 @@ class UnreadableFile extends Data.TaggedError('UnreadableFile')<{
  * attachment's file). A file that cannot be fetched fails as an
  * {@link UnreadableFile}.
  */
-interface Source {
+interface FileFetcher {
   readonly text: (path: string) => Effect.Effect<string, UnreadableFile>
   readonly bytes: (path: string) => Effect.Effect<Uint8Array, UnreadableFile>
 }
@@ -64,8 +65,8 @@ const decodeHeaderFile = Schema.decodeUnknown(Header.FileSchema)
  * @returns The header; an {@link UnreadableFile} for an `index.json` that
  *   cannot be fetched or is not a valid header
  */
-const readHeader = (source: Source): Effect.Effect<Header.Header, UnreadableFile> =>
-  source
+const readHeader = (fetcher: FileFetcher): Effect.Effect<Header.Header, UnreadableFile> =>
+  fetcher
     .text(Header.PATH)
     .pipe(
       Effect.flatMap((text) =>
@@ -155,22 +156,22 @@ const checkedAttachmentBytes = (
  * The resource a snapshot's resource file holds, as the import wrote it: a
  * source file's linked file is fetched, checked and carried inline again.
  *
- * @param source - Where the snapshot's files are fetched from
+ * @param fetcher - Where the snapshot's files are fetched from
  * @param path - A resource's path, as the header lists it
  * @returns The resource; an {@link UnreadableFile} naming the file at fault
  *   for a path outside the resource path grammar (nothing is fetched), a file
  *   that cannot be fetched or decoded, that holds a resource other than the
  *   one its path names, a source file that does not link its file where the
- *   snapshot puts it, another resource that links a file, or a linked file that is not the one its attachment
- *   describes
+ *   snapshot puts it, another resource that links a file, or a linked file
+ *   that is not the one its attachment describes
  */
 const readResource = (
-  source: Source,
+  fetcher: FileFetcher,
   path: string
 ): Effect.Effect<Entry.StoredResource, UnreadableFile> =>
   Effect.gen(function* () {
     yield* decodeResourcePath(path).pipe(Effect.mapError(unreadableAt(path)))
-    const text = yield* source.text(path)
+    const text = yield* fetcher.text(path)
     const entry = yield* decodeResourceFile({ _tag: 'Text', path, text }).pipe(
       Effect.mapError(unreadableAt(path))
     )
@@ -179,10 +180,10 @@ const readResource = (
     const bytes = yield* checkedAttachmentBytes(
       entry,
       attachmentPath,
-      yield* source.bytes(attachmentPath)
+      yield* fetcher.bytes(attachmentPath)
     )
     return Entry.withAttachmentData(entry, bytes)
   })
 
 export { readHeader, readResource, UnreadableFile }
-export type { Source }
+export type { FileFetcher }

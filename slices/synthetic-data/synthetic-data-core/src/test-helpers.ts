@@ -19,7 +19,7 @@ import { type ShoppersAccount, ShoppersHar } from 'synthetic-data-shoppers-drugm
 import { shoppersCaseArbitrary } from 'synthetic-data-shoppers-drugmart/test-helpers'
 
 import type * as SnapshotFile from './snapshot-file.ts'
-import * as Source from './snapshot-source.ts'
+import * as Reader from './snapshot-reader.ts'
 
 /**
  * Generated records run through the real importers, whole — the source-file
@@ -114,16 +114,16 @@ const hashOf = (bytes: Uint8Array): Promise<string> =>
   Effect.runPromise(sha256Base64(new Uint8Array(bytes)))
 
 /**
- * A snapshot's files as the `Snapshot.Source.Source` a reader fetches them
+ * A snapshot's files as the `Snapshot.Reader.FileFetcher` a reader fetches them
  * through: a path among `files` serves its text or bytes, and any other path
  * fails as an `UnreadableFile`, as a missing file on a static host does.
  */
-const sourceOf = (files: readonly SnapshotFile.Any[]): Source.Source => {
+const fetcherOf = (files: readonly SnapshotFile.Any[]): Reader.FileFetcher => {
   const byPath = new Map(files.map((file) => [file.path, file]))
-  const fileAt = (path: string): Effect.Effect<SnapshotFile.Any, Source.UnreadableFile> => {
+  const fileAt = (path: string): Effect.Effect<SnapshotFile.Any, Reader.UnreadableFile> => {
     const file = byPath.get(path)
     return file === undefined
-      ? Effect.fail(new Source.UnreadableFile({ path, reason: 'Not found.' }))
+      ? Effect.fail(new Reader.UnreadableFile({ path, reason: 'Not found.' }))
       : Effect.succeed(file)
   }
   return {
@@ -143,6 +143,7 @@ const sourceOf = (files: readonly SnapshotFile.Any[]): Source.Source => {
 }
 
 export {
+  fetcherOf,
   HAR_FILE_NAME,
   hashOf,
   IMAGE_FILE_NAME,
@@ -150,6 +151,5 @@ export {
   importShoppersFamily,
   rexallPersonCaseArbitrary,
   shoppersFamilyCaseArbitrary,
-  sourceOf,
 }
 export type { ImportedPerson, RexallPersonCase, ShoppersFamilyCase }
