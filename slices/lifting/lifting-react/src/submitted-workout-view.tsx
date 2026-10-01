@@ -59,8 +59,11 @@ const setRepsAgainst = ({
 const SubmittedWorkoutView = ({ submitted }: SubmittedWorkoutViewProps): JSX.Element => {
   const headingId = useId()
   return (
-    <section className={styles.submitted} aria-labelledby={headingId}>
-      <h2 id={headingId} className={cn('text-heading-6', styles.heading)}>
+    <section className={styles['submitted-workout-view']} aria-labelledby={headingId}>
+      <h2
+        id={headingId}
+        className={cn('text-heading-6', styles['submitted-workout-view__heading'])}
+      >
         Workout {WorkoutProcedure.dayLabelOf(submitted.workoutProcedure)} done
       </h2>
       <ItemList

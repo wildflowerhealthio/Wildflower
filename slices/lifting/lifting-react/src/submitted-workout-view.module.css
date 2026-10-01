@@ -3,12 +3,12 @@
  * decision badges. Tokens only, so dark mode needs no rule here.
  */
 
-.submitted {
+.submitted-workout-view {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
 }
 
-.heading {
+.submitted-workout-view__heading {
   margin: 0;
 }

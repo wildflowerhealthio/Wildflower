@@ -5,17 +5,17 @@
  * reads at a glance. Tokens only, so dark mode needs no rule here.
  */
 
-.workout {
+.planned-workout-view {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
 }
 
-.heading {
+.planned-workout-view__heading {
   margin: 0;
 }
 
-.exercises {
+.planned-workout-view__exercises {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -24,7 +24,7 @@
   list-style: none;
 }
 
-.exercise {
+.planned-workout-view__exercise {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -33,7 +33,7 @@
   border-radius: var(--radius-3);
 }
 
-.exerciseHeader {
+.planned-workout-view__exercise-header {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -41,23 +41,23 @@
   gap: var(--space-3);
 }
 
-.exerciseName {
+.planned-workout-view__exercise-name {
   margin: 0;
   font-weight: var(--font-weight-3);
 }
 
-.failures {
+.planned-workout-view__failures {
   margin: 0;
   color: var(--color-red-3);
 }
 
-.sets {
+.planned-workout-view__sets {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
 }
 
-.set {
+.planned-workout-view__set {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -71,28 +71,28 @@
   cursor: pointer;
 }
 
-.set:focus-visible {
+.planned-workout-view__set:focus-visible {
   outline: 2px solid var(--color-accent-4);
   outline-offset: 2px;
 }
 
-.set:disabled {
+.planned-workout-view__set:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.setShort {
+.planned-workout-view__set--short {
   border-color: var(--color-red-5);
   background: var(--color-red-9);
   color: var(--color-red-3);
 }
 
-.actions {
+.planned-workout-view__actions {
   display: flex;
   justify-content: flex-end;
 }
 
-.setNotDone {
+.planned-workout-view__set--not-done {
   background: transparent;
   color: var(--color-accent);
 }

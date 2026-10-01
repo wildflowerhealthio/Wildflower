@@ -173,12 +173,17 @@ const PlannedWorkoutForm = ({
 
   const dayLabel = TrainingPlanDefinition.Day.labelOf(plannedWorkout.trainingPlanDefinitionDay)
   return (
-    <form className={styles.workout} aria-labelledby={headingId} noValidate onSubmit={submit}>
-      <h2 id={headingId} className={cn('text-heading-6', styles.heading)}>
+    <form
+      className={styles['planned-workout-view']}
+      aria-labelledby={headingId}
+      noValidate
+      onSubmit={submit}
+    >
+      <h2 id={headingId} className={cn('text-heading-6', styles['planned-workout-view__heading'])}>
         Workout {dayLabel}
       </h2>
       <ErrorBanner error={error} />
-      <ol className={styles.exercises}>
+      <ol className={styles['planned-workout-view__exercises']}>
         {plannedWorkout.plannedWorkoutExercises.map((plannedWorkoutExercise) => {
           const { exerciseRequest } = plannedWorkoutExercise
           const exerciseName = exerciseNameOf(plannedWorkoutExercise)
@@ -187,32 +192,39 @@ const PlannedWorkoutForm = ({
           return (
             <li
               key={PlannedWorkout.exerciseIdOf(plannedWorkoutExercise)}
-              className={styles.exercise}
+              className={styles['planned-workout-view__exercise']}
             >
-              <div className={styles.exerciseHeader}>
-                <h3 className={cn('text-body-2', styles.exerciseName)}>{exerciseName}</h3>
+              <div className={styles['planned-workout-view__exercise-header']}>
+                <h3 className={cn('text-body-2', styles['planned-workout-view__exercise-name'])}>
+                  {exerciseName}
+                </h3>
                 <span className="text-body-3">
                   {formatLoad(ExerciseRequest.loadOf(exerciseRequest))} ·{' '}
                   {ExerciseRequest.setsOf(exerciseRequest)}×{repsAskedFor}
                 </span>
               </div>
               {consecutiveFailures > 0 ? (
-                <p className={cn('text-body-3', styles.failures)}>
+                <p className={cn('text-body-3', styles['planned-workout-view__failures'])}>
                   Failure {consecutiveFailures} of{' '}
                   {PlannedWorkout.failuresBeforeDeloadOf(plannedWorkoutExercise)} before a deload
                 </p>
               ) : null}
-              <div className={styles.sets} role="group" aria-label={`${exerciseName} sets`}>
+              <div
+                className={styles['planned-workout-view__sets']}
+                role="group"
+                aria-label={`${exerciseName} sets`}
+              >
                 {enteredSetRepsOf(plannedWorkoutExercise).map((setReps, setIndex) => (
                   <button
                     // oxlint-disable-next-line react/no-array-index-key -- sets have no id; set N is always the Nth button
                     key={setIndex}
                     type="button"
                     className={cn(
-                      styles.set,
+                      styles['planned-workout-view__set'],
                       Option.match(setReps, {
-                        onNone: () => styles.setNotDone,
-                        onSome: (reps) => (reps < repsAskedFor ? styles.setShort : null),
+                        onNone: () => styles['planned-workout-view__set--not-done'],
+                        onSome: (reps) =>
+                          reps < repsAskedFor ? styles['planned-workout-view__set--short'] : null,
                       }),
                       'text-body-2'
                     )}
@@ -234,7 +246,7 @@ const PlannedWorkoutForm = ({
           )
         })}
       </ol>
-      <div className={styles.actions}>
+      <div className={styles['planned-workout-view__actions']}>
         <button type="submit" className="button-2 filled" disabled={pending || !anySetEntered}>
           {pending ? 'Submitting…' : 'Submit workout'}
         </button>

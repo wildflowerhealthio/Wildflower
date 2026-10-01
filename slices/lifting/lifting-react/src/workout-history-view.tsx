@@ -131,12 +131,12 @@ const WorkoutHistoryView = ({
   const workoutDate = workoutDateFormat()
   const completedNewestFirst = Arr.reverse(WorkoutProcedure.completedByStart(workoutProcedures))
   return (
-    <section className={styles.history} aria-labelledby={headingId}>
-      <h2 id={headingId} className={cn('text-heading-6', styles.heading)}>
+    <section className={styles['workout-history-view']} aria-labelledby={headingId}>
+      <h2 id={headingId} className={cn('text-heading-6', styles['workout-history-view__heading'])}>
         History
       </h2>
       {completedNewestFirst.length === 0 ? (
-        <p className={cn('text-body-2', styles.empty)}>
+        <p className={cn('text-body-2', styles['workout-history-view__empty'])}>
           No workouts yet. Submit one and it will show up here.
         </p>
       ) : (

@@ -5,11 +5,11 @@
  * mode needs no rule here.
  */
 
-.start {
+.start-training-plan-definition-view {
   display: block;
 }
 
-.body {
+.start-training-plan-definition-view__body {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
@@ -19,15 +19,15 @@
   border: 0;
 }
 
-.heading {
+.start-training-plan-definition-view__heading {
   margin: 0;
 }
 
-.title {
+.start-training-plan-definition-view__title {
   margin: 0;
 }
 
-.loads {
+.start-training-plan-definition-view__loads {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
   gap: var(--space-5);
@@ -37,15 +37,15 @@
   border: 0;
 }
 
-.problem {
+.start-training-plan-definition-view__problem {
   color: var(--color-red-3);
 }
 
-.summary {
+.start-training-plan-definition-view__summary {
   margin: 0;
 }
 
-.actions {
+.start-training-plan-definition-view__actions {
   display: flex;
   justify-content: flex-end;
 }

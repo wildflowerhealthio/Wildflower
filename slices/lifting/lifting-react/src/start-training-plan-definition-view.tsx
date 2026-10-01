@@ -129,9 +129,17 @@ const StartTrainingPlanDefinitionView = ({
   }
 
   return (
-    <form className={styles.start} aria-labelledby={headingId} noValidate onSubmit={start}>
-      <fieldset className={styles.body} disabled={pending}>
-        <h2 id={headingId} className={cn('text-heading-6', styles.heading)}>
+    <form
+      className={styles['start-training-plan-definition-view']}
+      aria-labelledby={headingId}
+      noValidate
+      onSubmit={start}
+    >
+      <fieldset className={styles['start-training-plan-definition-view__body']} disabled={pending}>
+        <h2
+          id={headingId}
+          className={cn('text-heading-6', styles['start-training-plan-definition-view__heading'])}
+        >
           Start a program
         </h2>
         {trainingPlanDefinitions.length > 1 ? (
@@ -143,9 +151,11 @@ const StartTrainingPlanDefinitionView = ({
             options={trainingPlanDefinitions.map(({ id, title }) => ({ value: id, label: title }))}
           />
         ) : (
-          <p className={cn('text-body-2', styles.title)}>{trainingPlanDefinition.title}</p>
+          <p className={cn('text-body-2', styles['start-training-plan-definition-view__title'])}>
+            {trainingPlanDefinition.title}
+          </p>
         )}
-        <fieldset className={styles.loads}>
+        <fieldset className={styles['start-training-plan-definition-view__loads']}>
           <legend className="text-label-2">Starting loads</legend>
           {rows.map(({ exerciseId, trainingPlanDefinitionExercise, text, startingLoad }) => (
             <TextField
@@ -164,21 +174,30 @@ const StartTrainingPlanDefinitionView = ({
               }}
               description={
                 startAttempted && Either.isLeft(startingLoad) ? (
-                  <span className={styles.problem}>{startingLoad.left}</span>
+                  <span className={styles['start-training-plan-definition-view__problem']}>
+                    {startingLoad.left}
+                  </span>
                 ) : undefined
               }
             />
           ))}
         </fieldset>
         {startAttempted && problemCount > 0 ? (
-          <p role="alert" className={cn('text-body-3', styles.problem, styles.summary)}>
+          <p
+            role="alert"
+            className={cn(
+              'text-body-3',
+              styles['start-training-plan-definition-view__problem'],
+              styles['start-training-plan-definition-view__summary']
+            )}
+          >
             {problemCount === 1
               ? '1 starting load to fix — see the highlighted field.'
               : `${problemCount} starting loads to fix — see the highlighted fields.`}
           </p>
         ) : null}
         <ErrorBanner error={error} />
-        <div className={styles.actions}>
+        <div className={styles['start-training-plan-definition-view__actions']}>
           <button type="submit" className="button-2 filled">
             {pending ? 'Starting…' : 'Start program'}
           </button>

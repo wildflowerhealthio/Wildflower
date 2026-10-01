@@ -6,11 +6,11 @@
  * here.
  */
 
-.editor {
+.training-plan-definition-editor {
   display: block;
 }
 
-.body {
+.training-plan-definition-editor__body {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
@@ -20,25 +20,25 @@
   border: 0;
 }
 
-.titleRow {
+.training-plan-definition-editor__title-row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-5);
 }
 
-.section {
+.training-plan-definition-editor__section {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
 
-.sectionHeading {
+.training-plan-definition-editor__section-heading {
   margin: 0;
 }
 
-.day,
-.exercise {
+.training-plan-definition-editor__day,
+.training-plan-definition-editor__exercise {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -49,32 +49,32 @@
   border-radius: var(--radius-3);
 }
 
-.legend {
+.training-plan-definition-editor__legend {
   padding: 0 var(--space-2);
   color: var(--color-neutral-5);
 }
 
-.fields {
+.training-plan-definition-editor__fields {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
   gap: var(--space-5);
 }
 
-.rowActions {
+.training-plan-definition-editor__row-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
 }
 
-.problem {
+.training-plan-definition-editor__problem {
   color: var(--color-red-3);
 }
 
-.summary {
+.training-plan-definition-editor__summary {
   margin: 0;
 }
 
-.actions {
+.training-plan-definition-editor__actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-4);

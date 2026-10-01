@@ -71,7 +71,9 @@ const NUMERIC_EXERCISE_FIELDS: readonly NumericExerciseField[] = [
 
 /** A problem as the line under its field, or nothing. */
 const problemLine = (problem: string | undefined): JSX.Element | undefined =>
-  problem === undefined ? undefined : <span className={styles.problem}>{problem}</span>
+  problem === undefined ? undefined : (
+    <span className={styles['training-plan-definition-editor__problem']}>{problem}</span>
+  )
 
 /** How a day is named in its actions' labels, even before it has a label. */
 const dayNameOf = (dayDraft: DayDraft, index: number): string =>
@@ -136,9 +138,9 @@ const TrainingPlanDefinitionEditor = ({
   }
 
   return (
-    <form className={styles.editor} noValidate onSubmit={save}>
-      <fieldset className={styles.body} disabled={pending}>
-        <div className={styles.titleRow}>
+    <form className={styles['training-plan-definition-editor']} noValidate onSubmit={save}>
+      <fieldset className={styles['training-plan-definition-editor__body']} disabled={pending}>
+        <div className={styles['training-plan-definition-editor__title-row']}>
           <TextField
             label="Title"
             value={draft.title}
@@ -165,8 +167,15 @@ const TrainingPlanDefinitionEditor = ({
           ) : null}
         </div>
 
-        <section className={styles.section}>
-          <h2 className={cn('text-heading-6', styles.sectionHeading)}>Days</h2>
+        <section className={styles['training-plan-definition-editor__section']}>
+          <h2
+            className={cn(
+              'text-heading-6',
+              styles['training-plan-definition-editor__section-heading']
+            )}
+          >
+            Days
+          </h2>
           {problemLine(shownProblems.get(DraftPath.days))}
           {draft.days.map((dayDraft, index) => (
             <DayRow
@@ -200,14 +209,21 @@ const TrainingPlanDefinitionEditor = ({
         </section>
 
         {shownProblems.size === 0 ? null : (
-          <p role="alert" className={cn('text-body-3', styles.problem, styles.summary)}>
+          <p
+            role="alert"
+            className={cn(
+              'text-body-3',
+              styles['training-plan-definition-editor__problem'],
+              styles['training-plan-definition-editor__summary']
+            )}
+          >
             {shownProblems.size === 1
               ? '1 problem to fix — see the highlighted field.'
               : `${shownProblems.size} problems to fix — see the highlighted fields.`}
           </p>
         )}
         <ErrorBanner error={error} />
-        <div className={styles.actions}>
+        <div className={styles['training-plan-definition-editor__actions']}>
           {onCancel === undefined ? null : (
             <button type="button" className="button-2 outline" onClick={onCancel}>
               Cancel
@@ -241,8 +257,10 @@ const DayRow = ({
   readonly onAddExercise: () => void
   readonly onRemove: () => void
 }): JSX.Element => (
-  <fieldset className={styles.day}>
-    <legend className={cn('text-label-2', styles.legend)}>{legend}</legend>
+  <fieldset className={styles['training-plan-definition-editor__day']}>
+    <legend className={cn('text-label-2', styles['training-plan-definition-editor__legend'])}>
+      {legend}
+    </legend>
     <TextField
       label="Label"
       value={dayDraft.label}
@@ -275,7 +293,7 @@ const DayRow = ({
       />
     ))}
     {problemLine(problems.get(DraftPath.dayExercises(dayDraft.key)))}
-    <div className={styles.rowActions}>
+    <div className={styles['training-plan-definition-editor__row-actions']}>
       <button
         type="button"
         className="button-3 outline"
@@ -324,9 +342,11 @@ const ExerciseRow = ({
     problemLine(problems.get(DraftPath.exerciseField(exerciseDraft.key, field)))
   const unit = formatUnit(exerciseDraft.unit)
   return (
-    <fieldset className={styles.exercise}>
-      <legend className={cn('text-label-3', styles.legend)}>{legend}</legend>
-      <div className={styles.fields}>
+    <fieldset className={styles['training-plan-definition-editor__exercise']}>
+      <legend className={cn('text-label-3', styles['training-plan-definition-editor__legend'])}>
+        {legend}
+      </legend>
+      <div className={styles['training-plan-definition-editor__fields']}>
         <TextField
           label="Name"
           value={exerciseDraft.name}
@@ -369,7 +389,7 @@ const ExerciseRow = ({
         ))}
       </div>
       {problemLine(problems.get(DraftPath.exercise(exerciseDraft.key)))}
-      <div className={styles.rowActions}>
+      <div className={styles['training-plan-definition-editor__row-actions']}>
         <button
           type="button"
           className="button-1 ghost"

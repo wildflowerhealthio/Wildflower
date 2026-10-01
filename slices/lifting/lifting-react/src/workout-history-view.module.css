@@ -3,17 +3,17 @@
  * first. Tokens only, so dark mode needs no rule here.
  */
 
-.history {
+.workout-history-view {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
 }
 
-.heading {
+.workout-history-view__heading {
   margin: 0;
 }
 
-.empty {
+.workout-history-view__empty {
   margin: 0;
   color: var(--color-neutral-5);
 }
