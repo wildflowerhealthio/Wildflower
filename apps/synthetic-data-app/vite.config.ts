@@ -21,6 +21,9 @@ export default defineConfig({
   // `vp run -F synthetic-data-app dev`.
   server: devAppServer('synthetic-data-app-dev'),
   build: {
+    // Emitted for the deploy's Sentry upload, unreferenced from the bundle;
+    // the deploy deletes them before publishing (.github/actions/sentry-sourcemaps).
+    sourcemap: 'hidden',
     rolldownOptions: {
       input: {
         main: './index.html',
