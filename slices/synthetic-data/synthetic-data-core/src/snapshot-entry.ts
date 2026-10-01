@@ -40,7 +40,10 @@ const FHIR_DIRECTORY = 'fhir'
  * recognized (`PickedFile.isSourceFile`, as the importer's own source-file
  * list recognizes them).
  */
-const SOURCE_FILE_IMPORTERS = [harImporter, dicomImporter] as const
+const SOURCE_FILE_IMPORTERS: readonly [typeof harImporter, typeof dicomImporter] = [
+  harImporter,
+  dicomImporter,
+]
 
 /** The attachment formats, in {@link SOURCE_FILE_IMPORTERS}' order: `har`, `dicom`. */
 const FORMATS = Arr.map(SOURCE_FILE_IMPORTERS, (importer) => importer.format)
