@@ -68,7 +68,10 @@ they cover.
   property tests.
 - **Scopes match the clients.** `LIFTING_SCOPE` is the one string both
   launches request; the `lifting-app` and `lifting-app-dev` OAuth clients'
-  `allowed_scopes` must equal it. Change both together.
+  `allowed_scopes` must equal it (gatekeeper migration
+  `0019_seed_lifting_app_client` and `LIFTING_DEV_SCOPES` in
+  `gatekeeper-rust/src/seeding.rs`, whose test reads `src/config.ts`). A
+  change here is a new gatekeeper migration and a dev-scope edit too.
 
 ## Testing
 

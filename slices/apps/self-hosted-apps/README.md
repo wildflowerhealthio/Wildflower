@@ -2,12 +2,14 @@
 
 Home for vendored FHIR app builds. The model is:
 
-- **First-party apps are cloud rows.** Medications, Web Trace and Importer
-  build into their own package's `dist/` (`apps/<app>/dist`), `apps/github-pages`
-  publishes them on <https://wildflowerhealth.io>, and the host launches them from
-  there — apps migrations `0005_first_party_apps_to_cloud` (Medications, Web
-  Trace) and `0006_seed_wildflower_importer_app` (Importer). Nothing of theirs is
-  built into, or served from, this directory.
+- **First-party apps are cloud rows.** Medications, Web Trace, Importer and
+  Lifting build into their own package's `dist/` (`apps/<app>/dist`),
+  `apps/github-pages` publishes them on <https://wildflowerhealth.io>, and the
+  host launches them from there — apps migrations
+  `0005_first_party_apps_to_cloud` (Medications, Web Trace),
+  `0006_seed_wildflower_importer_app` (Importer) and `0010_seed_lifting_app`
+  (Lifting, `apps/lifting-app`, published at `/lifting-app`). Nothing of theirs
+  is built into, or served from, this directory.
 - **Self-hosted apps are `patient-browser` plus user uploads.** The one vendored
   build here is `patient-browser/`, a build of the third-party
   [`patient-browser`][upstream] sample app, seeded by apps migration `0002` and

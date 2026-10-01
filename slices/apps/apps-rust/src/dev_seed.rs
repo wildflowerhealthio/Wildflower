@@ -3,7 +3,7 @@
 //!
 //! The first-party apps (Medications, Web Trace, Importer, the OHIF imaging
 //! viewer, Server Docs, the Synthesized Health Viewer, the Synthetic Data
-//! Loader) ship as **cloud** rows served from
+//! Loader, Lifting) ship as **cloud** rows served from
 //! <https://wildflowerhealth.io> (apps migration
 //! `0005_first_party_apps_to_cloud`). That is the right production target and
 //! the wrong development one: a developer editing `apps/medications-app` wants
@@ -99,6 +99,8 @@ struct DevAppPorts {
     health_viewer_app_dev: i32,
     #[serde(rename = "synthetic-data-app-dev")]
     synthetic_data_app_dev: i32,
+    #[serde(rename = "lifting-app-dev")]
+    lifting_app_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -109,7 +111,7 @@ struct DevAppPorts {
 /// a compile-time-embedded, version-controlled file, so a failure here is a
 /// broken build, not a runtime condition, and only ever reachable in a debug
 /// build.
-fn dev_apps() -> [DevApp; 7] {
+fn dev_apps() -> [DevApp; 8] {
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
@@ -161,6 +163,13 @@ fn dev_apps() -> [DevApp; 7] {
             subtitle: "Local vite dev server for apps/synthetic-data-app",
             port: ports.synthetic_data_app_dev,
             url: dev_launch_url(ports.synthetic_data_app_dev),
+        },
+        DevApp {
+            id: "lifting-app-dev",
+            name: "Lifting (Dev)",
+            subtitle: "Local vite dev server for apps/lifting-app",
+            port: ports.lifting_app_dev,
+            url: dev_launch_url(ports.lifting_app_dev),
         },
     ]
 }
@@ -447,6 +456,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_lifting_dev_row_launches_its_dev_server() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        seed_dev_apps(pool.clone()).unwrap();
+        let store = SqliteAppsStore::new(pool).unwrap();
+
+        let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
+        let port = ports.lifting_app_dev;
+        let (registration, config) = dev_cloud(&store, "lifting-app-dev");
+        assert_eq!(registration.name, "Lifting (Dev)");
+        assert_eq!(
+            registration.subtitle.as_deref(),
+            Some("Local vite dev server for apps/lifting-app"),
+        );
+        assert_eq!(
+            config.url.to_string(),
+            format!("http://localhost:{port}/launch.html?launch={{launch}}&iss={{origin}}/fhir-r4"),
+        );
+    }
+
     /// A dev database seeded by an older build holds dev apps as `seeded = 1`
     /// SELF-HOSTED rows. Those are still this seed's own rows, so the next boot
     /// must convert them in place to cloud.
@@ -509,6 +538,7 @@ mod tests {
             "web-trace-app",
             "importer-app",
             "ohif-viewer",
+            "lifting-app",
         ] {
             let (registration, config) = store.find_app(id).unwrap().expect("migrated cloud row");
             assert!(

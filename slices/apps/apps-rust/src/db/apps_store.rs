@@ -35,10 +35,13 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// `0005` renames those two to `medications-app` / `web-trace-app` and turns them
 /// into CLOUD rows served from the published GitHub Pages site (adding the
 /// server-docs console); `0006` appends the Importer as a third first-party CLOUD
-/// app served from the same site; and `0007` appends the OHIF imaging viewer, a
-/// fourth CLOUD app from that site. Because each migration runs only once per
+/// app served from the same site; `0007` appends the OHIF imaging viewer, a
+/// fourth CLOUD app from that site, and `0008` moves its launch onto the FHIR
+/// Viewer route; `0009` repairs the Medications and Web Trace rows on any install
+/// `0005` left short of cloud; and `0010` appends Lifting, another first-party
+/// CLOUD app from the same site. Because each migration runs only once per
 /// database, a user-deleted seed stays deleted across upgrades. The debug-only
-/// `…-dev` self-hosted siblings are deliberately NOT migrations — see
+/// `…-dev` cloud rows are deliberately NOT migrations — see
 /// `apps-rust/src/dev_seed.rs`.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -209,7 +212,7 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 11, "exactly the eleven seeded default apps");
+        assert_eq!(row_count, 12, "exactly the twelve seeded default apps");
     }
 
     /// The `app_registrations` primary key gives global id uniqueness across kinds
@@ -260,6 +263,7 @@ mod tests {
                 "web-server-docs",
                 "importer-app",
                 "ohif-viewer",
+                "lifting-app",
             ],
         );
     }
@@ -513,6 +517,79 @@ mod tests {
         assert_eq!(
             target.url,
             "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer",
+        );
+    }
+
+    /// Lifting ships as a first-party CLOUD row (apps migration `0010`),
+    /// launched from its published Pages copy's `launch.html` — a SMART EHR
+    /// launch, with no slash between `launch.html` and the query (GitHub Pages
+    /// serves no file for `launch.html/`).
+    #[test]
+    fn lifting_app_is_a_cloud_row_launched_at_its_launch_page() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+
+        let (registration, configuration) = store
+            .find_app("lifting-app")
+            .unwrap()
+            .expect("lifting-app must exist");
+        assert!(
+            matches!(configuration, AppConfiguration::Cloud(_)),
+            "lifting-app must be a cloud app",
+        );
+        // client_id tracks id, as every registration does.
+        assert_eq!(registration.client_id.as_deref(), Some("lifting-app"));
+        assert!(
+            !registration.local_only,
+            "the app's assets are served from wildflowerhealth.io",
+        );
+        assert!(
+            registration.requires_tunnel,
+            "the published page's `iss={{origin}}` fetch must resolve through the \
+             tunnel's verified HTTPS origin",
+        );
+
+        let target: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+                .bind::<Text, _>("lifting-app")
+                .get_result(&mut conn)
+                .expect("the cloud configuration row must exist");
+        assert_eq!(
+            target.url,
+            "https://wildflowerhealth.io/lifting-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+        );
+    }
+
+    /// An install already at `0009` gains Lifting when it upgrades — at the
+    /// tail, after an app the user uploaded before upgrading, since `position`
+    /// is UNIQUE and `0010` appends rather than naming a literal slot.
+    #[test]
+    fn an_install_already_at_0009_gains_lifting_at_the_tail() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let mut conn = pool.get().unwrap();
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0009"),
+        )
+        .unwrap();
+        occupy(&mut conn, "my-upload", 8082);
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0010 must apply over the upload");
+        let (upload, _) = store
+            .find_app("my-upload")
+            .unwrap()
+            .expect("the upload survives");
+        let (lifting, configuration) = store
+            .find_app("lifting-app")
+            .unwrap()
+            .expect("0010 must seed lifting-app on an upgraded install");
+        assert!(matches!(configuration, AppConfiguration::Cloud(_)));
+        assert_eq!(
+            lifting.position,
+            upload.position + 1,
+            "Lifting takes the tail, after the upload",
         );
     }
 
