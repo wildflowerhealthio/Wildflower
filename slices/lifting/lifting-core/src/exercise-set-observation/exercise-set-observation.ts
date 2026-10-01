@@ -15,7 +15,8 @@ import { Observation } from 'fhir-r4/resources'
 // both modules read sets at runtime, so importing them back would be a cycle.
 import type * as ExerciseRequest from '../exercise-request/exercise-request.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
-import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
+import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
+import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import type * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 
@@ -90,25 +91,21 @@ const ExerciseSetObservationSchema: Schema.Schema<Type, Observation.Type> =
       code: Schema.typeSchema(ExerciseConcept.Schema),
       effectivePeriod: SpanSchema,
       valueInteger: Schema.NonNegativeInt,
-    }).pipe(
-      Schema.filter((exerciseSetObservation) => [
-        ...onlyOneIssues({
-          items: exerciseSetObservation.basedOn,
-          selected: refersTo('ServiceRequest'),
+      basedOn: Schema.Array(Schema.typeSchema(IdentifierAndReference.ReferenceSchema)).pipe(
+        filterArrayWithOneMatchingElement({
+          matches: refersTo('ServiceRequest'),
           schema: LiteralReferenceSchema,
-          path: ['basedOn'],
           expected: 'reference to a ServiceRequest',
-        }),
-        ...onlyOneIssues({
-          items: exerciseSetObservation.partOf,
-          selected: refersTo('Procedure'),
+        })
+      ),
+      partOf: Schema.Array(Schema.typeSchema(IdentifierAndReference.ReferenceSchema)).pipe(
+        filterArrayWithOneMatchingElement({
+          matches: refersTo('Procedure'),
           schema: LiteralReferenceSchema,
-          path: ['partOf'],
           expected: 'reference to a Procedure',
-        }),
-      ]),
-      Schema.brand('ExerciseSetObservation')
-    )
+        })
+      ),
+    }).pipe(Schema.brand('ExerciseSetObservation'))
   )
 
 /** A decoded `Observation` with every optional slot empty, for a set to be spread onto. */

@@ -300,7 +300,12 @@ describe('ExerciseRequest.Schema', () => {
           subject: { reference: 'Patient/p-1' },
           code: Schema.encodeSync(CodeableConcept.Schema)(code),
         })
-        expect(fieldsOf(decode(foreign))).toEqual(['id', 'code', 'instantiatesCanonical'])
+        expect(fieldsOf(decode(foreign))).toEqual([
+          'id',
+          'code',
+          'instantiatesCanonical',
+          'orderDetail',
+        ])
       }),
       { numRuns: RUNS }
     )

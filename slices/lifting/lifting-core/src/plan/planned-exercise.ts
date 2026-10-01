@@ -7,18 +7,25 @@ import {
   pipe,
   Schema,
 } from 'effect'
-import type { CodeableConcept } from 'fhir-r4/data-types'
-import { Coding, Extension, WildflowerCodeSystem, WildflowerExtension } from 'fhir-r4/data-types'
+import {
+  CodeableConcept,
+  Coding,
+  Extension,
+  narrowFields,
+  WildflowerCodeSystem,
+  WildflowerExtension,
+} from 'fhir-r4/data-types'
 import { PlanDefinitionAction } from 'fhir-r4/resources'
 
 import {
   countExerciseParameterAmong,
   countExerciseParameterConcept,
-  exerciseParameterIssues,
+  filterArrayWithOneExerciseParameter,
 } from '../exercise-parameter/exercise-parameter-concept.ts'
 import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
-import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
+import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
+import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as ProgressionRule from './progression-rule.ts'
 
@@ -58,35 +65,24 @@ interface Type extends PlanDefinitionAction.Type, Brand.Brand<'PlannedExercise'>
  */
 const PlannedExerciseSchema: Schema.Schema<Type, PlanDefinitionAction.Type> =
   narrowedFrom<PlanDefinitionAction.Type>()(
-    Schema.typeSchema(PlanDefinitionAction.Schema).pipe(
-      Schema.filter((action) => [
-        ...onlyOneIssues({
-          items: action.code,
-          selected: namesAnExercise,
+    narrowFields(Schema.typeSchema(PlanDefinitionAction.Schema), {
+      code: Schema.Array(Schema.typeSchema(CodeableConcept.Schema)).pipe(
+        filterArrayWithOneMatchingElement({
+          matches: namesAnExercise,
           schema: ExerciseConceptType,
-          path: ['code'],
           expected: 'exercise concept',
         }),
-        ...exerciseParameterIssues({
-          concepts: action.code,
-          code: ExerciseParameter.Code.Sets,
-          path: ['code'],
-        }),
-        ...exerciseParameterIssues({
-          concepts: action.code,
-          code: ExerciseParameter.Code.Reps,
-          path: ['code'],
-        }),
-        ...onlyOneIssues({
-          items: action.extension,
-          selected: Extension.hasUrl(WildflowerExtension.LiftingProgression),
+        filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Sets),
+        filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Reps)
+      ),
+      extension: Schema.Array(Schema.typeSchema(Extension.Schema)).pipe(
+        filterArrayWithOneMatchingElement({
+          matches: Extension.hasUrl(WildflowerExtension.LiftingProgression),
           schema: ProgressionRuleType,
-          path: ['extension'],
           expected: `${WildflowerExtension.LiftingProgression} extension`,
-        }),
-      ]),
-      Schema.brand('PlannedExercise')
-    )
+        })
+      ),
+    }).pipe(Schema.brand('PlannedExercise'))
   )
 
 /** A decoded `PlanDefinition.action` with every optional slot empty, for a planned exercise to be spread onto. */

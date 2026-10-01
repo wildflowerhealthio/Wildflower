@@ -25,7 +25,8 @@ import { Procedure } from 'fhir-r4/resources'
 // carries out, but both modules read workouts at runtime, so importing them
 // back would be a cycle.
 import type * as ExerciseRequest from '../exercise-request/exercise-request.ts'
-import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
+import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
+import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
 import type * as Plan from '../plan/plan.ts'
@@ -47,17 +48,15 @@ const StatusSchema = Schema.Literal('in-progress', 'completed').annotations({
 const WorkoutCodingSchema = Schema.Struct({ code: Schema.NonEmptyTrimmedString })
 
 /** A workout's `code`: exactly one coding in `WildflowerCodeSystem.Workout`, its label. */
-const WorkoutCodeSchema = Schema.typeSchema(CodeableConcept.Schema).pipe(
-  Schema.filter((concept) =>
-    onlyOneIssues({
-      items: concept.coding,
-      selected: Coding.isInSystem(WildflowerCodeSystem.Workout),
+const WorkoutCodeSchema = narrowFields(Schema.typeSchema(CodeableConcept.Schema), {
+  coding: Schema.Array(Schema.typeSchema(Coding.Schema)).pipe(
+    filterArrayWithOneMatchingElement({
+      matches: Coding.isInSystem(WildflowerCodeSystem.Workout),
       schema: WorkoutCodingSchema,
-      path: ['coding'],
       expected: `coding in ${WildflowerCodeSystem.Workout}`,
     })
-  )
-)
+  ),
+})
 
 /** A decoded `Period` narrowed to a `start`, and an `end` at or after it when there is one. */
 const WorkoutPeriodSchema = narrowFields(Schema.typeSchema(Period.Schema), {
@@ -116,6 +115,21 @@ interface Type
 }
 
 /**
+ * Whether a workout has ended exactly when it is completed; else the issue at
+ * its `performedPeriod.end`.
+ */
+const endedExactlyWhenCompleted = (
+  procedure: Pick<Type, 'status' | 'performedPeriod'>
+): Schema.FilterOutput =>
+  (procedure.status === 'completed') === (procedure.performedPeriod.end !== null) || {
+    path: ['performedPeriod', 'end'],
+    message:
+      procedure.status === 'completed'
+        ? 'expected a completed workout to have ended'
+        : 'expected an in-progress workout not to have ended',
+  }
+
+/**
  * Decodes a `Procedure` into a {@link Type} — fails, naming the field, on no
  * `id`, a status other than `in-progress` or `completed`, no single workout
  * coding, no single plan url, no start, an end on an in-progress workout or
@@ -128,19 +142,7 @@ const WorkoutProcedureSchema: Schema.Schema<Type, Procedure.Type> = narrowedFrom
     instantiatesCanonical: Schema.Tuple(Schema.String),
     performedPeriod: WorkoutPeriodSchema,
     basedOn: Schema.NonEmptyArray(ServiceRequestReferenceSchema),
-  }).pipe(
-    Schema.filter(
-      (procedure) =>
-        (procedure.status === 'completed') === (procedure.performedPeriod.end !== null) || {
-          path: ['performedPeriod', 'end'],
-          message:
-            procedure.status === 'completed'
-              ? 'expected a completed workout to have ended'
-              : 'expected an in-progress workout not to have ended',
-        }
-    ),
-    Schema.brand('WorkoutProcedure')
-  )
+  }).pipe(Schema.filter(endedExactlyWhenCompleted), Schema.brand('WorkoutProcedure'))
 )
 
 /**

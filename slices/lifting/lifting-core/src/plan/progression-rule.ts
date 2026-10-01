@@ -1,7 +1,11 @@
 import { type Brand, type Either, Option, type ParseResult, pipe, Schema } from 'effect'
-import { Extension, WildflowerExtension } from 'fhir-r4/data-types'
+import { Extension, narrowFields, WildflowerExtension } from 'fhir-r4/data-types'
 
-import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
+import {
+  type ArrayFilter,
+  filterArrayWithOneMatchingElement,
+} from '../internal/filter-array-with-one-matching-element.ts'
+import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as Load from '../load/load.ts'
 
@@ -63,6 +67,14 @@ const PART_SCHEMAS = {
   loadStep: Schema.Struct({ valueDecimal: PositiveDecimal }),
 } as const satisfies Record<PartName, Schema.Schema.AnyNoContext>
 
+/** Filters a rule's sub-extensions to hold exactly one at `part`, its value in range. */
+const filterArrayWithOneProgressionRulePart = (part: PartName): ArrayFilter<Extension.Type> =>
+  filterArrayWithOneMatchingElement({
+    matches: Extension.hasUrl(part),
+    schema: PART_SCHEMAS[part],
+    expected: `"${part}" part`,
+  })
+
 /**
  * How one exercise's load moves between workouts, as FHIR carries it: a
  * {@link WildflowerExtension.LiftingProgression} extension narrowed to exactly
@@ -72,7 +84,10 @@ const PART_SCHEMAS = {
  * below the minimum load. Every amount is in the rule's unit, and only a load
  * in that unit progresses by this rule.
  */
-interface Type extends Extension.Type, Brand.Brand<'ProgressionRule'> {}
+interface Type extends Omit<Extension.Type, 'url'>, Brand.Brand<'ProgressionRule'> {
+  /** Always the `LiftingProgression` url. */
+  readonly url: typeof WildflowerExtension.LiftingProgression
+}
 
 /**
  * Decodes an `Extension` into a {@link Type} — fails, naming the part, when
@@ -80,22 +95,17 @@ interface Type extends Extension.Type, Brand.Brand<'ProgressionRule'> {}
  * or out of range.
  */
 const ProgressionRuleSchema: Schema.Schema<Type, Extension.Type> = narrowedFrom<Extension.Type>()(
-  Schema.typeSchema(Extension.Schema).pipe(
-    Schema.filter((extension) =>
-      extension.url === WildflowerExtension.LiftingProgression
-        ? Object.values(Part).flatMap((part) =>
-            onlyOneIssues({
-              items: extension.extension,
-              selected: Extension.hasUrl(part),
-              schema: PART_SCHEMAS[part],
-              path: ['extension'],
-              expected: `"${part}" part`,
-            })
-          )
-        : { path: ['url'], message: `expected ${WildflowerExtension.LiftingProgression}` }
+  narrowFields(Schema.typeSchema(Extension.Schema), {
+    url: Schema.Literal(WildflowerExtension.LiftingProgression),
+    extension: Schema.Array(Schema.typeSchema(Extension.Schema)).pipe(
+      filterArrayWithOneProgressionRulePart(Part.Unit),
+      filterArrayWithOneProgressionRulePart(Part.Increment),
+      filterArrayWithOneProgressionRulePart(Part.FailuresBeforeDeload),
+      filterArrayWithOneProgressionRulePart(Part.DeloadFraction),
+      filterArrayWithOneProgressionRulePart(Part.MinimumLoad),
+      filterArrayWithOneProgressionRulePart(Part.LoadStep)
     ),
-    Schema.brand('ProgressionRule')
-  )
+  }).pipe(Schema.brand('ProgressionRule'))
 )
 
 /**

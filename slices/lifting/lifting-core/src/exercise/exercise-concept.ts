@@ -1,7 +1,14 @@
 import { type Brand, type Either, Option, type ParseResult, pipe, Schema } from 'effect'
-import { CodeableConcept, Code, Coding, WildflowerCodeSystem } from 'fhir-r4/data-types'
+import {
+  CodeableConcept,
+  Code,
+  Coding,
+  narrowFields,
+  WildflowerCodeSystem,
+} from 'fhir-r4/data-types'
 
-import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
+import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
+import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 
 /**
@@ -63,18 +70,15 @@ interface Type extends CodeableConcept.Type, Brand.Brand<'ExerciseConcept'> {}
  */
 const ExerciseConceptSchema: Schema.Schema<Type, CodeableConcept.Type> =
   narrowedFrom<CodeableConcept.Type>()(
-    Schema.typeSchema(CodeableConcept.Schema).pipe(
-      Schema.filter((concept) =>
-        onlyOneIssues({
-          items: concept.coding,
-          selected: Coding.isInSystem(WildflowerCodeSystem.Exercise),
+    narrowFields(Schema.typeSchema(CodeableConcept.Schema), {
+      coding: Schema.Array(Schema.typeSchema(Coding.Schema)).pipe(
+        filterArrayWithOneMatchingElement({
+          matches: Coding.isInSystem(WildflowerCodeSystem.Exercise),
           schema: ExerciseCodingSchema,
-          path: ['coding'],
           expected: `coding in ${WildflowerCodeSystem.Exercise}`,
         })
       ),
-      Schema.brand('ExerciseConcept')
-    )
+    }).pipe(Schema.brand('ExerciseConcept'))
   )
 
 /**

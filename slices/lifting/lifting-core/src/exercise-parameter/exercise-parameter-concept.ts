@@ -6,7 +6,11 @@ import {
   WildflowerExtension,
 } from 'fhir-r4/data-types'
 
-import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
+import {
+  type ArrayFilter,
+  filterArrayWithOneMatchingElement,
+} from '../internal/filter-array-with-one-matching-element.ts'
+import { guaranteed } from '../internal/guaranteed.ts'
 import * as Load from '../load/load.ts'
 import * as ExerciseParameter from './exercise-parameter.ts'
 
@@ -30,31 +34,30 @@ const LoadValueSchema = Schema.Struct({ valueQuantity: Schema.typeSchema(Load.Sc
 /** An exercise parameter's (already decoded) value extension carrying a positive count as its `valueInteger`. */
 const CountValueSchema = Schema.Struct({ valueInteger: Schema.Int.pipe(Schema.positive()) })
 
-/** A concept coded as the exercise parameter `code` whose one value extension satisfies `value`. */
-const exerciseParameterConceptSchema = (
-  code: ExerciseParameter.Code,
+/**
+ * What an (already decoded) concept coded as an exercise parameter must
+ * carry: exactly one `ExerciseParameterValue` extension, satisfying `value`.
+ */
+const exerciseParameterValueConceptSchema = (
   value: Schema.Schema.AnyNoContext
-): Schema.Schema<CodeableConcept.Type> =>
-  Schema.typeSchema(CodeableConcept.Schema).pipe(
-    Schema.filter(isExerciseParameterConcept(code)),
-    Schema.filter((concept) =>
-      onlyOneIssues({
-        items: concept.extension,
-        selected: Extension.hasUrl(WildflowerExtension.ExerciseParameterValue),
+): Schema.Schema.AnyNoContext =>
+  Schema.Struct({
+    extension: Schema.Array(Schema.typeSchema(Extension.Schema)).pipe(
+      filterArrayWithOneMatchingElement({
+        matches: Extension.hasUrl(WildflowerExtension.ExerciseParameterValue),
         schema: value,
-        path: ['extension'],
         expected: `${WildflowerExtension.ExerciseParameterValue} extension`,
       })
-    )
-  )
+    ),
+  })
 
-/** Each exercise parameter's concept, its value a {@link Load.Type} for a load and a positive integer for a count. */
-const EXERCISE_PARAMETER_CONCEPT_SCHEMAS: {
-  readonly [Code in ExerciseParameter.Code]: Schema.Schema<CodeableConcept.Type>
+/** What each exercise parameter's concept must carry: a {@link Load.Type} for a load, a positive integer for a count. */
+const EXERCISE_PARAMETER_VALUE_CONCEPT_SCHEMAS: {
+  readonly [Code in ExerciseParameter.Code]: Schema.Schema.AnyNoContext
 } = {
-  load: exerciseParameterConceptSchema(ExerciseParameter.Code.Load, LoadValueSchema),
-  sets: exerciseParameterConceptSchema(ExerciseParameter.Code.Sets, CountValueSchema),
-  reps: exerciseParameterConceptSchema(ExerciseParameter.Code.Reps, CountValueSchema),
+  load: exerciseParameterValueConceptSchema(LoadValueSchema),
+  sets: exerciseParameterValueConceptSchema(CountValueSchema),
+  reps: exerciseParameterValueConceptSchema(CountValueSchema),
 }
 
 /** A value extension as {@link LoadValueSchema} reads it. */
@@ -64,27 +67,22 @@ const loadValueOf = Schema.validateOption(LoadValueSchema)
 const countValueOf = Schema.validateOption(CountValueSchema)
 
 /**
- * The issues of a list of concepts that must hold exactly one concept coded
- * as the exercise parameter `code`, with a value of the right shape and
- * range; `path` is where the list is.
+ * Filters a list of concepts to hold exactly one coded as the exercise
+ * parameter `code`, with a value of the right shape and range.
  */
-const exerciseParameterIssues = (spec: {
-  readonly concepts: readonly CodeableConcept.Type[]
-  readonly code: ExerciseParameter.Code
-  readonly path: readonly PropertyKey[]
-}): readonly Schema.FilterIssue[] =>
-  onlyOneIssues({
-    items: spec.concepts,
-    selected: isExerciseParameterConcept(spec.code),
-    schema: EXERCISE_PARAMETER_CONCEPT_SCHEMAS[spec.code],
-    path: spec.path,
-    expected: `concept coded as the exercise parameter "${spec.code}"`,
+const filterArrayWithOneExerciseParameter = (
+  code: ExerciseParameter.Code
+): ArrayFilter<CodeableConcept.Type> =>
+  filterArrayWithOneMatchingElement({
+    matches: isExerciseParameterConcept(code),
+    schema: EXERCISE_PARAMETER_VALUE_CONCEPT_SCHEMAS[code],
+    expected: `concept coded as the exercise parameter "${code}"`,
   })
 
 /**
  * The value extension of the concept among `concepts` coded as the exercise
  * parameter `code` — on a value whose schema checked with
- * {@link exerciseParameterIssues} that there is exactly one of each.
+ * {@link filterArrayWithOneExerciseParameter} that there is exactly one of each.
  */
 const exerciseParameterValueExtensionAmong = (
   concepts: readonly CodeableConcept.Type[],
@@ -99,7 +97,7 @@ const exerciseParameterValueExtensionAmong = (
 
 /**
  * The load the one `load` exercise parameter among `concepts` carries, on a
- * value whose schema checked it with {@link exerciseParameterIssues}.
+ * value whose schema checked it with {@link filterArrayWithOneExerciseParameter}.
  */
 const loadExerciseParameterAmong = (concepts: readonly CodeableConcept.Type[]): Load.Type =>
   guaranteed(
@@ -112,7 +110,7 @@ const loadExerciseParameterAmong = (concepts: readonly CodeableConcept.Type[]): 
 
 /**
  * The count the one `code` exercise parameter among `concepts` carries, on a
- * value whose schema checked it with {@link exerciseParameterIssues}.
+ * value whose schema checked it with {@link filterArrayWithOneExerciseParameter}.
  */
 const countExerciseParameterAmong = (
   concepts: readonly CodeableConcept.Type[],
@@ -153,7 +151,7 @@ const countExerciseParameterConcept = (count: {
 export {
   countExerciseParameterAmong,
   countExerciseParameterConcept,
-  exerciseParameterIssues,
+  filterArrayWithOneExerciseParameter,
   isExerciseParameterConcept,
   loadExerciseParameterAmong,
   loadExerciseParameterConcept,

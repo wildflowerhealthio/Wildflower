@@ -9,7 +9,12 @@ import {
   pipe,
   Schema,
 } from 'effect'
-import { IdentifierAndReference, narrowFields, withMandatoryId } from 'fhir-r4/data-types'
+import {
+  CodeableConcept,
+  IdentifierAndReference,
+  narrowFields,
+  withMandatoryId,
+} from 'fhir-r4/data-types'
 import { ServiceRequest } from 'fhir-r4/resources'
 
 import {
@@ -17,7 +22,7 @@ import {
   countExerciseParameterConcept,
   loadExerciseParameterAmong,
   loadExerciseParameterConcept,
-  exerciseParameterIssues,
+  filterArrayWithOneExerciseParameter,
   isExerciseParameterConcept,
 } from '../exercise-parameter/exercise-parameter-concept.ts'
 import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
@@ -69,22 +74,12 @@ const ExerciseRequestSchema: Schema.Schema<Type, ServiceRequest.Type> =
     narrowFields(Schema.typeSchema(withMandatoryId(ServiceRequest.Schema)), {
       code: Schema.typeSchema(ExerciseConcept.Schema),
       instantiatesCanonical: Schema.Tuple(Schema.String),
-    }).pipe(
-      Schema.filter((serviceRequest) =>
-        [
-          ExerciseParameter.Code.Load,
-          ExerciseParameter.Code.Sets,
-          ExerciseParameter.Code.Reps,
-        ].flatMap((code) =>
-          exerciseParameterIssues({
-            concepts: serviceRequest.orderDetail,
-            code,
-            path: ['orderDetail'],
-          })
-        )
+      orderDetail: Schema.Array(Schema.typeSchema(CodeableConcept.Schema)).pipe(
+        filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Load),
+        filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Sets),
+        filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Reps)
       ),
-      Schema.brand('ExerciseRequest')
-    )
+    }).pipe(Schema.brand('ExerciseRequest'))
   )
 
 /** `ExerciseRequest.make` was asked for an exercise the plan does not run. */
