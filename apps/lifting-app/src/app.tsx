@@ -11,7 +11,7 @@ import { type JSX, useMemo } from 'react'
 import { ErrorBanner, GateCard } from 'react-tundraish'
 import { LoadingLine } from 'smart-app-react'
 
-import { LiftingApp } from './lifting-app.tsx'
+import { LiftingApp } from './lifting-app/lifting-app.tsx'
 import type { SmartClient } from './smart-client.ts'
 import styles from './app.module.css'
 

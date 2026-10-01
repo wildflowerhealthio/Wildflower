@@ -3,15 +3,11 @@ import { ExerciseRequest, type TrainingPlanDefinition } from 'lifting-core'
 import { StartTrainingPlanDefinitionView, type TrainingPlanDefinitionStart } from 'lifting-react'
 import { type JSX, useState } from 'react'
 
-import { now } from './clock.ts'
-import {
-  type LiftingSession,
-  subjectOf,
-  useLiftingWrite,
-  useLiftingWriting,
-} from './lifting-session.ts'
-import { trainingPlanDefinitionChangeResources } from './lifting-writes.ts'
-import { serviceRequestIdMinter } from './mint-ids.ts'
+import { now } from '../clock.ts'
+import { serviceRequestIdMinter } from '../ids/service-request-id-minter.ts'
+import { type LiftingSession, subjectOf } from '../session/lifting-session.ts'
+import { useLiftingWrite, useLiftingWriting } from '../session/use-lifting-write.ts'
+import { trainingPlanDefinitionChangeResources } from './training-plan-definition-change-resources.ts'
 
 /**
  * What one start writes from, fixed at its first attempt so a retry writes the

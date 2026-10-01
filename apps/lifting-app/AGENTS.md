@@ -9,6 +9,37 @@ for the boot structure, the reads, the tabs, the writes and the scopes.
 `base`, build into the package's own `dist/`, `SmartAppRoot` shell with its own
 Sentry DSN, and read-status lines.
 
+## Layout
+
+`src/` keeps the entries and the root at its top: `main.tsx` and
+`launch-main.tsx` (the `index.html` and `launch.html` entries), `config.ts`,
+`app-root.tsx` (the package export), `app.tsx`, and the app-wide `clock.ts`
+and `smart-client.ts`. Everything else is a folder per screen or concern:
+
+- `lifting-app/` — `LiftingApp` (the header and the **Today | Plan |
+  History** toggle) and `TabBody`, the tab shown over a training record.
+- `today/`, `plan/`, `history/` — each tab, with the write it builds beside
+  it (`today/submitted-workout-resources.ts`).
+- `start-program/` — `StartProgram`, the start of a training plan definition
+  the Today and Plan tabs share, with what it writes
+  (`training-plan-definition-change-resources.ts`) and the current loads it
+  suggests (`current-loads.ts`).
+- `record/` — the lifter's record and its reads: `training-record.ts`
+  (`readTrainingRecord`), `workout-history.ts` (`readWorkoutHistory`), the
+  paging and decoding both share (`read-every-page.ts`), `UnreadableCounts`,
+  and the notices that say what could not be read (`TrainingRecordNotices`,
+  `UnreadableNotice`).
+- `session/` — `LiftingSession` (one launch, for one lifter) and the write
+  hooks every screen writes through (`use-lifting-write.ts`).
+- `ids/` — the ids the app mints: `mintResourceId`,
+  `exerciseSetObservationIdOf`, `workoutIdMinter` and
+  `serviceRequestIdMinter`, one per file.
+
+One component per file, named after it in kebab-case. A styled component has
+its own CSS module beside it, BEM-named as `lifting-react`'s are: the block is
+the file's name, read as `styles['block__element']`. Tests sit beside what
+they cover.
+
 ## Rules
 
 - **Compose; decide nothing.** The app wires `lifting-core` and
@@ -29,8 +60,9 @@ Sentry DSN, and read-status lines.
 - **Every write is one batch, to minted ids, and refetches when it settles.**
   `useLiftingWrite` writes through `persistBatchBundleOrFail` and invalidates
   the lifter's queries on success and failure alike; `useLiftingWriting`
-  disables every screen while any write is pending. A retry reuses what the
-  first attempt fixed (`WorkoutAttempt`, `StartAttempt`), so its ids match.
+  disables every screen while any write is pending (`src/session/`). A retry
+  reuses what the first attempt fixed (`WorkoutAttempt`, `StartAttempt`), so
+  its ids match.
 - **Set ids sort in set order.** `exerciseSetObservationIdOf` zero-pads the
   set index and keeps the id within FHIR's grammar; change it only with its
   property tests.
@@ -40,14 +72,19 @@ Sentry DSN, and read-status lines.
 
 ## Testing
 
-- `app.test.tsx` drives `App` and `LiftingApp` over an in-memory FHIR server:
-  the real `fhir-r4-react/smart` readers over a stub client that answers
-  searches from the store, and the real `buildSmartRouterContext` and
-  `persistBatchBundleOrFail` over a stub transport that applies batches to it.
-  Seeded records are built through `lifting-core`'s `make`s and
-  `PlannedWorkout.submit`, and what lands is decoded back through core's
-  schemas.
-- `mint-ids.test.ts` — property tests: set ids are FHIR ids and sort in set
+- The screens are driven end to end through `LiftingApp` over an in-memory
+  FHIR server: the real `fhir-r4-react/smart` readers over a stub client that
+  answers searches from the store, and the real `buildSmartRouterContext` and
+  `persistBatchBundleOrFail` over a stub transport that applies batches to it
+  (`fake-fhir-server.test-helpers.ts`). Seeded records are built through
+  `lifting-core`'s `make`s and `PlannedWorkout.submit`, and what lands is
+  decoded back through core's schemas (`lifting-app.test-helpers.ts`). Each
+  feature's test sits in its folder (`today/today-tab.test.tsx`,
+  `record/training-record.test.tsx`, `session/use-lifting-write.test.tsx`,
+  …); `lifting-app/lifting-app.test.tsx` drives every tab to check the scopes
+  cover each read and write, and `app.test.tsx` drives `App` over a stubbed
+  handshake.
+- `ids/*.test.ts` — property tests: set ids are FHIR ids and sort in set
   order, long exercise ids stay apart, and a minter names one resource with
   one id on every call.
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as Lifting

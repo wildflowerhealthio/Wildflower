@@ -4,9 +4,9 @@ import { WorkoutHistoryView } from 'lifting-react'
 import type { JSX } from 'react'
 import { LoadingLine, ReadFailureLine } from 'smart-app-react'
 
-import { readWorkoutHistory } from './lifting-record.ts'
-import { liftingKeyOf, type LiftingSession } from './lifting-session.ts'
-import { UnreadableNotice } from './record-notices.tsx'
+import { UnreadableNotice } from '../record/unreadable-notice.tsx'
+import { readWorkoutHistory } from '../record/workout-history.ts'
+import { liftingKeyOf, type LiftingSession } from '../session/lifting-session.ts'
 
 /**
  * The completed workouts, newest first: `readWorkoutHistory` — read only once

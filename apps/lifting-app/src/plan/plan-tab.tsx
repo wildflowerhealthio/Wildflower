@@ -3,10 +3,11 @@ import type { ExerciseRequest, TrainingPlanDefinition } from 'lifting-core'
 import { TrainingPlanDefinitionEditor } from 'lifting-react'
 import { type JSX, useState } from 'react'
 
-import { currentLoadsOf } from './current-loads.ts'
-import { type LiftingSession, useLiftingWrite, useLiftingWriting } from './lifting-session.ts'
-import { mintResourceId } from './mint-ids.ts'
-import { StartProgram } from './start-program.tsx'
+import { mintResourceId } from '../ids/mint-resource-id.ts'
+import type { LiftingSession } from '../session/lifting-session.ts'
+import { useLiftingWrite, useLiftingWriting } from '../session/use-lifting-write.ts'
+import { currentLoadsOf } from '../start-program/current-loads.ts'
+import { StartProgram } from '../start-program/start-program.tsx'
 
 /** Props for {@link PlanTab}. */
 interface PlanTabProps {

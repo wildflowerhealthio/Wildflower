@@ -1,106 +1,27 @@
-import { Array as Arr, Effect, Option, Schema } from 'effect'
+import { Array as Arr, Effect, Option } from 'effect'
 import {
-  type BundleDecodeError,
   fetchActiveServiceRequestPage,
   fetchAllResourcePages,
-  fetchObservationBasedOnOrPartOfPage,
   fetchPlanDefinitionPage,
   fetchProcedurePage,
-  fetchServiceRequestPage,
-  type ObservationBasedOnOrPartOfFirstPage,
-  type ObservationResource,
-  type ResourcePage,
-  type ResourcePageCycleError,
-  type ResourcePageRequestError,
 } from 'fhir-r4-react/smart'
-import { Observation } from 'fhir-r4/resources'
 import {
   ExerciseRequest,
-  ExerciseSetObservation,
+  type ExerciseSetObservation,
   LiftingFeature,
   TrainingPlanDefinition,
   WorkoutProcedure,
 } from 'lifting-core'
 
-import type { SmartClient } from './smart-client.ts'
-
-/**
- * Reading a lifter's record off the FHIR server: every page of each search,
- * each resource decoded into `lifting-core`'s narrowed type, and every
- * resource that did not decode counted rather than dropped in silence.
- *
- * @packageDocumentation
- */
-
-/** A failed read: a page request, a page that is not a bundle, or a `next` link that loops. */
-type ReadFailure = ResourcePageRequestError | BundleDecodeError | ResourcePageCycleError
-
-/**
- * How many resources of each lifting type a read found but could not use:
- * entries that did not decode as the FHIR resource, and resources that did
- * but are not the lifting type (`lifting-core`'s `Schema` refused them).
- */
-interface UnreadableCounts {
-  readonly trainingPlanDefinitions: number
-  readonly exerciseRequests: number
-  readonly workoutProcedures: number
-  readonly exerciseSetObservations: number
-}
-
-const NO_UNREADABLE: UnreadableCounts = {
-  trainingPlanDefinitions: 0,
-  exerciseRequests: 0,
-  workoutProcedures: 0,
-  exerciseSetObservations: 0,
-}
-
-/** The resources a whole read decoded as the lifting type, and how many it could not. */
-interface DecodedResources<A> {
-  readonly resources: readonly A[]
-  readonly unreadableCount: number
-}
-
-/**
- * Decode every resource of a whole read through a lifting `Schema`, counting
- * the page entries that did not decode as FHIR beside the resources the
- * schema refused.
- */
-const decodeEvery = <A, I>(
-  schema: Schema.Schema<A, I>,
-  read: Omit<ResourcePage<I>, 'nextPageUrl'>
-): DecodedResources<A> => {
-  const decode = Schema.decodeEither(schema)
-  const [refused, resources] = Arr.partitionMap(read.items, (item) => decode(item))
-  return { resources, unreadableCount: refused.length + read.droppedEntryCount }
-}
-
-/**
- * The sets of a whole `Observation` read: retracted observations left out
- * before decoding — withdrawn, not unreadable — and the rest decoded as
- * {@link decodeEvery} decodes.
- */
-const decodeExerciseSetObservations = (
-  read: Omit<ResourcePage<ObservationResource>, 'nextPageUrl'>
-): DecodedResources<ExerciseSetObservation.Type> =>
-  decodeEvery(ExerciseSetObservation.Schema, {
-    ...read,
-    items: read.items.filter(
-      (observation) => !Observation.RETRACTED_STATUSES.has(observation.status)
-    ),
-  })
-
-/** Every page of the sets one first page names, over `client`. */
-const fetchEveryObservation = (
-  client: SmartClient,
-  first: ObservationBasedOnOrPartOfFirstPage
-): Effect.Effect<Omit<ResourcePage<ObservationResource>, 'nextPageUrl'>, ReadFailure> =>
-  fetchAllResourcePages((cursor) => fetchObservationBasedOnOrPartOfPage(client, cursor), first)
-
-/**
- * How many per-resource searches run at once: one per active
- * `ExerciseRequest` (a handful) or per completed workout (a history's worth).
- */
-const SEARCH_CONCURRENCY = 4
+import type { SmartClient } from '../smart-client.ts'
+import {
+  decodeEvery,
+  decodeExerciseSetObservations,
+  fetchEveryObservation,
+  type ReadFailure,
+  SEARCH_CONCURRENCY,
+} from './read-every-page.ts'
+import { NO_UNREADABLE, type UnreadableCounts } from './unreadable-counts.ts'
 
 /**
  * The lifter's current program: the training plan definition their active
@@ -249,84 +170,4 @@ const readTrainingRecord = (
     }
   })
 
-/**
- * Every completed workout the lifter performed, under any training plan
- * definition, with its sets and the `ExerciseRequest`s it carried out —
- * everything `WorkoutHistoryView` takes.
- */
-interface WorkoutHistory {
-  /** Every lifting `ExerciseRequest`, closed ones too. */
-  readonly exerciseRequests: readonly ExerciseRequest.Type[]
-  readonly workoutProcedures: readonly WorkoutProcedure.Type[]
-  readonly exerciseSetObservations: readonly ExerciseSetObservation.Type[]
-  readonly unreadable: UnreadableCounts
-}
-
-/**
- * Read the lifter's whole workout history: every lifting `ExerciseRequest` in
- * any status and every workout, then the sets `part-of` each completed one.
- *
- * @remarks
- * One set search per completed workout — the groups the history shows. A
- * workout still in progress is passed over by the view, so its sets are not
- * read.
- */
-const readWorkoutHistory = (
-  client: SmartClient,
-  patientId: string
-): Effect.Effect<WorkoutHistory, ReadFailure> =>
-  Effect.gen(function* () {
-    const [serviceRequests, procedures] = yield* Effect.all(
-      [
-        fetchAllResourcePages((cursor) => fetchServiceRequestPage(client, cursor), {
-          patientId,
-          categoryToken: LiftingFeature.TOKEN,
-          instantiatesCanonicalUrl: null,
-        }),
-        fetchAllResourcePages((cursor) => fetchProcedurePage(client, cursor), {
-          patientId,
-          categoryToken: LiftingFeature.TOKEN,
-          instantiatesCanonicalUrl: null,
-        }),
-      ],
-      { concurrency: 'unbounded' }
-    )
-    const exerciseRequests = decodeEvery(ExerciseRequest.Schema, serviceRequests)
-    const workoutProcedures = decodeEvery(WorkoutProcedure.Schema, procedures)
-    const exerciseSetObservationReads = yield* Effect.forEach(
-      workoutProcedures.resources.filter(WorkoutProcedure.isCompleted),
-      (workoutProcedure) =>
-        fetchEveryObservation(client, {
-          patientId,
-          basedOnReference: null,
-          partOfReference: `Procedure/${workoutProcedure.id}`,
-        }),
-      { concurrency: SEARCH_CONCURRENCY }
-    )
-    const exerciseSetObservations = exerciseSetObservationReads.map(decodeExerciseSetObservations)
-    return {
-      exerciseRequests: exerciseRequests.resources,
-      workoutProcedures: workoutProcedures.resources,
-      exerciseSetObservations: exerciseSetObservations.flatMap(({ resources }) => resources),
-      unreadable: {
-        ...NO_UNREADABLE,
-        exerciseRequests: exerciseRequests.unreadableCount,
-        workoutProcedures: workoutProcedures.unreadableCount,
-        exerciseSetObservations: Arr.reduce(
-          exerciseSetObservations,
-          0,
-          (total, { unreadableCount }) => total + unreadableCount
-        ),
-      },
-    }
-  })
-
-export {
-  type CurrentTraining,
-  readTrainingRecord,
-  readWorkoutHistory,
-  type ReadFailure,
-  type TrainingRecord,
-  type UnreadableCounts,
-  type WorkoutHistory,
-}
+export { type CurrentTraining, readTrainingRecord, type TrainingRecord }

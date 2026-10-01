@@ -4,18 +4,14 @@ import { PlannedWorkoutView, SubmittedWorkoutView, type WorkoutSubmission } from
 import { type JSX, useMemo, useState } from 'react'
 import { ErrorBanner } from 'react-tundraish'
 
-import { now } from './clock.ts'
-import { currentLoadsOf } from './current-loads.ts'
-import type { CurrentTraining } from './lifting-record.ts'
-import {
-  type LiftingSession,
-  subjectOf,
-  useLiftingWrite,
-  useLiftingWriting,
-} from './lifting-session.ts'
-import { submittedWorkoutResources } from './lifting-writes.ts'
-import { workoutIdMinter } from './mint-ids.ts'
-import { StartProgram } from './start-program.tsx'
+import { now } from '../clock.ts'
+import { workoutIdMinter } from '../ids/workout-id-minter.ts'
+import type { CurrentTraining } from '../record/training-record.ts'
+import { type LiftingSession, subjectOf } from '../session/lifting-session.ts'
+import { useLiftingWrite, useLiftingWriting } from '../session/use-lifting-write.ts'
+import { currentLoadsOf } from '../start-program/current-loads.ts'
+import { StartProgram } from '../start-program/start-program.tsx'
+import { submittedWorkoutResources } from './submitted-workout-resources.ts'
 import styles from './today-tab.module.css'
 
 /**

@@ -2,11 +2,11 @@ import { Array as Arr, Match, Option } from 'effect'
 import { StrongLifts5x5 } from 'lifting-core'
 import type { JSX } from 'react'
 
-import type { TrainingRecord } from './lifting-record.ts'
-import type { LiftingSession } from './lifting-session.ts'
-import { PlanTab } from './plan-tab.tsx'
-import { StartProgram } from './start-program.tsx'
-import { TodayTab } from './today-tab.tsx'
+import { PlanTab } from '../plan/plan-tab.tsx'
+import type { TrainingRecord } from '../record/training-record.ts'
+import type { LiftingSession } from '../session/lifting-session.ts'
+import { StartProgram } from '../start-program/start-program.tsx'
+import { TodayTab } from '../today/today-tab.tsx'
 
 /** The three tabs the header toggle switches between. */
 type Tab = 'today' | 'plan' | 'history'

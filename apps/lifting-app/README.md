@@ -44,10 +44,10 @@ then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call.
 `src/app.tsx`'s `App` completes the handshake and builds the write runner
 (`buildSmartRouterContext` over `FetchHttpClient.layer`). A launch with no
 patient in context stops at a "Lifting needs a patient" gate. Otherwise
-`src/lifting-app.tsx`'s `LiftingApp` reads the lifter's training record and
-shows it under a **Today | Plan | History** toggle.
+`src/lifting-app/lifting-app.tsx`'s `LiftingApp` reads the lifter's training
+record and shows it under a **Today | Plan | History** toggle.
 
-### Reads (`src/lifting-record.ts`)
+### Reads (`src/record/`)
 
 Every search is read to its last page (`fetchAllResourcePages`) and every
 resource decoded through `lifting-core`'s `Schema`; what does not decode is
@@ -55,7 +55,7 @@ counted and said in a banner, never dropped in silence. Retracted
 `Observation`s (`Observation.RETRACTED_STATUSES`) are left out before decoding:
 withdrawn, not unreadable.
 
-- **The training record** (`readTrainingRecord`), what the app opens on:
+- **The training record** (`readTrainingRecord`, `training-record.ts`), what the app opens on:
   1. The patient's active lifting `ServiceRequest`s
      (`fetchActiveServiceRequestPage`, `category` = `LiftingFeature.TOKEN`, any
      definition), decoded as `ExerciseRequest`s. None → no current program.
@@ -71,7 +71,7 @@ withdrawn, not unreadable.
   is one search per exercise of the program however long the history, where
   per workout it would grow a search with every workout performed.
 
-- **The history** (`readWorkoutHistory`), read only when the History tab
+- **The history** (`readWorkoutHistory`, `workout-history.ts`), read only when the History tab
   opens: every lifting `ServiceRequest` in any status (`fetchServiceRequestPage`
   — closed requests too, since each workout was judged against the one it
   carried out) and every lifting workout, then the sets `part-of` each
@@ -79,34 +79,35 @@ withdrawn, not unreadable.
 
 ### The tabs
 
-- **Today** (`src/today-tab.tsx`). With a current program, `PlannedWorkout.make`
-  over it, shown by `PlannedWorkoutView`. "Submit workout" runs
+- **Today** (`src/today/today-tab.tsx`). With a current program,
+  `PlannedWorkout.make` over it, shown by `PlannedWorkoutView`. "Submit workout" runs
   `PlannedWorkout.submit` with the launch patient as `subject` and a `mintId`
   from `workoutIdMinter`, and writes the completed `Procedure`, every set's
   `Observation`, and each moved request's closed `current` and its `next` (a
   hold writes nothing) in one batch; `SubmittedWorkoutView` shows the outcome
-  until "Next workout". With no program, `StartProgram` offers StrongLifts 5×5
-  at `StrongLifts5x5.STARTING_LOADS`, and writes the template's
+  until "Next workout". With no program, `StartProgram`
+  (`src/start-program/start-program.tsx`) offers StrongLifts 5×5 at
+  `StrongLifts5x5.STARTING_LOADS`, and writes the template's
   `PlanDefinition` with its requests in one batch. When the day due has an
   exercise with no active request or several, the refusal is shown above a
   restart of the program at the current loads.
-- **Plan** (`src/plan-tab.tsx`). `TrainingPlanDefinitionEditor` over the
+- **Plan** (`src/plan/plan-tab.tsx`). `TrainingPlanDefinitionEditor` over the
   current program (or an empty form, which offers StrongLifts 5×5). "Save"
   writes the made training plan definition as a new `PlanDefinition` — under an
   id minted when the tab opens, so workouts and closed requests of the old one
   keep reading against its url — then `StartProgram` starts it at the current
   loads: `ExerciseRequest.changeTrainingPlanDefinition`'s revoked and started
   requests in one batch.
-- **History** (`src/history-tab.tsx`). `WorkoutHistoryView` over the history
-  read.
+- **History** (`src/history/history-tab.tsx`). `WorkoutHistoryView` over the
+  history read.
 
 ### Writes
 
 Every write is one batch `Bundle` through `persistBatchBundleOrFail`, each
-resource `PUT` to an id the app minted (`src/mint-ids.ts`); it fails unless
+resource `PUT` to an id the app minted (`src/ids/`); it fails unless
 every entry was accepted. Once it settles, failed or not, the record is read
 again, and every screen's controls stay disabled until that lands
-(`src/lifting-session.ts`).
+(`src/session/use-lifting-write.ts`).
 
 A batch's entries land independently, so a failed write may have partly
 landed. Its first attempt fixes what it writes from — the planned workout and
