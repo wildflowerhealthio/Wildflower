@@ -1,16 +1,23 @@
-import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { Arbitrary, Effect, FastCheck as fc, Layer, type Schema } from 'effect'
+import {
+  HttpClient,
+  HttpClientError,
+  HttpClientRequest,
+  HttpClientResponse,
+} from '@effect/platform'
+import { Arbitrary, Effect, Either, FastCheck as fc, Layer, type Schema } from 'effect'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { Patient, Observation, type FhirResource } from '../resources/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import {
+  BatchEntriesRejected,
   type BatchEntryOutcome,
   entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
+  persistBatchBundleOrFail,
 } from './persist-batch-bundle.ts'
 
 /**
@@ -109,6 +116,102 @@ describe('persistBatchBundle', () => {
     const captured = await runWith([], allOk)
     expect(captured.requests).toEqual([])
     expect(captured.outcomes).toEqual([])
+  })
+})
+
+/**
+ * Covers the failing form of the batch write: it succeeds with every outcome
+ * when each entry is a 2xx, and otherwise fails naming each rejected entry's
+ * target and status — a whole-submission failure rejecting every entry.
+ */
+describe('persistBatchBundleOrFail', () => {
+  it('succeeds with every outcome when each entry is accepted', async () => {
+    const result = await runOrFailWith(recordingHttpClientLayer([], allOk), [
+      makePatient('p-1'),
+      makeObservation('o-1'),
+    ])
+
+    expect(result).toEqual(
+      Either.right([
+        { target: { label: 'Patient', id: 'p-1' }, status: '200 OK', ok: true, issues: [] },
+        { target: { label: 'Observation', id: 'o-1' }, status: '200 OK', ok: true, issues: [] },
+      ])
+    )
+  })
+
+  it('fails naming the target and status of a non-2xx entry', async () => {
+    const result = await runOrFailWith(
+      recordingHttpClientLayer(
+        [],
+        perEntry((_body, index) => ({
+          status: index === 1 ? '422 Unprocessable Entity' : '200 OK',
+        }))
+      ),
+      [makePatient('p-1'), makeObservation('o-1')]
+    )
+
+    expect(result._tag).toBe('Left')
+    if (result._tag !== 'Left') return
+    expect(result.left).toBeInstanceOf(BatchEntriesRejected)
+    expect(result.left.submittedCount).toBe(2)
+    expect(result.left.rejected.map((outcome) => [outcome.target, outcome.status])).toEqual([
+      [{ label: 'Observation', id: 'o-1' }, '422 Unprocessable Entity'],
+    ])
+    expect(result.left.message).toBe(
+      '1 of 2 batch entries were rejected: Observation/o-1 (422 Unprocessable Entity)'
+    )
+  })
+
+  it('fails rejecting every entry when the submission never reaches the server', async () => {
+    const result = await runOrFailWith(failingTransportLayer, [
+      makePatient('p-1'),
+      makeObservation('o-1'),
+    ])
+
+    expect(result._tag).toBe('Left')
+    if (result._tag !== 'Left') return
+    expect(result.left.rejected.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['p-1', NO_RESPONSE_STATUS],
+      ['o-1', NO_RESPONSE_STATUS],
+    ])
+  })
+
+  it('property: fails exactly when some entry is not a 2xx, rejecting exactly those entries', async () => {
+    // One generated observation, re-keyed per entry: generating a resource is
+    // the costly part, and only the statuses vary.
+    const sampleObservation = makeObservation('o')
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.constantFrom('200 OK', '201 Created', '404 Not Found', '500 Server Error'), {
+          minLength: 1,
+          maxLength: 5,
+        }),
+        async (statuses) => {
+          const resources = statuses.map((_, index) => ({ ...sampleObservation, id: `o-${index}` }))
+          const result = await runOrFailWith(
+            recordingHttpClientLayer(
+              [],
+              perEntry((_body, index) => ({ status: statuses[index] ?? '200 OK' }))
+            ),
+            resources
+          )
+
+          const expectedRejectedIds = statuses.flatMap((status, index) =>
+            status.startsWith('2') ? [] : [`o-${index}`]
+          )
+          if (expectedRejectedIds.length === 0) {
+            expect(result._tag).toBe('Right')
+          } else {
+            expect(result._tag).toBe('Left')
+            if (result._tag !== 'Left') return
+            expect(result.left.rejected.map((outcome) => outcome.target.id)).toEqual(
+              expectedRejectedIds
+            )
+          }
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
   })
 })
 
@@ -263,6 +366,27 @@ const recordingHttpClientLayer = (
         return Effect.succeed(HttpClientResponse.fromWeb(request, responder(body).clone()))
       }),
       HttpClientRequest.prependUrl(TEST_ORIGIN)
+    )
+  )
+
+/** An `HttpClient` whose every request fails before reaching a server. */
+const failingTransportLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
+  HttpClient.HttpClient,
+  HttpClient.make((request) =>
+    Effect.fail(
+      new HttpClientError.RequestError({ request, reason: 'Transport', cause: 'offline' })
+    )
+  )
+)
+
+const runOrFailWith = (
+  httpClientLayer: Layer.Layer<HttpClient.HttpClient>,
+  resources: ReadonlyArray<FhirResource>
+): Promise<Either.Either<ReadonlyArray<BatchEntryOutcome>, BatchEntriesRejected>> =>
+  Effect.runPromise(
+    persistBatchBundleOrFail(resources).pipe(
+      Effect.either,
+      Effect.provide(FhirR4ResourcesHttpApiClient.layer.pipe(Layer.provide(httpClientLayer)))
     )
   )
 

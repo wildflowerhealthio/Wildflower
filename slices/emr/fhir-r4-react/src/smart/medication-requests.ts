@@ -42,9 +42,8 @@ type MedicationRequestCursor = { readonly patientId: string | null } | { readonl
 const ALWAYS_PRESENT_PARAMS = `_count=${RESOURCE_PAGE_SIZE}&_sort=-authoredon`
 
 /**
- * The `MedicationRequest` read. Deliberately pins no `_count`: `medications-app`
- * pages against whatever size the server picks, so naming one here would change
- * a shipped app's paging behaviour.
+ * The `MedicationRequest` read: patient-scoped when a patient is in context, a
+ * pinned page size.
  */
 const medicationRequestRead: PagedResourceRead<
   MedicationRequestResource,

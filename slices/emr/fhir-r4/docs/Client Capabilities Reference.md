@@ -84,7 +84,7 @@ Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_last
 
 Notably absent: `encounter`, `performer`, and the `value-*` / `component-*` parameters. Every parameter is single-valued.
 
-The SMART viewer reads Observations around the typed client rather than through it: `fhir-r4-react/smart`'s `fetchObservationPage` issues a raw fhirclient `Observation?patient=<id>&_sort=date&_count=200` and decodes each entry with `Observation.Schema`, because `_sort` is not declared here.
+The SMART viewer reads Observations around the typed client rather than through it: `fhir-r4-react/smart`'s `fetchObservationPage` issues a raw fhirclient `Observation?patient=<id>&_sort=date&_count=200` and decodes each entry with `Observation.Schema`, because `_sort` is not declared here. Its sibling `fetchObservationBasedOnOrPartOfPage` does the same narrowed by `based-on` and/or `part-of` (literal `Type/id` references the caller passes), for the observations made against one request or during one event.
 
 ## DocumentReference search parameters (subset declared)
 
@@ -156,6 +156,7 @@ The `HttpApi` declares the FHIR `POST /` bundle-submit endpoint (`Bundle.Submit`
 Only **batch** semantics are exercised by this client's helpers today:
 
 - **`persistBatchBundle(resources)`** (in `fhir-r4/clients`) is the batch counterpart of `persistResources`: one `POST /` submission carrying N PUT entries, one round trip per batch. It reports the **whole** per-entry result as `BatchEntryOutcome[]` — one per submitted resource, in submit order, carrying the echoed status, whether it succeeded (`ok`), and any diagnostics parsed from the entry's `response.outcome` OperationOutcome (`WriteIssue[]`: `severity`/`code`/`text`). A whole-bundle failure attributes every resource to that one cause under the `NO_RESPONSE_STATUS` sentinel; a truncated response yields the same sentinel with no issues. Null-id resources are skipped defensively (a PUT needs an id). It is the importer's write sink, whose results view groups the outcomes with `groupByStatus` (one `StatusGroup` per echoed status: failures first, then ascending code, the sentinel last in its band) — while the collector slice still uses `persistResources` (real-time sync with per-resource retries), which reports only failures as `ResourceWriteFailure[]`.
+- **`persistBatchBundleOrFail(resources)`** (same package) is the same write for a caller with no results view: it succeeds with every `BatchEntryOutcome` when each entry is a 2xx, and otherwise fails with `BatchEntriesRejected` — `rejected` (each non-2xx entry's outcome: target, status and issues, in submit order), `submittedCount`, and a `message` naming each rejected entry as `Type/id (status)`. A whole-bundle failure (transport included) rejects every entry under `NO_RESPONSE_STATUS`. Entries are PUT to the ids they carry, so a caller that mints ids once and resubmits the same resources on failure overwrites what landed rather than duplicating it. A SMART app reaches it through `fhir-r4-react/smart`'s `smartHttpClientLayer`.
 - **`classifyAgainstServer(resources)`** (same package) pre-fetches the FHIR store's current copy of each id in one `POST /` batch of GET entries and classifies each as `new` (absent), `unchanged` (server holds a wire-equal copy after dropping the server-managed `meta.versionId` / `meta.lastUpdated` / `meta.source`), or `changed` (present + differs). Never fails — a whole-bundle failure attributes every id to `new` so the caller's writes still attempt. The importer's shell runs it at preview mount and pre-excludes `unchanged` rows so a re-import writes nothing by default.
 
 Two shape narrowings on this client:
@@ -239,6 +240,8 @@ Per FHIR R4 § ServiceRequest.search, the standard parameters include `_id`, `_l
 
 Notably absent: `encounter`, `requester`, `performer`, `priority`, `replaces`, `instantiates-uri`. Every parameter is single-valued (see the DocumentReference narrowings above).
 
+SMART apps read ServiceRequests around the typed client: `fhir-r4-react/smart`'s `fetchActiveServiceRequestPage` issues a raw fhirclient `ServiceRequest?patient=<id>&category=<token>&instantiates-canonical=<url>&status=active&_sort=authored&_count=200` (`patient` and `instantiates-canonical` dropped when the caller passes `null`, so an app can find which definitions a patient follows before it knows a url) and decodes each entry with `withMandatoryId(ServiceRequest.Schema)`.
+
 ## ServiceRequest choice / required modeling
 
 `ServiceRequest.quantity[x]` (Quantity | Ratio | Range), `ServiceRequest.occurrence[x]` (dateTime | Period | Timing), and `ServiceRequest.asNeeded[x]` (boolean | CodeableConcept) are each modeled as independent optional fields via `choiceElementSetPassthroughFields`, with at most one populated slot per element (see "Choice element at-most-one rule" above). Required `status`, `intent`, and `subject` are modeled as plain required fields; `authoredOn` is nullable-optional (FHIR R4 marks it 0..1). `note` is typed as `Schema.Array(Schema.Any)` — Annotation backbone elements are not individually typed. `specimen` is omitted from the schema entirely (ServiceRequest is modeled for radiology/DICOM order tracking, not lab orders). `ServiceRequest.medication[x]` does not exist on this resource (it is not MedicationRequest).
@@ -304,6 +307,8 @@ Per FHIR R4 § PlanDefinition.search, the standard parameters include `_id`, `_l
 
 Notably absent: `version`, `description`, `publisher`, `jurisdiction`, the `context*` parameters, `effective`, `type`, and the related-artifact parameters. Every parameter is single-valued.
 
+SMART apps read PlanDefinitions around the typed client: `fhir-r4-react/smart`'s `fetchPlanDefinitionPage` issues a raw fhirclient `PlanDefinition?topic=<token>&_count=200` (not patient-scoped — a `PlanDefinition` names no patient) and decodes each entry with `withMandatoryId(PlanDefinition.Schema)`.
+
 ## PlanDefinition choice / required / backbone modeling
 
 Required `status` (the `publication-status` value set) is a plain required field; every other element is optional. `PlanDefinition.subject[x]` (CodeableConcept | Reference) is a choice element with at most one populated slot. Typed: `url`, `version`, `name`, `title`, `subtitle`, `publisher`, `description`, `purpose`, `usage`, `copyright` (strings); `date`, `approvalDate`, `lastReviewDate` (plain wire strings, not decoded to a `DateTime`, as with `CarePlan.created`); `experimental` (boolean); `identifier` (Identifier[]); `type` (CodeableConcept); `jurisdiction` and `topic` (CodeableConcept[]); `effectivePeriod` (Period); `library` (string[] — `canonical` in the spec, not narrowed). Passed through as `Schema.Array(Schema.Any)`: `contact`, `useContext`, `author`, `editor`, `reviewer`, `endorser`, `relatedArtifact` (ContactDetail / UsageContext / RelatedArtifact are not modeled), and `goal` (the `PlanDefinition.goal` backbone, so `goal.target.detail[x]` carries no at-most-one guard).
@@ -319,6 +324,8 @@ Per FHIR R4 § Procedure.search, the standard parameters include `_id`, `_lastUp
 `status` is narrowed to the `Procedure.status` value set (`preparation | in-progress | not-done | on-hold | stopped | completed | entered-in-error | unknown`). `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above), matched by the server against `Procedure.performed[x]`. `identifier`, `code`, `subject`, `patient`, `based-on`, `part-of`, `category`, and `instantiates-canonical` are plain strings passed through as written.
 
 Notably absent: `encounter`, `performer`, `location`, `reason-code`, `reason-reference`, `instantiates-uri`. Every parameter is single-valued.
+
+SMART apps read Procedures around the typed client: `fhir-r4-react/smart`'s `fetchProcedurePage` issues a raw fhirclient `Procedure?patient=<id>&category=<token>&instantiates-canonical=<url>&_sort=date&_count=200` (`patient` and `instantiates-canonical` dropped when `null`), every `status`, and decodes each entry with `withMandatoryId(Procedure.Schema)`.
 
 ## Procedure choice / required / backbone modeling
 

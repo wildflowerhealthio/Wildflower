@@ -29,6 +29,40 @@ type ObservationPage = ResourcePage<ObservationResource>
  */
 type ObservationPageCursor = ResourcePageCursor<string | null>
 
+/**
+ * The first-page input for {@link fetchObservationBasedOnOrPartOfPage}: the
+ * patient scope, and the request the observations were made against, the
+ * event they were made during, or both. At least one of the two references is
+ * named, so the read never widens to every observation.
+ */
+type ObservationBasedOnOrPartOfFirstPage = {
+  /**
+   * The patient to scope the search to, or `null` for an unscoped search that
+   * returns every matching `Observation` the session's granted scopes expose.
+   */
+  readonly patientId: string | null
+} & (
+  | {
+      /** The literal reference the observations name in `basedOn`, e.g. `ServiceRequest/sr-1`. */
+      readonly basedOnReference: string
+      /** The literal reference the observations name in `partOf`, e.g. `Procedure/pr-1`, or `null` for any. */
+      readonly partOfReference: string | null
+    }
+  | {
+      /** No `based-on` narrowing. */
+      readonly basedOnReference: null
+      /** The literal reference the observations name in `partOf`, e.g. `Procedure/pr-1`. */
+      readonly partOfReference: string
+    }
+)
+
+/**
+ * The cursor {@link fetchObservationBasedOnOrPartOfPage} reads from. `first`
+ * carries the patient scope and the references; `{ pageUrl }` continues from a
+ * previous page's `nextPageUrl`.
+ */
+type ObservationBasedOnOrPartOfPageCursor = ResourcePageCursor<ObservationBasedOnOrPartOfFirstPage>
+
 // The first page's non-scope search parameters: oldest-observed first,
 // server-side, so scroll paging can append each page without reordering rows
 // already on screen (`date` is the FHIR R4 `Observation` search parameter
@@ -48,6 +82,28 @@ const observationRead: PagedResourceRead<
     patientId === null
       ? SEARCH_PARAMS
       : `patient=${encodeURIComponent(patientId)}&${SEARCH_PARAMS}`,
+}
+
+/** The `Observation` read narrowed to the observations made against a request or during an event. */
+const observationBasedOnOrPartOfRead: PagedResourceRead<
+  ObservationResource,
+  Schema.Schema.Encoded<typeof Observation.Schema>,
+  ObservationBasedOnOrPartOfFirstPage
+> = {
+  resourceType: 'Observation',
+  schema: Observation.Schema,
+  firstPageQuery: ({
+    patientId,
+    basedOnReference,
+    partOfReference,
+  }: ObservationBasedOnOrPartOfFirstPage): string => {
+    const parts: string[] = []
+    if (patientId !== null) parts.push(`patient=${encodeURIComponent(patientId)}`)
+    if (basedOnReference !== null) parts.push(`based-on=${encodeURIComponent(basedOnReference)}`)
+    if (partOfReference !== null) parts.push(`part-of=${encodeURIComponent(partOfReference)}`)
+    parts.push(SEARCH_PARAMS)
+    return parts.join('&')
+  },
 }
 
 /**
@@ -73,8 +129,34 @@ const fetchObservationPage = (
 ): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(client, observationRead, cursor)
 
+/**
+ * Fetch a single page of the `Observation`s made against one request
+ * (`based-on`), during one event (`part-of`), or both, and report the cursor to
+ * the next page.
+ *
+ * @param client - The SMART client the search is issued through
+ * @param cursor - Patient scope and references for the first page, or a
+ *   previous page's `nextPageUrl`
+ * @returns An effect yielding the page's decoded `Observation`s and the next page's cursor
+ *
+ * @remarks
+ * The sibling of {@link fetchObservationPage} with the same order (oldest
+ * observed first), page size and schema, narrowed server-side by FHIR R4's
+ * `Observation` `based-on` and `part-of` search parameters; naming both asks
+ * for the observations that carry both. The references are literal
+ * (`Type/id`), as the observations name them.
+ */
+const fetchObservationBasedOnOrPartOfPage = (
+  client: Client,
+  cursor: ObservationBasedOnOrPartOfPageCursor
+): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError> =>
+  fetchResourcePage(client, observationBasedOnOrPartOfRead, cursor)
+
 export {
+  fetchObservationBasedOnOrPartOfPage,
   fetchObservationPage,
+  type ObservationBasedOnOrPartOfFirstPage,
+  type ObservationBasedOnOrPartOfPageCursor,
   type ObservationPage,
   type ObservationPageCursor,
   type ObservationResource,

@@ -1,4 +1,4 @@
-import { Array as Arr, Effect } from 'effect'
+import { Array as Arr, Data, Effect } from 'effect'
 import { unknownErrorToString } from 'kitchen-sink'
 
 import type * as Bundle from '../data-types/resources/bundle.ts'
@@ -37,6 +37,9 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * OperationOutcome diagnostics, success or failure — not just the failures, so
  * a caller (the importer's results view) can show what wrote alongside what
  * did not, grouped by response code, with the server's own messages.
+ * {@link persistBatchBundleOrFail} is the same write for a caller with no
+ * results view: it fails with {@link BatchEntriesRejected} unless every entry
+ * was accepted.
  *
  * @packageDocumentation
  */
@@ -227,6 +230,66 @@ const persistBatchBundle = (
   )
 
 /**
+ * Some entries of a batch were not accepted: each one the server answered with
+ * a non-2xx status, or with no status at all ({@link NO_RESPONSE_STATUS}, which
+ * every entry gets when the whole round trip failed).
+ */
+class BatchEntriesRejected extends Data.TaggedError('BatchEntriesRejected')<{
+  /** A one-line summary naming each rejected entry's target and status. */
+  readonly message: string
+  /** Each rejected entry's outcome, in submit order. */
+  readonly rejected: Arr.NonEmptyReadonlyArray<BatchEntryOutcome>
+  /** How many entries the batch submitted, accepted or not. */
+  readonly submittedCount: number
+}> {}
+
+/** One rejected outcome as `Type/id (status)`, for {@link BatchEntriesRejected}'s message. */
+const describeRejected = (outcome: BatchEntryOutcome): string =>
+  `${outcome.target.label}/${outcome.target.id} (${outcome.status})`
+
+/**
+ * Submit a decoded batch as one FHIR `POST /` bundle, failing unless every
+ * entry was accepted.
+ *
+ * @param resources - The batch to write, each under the id it is PUT to;
+ *   null-id resources are skipped, as {@link persistBatchBundle} skips them
+ * @returns An effect that succeeds with every entry's outcome when each one is
+ *   a 2xx, and fails with {@link BatchEntriesRejected} otherwise
+ *
+ * @remarks
+ * For a caller whose write is all-or-retry rather than a results view: it
+ * mints its resources' ids once and submits them again on failure, so a
+ * retried PUT overwrites what already landed instead of duplicating it. Batch
+ * entries land independently, so a rejection does not undo the accepted
+ * entries — the retry rewrites them unchanged.
+ */
+const persistBatchBundleOrFail = (
+  resources: ReadonlyArray<FhirResource>
+): Effect.Effect<
+  ReadonlyArray<BatchEntryOutcome>,
+  BatchEntriesRejected,
+  FhirR4ResourcesHttpApiClient
+> =>
+  Effect.flatMap(persistBatchBundle(resources), (outcomes) =>
+    Arr.match(
+      outcomes.filter((outcome) => !outcome.ok),
+      {
+        onEmpty: () => Effect.succeed(outcomes),
+        onNonEmpty: (rejected) =>
+          Effect.fail(
+            new BatchEntriesRejected({
+              message: `${rejected.length} of ${outcomes.length} batch entries were rejected: ${rejected
+                .map(describeRejected)
+                .join(', ')}`,
+              rejected,
+              submittedCount: outcomes.length,
+            })
+          ),
+      }
+    )
+  )
+
+/**
  * One response status across a set of batch outcomes, with the outcomes that
  * resolved to it.
  */
@@ -277,11 +340,13 @@ const groupByStatus = <TOutcome extends BatchEntryOutcome>(
 }
 
 export {
+  BatchEntriesRejected,
   type BatchEntryOutcome,
   entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
+  persistBatchBundleOrFail,
   statusOk,
   type StatusGroup,
   type WriteIssue,
