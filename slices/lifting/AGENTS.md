@@ -52,8 +52,10 @@ template rather than a special case.
     url as its one `instantiatesCanonical`, a `performedPeriod` with a start
     (and an end exactly once completed), and at least one `basedOn`
     `ServiceRequest` — the `ExerciseRequest`s it carries out. `make` starts
-    one, `complete` ends it; `latestCompleted` and `completedByStart` order
-    them.
+    one, refusing a workout the plan does not cycle through
+    (`WorkoutNotInPlan`) or `ExerciseRequest`s of another plan, naming every
+    one (`ExerciseRequestNotOfPlan`); `complete` ends it; `latestCompleted` and
+    `completedByStart` order them.
   - `ExerciseSetObservation` — an `Observation` narrowed to an `id`, a status
     other than a retracted one, an `ExerciseConcept` `code`, an
     `effectivePeriod` with a start and an end at or after it, a non-negative
@@ -84,9 +86,11 @@ The React layer and the app route are not built yet.
   (`orderDetail.0.extension.0.valueQuantity.value`) — decode with
   `errors: 'all'` to have every problem at once. A refinement across fields
   runs only once the fields it reads decode, so a resource missing a narrowed
-  field reports that before any "exactly one" problem. The one tagged error
-  is `ExerciseRequest.ExerciseUnplanned`: the plan does not run the exercise,
-  which no single value's schema can see.
+  field reports that before any "exactly one" problem. The tagged errors are
+  the checks that relate two resources, which no single value's schema can
+  see: `ExerciseRequest.ExerciseUnplanned` (the plan does not run the
+  exercise), and `WorkoutProcedure.WorkoutNotInPlan` and
+  `WorkoutProcedure.ExerciseRequestNotOfPlan`.
 - **Each `make` validates its own level.** A `Plan` is made from `Workout`s
   already made, a `Workout` from `PlannedExercise`s, a `PlannedExercise` from
   an `ExerciseConcept` and a `ProgressionRule`, so an editor shows each row's
@@ -139,7 +143,12 @@ The React layer and the app route are not built yet.
   unreadable ones filters those statuses out before decoding. A `Procedure`
   in any status but `in-progress` or `completed` fails to decode as a
   `WorkoutProcedure`, with a message that says so. An `ExerciseRequest`'s
-  status is not narrowed — the app searches `status=active`.
+  status is not narrowed — the app searches `status=active`. Each lifting
+  resource is found by the search parameter its wire shape fills: a plan by
+  `topic` (`LiftingFeature.TOKEN`), an `ExerciseRequest` or a workout by
+  `category` (the same token) and by `instantiates-canonical` (the plan
+  url), and a set by `based-on` (its `ServiceRequest`) or `part-of` (its
+  workout's `Procedure`).
 - **The wire shapes.** A `PlanDefinition` is `active`, its `url`
   `WILDFLOWER_CANONICAL_BASE/PlanDefinition/<id>`, the `strength-training`
   feature as `topic`, one `action` per workout (the label as its `title`),

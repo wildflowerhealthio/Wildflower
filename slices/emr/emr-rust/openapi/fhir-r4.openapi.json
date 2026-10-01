@@ -2329,6 +2329,144 @@
               "type": "string"
             },
             "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$comment": "/schemas/enums",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "title": "amended",
+                  "enum": [
+                    "amended"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "cancelled",
+                  "enum": [
+                    "cancelled"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "corrected",
+                  "enum": [
+                    "corrected"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "entered-in-error",
+                  "enum": [
+                    "entered-in-error"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "final",
+                  "enum": [
+                    "final"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "preliminary",
+                  "enum": [
+                    "preliminary"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "registered",
+                  "enum": [
+                    "registered"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "unknown",
+                  "enum": [
+                    "unknown"
+                  ]
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
+          },
+          {
+            "name": "based-on",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "part-of",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
           }
         ],
         "security": [],
@@ -4152,6 +4290,94 @@
                     "description": "a string to be decoded into a number"
                   },
                   "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "$comment": "/schemas/enums",
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "title": "amended",
+                        "enum": [
+                          "amended"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "cancelled",
+                        "enum": [
+                          "cancelled"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "corrected",
+                        "enum": [
+                          "corrected"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "entered-in-error",
+                        "enum": [
+                          "entered-in-error"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "final",
+                        "enum": [
+                          "final"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "preliminary",
+                        "enum": [
+                          "preliminary"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "registered",
+                        "enum": [
+                          "registered"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "unknown",
+                        "enum": [
+                          "unknown"
+                        ]
+                      }
+                    ]
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "patient": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "$ref": "#/components/schemas/FhirDateSearch"
+                  },
+                  "based-on": {
+                    "type": "string"
+                  },
+                  "part-of": {
                     "type": "string"
                   }
                 },
@@ -11939,10 +12165,42 @@
             "required": false
           },
           {
+            "name": "patient",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
             "name": "authored",
             "in": "query",
             "schema": {
               "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "instantiates-canonical",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "based-on",
+            "in": "query",
+            "schema": {
+              "type": "string"
             },
             "required": false
           }
@@ -14024,8 +14282,20 @@
                   "subject": {
                     "type": "string"
                   },
+                  "patient": {
+                    "type": "string"
+                  },
                   "authored": {
                     "$ref": "#/components/schemas/FhirDateSearch"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "instantiates-canonical": {
+                    "type": "string"
+                  },
+                  "based-on": {
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -18856,6 +19126,14 @@
               "$ref": "#/components/schemas/FhirDateSearch"
             },
             "required": false
+          },
+          {
+            "name": "topic",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
           }
         ],
         "security": [],
@@ -20641,6 +20919,9 @@
                   },
                   "date": {
                     "$ref": "#/components/schemas/FhirDateSearch"
+                  },
+                  "topic": {
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -20760,6 +21041,14 @@
           },
           {
             "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "instantiates-canonical",
             "in": "query",
             "schema": {
               "type": "string"
@@ -22634,6 +22923,9 @@
                     "type": "string"
                   },
                   "category": {
+                    "type": "string"
+                  },
+                  "instantiates-canonical": {
                     "type": "string"
                   }
                 },

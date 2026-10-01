@@ -434,6 +434,7 @@ describe('ProcedureSearchParams', () => {
       'based-on': 'ServiceRequest/squat',
       'part-of': 'Procedure/program-1',
       category: 'http://snomed.info/sct|229065009',
+      'instantiates-canonical': 'https://wildflowerhealth.io/fhir/PlanDefinition/plan-1',
     }
 
     // Act

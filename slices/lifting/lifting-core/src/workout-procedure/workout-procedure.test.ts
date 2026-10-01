@@ -1,12 +1,14 @@
-import { Arbitrary, Array as Arr, DateTime, Either, Option, Schema } from 'effect'
+import { Arbitrary, Array as Arr, DateTime, Either, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { IdentifierAndReference, WildflowerCodeSystem } from 'fhir-r4/data-types'
 import { Procedure } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as ExerciseRequest from '../exercise-request/exercise-request.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
 import * as Plan from '../plan/plan.ts'
+import * as Workout from '../plan/workout.ts'
 import * as StrongLifts5x5 from '../plans/strong-lifts.ts'
 import {
   completedWorkoutAt,
@@ -188,7 +190,89 @@ describe('WorkoutProcedure', () => {
       exerciseRequests: [],
       start: DateTime.unsafeMake('2026-01-05T18:00:00Z'),
     })
-    expect(issuePathsOf(workout)).toEqual(['basedOn.0'])
+    const parseError = Either.match(workout, {
+      onLeft: (error) => (ParseResult.isParseError(error) ? Option.some(error) : Option.none()),
+      onRight: () => Option.none(),
+    })
+    expect(Option.map(parseError, (error) => issuePathsOf(Either.left(error)))).toEqual(
+      Option.some(['basedOn.0'])
+    )
+  })
+
+  it('should refuse to make a workout the plan does not cycle through, naming it', () => {
+    fc.assert(
+      fc.property(exerciseRequestArb, (exerciseRequest) => {
+        // Arrange: a plan of its own, whose only workout is labelled `A`.
+        const [planned] = Workout.plannedExercisesOf(
+          workoutA ?? Arr.headNonEmpty(Plan.workoutsOf(plan))
+        )
+        const elsewhere = made(Workout.make({ label: 'Z', plannedExercises: [planned] }))
+
+        // Act
+        const refused = Either.flip(
+          WorkoutProcedure.make({
+            procedureId: 'workout-1',
+            subject: SUBJECT,
+            plan,
+            workout: elsewhere,
+            exerciseRequests: [exerciseRequest],
+            start: DateTime.unsafeMake('2026-01-05T18:00:00Z'),
+          })
+        )
+
+        // Assert
+        expect(refused).toEqual(
+          Either.right(
+            new WorkoutProcedure.WorkoutNotInPlan({ workoutLabel: 'Z', planUrl: plan.url })
+          )
+        )
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  it('should refuse to make a workout carrying out an ExerciseRequest of another plan, naming it', () => {
+    fc.assert(
+      fc.property(exerciseRequestArb, fc.webUrl(), (exerciseRequest, otherPlanUrl) => {
+        // Arrange
+        fc.pre(otherPlanUrl !== plan.url)
+        const stray = made(
+          Schema.decodeEither(ExerciseRequest.Schema)({
+            ...exerciseRequest,
+            id: 'sr-stray',
+            instantiatesCanonical: [otherPlanUrl],
+          })
+        )
+
+        // Act
+        const refused = Either.flip(
+          WorkoutProcedure.make({
+            procedureId: 'workout-1',
+            subject: SUBJECT,
+            plan,
+            workout: workoutA ?? Arr.headNonEmpty(Plan.workoutsOf(plan)),
+            exerciseRequests: [stray, exerciseRequest, { ...stray, id: 'sr-stray-2' }],
+            start: DateTime.unsafeMake('2026-01-05T18:00:00Z'),
+          })
+        )
+
+        // Assert
+        expect(refused).toEqual(
+          Either.right(
+            new WorkoutProcedure.ExerciseRequestNotOfPlan({
+              serviceRequestIds: ['sr-stray', 'sr-stray-2'],
+              planUrl: plan.url,
+            })
+          )
+        )
+        expect(Either.map(refused, (error) => error.message)).toEqual(
+          Either.right(
+            `the ServiceRequests "sr-stray", "sr-stray-2" do not follow the plan ${plan.url}`
+          )
+        )
+      }),
+      { numRuns: RUNS }
+    )
   })
 })
 

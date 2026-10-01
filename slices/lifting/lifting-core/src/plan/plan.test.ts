@@ -189,11 +189,16 @@ describe('nextWorkout', () => {
     fc.assert(
       fc.property(planArb, instantArb, (plan, start) => {
         const [planned] = Workout.plannedExercisesOf(Arr.headNonEmpty(Plan.workoutsOf(plan)))
-        const elsewhere = made(
-          Workout.make({ label: 'not-a-workout', plannedExercises: [planned] })
+        // The plan as it was before its workouts were replaced: same url, other labels.
+        const replaced = made(Workout.make({ label: 'not-a-workout', plannedExercises: [planned] }))
+        const before = made(
+          Plan.make({ planDefinitionId: 'plan-1', title: plan.title, workouts: [replaced] })
         )
         expect(
-          Plan.nextWorkout(plan, Option.some(completedIn({ plan, workout: elsewhere, start })))
+          Plan.nextWorkout(
+            plan,
+            Option.some(completedIn({ plan: before, workout: replaced, start }))
+          )
         ).toBe(Arr.headNonEmpty(Plan.workoutsOf(plan)))
       }),
       { numRuns: RUNS }

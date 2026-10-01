@@ -609,6 +609,7 @@ describe('PlanDefinitionSearchParams', () => {
       title: 'Starting Strength',
       status: 'active',
       date: 'ge2026-01-01',
+      topic: 'https://wildflowerhealth.io/fhir/CodeSystem/feature|strength-training',
     }
 
     // Act

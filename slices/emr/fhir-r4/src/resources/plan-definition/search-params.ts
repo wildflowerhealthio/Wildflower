@@ -7,12 +7,12 @@ const NumFromStr = Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThan
 
 /**
  * The `PlanDefinition` search parameters the typed client can express — paging
- * plus seven filters, a subset of FHIR R4 § PlanDefinition.search.
+ * plus eight filters, a subset of FHIR R4 § PlanDefinition.search.
  *
  * @remarks
  * `status` is narrowed to the `PlanDefinition` value set; `date` is a
- * {@link DateSearchParam.Schema}. `identifier`, `url`, `name` and `title` pass
- * through as written. The narrowings are catalogued in
+ * {@link DateSearchParam.Schema}. `identifier`, `url`, `name`, `title` and
+ * `topic` pass through as written. The narrowings are catalogued in
  * `fhir-r4/docs/Client Capabilities Reference.md`.
  */
 const SearchParams = Schema.Struct({
@@ -25,6 +25,7 @@ const SearchParams = Schema.Struct({
   title: Schema.optional(Schema.String),
   status: Schema.optional(StatusSchema),
   date: Schema.optional(DateSearchParam.Schema),
+  topic: Schema.optional(Schema.String),
 })
 
 /** Decoded {@link SearchParams} — one `PlanDefinition` search query. */

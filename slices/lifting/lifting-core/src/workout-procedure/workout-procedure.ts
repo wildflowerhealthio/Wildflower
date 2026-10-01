@@ -1,8 +1,9 @@
 import {
   Array as Arr,
   type Brand,
+  Data,
   DateTime,
-  type Either,
+  Either,
   Option,
   Order,
   type ParseResult,
@@ -143,6 +144,50 @@ const WorkoutProcedureSchema: Schema.Schema<Type, Procedure.Type> = narrowedFrom
   )
 )
 
+/**
+ * `WorkoutProcedure.make` was asked for a workout the plan does not cycle
+ * through — no workout of the plan has its label.
+ *
+ * @remarks
+ * A tagged error rather than a schema refinement: it relates the workout to a
+ * plan the `Procedure` names only by url, which no single value's schema can
+ * see.
+ */
+class WorkoutNotInPlan extends Data.TaggedError('WorkoutNotInPlan')<{
+  /** The label of the workout asked for. */
+  readonly workoutLabel: string
+  /** The canonical url of the plan it is not in. */
+  readonly planUrl: string
+}> {
+  // Data.TaggedError leaves `.message` empty by default; name the workout so
+  // a logged or thrown refusal says what was wrong.
+  override get message(): string {
+    return `the plan ${this.planUrl} has no workout labelled ${JSON.stringify(this.workoutLabel)}`
+  }
+}
+
+/**
+ * `WorkoutProcedure.make` was asked to carry out `ExerciseRequest`s that
+ * follow another plan — their `instantiatesCanonical` is not the plan's url —
+ * listing every one of them.
+ *
+ * @remarks
+ * A tagged error rather than a schema refinement, for the same reason as
+ * {@link WorkoutNotInPlan}: it relates two resources.
+ */
+class ExerciseRequestNotOfPlan extends Data.TaggedError('ExerciseRequestNotOfPlan')<{
+  /** The ids of every `ServiceRequest` asked for that follows another plan. */
+  readonly serviceRequestIds: Arr.NonEmptyReadonlyArray<string>
+  /** The canonical url of the plan it does not follow. */
+  readonly planUrl: string
+}> {
+  // Data.TaggedError leaves `.message` empty by default; name the
+  // `ServiceRequest`s so a logged or thrown refusal says what was wrong.
+  override get message(): string {
+    return `the ServiceRequests ${this.serviceRequestIds.map((id) => JSON.stringify(id)).join(', ')} do not follow the plan ${this.planUrl}`
+  }
+}
+
 /** A decoded `Procedure` with every optional slot empty, for a workout to be spread onto. */
 const emptyProcedure: Procedure.Type = Schema.decodeSync(Procedure.Schema)({
   resourceType: 'Procedure',
@@ -156,8 +201,11 @@ const emptyProcedure: Procedure.Type = Schema.decodeSync(Procedure.Schema)({
  * the plan's url as its `instantiatesCanonical`, `basedOn` each of
  * `exerciseRequests`, and `performedPeriod` starting at `start`.
  *
- * @returns The workout, stored under `procedureId` (the app mints it); or a
- *   `ParseError` when it carries out no `ExerciseRequest`
+ * @returns The workout, stored under `procedureId` (the app mints it);
+ *   {@link WorkoutNotInPlan} when `workout` is not one of `plan`'s;
+ *   {@link ExerciseRequestNotOfPlan} listing every one of `exerciseRequests`
+ *   that follows another plan; or a `ParseError` when it carries out no
+ *   `ExerciseRequest`
  */
 const make = ({
   procedureId,
@@ -173,16 +221,26 @@ const make = ({
   readonly workout: Workout.Type
   readonly exerciseRequests: readonly ExerciseRequest.Type[]
   readonly start: DateTime.Utc
-}): Either.Either<Type, ParseResult.ParseError> =>
-  Schema.decodeEither(WorkoutProcedureSchema, { errors: 'all' })({
+}): Either.Either<Type, WorkoutNotInPlan | ExerciseRequestNotOfPlan | ParseResult.ParseError> => {
+  const label = Workout.labelOf(workout)
+  if (!plan.action.some((planned) => Workout.labelOf(planned) === label))
+    return Either.left(new WorkoutNotInPlan({ workoutLabel: label, planUrl: plan.url }))
+  const strayServiceRequestIds = exerciseRequests
+    .filter((exerciseRequest) => exerciseRequest.instantiatesCanonical[0] !== plan.url)
+    .map((exerciseRequest) => exerciseRequest.id)
+  if (Arr.isNonEmptyReadonlyArray(strayServiceRequestIds))
+    return Either.left(
+      new ExerciseRequestNotOfPlan({ serviceRequestIds: strayServiceRequestIds, planUrl: plan.url })
+    )
+  return Schema.decodeEither(WorkoutProcedureSchema, { errors: 'all' })({
     ...emptyProcedure,
     id: procedureId,
     status: 'in-progress',
     category: LiftingFeature.concept,
     code: CodeableConcept.make({
       system: WildflowerCodeSystem.Workout,
-      code: Workout.labelOf(workout),
-      display: Workout.labelOf(workout),
+      code: label,
+      display: label,
       text: null,
     }),
     subject,
@@ -192,6 +250,7 @@ const make = ({
     ),
     performedPeriod: { id: null, extension: [], start, end: null },
   })
+}
 
 /**
  * The workout done: `completed`, its `performedPeriod` ending at `end`.
@@ -258,6 +317,7 @@ const latestCompleted = (workoutProcedures: readonly Type[]): Option.Option<Type
 
 export {
   complete,
+  ExerciseRequestNotOfPlan,
   completedByStart,
   endOf,
   isCompleted,
@@ -267,6 +327,7 @@ export {
   WorkoutProcedureSchema as Schema,
   serviceRequestIdsOf,
   startOf,
+  WorkoutNotInPlan,
   workoutLabelOf,
 }
 export type { Type }
