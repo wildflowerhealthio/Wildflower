@@ -20,7 +20,7 @@ import { shoppersCaseArbitrary } from 'synthetic-data-shoppers-drugmart/test-hel
 
 /**
  * Generated records run through the real importers, whole — the source-file
- * `DocumentReference` included — as a data set lays them out.
+ * `DocumentReference` included — as a snapshot lays them out.
  */
 
 /** Every resource `bytes` imports to through `harImporter.decode`, picked as `fileName`. */

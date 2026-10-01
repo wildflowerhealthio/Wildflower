@@ -65,8 +65,8 @@ importer (`synthetic-data-rexall-be-well` writes a letsbewell.ca session HAR,
 `synthetic-data-lifelabs` the resources a LifeLabs report imports as, and
 `synthetic-data-fhir-sync-pebble` the Observations a Pebble watch syncs, and
 `synthetic-data-dicom` a de-identified image re-identified as a person);
-`synthetic-data-core` lays their importer output out as a data set's files and
-`index.json`.
+`synthetic-data-core` assembles their importer output as a `Snapshot`: its
+entries' files and an `index.json` header.
 The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
