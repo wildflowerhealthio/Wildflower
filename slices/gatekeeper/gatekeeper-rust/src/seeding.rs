@@ -105,7 +105,7 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
     "/../../apps/dev-app-ports.json"
 ));
 
-/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the seven first-party
+/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the eight first-party
 /// apps that register an OAuth client. The file also carries `web-server-docs-dev`
 /// and `watch-lifts-web-dev`, which are not SMART apps and so have no client
 /// here; serde ignores them.
@@ -126,6 +126,8 @@ struct DevAppPorts {
     health_viewer_app_dev: u16,
     #[serde(rename = "synthetic-data-app-dev")]
     synthetic_data_app_dev: u16,
+    #[serde(rename = "lifting-app-dev")]
+    lifting_app_dev: u16,
 }
 
 /// The `health-viewer-app-dev` client's scopes: exactly the scope string in
@@ -165,6 +167,26 @@ const SYNTHETIC_DATA_DEV_SCOPES: &[&str] = &[
     "system/ImagingStudy.cu",
 ];
 
+/// The `lifting-app-dev` client's scopes: exactly `LIFTING_SCOPE` in
+/// `apps/lifting-app/src/config.ts`, which requests the same set for an EHR
+/// launch and a standalone connect, and the same set the production
+/// `lifting-app` client is seeded with (gatekeeper migration
+/// `0019_seed_lifting_app_client`). A test below reads that file and pins all
+/// three together. Writes are `.crus`: every write is an update-as-create to a
+/// client-minted id, and the app never deletes.
+#[cfg(debug_assertions)]
+const LIFTING_DEV_SCOPES: &[&str] = &[
+    "launch",
+    "launch/patient",
+    "openid",
+    "fhirUser",
+    "system/Patient.rs",
+    "system/PlanDefinition.crus",
+    "system/ServiceRequest.crus",
+    "system/Procedure.crus",
+    "system/Observation.crus",
+];
+
 /// The loopback redirect route for a dev app served at its origin root — every
 /// first-party app but the OHIF viewer, whose launch targets a sub-route.
 #[cfg(debug_assertions)]
@@ -173,23 +195,24 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// The debug-only OAuth clients for the first-party apps' vite dev servers — the
 /// gatekeeper half of `apps_rust::seed_dev_apps`.
 ///
-/// The two first-party apps now ship as **cloud** rows served from
-/// <https://wildflowerhealth.io> (apps migration `0005_first_party_apps_to_cloud`),
-/// whose clients register an *absolute* Pages redirect URI. A debug build also
-/// gets a self-hosted `<app>-dev` row pointing at the app's local vite dev server,
-/// and that row needs its own client: the app-relative `"/"` redirect resolves
-/// only through the host's [`SelfHostedRedirectResolver`](crate::SelfHostedRedirectResolver),
-/// which looks the app up **by `client_id`** and requires the row it finds to be
-/// self-hosted. So the dev client id must equal the dev app id — which is why
-/// these are separate clients rather than extra redirect entries on the
-/// production ones (adding a `http://127.0.0.1:<port>/` loopback redirect there
-/// would also mean registering a plaintext redirect on a client that a public
-/// website uses).
+/// The first-party SMART apps (Medications, Web Trace, Importer, the OHIF
+/// imaging viewer, Lifting) ship as **cloud** rows served from
+/// <https://wildflowerhealth.io> (apps migrations `0005_first_party_apps_to_cloud`
+/// onward), whose clients register an *absolute* Pages redirect URI. A debug
+/// build also gets a cloud `<app>-dev` row (`apps_rust::dev_seed`) whose launch
+/// URL points at the app's local vite dev server on the port
+/// `dev-app-ports.json` pins, and that row needs its own client whose id equals
+/// the dev app id and whose absolute `http://localhost:{port}` redirect is what
+/// the authorize flow matches. They are separate clients rather than extra
+/// redirect entries on the production ones because adding a plaintext loopback
+/// redirect there would register it on a client that a public website uses.
 ///
-/// `ohif-viewer-dev` is the exception: its app row is a **cloud** row on the dev
-/// origin (`apps_rust::dev_seed`), so its app-relative entry resolves to nothing
-/// and the absolute loopback one is what carries its launch — on `/fhir-viewer`
-/// rather than the root, since redirect matching is exact-URL.
+/// Each client also carries the app-relative `"/"` entry, for symmetry with the
+/// production clients. It resolves only through the host's
+/// [`SelfHostedRedirectResolver`](crate::SelfHostedRedirectResolver), which
+/// requires a self-hosted row, so against the cloud dev rows it matches nothing.
+/// The redirect path is the origin root for every app but `ohif-viewer-dev`,
+/// whose launch lands on `/fhir-viewer` — redirect matching is exact-URL.
 ///
 /// Scopes mirror each app's production client exactly — a dev build of the app
 /// requests the same set (`apps/*/src/config.ts`).
@@ -337,6 +360,15 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ports.synthetic_data_app_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
+        (
+            "lifting-app-dev",
+            "Lifting (Dev)",
+            // `apps/lifting-app/src/config.ts`'s `LIFTING_SCOPE` — see
+            // [`LIFTING_DEV_SCOPES`].
+            LIFTING_DEV_SCOPES,
+            ports.lifting_app_dev,
+            DEV_ROOT_REDIRECT_PATH,
+        ),
     ];
     for (client_id, name, scopes, port, redirect_path) in dev_clients {
         use url::Url;
@@ -345,11 +377,9 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             client_id: client_id.to_string(),
             name: name.to_string(),
             kind: ClientKind::Public,
-            // App-relative: resolved against the dev app's own loopback origin at
-            // `/authorize` time — for the self-hosted dev rows. It resolves to
-            // nothing for the cloud `ohif-viewer-dev` row (the resolver requires
-            // a self-hosted app), which is why the absolute entry below carries
-            // that one on its own. The absolute entry's port comes from the
+            // App-relative: resolves only through the self-hosted resolver, so
+            // against these cloud dev rows it matches nothing and the absolute
+            // entry below carries the launch. The absolute entry's port comes from the
             // shared `dev-app-ports.json` (above), the same file the apps dev
             // seed and each `vite.config.ts` read — so it is never a literal
             // duplicated here, and its path is the route that client's launch
@@ -495,6 +525,54 @@ mod tests {
                 ),
             ],
         );
+    }
+
+    /// The Lifting dev client is seeded on its dev server's loopback root with
+    /// exactly the scopes the app requests, and the production `lifting-app`
+    /// client (gatekeeper migration `0019`) allows the same set. The app's
+    /// `LIFTING_SCOPE` is read out of `config.ts` itself, the one place it is
+    /// written, so neither client can drift from it unnoticed.
+    #[test]
+    fn seeds_the_lifting_dev_client_with_the_apps_own_scopes() {
+        use crate::domain::client::RegisteredRedirectUri;
+
+        const LIFTING_CONFIG_TS: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../apps/lifting-app/src/config.ts"
+        ));
+        let scope_string = format!("'{}'", LIFTING_DEV_SCOPES.join(" "));
+        assert!(
+            LIFTING_CONFIG_TS.contains(&scope_string),
+            "apps/lifting-app/src/config.ts must request exactly {scope_string}",
+        );
+
+        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+        seed_dev_app_clients(pool.clone()).expect("seed dev clients");
+        let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
+        let client = store
+            .client_by_id("lifting-app-dev")
+            .expect("query client")
+            .expect("lifting dev client seeded");
+        let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
+        assert_eq!(client.kind, ClientKind::Public);
+        assert_eq!(client.allowed_scopes, LIFTING_DEV_SCOPES);
+        assert_eq!(
+            client.redirect_uris,
+            vec![
+                RegisteredRedirectUri::AppRelative("/".to_owned()),
+                RegisteredRedirectUri::Absolute(
+                    format!("http://localhost:{}/", ports.lifting_app_dev)
+                        .parse()
+                        .expect("a valid absolute redirect"),
+                ),
+            ],
+        );
+
+        let production = store
+            .client_by_id("lifting-app")
+            .expect("query client")
+            .expect("migration 0019 seeds the lifting-app client");
+        assert_eq!(production.allowed_scopes, LIFTING_DEV_SCOPES);
     }
 
     /// The first-party client is seeded under the `client_id` threaded through

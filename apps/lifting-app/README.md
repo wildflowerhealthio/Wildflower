@@ -134,8 +134,10 @@ launch launch/patient openid fhirUser system/Patient.rs system/PlanDefinition.cr
 
 `crus` is create + read + update + search: every write is an update to a
 client-minted id that creates the resource the first time, and the app never
-deletes. The union of the two launches' scopes is that one string, which the
-`lifting-app` and `lifting-app-dev` OAuth clients' `allowed_scopes` must equal.
+deletes. That one string is what the `lifting-app` OAuth client (gatekeeper
+migration `0019_seed_lifting_app_client`) and the debug-only `lifting-app-dev`
+client (`seed_dev_app_clients` in `gatekeeper-rust/src/seeding.rs`) allow,
+exactly; a test there reads `src/config.ts` and pins both clients to it.
 
 ## Where the bundle is served
 
@@ -154,8 +156,18 @@ these four resource types. Nothing ships on device.
 `src/config.ts`'s `clientId` is `lifting-app` in a production build and
 `lifting-app-dev` under the vite dev server, and must equal the app id it is
 launched through — the host's redirect resolver looks an app up by
-`client_id` — and its scope string must equal the client's allowed scopes. The
-registry rows and OAuth clients for both are not seeded yet.
+`client_id` — and its scope string must equal the client's allowed scopes.
+
+- **`lifting-app`** is a cloud row (apps migration `0010_seed_lifting_app`)
+  launching
+  `https://wildflowerhealth.io/lifting-app/launch.html?launch={launch}&iss={origin}/fhir-r4`
+  with `requires_tunnel` set, as every first-party cloud row has. Its public
+  OAuth client (gatekeeper migration `0019_seed_lifting_app_client`) redirects
+  to `/` and `https://wildflowerhealth.io/lifting-app/`.
+- **`lifting-app-dev`** is seeded in debug builds only, at runtime rather than
+  by a migration: a cloud row on the dev server's port
+  (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
+  `http://localhost:<port>/` (`gatekeeper-rust/src/seeding.rs`).
 
 ## Running locally
 

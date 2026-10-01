@@ -299,8 +299,9 @@ mod tests {
     /// `0003`, the two first-party apps by `0004` / `0005` (renamed and given
     /// their published-site redirect by `0006`), the server-docs API console by
     /// `0007`, the Importer by `0008`, the OHIF imaging viewer by `0009`
-    /// (re-seeded by `0016` on an install that skipped it), and FHIR Sync for
-    /// Pebble by `0017` (its Observation scope widened by `0018`) — so a
+    /// (re-seeded by `0016` on an install that skipped it), FHIR Sync for
+    /// Pebble by `0017` (its Observation scope widened by `0018`), and Lifting by
+    /// `0019` — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -320,6 +321,7 @@ mod tests {
             "importer-app",
             "ohif-viewer",
             "fhir-sync-pebble",
+            "lifting-app",
         ] {
             let client = store
                 .client_by_id(client_id)
@@ -599,6 +601,48 @@ mod tests {
                 "fhirUser".to_string(),
                 "system/Patient.rs".to_string(),
                 "system/Observation.cu".to_string(),
+            ],
+        );
+        // `lifting-app` (Lifting) is a cloud client like the ones above, seeded
+        // by `0019`, and its scopes carry writes: the training plan
+        // definition's `PlanDefinition`, a `ServiceRequest` per exercise, and
+        // each workout's `Procedure` and per-set `Observation`s. `launch/patient`
+        // rides along as on `medications-app`, for the standalone connect flow.
+        // This vector must stay element-for-element equal to `LIFTING_SCOPE` in
+        // `apps/lifting-app/src/config.ts`; `seeding.rs`'s
+        // `seeds_the_lifting_dev_client_with_the_apps_own_scopes` reads that
+        // file and pins this client to it.
+        let lifting = store.client_by_id("lifting-app").unwrap().unwrap();
+        assert_eq!(
+            lifting.redirect_uris,
+            vec![
+                RegisteredRedirectUri::AppRelative("/".to_owned()),
+                RegisteredRedirectUri::Absolute(
+                    "https://wildflowerhealth.io/lifting-app/"
+                        .parse()
+                        .expect("a valid absolute redirect"),
+                ),
+            ],
+        );
+        assert_eq!(
+            lifting.allowed_scopes,
+            vec![
+                "launch".to_string(),
+                "launch/patient".to_string(),
+                "openid".to_string(),
+                "fhirUser".to_string(),
+                "system/Patient.rs".to_string(),
+                "system/PlanDefinition.crus".to_string(),
+                "system/ServiceRequest.crus".to_string(),
+                "system/Procedure.crus".to_string(),
+                "system/Observation.crus".to_string(),
+            ],
+        );
+        assert_eq!(
+            lifting.allowed_grant_types,
+            vec![
+                AllowedGrantType::AuthorizationCode,
+                AllowedGrantType::RefreshToken,
             ],
         );
     }
