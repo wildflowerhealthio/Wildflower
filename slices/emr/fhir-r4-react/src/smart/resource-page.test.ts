@@ -1,6 +1,18 @@
-import { Arbitrary, Effect, Option, Schema } from 'effect'
+import {
+  Arbitrary,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Option,
+  Schema,
+  TestClock,
+  TestContext,
+} from 'effect'
 import * as fc from 'fast-check'
 import { Observation } from 'fhir-r4/resources'
+import type Client from 'fhirclient/lib/Client'
+import HttpError from 'fhirclient/lib/HttpError'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
@@ -119,6 +131,60 @@ const bundle = (resources: readonly unknown[], link: unknown): unknown => ({
   entry: resources.map((resource) => ({ resource })),
   ...(link === undefined ? {} : { link }),
 })
+
+/**
+ * What `fetch` rejects with when no HTTP response arrived, as each browser words
+ * it: Firefox, Chrome, Safari. The reader must recognise all of them by type.
+ */
+const DROPPED_REQUEST_MESSAGES = [
+  'NetworkError when attempting to fetch resource.',
+  'Failed to fetch',
+  'Load failed',
+] as const
+
+const droppedRequestArb: fc.Arbitrary<TypeError> = fc
+  .constantFrom(...DROPPED_REQUEST_MESSAGES)
+  .map((message) => new TypeError(message))
+
+/**
+ * A rejection fhirclient gives for an HTTP error response: the `HttpError` its
+ * `checkResponse` throws for any response that is not `ok`.
+ */
+const httpError = (status: number): HttpError =>
+  new HttpError(new Response(null, { status, statusText: `status ${status}` }))
+
+/**
+ * A stub fhirclient `Client` whose `request` rejects with each of `failures` in
+ * turn and then resolves to `response`, counting the attempts it was asked for.
+ */
+const flakySmartClient = (
+  failures: readonly unknown[],
+  response: unknown
+): { readonly client: Client; readonly attempts: () => number } => {
+  let attempts = 0
+  const client = {
+    request: (): Promise<unknown> => {
+      const failure = failures[attempts]
+      attempts += 1
+      return failure === undefined ? Promise.resolve(response) : Promise.reject(failure)
+    },
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
+  } as unknown as Client
+  return { client, attempts: () => attempts }
+}
+
+/**
+ * Run `effect` on `TestClock`, advancing it 2 s — past the whole retry backoff
+ * (250 + 500 + 1000 ms) — so retried reads don't wait on the real clock.
+ */
+const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): Promise<Exit.Exit<A, E>> =>
+  Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.fork(effect)
+      yield* TestClock.adjust(Duration.seconds(2))
+      return yield* Fiber.join(fiber)
+    }).pipe(Effect.provide(TestContext.TestContext))
+  )
 
 describe('fetchResourcePage', () => {
   test('property: a page yields exactly its decodable entries, in order, and the next cursor', async () => {
@@ -241,6 +307,64 @@ describe('fetchResourcePage', () => {
         expect(error.cause).toBe(requestError)
       }
     }
+  })
+
+  test('property: a request the network dropped is retried, and the retry returns the page', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(droppedRequestArb, { minLength: 1, maxLength: 3 }),
+        async (drops) => {
+          const { client, attempts } = flakySmartClient(
+            drops,
+            bundle([{ resourceType: 'Observation', id: 'obs-1', status: 'final', code: {} }], [])
+          )
+
+          const exit = await runOnTestClock(
+            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+          )
+
+          expect(Exit.isSuccess(exit)).toBe(true)
+          if (Exit.isSuccess(exit)) {
+            expect(exit.value.items.map((item) => item.id)).toEqual(['obs-1'])
+          }
+          expect(attempts()).toBe(drops.length + 1)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
+  })
+
+  test('a request the network keeps dropping fails after its retries, carrying the last cause', async () => {
+    const drops = [1, 2, 3, 4, 5].map((attempt) => new TypeError(`Failed to fetch (${attempt})`))
+    const { client, attempts } = flakySmartClient(drops, bundle([], undefined))
+
+    const exit = await runOnTestClock(
+      fetchResourcePage(client, observationRead, { first: 'pat-1' })
+    )
+
+    // One initial attempt + three retries.
+    expect(attempts()).toBe(4)
+    expect(exit).toEqual(Exit.fail(new ResourcePageRequestError({ cause: drops[3] })))
+  })
+
+  test.each([
+    { name: 'HTTP 401', cause: httpError(401) },
+    { name: 'HTTP 403', cause: httpError(403) },
+    { name: 'HTTP 404', cause: httpError(404) },
+    { name: 'HTTP 500', cause: httpError(500) },
+    {
+      name: 'an aborted request',
+      cause: new DOMException('The operation was aborted.', 'AbortError'),
+    },
+  ])('$name fails at once, without a retry', async ({ cause }) => {
+    const { client, attempts } = flakySmartClient([cause, cause], bundle([], undefined))
+
+    const exit = await runOnTestClock(
+      fetchResourcePage(client, observationRead, { first: 'pat-1' })
+    )
+
+    expect(attempts()).toBe(1)
+    expect(exit).toEqual(Exit.fail(new ResourcePageRequestError({ cause })))
   })
 
   test('a fully-populated Observation survives the page element-for-element', async () => {
