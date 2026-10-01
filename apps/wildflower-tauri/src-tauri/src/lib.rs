@@ -1,29 +1,16 @@
 mod bridge;
-mod hfs_base_url;
 mod loopback_consent_dialog;
 mod native_webview_handle;
-mod not_found;
-mod self_hosted_redirect_resolver;
-mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{ports::AppLaunchScopes, setup_apps, AppsConfig, SelfHostedAppsService};
-use axum::Router;
-use emr_rust::{setup_fhir_r4, EmrConfig};
-use gatekeeper_rust::{
-    client_allowed_scopes, ensure_bearer_header, gatekeeper_auth_middleware,
-    is_pre_auth_public_path, require_loopback_peer_middleware, setup_gatekeeper, GatekeeperConfig,
-};
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::ServerRuntimeConfig;
-use shared_structures_server_rust::{ProxyTable, TunnelSubdomainReverseProxy};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-use tokio::net::TcpListener;
-use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
+use tokio_util::sync::CancellationToken;
 use url::Url;
+use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -65,133 +52,6 @@ const OWNER_UI_BASE_URL: &str = if cfg!(debug_assertions) {
     env!("WILDFLOWER_OWNER_UI_BASE_URL")
 };
 
-// Filenames of the host's SQLite databases under the shared app-data dir. These
-// are the single source of truth for each database's on-disk name: the slice
-// that opens it AND the data-management catalogue (`/databases`) reference the
-// same const, so adding or renaming a database is one edit here. The host owns
-// these names — `databases-rust` has no built-in knowledge of them.
-const HEALTH_DATA_DB: &str = "health-data.sqlite";
-const WILDFLOWER_DB: &str = "wildflower.sqlite";
-
-/// The host's [`apps_rust::ports::AppLaunchScopes`]: resolves a **SMART** app's
-/// `client_id` to its OAuth client's allowed scopes (via
-/// [`gatekeeper_rust::client_allowed_scopes`], which reads inside the opaque
-/// `GatekeeperState`), so the apps launch handler can require the launching
-/// caller's grant to cover them. A non-SMART app (no `client_id`) needs no per-app
-/// scopes — only the `wildflower/launch` umbrella. (This replaced the former
-/// `GatekeeperOwnerAuth` loopback owner gate, now subsumed by the launch scope gate.)
-#[derive(Clone)]
-struct GatekeeperAppLaunchScopes {
-    state: std::sync::Arc<gatekeeper_rust::GatekeeperState>,
-}
-
-impl AppLaunchScopes for GatekeeperAppLaunchScopes {
-    fn required_scopes(
-        &self,
-        registration: &apps_rust::AppRegistration,
-    ) -> Result<Vec<scopes_rust::Scope>, apps_rust::domain::AppsError> {
-        // The capability only calls this for a SMART app, but stay defensive.
-        let Some(client_id) = registration.client_id.as_deref() else {
-            return Ok(Vec::new());
-        };
-        client_allowed_scopes(&self.state, client_id).map_err(|error| {
-            apps_rust::domain::AppsError::infrastructure("resolve SMART app launch scopes", error)
-        })
-    }
-}
-
-/// Desktop loopback-owner trust: presents the host's owner `Authorization:
-/// Bearer` header on behalf of a direct-local caller. Holds a `watch::Receiver`
-/// for the minted host owner token; each request reads the current token off
-/// the channel and builds the header inline. The token only changes when
-/// `setup_gatekeeper` re-mints, and loopback owner traffic is low-volume, so
-/// rebuilding the short header string per request is negligible — not worth
-/// caching behind a lock.
-#[derive(Clone)]
-struct LoopbackOwnerTrust {
-    /// The channel `setup_gatekeeper` publishes the minted host owner token on.
-    token_rx: tokio::sync::watch::Receiver<Option<String>>,
-}
-
-/// Present the host's own owner token on behalf of a **direct-local** request —
-/// one that reached the loopback API over a loopback socket peer AND without a
-/// `Forwarded` header (a tunnel-relayed remote caller carries one). The desktop
-/// webview holds no credential of its own, so it authenticates on *connection
-/// provenance*: the host attaches its owner bearer, and the gatekeeper gate and emr's own JWKS
-/// bearer check both validate it normally — no slice-side special-casing.
-///
-/// SECURITY: this trusts *every* direct-loopback caller as owner, not only the
-/// webview — any local process on the machine reaches the same surface. That is
-/// the desktop single-user trust model (a local process running as the user can
-/// already read the app's data on disk). It stays gated on `!forwarded` so it
-/// never extends to tunnel-relayed remote callers, and skips gatekeeper's
-/// pre-auth public surface ([`is_pre_auth_public_path`]) where a stray owner
-/// bearer could confuse client authentication. A request that already presents
-/// its own bearer is left untouched (via the shared [`ensure_bearer_header`]).
-/// Applied inside the loopback-peer gate, so a non-loopback peer is already
-/// rejected before this runs.
-async fn inject_loopback_owner_token(
-    axum::extract::State(trust): axum::extract::State<LoopbackOwnerTrust>,
-    connect_info: Option<axum::Extension<axum::extract::ConnectInfo<SocketAddr>>>,
-    mut req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> axum::response::Response {
-    let peer_is_loopback = connect_info
-        .is_some_and(|axum::Extension(axum::extract::ConnectInfo(addr))| addr.ip().is_loopback());
-    let forwarded = shared_structures_rust::served_origin::is_forwarded(req.headers());
-    let is_public_surface = is_pre_auth_public_path(req.uri().path());
-
-    if should_present_owner_token(peer_is_loopback, forwarded, is_public_surface) {
-        if let Some(bearer) = current_owner_bearer(&trust) {
-            ensure_bearer_header(req.headers_mut(), &bearer);
-        }
-    }
-    next.run(req).await
-}
-
-/// The stamp gate: present the owner bearer only for a **direct-local**,
-/// non-forwarded request that isn't on the pre-auth public surface. Pulled out
-/// as a pure conjunction so the security-critical rule is unit-tested — e.g. an
-/// inverted `forwarded` check (which would extend owner trust to tunnel-relayed
-/// remote callers) fails the test rather than shipping silently.
-fn should_present_owner_token(
-    peer_is_loopback: bool,
-    forwarded: bool,
-    is_public_surface: bool,
-) -> bool {
-    peer_is_loopback && !forwarded && !is_public_surface
-}
-
-/// The API surface's CORS policy: mirror any origin, method and request headers
-/// (every endpoint is loopback-gated and bearer-authenticated, so CORS is not the
-/// access control), **never** allow credentials, and answer Chrome's Local
-/// Network Access preflight.
-///
-/// Mirroring headers rather than `*` matters: the CORS spec's header wildcard
-/// excludes `Authorization`, the one header the bearer clients need. Credentials
-/// stay off because the server authenticates by `Authorization: Bearer` alone —
-/// no ambient credential (cookie, HTTP auth) exists for a cross-origin page to
-/// ride. A page on a public origin — the hosted owner UI at
-/// `wildflowerhealth.io/app/` — fetching this loopback server makes Chrome send
-/// `Access-Control-Request-Private-Network: true`, and it blocks the request
-/// unless the preflight answers `Access-Control-Allow-Private-Network: true`.
-fn api_cors_layer() -> CorsLayer {
-    CorsLayer::new()
-        .allow_origin(AllowOrigin::mirror_request())
-        .allow_methods(AllowMethods::mirror_request())
-        .allow_headers(AllowHeaders::mirror_request())
-        .allow_private_network(true)
-}
-
-/// The current owner `Authorization: Bearer` header, built from the latest
-/// token on the watch channel. `None` before the host mints a token (or on the
-/// impossible header-parse failure). `borrow()` takes `&self` and needs no lock,
-/// so concurrent loopback requests read the shared receiver freely.
-fn current_owner_bearer(trust: &LoopbackOwnerTrust) -> Option<axum::http::HeaderValue> {
-    let token = trust.token_rx.borrow().clone();
-    token.and_then(|t| axum::http::HeaderValue::from_str(&format!("Bearer {t}")).ok())
-}
-
 /// Resolves the directory the host keeps its databases and saved files in:
 /// `Documents` on iOS, where it is the only part of the app container the Files
 /// app will show, and Tauri's `app_data_dir()` everywhere else. The iOS bundle
@@ -212,30 +72,58 @@ fn resolve_data_dir<R: tauri::Runtime>(
     return app.path().app_data_dir();
 }
 
+/// Build-time tunnel connection defaults, baked into the binary so a
+/// reinstall re-seeds them (see `tunnel_rust::SqliteTunnelStore::seed_if_absent`,
+/// which only fills unconfigured fields). The relay is seeded only when all
+/// four fields are present at build time.
+///
+/// SECURITY: `WILDFLOWER_TUNNEL_RELAY_TOKEN` is compiled into the distributed
+/// binary (an extractable artifact) — an accepted trade-off so the relay
+/// connection survives reinstalls, token included, without re-entry.
+fn tunnel_seed_from_build_env() -> tunnel_rust::SettingsSeed {
+    // Treat an empty value as absent: a blank `.env` entry is forwarded by
+    // `dotenvy` as `Some("")`, which would otherwise seed a half-configured
+    // relay (and an empty token reads back as unconfigured anyway).
+    let non_empty = |value: &'static str| (!value.is_empty()).then_some(value);
+    let relay = match (
+        option_env!("WILDFLOWER_TUNNEL_RELAY_REMOTE_ADDR").and_then(non_empty),
+        option_env!("WILDFLOWER_TUNNEL_RELAY_TOKEN").and_then(non_empty),
+        option_env!("WILDFLOWER_TUNNEL_RELAY_PUBLIC_KEY").and_then(non_empty),
+        option_env!("WILDFLOWER_TUNNEL_RELAY_SERVICE_NAME").and_then(non_empty),
+    ) {
+        (Some(remote_addr), Some(token), Some(public_key), Some(service_name)) => {
+            Some(tunnel_rust::RelaySettings {
+                remote_addr: remote_addr.to_owned(),
+                token: token.to_owned(),
+                public_key: public_key.to_owned(),
+                service_name: service_name.to_owned(),
+            })
+        }
+        _ => None,
+    };
+    tunnel_rust::SettingsSeed {
+        public_host: option_env!("WILDFLOWER_TUNNEL_PUBLIC_HOST")
+            .and_then(non_empty)
+            .map(str::to_owned),
+        relay,
+    }
+}
+
+/// Runs the Wildflower server for the app's lifetime: resolves what it reads
+/// from this build and the platform's paths into its
+/// [`WildflowerServerConfig`], wraps the host's native adapters and bridge
+/// publishers as its [`HostPorts`], and serves.
 async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
     app_handle: tauri::AppHandle,
     // Tauri's bundled-resource directory, resolved in `.setup()` (where the
     // `AppHandle` path API is available) and threaded in rather than added to
-    // `ServerRuntimeConfig`. The release build copies the vendored self-hosted
-    // app builds from `<resource_dir>/self-hosted-apps/`; the dev build ignores
-    // it in favour of the workspace source tree.
+    // `ServerRuntimeConfig`. The release build reads the FHIR SearchParameter
+    // bundle and copies the vendored self-hosted app builds from it; the dev
+    // build ignores it in favour of the workspace source tree.
     resource_dir: std::path::PathBuf,
 ) -> anyhow::Result<()> {
-    // Apply any deletions the Owner scheduled from the data-management screen
-    // BEFORE opening the databases below: the `/databases` DELETE can't remove a
-    // file the owning slice holds open, so it drops a marker that we purge here,
-    // while nothing has the file open yet.
-    databases_rust::purge_pending_deletions(&runtime.app_data_dir)
-        .context("failed to purge scheduled database deletions")?;
-
-    let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
-    // The typed loopback base URL is the single source threaded into every
-    // slice's config (apps / gatekeeper / emr / tunnel). `loopback_origin` is its
-    // bare origin string (no trailing slash) for the few sub-URLs built by hand.
-    let loopback_base_url = runtime.loopback_base_url();
-    let loopback_origin = shared_structures_rust::origin_string(&loopback_base_url);
     let owner_ui_base = OwnerUiBase::parse(OWNER_UI_BASE_URL)
         .context("owner_ui_base_url (from tauri-shared-config.json) must be an absolute URL")?;
     // The FHIR R4 SearchParameter bundle HFS indexes from is a deployed asset,
@@ -300,273 +188,6 @@ async fn run_server(
     } else {
         resource_dir.join("fhir-search-params")
     };
-    let emr_config = EmrConfig {
-        log_level: "debug".to_string(),
-        db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
-        // HFS-enforced auth: every FHIR request must carry a Bearer JWT
-        // signed by a gatekeeper-issued key. `iss` is pinned to
-        // [`shared_structures_rust::CANONICAL_ISSUER`] by both gatekeeper
-        // (at mint) and emr-rust (at validation).
-        jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
-        search_parameter_data_dir,
-    };
-    let gatekeeper_config = GatekeeperConfig {
-        loopback_base_url: loopback_base_url.clone(),
-        host_owner_scopes: LOCAL_GRANTED_SCOPES
-            .split_whitespace()
-            .map(str::to_owned)
-            .collect(),
-        first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
-        owner_ui_base: owner_ui_base.clone(),
-    };
-
-    // One shared SQLite database for all persistence-rust-backed slices
-    // (gatekeeper, and the tunnel slice); each runs its own namespaced
-    // migrations on it. (The FHIR/emr store is managed separately by
-    // helios-persistence.)
-    let db_path = runtime.app_data_dir.join(WILDFLOWER_DB);
-    let db =
-        persistence_rust::Connection::open(&db_path).context("failed to open shared database")?;
-
-    // One shared token-revocation store on that same connection, built BEFORE
-    // both setups and threaded into each: gatekeeper's auth gate runs the full
-    // revocation check (denylist + subject epoch) through it, and HFS reads the
-    // per-jti denylist through it (defense-in-depth behind the gate). One store,
-    // two enforcement points. See #269.
-    let revocation_store = token_revocation_rust::RevocationStore::new(db.clone())
-        .context("failed to open token-revocation store")?;
-
-    // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
-    // pushes the freshly-minted token onto the owner-token channel the
-    // loopback owner trust presents (and the bridge emits a contentless
-    // `AuthTokenIssued` notify to flip the page's auth-readiness signal).
-    // If the port were already taken, minting first would mean minting a
-    // full-Owner bearer while a *foreign* process owns `127.0.0.1:<port>`.
-    // Binding first guarantees the token is only ever minted once this
-    // process owns the port.
-    let listener = TcpListener::bind(&loopback_host)
-        .await
-        .with_context(|| format!("failed to bind to {loopback_host}"))?;
-
-    let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
-        .context("failed to set up FHIR R4 router")?;
-    let fhir_r4_router = fhir_routers.augmented_fhir_r4_router;
-
-    // The app-wide diesel r2d2 pool, built once here on the same database file
-    // `db` serves the other slices from and shared (cheap `Arc` clone) across
-    // every diesel-backed slice — the gatekeeper OAuth surface, the collector
-    // `/collector/remotes` surface, and the tunnel `/tunnel` surface all run
-    // over it rather than each opening their own. Its connections are NOT
-    // synchronized with the `Arc<Mutex<rusqlite::Connection>>` the other slices
-    // write through: an accepted single-writer file-lock contention trade-off,
-    // ridden out by a shared `busy_timeout`. This is where that trade-off is
-    // accepted — see docs/Persistence/Shared Diesel Pool Explanation.md.
-    //
-    // Built BEFORE `setup_gatekeeper` because the gatekeeper store now rides
-    // this pool too (its diesel migrations run when the store is constructed).
-    let diesel_pool =
-        persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
-
-    // DEBUG BUILDS ONLY: the `…-dev` app rows pointing at the first-party apps'
-    // vite dev servers, plus their matching OAuth clients. The two first-party
-    // apps ship as cloud rows served from https://wildflowerhealth.io, which is
-    // the wrong target while developing them — these self-hosted siblings launch
-    // `http://127.0.0.1:<vite port>/` instead. They are a runtime seed rather than
-    // a migration precisely so they cannot exist in a release database (a
-    // migration runs unconditionally); both the seeds and this call site are
-    // `cfg(debug_assertions)`, so release builds contain no code that writes them.
-    // Run BEFORE `setup_apps` so the rows are in the catalogue it materializes for
-    // the startup listener binding below — a bind that fails because vite already
-    // holds the port is expected and tolerated (see `SelfHostedAppsService::start`).
-    // Best-effort: a failure only costs the dev tiles, never startup.
-    #[cfg(debug_assertions)]
-    {
-        if let Err(error) = apps_rust::seed_dev_apps(diesel_pool.clone()) {
-            tauri_plugin_log::log::warn!("failed to seed dev app rows: {error:#}");
-        }
-        if let Err(error) = gatekeeper_rust::seed_dev_app_clients(diesel_pool.clone()) {
-            tauri_plugin_log::log::warn!("failed to seed dev app OAuth clients: {error:#}");
-        }
-    }
-
-    // Resolves a self-hosted app's `{port, subdomain}` for gatekeeper's
-    // app-relative redirect matching (see `self_hosted_redirect_resolver`). Built
-    // from the shared pool here so it is ready before the gatekeeper state; its
-    // own `SqliteAppsStore` applies the apps migrations (idempotent with the one
-    // `setup_apps` builds later).
-    let redirect_resolver = Arc::new(
-        self_hosted_redirect_resolver::AppsStoreRedirectResolver::new(
-            apps_rust::SqliteAppsStore::new(diesel_pool.clone())
-                .context("failed to open apps store for redirect resolution")?,
-        ),
-    );
-
-    // The native Approve / Reject dialog gatekeeper raises when the hosted owner
-    // UI logs in over direct loopback (see `loopback_consent_dialog`).
-    let loopback_consent_prompt =
-        Arc::new(loopback_consent_dialog::TauriLoopbackConsentPrompt::new(
-            app_handle.clone(),
-            gatekeeper_config.host_owner_scopes.clone(),
-        ));
-
-    // `setup_gatekeeper` publishes the freshly-minted host owner token (and
-    // pending-consent heads) through the bridge publishers; `bridge::attach_bridge`
-    // documents how the resident task delivers them to the webview.
-    let gatekeeper = setup_gatekeeper(
-        diesel_pool.clone(),
-        revocation_store,
-        &gatekeeper_config,
-        &publishers.host_owner_token_sender,
-        publishers.active_pending_consent_sender,
-        redirect_resolver,
-        loopback_consent_prompt,
-    )
-    .context("failed to set up gatekeeper")?;
-
-    // The FHIR router carries discovery docs (metadata, SMART well-known) that a
-    // client fetches before it holds a token, so those paths are exempted from
-    // the bearer gate; every other `/fhir-r4/*` path still requires a token.
-    let gated_fhir_r4 = fhir_r4_router.layer(gatekeeper_auth_middleware(
-        gatekeeper.state.clone(),
-        emr_rust::UNAUTHENTICATED_FHIR_PATHS,
-    ));
-
-    let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);
-
-    let gated_ohif_server = ohif_server_rust::setup_ohif_server(fhir_routers.raw_hfs_router)
-        .layer(gatekeeper_auth_layer.clone());
-
-    // The real `/collector/remotes` surface (replacing the former api_stubs
-    // stub — the demo FHIR remote it hardcoded is now seeded by migration).
-    // The collector rides the same shared diesel pool as the gatekeeper (see
-    // `diesel_pool` above). User-created remotes persist there; a remote's config
-    // JSON may carry pharmacy credentials, so the whole surface is Owner-gated
-    // like the rest of the admin API.
-    let gated_collector = collector_rust::setup_collector(diesel_pool.clone())
-        .context("failed to set up collector")?
-        .layer(gatekeeper_auth_layer.clone());
-
-    // The real `/tunnel` surface (replacing the former api_stubs stub). It's
-    // Owner-gated like the rest of the admin API. Settings (incl. the relay
-    // connection) are persisted in the shared database over the same diesel pool
-    // and controlled through the API; there is no UI and no env seeding yet, so
-    // on a fresh install the relay is unconfigured and toggling the tunnel on
-    // just reports that.
-    // Build-time tunnel connection defaults, baked into the binary so a
-    // reinstall re-seeds them (see `tunnel_rust::SqliteTunnelStore::seed_if_absent`,
-    // which only fills unconfigured fields). The relay is seeded only when all
-    // four fields are present at build time.
-    //
-    // SECURITY: `WILDFLOWER_TUNNEL_RELAY_TOKEN` is compiled into the distributed
-    // binary (an extractable artifact) — an accepted trade-off so the relay
-    // connection survives reinstalls, token included, without re-entry.
-    fn tunnel_seed_from_build_env() -> tunnel_rust::SettingsSeed {
-        // Treat an empty value as absent: a blank `.env` entry is forwarded by
-        // `dotenvy` as `Some("")`, which would otherwise seed a half-configured
-        // relay (and an empty token reads back as unconfigured anyway).
-        let non_empty = |value: &'static str| (!value.is_empty()).then_some(value);
-        let relay = match (
-            option_env!("WILDFLOWER_TUNNEL_RELAY_REMOTE_ADDR").and_then(non_empty),
-            option_env!("WILDFLOWER_TUNNEL_RELAY_TOKEN").and_then(non_empty),
-            option_env!("WILDFLOWER_TUNNEL_RELAY_PUBLIC_KEY").and_then(non_empty),
-            option_env!("WILDFLOWER_TUNNEL_RELAY_SERVICE_NAME").and_then(non_empty),
-        ) {
-            (Some(remote_addr), Some(token), Some(public_key), Some(service_name)) => {
-                Some(tunnel_rust::RelaySettings {
-                    remote_addr: remote_addr.to_owned(),
-                    token: token.to_owned(),
-                    public_key: public_key.to_owned(),
-                    service_name: service_name.to_owned(),
-                })
-            }
-            _ => None,
-        };
-        tunnel_rust::SettingsSeed {
-            public_host: option_env!("WILDFLOWER_TUNNEL_PUBLIC_HOST")
-                .and_then(non_empty)
-                .map(str::to_owned),
-            relay,
-        }
-    }
-
-    let tunnel_config = tunnel_rust::TunnelConfig {
-        loopback_base_url: runtime.loopback_base_url(),
-        seed: tunnel_seed_from_build_env(),
-    };
-    // `setup_tunnel` hands back the `/tunnel` router plus the in-process
-    // `TunnelControl` seam (which implements `TunnelService`). The daemon drives
-    // a `/health` probe — against the app-layer `/health` route mounted below —
-    // through the reqwest adapter to verify reachability.
-    let health_probe: Arc<dyn tunnel_rust::HealthProbe> =
-        Arc::new(tunnel_adapters::ReqwestHealthProbe::new());
-    let tunnel = tunnel_rust::setup_tunnel(diesel_pool.clone(), &tunnel_config, health_probe)
-        .context("failed to set up tunnel")?;
-    let gated_tunnel = tunnel.router.layer(gatekeeper_auth_layer.clone());
-
-    // The apps catalogue surface. `GET /apps` (list), the cloud-admin write
-    // surface (POST/PUT/DELETE /apps), and `PUT /home-screen` are scope-gated on
-    // `wildflower/Apps.*` behind the gatekeeper bearer gate (`gated_apps`, below).
-    // The launch route `GET`/`POST /apps/{id}` (`apps.launch_router`) is scope-gated
-    // on the `wildflower/launch` umbrella behind the same bearer gate (`gated_launch`,
-    // below), with a per-app SMART check in the handler; a forwarded launch rides the
-    // front trust boundary for the redirect. A `requires_tunnel` launch resolves to
-    // the tunnel's verified origin through the tunnel service (or fails 503
-    // LaunchUnavailable when the tunnel can't be brought up). The apps slice derives
-    // the launch origin and the self-hosted listeners' hostname from
-    // `loopback_base_url`, so they can't drift.
-    let apps_config = AppsConfig {
-        loopback_base_url: loopback_base_url.clone(),
-    };
-    // `TunnelControl` implements `TunnelService`, so it's handed straight in.
-    let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-
-    // HFS's `base_url` tracks the tunnel's public host (see `hfs_base_url`): set
-    // before serving, so a stored host that can't be one stops startup, then
-    // re-set whenever the tunnel settings change.
-    let mut tunnel_liveness = tunnel_service.subscribe();
-    let public_host = tunnel_liveness.borrow_and_update().public_host.clone();
-    hfs_base_url::point_hfs_at_public_host(&fhir_routers.hfs, public_host.as_deref())?;
-    let hfs = fhir_routers.hfs.clone();
-    tauri::async_runtime::spawn(hfs_base_url::follow_public_host(
-        tunnel_liveness,
-        public_host,
-        move |public_host| {
-            // `PUT /tunnel` refuses a host that can't be a base URL, so this
-            // failing is a bug, not a settings mistake.
-            if let Err(error) = hfs_base_url::point_hfs_at_public_host(&hfs, public_host) {
-                tauri_plugin_log::log::error!("FHIR base URL left unchanged: {error:#}");
-            }
-        },
-    ));
-    // Install the host's on-device webview handle: a loopback launch hands it the
-    // resolved URL to open in a native popup (the server 204s). See
-    // `native_webview_handle`.
-    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> = Arc::new(
-        native_webview_handle::NativeWebviewHandle::new(app_handle.clone()),
-    );
-    // The per-app SMART launch-scope seam: resolves a SMART app's OAuth client
-    // scopes so the launch handler can require the caller's grant to cover them.
-    // The launch umbrella (`wildflower/launch`) is enforced separately by the
-    // bearer gate + `Scoped<AppLauncher>` on the launch router (below).
-    let launch_scopes: Arc<dyn AppLaunchScopes> = Arc::new(GatekeeperAppLaunchScopes {
-        state: gatekeeper.state.clone(),
-    });
-
-    // Static self-hosted apps are served from this directory under app-data at
-    // request time (the apps slice's `SelfHostedAppsService` builds each app's
-    // file-serving router from its `<content_folder>/` subdirectory here, and the
-    // upload handler stages extracted bundles under it). Created up front so it's
-    // a stable, discoverable place to drop an app's files; an empty/missing dir
-    // just 404s. Best-effort — a creation failure only means the apps routes 404
-    // until it exists, so it must not abort server startup.
-    let self_hosted_apps_dir = runtime.app_data_dir.join("self-hosted-apps");
-    if let Err(error) = std::fs::create_dir_all(&self_hosted_apps_dir) {
-        tauri_plugin_log::log::warn!(
-            "failed to create self-hosted-apps dir {}: {error}",
-            self_hosted_apps_dir.display()
-        );
-    }
-
     // Refresh the vendored self-hosted app builds into the serving dir — dev
     // overwrite-mirrors from the workspace source tree, release copies-if-missing
     // from the bundled resources (see `apps_rust::sync_vendored_self_hosted_apps`).
@@ -581,229 +202,46 @@ async fn run_server(
     } else {
         (resource_dir.join("self-hosted-apps"), false)
     };
-    if let Err(error) = apps_rust::sync_vendored_self_hosted_apps(
-        &vendored_source,
-        &self_hosted_apps_dir,
-        overwrite_vendored,
-    ) {
-        tauri_plugin_log::log::warn!("failed to sync vendored self-hosted apps: {error}");
-    }
+    let host_owner_scopes: Vec<String> = LOCAL_GRANTED_SCOPES
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
 
-    // The `id -> loopback port` table the reverse proxy reads per request and the
-    // apps slice registers each self-hosted app into. A cloneable `Arc` handle,
-    // so the registration the slice does is visible to the live proxy.
-    let proxy_table = ProxyTable::new();
-
-    // The apps slice owns the self-hosted lifecycle. Each self-hosted app gets
-    // its own dedicated loopback origin (`http://{loopback_hostname}:{port}/`) —
-    // its own security context (own storage, own cookies, no Same-Origin Policy
-    // share with the main API) — and is registered into `proxy_table` so it's
-    // also reachable remotely at `<app-id>.<public-host>` for forwarded traffic.
-    // Built before `setup_apps` and handed in (both hold the `Arc`), so the
-    // upload/delete handlers bring apps online/offline through the same instance
-    // that binds the startup seed listeners below.
-    let self_hosted = Arc::new(SelfHostedAppsService::new(
-        &loopback_base_url,
-        self_hosted_apps_dir,
-        proxy_table.clone(),
-        Arc::clone(&tunnel_service),
-    ));
-
-    let apps = setup_apps(
-        diesel_pool,
-        &apps_config,
-        Arc::clone(&tunnel_service),
-        webview_handle,
-        Arc::clone(&self_hosted),
-        launch_scopes,
-    )
-    .context("failed to set up apps")?;
-    let gated_apps = apps.gated_router.layer(gatekeeper_auth_layer.clone());
-    // The launch surface, scope-gated on the `wildflower/launch` umbrella: wrapped
-    // by the SAME bearer gate as the admin surface so the `Scoped<AppLauncher>`
-    // extractor has the caller's scope claims (the per-app SMART check then runs
-    // in-handler). This replaced the former ungated mount whose loopback popup was
-    // owner-gated in-handler — the scope gate subsumes that gate.
-    let gated_launch = apps.launch_router.layer(gatekeeper_auth_layer.clone());
-
-    // The data-management surface (`/databases`): export + delete the host's
-    // SQLite databases. It owns no store — it works at the file level on the
-    // same `app_data_dir` the databases above live in — so the host passes the
-    // directory plus the catalogue (the slice has no built-in knowledge of which
-    // databases exist; the user-facing strings live here). Authenticated behind
-    // the gatekeeper bearer gate, then authorized per database (NOT a blanket
-    // owner gate):
-    // Each database's export/delete is gated by the scope matching the *kind* of
-    // data it holds (host policy — the slice enforces whatever scope we name
-    // here): the FHIR clinical database by the SMART FHIR `system/*` grammar, the
-    // app-data database by the Wildflower `wildflower/*` grammar. An owner token
-    // (`system/*.cruds` + `wildflower/*.cruds`) covers both; a narrower token can
-    // export only what it can read. The scopes are built from `scopes-rust`'s
-    // typed constructors (tested there) rather than parsed from strings, so a
-    // typo is a compile error, never a silent `Unknown` scope.
-    let databases_config = databases_rust::DatabasesConfig {
-        data_dir: runtime.app_data_dir.clone(),
-        databases: vec![
-            databases_rust::DatabaseDescriptor {
-                id: HEALTH_DATA_DB.to_owned(),
-                label: "Health data".to_owned(),
-                description:
-                    "Your FHIR clinical records — patients, observations, and the rest of your chart."
-                        .to_owned(),
-                read_scope: scopes_rust::Scope::fhir_system_all(scopes_rust::Permission::READ_SEARCH),
-                delete_scope: scopes_rust::Scope::fhir_system_all(scopes_rust::Permission::DELETE),
-            },
-            databases_rust::DatabaseDescriptor {
-                id: WILDFLOWER_DB.to_owned(),
-                label: "Wildflower app data".to_owned(),
-                description: "App state — access grants, tunnel settings, and the apps catalogue."
-                    .to_owned(),
-                read_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::READ),
-                delete_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::DELETE),
-            },
-        ],
+    let host_ports = HostPorts {
+        // The native Approve / Reject dialog gatekeeper raises when the hosted
+        // owner UI logs in over direct loopback (see `loopback_consent_dialog`).
+        loopback_consent_prompt: Arc::new(
+            loopback_consent_dialog::TauriLoopbackConsentPrompt::new(
+                app_handle.clone(),
+                host_owner_scopes.clone(),
+            ),
+        ),
+        // A loopback launch hands this the resolved URL to open in a native popup
+        // (the server 204s). See `native_webview_handle`.
+        on_device_webview_handle: Arc::new(native_webview_handle::NativeWebviewHandle::new(
+            app_handle,
+        )),
+        // The server publishes the host owner token and pending-consent heads
+        // here; `bridge::attach_bridge` documents how the resident task delivers
+        // them to the webview.
+        host_owner_token_sender: publishers.host_owner_token_sender,
+        active_pending_consent_sender: publishers.active_pending_consent_sender,
     };
-    let gated_databases =
-        databases_rust::setup_databases(&databases_config).layer(gatekeeper_auth_layer.clone());
+    let config = WildflowerServerConfig {
+        runtime,
+        search_parameter_data_dir,
+        vendored_self_hosted_apps_dir: vendored_source,
+        overwrite_vendored_self_hosted_apps: overwrite_vendored,
+        owner_ui_base,
+        host_owner_scopes,
+        first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
+        tunnel_seed: tunnel_seed_from_build_env(),
+        app_version: env!("CARGO_PKG_VERSION").to_owned(),
+    };
 
-    // The unified API docs (`/docs`): merge every documented slice's spec —
-    // collected from the very routes that serve traffic — into one document and
-    // serve it as an interactive Scalar reference. Each slice is a named group so
-    // Scalar renders a two-level sidebar (slice → the slice's operation tags);
-    // the group name is presentation-only and lives here, not in the snapshots.
-    // The `api-docs` system app (`apps-rust`) already points here, so this fills a
-    // route that previously fell through to the SPA. Gated exactly like the rest
-    // of the admin API: a loopback caller passes on connection provenance (the
-    // host injects the owner bearer), a forwarded caller on a valid bearer.
-    // FHIR/HFS itself exposes no OpenAPI spec (only a FHIR CapabilityStatement
-    // at `/fhir-r4/metadata`), so the "FHIR R4" group below is a committed
-    // snapshot generated from the TS `fhir-r4` `HttpApi` rather than collected
-    // from routes — it documents the FHIR surface as the Wildflower client
-    // uses it, not the whole of HFS. See `emr_rust::openapi_spec`.
-    let gated_docs = shared_structures_rust::openapi_docs::merged_scalar_router(
-        "/docs",
-        "Wildflower API",
-        env!("CARGO_PKG_VERSION"),
-        [
-            ("Gatekeeper", gatekeeper_rust::openapi_spec()),
-            ("Apps", apps_rust::openapi_spec()),
-            ("Databases", databases_rust::openapi_spec()),
-            ("Collector", collector_rust::openapi_spec()),
-            ("OHIF Server", ohif_server_rust::openapi_spec()),
-            ("Tunnel", tunnel_rust::openapi_spec()),
-            ("FHIR R4", emr_rust::openapi_spec()),
-        ],
-    )
-    .layer(gatekeeper_auth_layer);
-    // The webview page is NOT served from this origin — it loads from
-    // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
-    // asset protocol (`tauri://localhost`) in builds, while API fetches
-    // target this server absolutely (the React tauri entry's
-    // `apiBaseUrl`). So every API request is cross-origin and the API
-    // must impose no CORS restriction beyond refusing credentials (see
-    // `api_cors_layer`). Trust doesn't come from CORS here anyway: the
-    // loopback gate rejects non-local peers and auth rides the bearer
-    // header.
-    //
-    // The whole API stack — built first because it's the reverse proxy's
-    // fallback, handed in at construction. A forwarded request that doesn't
-    // match a self-hosted subdomain (and every loopback request) runs this.
-    let api_router = Router::new()
-        .merge(gatekeeper.router)
-        .merge(gated_fhir_r4)
-        .merge(gated_ohif_server)
-        .merge(gated_collector)
-        .merge(gated_tunnel)
-        // The app-layer `/health`: an unauthenticated liveness endpoint the
-        // tunnel's reachability probe round-trips through the relay. Ungated so
-        // the probe (and any external uptime check) needs no bearer token. The
-        // reusable router comes from the core; `AlwaysHealthy` is the trivial
-        // service until real per-slice checks are wired.
-        .merge(shared_structures_rust::health_check::health_router(
-            Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
-        ))
-        .merge(gated_apps)
-        // The launch surface, bearer-gated like `gated_apps` so the
-        // `Scoped<AppLauncher>` extractor sees the caller's scope claims (it gates
-        // on the `wildflower/launch` umbrella; the per-app SMART check runs
-        // in-handler). Built as its own gated router so its raised body limit /
-        // exemptions can differ from the admin surface.
-        .merge(gated_launch)
-        .merge(gated_databases)
-        .merge(gated_docs)
-        // No slice claimed the route: `404`, pointing a browser at the hosted
-        // owner UI (the host serves no UI of its own). See `not_found.rs`.
-        .fallback(not_found::fallback(Arc::new(not_found::NotFoundConfig {
-            owner_ui_base,
-            loopback_base_url: loopback_base_url.clone(),
-        })))
-        // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
-        // present the host owner token for a direct-local caller so the webview
-        // authenticates on connection provenance. Inner of CORS (which answers preflight
-        // first) and of the loopback-peer gate applied below.
-        .layer(axum::middleware::from_fn_with_state(
-            LoopbackOwnerTrust {
-                token_rx: publishers.host_owner_token_sender.subscribe(),
-            },
-            inject_loopback_owner_token,
-        ));
-
-    // Defense-in-depth: gate the entire API surface on a loopback peer address.
-    // Every endpoint here is meant to be reached only over the loopback socket —
-    // directly, or relayed by the trusted front, which proxies remote callers
-    // from loopback (and is distinguished downstream by the `Forwarded` header).
-    // A genuinely non-loopback peer is rejected with `403` before any handler
-    // runs, so even an ungated, CORS-permissive endpoint like `POST /apps/{id}`
-    // (which can open a native popup on the owner's device) can't be driven by a
-    // non-loopback client. Applied outermost (after CORS) so it runs first. See
-    // `require_loopback_peer_middleware` for how forwarded callers pass and why
-    // re-gating the gatekeeper's already-gated routes is harmless.
-    let api_router = api_router
-        .layer(require_loopback_peer_middleware())
-        .layer(api_cors_layer());
-
-    // The reverse proxy wraps the API stack as the outermost layer: a forwarded
-    // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`
-    // is reverse-proxied to that app's loopback port (the same listener a local
-    // launch reaches); loopback and apex-host traffic runs the api_router.
-    let proxy = TunnelSubdomainReverseProxy::new(
-        loopback_base_url.clone(),
-        Arc::clone(&tunnel_service),
-        api_router,
-        proxy_table.clone(),
-    );
-
-    // Bind every self-hosted app's loopback listener + proxy registration at
-    // startup — both migration-seeded rows and previously-uploaded ones. The DB
-    // row's `port` is the source of truth for the bind; the apps slice renders
-    // the launch target from the same value, so redirect and listener can't
-    // drift. The runtime upload/delete handlers drive the same `self_hosted`
-    // instance for restartless install/uninstall. A failure to bring one app
-    // online must not abort startup, so it's logged and skipped. The loopback
-    // API origin + tunnel feed the per-request template rendering (`apiOrigin`)
-    // in each app's router — loopback callers get the loopback origin, forwarded
-    // callers `https://<public_host>`.
-    for (registration, config) in &apps.self_hosted_apps_at_start {
-        if let Err(error) = self_hosted.start(&registration.id, config).await {
-            tauri_plugin_log::log::warn!(
-                "failed to start self-hosted app {}: {error}",
-                registration.id
-            );
-        }
-    }
-    // Hold the orchestrator for the process lifetime — dropping it would drop the
-    // running listeners' shutdown signals and take the self-hosted apps offline.
-    // (`apps.state` holds a clone of the same `Arc`, so the handlers share it.)
-    let _self_hosted = self_hosted;
-
-    axum::serve(
-        listener,
-        proxy
-            .into_router()
-            .into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await?;
-    Ok(())
+    // The server runs for the app's lifetime, so nothing cancels its shutdown
+    // token.
+    wildflower_server_rust::serve(config, host_ports, CancellationToken::new()).await
 }
 
 /// Build and run the Tauri application.
@@ -965,84 +403,6 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{api_cors_layer, should_present_owner_token};
-    use tower::ServiceExt;
-
-    /// A preflight from a public origin asking to reach this private-network
-    /// server is answered with `Access-Control-Allow-Private-Network: true`;
-    /// without it, Chrome blocks the hosted owner UI from calling loopback.
-    #[tokio::test]
-    async fn a_private_network_preflight_is_allowed() {
-        let router = axum::Router::new()
-            .route("/fhir-r4/metadata", axum::routing::get(|| async { "ok" }))
-            .layer(api_cors_layer());
-        let preflight = axum::http::Request::options("/fhir-r4/metadata")
-            .header("origin", "https://wildflowerhealth.io")
-            .header("access-control-request-method", "GET")
-            .header("access-control-request-private-network", "true")
-            .body(axum::body::Body::empty())
-            .expect("preflight request");
-        let response = router.oneshot(preflight).await.expect("preflight");
-        assert_eq!(
-            response
-                .headers()
-                .get("access-control-allow-private-network")
-                .and_then(|value| value.to_str().ok()),
-            Some("true")
-        );
-        assert_eq!(
-            response
-                .headers()
-                .get("access-control-allow-origin")
-                .and_then(|value| value.to_str().ok()),
-            Some("https://wildflowerhealth.io")
-        );
-    }
-
-    /// A cross-origin request is never told it may send credentials: the API
-    /// authenticates by bearer alone, so no ambient credential may ride.
-    #[tokio::test]
-    async fn cross_origin_credentials_are_never_allowed() {
-        let router = axum::Router::new()
-            .route("/fhir-r4/metadata", axum::routing::get(|| async { "ok" }))
-            .layer(api_cors_layer());
-        let preflight = axum::http::Request::options("/fhir-r4/metadata")
-            .header("origin", "https://evil.example")
-            .header("access-control-request-method", "GET")
-            .header("access-control-request-headers", "authorization")
-            .body(axum::body::Body::empty())
-            .expect("preflight request");
-        let response = router.oneshot(preflight).await.expect("preflight");
-        assert!(response
-            .headers()
-            .get("access-control-allow-credentials")
-            .is_none());
-        // `Authorization` is still allowed, so bearer clients keep working.
-        assert_eq!(
-            response
-                .headers()
-                .get("access-control-allow-headers")
-                .and_then(|value| value.to_str().ok()),
-            Some("authorization")
-        );
-    }
-
-    /// The owner bearer is stamped only for a direct-local, non-forwarded request
-    /// off the pre-auth public surface. Each guard, flipped alone, must withhold
-    /// the stamp — most critically an inverted `forwarded` check must NOT extend
-    /// owner trust to a tunnel-relayed remote caller.
-    #[test]
-    fn owner_token_presented_only_for_direct_local_private_requests() {
-        // The one case that stamps: loopback peer, not forwarded, not public.
-        assert!(should_present_owner_token(true, false, false));
-        // Not a loopback peer → never (the loopback-peer gate rejects it anyway).
-        assert!(!should_present_owner_token(false, false, false));
-        // Forwarded (tunnel-relayed) → never, even from a loopback proxy peer.
-        assert!(!should_present_owner_token(true, true, false));
-        // Pre-auth public surface (`/oauth`, `/.well-known`) → never.
-        assert!(!should_present_owner_token(true, false, true));
-    }
-
     /// Reads one of the Apple plists next to this crate and flattens it, so a
     /// key and its value compare as one token however the file indents them.
     /// The files' comments name keys in backticks rather than as `<key>`

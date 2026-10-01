@@ -1,0 +1,71 @@
+[package]
+name = "wildflower-server-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The Wildflower server: `serve` composes every server slice (gatekeeper, emr,
+# OHIF, collector, tunnel, apps, databases, the `/docs` reference) into the
+# loopback API and serves it until its shutdown token is cancelled. No `tauri`
+# dependency — the Tauri host hands in its native adapters as trait objects —
+# so it compiles and tests without GTK.
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+serde.workspace = true
+tower-http.workspace = true
+# `net` binds the loopback listener; `sync` carries the host's owner-token and
+# pending-consent `watch` channels.
+tokio = { workspace = true, features = ["net", "rt", "sync"] }
+# `CancellationToken`, the shutdown signal `serve` takes.
+tokio-util = "0.7"
+tracing = "0.1"
+# Typed loopback base URL handed to the slices' configs and the 404 fallback.
+url = "2"
+# The tunnel `/health` reachability probe. `rustls-tls` (no openssl) matches the
+# project's openssl avoidance; `json` decodes the health body. reqwest is already
+# a transitive dependency (via helios), so this adds no new build cost.
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+] }
+# `tunnel_rust::HealthProbe` is an `#[async_trait]`.
+async-trait = "0.1"
+apps-rust = { path = "../../apps/apps-rust" }
+collector-rust = { path = "../../collector/collector-rust" }
+databases-rust = { path = "../../databases/databases-rust" }
+emr-rust = { path = "../../emr/emr-rust" }
+gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
+ohif-server-rust = { path = "../../dicom/ohif-server-rust" }
+persistence-rust = { path = "../../persistence/persistence-rust" }
+# Names the per-database export/delete `Scope`s the databases catalogue declares.
+scopes-rust = { path = "../../scopes/scopes-rust" }
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
+  "health-check",
+  # The unified `/docs` Scalar surface — merge each slice's `openapi_spec()`
+  # into one document and serve it.
+  "openapi-docs",
+  # `served_base_url_for`: the unmatched-route 404 links back to the request's
+  # served origin (see `src/not_found.rs`); `is_forwarded` for the loopback
+  # owner trust.
+  "served-origin",
+] }
+# The reverse proxy that dispatches inbound `<id>.<public-host>` forwarded
+# requests to each self-hosted app's loopback port, plus the static-hosts runner
+# the apps slice drives.
+shared-structures-server-rust = { path = "../../shared-structures/shared-structures-server-rust" }
+# Built once on the shared db and threaded into both gatekeeper and the FHIR
+# server so the auth gate and HFS read one revocation denylist/epoch store (#269).
+token-revocation-rust = { path = "../../gatekeeper/token-revocation-rust" }
+tunnel-rust = { path = "../../tunnel/tunnel-rust" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+# A throwaway app-data dir for the `serve` lifecycle test.
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+# `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.
+tower = { version = "0.5", features = ["util"] }

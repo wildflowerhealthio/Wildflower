@@ -30,14 +30,6 @@ tauri-plugin-opener = "2"
 openssl = {version = "0.10.36", features = ["vendored"] } 
 serde.workspace = true
 serde_json.workspace = true
-async-trait = "0.1"
-# The tunnel `/health` reachability probe. `rustls-tls` (no openssl) matches the
-# project's openssl avoidance; `json` decodes the health body. reqwest is already
-# a transitive dependency (via helios), so this adds no new build cost.
-reqwest = { version = "0.12", default-features = false, features = [
-  "rustls-tls",
-  "json",
-] }
 apps-rust = { path = "../../../slices/apps/apps-rust" }
 browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
 # Host glue for the HAR Recorder: the `BRIDGE_EVENT` listener that writes a
@@ -46,46 +38,27 @@ har-recorder-tauri-rust = { path = "../../../slices/har-recorder/har-recorder-ta
 # Native, JS-injectable web view (iOS, Android, desktop); runs in parallel
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
 tauri-plugin-native-webview = { path = "../../../plugins/tauri-plugin-native-webview" }
-collector-rust = { path = "../../../slices/collector/collector-rust" }
-databases-rust = { path = "../../../slices/databases/databases-rust" }
-emr-rust = { path = "../../../slices/emr/emr-rust" }
-ohif-server-rust = { path = "../../../slices/dicom/ohif-server-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
-# Names the per-database export/delete `Scope`s the databases catalogue declares.
-scopes-rust = { path = "../../../slices/scopes/scopes-rust" }
-# Built once on the shared db and threaded into both gatekeeper and the FHIR
-# server so the auth gate and HFS read one revocation denylist/epoch store (#269).
-token-revocation-rust = { path = "../../../slices/gatekeeper/token-revocation-rust" }
-persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
-shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
-  "health-check",
-  # The unified `/docs` Scalar surface — merge each slice's `openapi_spec()`
-  # into one document and serve it (see `api_router` in `src/lib.rs`).
-  "openapi-docs",
-  # `served_base_url_for`: the unmatched-route 404 links back to the request's
-  # served origin (see `src/not_found.rs`).
-  "served-origin",
-] }
+# `ServerRuntimeConfig` and `OwnerUiBase` for the server config, and the bridge
+# envelope the host's listeners decode.
+shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust" }
 # Provides `resolve_http_url`, the http(s)-only validator the apps launch flow
 # gates its `RequestSandboxedWebView { url }` on before handing the URL to the
 # native-webview plugin.
 shared-structures-tauri-rust = { path = "../../../slices/shared-structures/shared-structures-tauri-rust" }
+# The build-time tunnel `SettingsSeed` the host hands the server.
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
-# Server-side shared infra: the reverse proxy that dispatches inbound
-# `<id>.<public-host>` forwarded requests to each self-hosted app's loopback
-# port, plus the static-hosts runner the apps slice drives. Replaces the former
-# in-app `subdomain_dispatch` module.
-shared-structures-server-rust = { path = "../../../slices/shared-structures/shared-structures-server-rust" }
+# The Wildflower server the host runs from `.setup()`.
+wildflower-server-rust = { path = "../../../slices/wildflower-server/wildflower-server-rust" }
 anyhow.workspace = true
-axum.workspace = true
-# Typed loopback base URL handed to `apps_rust::AppsConfig` (the apps slice
-# derives the launch origin + self-hosted hostname from it).
+# Typed loopback base URL for the server's `ServerRuntimeConfig`.
 url = "2"
 tokio = { workspace = true, features = ["full"] }
+# `CancellationToken`, the server's shutdown signal.
+tokio-util = "0.7"
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
-tower-http.workspace = true
 dotenvy = "0.15.7"
 
 # Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
@@ -95,5 +68,3 @@ workspace = true
 [dev-dependencies]
 # Builds the `LoopbackConsentRequest` (its `expires_at`) the dialog tests render.
 chrono = { version = "0.4", default-features = false }
-# `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.
-tower = { version = "0.5", features = ["util"] }

@@ -9393,23 +9393,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "wildflower-tauri"
-version = "0.3.0"
+name = "wildflower-server-rust"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "apps-rust",
  "async-trait",
  "axum",
- "browser-sniffer-tauri-rust",
- "chrono",
  "collector-rust",
  "databases-rust",
- "dotenvy",
  "emr-rust",
  "gatekeeper-rust",
- "har-recorder-tauri-rust",
  "ohif-server-rust",
- "openssl",
  "persistence-rust",
  "reqwest 0.12.28",
  "scopes-rust",
@@ -9417,6 +9412,32 @@ dependencies = [
  "serde_json",
  "shared-structures-rust",
  "shared-structures-server-rust",
+ "tempfile",
+ "token-revocation-rust",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tower-http 0.7.1",
+ "tracing",
+ "tunnel-rust",
+ "url",
+]
+
+[[package]]
+name = "wildflower-tauri"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "apps-rust",
+ "browser-sniffer-tauri-rust",
+ "chrono",
+ "dotenvy",
+ "gatekeeper-rust",
+ "har-recorder-tauri-rust",
+ "openssl",
+ "serde",
+ "serde_json",
+ "shared-structures-rust",
  "shared-structures-tauri-rust",
  "tauri",
  "tauri-build",
@@ -9425,12 +9446,11 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-native-webview",
  "tauri-plugin-opener",
- "token-revocation-rust",
  "tokio",
- "tower",
- "tower-http 0.7.1",
+ "tokio-util",
  "tunnel-rust",
  "url",
+ "wildflower-server-rust",
 ]
 
 [[package]]

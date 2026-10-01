@@ -10,9 +10,10 @@
 //! enough — the tunnel only needs to know the round-trip reaches a live server;
 //! it does not serve `/health` itself, nor does it check identity.
 //!
-//! The networked adapter ([`HealthProbe`] implementation) lives in the host
-//! (`wildflower-tauri`), so the TLS HTTP client stays out of the slice and the
-//! same prober can later reach any slice's `/health`.
+//! The networked adapter ([`HealthProbe`] implementation) lives in the server
+//! that composes the slices (`wildflower-server-rust`), so the TLS HTTP client
+//! stays out of the slice and the same prober can later reach any slice's
+//! `/health`.
 
 /// Probes a `/health` URL and reports whether it answered healthy.
 ///
