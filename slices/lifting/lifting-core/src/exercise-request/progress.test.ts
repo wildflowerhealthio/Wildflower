@@ -53,7 +53,7 @@ const squatAt = (value: number): ExerciseRequest.Type =>
 /** What the lifter performed: the workouts and the sets in them. */
 interface Performed {
   readonly workoutProcedures: readonly WorkoutProcedure.Type[]
-  readonly setObservations: readonly ExerciseSetObservation.Type[]
+  readonly exerciseSetObservations: readonly ExerciseSetObservation.Type[]
 }
 
 /** One progression step over what was performed, issuing `sr-3`. */
@@ -74,7 +74,7 @@ const stepOf = (progressionCase: ProgressionCase): ExerciseRequest.Progress =>
   made(step({ ...progressionCase, progressionRule: ruleOf(progressionCase.planned) }))
 
 /** Nothing performed yet. */
-const NOTHING: Performed = { workoutProcedures: [], setObservations: [] }
+const NOTHING: Performed = { workoutProcedures: [], exerciseSetObservations: [] }
 
 /** One completed workout per entry of `repsPerWorkout`, a day apart, each with its sets against `exerciseRequest`. */
 const history = ({
@@ -89,7 +89,9 @@ const history = ({
   )
   return {
     workoutProcedures: performed.map(({ workoutProcedure }) => workoutProcedure),
-    setObservations: performed.flatMap(({ setObservations }) => setObservations),
+    exerciseSetObservations: performed.flatMap(
+      ({ exerciseSetObservations }) => exerciseSetObservations
+    ),
   }
 }
 
@@ -301,13 +303,13 @@ describe('ExerciseRequest.progress', () => {
               fc.shuffledSubarray([...progressionCase.workoutProcedures], {
                 minLength: progressionCase.workoutProcedures.length,
               }),
-              fc.shuffledSubarray([...progressionCase.setObservations], {
-                minLength: progressionCase.setObservations.length,
+              fc.shuffledSubarray([...progressionCase.exerciseSetObservations], {
+                minLength: progressionCase.exerciseSetObservations.length,
               })
             )
-            .map(([workoutProcedures, setObservations]) => ({
+            .map(([workoutProcedures, exerciseSetObservations]) => ({
               progressionCase,
-              shuffled: { ...progressionCase, workoutProcedures, setObservations },
+              shuffled: { ...progressionCase, workoutProcedures, exerciseSetObservations },
             }))
         ),
         ({ progressionCase, shuffled }) => {
@@ -339,9 +341,9 @@ describe('ExerciseRequest.progress', () => {
           stepOf({
             ...progressionCase,
             workoutProcedures: earlier,
-            setObservations: progressionCase.setObservations.filter(
-              (setObservation) =>
-                ExerciseSetObservation.procedureIdOf(setObservation) !== reopened.id
+            exerciseSetObservations: progressionCase.exerciseSetObservations.filter(
+              (exerciseSetObservation) =>
+                ExerciseSetObservation.procedureIdOf(exerciseSetObservation) !== reopened.id
             ),
           })
         )
@@ -366,11 +368,14 @@ describe('ExerciseRequest.consecutiveFailures', () => {
     fc.assert(
       fc.property(
         fewFailuresCaseArb,
-        ({ exerciseRequest, workoutProcedures, setObservations, trailingFailures }) => {
+        ({ exerciseRequest, workoutProcedures, exerciseSetObservations, trailingFailures }) => {
           expect(
             ExerciseRequest.consecutiveFailures(
               exerciseRequest,
-              ExerciseRequest.attemptsAt(exerciseRequest, { workoutProcedures, setObservations })
+              ExerciseRequest.attemptsAt(exerciseRequest, {
+                workoutProcedures,
+                exerciseSetObservations,
+              })
             )
           ).toBe(trailingFailures)
         }
@@ -381,14 +386,20 @@ describe('ExerciseRequest.consecutiveFailures', () => {
 
   it('should be zero after a met workout', () => {
     fc.assert(
-      fc.property(incrementCaseArb, ({ exerciseRequest, workoutProcedures, setObservations }) => {
-        expect(
-          ExerciseRequest.consecutiveFailures(
-            exerciseRequest,
-            ExerciseRequest.attemptsAt(exerciseRequest, { workoutProcedures, setObservations })
-          )
-        ).toBe(0)
-      }),
+      fc.property(
+        incrementCaseArb,
+        ({ exerciseRequest, workoutProcedures, exerciseSetObservations }) => {
+          expect(
+            ExerciseRequest.consecutiveFailures(
+              exerciseRequest,
+              ExerciseRequest.attemptsAt(exerciseRequest, {
+                workoutProcedures,
+                exerciseSetObservations,
+              })
+            )
+          ).toBe(0)
+        }
+      ),
       { numRuns: RUNS }
     )
   })
@@ -397,11 +408,14 @@ describe('ExerciseRequest.consecutiveFailures', () => {
     fc.assert(
       fc.property(
         deloadCaseArb,
-        ({ planned, exerciseRequest, workoutProcedures, setObservations }) => {
+        ({ planned, exerciseRequest, workoutProcedures, exerciseSetObservations }) => {
           expect(
             ExerciseRequest.consecutiveFailures(
               exerciseRequest,
-              ExerciseRequest.attemptsAt(exerciseRequest, { workoutProcedures, setObservations })
+              ExerciseRequest.attemptsAt(exerciseRequest, {
+                workoutProcedures,
+                exerciseSetObservations,
+              })
             )
           ).toBeGreaterThanOrEqual(ProgressionRule.failuresBeforeDeloadOf(ruleOf(planned)))
         }

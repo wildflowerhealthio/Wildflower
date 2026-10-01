@@ -284,7 +284,7 @@ const completedWorkoutAt = ({
   )
 
 /** A set of `reps` against `exerciseRequest` in `workoutProcedure`, starting at `start` and lasting {@link SET_LENGTH_MS}. */
-const setAt = ({
+const exerciseSetObservationAt = ({
   exerciseRequest,
   workoutProcedure,
   start,
@@ -309,7 +309,7 @@ const setAt = ({
 /** A completed workout and the sets logged in it. */
 interface PerformedWorkout {
   readonly workoutProcedure: WorkoutProcedure.Type
-  readonly setObservations: readonly ExerciseSetObservation.Type[]
+  readonly exerciseSetObservations: readonly ExerciseSetObservation.Type[]
 }
 
 /**
@@ -328,8 +328,8 @@ const performedWorkoutAt = ({
   const workoutProcedure = completedWorkoutAt({ exerciseRequest, index })
   return {
     workoutProcedure,
-    setObservations: reps.map((setReps, setIndex) =>
-      setAt({
+    exerciseSetObservations: reps.map((setReps, setIndex) =>
+      exerciseSetObservationAt({
         exerciseRequest,
         workoutProcedure,
         start: DateTime.addDuration(
@@ -382,7 +382,7 @@ interface ProgressionCase {
   readonly planned: PlannedExercise.Type
   readonly exerciseRequest: ExerciseRequest.Type
   readonly workoutProcedures: readonly WorkoutProcedure.Type[]
-  readonly setObservations: readonly ExerciseSetObservation.Type[]
+  readonly exerciseSetObservations: readonly ExerciseSetObservation.Type[]
   /** The trailing failed workouts the history ends with. */
   readonly trailingFailures: number
 }
@@ -415,7 +415,9 @@ const caseFrom = (spec: {
         planned,
         exerciseRequest,
         workoutProcedures: performed.map(({ workoutProcedure }) => workoutProcedure),
-        setObservations: performed.flatMap(({ setObservations }) => setObservations),
+        exerciseSetObservations: performed.flatMap(
+          ({ exerciseSetObservations }) => exerciseSetObservations
+        ),
         trailingFailures: spec.trailingFailures(tail.length),
       }
     })
@@ -521,7 +523,7 @@ const unattemptedCaseArb: fc.Arbitrary<ProgressionCase> = plannedExerciseRequest
     planned,
     exerciseRequest,
     workoutProcedures: [],
-    setObservations: [],
+    exerciseSetObservations: [],
     trailingFailures: 0,
   })
 )
@@ -565,7 +567,7 @@ export {
   ruleOf,
   completedWorkoutAt,
   performedWorkoutAt,
-  setAt,
+  exerciseSetObservationAt,
   smallPlanArb,
   someOrFail,
   startedWorkoutAt,

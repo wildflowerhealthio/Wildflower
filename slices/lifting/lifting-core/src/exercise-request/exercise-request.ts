@@ -248,7 +248,7 @@ interface Attempt {
   /** The completed workout. */
   readonly workoutProcedure: WorkoutProcedure.Type
   /** The sets of the exercise performed in it, earliest first. */
-  readonly setObservations: Arr.NonEmptyReadonlyArray<ExerciseSetObservation.Type>
+  readonly exerciseSetObservations: Arr.NonEmptyReadonlyArray<ExerciseSetObservation.Type>
 }
 
 /**
@@ -269,12 +269,12 @@ const attemptsAt = (
   exerciseRequest: Type,
   performed: {
     readonly workoutProcedures: readonly WorkoutProcedure.Type[]
-    readonly setObservations: readonly ExerciseSetObservation.Type[]
+    readonly exerciseSetObservations: readonly ExerciseSetObservation.Type[]
   }
 ): readonly Attempt[] => {
-  const ownSets = performed.setObservations.filter(
-    (setObservation) =>
-      ExerciseSetObservation.serviceRequestIdOf(setObservation) === exerciseRequest.id
+  const ownExerciseSetObservations = performed.exerciseSetObservations.filter(
+    (exerciseSetObservation) =>
+      ExerciseSetObservation.serviceRequestIdOf(exerciseSetObservation) === exerciseRequest.id
   )
   return WorkoutProcedure.completedByStart(performed.workoutProcedures)
     .filter((workoutProcedure) =>
@@ -283,15 +283,15 @@ const attemptsAt = (
     .flatMap((workoutProcedure) =>
       Arr.match(
         ExerciseSetObservation.sortByStart(
-          ownSets.filter(
-            (setObservation) =>
-              ExerciseSetObservation.procedureIdOf(setObservation) === workoutProcedure.id
+          ownExerciseSetObservations.filter(
+            (exerciseSetObservation) =>
+              ExerciseSetObservation.procedureIdOf(exerciseSetObservation) === workoutProcedure.id
           )
         ),
         {
           onEmpty: () => [],
-          onNonEmpty: (setObservations): readonly Attempt[] => [
-            { workoutProcedure, setObservations },
+          onNonEmpty: (exerciseSetObservations): readonly Attempt[] => [
+            { workoutProcedure, exerciseSetObservations },
           ],
         }
       )
@@ -306,11 +306,12 @@ const attemptsAt = (
  * Sets past the ones asked for are extra work and do not count either way.
  */
 const isMetBy = (exerciseRequest: Type, attempt: Attempt): boolean =>
-  attempt.setObservations.length >= setsOf(exerciseRequest) &&
-  attempt.setObservations
+  attempt.exerciseSetObservations.length >= setsOf(exerciseRequest) &&
+  attempt.exerciseSetObservations
     .slice(0, setsOf(exerciseRequest))
     .every(
-      (setObservation) => ExerciseSetObservation.repsOf(setObservation) >= repsOf(exerciseRequest)
+      (exerciseSetObservation) =>
+        ExerciseSetObservation.repsOf(exerciseSetObservation) >= repsOf(exerciseRequest)
     )
 
 /**
@@ -433,7 +434,7 @@ const progress = (step: {
   readonly exerciseRequest: Type
   readonly progressionRule: ProgressionRule.Type
   readonly workoutProcedures: readonly WorkoutProcedure.Type[]
-  readonly setObservations: readonly ExerciseSetObservation.Type[]
+  readonly exerciseSetObservations: readonly ExerciseSetObservation.Type[]
   readonly nextServiceRequestId: string
   readonly authoredOn: DateTime.Utc
 }): Either.Either<Progress, ParseResult.ParseError> => {

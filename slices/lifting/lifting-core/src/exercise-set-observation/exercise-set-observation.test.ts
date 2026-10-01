@@ -31,13 +31,13 @@ const LIST_RUNS = numRunsFor({ base: 30 })
 const WIRE_RUNS = numRunsFor({ base: 50 })
 
 /** A set as the wire carries it: an `Observation`, decoded and then narrowed. */
-const WireSet = Schema.compose(Observation.Schema, ExerciseSetObservation.Schema)
+const WireExerciseSetObservation = Schema.compose(Observation.Schema, ExerciseSetObservation.Schema)
 
 /**
  * What a set is made of: an `ExerciseRequest`, the workout carrying it out, a
  * start, a length up to ten minutes, and any count of reps.
  */
-const setInputArb = fc
+const exerciseSetObservationInputArb = fc
   .record({
     exerciseRequest: exerciseRequestArb,
     workoutIndex: fc.nat({ max: 30 }),
@@ -45,20 +45,19 @@ const setInputArb = fc
     lengthMillis: fc.nat({ max: 600_000 }),
     reps: fc.nat({ max: 30 }),
   })
-  .map(({ lengthMillis, workoutIndex, ...set }) => ({
-    ...set,
+  .map(({ lengthMillis, workoutIndex, ...exerciseSetObservationInput }) => ({
+    ...exerciseSetObservationInput,
     workoutProcedure: completedWorkoutAt({
-      exerciseRequest: set.exerciseRequest,
+      exerciseRequest: exerciseSetObservationInput.exerciseRequest,
       index: workoutIndex,
     }),
     observationId: 'obs-1',
-    end: DateTime.addDuration(set.start, `${lengthMillis} millis`),
+    end: DateTime.addDuration(exerciseSetObservationInput.start, `${lengthMillis} millis`),
   }))
 
-/** Any set, as made. */
-const setArb: fc.Arbitrary<ExerciseSetObservation.Type> = setInputArb.map((input) =>
-  made(ExerciseSetObservation.make(input))
-)
+/** Any exercise set observation, as made. */
+const exerciseSetObservationArb: fc.Arbitrary<ExerciseSetObservation.Type> =
+  exerciseSetObservationInputArb.map((input) => made(ExerciseSetObservation.make(input)))
 
 const squatExerciseRequest = made(
   ExerciseRequest.make({
@@ -74,7 +73,7 @@ const squatExerciseRequest = made(
 describe('ExerciseSetObservation', () => {
   it('should write a squat set as a final activity Observation based on its `ServiceRequest`, part of its workout', () => {
     // Act
-    const wire = Schema.encodeSync(WireSet)(
+    const wire = Schema.encodeSync(WireExerciseSetObservation)(
       made(
         ExerciseSetObservation.make({
           observationId: 'obs-1',
@@ -104,15 +103,20 @@ describe('ExerciseSetObservation', () => {
 
   it('should read back every set it makes, with its `ServiceRequest` and its workout, through the wire', () => {
     fc.assert(
-      fc.property(setInputArb, (input) => {
-        const set = throughWire(WireSet, made(ExerciseSetObservation.make(input)))
+      fc.property(exerciseSetObservationInputArb, (input) => {
+        const exerciseSetObservation = throughWire(
+          WireExerciseSetObservation,
+          made(ExerciseSetObservation.make(input))
+        )
         expect({
-          exerciseId: ExerciseConcept.idOf(ExerciseSetObservation.exerciseOf(set)),
-          procedureId: ExerciseSetObservation.procedureIdOf(set),
-          start: DateTime.toEpochMillis(ExerciseSetObservation.startOf(set)),
-          end: DateTime.toEpochMillis(ExerciseSetObservation.endOf(set)),
-          reps: ExerciseSetObservation.repsOf(set),
-          serviceRequestId: ExerciseSetObservation.serviceRequestIdOf(set),
+          exerciseId: ExerciseConcept.idOf(
+            ExerciseSetObservation.exerciseOf(exerciseSetObservation)
+          ),
+          procedureId: ExerciseSetObservation.procedureIdOf(exerciseSetObservation),
+          start: DateTime.toEpochMillis(ExerciseSetObservation.startOf(exerciseSetObservation)),
+          end: DateTime.toEpochMillis(ExerciseSetObservation.endOf(exerciseSetObservation)),
+          reps: ExerciseSetObservation.repsOf(exerciseSetObservation),
+          serviceRequestId: ExerciseSetObservation.serviceRequestIdOf(exerciseSetObservation),
         }).toEqual({
           exerciseId: ExerciseConcept.idOf(ExerciseRequest.exerciseOf(input.exerciseRequest)),
           procedureId: input.workoutProcedure.id,
@@ -128,12 +132,19 @@ describe('ExerciseSetObservation', () => {
 
   it('should refuse a retracted observation, and read any other status', () => {
     fc.assert(
-      fc.property(setArb, Arbitrary.make(Observation.StatusSchema), (set, status) => {
-        const read = Schema.decodeEither(ExerciseSetObservation.Schema)({ ...set, status })
-        expect(issuePathsOf(read)).toEqual(
-          Observation.RETRACTED_STATUSES.has(status) ? ['status'] : []
-        )
-      }),
+      fc.property(
+        exerciseSetObservationArb,
+        Arbitrary.make(Observation.StatusSchema),
+        (exerciseSetObservation, status) => {
+          const read = Schema.decodeEither(ExerciseSetObservation.Schema)({
+            ...exerciseSetObservation,
+            status,
+          })
+          expect(issuePathsOf(read)).toEqual(
+            Observation.RETRACTED_STATUSES.has(status) ? ['status'] : []
+          )
+        }
+      ),
       { numRuns: RUNS }
     )
   })
@@ -141,16 +152,16 @@ describe('ExerciseSetObservation', () => {
   it('should refuse a period missing either end, or ending before it starts', () => {
     fc.assert(
       fc.property(
-        setArb,
+        exerciseSetObservationArb,
         fc.constantFrom(
           'none' as const,
           'startOnly' as const,
           'endOnly' as const,
           'backwards' as const
         ),
-        (set, mutation) => {
+        (exerciseSetObservation, mutation) => {
           // Arrange
-          const period = set.effectivePeriod
+          const period = exerciseSetObservation.effectivePeriod
           const effectivePeriod = {
             none: null,
             startOnly: { ...period, end: null },
@@ -160,7 +171,10 @@ describe('ExerciseSetObservation', () => {
 
           // Act
           const paths = issuePathsOf(
-            Schema.decodeEither(ExerciseSetObservation.Schema)({ ...set, effectivePeriod })
+            Schema.decodeEither(ExerciseSetObservation.Schema)({
+              ...exerciseSetObservation,
+              effectivePeriod,
+            })
           )
 
           // Assert
@@ -174,17 +188,24 @@ describe('ExerciseSetObservation', () => {
 
   it('should refuse reps that are missing, negative or fractional', () => {
     fc.assert(
-      fc.property(setArb, fc.constantFrom(null, -1, 2.5), (set, valueInteger) => {
-        const read = Schema.decodeEither(ExerciseSetObservation.Schema)({ ...set, valueInteger })
-        expect(issuePathsOf(read)).toEqual(['valueInteger'])
-      }),
+      fc.property(
+        exerciseSetObservationArb,
+        fc.constantFrom(null, -1, 2.5),
+        (exerciseSetObservation, valueInteger) => {
+          const read = Schema.decodeEither(ExerciseSetObservation.Schema)({
+            ...exerciseSetObservation,
+            valueInteger,
+          })
+          expect(issuePathsOf(read)).toEqual(['valueInteger'])
+        }
+      ),
       { numRuns: RUNS }
     )
   })
 
   it('should read the `ServiceRequest` beside references to other resources, and refuse none or two', () => {
     fc.assert(
-      fc.property(setArb, (set) => {
+      fc.property(exerciseSetObservationArb, (exerciseSetObservation) => {
         const decode = Schema.decodeEither(ExerciseSetObservation.Schema)
         const carePlan = IdentifierAndReference.referenceTo({
           resourceType: 'CarePlan',
@@ -196,14 +217,24 @@ describe('ExerciseSetObservation', () => {
         })
         expect(
           Either.map(
-            decode({ ...set, basedOn: [carePlan, ...set.basedOn] }),
+            decode({
+              ...exerciseSetObservation,
+              basedOn: [carePlan, ...exerciseSetObservation.basedOn],
+            }),
             ExerciseSetObservation.serviceRequestIdOf
           )
-        ).toEqual(Either.right(ExerciseSetObservation.serviceRequestIdOf(set)))
-        expect(issuePathsOf(decode({ ...set, basedOn: [carePlan] }))).toEqual(['basedOn'])
-        expect(issuePathsOf(decode({ ...set, basedOn: [...set.basedOn, other] }))).toEqual([
+        ).toEqual(Either.right(ExerciseSetObservation.serviceRequestIdOf(exerciseSetObservation)))
+        expect(issuePathsOf(decode({ ...exerciseSetObservation, basedOn: [carePlan] }))).toEqual([
           'basedOn',
         ])
+        expect(
+          issuePathsOf(
+            decode({
+              ...exerciseSetObservation,
+              basedOn: [...exerciseSetObservation.basedOn, other],
+            })
+          )
+        ).toEqual(['basedOn'])
       }),
       { numRuns: RUNS }
     )
@@ -211,7 +242,7 @@ describe('ExerciseSetObservation', () => {
 
   it('should read the workout beside references to other resources, and refuse none or two', () => {
     fc.assert(
-      fc.property(setArb, (set) => {
+      fc.property(exerciseSetObservationArb, (exerciseSetObservation) => {
         const decode = Schema.decodeEither(ExerciseSetObservation.Schema)
         const imaging = IdentifierAndReference.referenceTo({
           resourceType: 'ImagingStudy',
@@ -220,12 +251,21 @@ describe('ExerciseSetObservation', () => {
         const other = IdentifierAndReference.referenceTo({ resourceType: 'Procedure', id: 'p-9' })
         expect(
           Either.map(
-            decode({ ...set, partOf: [imaging, ...set.partOf] }),
+            decode({
+              ...exerciseSetObservation,
+              partOf: [imaging, ...exerciseSetObservation.partOf],
+            }),
             ExerciseSetObservation.procedureIdOf
           )
-        ).toEqual(Either.right(ExerciseSetObservation.procedureIdOf(set)))
-        expect(issuePathsOf(decode({ ...set, partOf: [imaging] }))).toEqual(['partOf'])
-        expect(issuePathsOf(decode({ ...set, partOf: [...set.partOf, other] }))).toEqual(['partOf'])
+        ).toEqual(Either.right(ExerciseSetObservation.procedureIdOf(exerciseSetObservation)))
+        expect(issuePathsOf(decode({ ...exerciseSetObservation, partOf: [imaging] }))).toEqual([
+          'partOf',
+        ])
+        expect(
+          issuePathsOf(
+            decode({ ...exerciseSetObservation, partOf: [...exerciseSetObservation.partOf, other] })
+          )
+        ).toEqual(['partOf'])
       }),
       { numRuns: RUNS }
     )
@@ -233,13 +273,18 @@ describe('ExerciseSetObservation', () => {
 
   it('should refuse an exercise coding with no display', () => {
     fc.assert(
-      fc.property(setArb, (set) => {
+      fc.property(exerciseSetObservationArb, (exerciseSetObservation) => {
         const decode = Schema.decodeEither(ExerciseSetObservation.Schema)
         const nameless = {
-          ...set.code,
-          coding: set.code.coding.map((coding) => ({ ...coding, display: null })),
+          ...exerciseSetObservation.code,
+          coding: exerciseSetObservation.code.coding.map((coding) => ({
+            ...coding,
+            display: null,
+          })),
         }
-        expect(issuePathsOf(decode({ ...set, code: nameless }))).toEqual(['code.coding.0.display'])
+        expect(issuePathsOf(decode({ ...exerciseSetObservation, code: nameless }))).toEqual([
+          'code.coding.0.display',
+        ])
       }),
       { numRuns: RUNS }
     )
@@ -273,15 +318,22 @@ describe('ExerciseSetObservation', () => {
 describe('sortByStart', () => {
   it('should order sets earliest first, keeping the input order of sets started together', () => {
     fc.assert(
-      fc.property(fc.array(setArb, { maxLength: 6 }), (sets) => {
-        const sorted = ExerciseSetObservation.sortByStart(sets)
-        const starts = sorted.map((set) =>
-          DateTime.toEpochMillis(ExerciseSetObservation.startOf(set))
-        )
-        expect(starts).toEqual(starts.toSorted((a, b) => a - b))
-        expect(sorted).toHaveLength(sets.length)
-        expect(sets.every((set) => sorted.includes(set))).toBe(true)
-      }),
+      fc.property(
+        fc.array(exerciseSetObservationArb, { maxLength: 6 }),
+        (exerciseSetObservations) => {
+          const sorted = ExerciseSetObservation.sortByStart(exerciseSetObservations)
+          const starts = sorted.map((exerciseSetObservation) =>
+            DateTime.toEpochMillis(ExerciseSetObservation.startOf(exerciseSetObservation))
+          )
+          expect(starts).toEqual(starts.toSorted((a, b) => a - b))
+          expect(sorted).toHaveLength(exerciseSetObservations.length)
+          expect(
+            exerciseSetObservations.every((exerciseSetObservation) =>
+              sorted.includes(exerciseSetObservation)
+            )
+          ).toBe(true)
+        }
+      ),
       { numRuns: LIST_RUNS }
     )
   })

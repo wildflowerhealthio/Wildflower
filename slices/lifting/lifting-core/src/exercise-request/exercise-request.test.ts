@@ -22,7 +22,7 @@ import {
   planArb,
   plannedExerciseRequestArb,
   performedWorkoutAt,
-  setAt,
+  exerciseSetObservationAt,
   startedWorkoutAt,
   SUBJECT,
   successfulRepsArb,
@@ -360,20 +360,20 @@ describe('ExerciseRequest.attemptsAt', () => {
           // Act
           const attempts = ExerciseRequest.attemptsAt(exerciseRequest, {
             workoutProcedures: shuffled.map(({ workoutProcedure }) => workoutProcedure),
-            setObservations: shuffled
-              .flatMap(({ setObservations }) => setObservations)
+            exerciseSetObservations: shuffled
+              .flatMap(({ exerciseSetObservations }) => exerciseSetObservations)
               .toReversed(),
           })
 
           // Assert
           expect(
-            attempts.map(({ workoutProcedure, setObservations }) => [
+            attempts.map(({ workoutProcedure, exerciseSetObservations }) => [
               workoutProcedure.id,
-              setObservations.map(ExerciseSetObservation.repsOf),
+              exerciseSetObservations.map(ExerciseSetObservation.repsOf),
             ])
           ).toEqual(
             performed
-              .filter(({ setObservations }) => setObservations.length > 0)
+              .filter(({ exerciseSetObservations }) => exerciseSetObservations.length > 0)
               .map(({ workoutProcedure }, index) => [
                 workoutProcedure.id,
                 repsPerWorkout.filter((reps) => reps.length > 0)[index],
@@ -392,7 +392,7 @@ describe('ExerciseRequest.attemptsAt', () => {
     const done = performedWorkoutAt({ exerciseRequest: squat, index: 1, reps: [5] })
     const elsewhere = performedWorkoutAt({ exerciseRequest: other, index: 2, reps: [5] })
     const started = startedWorkoutAt({ exerciseRequest: squat, index: 9 })
-    const inStarted = setAt({
+    const inStarted = exerciseSetObservationAt({
       exerciseRequest: squat,
       workoutProcedure: started,
       start: DateTime.addDuration(started.performedPeriod.start, '3 minutes'),
@@ -402,7 +402,11 @@ describe('ExerciseRequest.attemptsAt', () => {
     // Act
     const attempts = ExerciseRequest.attemptsAt(squat, {
       workoutProcedures: [done.workoutProcedure, elsewhere.workoutProcedure, started],
-      setObservations: [...done.setObservations, ...elsewhere.setObservations, inStarted],
+      exerciseSetObservations: [
+        ...done.exerciseSetObservations,
+        ...elsewhere.exerciseSetObservations,
+        inStarted,
+      ],
     })
 
     // Assert
@@ -420,9 +424,9 @@ describe('ExerciseRequest.isMetBy', () => {
   ): ExerciseRequest.Attempt => {
     const [attempt] = ExerciseRequest.attemptsAt(
       exerciseRequest,
-      (({ workoutProcedure, setObservations }) => ({
+      (({ workoutProcedure, exerciseSetObservations }) => ({
         workoutProcedures: [workoutProcedure],
-        setObservations,
+        exerciseSetObservations,
       }))(performedWorkoutAt({ exerciseRequest, index: 4, reps }))
     )
     if (attempt === undefined) throw new Error('one attempt')

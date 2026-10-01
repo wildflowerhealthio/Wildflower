@@ -91,16 +91,16 @@ const ExerciseSetObservationSchema: Schema.Schema<Type, Observation.Type> =
       effectivePeriod: SpanSchema,
       valueInteger: Schema.NonNegativeInt,
     }).pipe(
-      Schema.filter((observation) => [
+      Schema.filter((exerciseSetObservation) => [
         ...onlyOneIssues({
-          items: observation.basedOn,
+          items: exerciseSetObservation.basedOn,
           selected: refersTo('ServiceRequest'),
           schema: LiteralReferenceSchema,
           path: ['basedOn'],
           expected: 'reference to a ServiceRequest',
         }),
         ...onlyOneIssues({
-          items: observation.partOf,
+          items: exerciseSetObservation.partOf,
           selected: refersTo('Procedure'),
           schema: LiteralReferenceSchema,
           path: ['partOf'],
@@ -129,7 +129,7 @@ const emptyObservation: Observation.Type = Schema.decodeUnknownSync(Observation.
  *   or a `ParseError` when `end` is before `start` or `reps` is not a
  *   non-negative integer
  */
-const make = (set: {
+const make = (exerciseSetObservation: {
   readonly observationId: string
   readonly exerciseRequest: ExerciseRequest.Type
   readonly workoutProcedure: WorkoutProcedure.Type
@@ -139,38 +139,46 @@ const make = (set: {
 }): Either.Either<Type, ParseResult.ParseError> =>
   Schema.decodeEither(ExerciseSetObservationSchema, { errors: 'all' })({
     ...emptyObservation,
-    id: set.observationId,
+    id: exerciseSetObservation.observationId,
     status: 'final',
     category: [Observation.ACTIVITY_CATEGORY],
-    code: set.exerciseRequest.code,
-    subject: set.exerciseRequest.subject,
+    code: exerciseSetObservation.exerciseRequest.code,
+    subject: exerciseSetObservation.exerciseRequest.subject,
     basedOn: [
       IdentifierAndReference.referenceTo({
         resourceType: 'ServiceRequest',
-        id: set.exerciseRequest.id,
+        id: exerciseSetObservation.exerciseRequest.id,
       }),
     ],
     partOf: [
       IdentifierAndReference.referenceTo({
         resourceType: 'Procedure',
-        id: set.workoutProcedure.id,
+        id: exerciseSetObservation.workoutProcedure.id,
       }),
     ],
-    effectivePeriod: { id: null, extension: [], start: set.start, end: set.end },
-    valueInteger: set.reps,
+    effectivePeriod: {
+      id: null,
+      extension: [],
+      start: exerciseSetObservation.start,
+      end: exerciseSetObservation.end,
+    },
+    valueInteger: exerciseSetObservation.reps,
   })
 
 /** The exercise performed. */
-const exerciseOf = (observation: Type): ExerciseConcept.Type => observation.code
+const exerciseOf = (exerciseSetObservation: Type): ExerciseConcept.Type =>
+  exerciseSetObservation.code
 
 /** When the set started. */
-const startOf = (observation: Type): DateTime.Utc => observation.effectivePeriod.start
+const startOf = (exerciseSetObservation: Type): DateTime.Utc =>
+  exerciseSetObservation.effectivePeriod.start
 
 /** When the set ended; not before {@link startOf}. */
-const endOf = (observation: Type): DateTime.Utc => observation.effectivePeriod.end
+const endOf = (exerciseSetObservation: Type): DateTime.Utc =>
+  exerciseSetObservation.effectivePeriod.end
 
 /** Reps completed; a non-negative integer. */
-const repsOf = (observation: Type): number => observation.valueInteger
+const repsOf = (exerciseSetObservation: Type): number => exerciseSetObservation.valueInteger
 
 /** The id `references` names for its one `resourceType` — on a value whose schema checked there is one. */
 const referencedIdAmong = (
@@ -184,12 +192,12 @@ const referencedIdAmong = (
   )
 
 /** The id of the `ServiceRequest` the set was performed against: its one `basedOn`. */
-const serviceRequestIdOf = (observation: Type): string =>
-  referencedIdAmong(observation.basedOn, 'ServiceRequest')
+const serviceRequestIdOf = (exerciseSetObservation: Type): string =>
+  referencedIdAmong(exerciseSetObservation.basedOn, 'ServiceRequest')
 
 /** The id of the workout `Procedure` the set was performed in: its one `partOf`. */
-const procedureIdOf = (observation: Type): string =>
-  referencedIdAmong(observation.partOf, 'Procedure')
+const procedureIdOf = (exerciseSetObservation: Type): string =>
+  referencedIdAmong(exerciseSetObservation.partOf, 'Procedure')
 
 /** Earliest first by {@link startOf}. */
 const byStart: Order.Order<Type> = Order.mapInput(DateTime.Order, startOf)
@@ -201,8 +209,8 @@ const byStart: Order.Order<Type> = Order.mapInput(DateTime.Order, startOf)
  * A stable sort: sets started at the same instant keep their input order, so
  * of two such sets the later one in the input counts as the more recent.
  */
-const sortByStart = (observations: readonly Type[]): readonly Type[] =>
-  Arr.sort(observations, byStart)
+const sortByStart = (exerciseSetObservations: readonly Type[]): readonly Type[] =>
+  Arr.sort(exerciseSetObservations, byStart)
 
 export {
   endOf,
