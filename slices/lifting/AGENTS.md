@@ -59,8 +59,14 @@ template rather than a special case.
     unit than the exercise's rule, or one under its floor. `progress` is the
     increment / hold / deload step: it returns the `Decision`, the current
     `ExerciseRequest` closed as it says, and the next one issued in its place
-    (`None` on a hold). `attemptsAt`, `isMetBy`, `consecutiveFailures`
-    ("failure 2 of 3"), `close` and `forExercise` complete it.
+    (`None` on a hold). `makeForEachExercise` starts a training plan
+    definition — one `ExerciseRequest` per exercise it runs, from a starting
+    `Load` per exercise id (`StrongLifts5x5.STARTING_LOADS` is the
+    template's), refusing exercises with none, naming every one
+    (`ExerciseWithoutStartingLoad`) — and `changeTrainingPlanDefinition`
+    revokes every active one and starts another. `attemptsAt`, `isMetBy`,
+    `consecutiveFailures` ("failure 2 of 3"), `close` and `forExercise`
+    complete it.
   - `WorkoutProcedure` — a `Procedure` performing one day of a training plan
     definition, narrowed to an `id`, a status of `in-progress` or
     `completed`, the day's label as its `code` (in
@@ -74,14 +80,23 @@ template rather than a special case.
     training plan definition, naming every one
     (`ExerciseRequestNotOfTrainingPlanDefinition`); `complete` ends it;
     `dayLabelOf` and `trainingPlanDefinitionUrlOf` read it; `latestCompleted`
-    and `completedByStart` order them. A planned workout is derived (the
-    `nextDay`), never stored.
+    and `completedByStart` order them.
   - `ExerciseSetObservation` — an `Observation` narrowed to an `id`, a status
     other than a retracted one, an `ExerciseConcept` `code`, an
     `effectivePeriod` with a start and an end at or after it, a non-negative
     `valueInteger` (the reps), exactly one `basedOn` `ServiceRequest` and
     exactly one `partOf` `Procedure`. `make` takes the `ExerciseRequest` the
     set was performed against and the `WorkoutProcedure` it was part of.
+  - `PlannedWorkout` — the workout due next, derived and never stored: `make`
+    takes a training plan definition, the lifter's `ExerciseRequest`s and
+    their workouts and sets, and returns the `nextDay` and, per exercise of
+    it (once each, in order), its exercise (definition), its one active
+    `ExerciseRequest` and the attempts at it (`consecutiveFailuresOf`,
+    `failuresBeforeDeloadOf` — "failure N of M"), refusing exercises with no
+    active `ExerciseRequest` or several, naming every one
+    (`ExerciseNotRequestedOnce`). `submit` turns it and the reps entered per
+    set into everything to write: the completed `WorkoutProcedure`, an
+    `ExerciseSetObservation` per set, and each `ExerciseRequest.Progress`.
   - `StrongLifts5x5` — the template: `trainingPlanDefinition(planDefinitionId)`,
     `EXERCISES` and `STARTING_LOADS`.
   - `ExerciseParameter` (`Code`, the exercise parameter codes) and
@@ -113,9 +128,12 @@ The React layer and the app route are not built yet.
   across fields (two days with one label) runs only once the fields it reads
   decode. The tagged errors are the checks that relate two resources, which
   no single value's schema can see:
-  `ExerciseRequest.ExerciseNotInTrainingPlanDefinition`, and
+  `ExerciseRequest.ExerciseNotInTrainingPlanDefinition` and
+  `.ExerciseWithoutStartingLoad`,
   `WorkoutProcedure.DayNotInTrainingPlanDefinition` and
-  `WorkoutProcedure.ExerciseRequestNotOfTrainingPlanDefinition`.
+  `.ExerciseRequestNotOfTrainingPlanDefinition`, and
+  `PlannedWorkout.ExerciseNotRequestedOnce` and
+  `.ExerciseNotInPlannedWorkout`.
 - **Each `make` validates its own level.** A `TrainingPlanDefinition` is
   made from days already made, a day from exercises (definitions), an
   exercise (definition) from an `ExerciseConcept` and a progression rule, so
@@ -138,7 +156,7 @@ The React layer and the app route are not built yet.
   lifter is working at — and each is one load: a met attempt closes it
   (`completed`) and issues the next one heavier, a deload closes it
   (`revoked`) and issues the next one lighter, and a change of program
-  revokes them all (`close`). Because every set logged against one is at its
+  revokes them all and starts the new one (`changeTrainingPlanDefinition`). Because every set logged against one is at its
   load, `consecutiveFailures` is just its trailing failed attempts, and the
   next one starts with none.
 - **An exercise on several days is defined on each, identically.** A day
@@ -157,6 +175,16 @@ The React layer and the app route are not built yet.
   extra sets count neither way. Success is derived, never stored.
   `TrainingPlanDefinition.nextDay` follows the latest completed workout's
   day (`WorkoutProcedure.latestCompleted`) around the cycle.
+- **A workout is written once, when it is submitted.** The app shows a
+  `PlannedWorkout`, collects the reps of each set, and writes what
+  `PlannedWorkout.submit` returns — nothing before. The ids are minted by the
+  app (`PlannedWorkout.IdToMint` names each resource, and
+  `ExerciseRequest.makeForEachExercise` asks per exercise) and passed in, so a
+  retry that mints the same ids overwrites rather than duplicates. Sets are
+  not timed one by one: each set's `effectivePeriod` is the workout's span, so
+  the sets of a workout tie on start and keep the order they are listed in.
+  An exercise with no set entered is no attempt: its `ExerciseRequest` is left
+  untouched (a hold), while the workout still completes the day.
 - **Loads carry their unit, and a rule moves only its own unit.** A
   progression rule's `increment`, `minimumLoad` and `loadStep` are in its
   `unit`, the same UCUM code a `Load` carries; `ExerciseRequest.make` and
@@ -198,7 +226,8 @@ The React layer and the app route are not built yet.
   (`Observation.ACTIVITY_CATEGORY`, as the Physical Activity IG files
   exercise) with the exercise name as `code.text` so a generic viewer can
   label it, `basedOn` its `ServiceRequest`, `partOf` its workout's
-  `Procedure`, `effectivePeriod` the set's span and `valueInteger` the reps.
+  `Procedure`, `effectivePeriod` the set's span (the workout's, as
+  `PlannedWorkout.submit` writes it) and `valueInteger` the reps.
   An exercise parameter concept carries its value in an
   `ExerciseParameterValue` extension — `valueQuantity` for a load, `valueInteger` for a count.
 - **Instants are UTC.** Every `performedPeriod` and `effectivePeriod` bound

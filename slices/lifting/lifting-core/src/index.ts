@@ -11,9 +11,13 @@
  * `ExerciseRequest`s it is `basedOn`, and each {@link ExerciseSetObservation}
  * is an `Observation` of one set, `basedOn` its `ExerciseRequest` and
  * `partOf` its workout. `ExerciseRequest.progress` is the increment / hold /
- * deload decision over the completed workouts. {@link StrongLifts5x5} is a
- * template; {@link ExerciseParameter} and {@link LiftingFeature} hold the
- * lifting codes.
+ * deload decision over the completed workouts, and
+ * `ExerciseRequest.makeForEachExercise` starts a training plan definition. A
+ * {@link PlannedWorkout} is the workout due next, derived and never stored;
+ * `PlannedWorkout.submit` turns the reps entered into the completed workout,
+ * its sets and each `ExerciseRequest`'s progression. {@link StrongLifts5x5}
+ * is a template; {@link ExerciseParameter} and {@link LiftingFeature} hold
+ * the lifting codes.
  *
  * Each concept is a namespace: a `Schema` narrowing the decoded `fhir-r4`
  * type, the `Type` it decodes to, a `make` that builds one, and getters for
@@ -28,6 +32,7 @@ export { ExerciseSetObservation } from './exercise-set-observation/index.ts'
 export { LiftingFeature } from './lifting-feature/index.ts'
 export { ExerciseParameter } from './exercise-parameter/index.ts'
 export { Load } from './load/index.ts'
+export { PlannedWorkout } from './planned-workout/index.ts'
 export { StrongLifts5x5 } from './plans/index.ts'
 export { TrainingPlanDefinition } from './training-plan-definition/index.ts'
 export { WorkoutProcedure } from './workout-procedure/index.ts'
