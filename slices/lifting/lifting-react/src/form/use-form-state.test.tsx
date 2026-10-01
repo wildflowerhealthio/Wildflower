@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { useFormState } from './use-form-state.ts'
@@ -132,7 +133,8 @@ describe('useFormState', () => {
           expect(result.current.value.items).toStrictEqual(items)
           unmount()
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
     )
   })
 
