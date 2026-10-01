@@ -78,7 +78,7 @@ describe('APP_DESCRIPTIONS', () => {
 })
 
 describe('smartAppLaunchPages', () => {
-  it('should list the five first-party SMART apps, at their launch pages on the canonical site', () => {
+  it('should list the six first-party SMART apps, at their launch pages on the canonical site', () => {
     // Act
     const launchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
 
@@ -98,6 +98,7 @@ describe('smartAppLaunchPages', () => {
         app: 'syntheticData',
         launchPageUrl: 'https://wildflowerhealth.io/synthetic-data-app/launch.html',
       },
+      { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting-app/launch.html' },
     ])
   })
 

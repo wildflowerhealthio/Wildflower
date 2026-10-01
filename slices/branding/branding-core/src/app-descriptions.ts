@@ -285,6 +285,8 @@ const APP_DESCRIPTIONS: {
         'resources, so any other app you connect can read your training too.',
     ],
     anchor: 'built',
+
+    smartLaunchPage: 'launch.html',
   },
   app: {
     name: 'Wildflower',
