@@ -3,34 +3,34 @@
  * answered, failures open. Colours and spacing are Tundra tokens, so dark
  * mode needs no rule here.
  */
-.results {
+.load-results {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
 
-.groups {
+.load-results__groups {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
 
-.section {
+.load-results__section {
   border-top: 1px solid var(--color-neutral-2);
   padding-top: var(--space-3);
 }
 
-.summary {
+.load-results__summary {
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--font-size-2);
 }
 
-.section[data-status-ok='false'] > .summary {
+.load-results__section[data-status-ok='false'] > .load-results__summary {
   color: var(--color-red-3);
 }
 
-.rows {
+.load-results__rows {
   list-style: none;
   margin: var(--space-3) 0 0;
   padding: 0;
@@ -39,25 +39,25 @@
   gap: var(--space-2);
 }
 
-.row {
+.load-results__row {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
-.target {
+.load-results__target {
   font-family: var(--font-mono);
   font-size: var(--font-size-2);
   overflow-wrap: anywhere;
 }
 
-.issues {
+.load-results__issues {
   list-style: none;
   margin: 0;
   padding-left: var(--space-5);
 }
 
-.issue {
+.load-results__issue {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -65,6 +65,6 @@
   color: var(--color-neutral-5);
 }
 
-.issueCode {
+.load-results__issue-code {
   font-family: var(--font-mono);
 }

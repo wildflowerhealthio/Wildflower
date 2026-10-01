@@ -16,13 +16,16 @@ const targetLabel = (outcome: BatchEntryOutcome): string =>
 
 /** One resource's row: its `Type/id` and any diagnostics the server attached. */
 const OutcomeRow = ({ outcome }: { readonly outcome: BatchEntryOutcome }): JSX.Element => (
-  <li className={styles.row}>
-    <span className={styles.target}>{targetLabel(outcome)}</span>
+  <li className={styles['load-results__row']}>
+    <span className={styles['load-results__target']}>{targetLabel(outcome)}</span>
     {outcome.issues.length > 0 && (
-      <ul className={styles.issues}>
+      <ul className={styles['load-results__issues']}>
         {outcome.issues.map((issue) => (
-          <li key={`${issue.severity}:${issue.code}:${issue.text}`} className={styles.issue}>
-            <span className={styles.issueCode}>
+          <li
+            key={`${issue.severity}:${issue.code}:${issue.text}`}
+            className={styles['load-results__issue']}
+          >
+            <span className={styles['load-results__issue-code']}>
               {issue.severity}
               {issue.code === '' ? '' : ` · ${issue.code}`}
             </span>
@@ -40,11 +43,11 @@ const StatusSection = ({
 }: {
   readonly group: StatusGroup<BatchEntryOutcome>
 }): JSX.Element => (
-  <details className={styles.section} open={!group.ok} data-status-ok={group.ok}>
-    <summary className={styles.summary}>
+  <details className={styles['load-results__section']} open={!group.ok} data-status-ok={group.ok}>
+    <summary className={styles['load-results__summary']}>
       {group.status} · {countOf(group.outcomes.length, 'resource')}
     </summary>
-    <ul className={styles.rows}>
+    <ul className={styles['load-results__rows']}>
       {group.outcomes.map((outcome) => (
         <OutcomeRow key={targetLabel(outcome)} outcome={outcome} />
       ))}
@@ -68,14 +71,14 @@ interface LoadResultsProps {
 const LoadResults = ({ outcomes, onDone }: LoadResultsProps): JSX.Element => {
   const written = outcomes.filter((outcome) => outcome.ok).length
   return (
-    <section aria-label="Load results" className={styles.results}>
+    <section aria-label="Load results" className={styles['load-results']}>
       <h2 className="text-heading-5">
         {written === outcomes.length ? COMPLETE_HEADING : PARTIAL_HEADING}
       </h2>
       <p role="status">
         Wrote {written} of {countOf(outcomes.length, 'resource')}.
       </p>
-      <div className={styles.groups}>
+      <div className={styles['load-results__groups']}>
         {groupByStatus(outcomes).map((group) => (
           <StatusSection key={group.status} group={group} />
         ))}

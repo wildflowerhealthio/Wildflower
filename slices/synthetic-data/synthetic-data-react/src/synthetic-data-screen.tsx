@@ -23,7 +23,7 @@ const SHORT_COMMIT_LENGTH = 12
 
 /** The snapshot line: its as-of day, its size, and the Wildflower commit it was generated at. */
 const SnapshotLine = ({ header }: { readonly header: Snapshot.Header.Header }): JSX.Element => (
-  <p className={styles.snapshotLine}>
+  <p className={styles['synthetic-data-screen__snapshot-line']}>
     As of {DateTime.formatIsoDateUtc(header.asOf)} ·{' '}
     {countOf(header.totals.people, 'person', 'people')} ·{' '}
     {countOf(header.totals.resources, 'resource')} ·{' '}
@@ -38,10 +38,14 @@ const MemberLabel = ({
 }: {
   readonly member: Snapshot.Header.MemberListing
 }): JSX.Element => (
-  <span className={styles.member}>
-    <span className={styles.memberName}>{member.displayName}</span>
-    {member.summary !== '' && <span className={styles.memberSummary}>{member.summary}</span>}
-    <span className={styles.memberCount}>{countOf(member.resources.length, 'resource')}</span>
+  <span className={styles['synthetic-data-screen__member']}>
+    <span className={styles['synthetic-data-screen__member-name']}>{member.displayName}</span>
+    {member.summary !== '' && (
+      <span className={styles['synthetic-data-screen__member-summary']}>{member.summary}</span>
+    )}
+    <span className={styles['synthetic-data-screen__member-count']}>
+      {countOf(member.resources.length, 'resource')}
+    </span>
   </span>
 )
 
@@ -74,19 +78,19 @@ const MemberCheckbox = ({
 const LoadStatus = ({ state }: { readonly state: LoadState }): JSX.Element | null =>
   Match.valueTags(state, {
     reading: ({ read, total }) => (
-      <p role="status" className={styles.status}>
+      <p role="status" className={styles['synthetic-data-screen__status']}>
         Reading files… {read} of {total}
       </p>
     ),
     writing: ({ written, total }) => (
-      <p role="status" className={styles.status}>
+      <p role="status" className={styles['synthetic-data-screen__status']}>
         Writing resources… {written} of {total}
       </p>
     ),
     unreadable: ({ failures }) => (
-      <div role="alert" className={styles.unreadable}>
+      <div role="alert" className={styles['synthetic-data-screen__unreadable']}>
         <p>Nothing was written: {countOf(failures.length, 'file')} could not be read.</p>
-        <ul className={styles.failures}>
+        <ul className={styles['synthetic-data-screen__failures']}>
           {failures.map((failure) => (
             <li key={failure.path}>
               <code>{failure.path}</code> {failure.reason}
@@ -176,8 +180,12 @@ const SyntheticDataScreen = ({ initialSnapshotAddress }: SyntheticDataScreenProp
   }
 
   return (
-    <div className={styles.screen}>
-      <form className={styles.addressForm} onSubmit={readAddress} noValidate>
+    <div className={styles['synthetic-data-screen']}>
+      <form
+        className={styles['synthetic-data-screen__address-form']}
+        onSubmit={readAddress}
+        noValidate
+      >
         <TextField
           label="Snapshot"
           value={address}
@@ -188,7 +196,7 @@ const SyntheticDataScreen = ({ initialSnapshotAddress }: SyntheticDataScreenProp
           description="The address of a published snapshot: the folder its index.json is in."
         />
         {addressProblem !== undefined && (
-          <p role="alert" className={styles.problem}>
+          <p role="alert" className={styles['synthetic-data-screen__problem']}>
             {addressProblem}
           </p>
         )}
@@ -205,7 +213,7 @@ const SyntheticDataScreen = ({ initialSnapshotAddress }: SyntheticDataScreenProp
       )}
 
       {header.data !== undefined && !header.isFetching && (
-        <section aria-label="Snapshot" className={styles.snapshot}>
+        <section aria-label="Snapshot" className={styles['synthetic-data-screen__snapshot']}>
           <SnapshotLine header={header.data} />
           <FieldGroup label="People to load">
             {header.data.people.map((member) => (
