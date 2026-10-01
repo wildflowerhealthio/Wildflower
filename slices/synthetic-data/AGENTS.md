@@ -87,8 +87,11 @@ generator package per source on top of it.
   totals) and its `Snapshot.Entry`s, a resource each under
   `fhir/<ResourceType>/<id>.json` and each source file an importer read under
   `har/` or `dicom/`, linked from its `DocumentReference` — and
-  `Snapshot.filesOf` gives the `SnapshotFile`s to write, in path order. See
-  its [AGENTS.md](./synthetic-data-core/AGENTS.md).
+  `Snapshot.filesOf` gives the `SnapshotFile`s to write, in path order.
+  `Snapshot.Reader` reads them back, checked, through a caller's
+  `FileFetcher`, and `Snapshot.WriteOrder` orders the resources read into the
+  batch bundles to write to a FHIR server, each after every resource it
+  references. See its [AGENTS.md](./synthetic-data-core/AGENTS.md).
 
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's

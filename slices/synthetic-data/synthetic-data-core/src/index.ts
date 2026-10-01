@@ -9,10 +9,11 @@
  * `index.json` — and `Snapshot.filesOf` gives them all, in path order.
  * `Snapshot.Reader` reads them back through a caller's `FileFetcher`: the
  * header, and each resource as the import wrote it, its linked file checked
- * and carried inline again.
+ * and carried inline again. `Snapshot.WriteOrder` orders those resources into
+ * the batch bundles a reader writes them to a FHIR server in.
  *
- * Pure: the step that writes the files, and the app that fetches them, are
- * elsewhere.
+ * Pure: the step that writes the files, and the app that fetches and loads
+ * them, are elsewhere.
  *
  * @packageDocumentation
  */

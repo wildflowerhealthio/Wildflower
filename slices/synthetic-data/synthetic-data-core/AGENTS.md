@@ -12,11 +12,11 @@ reads them through `Snapshot.Reader`, with a `FileFetcher` it supplies.
 
 The root entry exports two namespaces:
 `import { Snapshot, SnapshotFile } from 'synthetic-data-core'`. `Snapshot`
-nests `Snapshot.Entry`, `Snapshot.Header`, `Snapshot.Layout` and
-`Snapshot.Reader`. Each module is a namespace in the `effect` style: the file
-is the noun, the principal type shares the namespace's name, a union of cases
-is `Any`, and a value's file codec is a `Schema` transform (decoded value ⇄
-encoded file).
+nests `Snapshot.Entry`, `Snapshot.Header`, `Snapshot.Layout`,
+`Snapshot.Reader` and `Snapshot.WriteOrder`. Each module is a namespace in the
+`effect` style: the file is the noun, the principal type shares the
+namespace's name, a union of cases is `Any`, and a value's file codec is a
+`Schema` transform (decoded value ⇄ encoded file).
 
 - `src/snapshot.ts` — **`Snapshot`**: the principal type `Snapshot`
   (`header`, and `entries`, every entry once in path order). `assemble(asOf,
@@ -81,6 +81,20 @@ wildflowerCommit, members)` builds it from each member's laid-out entries:
   carries it inline again (`withAttachmentData`): the resource as the import
   wrote it. Every failure is an `UnreadableFile` (`path`, `reason`) naming
   the file at fault.
+- `src/snapshot-write-order.ts` — **`Snapshot.WriteOrder`**: the order a
+  reader writes what it read to a FHIR server in. `bundlesOf(resources,
+maxEntries)` orders `StoredResource`s, as `Reader.readResource` gives them,
+  into the batch bundles to write, each resource in a later bundle than
+  every resource among them it references (`referencesOf`: the relative
+  `<ResourceType>/<id>` references in it, the id in FHIR's id grammar, a
+  versioned `…/_history/<vid>` naming its resource, itself excluded), and no
+  bundle over `maxEntries`, a whole number of at least one,
+  `MAX_BUNDLE_ENTRIES` (200) by default. The order comes from the
+  references, not from resource types: a DICOM source file's
+  `DocumentReference` references its `ImagingStudy`, while a HAR's
+  references nothing. A reference to a resource not being written orders
+  nothing, and resources in a reference cycle, and whatever references them,
+  share a last round.
 - `src/snapshot-file.ts` — **`SnapshotFile`**: the encoded side. `Any` is
   `Text` (`path`, `text`) or `Bytes` (`path`, `bytes`); `jsonTextOf(schema)`
   is a file's JSON text, two-space indented with a trailing newline; `same`
