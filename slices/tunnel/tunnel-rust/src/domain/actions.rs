@@ -12,7 +12,9 @@
 //! trivial reads / seeds are one-liners inlined at their call sites (the capability
 //! and `setup_tunnel`).
 
-use crate::domain::{SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelStore};
+use crate::domain::{
+    public_origin_url, SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelStore,
+};
 
 /// Compare-and-swap the settings under `expected_revision`, routing to the store
 /// method that matches the update's shape: an update **with** a relay block
@@ -24,14 +26,24 @@ use crate::domain::{SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelSt
 /// than inside the store — so a fake store can validate the routing without a
 /// database (the store's two methods each do a single unconditional write).
 ///
+/// A non-empty `public_host` must name an origin (see [`public_origin_url`]);
+/// an empty one clears the host, like `None`.
+///
 /// # Errors
 ///
+/// [`TunnelError::InvalidPublicHost`], with nothing written, if the update's
+/// `public_host` doesn't name an origin.
 /// [`TunnelError::Infrastructure`] if the store write fails.
 pub fn replace_settings(
     store: &impl TunnelStore,
     expected_revision: i64,
     update: SettingsUpdate,
 ) -> Result<SettingsUpdateOutcome, TunnelError> {
+    if let Some(public_host) = update.public_host.as_deref().filter(|h| !h.is_empty()) {
+        public_origin_url(public_host).map_err(|invalid| TunnelError::InvalidPublicHost {
+            message: invalid.to_string(),
+        })?;
+    }
     match update.relay_settings.as_ref() {
         Some(relay) => store.update_all_settings(
             expected_revision,
@@ -236,6 +248,30 @@ mod tests {
                 requested_running: true,
             }),
             "routed to update_basic_settings",
+        );
+    }
+
+    /// A public host that doesn't name an origin is refused before the store is
+    /// touched, so nothing is written and the revision doesn't move.
+    #[test]
+    fn replace_refuses_a_public_host_that_names_no_origin() {
+        let store = FakeTunnelStore::default();
+        let result = replace_settings(&store, 0, update(Some("dev1.example.com/fhir"), true));
+        assert!(
+            matches!(result, Err(TunnelError::InvalidPublicHost { .. })),
+            "got {result:?}"
+        );
+        assert_eq!(store.last_call(), None, "nothing written");
+    }
+
+    /// An empty public host clears it, like `None`, rather than being refused.
+    #[test]
+    fn replace_accepts_an_empty_public_host() {
+        let store = FakeTunnelStore::default();
+        let outcome = replace_settings(&store, 0, update(Some(""), false)).expect("write");
+        assert!(
+            matches!(outcome, SettingsUpdateOutcome::Applied(_)),
+            "got {outcome:?}"
         );
     }
 

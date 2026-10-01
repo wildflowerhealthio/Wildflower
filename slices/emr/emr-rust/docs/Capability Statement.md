@@ -26,6 +26,15 @@ Narrowings relative to spec FHIR `$everything`:
 - **Partial scope degrades gracefully.** A related-type search that fails (non-200 or an unreadable body) is logged and treated as _no matches_ rather than aborting; only the primary Patient read is fatal (its `401`/`403` propagates verbatim). A token that can read Patient + Observation but not MedicationRequest still gets a Bundle with the Patient and its Observations.
 - **`_count` and `Bundle.total`.** `_count` truncates the combined matched related set (the primary Patient is always included on top); `Bundle.total` reflects the returned (post-truncation) entry count, not the grand match total.
 
+## `base_url` (one for every caller, swappable at runtime)
+
+HFS's `base_url` is the prefix of every URL it emits: search Bundle `self`/`next` links, `entry.fullUrl`, and a create's `Location`. `emr-rust` serves HFS as a `SwappableHfs` (`src/swappable_hfs.rs`) so `base_url` can change at runtime. It starts as the loopback `/fhir-r4` base, and `set_base_url` can move it to `{origin}/fhir-r4`. A move rebuilds HFS over the same store and swaps it in under the routers already mounted.
+
+Consequences:
+
+- **`base_url` is the same for every caller, not the origin the request arrived at.** A request served on loopback gets links on the public origin once one is set, and a tunnel request gets loopback links while none is set. The `$everything` and SMART discovery overrides above are different: they render the served origin per request.
+- **Search cursors survive a swap.** A `_cursor` carries sort values and a resource id, never the `base_url`, so a `next` link issued before a swap still pages after it.
+
 ## `SearchParameter` index (full R4 set, indexed at write time)
 
 `emr-rust` loads the **complete HL7 FHIR R4 `SearchParameter` bundle** into HFS. HFS's SQLite backend registers SearchParameters from a filesystem `data_dir`; the R4 `search-parameters.json` ships as a **deployed asset** (see `assets/README.md`) — a bundled resource, not embedded in the binary — and the host points `EmrConfig::search_parameter_data_dir` at the directory holding it, which `setup_fhir_r4` passes to the backend via `SqliteBackendConfig { data_dir: Some(...) }` (`src/lib.rs`). HFS reads it read-only and extracts and indexes every standard R4 search parameter for a resource **at write time**. `setup_fhir_r4` fails fast if the bundle is missing from that directory, rather than silently falling back to the minimal index.

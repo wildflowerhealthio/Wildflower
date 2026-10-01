@@ -98,6 +98,16 @@ const InsufficientScopeSchema = Schema.Struct({
 })
 
 /**
+ * `400` body — a `PUT /tunnel` whose `publicHost` isn't a bare `host[:port]`
+ * naming an `https://` origin (a scheme, path, query or credentials, say).
+ * Nothing is written. Matches the Rust `InvalidPublicHostBody`.
+ */
+const InvalidPublicHostSchema = Schema.Struct({
+  error: Schema.Literal('InvalidPublicHost'),
+  message: Schema.String,
+})
+
+/**
  * The fresh-install tunnel snapshot — every counter at zero, every nullable
  * `null`, the server bound to its loopback fallback. The single canonical
  * sample shared by the slice's tests, so the fixture doesn't drift across
@@ -128,6 +138,7 @@ const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
  * `ReplaceTunnel` is a full-replace `PUT`:
  * - **200** returns the new snapshot after the write applied and the
  *   daemon reconciled.
+ * - **400** `publicHost` isn't a bare `host[:port]`; nothing was written.
  * - **403** the token doesn't cover `wildflower/TunnelSettings.u` (see above).
  * - **409** returns the *current* snapshot (same {@link TunnelStateViewSchema}
  *   shape, with the newer `settingsRevision`) because the caller's `settingsRevision`
@@ -145,6 +156,7 @@ const httpApiGroup = HttpApiGroup.make('tunnel', { topLevel: false })
     HttpApiEndpoint.put('ReplaceTunnel', '/tunnel')
       .setPayload(ReplaceTunnelRequestBodySchema)
       .addSuccess(TunnelStateViewSchema)
+      .addError(InvalidPublicHostSchema, { status: 400 })
       .addError(InsufficientScopeSchema, { status: 403 })
       .addError(TunnelStateViewSchema, { status: 409 })
   )
@@ -153,6 +165,7 @@ export {
   freshTunnelState,
   httpApiGroup,
   InsufficientScopeSchema,
+  InvalidPublicHostSchema,
   RelayInputSchema,
   RelayViewSchema,
   ReplaceTunnelRequestBodySchema,

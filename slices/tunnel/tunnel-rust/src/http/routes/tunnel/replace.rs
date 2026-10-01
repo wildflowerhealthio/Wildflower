@@ -8,6 +8,7 @@ use scope_capabilities_rust::InsufficientScopeBody;
 use super::wire_representations::TunnelStateResponse;
 use crate::domain::capabilities::Scoped;
 use crate::domain::{RelaySettings, SettingsUpdate, SettingsUpdateOutcome, TunnelError};
+use crate::http::errors::InvalidPublicHostBody;
 use crate::live_bindings::LiveTunnelSettingsEditor;
 
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
@@ -22,7 +23,8 @@ use crate::live_bindings::LiveTunnelSettingsEditor;
 /// snapshot reflects *real* reachability rather than an optimistic `dialing`. A
 /// no-op change (same dialable config on an already-up tunnel) returns
 /// immediately `verified` — `reconcile` leaves the live tunnel untouched, so
-/// there's nothing to wait for. Collected into the `OpenAPI` doc via `routes!`
+/// there's nothing to wait for. A `publicHost` that isn't a bare `host[:port]`
+/// is refused with a `400` before anything is written. Collected into the `OpenAPI` doc via `routes!`
 /// in the parent module, which reads this `#[utoipa::path]`.
 #[utoipa::path(
     put,
@@ -31,6 +33,7 @@ use crate::live_bindings::LiveTunnelSettingsEditor;
     request_body = ReplaceTunnelRequestBody,
     responses(
         (status = 200, description = "Write applied; the new snapshot after the daemon reconciled", body = TunnelStateResponse),
+        (status = 400, description = "`publicHost` isn't a bare `host[:port]` naming an `https://` origin; nothing was written", body = InvalidPublicHostBody),
         (status = 403, description = "The caller's token doesn't cover `wildflower/TunnelSettings.u`", body = InsufficientScopeBody),
         (status = 409, description = "Stale revision; no write happened — the current snapshot is returned", body = TunnelStateResponse)
     )

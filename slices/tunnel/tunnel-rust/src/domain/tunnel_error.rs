@@ -1,10 +1,12 @@
 //! [`TunnelError`] — the tunnel domain's failure vocabulary the HTTP layer
 //! renders. A stale-revision write is a normal `409` carrying the current
 //! snapshot (part of the success type, not an error), so the store surface has
-//! no *semantic* failure of its own — only an opaque infrastructure one. The one
-//! client-facing failure is [`InsufficientScope`](TunnelError::InsufficientScope):
+//! no *semantic* failure of its own — only an opaque infrastructure one. The
+//! client-facing failures are [`InsufficientScope`](TunnelError::InsufficientScope):
 //! the caller authenticated but their token doesn't cover the `/tunnel` scope
-//! (`wildflower/TunnelSettings.{r,u}`), rendered as the shared `403`. The HTTP
+//! (`wildflower/TunnelSettings.{r,u}`), rendered as the shared `403`; and
+//! [`InvalidPublicHost`](TunnelError::InvalidPublicHost): a write whose public
+//! host doesn't name an origin, rendered as a `400`. The HTTP
 //! layer ([`crate::http::errors`]) renders each; the store produces
 //! `Infrastructure` without leaking its db/diesel/`r2d2` error types up to the
 //! routes, and [`std::error::Error`] lets the composition root fold it into an
@@ -12,7 +14,9 @@
 
 /// The ways a tunnel settings operation can fail — the domain's failure
 /// vocabulary. [`InsufficientScope`](TunnelError::InsufficientScope) is a
-/// **semantic**, client-facing authorization failure (a `403`);
+/// **semantic**, client-facing authorization failure (a `403`), and
+/// [`InvalidPublicHost`](TunnelError::InvalidPublicHost) a client-facing
+/// validation failure (a `400`);
 /// [`Infrastructure`](TunnelError::Infrastructure) is opaque. The cause of the
 /// latter is captured as text so this type stays free of the store's
 /// db/diesel/`r2d2` error types, and it implements [`std::error::Error`] so the
@@ -27,6 +31,10 @@ pub enum TunnelError {
     /// variant lets a capability method surface the same failure through the
     /// domain error channel.
     InsufficientScope { missing_scopes: Vec<String> },
+    /// A settings write whose `public_host` isn't a bare `host[:port]` naming an
+    /// `https://` origin (see [`public_origin_url`](crate::domain::public_origin_url)).
+    /// Nothing is written. Rendered as a `400` carrying `message`.
+    InvalidPublicHost { message: String },
     /// An infrastructure failure in the backing store (a pool checkout or query
     /// error) — opaque to clients: the HTTP layer logs `context` + `source` and
     /// answers an empty 500. The cause is captured as text so this type stays
@@ -61,6 +69,7 @@ impl std::fmt::Display for TunnelError {
                     missing_scopes.join(" ")
                 )
             }
+            TunnelError::InvalidPublicHost { message } => f.write_str(message),
             TunnelError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }
     }

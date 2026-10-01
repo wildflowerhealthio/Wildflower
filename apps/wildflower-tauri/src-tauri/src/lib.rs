@@ -1,4 +1,5 @@
 mod bridge;
+mod hfs_base_url;
 mod loopback_consent_dialog;
 mod native_webview_handle;
 mod not_found;
@@ -518,6 +519,25 @@ async fn run_server(
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
+
+    // HFS's `base_url` tracks the tunnel's public host (see `hfs_base_url`): set
+    // before serving, so a stored host that can't be one stops startup, then
+    // re-set whenever the tunnel settings change.
+    let mut tunnel_liveness = tunnel_service.subscribe();
+    let public_host = tunnel_liveness.borrow_and_update().public_host.clone();
+    hfs_base_url::point_hfs_at_public_host(&fhir_routers.hfs, public_host.as_deref())?;
+    let hfs = fhir_routers.hfs.clone();
+    tauri::async_runtime::spawn(hfs_base_url::follow_public_host(
+        tunnel_liveness,
+        public_host,
+        move |public_host| {
+            // `PUT /tunnel` refuses a host that can't be a base URL, so this
+            // failing is a bug, not a settings mistake.
+            if let Err(error) = hfs_base_url::point_hfs_at_public_host(&hfs, public_host) {
+                tauri_plugin_log::log::error!("FHIR base URL left unchanged: {error:#}");
+            }
+        },
+    ));
     // Install the host's on-device webview handle: a loopback launch hands it the
     // resolved URL to open in a native popup (the server 204s). See
     // `native_webview_handle`.
