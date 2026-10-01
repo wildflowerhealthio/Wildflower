@@ -4,8 +4,8 @@ name: Deploy GitHub Pages
 # marketing site at /, the medications app at /medications-app, the server-docs
 # API console at /wildflower-server-docs, the Web Trace app at /web-trace-app, the
 # Importer at /importer-app, FHIR Sync for Pebble at /fhir-sync-pebble, the
-# WatchLifts settings page at /watch-lifts, the prebuilt OHIF viewer at
-# /ohif-viewer and the owner UI at /app)
+# lifting app at /lifting-app, the WatchLifts settings page at /watch-lifts,
+# the prebuilt OHIF viewer at /ohif-viewer and the owner UI at /app)
 # and publishes it to GitHub Pages.
 # Runs on every push to main and on manual dispatch: the assembled apps
 # depend on much of the workspace, so a path filter would only ever be wrong
@@ -71,6 +71,7 @@ jobs:
           VITE_SENTRY_DSN_IMPORTER_WEB: ${{ vars.VITE_SENTRY_DSN_IMPORTER_WEB }}
           VITE_SENTRY_DSN_WEB_TRACE: ${{ vars.VITE_SENTRY_DSN_WEB_TRACE }}
           VITE_SENTRY_DSN_HEALTH_VIEWER: ${{ vars.VITE_SENTRY_DSN_HEALTH_VIEWER }}
+          VITE_SENTRY_DSN_LIFTING_APP: ${{ vars.VITE_SENTRY_DSN_LIFTING_APP }}
           VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB: ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
           VITE_SENTRY_DSN_SYNTHETIC_DATA_APP: ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_APP }}
           VITE_SENTRY_DSN_WILDFLOWER_REACT: ${{ vars.VITE_SENTRY_DSN_WILDFLOWER_REACT }}

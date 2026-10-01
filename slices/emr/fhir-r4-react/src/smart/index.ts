@@ -74,6 +74,7 @@ export {
 
 export {
   fetchActiveServiceRequestPage,
+  fetchServiceRequestPage,
   type ServiceRequestFirstPage,
   type ServiceRequestPage,
   type ServiceRequestPageCursor,

@@ -60,6 +60,7 @@ export default defineConfig({
       'apps/github-pages/vite.config.ts',
       'apps/health-viewer/vite.config.ts',
       'apps/importer-web/vite.config.ts',
+      'apps/lifting-app/vite.config.ts',
       'apps/medications-app/vite.config.ts',
       'apps/ohif-viewer/vite.config.ts',
       'apps/synthetic-data-app/vite.config.ts',

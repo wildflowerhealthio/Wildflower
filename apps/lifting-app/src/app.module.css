@@ -1,0 +1,13 @@
+/*
+ * App skin — the page column every screen sits in. Colours and spacing read
+ * from the Tundra design tokens (`--color-*`, `--space-*`) that `tundra-css` +
+ * `react-tundraish` define globally, so dark mode needs no rule here — every
+ * token flips with `:root[data-color-scheme='dark']`. Each screen's own
+ * layout is `lifting-react`'s.
+ */
+
+.app {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-7) var(--space-13);
+}

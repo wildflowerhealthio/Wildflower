@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { fetchActiveServiceRequestPage } from './service-requests.ts'
+import { fetchActiveServiceRequestPage, fetchServiceRequestPage } from './service-requests.ts'
 import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
@@ -145,5 +145,84 @@ describe('fetchActiveServiceRequestPage', () => {
 
     expect(page.items.map((serviceRequest) => serviceRequest.id)).toEqual(['sr-1'])
     expect(page.droppedEntryCount).toBe(1)
+  })
+})
+
+describe('fetchServiceRequestPage', () => {
+  test("searches the patient's requests of one category carrying out one definition, in every status", async () => {
+    const { client, queries } = stubSmartClient(bundle([]))
+
+    await Effect.runPromise(
+      fetchServiceRequestPage(client, {
+        first: {
+          patientId: 'pat/1',
+          categoryToken: CATEGORY_TOKEN,
+          instantiatesCanonicalUrl: PLAN_DEFINITION_URL,
+        },
+      })
+    )
+
+    expect(queries).toEqual([
+      `ServiceRequest?patient=pat%2F1&category=${encodeURIComponent(CATEGORY_TOKEN)}&instantiates-canonical=${encodeURIComponent(PLAN_DEFINITION_URL)}&_sort=authored&_count=200`,
+    ])
+  })
+
+  test('property: any patient id, category token and canonical url (or none) survive the query as themselves, with no status filter', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.option(fc.string(), { nil: null }),
+        fc.string(),
+        fc.option(fc.string(), { nil: null }),
+        async (patientId, categoryToken, instantiatesCanonicalUrl) => {
+          const { client, queries } = stubSmartClient(bundle([]))
+
+          await Effect.runPromise(
+            fetchServiceRequestPage(client, {
+              first: { patientId, categoryToken, instantiatesCanonicalUrl },
+            })
+          )
+
+          const params = searchParamsOf(queries[0] ?? '')
+          expect(params.get('patient')).toBe(patientId)
+          expect(params.get('category')).toBe(categoryToken)
+          expect(params.get('instantiates-canonical')).toBe(instantiatesCanonicalUrl)
+          expect(params.has('status')).toBe(false)
+          expect(params.get('_sort')).toBe('authored')
+          expect(params.get('_count')).toBe('200')
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  test('decodes a closed request beside an active one', async () => {
+    const { client } = stubSmartClient(
+      bundle(
+        (['active', 'completed', 'revoked'] as const).map((status) => ({
+          resourceType: 'ServiceRequest',
+          id: `sr-${status}`,
+          status,
+          intent: 'plan',
+          subject: { reference: 'Patient/pat-1' },
+        }))
+      )
+    )
+
+    const page = await Effect.runPromise(
+      fetchServiceRequestPage(client, {
+        first: {
+          patientId: 'pat-1',
+          categoryToken: CATEGORY_TOKEN,
+          instantiatesCanonicalUrl: null,
+        },
+      })
+    )
+
+    expect(page.items.map((serviceRequest) => serviceRequest.status)).toEqual([
+      'active',
+      'completed',
+      'revoked',
+    ])
+    expect(page.droppedEntryCount).toBe(0)
   })
 })

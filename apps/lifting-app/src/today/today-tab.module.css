@@ -1,0 +1,12 @@
+/*
+ * TodayTab skin — a submitted workout's outcome. Tokens only, so dark mode
+ * needs no rule here.
+ */
+
+/* A submitted workout's outcome, and the button on to the next one. */
+.today-tab__submitted {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-7);
+}

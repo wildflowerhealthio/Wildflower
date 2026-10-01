@@ -1,0 +1,13 @@
+/*
+ * LiftingApp skin — the header over the tab shown. Tokens only, so dark mode
+ * needs no rule here; the title uses tundra's built-in `text-heading-3` class.
+ */
+
+/* The title, and under it the tab toggle. */
+.lifting-app__header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin-bottom: var(--space-9);
+}

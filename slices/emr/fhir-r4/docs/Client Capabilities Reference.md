@@ -240,7 +240,7 @@ Per FHIR R4 § ServiceRequest.search, the standard parameters include `_id`, `_l
 
 Notably absent: `encounter`, `requester`, `performer`, `priority`, `replaces`, `instantiates-uri`. Every parameter is single-valued (see the DocumentReference narrowings above).
 
-SMART apps read ServiceRequests around the typed client: `fhir-r4-react/smart`'s `fetchActiveServiceRequestPage` issues a raw fhirclient `ServiceRequest?patient=<id>&category=<token>&instantiates-canonical=<url>&status=active&_sort=authored&_count=200` (`patient` and `instantiates-canonical` dropped when the caller passes `null`, so an app can find which definitions a patient follows before it knows a url) and decodes each entry with `withMandatoryId(ServiceRequest.Schema)`.
+SMART apps read ServiceRequests around the typed client: `fhir-r4-react/smart`'s `fetchActiveServiceRequestPage` issues a raw fhirclient `ServiceRequest?patient=<id>&category=<token>&instantiates-canonical=<url>&status=active&_sort=authored&_count=200` (`patient` and `instantiates-canonical` dropped when the caller passes `null`, so an app can find which definitions a patient follows before it knows a url) and decodes each entry with `withMandatoryId(ServiceRequest.Schema)`; `fetchServiceRequestPage` is the same search without `status=active`, for a caller that reads closed requests too.
 
 ## ServiceRequest choice / required modeling
 

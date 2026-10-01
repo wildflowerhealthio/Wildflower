@@ -93,7 +93,7 @@ describe('FhirServerHome', () => {
         ({ app }) => `${APP_DESCRIPTIONS[app].name}${APP_DESCRIPTIONS[app].tagline}`
       )
     )
-    expect(appTiles).toHaveLength(5)
+    expect(appTiles).toHaveLength(6)
     expect(screen.queryByRole('link', { name: /FHIR Sync for Pebble/ })).toBeNull()
   })
 
@@ -109,6 +109,7 @@ describe('FhirServerHome', () => {
       `${PREVIEW_SITE_ROOT}web-trace-app/launch.html`,
       `${PREVIEW_SITE_ROOT}health-viewer-app/launch.html`,
       `${PREVIEW_SITE_ROOT}synthetic-data-app/launch.html`,
+      `${PREVIEW_SITE_ROOT}lifting-app/launch.html`,
     ])
   })
 

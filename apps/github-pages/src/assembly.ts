@@ -103,6 +103,16 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
+    packageName: 'lifting-app',
+    // The package lives in `apps/lifting-app`; its published path is
+    // `/${SECTION_PATHS.lifting}`.
+    sourceDir: 'apps/lifting-app/dist',
+    destPath: SECTION_PATHS.lifting,
+    // Two entries: the EHR launch endpoint and the app root (the redirect target,
+    // which also serves the standalone connect menu on a bare visit).
+    requiredFiles: ['index.html', 'launch.html'],
+  },
+  {
     packageName: 'watch-lifts-web',
     // The package lives in `apps/watch-lifts-web`; its published path is
     // `/${SECTION_PATHS.watchLifts}`.
