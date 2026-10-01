@@ -10,7 +10,7 @@ use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
+use wildflower_server_rust::{HostPorts, ServerObservers, WildflowerServerConfig};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -220,9 +220,21 @@ async fn run_server(
         tunnel_seed: tunnel_seed_from_build_env(),
     };
 
+    // Nothing watches the server's observers yet, so their receivers are
+    // dropped: the server copies into the liveness watch regardless, and drops
+    // its forwarded-request reports.
+    let (tunnel_liveness_sender, _) = tokio::sync::watch::channel(None);
+    let (forwarded_request_sender, _) = tokio::sync::mpsc::channel(1);
+    let observers = ServerObservers {
+        tunnel_liveness_sender,
+        forwarded_request_sender,
+    };
     // The server runs for the app's lifetime, so nothing cancels its shutdown
     // token.
-    wildflower_server_rust::serve(config, host_ports, CancellationToken::new()).await
+    wildflower_server_rust::set_up(config, host_ports, observers)
+        .await?
+        .serve(CancellationToken::new())
+        .await
 }
 
 /// Build and run the Tauri application.

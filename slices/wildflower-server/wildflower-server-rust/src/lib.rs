@@ -1,15 +1,19 @@
-//! The Wildflower server: the loopback API every slice mounts on, composed and
-//! served by [`serve`].
+//! The Wildflower server: the loopback API every slice mounts on, composed by
+//! [`set_up`] and served by [`WildflowerServer::serve`].
 //!
-//! [`serve`] opens the host's databases, sets up each server slice (gatekeeper,
-//! FHIR R4, OHIF, collector, tunnel, apps, databases), gates them, wraps them in
-//! the loopback owner trust, the loopback-peer gate and the CORS policy, and
-//! serves the result on the loopback port until its shutdown token is cancelled.
+//! [`set_up`] opens the host's databases, sets up each server slice
+//! (gatekeeper, FHIR R4, OHIF, collector, tunnel, apps, databases), gates them,
+//! wraps them in the loopback owner trust, the loopback-peer gate, the CORS
+//! policy and the forwarded-request observer, and binds the loopback port. [`WildflowerServer::serve`] then serves the result
+//! until its shutdown token is cancelled.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's
-//! native adapters and the channels its bridge reads arrive in [`HostPorts`].
+//! native adapters and the channels its bridge reads arrive in [`HostPorts`];
+//! the channels the host watches the server through arrive in
+//! [`ServerObservers`].
 
+mod forwarded_request_layer;
 mod hfs_base_url;
 mod loopback_owner_trust;
 mod not_found;
@@ -28,11 +32,13 @@ use gatekeeper_rust::{
     setup_gatekeeper, GatekeeperConfig, LoopbackConsentPrompt, PendingConsentHead,
 };
 use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::net::TcpListener;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
+use tunnel_rust::TunnelLiveness;
 
 use loopback_owner_trust::{inject_loopback_owner_token, LoopbackOwnerTrust};
 
@@ -44,7 +50,7 @@ use loopback_owner_trust::{inject_loopback_owner_token, LoopbackOwnerTrust};
 const HEALTH_DATA_DB: &str = "health-data.sqlite";
 const WILDFLOWER_DB: &str = "wildflower.sqlite";
 
-/// What the host hands [`serve`]: the values it derives at build time
+/// What the host hands [`set_up`]: the values it derives at build time
 /// (`tauri-shared-config.json`, build-time env) or from its platform paths.
 #[derive(Debug, Clone)]
 pub struct WildflowerServerConfig {
@@ -65,11 +71,11 @@ pub struct WildflowerServerConfig {
     pub tunnel_seed: tunnel_rust::SettingsSeed,
 }
 
-/// The host's side of [`serve`]: its native adapters and the channels the
+/// The host's side of [`set_up`]: its native adapters and the channels the
 /// server publishes host→webview state on.
 ///
 /// The senders are owned by the host, so their receivers (the host's bridge)
-/// outlive any one [`serve`]; cloning the ports for another run keeps the same
+/// outlive any one server; cloning the ports for another run keeps the same
 /// channels.
 #[derive(Clone)]
 pub struct HostPorts {
@@ -79,11 +85,54 @@ pub struct HostPorts {
     /// Opens a loopback app launch in an on-device native webview popup.
     pub on_device_webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     /// The channel gatekeeper publishes each minted host owner token on. The
-    /// loopback owner trust reads it, so a receiver must be alive when [`serve`]
-    /// mints the first token.
+    /// loopback owner trust reads it, so a receiver must be alive when
+    /// [`set_up`] mints the first token.
     pub host_owner_token_sender: watch::Sender<Option<String>>,
     /// The channel gatekeeper publishes the active pending consent request on.
     pub active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
+}
+
+/// The channels the host watches a running server through. Like [`HostPorts`],
+/// the senders are owned by the host and outlive any one server.
+#[derive(Clone)]
+pub struct ServerObservers {
+    /// The tunnel's liveness, copied from the tunnel slice by a task on the
+    /// server's runtime. `None` until the server publishes it; the copy stops
+    /// when that runtime does, so the host resets it to `None` once a server
+    /// is gone.
+    pub tunnel_liveness_sender: watch::Sender<Option<TunnelLiveness>>,
+    /// Each request the trusted front relayed through the tunnel, reported by
+    /// the outermost layer after its response is ready (see
+    /// `forwarded_request_layer`). A full channel drops the report rather than
+    /// delaying the response.
+    pub forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
+}
+
+/// A composed server bound to the loopback port, ready to
+/// [`serve`](Self::serve).
+pub struct WildflowerServer {
+    listener: TcpListener,
+    router: Router,
+}
+
+impl WildflowerServer {
+    /// Serve the composed API on the bound loopback port until `shutdown` is
+    /// cancelled. Cancelling stops accepting connections, and the call returns
+    /// `Ok` once the open ones close.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if serving fails.
+    pub async fn serve(self, shutdown: CancellationToken) -> anyhow::Result<()> {
+        axum::serve(
+            self.listener,
+            self.router
+                .into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown.cancelled_owned())
+        .await?;
+        Ok(())
+    }
 }
 
 /// The host's [`apps_rust::ports::AppLaunchScopes`]: resolves a **SMART** app's
@@ -133,31 +182,31 @@ fn api_cors_layer() -> CorsLayer {
         .allow_private_network(true)
 }
 
-/// Set up every server slice over the host's databases and serve the API on the
-/// loopback port until `shutdown` is cancelled.
+/// Set up every server slice over the host's databases and bind the API to the
+/// loopback port, ready to [`serve`](WildflowerServer::serve).
 ///
 /// `config` is what the host derived at build time or from its paths; `host`
-/// carries its native adapters and its bridge's channels. Cancelling `shutdown`
-/// stops accepting connections, and the call returns `Ok` once the open ones
-/// close.
+/// carries its native adapters and its bridge's channels; `observers` carries
+/// the channels the host watches the server through.
 ///
 /// # Errors
 ///
-/// Returns an error if startup fails (a scheduled database deletion can't be
-/// applied, a database or store can't be opened, the loopback port can't be
-/// bound, a slice's setup fails, or the tunnel's stored public host can't be
-/// FHIR's base URL), or if serving fails.
+/// Returns an error if a scheduled database deletion can't be applied, a
+/// database or store can't be opened, the loopback port can't be bound, a
+/// slice's setup fails, or the tunnel's stored public host can't be FHIR's base
+/// URL.
 ///
 /// # Remarks
 ///
 /// Slices spawn background tasks (the tunnel supervisor, gatekeeper's re-mint
-/// and sweeps, the FHIR base-URL follower) onto the runtime that runs this
-/// future; they are not tied to `shutdown`.
-pub async fn serve(
+/// and sweeps, the FHIR base-URL follower, the tunnel-liveness copy) onto the
+/// runtime that runs this future. They are not tied to the shutdown token: they
+/// stop when that runtime shuts down.
+pub async fn set_up(
     config: WildflowerServerConfig,
     host: HostPorts,
-    shutdown: CancellationToken,
-) -> anyhow::Result<()> {
+    observers: ServerObservers,
+) -> anyhow::Result<WildflowerServer> {
     let WildflowerServerConfig {
         runtime,
         search_parameter_data_dir,
@@ -339,6 +388,12 @@ pub async fn serve(
     // HFS's `base_url` tracks the tunnel's public host (see `hfs_base_url`): set
     // before serving, so a stored host that can't be one stops startup, then
     // re-set whenever the tunnel settings change.
+    // The host watches the tunnel's liveness through its own channel, which
+    // outlives this server.
+    tokio::spawn(copy_tunnel_liveness(
+        tunnel_service.subscribe(),
+        observers.tunnel_liveness_sender,
+    ));
     let mut tunnel_liveness = tunnel_service.subscribe();
     let public_host = tunnel_liveness.borrow_and_update().public_host.clone();
     hfs_base_url::point_hfs_at_public_host(&fhir_routers.hfs, public_host.as_deref())?;
@@ -481,13 +536,28 @@ pub async fn serve(
         .layer(require_loopback_peer_middleware())
         .layer(api_cors_layer());
 
-    axum::serve(
-        listener,
-        api_router.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(shutdown.cancelled_owned())
-    .await?;
-    Ok(())
+    // Outermost: every request the front relayed through the tunnel is
+    // reported to the host once its response is ready.
+    let router = api_router.layer(axum::middleware::from_fn_with_state(
+        observers.forwarded_request_sender,
+        forwarded_request_layer::report_forwarded_request,
+    ));
+
+    Ok(WildflowerServer { listener, router })
+}
+
+/// Copy each tunnel liveness snapshot onto the host's channel until the tunnel
+/// slice drops its sender or the server's runtime shuts down.
+async fn copy_tunnel_liveness(
+    mut tunnel_liveness: watch::Receiver<TunnelLiveness>,
+    host_tunnel_liveness_sender: watch::Sender<Option<TunnelLiveness>>,
+) {
+    loop {
+        host_tunnel_liveness_sender.send_replace(Some(tunnel_liveness.borrow_and_update().clone()));
+        if tunnel_liveness.changed().await.is_err() {
+            return;
+        }
+    }
 }
 
 #[cfg(test)]
