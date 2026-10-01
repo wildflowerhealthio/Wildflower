@@ -21,11 +21,13 @@ export {
   type FhirR4ResourcesHttpApiClientShape,
 } from './fhir-r4-resources-http-api-client.ts'
 export {
+  BatchEntriesRejected,
   type BatchEntryOutcome,
   entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
+  persistBatchBundleOrFail,
   statusOk,
   type StatusGroup,
   type WriteIssue,

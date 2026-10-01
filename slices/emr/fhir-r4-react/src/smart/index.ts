@@ -22,7 +22,9 @@ export { withLocalNetworkAccessHint } from './local-network-hint.ts'
 export {
   BundleDecodeError,
   RESOURCE_PAGE_SIZE,
+  ResourcePageCycleError,
   ResourcePageRequestError,
+  fetchAllResourcePages,
   fetchResourcePage,
   type PagedResourceRead,
   type ResourcePage,
@@ -37,11 +39,38 @@ export {
 } from './medication-requests.ts'
 
 export {
+  fetchObservationBasedOnOrPartOfPage,
   fetchObservationPage,
+  type ObservationBasedOnOrPartOfFirstPage,
+  type ObservationBasedOnOrPartOfPageCursor,
   type ObservationPage,
   type ObservationPageCursor,
   type ObservationResource,
 } from './observations.ts'
+
+export {
+  fetchPlanDefinitionPage,
+  type PlanDefinitionFirstPage,
+  type PlanDefinitionPage,
+  type PlanDefinitionPageCursor,
+  type PlanDefinitionResource,
+} from './plan-definitions.ts'
+
+export {
+  fetchProcedurePage,
+  type ProcedureFirstPage,
+  type ProcedurePage,
+  type ProcedurePageCursor,
+  type ProcedureResource,
+} from './procedures.ts'
+
+export {
+  fetchActiveServiceRequestPage,
+  type ServiceRequestFirstPage,
+  type ServiceRequestPage,
+  type ServiceRequestPageCursor,
+  type ServiceRequestResource,
+} from './service-requests.ts'
 
 export {
   fetchPatient,

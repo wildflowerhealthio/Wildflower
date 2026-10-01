@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { fetchObservationPage } from './observations.ts'
+import { fetchObservationBasedOnOrPartOfPage, fetchObservationPage } from './observations.ts'
 import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
@@ -85,5 +85,73 @@ describe('fetchObservationPage', () => {
 
     expect(page.items.map((item) => item.id)).toEqual(['obs-1'])
     expect(page.droppedEntryCount).toBe(1)
+  })
+})
+
+describe('fetchObservationBasedOnOrPartOfPage', () => {
+  test('narrows by based-on and part-of, oldest-observed first, 200 to a page', async () => {
+    const { client, queries } = stubSmartClient(bundle([]))
+
+    await Effect.runPromise(
+      fetchObservationBasedOnOrPartOfPage(client, {
+        first: {
+          patientId: 'pat/1',
+          basedOnReference: 'ServiceRequest/sr-1',
+          partOfReference: 'Procedure/pr-1',
+        },
+      })
+    )
+
+    expect(queries).toEqual([
+      'Observation?patient=pat%2F1&based-on=ServiceRequest%2Fsr-1&part-of=Procedure%2Fpr-1&_sort=date&_count=200',
+    ])
+  })
+
+  test('omits a reference that is not named, and the patient filter with no patient in context', async () => {
+    const { client, queries } = stubSmartClient(bundle([]))
+
+    await Effect.runPromise(
+      fetchObservationBasedOnOrPartOfPage(client, {
+        first: { patientId: null, basedOnReference: null, partOfReference: 'Procedure/pr-1' },
+      })
+    )
+
+    expect(queries).toEqual(['Observation?part-of=Procedure%2Fpr-1&_sort=date&_count=200'])
+  })
+
+  test('property: any patient id and references survive the query as themselves', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.string(),
+        fc.string(),
+        fc.option(fc.string(), { nil: null }),
+        async (patientId, basedOnReference, partOfReference) => {
+          const { client, queries } = stubSmartClient(bundle([]))
+
+          await Effect.runPromise(
+            fetchObservationBasedOnOrPartOfPage(client, {
+              first: { patientId, basedOnReference, partOfReference },
+            })
+          )
+
+          const params = searchParamsOf(queries[0] ?? '')
+          expect(params.get('patient')).toBe(patientId)
+          expect(params.get('based-on')).toBe(basedOnReference)
+          expect(params.get('part-of')).toBe(partOfReference)
+          expect(params.get('_sort')).toBe('date')
+          expect(params.get('_count')).toBe('200')
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  test('requests a later page by its cursor URL verbatim', async () => {
+    const { client, queries } = stubSmartClient(bundle([]))
+    const pageUrl = 'https://fhir.example/Observation?_getpages=abc&_getpagesoffset=200'
+
+    await Effect.runPromise(fetchObservationBasedOnOrPartOfPage(client, { pageUrl }))
+
+    expect(queries).toEqual([pageUrl])
   })
 })
