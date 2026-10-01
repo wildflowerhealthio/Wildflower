@@ -47,17 +47,17 @@ const SUBJECT: IdentifierAndReference.ReferenceType = IdentifierAndReference.ref
   id: 'p-1',
 })
 
-/** A string with something other than whitespace in it. */
-const nonBlankStringArb: fc.Arbitrary<string> = fc
+/** A non-empty string with no whitespace at either end. */
+const nonEmptyTrimmedStringArb: fc.Arbitrary<string> = fc
   .string({ minLength: 1 })
-  .filter((text) => text.trim().length > 0)
+  .filter((text) => text.length > 0 && text.trim() === text)
 
 /** An exercise slug, e.g. `bench-press`. */
 const exerciseIdArb: fc.Arbitrary<string> = fc.stringMatching(/^[a-z]{1,8}(-[a-z]{1,8}){0,2}$/)
 
-/** An exercise with a slug id and a non-blank display name. */
+/** An exercise with a slug id and a non-empty, trimmed display name. */
 const exerciseArb: fc.Arbitrary<ExerciseConcept.Type> = fc
-  .record({ id: exerciseIdArb, name: nonBlankStringArb })
+  .record({ id: exerciseIdArb, name: nonEmptyTrimmedStringArb })
   .map((exercise) => made(ExerciseConcept.make(exercise)))
 
 /** Either load unit. */
@@ -133,7 +133,7 @@ const planOfSizeArb = (size: PlanSize): fc.Arbitrary<Plan.Type> =>
     })
     .chain((exercises) =>
       fc.record({
-        title: nonBlankStringArb,
+        title: nonEmptyTrimmedStringArb,
         planned: fc.tuple(...exercises.map(plannedForArb)),
         labels: fc.uniqueArray(workoutLabelArb, { minLength: 1, maxLength: size.maxWorkouts }),
       })
@@ -557,7 +557,7 @@ export {
   issuePathsOf,
   loadUnitArb,
   made,
-  nonBlankStringArb,
+  nonEmptyTrimmedStringArb,
   planArb,
   plannedArb,
   progressionCaseArb,

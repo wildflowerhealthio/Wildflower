@@ -27,7 +27,6 @@ import { Procedure } from 'fhir-r4/resources'
 import type * as ExerciseRequest from '../exercise-request/exercise-request.ts'
 import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
-import { NonBlankString } from '../internal/non-blank-string.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
 import type * as Plan from '../plan/plan.ts'
 import * as Workout from '../plan/workout.ts'
@@ -43,9 +42,9 @@ const StatusSchema = Schema.Literal('in-progress', 'completed').annotations({
 
 /**
  * What the one coding of a workout's `code` must carry: its label as a
- * non-blank `code`.
+ * non-empty, trimmed `code`.
  */
-const WorkoutCodingSchema = Schema.Struct({ code: NonBlankString })
+const WorkoutCodingSchema = Schema.Struct({ code: Schema.NonEmptyTrimmedString })
 
 /** A workout's `code`: exactly one coding in `WildflowerCodeSystem.Workout`, its label. */
 const WorkoutCodeSchema = Schema.typeSchema(CodeableConcept.Schema).pipe(

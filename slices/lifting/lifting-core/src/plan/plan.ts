@@ -12,7 +12,6 @@ import { PlanDefinition } from 'fhir-r4/resources'
 
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
-import { NonBlankString } from '../internal/non-blank-string.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
 import * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
 import * as PlannedExercise from './planned-exercise.ts'
@@ -21,8 +20,8 @@ import * as Workout from './workout.ts'
 
 /**
  * A strength-training plan, as FHIR carries it: a `PlanDefinition` narrowed to
- * an `id`, a canonical `url` its `ExerciseRequest`s instantiate, a non-blank
- * `title`, and at least one `action`, each a {@link Workout.Type}, in cycle
+ * an `id`, a canonical `url` its `ExerciseRequest`s instantiate, a non-empty,
+ * trimmed `title`, and at least one `action`, each a {@link Workout.Type}, in cycle
  * order — after the last comes the first again.
  *
  * @remarks
@@ -74,14 +73,14 @@ const NarrowedPlanDefinition = narrowFields(
   Schema.typeSchema(withMandatoryId(PlanDefinition.Schema)),
   {
     url: Schema.String,
-    title: NonBlankString,
+    title: Schema.NonEmptyTrimmedString,
     action: Schema.NonEmptyArray(Schema.typeSchema(Workout.Schema)),
   }
 )
 
 /**
  * Decodes a `PlanDefinition` into a {@link Type} — fails, naming the field, on
- * no `id` or `url`, a blank `title`, no workout, a workout that does not
+ * no `id` or `url`, an empty or untrimmed `title`, no workout, a workout that does not
  * decode, two workouts with one label, or one exercise planned two ways.
  */
 const PlanSchema: Schema.Schema<Type, PlanDefinition.Type> = narrowedFrom<PlanDefinition.Type>()(
@@ -135,7 +134,7 @@ const emptyPlanDefinition: PlanDefinition.Type = Schema.decodeSync(PlanDefinitio
  * `workouts` in order: `active`, filed under the `strength-training` feature
  * `topic`, its canonical `url` under `WILDFLOWER_CANONICAL_BASE`.
  *
- * @returns The plan; or a `ParseError` naming every problem: a blank title,
+ * @returns The plan; or a `ParseError` naming every problem: an empty or untrimmed title,
  *   no workouts, two workouts with one label, or one exercise planned two ways
  */
 const make = (plan: {

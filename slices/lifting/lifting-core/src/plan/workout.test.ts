@@ -33,9 +33,9 @@ describe('Workout', () => {
     )
   })
 
-  it('should refuse a blank label and a workout that runs no exercises, naming each', () => {
+  it('should refuse an empty or untrimmed label and a workout that runs no exercises, naming each', () => {
     fc.assert(
-      fc.property(fc.constantFrom('', ' ', '\t'), (label) => {
+      fc.property(fc.constantFrom('', ' ', '\t', ' A', 'A\n'), (label) => {
         expect(issuePathsOf(Workout.make({ label, plannedExercises: [] }))).toEqual([
           'title',
           'action.0',

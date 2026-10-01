@@ -3,12 +3,11 @@ import { narrowFields } from 'fhir-r4/data-types'
 import { PlanDefinitionAction } from 'fhir-r4/resources'
 
 import { narrowedFrom } from '../internal/narrowed-from.ts'
-import { NonBlankString } from '../internal/non-blank-string.ts'
 import * as PlannedExercise from './planned-exercise.ts'
 
 /**
  * One workout of a plan's cycle, as FHIR carries it: a `PlanDefinition.action`
- * narrowed to a non-blank `title` — its label (StrongLifts has `"A"` and
+ * narrowed to a non-empty, trimmed `title` — its label (StrongLifts has `"A"` and
  * `"B"`) — and at least one nested `action`, each a
  * {@link PlannedExercise.Type}, in the order they are performed.
  */
@@ -20,14 +19,14 @@ interface Type extends Omit<PlanDefinitionAction.Type, 'title' | 'action'>, Bran
 }
 
 /**
- * Decodes a `PlanDefinition.action` into a {@link Type} — fails on a blank or
- * missing `title`, no nested action, or a nested action that is not a planned
+ * Decodes a `PlanDefinition.action` into a {@link Type} — fails on a missing,
+ * empty or untrimmed `title`, no nested action, or a nested action that is not a planned
  * exercise.
  */
 const WorkoutSchema: Schema.Schema<Type, PlanDefinitionAction.Type> =
   narrowedFrom<PlanDefinitionAction.Type>()(
     narrowFields(Schema.typeSchema(PlanDefinitionAction.Schema), {
-      title: NonBlankString,
+      title: Schema.NonEmptyTrimmedString,
       action: Schema.NonEmptyArray(Schema.typeSchema(PlannedExercise.Schema)),
     }).pipe(Schema.brand('Workout'))
   )
@@ -38,7 +37,7 @@ const emptyAction: PlanDefinitionAction.Type = Schema.decodeSync(PlanDefinitionA
 /**
  * The workout labelled `label`, running `plannedExercises` in order.
  *
- * @returns The workout; or a `ParseError` when `label` is blank or there are
+ * @returns The workout; or a `ParseError` when `label` is empty or untrimmed, or there are
  *   no planned exercises
  */
 const make = (workout: {

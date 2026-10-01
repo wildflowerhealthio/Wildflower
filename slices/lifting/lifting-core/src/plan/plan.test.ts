@@ -86,11 +86,16 @@ describe('Plan', () => {
     )
   })
 
-  it('should refuse a blank title and no workouts, naming each', () => {
-    expect(issuePathsOf(Plan.make({ planDefinitionId: 'p', title: ' ', workouts: [] }))).toEqual([
-      'title',
-      'action.0',
-    ])
+  it('should refuse an empty or untrimmed title and no workouts, naming each', () => {
+    fc.assert(
+      fc.property(fc.constantFrom('', ' ', ' Plan', 'Plan\n'), (title) => {
+        expect(issuePathsOf(Plan.make({ planDefinitionId: 'p', title, workouts: [] }))).toEqual([
+          'title',
+          'action.0',
+        ])
+      }),
+      { numRuns: RUNS }
+    )
   })
 
   it('should refuse two workouts with one label, naming the second', () => {

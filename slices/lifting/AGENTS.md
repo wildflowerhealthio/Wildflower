@@ -30,10 +30,10 @@ template rather than a special case.
   - `PlannedExercise` — a `PlanDefinition.action` narrowed to one
     `ExerciseConcept`, one `sets` and one `reps` lifting-measure concept among
     its `code`s, and one `ProgressionRule` among its extensions.
-  - `Workout` — a `PlanDefinition.action` narrowed to a non-blank `title` (the
+  - `Workout` — a `PlanDefinition.action` narrowed to a non-empty, trimmed `title` (the
     label) and a non-empty nested `action` of `PlannedExercise`s, in order.
   - `Plan` — a `PlanDefinition` narrowed to an `id`, a canonical `url`, a
-    non-blank `title` and a non-empty `action` of `Workout`s in cycle order;
+    non-empty, trimmed `title` and a non-empty `action` of `Workout`s in cycle order;
     `plannedExerciseOf`, `plannedExercisesOf`, `workoutsOf` and `nextWorkout`
     (what the "today" screen shows, from the latest completed workout).
   - `ExerciseRequest` — a `ServiceRequest` whose service is an exercise,

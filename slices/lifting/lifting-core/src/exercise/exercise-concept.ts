@@ -3,7 +3,6 @@ import { CodeableConcept, Code, Coding, WildflowerCodeSystem } from 'fhir-r4/dat
 
 import { guaranteed, onlyOneIssues } from '../internal/issues.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
-import { NonBlankString } from '../internal/non-blank-string.ts'
 
 /**
  * The exercise id a display name slugs to: lowercased, diacritics folded,
@@ -34,9 +33,12 @@ const ExerciseIdCode = Code.pipe(
 
 /**
  * What the (already decoded) one coding of an exercise concept must carry: a
- * slug `code` and a non-blank `display`.
+ * slug `code` and a non-empty, trimmed `display`.
  */
-const ExerciseCodingSchema = Schema.Struct({ code: ExerciseIdCode, display: NonBlankString })
+const ExerciseCodingSchema = Schema.Struct({
+  code: ExerciseIdCode,
+  display: Schema.NonEmptyTrimmedString,
+})
 
 /** A coding as {@link ExerciseCodingSchema} reads it. */
 const readExerciseCoding = Schema.validateOption(ExerciseCodingSchema)
@@ -57,7 +59,7 @@ interface Type extends CodeableConcept.Type, Brand.Brand<'ExerciseConcept'> {}
 /**
  * Decodes a `CodeableConcept` into a {@link Type} — fails when it has no
  * exercise coding or several, or the one it has lacks a slug code or a
- * non-blank display.
+ * non-empty, trimmed display.
  */
 const ExerciseConceptSchema: Schema.Schema<Type, CodeableConcept.Type> =
   narrowedFrom<CodeableConcept.Type>()(
@@ -79,7 +81,7 @@ const ExerciseConceptSchema: Schema.Schema<Type, CodeableConcept.Type> =
  * The exercise named `name`, under the id `id`.
  *
  * @returns The concept; or a `ParseError` when `id` is not a slug or `name`
- *   is blank
+ *   is empty or untrimmed
  */
 const make = (exercise: {
   readonly id: string

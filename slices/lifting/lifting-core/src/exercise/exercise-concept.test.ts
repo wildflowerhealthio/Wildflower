@@ -9,7 +9,7 @@ import {
   exerciseIdArb,
   issuePathsOf,
   made,
-  nonBlankStringArb,
+  nonEmptyTrimmedStringArb,
   throughWire,
 } from '../test-helpers.ts'
 import * as ExerciseConcept from './exercise-concept.ts'
@@ -32,7 +32,7 @@ describe('ExerciseConcept', () => {
 
   it('should read back the id and name of every exercise it makes, through the wire', () => {
     fc.assert(
-      fc.property(exerciseIdArb, nonBlankStringArb, (id, name) => {
+      fc.property(exerciseIdArb, nonEmptyTrimmedStringArb, (id, name) => {
         const concept = throughWire(WireExerciseConcept, made(ExerciseConcept.make({ id, name })))
         expect([ExerciseConcept.idOf(concept), ExerciseConcept.nameOf(concept)]).toEqual([id, name])
       }),
@@ -40,11 +40,11 @@ describe('ExerciseConcept', () => {
     )
   })
 
-  it('should refuse an id that is not a slug and a blank name, naming both', () => {
+  it('should refuse an id that is not a slug and an empty or untrimmed name, naming both', () => {
     fc.assert(
       fc.property(
         fc.constantFrom('', ' ', 'Bench Press', '-squat', 'squat--row', 'Squat'),
-        fc.constantFrom('', ' ', '\t'),
+        fc.constantFrom('', ' ', '\t', ' Squat', 'Squat\n'),
         (id, name) => {
           expect(issuePathsOf(ExerciseConcept.make({ id, name }))).toEqual([
             'coding.0.code',
