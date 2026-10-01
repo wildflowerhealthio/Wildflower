@@ -22,12 +22,13 @@ import {
   countExerciseParameterConcept,
   loadExerciseParameterAmong,
   loadExerciseParameterConcept,
-  filterArrayWithOneExerciseParameter,
+  checkArrayHasOneExerciseParameter,
   isExerciseParameterConcept,
 } from '../exercise-parameter/exercise-parameter-concept.ts'
 import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
 import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
+import { filterArrayWithEveryCheck } from '../internal/filter-array-with-every-check.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
 import * as Load from '../load/load.ts'
@@ -75,9 +76,11 @@ const ExerciseRequestSchema: Schema.Schema<Type, ServiceRequest.Type> =
       code: Schema.typeSchema(ExerciseConcept.Schema),
       instantiatesCanonical: Schema.Tuple(Schema.String),
       orderDetail: Schema.Array(Schema.typeSchema(CodeableConcept.Schema)).pipe(
-        filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Load),
-        filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Sets),
-        filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Reps)
+        filterArrayWithEveryCheck([
+          checkArrayHasOneExerciseParameter(ExerciseParameter.Code.Load),
+          checkArrayHasOneExerciseParameter(ExerciseParameter.Code.Sets),
+          checkArrayHasOneExerciseParameter(ExerciseParameter.Code.Reps),
+        ])
       ),
     }).pipe(Schema.brand('ExerciseRequest'))
   )

@@ -20,11 +20,12 @@ import { PlanDefinitionAction } from 'fhir-r4/resources'
 import {
   countExerciseParameterAmong,
   countExerciseParameterConcept,
-  filterArrayWithOneExerciseParameter,
+  checkArrayHasOneExerciseParameter,
 } from '../exercise-parameter/exercise-parameter-concept.ts'
 import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
-import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
+import { checkArrayHasOneMatchingElement } from '../internal/check-array-has-one-matching-element.ts'
+import { filterArrayWithEveryCheck } from '../internal/filter-array-with-every-check.ts'
 import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as TrainingPlanDefinitionProgressionRule from './progression-rule.ts'
@@ -77,20 +78,24 @@ const TrainingPlanDefinitionExerciseSchema: Schema.Schema<
 > = narrowedFrom<PlanDefinitionAction.Type>()(
   narrowFields(Schema.typeSchema(PlanDefinitionAction.Schema), {
     code: Schema.Array(Schema.typeSchema(CodeableConcept.Schema)).pipe(
-      filterArrayWithOneMatchingElement({
-        matches: namesAnExercise,
-        schema: ExerciseConceptType,
-        expected: 'exercise concept',
-      }),
-      filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Sets),
-      filterArrayWithOneExerciseParameter(ExerciseParameter.Code.Reps)
+      filterArrayWithEveryCheck([
+        checkArrayHasOneMatchingElement({
+          matches: namesAnExercise,
+          schema: ExerciseConceptType,
+          expected: 'exercise concept',
+        }),
+        checkArrayHasOneExerciseParameter(ExerciseParameter.Code.Sets),
+        checkArrayHasOneExerciseParameter(ExerciseParameter.Code.Reps),
+      ])
     ),
     extension: Schema.Array(Schema.typeSchema(Extension.Schema)).pipe(
-      filterArrayWithOneMatchingElement({
-        matches: Extension.hasUrl(WildflowerExtension.LiftingProgression),
-        schema: TrainingPlanDefinitionProgressionRuleType,
-        expected: `${WildflowerExtension.LiftingProgression} extension`,
-      })
+      Schema.filter(
+        checkArrayHasOneMatchingElement({
+          matches: Extension.hasUrl(WildflowerExtension.LiftingProgression),
+          schema: TrainingPlanDefinitionProgressionRuleType,
+          expected: `${WildflowerExtension.LiftingProgression} extension`,
+        })
+      )
     ),
   }).pipe(Schema.brand('TrainingPlanDefinitionExercise'))
 )

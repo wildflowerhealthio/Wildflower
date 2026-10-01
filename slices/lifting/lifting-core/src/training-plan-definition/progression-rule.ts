@@ -1,10 +1,11 @@
 import { type Brand, type Either, Option, type ParseResult, pipe, Schema } from 'effect'
 import { Extension, narrowFields, WildflowerExtension } from 'fhir-r4/data-types'
 
+import { checkArrayHasOneMatchingElement } from '../internal/check-array-has-one-matching-element.ts'
 import {
-  type ArrayFilter,
-  filterArrayWithOneMatchingElement,
-} from '../internal/filter-array-with-one-matching-element.ts'
+  type ArrayElementsCheck,
+  filterArrayWithEveryCheck,
+} from '../internal/filter-array-with-every-check.ts'
 import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as Load from '../load/load.ts'
@@ -67,9 +68,9 @@ const PART_SCHEMAS = {
   loadStep: Schema.Struct({ valueDecimal: PositiveDecimal }),
 } as const satisfies Record<PartName, Schema.Schema.AnyNoContext>
 
-/** Filters a rule's sub-extensions to hold exactly one at `part`, its value in range. */
-const filterArrayWithOneProgressionRulePart = (part: PartName): ArrayFilter<Extension.Type> =>
-  filterArrayWithOneMatchingElement({
+/** Checks a rule's sub-extensions hold exactly one at `part`, its value in range. */
+const checkArrayHasOneProgressionRulePart = (part: PartName): ArrayElementsCheck<Extension.Type> =>
+  checkArrayHasOneMatchingElement({
     matches: Extension.hasUrl(part),
     schema: PART_SCHEMAS[part],
     expected: `"${part}" part`,
@@ -104,12 +105,14 @@ const TrainingPlanDefinitionProgressionRuleSchema: Schema.Schema<
   narrowFields(Schema.typeSchema(Extension.Schema), {
     url: Schema.Literal(WildflowerExtension.LiftingProgression),
     extension: Schema.Array(Schema.typeSchema(Extension.Schema)).pipe(
-      filterArrayWithOneProgressionRulePart(Part.Unit),
-      filterArrayWithOneProgressionRulePart(Part.Increment),
-      filterArrayWithOneProgressionRulePart(Part.FailuresBeforeDeload),
-      filterArrayWithOneProgressionRulePart(Part.DeloadFraction),
-      filterArrayWithOneProgressionRulePart(Part.MinimumLoad),
-      filterArrayWithOneProgressionRulePart(Part.LoadStep)
+      filterArrayWithEveryCheck([
+        checkArrayHasOneProgressionRulePart(Part.Unit),
+        checkArrayHasOneProgressionRulePart(Part.Increment),
+        checkArrayHasOneProgressionRulePart(Part.FailuresBeforeDeload),
+        checkArrayHasOneProgressionRulePart(Part.DeloadFraction),
+        checkArrayHasOneProgressionRulePart(Part.MinimumLoad),
+        checkArrayHasOneProgressionRulePart(Part.LoadStep),
+      ])
     ),
   }).pipe(Schema.brand('TrainingPlanDefinitionProgressionRule'))
 )

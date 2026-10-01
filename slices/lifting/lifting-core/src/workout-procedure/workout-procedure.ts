@@ -25,7 +25,7 @@ import { Procedure } from 'fhir-r4/resources'
 // `ExerciseRequest`s it carries out, but both modules read workouts at
 // runtime, so importing them back would be a cycle.
 import type * as ExerciseRequest from '../exercise-request/exercise-request.ts'
-import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
+import { checkArrayHasOneMatchingElement } from '../internal/check-array-has-one-matching-element.ts'
 import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as LiftingFeature from '../lifting-feature/lifting-feature.ts'
@@ -50,11 +50,13 @@ const WorkoutCodingSchema = Schema.Struct({ code: Schema.NonEmptyTrimmedString }
 /** A workout's `code`: exactly one coding in `WildflowerCodeSystem.Workout`, its day label. */
 const WorkoutCodeSchema = narrowFields(Schema.typeSchema(CodeableConcept.Schema), {
   coding: Schema.Array(Schema.typeSchema(Coding.Schema)).pipe(
-    filterArrayWithOneMatchingElement({
-      matches: Coding.isInSystem(WildflowerCodeSystem.Workout),
-      schema: WorkoutCodingSchema,
-      expected: `coding in ${WildflowerCodeSystem.Workout}`,
-    })
+    Schema.filter(
+      checkArrayHasOneMatchingElement({
+        matches: Coding.isInSystem(WildflowerCodeSystem.Workout),
+        schema: WorkoutCodingSchema,
+        expected: `coding in ${WildflowerCodeSystem.Workout}`,
+      })
+    )
   ),
 })
 

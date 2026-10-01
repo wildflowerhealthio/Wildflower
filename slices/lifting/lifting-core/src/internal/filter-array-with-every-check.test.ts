@@ -4,10 +4,11 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { issueMessagesOf, issuePathsOf } from '../test-helpers.ts'
+import { checkArrayHasOneMatchingElement } from './check-array-has-one-matching-element.ts'
 import {
-  type ArrayFilter,
-  filterArrayWithOneMatchingElement,
-} from './filter-array-with-one-matching-element.ts'
+  type ArrayElementsCheck,
+  filterArrayWithEveryCheck,
+} from './filter-array-with-every-check.ts'
 
 const RUNS = numRunsFor({ base: 100 })
 
@@ -16,9 +17,9 @@ const TaggedAmountSchema = Schema.Struct({ tag: Schema.String, amount: Schema.Nu
 
 type TaggedAmount = typeof TaggedAmountSchema.Type
 
-/** Filters tagged amounts to hold exactly one tagged `tag`, its amount positive. */
-const filterArrayWithOnePositive = (tag: string): ArrayFilter<TaggedAmount> =>
-  filterArrayWithOneMatchingElement({
+/** Checks tagged amounts hold exactly one tagged `tag`, its amount positive. */
+const checkArrayHasOnePositive = (tag: string): ArrayElementsCheck<TaggedAmount> =>
+  checkArrayHasOneMatchingElement({
     matches: (taggedAmount: TaggedAmount) => taggedAmount.tag === tag,
     schema: Schema.Struct({ amount: Schema.Number.pipe(Schema.positive()) }),
     expected: `"${tag}" amount`,
@@ -26,8 +27,7 @@ const filterArrayWithOnePositive = (tag: string): ArrayFilter<TaggedAmount> =>
 
 /** Tagged amounts that must hold one positive `a` and one positive `b`. */
 const OnePositiveEachSchema = Schema.Array(TaggedAmountSchema).pipe(
-  filterArrayWithOnePositive('a'),
-  filterArrayWithOnePositive('b')
+  filterArrayWithEveryCheck([checkArrayHasOnePositive('a'), checkArrayHasOnePositive('b')])
 )
 
 const decode = Schema.decodeEither(OnePositiveEachSchema, { errors: 'all' })
@@ -41,7 +41,7 @@ const othersArb = fc.array(
   { maxLength: 3 }
 )
 
-describe('filterArrayWithOneMatchingElement', () => {
+describe('filterArrayWithEveryCheck over checkArrayHasOneMatchingElement', () => {
   it('should accept exactly one well-formed match of each, among anything else', () => {
     fc.assert(
       fc.property(othersArb, fc.boolean(), (others, bFirst) => {
@@ -75,7 +75,7 @@ describe('filterArrayWithOneMatchingElement', () => {
     )
   })
 
-  it('should name every piped filter that fails, not only the first', () => {
+  it('should name every check that fails, not only the first', () => {
     fc.assert(
       fc.property(othersArb, (others) => {
         const result = decode([...others, { tag: 'b', amount: 0 }])

@@ -7,7 +7,7 @@ import {
   WildflowerCodeSystem,
 } from 'fhir-r4/data-types'
 
-import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
+import { checkArrayHasOneMatchingElement } from '../internal/check-array-has-one-matching-element.ts'
 import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 
@@ -72,11 +72,13 @@ const ExerciseConceptSchema: Schema.Schema<Type, CodeableConcept.Type> =
   narrowedFrom<CodeableConcept.Type>()(
     narrowFields(Schema.typeSchema(CodeableConcept.Schema), {
       coding: Schema.Array(Schema.typeSchema(Coding.Schema)).pipe(
-        filterArrayWithOneMatchingElement({
-          matches: Coding.isInSystem(WildflowerCodeSystem.Exercise),
-          schema: ExerciseCodingSchema,
-          expected: `coding in ${WildflowerCodeSystem.Exercise}`,
-        })
+        Schema.filter(
+          checkArrayHasOneMatchingElement({
+            matches: Coding.isInSystem(WildflowerCodeSystem.Exercise),
+            schema: ExerciseCodingSchema,
+            expected: `coding in ${WildflowerCodeSystem.Exercise}`,
+          })
+        )
       ),
     }).pipe(Schema.brand('ExerciseConcept'))
   )

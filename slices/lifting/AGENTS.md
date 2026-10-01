@@ -104,10 +104,12 @@ The React layer and the app route are not built yet.
   one" check is a field schema, a refinement or a brand on the concept's
   `Schema`, and every refusal is a `ParseError` whose issues name their path
   (`orderDetail.0.extension.0.valueQuantity.value`) — decode with
-  `errors: 'all'` to have every problem at once. An "exactly one" check is a
-  filter on the array field it constrains (`filterArrayWithOneMatchingElement`,
-  and `filterArrayWithOneExerciseParameter` on it), so its issues sit under
-  that field, and several piped onto one array all report. A refinement
+  `errors: 'all'` to have every problem at once. An "exactly one" check
+  (`checkArrayHasOneMatchingElement`, and `checkArrayHasOneExerciseParameter`
+  on it) filters the array field it constrains, so its issues sit under that
+  field: one check as `Schema.filter(check)`, several on one array through
+  `filterArrayWithEveryCheck([...])`, which runs them as one refinement so
+  every check reports. A refinement
   across fields (two days with one label) runs only once the fields it reads
   decode. The tagged errors are the checks that relate two resources, which
   no single value's schema can see:

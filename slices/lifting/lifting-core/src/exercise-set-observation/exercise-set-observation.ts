@@ -15,7 +15,7 @@ import { Observation } from 'fhir-r4/resources'
 // both modules read sets at runtime, so importing them back would be a cycle.
 import type * as ExerciseRequest from '../exercise-request/exercise-request.ts'
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
-import { filterArrayWithOneMatchingElement } from '../internal/filter-array-with-one-matching-element.ts'
+import { checkArrayHasOneMatchingElement } from '../internal/check-array-has-one-matching-element.ts'
 import { guaranteed } from '../internal/guaranteed.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import type * as WorkoutProcedure from '../workout-procedure/workout-procedure.ts'
@@ -92,18 +92,22 @@ const ExerciseSetObservationSchema: Schema.Schema<Type, Observation.Type> =
       effectivePeriod: SpanSchema,
       valueInteger: Schema.NonNegativeInt,
       basedOn: Schema.Array(Schema.typeSchema(IdentifierAndReference.ReferenceSchema)).pipe(
-        filterArrayWithOneMatchingElement({
-          matches: refersTo('ServiceRequest'),
-          schema: LiteralReferenceSchema,
-          expected: 'reference to a ServiceRequest',
-        })
+        Schema.filter(
+          checkArrayHasOneMatchingElement({
+            matches: refersTo('ServiceRequest'),
+            schema: LiteralReferenceSchema,
+            expected: 'reference to a ServiceRequest',
+          })
+        )
       ),
       partOf: Schema.Array(Schema.typeSchema(IdentifierAndReference.ReferenceSchema)).pipe(
-        filterArrayWithOneMatchingElement({
-          matches: refersTo('Procedure'),
-          schema: LiteralReferenceSchema,
-          expected: 'reference to a Procedure',
-        })
+        Schema.filter(
+          checkArrayHasOneMatchingElement({
+            matches: refersTo('Procedure'),
+            schema: LiteralReferenceSchema,
+            expected: 'reference to a Procedure',
+          })
+        )
       ),
     }).pipe(Schema.brand('ExerciseSetObservation'))
   )
