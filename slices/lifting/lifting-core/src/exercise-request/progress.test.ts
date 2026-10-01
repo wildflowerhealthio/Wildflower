@@ -45,7 +45,7 @@ const squatAt = (value: number): ExerciseRequest.Type =>
       subject: SUBJECT,
       plan,
       exerciseId: 'squat',
-      load: made(Load.make({ value, unit: 'lb' })),
+      load: made(Load.make({ value, unit: '[lb_av]' })),
       authoredOn: AUTHORED_ON,
     })
   )

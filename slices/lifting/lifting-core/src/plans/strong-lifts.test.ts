@@ -36,11 +36,11 @@ describe('StrongLifts5x5', () => {
         ProgressionRule.unitOf(PlannedExercise.progressionRuleOf(planned)),
       ])
     ).toEqual([
-      ['squat', 5, 5, 5, 'lb'],
-      ['bench-press', 5, 5, 5, 'lb'],
-      ['barbell-row', 5, 5, 5, 'lb'],
-      ['overhead-press', 5, 5, 5, 'lb'],
-      ['deadlift', 1, 5, 10, 'lb'],
+      ['squat', 5, 5, 5, '[lb_av]'],
+      ['bench-press', 5, 5, 5, '[lb_av]'],
+      ['barbell-row', 5, 5, 5, '[lb_av]'],
+      ['overhead-press', 5, 5, 5, '[lb_av]'],
+      ['deadlift', 1, 5, 10, '[lb_av]'],
     ])
   })
 
@@ -60,11 +60,11 @@ describe('StrongLifts5x5', () => {
     expect(
       Record.map(StrongLifts5x5.STARTING_LOADS, (load) => [Load.valueOf(load), Load.unitOf(load)])
     ).toEqual({
-      squat: [45, 'lb'],
-      'bench-press': [45, 'lb'],
-      'barbell-row': [65, 'lb'],
-      'overhead-press': [45, 'lb'],
-      deadlift: [95, 'lb'],
+      squat: [45, '[lb_av]'],
+      'bench-press': [45, '[lb_av]'],
+      'barbell-row': [65, '[lb_av]'],
+      'overhead-press': [45, '[lb_av]'],
+      deadlift: [95, '[lb_av]'],
     })
     const plan = StrongLifts5x5.plan('plan-1')
     for (const lift of LIFTS) {

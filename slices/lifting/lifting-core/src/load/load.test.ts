@@ -13,8 +13,10 @@ const RUNS = numRunsFor({ base: 100 })
 const WireLoad = Schema.compose(Quantity.Schema, Load.Schema)
 
 describe('Load', () => {
-  it('should write a pound load as UCUM [lb_av] and a kilogram load as kg', () => {
-    expect(Schema.encodeSync(WireLoad)(made(Load.make({ value: 135, unit: 'lb' })))).toMatchObject({
+  it('should write a pound load as UCUM [lb_av] and a kilogram load as kg, each with a display unit', () => {
+    expect(
+      Schema.encodeSync(WireLoad)(made(Load.make({ value: 135, unit: '[lb_av]' })))
+    ).toMatchObject({
       value: 135,
       unit: 'lb',
       system: 'http://unitsofmeasure.org',
@@ -58,7 +60,7 @@ describe('Load', () => {
         fc.constantFrom('comparator' as const, 'code' as const, 'system' as const),
         (value, field) => {
           // Arrange
-          const load = made(Load.make({ value, unit: 'lb' }))
+          const load = made(Load.make({ value, unit: '[lb_av]' }))
           const quantity: Quantity.Type = {
             comparator: { ...load, comparator: '<' as const },
             code: { ...load, code: Code.make('st') },

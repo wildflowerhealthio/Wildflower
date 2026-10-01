@@ -55,7 +55,7 @@ describe('ProgressionRule', () => {
     const wire = Schema.encodeSync(WireProgressionRule)(
       made(
         ProgressionRule.make({
-          unit: 'lb',
+          unit: '[lb_av]',
           increment: 5,
           failuresBeforeDeload: 3,
           deloadFraction: 0.1,
@@ -67,7 +67,7 @@ describe('ProgressionRule', () => {
     expect(wire).toMatchObject({
       url: WildflowerExtension.LiftingProgression,
       extension: [
-        { url: 'unit', valueString: 'lb' },
+        { url: 'unit', valueString: '[lb_av]' },
         { url: 'increment', valueDecimal: 5 },
         { url: 'failuresBeforeDeload', valueInteger: 3 },
         { url: 'deloadFraction', valueDecimal: 0.1 },
@@ -133,7 +133,7 @@ describe('movableLoadSchema / startingLoadSchema', () => {
     fc.assert(
       fc.property(progressionRuleArb, (rule) => {
         const unit = ProgressionRule.unitOf(rule)
-        const other = unit === 'lb' ? 'kg' : 'lb'
+        const other = unit === '[lb_av]' ? 'kg' : '[lb_av]'
         const at = ProgressionRule.minimumLoadOf(rule) + 1
         const validate = Schema.validateEither(ProgressionRule.movableLoadSchema(rule))
         expect(Either.isRight(validate(made(Load.make({ value: at, unit }))))).toBe(true)
@@ -149,7 +149,7 @@ describe('movableLoadSchema / startingLoadSchema', () => {
         // Arrange
         fc.pre(ProgressionRule.minimumLoadOf(rule) > 0)
         const unit = ProgressionRule.unitOf(rule)
-        const otherUnit = unit === 'lb' ? 'kg' : 'lb'
+        const otherUnit = unit === '[lb_av]' ? 'kg' : '[lb_av]'
         const load = made(
           Load.make({
             value: ProgressionRule.minimumLoadOf(rule) / 2,

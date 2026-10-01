@@ -28,7 +28,8 @@ const EXERCISES: { readonly [L in Lift]: ExerciseConcept.Type } = {
 }
 
 /** A load in pounds. */
-const pounds = (value: number): Load.Type => Either.getOrThrow(Load.make({ value, unit: 'lb' }))
+const pounds = (value: number): Load.Type =>
+  Either.getOrThrow(Load.make({ value, unit: '[lb_av]' }))
 
 /**
  * The starting load of each StrongLifts lift, as the StrongLifts guide sets
@@ -55,7 +56,7 @@ const STARTING_LOADS: { readonly [L in Lift]: Load.Type } = {
 const barbellRule = (increment: number): ProgressionRule.Type =>
   Either.getOrThrow(
     ProgressionRule.make({
-      unit: 'lb',
+      unit: '[lb_av]',
       increment,
       failuresBeforeDeload: 3,
       deloadFraction: 0.1,

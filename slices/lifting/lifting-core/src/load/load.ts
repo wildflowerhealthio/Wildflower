@@ -6,19 +6,20 @@ import { narrowedFrom } from '../internal/narrowed-from.ts'
 /** The UCUM system every load `Quantity` is coded in. */
 const UCUM_SYSTEM = 'http://unitsofmeasure.org'
 
-/** The units a load is lifted in. Persisted wire format — append, don't rename. */
-const UnitSchema = Schema.Literal('lb', 'kg')
+/**
+ * The UCUM codes a load is lifted in: the avoirdupois pound and the
+ * kilogram. Persisted wire format — append, don't rename.
+ */
+const UnitSchema = Schema.Literal('[lb_av]', 'kg')
 
-/** A unit a load is lifted in: `lb` or `kg`. */
+/** A UCUM code a load is lifted in: `[lb_av]` or `kg`. */
 type Unit = typeof UnitSchema.Type
 
-/** The UCUM code each unit is written as: the avoirdupois pound, the kilogram. */
-const UCUM_CODE_OF_UNIT = { lb: '[lb_av]', kg: 'kg' } as const satisfies Record<Unit, string>
+/** The display `unit` a load in each UCUM code is written with, for a person to read. */
+const DISPLAY_UNIT_OF = { '[lb_av]': 'lb', kg: 'kg' } as const satisfies Record<Unit, string>
 
-/** A load's UCUM `code`: `[lb_av]` or `kg`, as a FHIR `code`. */
-const UcumCodeSchema = Schema.Literal(UCUM_CODE_OF_UNIT.lb, UCUM_CODE_OF_UNIT.kg).pipe(
-  Schema.brand('code')
-)
+/** A load's UCUM `code`, as a FHIR `code`. */
+const UcumCodeSchema = UnitSchema.pipe(Schema.brand('code'))
 
 /**
  * A load on the bar: a FHIR `Quantity` narrowed to a finite, non-negative
@@ -27,7 +28,7 @@ const UcumCodeSchema = Schema.Literal(UCUM_CODE_OF_UNIT.lb, UCUM_CODE_OF_UNIT.kg
  * @remarks
  * Still a `Quantity` — it is written wherever one is — so the brand records
  * that it came through {@link Schema} or {@link make}. `unit` (the display
- * unit) is not read: the unit is the UCUM `code`.
+ * unit, `lb` or `kg`) is not read: the unit is the UCUM `code`.
  */
 interface Type
   extends Omit<Quantity.Type, 'value' | 'system' | 'code' | 'comparator'>, Brand.Brand<'Load'> {
@@ -61,7 +62,7 @@ const LoadSchema: Schema.Schema<Type, Quantity.Type> = narrowedFrom<Quantity.Typ
 )
 
 /**
- * A load of `value` in `unit`.
+ * A load of `value` in the UCUM code `unit`, its display `unit` `lb` or `kg`.
  *
  * @returns The load; or a `ParseError` when `value` is negative or not finite
  */
@@ -73,17 +74,17 @@ const make = (load: {
     id: null,
     extension: [],
     value: load.value,
-    unit: load.unit,
+    unit: DISPLAY_UNIT_OF[load.unit],
     system: UCUM_SYSTEM,
-    code: Code.make(UCUM_CODE_OF_UNIT[load.unit]),
+    code: Code.make(load.unit),
     comparator: null,
   })
 
 /** The amount of a load, in {@link unitOf} it. */
 const valueOf = (load: Type): number => load.value
 
-/** The unit a load is in, from its UCUM code. */
-const unitOf = (load: Type): Unit => (load.code === UCUM_CODE_OF_UNIT.kg ? 'kg' : 'lb')
+/** The UCUM code of the unit a load is in. */
+const unitOf = (load: Type): Unit => load.code
 
 /** The same load at another value, in the same unit. */
 const withValue = (load: Type, value: number): Either.Either<Type, ParseResult.ParseError> =>

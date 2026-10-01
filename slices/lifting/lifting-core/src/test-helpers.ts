@@ -61,7 +61,7 @@ const exerciseArb: fc.Arbitrary<ExerciseConcept.Type> = fc
   .map((exercise) => made(ExerciseConcept.make(exercise)))
 
 /** Either load unit. */
-const loadUnitArb: fc.Arbitrary<Load.Unit> = fc.constantFrom('lb', 'kg')
+const loadUnitArb: fc.Arbitrary<Load.Unit> = fc.constantFrom('[lb_av]', 'kg')
 
 /** A finite, non-negative amount of load, fractional as well as whole. */
 const amountArb: fc.Arbitrary<number> = fc.oneof(

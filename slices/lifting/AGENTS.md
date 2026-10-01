@@ -17,7 +17,9 @@ template rather than a special case.
   narrowing it, a `make` that builds one from the domain inputs (returning the
   `Type` or a `ParseError`), and getters for the domain values it holds.
   - `Load` — a `Quantity` narrowed to a finite, non-negative `value` in UCUM
-    `[lb_av]` or `kg` with no comparator (`valueOf`, `unitOf`, `withValue`).
+    `[lb_av]` or `kg` with no comparator. Its unit is that UCUM code
+    everywhere: `make({ value, unit })` takes it, `unitOf` reads it back, and
+    `withValue` keeps it.
   - `ExerciseConcept` — a `CodeableConcept` narrowed to exactly one coding in
     `WildflowerCodeSystem.Exercise`, its `code` a slug exercise id and its
     `display` the name (`idOf`, `nameOf`, and `idFromName`, the one slug rule).
@@ -132,7 +134,7 @@ The React layer and the app route are not built yet.
   (`WorkoutProcedure.latestCompleted`) around the cycle.
 - **Loads carry their unit, and a rule moves only its own unit.** A
   `ProgressionRule`'s `increment`, `minimumLoad` and `loadStep` are in its
-  `unit`; `ExerciseRequest.make` and `progress` refuse a load in the other
+  `unit`, the same UCUM code a `Load` carries; `ExerciseRequest.make` and `progress` refuse a load in the other
   unit rather than convert. A deload rounds down to a multiple of `loadStep`
   and never goes below `minimumLoad` (StrongLifts: 5 lb steps, the 45 lb
   bar); a deload that cannot lower the load holds instead. The StrongLifts

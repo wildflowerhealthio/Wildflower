@@ -51,7 +51,7 @@ const squatAt = (value: number): ExerciseRequest.Type =>
       subject: SUBJECT,
       plan,
       exerciseId: 'squat',
-      load: made(Load.make({ value, unit: 'lb' })),
+      load: made(Load.make({ value, unit: '[lb_av]' })),
       authoredOn: AUTHORED_ON,
     })
   )
@@ -126,7 +126,7 @@ describe('ExerciseRequest.make', () => {
             subject: SUBJECT,
             plan: anyPlan,
             exerciseId,
-            load: made(Load.make({ value: 0, unit: 'lb' })),
+            load: made(Load.make({ value: 0, unit: '[lb_av]' })),
             authoredOn: AUTHORED_ON,
           })
         )
@@ -153,8 +153,8 @@ describe('ExerciseRequest.make', () => {
         onLeft: (error) => (error instanceof Error ? error.message : ''),
         onRight: () => '',
       })
-    expect(messageOf(make(40, 'lb'))).toContain('expected a load of at least 45 lb')
-    expect(messageOf(make(20, 'kg'))).toContain('expected a load in lb')
+    expect(messageOf(make(40, '[lb_av]'))).toContain('expected a load of at least 45 [lb_av]')
+    expect(messageOf(make(20, 'kg'))).toContain('expected a load in [lb_av]')
   })
 })
 

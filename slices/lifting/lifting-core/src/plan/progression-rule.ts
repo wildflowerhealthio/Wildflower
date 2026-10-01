@@ -17,8 +17,9 @@ import * as Load from '../load/load.ts'
  */
 const Part = {
   /**
-   * The unit the rule's amounts are in, as a `valueString` (`lb` or `kg`) —
-   * a string, not a `valueCode`, which fhir-r4 leaves unregistered.
+   * The unit the rule's amounts are in, as a `valueString` holding its UCUM
+   * code (`[lb_av]` or `kg`) — a string, not a `valueCode`, which fhir-r4
+   * leaves unregistered.
    */
   Unit: 'unit',
   /** Added to the load after a successful workout, as a `valueDecimal` `> 0`. */
