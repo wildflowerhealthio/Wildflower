@@ -100,8 +100,10 @@ token's `aud` has to match.
 So HFS's base follows the tunnel's configured public host,
 `https://<public_host>/fhir-r4`, because that is how remote clients reach the
 FHIR server. It falls back to loopback only while no public host is configured.
-Loopback callers get the public URLs too, which is fine for them: the
-owner token's canonical audience is accepted at every served origin. The host
+Loopback callers get the public URLs too. That suits the host owner token,
+whose canonical audience is accepted at every served origin, but not an
+OAuth-minted token: its `aud` is the loopback base, so a SMART app launched on
+loopback that follows a public `next` link through the tunnel is refused. The host
 watches the tunnel settings and calls [`HfsAdvertisedBase`]`::set_public_origin`
 on each change. That rebuilds HFS over the same store and swaps it in under the
 routers already mounted. emr-rust's own overrides (`$everything`, the SMART
