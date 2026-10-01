@@ -261,6 +261,7 @@ const APP_DESCRIPTIONS: {
       note: 'Load it into a demo or test server, not one holding real records.',
     },
     anchor: 'developers',
+    smartLaunchPage: 'launch.html',
   },
   app: {
     name: 'Wildflower',
