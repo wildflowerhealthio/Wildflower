@@ -94,6 +94,20 @@ describe('supplyDurationToParts', () => {
     )
   })
 
+  test('a code or unit naming an Object.prototype key falls back to days', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('__proto__', 'constructor', 'toString', 'valueOf', 'hasOwnProperty'),
+        fc.integer({ min: 1, max: 500 }),
+        (key, value) => {
+          expect(supplyDurationToParts(supply({ code: key, value }))).toEqual({ days: value })
+          expect(supplyDurationToParts(supply({ unit: key, value }))).toEqual({ days: value })
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   test('a UCUM code wins over a conflicting spelled unit', () => {
     expect(supplyDurationToParts(supply({ code: 'wk', unit: 'days', value: 2 }))).toEqual({
       weeks: 2,

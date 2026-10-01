@@ -45,18 +45,22 @@ const SPELLED_UNIT: Partial<Record<string, PartBuilder>> = {
   years: UCUM_UNIT.a,
 }
 
+// Own keys only: a free-text code or unit such as `__proto__` or `toString`
+// must miss the table, not find something on `Object.prototype`.
+const partBuilderFor = (
+  table: Partial<Record<string, PartBuilder>>,
+  key: string | null | undefined
+): PartBuilder | undefined =>
+  key === null || key === undefined || !Object.hasOwn(table, key) ? undefined : table[key]
+
 /** The supply duration as `DateTime.add` parts, or `null` if unusable. */
 const supplyDurationToParts = (
   supply: SupplyDuration
 ): Partial<DateTime.DateTime.PartsForMath> | null => {
   const { value } = supply
   if (value === null || value === undefined || value <= 0) return null
-  const fromCode =
-    supply.code === null || supply.code === undefined ? undefined : UCUM_UNIT[supply.code]
-  const fromUnit =
-    supply.unit === null || supply.unit === undefined
-      ? undefined
-      : SPELLED_UNIT[supply.unit.toLowerCase()]
+  const fromCode = partBuilderFor(UCUM_UNIT, supply.code)
+  const fromUnit = partBuilderFor(SPELLED_UNIT, supply.unit?.toLowerCase())
   const build = fromCode ?? fromUnit ?? UCUM_UNIT.d
   return build === undefined ? null : build(Math.round(value))
 }

@@ -7,15 +7,22 @@ import { SECTION_PATHS, type SectionId } from './site.ts'
  */
 type AppSectionId = Extract<
   SectionId,
-  'medications' | 'fhirSyncPebble' | 'importer' | 'webTrace' | 'healthViewer' | 'app'
+  | 'medications'
+  | 'fhirSyncPebble'
+  | 'importer'
+  | 'webTrace'
+  | 'healthViewer'
+  | 'syntheticData'
+  | 'app'
 >
 
 /**
  * The app sections the marketing homepage has a launcher row for: all but the
- * owner UI, and the Synthesized Health Viewer, whose homepage row keeps its own
- * inline copy until the app is registered on the Wildflower host.
+ * owner UI; the Synthesized Health Viewer, whose homepage row keeps its own
+ * inline copy until the app is registered on the Wildflower host; and the
+ * Synthetic Data Loader, which has no homepage row.
  */
-type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'healthViewer'>
+type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'healthViewer' | 'syntheticData'>
 
 /**
  * The four SMART app sections, in the order the marketing homepage presents
@@ -229,6 +236,31 @@ const APP_DESCRIPTIONS: {
       label: 'Open the Synthesized Health Viewer',
       note: 'Plot observations and doses for a patient on any FHIR server, including our demo',
     },
+    smartLaunchPage: 'launch.html',
+  },
+  syntheticData: {
+    name: 'Synthetic Data Loader',
+    tagline:
+      'Loads a published snapshot of synthetic health records into a FHIR server, ' +
+      'so the other apps have a realistic record to show.',
+    paragraphs: [
+      "I want to show what Wildflower does without anyone's real health records.",
+      'The synthetic data snapshot tells the stories of a few fictional people through the files ' +
+        'a pharmacy, a lab and an imaging clinic would produce, read through the Importer. ' +
+        'This app loads those records into a server you choose, so the viewers have ' +
+        'something realistic to show.',
+    ],
+    guide: {
+      title: 'Loading the snapshot',
+      steps: [
+        'Connect to the FHIR server to load into, and sign in.',
+        "Check the snapshot's address. It starts at the published one.",
+        'Choose the people to load, then load them. Loading again writes the same records ' +
+          'over themselves.',
+      ],
+      note: 'Load it into a demo or test server, not one holding real records.',
+    },
+    anchor: 'developers',
     smartLaunchPage: 'launch.html',
   },
   app: {
