@@ -76,7 +76,11 @@ describe('WorkoutProcedure', () => {
           id: 'workout-1',
           status: 'in-progress',
           category: { coding: [{ code: LiftingFeature.CODE }] },
-          code: { coding: [{ system: WildflowerCodeSystem.Workout, code: 'B', display: 'B' }] },
+          code: {
+            coding: [
+              { system: WildflowerCodeSystem.TrainingPlanDefinitionDay, code: 'B', display: 'B' },
+            ],
+          },
           subject: { reference: 'Patient/p-1' },
           instantiatesCanonical: [trainingPlanDefinition.url],
           basedOn: [{ reference: `ServiceRequest/${exerciseRequest.id}` }],

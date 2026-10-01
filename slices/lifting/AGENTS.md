@@ -64,8 +64,8 @@ template rather than a special case.
   - `WorkoutProcedure` — a `Procedure` performing one day of a training plan
     definition, narrowed to an `id`, a status of `in-progress` or
     `completed`, the day's label as its `code` (in
-    `WildflowerCodeSystem.Workout`), the training plan definition url as its
-    one `instantiatesCanonical`, a `performedPeriod` with a start (and an end
+    `WildflowerCodeSystem.TrainingPlanDefinitionDay`), the training plan
+    definition url as its one `instantiatesCanonical`, a `performedPeriod` with a start (and an end
     exactly once completed), and at least one `basedOn` `ServiceRequest` — the
     `ExerciseRequest`s it carries out. `make` starts one from
     `{ trainingPlanDefinition, trainingPlanDefinitionDay, … }`, refusing a day
@@ -190,9 +190,9 @@ The React layer and the app route are not built yet.
   `authoredOn` when issued. A workout
   `Procedure` is `in-progress` until `completed`, the `strength-training`
   feature as `category`, its day's label as `code` in
-  `WildflowerCodeSystem.Workout` (what a generic viewer labels it by; the
-  training plan definition url beside it says which one the label belongs
-  to), `instantiatesCanonical` the training plan definition url, `basedOn`
+  `WildflowerCodeSystem.TrainingPlanDefinitionDay` (what a generic viewer
+  labels it by; the training plan definition url beside it says which one
+  the label belongs to), `instantiatesCanonical` the training plan definition url, `basedOn`
   the `ServiceRequest`s it carries out, and `performedPeriod` its span. A set
   `Observation` is `final`, in the `activity` category
   (`Observation.ACTIVITY_CATEGORY`, as the Physical Activity IG files
@@ -208,8 +208,8 @@ The React layer and the app route are not built yet.
 - **Wire urls live in `fhir-r4`, codes here.** The extension urls
   (`WildflowerExtension.LiftingProgression`, `.ExerciseParameterValue`), the
   code-system urls (`WildflowerCodeSystem.Exercise`, `.ExerciseParameter`,
-  `.Feature`, `.Workout`) and `WILDFLOWER_CANONICAL_BASE` are in `fhir-r4`'s
-  `terminology.ts`; the exercise parameter codes (`ExerciseParameter.Code`),
+  `.Feature`, `.TrainingPlanDefinitionDay`) and `WILDFLOWER_CANONICAL_BASE`
+  are in `fhir-r4`'s `terminology.ts`; the exercise parameter codes (`ExerciseParameter.Code`),
   the feature code (`LiftingFeature.CODE`) and the rule's sub-extension names
   (`TrainingPlanDefinition.ProgressionRule.Part`) are here. All of them are persisted wire format —
   append, don't rename. The rule's `unit` part is a `valueString`, not a

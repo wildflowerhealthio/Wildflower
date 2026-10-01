@@ -75,7 +75,7 @@ const WildflowerCodeSystem = {
    * code and the display. A label names a day only within one training plan
    * definition, so its url is the `Procedure.instantiatesCanonical` beside it.
    */
-  Workout: `${WILDFLOWER_CODE_SYSTEM_BASE}/workout`,
+  TrainingPlanDefinitionDay: `${WILDFLOWER_CODE_SYSTEM_BASE}/training-plan-definition-day`,
 } as const
 
 /**

@@ -47,14 +47,17 @@ const StatusSchema = Schema.Literal('in-progress', 'completed').annotations({
  */
 const WorkoutCodingSchema = Schema.Struct({ code: Schema.NonEmptyTrimmedString })
 
-/** A workout's `code`: exactly one coding in `WildflowerCodeSystem.Workout`, its day label. */
+/**
+ * A workout's `code`: exactly one coding in
+ * `WildflowerCodeSystem.TrainingPlanDefinitionDay`, its day label.
+ */
 const WorkoutCodeSchema = narrowFields(Schema.typeSchema(CodeableConcept.Schema), {
   coding: Schema.Array(Schema.typeSchema(Coding.Schema)).pipe(
     Schema.filter(
       checkArrayHasOneMatchingElement({
-        matches: Coding.isInSystem(WildflowerCodeSystem.Workout),
+        matches: Coding.isInSystem(WildflowerCodeSystem.TrainingPlanDefinitionDay),
         schema: WorkoutCodingSchema,
-        expected: `coding in ${WildflowerCodeSystem.Workout}`,
+        expected: `coding in ${WildflowerCodeSystem.TrainingPlanDefinitionDay}`,
       })
     )
   ),
@@ -85,10 +88,11 @@ const ServiceRequestReferenceSchema = Schema.typeSchema(
  * One workout as the lifter performs it — a day of a strength-training
  * training plan definition — as FHIR records it: a `Procedure` narrowed to an
  * `id`, a status of `in-progress` or `completed`, the day's label as its
- * `code` in `WildflowerCodeSystem.Workout`, the training plan definition's
- * url as its one `instantiatesCanonical`, a `performedPeriod` with a `start` (and an `end`
- * exactly when it is completed), and at least one `basedOn`, each a
- * `ServiceRequest`: the `ExerciseRequest`s it carries out.
+ * `code` in `WildflowerCodeSystem.TrainingPlanDefinitionDay`, the training
+ * plan definition's url as its one `instantiatesCanonical`, a
+ * `performedPeriod` with a `start` (and an `end` exactly when it is
+ * completed), and at least one `basedOn`, each a `ServiceRequest`: the
+ * `ExerciseRequest`s it carries out.
  *
  * @remarks
  * The sets performed in it are `ExerciseSetObservation`s whose `partOf` names
@@ -266,7 +270,7 @@ const make = ({
     status: 'in-progress',
     category: LiftingFeature.concept,
     code: CodeableConcept.make({
-      system: WildflowerCodeSystem.Workout,
+      system: WildflowerCodeSystem.TrainingPlanDefinitionDay,
       code: dayLabel,
       display: dayLabel,
       text: null,
@@ -302,7 +306,10 @@ const readWorkoutCoding = Schema.validateOption(WorkoutCodingSchema)
 const dayLabelOf = (workoutProcedure: Type): string =>
   guaranteed(
     pipe(
-      CodeableConcept.onlyCodingIn(workoutProcedure.code, WildflowerCodeSystem.Workout),
+      CodeableConcept.onlyCodingIn(
+        workoutProcedure.code,
+        WildflowerCodeSystem.TrainingPlanDefinitionDay
+      ),
       Option.flatMap(readWorkoutCoding),
       Option.map((coding) => coding.code)
     )

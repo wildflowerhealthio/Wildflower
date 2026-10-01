@@ -37,7 +37,9 @@ describe('terminology', () => {
     }
   })
 
-  it('should spell the workout code system as the lifting slice writes it', () => {
-    expect(WildflowerCodeSystem.Workout).toBe(`${WILDFLOWER_CODE_SYSTEM_BASE}/workout`)
+  it('should spell the training plan definition day code system as the lifting slice writes it', () => {
+    expect(WildflowerCodeSystem.TrainingPlanDefinitionDay).toBe(
+      `${WILDFLOWER_CODE_SYSTEM_BASE}/training-plan-definition-day`
+    )
   })
 })
