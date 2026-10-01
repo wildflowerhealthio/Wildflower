@@ -135,7 +135,10 @@ install -o Dir::Cache::Archives=…`), with a short HTTP timeout and retries so 
 stalled download is cut off rather than waited on. The action saves straight
 afterwards, so a failing compile doesn't lose the entry. A hit installs the
 cached files with `apt-get install --no-download` and no `apt-get update`, so it
-touches no mirror at all.
+touches no mirror at all. It passes the same `Dir::Cache::Archives` as the cold
+install: for a local `.deb` whose version the image's package index also names,
+apt takes the index's copy and looks for it in the archives directory, so
+without the option it finds nothing there and `--no-download` fails.
 
 The same scoping applies as for the build cache. `rust-cache-warm.yml` runs the
 action on `main`, so pull requests restore main's entry while its image is

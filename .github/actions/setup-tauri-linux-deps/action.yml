@@ -44,7 +44,10 @@ runs:
     # A hit holds every .deb the cold install downloaded, so installing those
     # files is the whole install; --no-download fails loudly rather than
     # falling back to the mirror if one is somehow missing. An empty entry
-    # means the image already had every package.
+    # means the image already had every package. apt fetches a local .deb
+    # whose version the image's package index also names from that index
+    # instead, looking for it in the archives directory, so that directory
+    # is pointed at the cache too.
     - name: Install from the cache
       if: steps.restore.outputs.cache-hit == 'true'
       shell: bash
@@ -55,7 +58,10 @@ runs:
         shopt -s nullglob
         debs=("$ARCHIVES"/*.deb)
         if (( ${#debs[@]} )); then
-          sudo apt-get install -y --no-download "${debs[@]}"
+          mkdir -p "$ARCHIVES/partial"
+          sudo apt-get install -y --no-download \
+            -o Dir::Cache::Archives="$ARCHIVES" \
+            "${debs[@]}"
         fi
 
     # Downloads into the cached directory instead of /var/cache/apt/archives,
