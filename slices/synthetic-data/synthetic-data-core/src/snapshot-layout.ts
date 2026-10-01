@@ -1,4 +1,4 @@
-import { Data, Either, Encoding, type ParseResult, Schema } from 'effect'
+import { Data, Either, Encoding, Order, type ParseResult, Schema } from 'effect'
 import type { DocumentReference, FhirResource } from 'fhir-r4/resources'
 import { MetaSource } from 'importer-fundamentals'
 
@@ -139,6 +139,11 @@ const entriesOf = (
 
 const encodeEntry = Schema.encodeEither(Entry.FileSchema)
 
+/** Entries by the path their file sits at, by code unit (`SnapshotFile.byPath`). */
+const byEntryPath: Order.Order<Entry.Any> = Order.mapInput(SnapshotFile.byPath, (entry) => ({
+  path: Entry.pathOf(entry),
+}))
+
 /** Whether two entries at one path are written as the same file. */
 const sameEntry = (
   left: Entry.Any,
@@ -167,9 +172,7 @@ const merge = (
       }
       entriesByPath.set(path, entry)
     }
-    return [...entriesByPath.entries()]
-      .toSorted(([left], [right]) => SnapshotFile.byPath({ path: left }, { path: right }))
-      .map(([, entry]) => entry)
+    return [...entriesByPath.values()].toSorted(byEntryPath)
   })
 
 /**

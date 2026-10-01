@@ -1,6 +1,8 @@
 import { DateTime, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
+import { harImporter } from 'har-importer-core'
+import { MetaSource } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -97,6 +99,81 @@ const decodeLinkedSourceFile = Schema.decodeSync(
     })
   )
 )
+
+/**
+ * The published wire format, pinned: what the live site and the data repo read.
+ * A change here is a format change, not a refactor.
+ */
+const GOLDEN_SOURCE_FILE = `{
+  "id": "source-1",
+  "contained": [],
+  "extension": [],
+  "modifierExtension": [],
+  "identifier": [],
+  "status": "current",
+  "category": [
+    {
+      "extension": [],
+      "coding": [
+        {
+          "extension": [],
+          "code": "har-archive",
+          "system": "https://wildflowerhealth.io/fhir/CodeSystem/web-trace"
+        }
+      ]
+    }
+  ],
+  "author": [],
+  "relatesTo": [],
+  "securityLabel": [],
+  "content": [
+    {
+      "extension": [],
+      "modifierExtension": [],
+      "attachment": {
+        "extension": [],
+        "contentType": "application/json",
+        "url": "har/pharmacy.har",
+        "size": 2,
+        "title": "pharmacy.har"
+      }
+    }
+  ],
+  "resourceType": "DocumentReference"
+}
+`
+
+const GOLDEN_INDEX = `{
+  "schemaVersion": 1,
+  "asOf": "2026-09-28T00:00:00.000Z",
+  "generator": {
+    "name": "synthetic-data-core",
+    "wildflowerCommit": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "people": [
+    {
+      "key": "person-1",
+      "displayName": "Sam Okoye",
+      "summary": "A story.",
+      "patientIds": [
+        "p-1"
+      ],
+      "resources": [
+        "fhir/DocumentReference/source-1.json",
+        "fhir/Patient/p-1.json"
+      ],
+      "staticFiles": [
+        "har/pharmacy.har"
+      ]
+    }
+  ],
+  "totals": {
+    "people": 1,
+    "resources": 2,
+    "staticFiles": 1
+  }
+}
+`
 
 const labelOf = (resource: FhirResource): string => `${resource.resourceType}/${resource.id}`
 
@@ -269,6 +346,49 @@ describe('Snapshot.assemble', () => {
       { member, resources: [] },
     ])
     expect(Either.getLeft(result)).toMatchObject({ _tag: 'Some', value: { _tag: 'ParseError' } })
+  })
+
+  test('writes the published files byte for byte: key order, indentation and the linked url', () => {
+    const { system, code } = harImporter.sourceFileFormat.coding
+    const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
+    const sourceFile = decodeResource({
+      resourceType: 'DocumentReference',
+      id: 'source-1',
+      status: 'current',
+      category: [{ coding: [{ system, code }] }],
+      content: [
+        {
+          attachment: {
+            contentType: 'application/json',
+            data: 'aGk=',
+            size: 2,
+            title: 'pharmacy.har',
+          },
+        },
+      ],
+    })
+    const patient = decodeResource({
+      resourceType: 'Patient',
+      id: 'p-1',
+      meta: { source: MetaSource.makeReference('source-1') },
+    })
+    const files = filesOf(
+      assemble([
+        {
+          member: { key: 'person-1', displayName: 'Sam Okoye', summary: 'A story.' },
+          resources: [patient, sourceFile],
+        },
+      ])
+    )
+    expect(files.map((file) => file.path)).toEqual([
+      'fhir/DocumentReference/source-1.json',
+      'fhir/Patient/p-1.json',
+      'har/pharmacy.har',
+      'index.json',
+    ])
+    expect(textOf(files[0])).toBe(GOLDEN_SOURCE_FILE)
+    expect(contentsOf(files[2])).toEqual(Buffer.from('hi'))
+    expect(textOf(files[3])).toBe(GOLDEN_INDEX)
   })
 
   test('writes only index.json for members with no records', () => {

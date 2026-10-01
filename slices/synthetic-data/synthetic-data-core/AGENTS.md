@@ -37,8 +37,8 @@ wildflowerCommit, members)` lays out each `MemberRecords` (`member`, and
   `FileSchema` (`ResourceFileSchema`, `AttachmentFileSchema`) is each entry's
   codec to its file: a resource is the JSON `FhirResourceSchema` encodes it
   to, a linked source file's attachment carrying `attachmentPath`, relative
-  to the snapshot's root, as `url` after the fields the importer wrote, and
-  decoding checks the path is the resource's own; an attachment is its bytes.
+  to the snapshot's root, as `url`, and decoding checks the path is the
+  resource's own; an attachment is its bytes.
   `ResourcePathSchema` and `AttachmentPathSchema` are the path grammars
   (allowlists: no separators, no parent directories). `withAttachmentData`
   carries a linked attachment's bytes inline again, as the import wrote them.

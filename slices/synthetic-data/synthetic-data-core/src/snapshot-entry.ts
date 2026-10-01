@@ -205,7 +205,8 @@ const attachmentPathLinkedBy = (json: ResourceJson): string | undefined => {
 
 /**
  * A source file's JSON with its attachment linking to `attachmentPath`: `url`
- * is the path, after every field the importer wrote, and there is no `data`.
+ * is the path, where `fhir-r4` encodes an attachment's `url`, and there is no
+ * `data`.
  *
  * @remarks
  * Rewritten on the JSON rather than the decoded resource because `fhir-r4`'s
