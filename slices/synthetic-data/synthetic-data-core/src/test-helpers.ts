@@ -18,9 +18,13 @@ import { rexallAccountArbitrary } from 'synthetic-data-rexall-be-well/test-helpe
 import { type ShoppersAccount, ShoppersHar } from 'synthetic-data-shoppers-drugmart'
 import { shoppersCaseArbitrary } from 'synthetic-data-shoppers-drugmart/test-helpers'
 
+import type * as SnapshotFile from './snapshot-file.ts'
+import * as Source from './snapshot-source.ts'
+
 /**
  * Generated records run through the real importers, whole — the source-file
- * `DocumentReference` included — as a snapshot lays them out.
+ * `DocumentReference` included — as a snapshot lays them out, and a
+ * snapshot's files served to a reader from memory.
  */
 
 /** Every resource `bytes` imports to through `harImporter.decode`, picked as `fileName`. */
@@ -109,6 +113,35 @@ const importShoppersFamily = async (
 const hashOf = (bytes: Uint8Array): Promise<string> =>
   Effect.runPromise(sha256Base64(new Uint8Array(bytes)))
 
+/**
+ * A snapshot's files as the `Snapshot.Source.Source` a reader fetches them
+ * through: a path among `files` serves its text or bytes, and any other path
+ * fails as an `UnreadableFile`, as a missing file on a static host does.
+ */
+const sourceOf = (files: readonly SnapshotFile.Any[]): Source.Source => {
+  const byPath = new Map(files.map((file) => [file.path, file]))
+  const fileAt = (path: string): Effect.Effect<SnapshotFile.Any, Source.UnreadableFile> => {
+    const file = byPath.get(path)
+    return file === undefined
+      ? Effect.fail(new Source.UnreadableFile({ path, reason: 'Not found.' }))
+      : Effect.succeed(file)
+  }
+  return {
+    text: (path) =>
+      fileAt(path).pipe(
+        Effect.map((file) =>
+          file._tag === 'Text' ? file.text : new TextDecoder().decode(file.bytes)
+        )
+      ),
+    bytes: (path) =>
+      fileAt(path).pipe(
+        Effect.map((file) =>
+          file._tag === 'Bytes' ? file.bytes : new TextEncoder().encode(file.text)
+        )
+      ),
+  }
+}
+
 export {
   HAR_FILE_NAME,
   hashOf,
@@ -117,5 +150,6 @@ export {
   importShoppersFamily,
   rexallPersonCaseArbitrary,
   shoppersFamilyCaseArbitrary,
+  sourceOf,
 }
 export type { ImportedPerson, RexallPersonCase, ShoppersFamilyCase }

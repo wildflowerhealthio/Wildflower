@@ -277,3 +277,48 @@ describe('Snapshot.Header.FileSchema', () => {
     ).toBe(true)
   })
 })
+
+describe('Snapshot.Header.pathsOf', () => {
+  test('property: the chosen members’ entry paths, each once, in path order, and nobody else’s', () => {
+    fc.assert(
+      fc.property(
+        asOfArbitrary,
+        commitArbitrary,
+        membersArbitrary.chain((members) =>
+          fc.tuple(fc.constant(members), fc.subarray(members.map(({ member }) => member.key)))
+        ),
+        (asOf, commit, [members, chosenKeys]) => {
+          const header = Header.make(asOf, commit, members)
+
+          const paths = Header.pathsOf(header, new Set(chosenKeys))
+
+          const chosen = members.filter(({ member }) => chosenKeys.includes(member.key))
+          expect(paths).toEqual({
+            resources: sorted(
+              chosen.flatMap(({ entries }) =>
+                resourcesOf(entries).map((resource) =>
+                  Entry.resourcePathOf(resource.resourceType, resource.id)
+                )
+              )
+            ),
+            staticFiles: sorted(chosen.flatMap(({ entries }) => attachmentPathsOf(entries))),
+          })
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('selects nothing for a key the header does not list', () => {
+    const header = Header.make(DateTime.unsafeMake('2026-09-28T00:00:00.000Z'), 'abc123', [
+      {
+        member: { key: 'person-1', displayName: 'Sam Okoye', summary: '' },
+        entries: [resourceEntryOf('Patient', 'p-1')],
+      },
+    ])
+    expect(Header.pathsOf(header, new Set(['person-2']))).toEqual({
+      resources: [],
+      staticFiles: [],
+    })
+  })
+})

@@ -4,6 +4,8 @@ import { DocumentReference, type FhirResource, FhirResourceSchema } from 'fhir-r
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import * as Entry from './snapshot-entry.ts'
+import * as Layout from './snapshot-layout.ts'
 import {
   HAR_FILE_NAME,
   hashOf,
@@ -12,9 +14,7 @@ import {
   importShoppersFamily,
   rexallPersonCaseArbitrary,
   shoppersFamilyCaseArbitrary,
-} from './imports.test-helpers.ts'
-import * as Entry from './snapshot-entry.ts'
-import * as Layout from './snapshot-layout.ts'
+} from './test-helpers.ts'
 
 /**
  * The layout over real importer output: generated Rexall records and a
