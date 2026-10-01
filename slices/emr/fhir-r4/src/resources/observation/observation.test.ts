@@ -26,6 +26,7 @@ import {
 import * as ObservationComponent from './observation-component.ts'
 import * as ObservationReferenceRange from './observation-reference-range.ts'
 import * as Observation from './observation.ts'
+import { SearchParams } from './search-params.ts'
 
 // ---------------------------------------------------------------------------
 // Decomposed wire-format proof.
@@ -418,3 +419,66 @@ const wireSlot = (key: string, value: unknown): unknown => {
   })
   return encoded[key]
 }
+
+describe('RETRACTED_STATUSES', () => {
+  test('is exactly the two FHIR "never happened" statuses, each a valid status', () => {
+    expect([...Observation.RETRACTED_STATUSES].toSorted()).toEqual([
+      'cancelled',
+      'entered-in-error',
+    ])
+    for (const status of Observation.RETRACTED_STATUSES) {
+      expect(Schema.is(Observation.StatusSchema)(status)).toBe(true)
+    }
+  })
+})
+
+describe('ACTIVITY_CATEGORY', () => {
+  test('is the one `activity` coding of the HL7 observation-category system', () => {
+    const wire = Schema.encodeSync(CodeableConcept.Schema)(Observation.ACTIVITY_CATEGORY)
+    expect(wire).toMatchObject({
+      coding: [
+        {
+          system: 'http://terminology.hl7.org/CodeSystem/observation-category',
+          code: 'activity',
+          display: 'Activity',
+        },
+      ],
+    })
+    expect(wire.coding).toHaveLength(1)
+    expect(Observation.CATEGORY_SYSTEM).toBe(wire.coding?.[0]?.system)
+  })
+})
+
+describe('ObservationSearchParams', () => {
+  test('carries every declared parameter through the wire unchanged', () => {
+    // Arrange
+    const query = {
+      _count: '20',
+      _pageToken: 'opaque-server-token',
+      _id: 'obs-1',
+      identifier: 'http://example.com/observations|o-1',
+      status: 'final',
+      category: 'http://terminology.hl7.org/CodeSystem/observation-category|activity',
+      code: 'http://loinc.org|55423-8',
+      subject: 'Patient/p-1',
+      patient: 'p-1',
+      date: 'ge2026-09-01',
+      'based-on': 'ServiceRequest/squat',
+      'part-of': 'Procedure/workout-1',
+    }
+
+    // Act
+    const reEncoded = Schema.encodeSync(SearchParams)(Schema.decodeUnknownSync(SearchParams)(query))
+
+    // Assert
+    expect(reEncoded).toEqual(query)
+  })
+
+  test.each([
+    { reason: 'a status outside the Observation value set', query: { status: 'active' } },
+    { reason: 'a _count above the 1000 page ceiling', query: { _count: '1001' } },
+    { reason: 'a date with an unknown prefix', query: { date: 'xx2026' } },
+  ])('rejects $reason', ({ query }) => {
+    expect(Schema.decodeUnknownEither(SearchParams)(query)._tag).toBe('Left')
+  })
+})

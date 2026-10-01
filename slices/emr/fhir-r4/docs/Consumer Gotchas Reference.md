@@ -18,7 +18,7 @@ export type { BundleValue } from './resources/bundle.ts'
 
 `resources/index.ts` does the same for the resource-level interfaces a consumer's inferred type can embed — today `PlanDefinitionActionType`, the explicitly written decoded type of the recursive `PlanDefinition.action`.
 
-Keep these if you touch `fhir-r4` — removing one breaks every consumer's `vp pack`. When a consumer's inferred type names a new internal interface, re-export it flat from the producer rather than hand-rolling wire interfaces in the consumer (which is far more code, and forces exporting every `Encoded` interface too, or a wrapper referencing them fails with TS4023). Known consumers: `fhir-stu3-as-r4`, `rexall-be-well-collector` and `medication-core` (whose `medication-core/fhir` subpath is a separate `vp pack` entry, so pack that package, not just the root); the consumer-side view of this trap is pinned in [fhir-stu3-as-r4's AGENTS.md](../../fhir-stu3-as-r4/AGENTS.md).
+Keep these if you touch `fhir-r4` — removing one breaks every consumer's `vp pack`. When a consumer's inferred type names a new internal interface, re-export it flat from the producer rather than hand-rolling wire interfaces in the consumer (which is far more code, and forces exporting every `Encoded` interface too, or a wrapper referencing them fails with TS4023). Known consumers: `fhir-stu3-as-r4`, `rexall-be-well-collector`, `lifting-core`, and `medication-core` (whose `…/fhir` subpath is a separate `vp pack` entry, so pack the package, not just the root); the consumer-side view of this trap is pinned in [fhir-stu3-as-r4's AGENTS.md](../../fhir-stu3-as-r4/AGENTS.md).
 
 ## Re-decoding an already-decoded resource: `uri`/`url` fields are `URL`, not `string`
 

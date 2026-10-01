@@ -70,3 +70,81 @@ describe('label', () => {
     )
   })
 })
+
+describe('make', () => {
+  it('should be one coding under the system, with its display, and the text', () => {
+    fc.assert(
+      fc.property(
+        fc.webUrl(),
+        fc.string(),
+        fc.option(fc.string()),
+        fc.option(fc.string()),
+        (system, code, display, text) => {
+          // Act
+          const concept = CodeableConcept.make({ system, code, display, text })
+
+          // Assert
+          expect(concept.text).toBe(text)
+          expect(
+            concept.coding.map((coding) => [coding.system?.href, coding.code, coding.display])
+          ).toEqual([[new URL(system).href, code, display]])
+          expect(
+            Schema.decodeSync(CodeableConcept.Schema)(
+              Schema.encodeSync(CodeableConcept.Schema)(concept)
+            )
+          ).toEqual(concept)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('onlyCodingIn', () => {
+  it('should find the one coding under a system among others, and none when it is absent or repeated', () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.webUrl(), {
+          minLength: 2,
+          maxLength: 4,
+          selector: (url) => new URL(url).href,
+        }),
+        fc.string(),
+        ([queried = '', ...others], code) => {
+          // Arrange
+          const [target] = CodeableConcept.make({
+            system: queried,
+            code,
+            display: null,
+            text: null,
+          }).coding
+          const rest = others.flatMap(
+            (system) => CodeableConcept.make({ system, code, display: null, text: null }).coding
+          )
+          const conceptOf = (coding: typeof rest): CodeableConcept.Type => ({
+            id: null,
+            extension: [],
+            coding,
+            text: null,
+          })
+          if (target === undefined) throw new Error('make writes one coding')
+
+          // Act / Assert
+          expect(
+            CodeableConcept.onlyCodingIn(conceptOf([...rest, target]), new URL(queried).href)
+          ).toEqual(Option.some(target))
+          expect(CodeableConcept.onlyCodingIn(conceptOf(rest), new URL(queried).href)).toEqual(
+            Option.none()
+          )
+          expect(
+            CodeableConcept.onlyCodingIn(
+              conceptOf([target, ...rest, target]),
+              new URL(queried).href
+            )
+          ).toEqual(Option.none())
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})

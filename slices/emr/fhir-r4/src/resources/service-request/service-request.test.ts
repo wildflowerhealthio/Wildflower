@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
 import { CodeableConcept, IdentifierAndReference, Meta, Period } from '../../data-types/index.ts'
+import { SearchParams } from './search-params.ts'
 import * as ServiceRequest from './service-request.ts'
 
 const sampleServiceRequest: typeof ServiceRequest.Schema.Type = {
@@ -254,5 +255,41 @@ describe('FhirR4ServiceRequest', () => {
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('ServiceRequestSearchParams', () => {
+  test('carries every declared parameter through the wire unchanged', () => {
+    // Arrange
+    const query = {
+      _count: '20',
+      _pageToken: 'opaque-server-token',
+      _id: 'sr-1',
+      identifier: 'http://example.com/orders|sr-1',
+      status: 'active',
+      intent: 'plan',
+      code: 'https://wildflowerhealth.io/fhir/CodeSystem/exercise|squat',
+      subject: 'Patient/p-1',
+      patient: 'p-1',
+      authored: 'ge2026-09-01',
+      category: 'https://wildflowerhealth.io/fhir/CodeSystem/feature|strength-training',
+      'instantiates-canonical': 'https://wildflowerhealth.io/fhir/PlanDefinition/plan-1',
+      'based-on': 'CarePlan/cp-1',
+    }
+
+    // Act
+    const reEncoded = Schema.encodeSync(SearchParams)(Schema.decodeUnknownSync(SearchParams)(query))
+
+    // Assert
+    expect(reEncoded).toEqual(query)
+  })
+
+  test.each([
+    { reason: 'a status outside the ServiceRequest value set', query: { status: 'final' } },
+    { reason: 'an intent outside the ServiceRequest value set', query: { intent: 'wish' } },
+    { reason: 'a _count above the 1000 page ceiling', query: { _count: '1001' } },
+    { reason: 'an authored date with an unknown prefix', query: { authored: 'xx2026' } },
+  ])('rejects $reason', ({ query }) => {
+    expect(Schema.decodeUnknownEither(SearchParams)(query)._tag).toBe('Left')
   })
 })

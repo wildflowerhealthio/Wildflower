@@ -89,6 +89,12 @@ const upsertResource = (
       case 'Goal':
         yield* client.Goal.Update({ path, payload: { ...resource, id } })
         break
+      case 'PlanDefinition':
+        yield* client.PlanDefinition.Update({ path, payload: { ...resource, id } })
+        break
+      case 'Procedure':
+        yield* client.Procedure.Update({ path, payload: { ...resource, id } })
+        break
       default: {
         const unreachable: never = resource
         yield* Effect.fail(

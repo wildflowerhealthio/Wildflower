@@ -3,6 +3,7 @@
 // adapter-side schema used to encode/decode FHIR R4 JSON. Add a new entry
 // here whenever a new datatype file lands.
 
+export { narrowFields } from './narrow-fields.ts'
 export { withMandatoryId } from './with-mandatory-id.ts'
 
 // Base
@@ -49,7 +50,10 @@ export * as Bundle from './resources/bundle.ts'
 // Terminology — canonical coding-system and extension URLs
 export {
   CanadianCodingSystem,
+  WILDFLOWER_CANONICAL_BASE,
+  WILDFLOWER_CODE_SYSTEM_BASE,
   WILDFLOWER_EXTENSION_BASE,
+  WildflowerCodeSystem,
   WildflowerExtension,
 } from './terminology.ts'
 

@@ -1,0 +1,36 @@
+{
+  "name": "lifting-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure strength-training plans as FHIR R4 resources: a training plan definition (a PlanDefinition) of days and exercise definitions with their progression rule, an exercise ServiceRequest at one load, each workout performed as a Procedure and each set as an Observation part of it, the increment / hold / deload decision over completed workouts, and the StrongLifts 5x5 template — each a schema narrowing the decoded fhir-r4 type, with a make and getters. No DOM, no platform imports.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*"
+  }
+}

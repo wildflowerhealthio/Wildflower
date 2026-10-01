@@ -9,6 +9,8 @@ import {
   fragmentReferenceTo,
   IdentifierSchema,
   ReferenceSchema,
+  referencedIdOf,
+  referenceTo,
 } from './identifier-and-reference.ts'
 
 // ---------------------------------------------------------------------------
@@ -212,5 +214,40 @@ describe('fragmentIdOf', () => {
 
   it('should not read a bare # as naming any contained resource', () => {
     expect(fragmentIdOf('#')).toEqual(Option.none())
+  })
+})
+
+describe('referenceTo / referencedIdOf', () => {
+  const resourceTypeArb = fc.constantFrom('Patient', 'ServiceRequest', 'CarePlan')
+
+  it('should write a relative literal reference, and read the id back from it', () => {
+    fc.assert(
+      fc.property(resourceTypeArb, fc.string({ minLength: 1 }), (resourceType, id) => {
+        // Act
+        const reference = referenceTo({ resourceType, id })
+
+        // Assert
+        expect(reference.reference).toBe(`${resourceType}/${id}`)
+        expect(referencedIdOf(reference, resourceType)).toEqual(Option.some(id))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should read no id from a reference to another type, to an empty id, or with no literal', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }), (id) => {
+        expect(
+          referencedIdOf(referenceTo({ resourceType: 'CarePlan', id }), 'ServiceRequest')
+        ).toEqual(Option.none())
+        expect(
+          referencedIdOf(referenceTo({ resourceType: 'ServiceRequest', id: '' }), 'ServiceRequest')
+        ).toEqual(Option.none())
+        expect(referencedIdOf({ ...sampleReference, reference: null }, 'ServiceRequest')).toEqual(
+          Option.none()
+        )
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })

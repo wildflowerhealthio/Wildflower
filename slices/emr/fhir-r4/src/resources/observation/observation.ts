@@ -203,6 +203,37 @@ const StatusSchema = Schema.Enums({
   unknown: 'unknown',
 } as const)
 
+/**
+ * The `Observation.status` values meaning the observation is to be
+ * disregarded: `cancelled` (it never completed) and `entered-in-error` (it
+ * should not have been recorded) — FHIR's two "never happened" statuses. A
+ * reader skips an observation with one of them rather than treating it as a
+ * result.
+ */
+const RETRACTED_STATUSES: ReadonlySet<typeof StatusSchema.Type> = new Set([
+  'cancelled',
+  'entered-in-error',
+])
+
+/**
+ * HL7's `observation-category` code system — the categories an
+ * `Observation.category` files an observation under (`vital-signs`,
+ * `laboratory`, `activity`, …).
+ */
+const CATEGORY_SYSTEM = 'http://terminology.hl7.org/CodeSystem/observation-category'
+
+/**
+ * The `activity` observation category: "observations that measure or record
+ * any bodily activity that enhances or maintains physical fitness", which the
+ * Physical Activity IG files exercise observations under.
+ */
+const ACTIVITY_CATEGORY: CodeableConcept.Type = CodeableConcept.make({
+  system: CATEGORY_SYSTEM,
+  code: 'activity',
+  display: 'Activity',
+  text: null,
+})
+
 const ObservationStruct = Schema.extend(
   Schema.Struct({ resourceType: Schema.Literal('Observation') }),
   mutableEncoded(
@@ -328,5 +359,11 @@ const ObservationSchema: Schema.Schema<
 /** A decoded `Observation` — the type {@link ObservationSchema} produces. */
 type Type = typeof ObservationSchema.Type
 
-export { ObservationSchema as Schema, StatusSchema }
+export {
+  ACTIVITY_CATEGORY,
+  CATEGORY_SYSTEM,
+  ObservationSchema as Schema,
+  RETRACTED_STATUSES,
+  StatusSchema,
+}
 export type { Type }

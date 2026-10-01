@@ -12,7 +12,7 @@ const sliceClient = defineSliceHttpClient({
 // ── DTS serialization workaround ──────────────────────────────────────
 //
 // `sliceClient.ClientTag<Self>()` infers its base-class shape from the
-// 13-group `FhirResourcesApi`. tsgo expands that shape inline when
+// 15-group `FhirResourcesApi`. tsgo expands that shape inline when
 // emitting the `.d.ts`, exceeding its serialization limit (TS7056).
 //
 // Fix: give the shape a **named interface** that tsgo references by name
