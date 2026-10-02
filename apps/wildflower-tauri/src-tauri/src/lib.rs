@@ -124,15 +124,12 @@ fn host_owner_scopes() -> Vec<String> {
 /// Resolves what the Wildflower server reads from this build and the
 /// platform's paths into its [`WildflowerServerConfig`].
 ///
-/// `resource_dir` is Tauri's bundled-resource directory, resolved in
-/// `.setup()` (where the `AppHandle` path API is available) and threaded in
-/// rather than added to `ServerRuntimeConfig`. The desktop/iOS release build
-/// reads the FHIR SearchParameter bundle from it; the dev build ignores it in
-/// favour of the workspace source tree, and Android in favour of the embedded
-/// copy.
+/// Only the desktop/iOS release build asks `app_handle` for Tauri's
+/// bundled-resource dir, where it reads the FHIR SearchParameter bundle; the dev
+/// build reads the workspace source tree, and Android the embedded copy.
 fn server_config(
     runtime: ServerRuntimeConfig,
-    resource_dir: std::path::PathBuf,
+    #[cfg_attr(target_os = "android", allow(unused_variables))] app_handle: &tauri::AppHandle,
 ) -> anyhow::Result<WildflowerServerConfig> {
     let owner_ui_base = OwnerUiBase::parse(OWNER_UI_BASE_URL)
         .context("owner_ui_base_url (from tauri-shared-config.json) must be an absolute URL")?;
@@ -154,8 +151,6 @@ fn server_config(
     // resource dir is a real directory).
     #[cfg(target_os = "android")]
     let search_parameter_data_dir = {
-        // Android reads the embedded bundle, never the resource dir.
-        drop(resource_dir);
         const EMBEDDED_SEARCH_PARAMETERS_R4: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../slices/emr/emr-rust/assets/search-parameters-r4.json"
@@ -194,7 +189,7 @@ fn server_config(
             "/../../../slices/emr/emr-rust/assets"
         ))
     } else {
-        resource_dir.join("fhir-search-params")
+        app_handle.path().resource_dir()?.join("fhir-search-params")
     };
     Ok(WildflowerServerConfig {
         runtime,
@@ -330,11 +325,6 @@ pub fn run() {
             let app_data_dir = resolve_data_dir(app.handle())?;
             std::fs::create_dir_all(&app_data_dir)?;
 
-            // Tauri's bundled-resource dir — resolved here (the path API needs
-            // the `AppHandle`) and threaded into the server config, which reads
-            // the FHIR SearchParameter bundle from it in a release build.
-            let resource_dir = app.path().resource_dir()?;
-
             // Attach the bridge before the server starts: `listen` registers
             // synchronously, so the webview's `__Ready` (which fires much
             // later, once the bundle runs) can't be missed even if the server
@@ -370,7 +360,7 @@ pub fn run() {
                 app_data_dir,
             };
 
-            match server_config(runtime, resource_dir) {
+            match server_config(runtime, app.handle()) {
                 Ok(config) => {
                     let (server_host_context, server_receivers) =
                         ServerHostContext::new(config, host_ports(app.handle(), publishers));
