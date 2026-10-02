@@ -1,0 +1,38 @@
+/*
+ * The strip the app shell renders above every route while the server isn't
+ * running. Starting is a calm neutral strip; a stop takes the warning tone the
+ * `StatusBadge` and `PartialBanner` share. Colours come from tundra-css and
+ * `react-tundraish` tokens.
+ */
+.server-status-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-divider);
+  background-color: var(--color-background);
+}
+
+.server-status-banner--stopped {
+  border-bottom-color: var(--color-warning-border);
+  background-color: var(--color-warning-background);
+}
+
+.server-status-banner__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.server-status-banner__message {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+/* The server's own error chain: a machine string, so mono and wrapping. */
+.server-status-banner__error {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  word-break: break-word;
+}

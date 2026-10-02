@@ -17,6 +17,8 @@
     "@tauri-apps/api": "catalog:",
     "@tauri-apps/plugin-fs": "catalog:",
     "@tauri-apps/plugin-opener": "catalog:",
+    "background-server-service-core": "workspace:*",
+    "background-server-service-react": "workspace:*",
     "branding-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",

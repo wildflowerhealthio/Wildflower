@@ -4,12 +4,20 @@ The **background server service**: the Tauri host runs the Wildflower server
 (`slices/wildflower-server`) through `tauri-plugin-background-service`, each
 start on its own OS thread and tokio runtime behind a run gate, and watches it:
 a status snapshot on the bridge, a restart from the page, and local
-notifications for stops, tunnel traffic and tunnel drops. Read the
+notifications for stops, tunnel traffic and tunnel drops. The page shows the
+snapshot in a banner and on `/settings/server`. Read the
 [Design Explanation](./docs/Design%20Explanation.md) before changing anything
 here.
 
 ## Package roles
 
+- **[`background-server-service-core`](./background-server-service-core/AGENTS.md)**
+  — `BackgroundServerServiceBridge`: the `ServerServiceStatus` and
+  `RestartServer` schemas, the contract the Rust mirror is pinned to. Pure.
+- **[`background-server-service-react`](./background-server-service-react/AGENTS.md)**
+  — the page side: the status store and the boot-stable handler that fills it,
+  `ServerStatusBanner`, the `/settings/server` page, and the `RestartServer`
+  sender.
 - **`background-server-service-rust`** — no `tauri` dependency, so everything
   in it tests without GTK.
   - The serde mirror of the bridge (`bridge.rs`: `ServerServiceStatus`,
@@ -49,6 +57,12 @@ the iOS background modes and `BGTask` identifiers, and the Tauri entry's
 Its Android `WildflowerApplication` points `HeadlessBridge.nativeLibName` at
 the host's library, and `.setup()` marks the host running for the Android shim
 before the service starts.
+Its web entry also seeds the status handler into the transport, and passes the
+banner and the Settings row for `/settings/server` to `wildflower-react`, which
+mounts the route and provides the store.
+
+`bridge-wire-golden.json`, at the slice root, holds the exact wire strings and
+stop reasons both `-rust`'s golden tests and `-core`'s `bridge.test.ts` read.
 
 ## Layering
 
@@ -76,6 +90,12 @@ before the service starts.
   `tauri-shared-config.json` entries. Change the foreground-service type there,
   and the host tests point at the plugin config and the Android manifest that
   must follow.
+- **The page renders the latest snapshot and nothing else.** No client-side
+  state machine: a store holds the last `ServerServiceStatus`, and the banner
+  and page derive everything from it.
+- **A wire change edits `bridge-wire-golden.json`, the TS schema and the serde
+  mirror together.** Each side's tests read the shared file, so changing one
+  side alone fails.
 
 ## References
 

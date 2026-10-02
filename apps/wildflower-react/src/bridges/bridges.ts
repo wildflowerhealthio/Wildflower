@@ -1,3 +1,4 @@
+import { BackgroundServerServiceBridge } from 'background-server-service-core'
 import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { Logging } from 'effect-messaging-core'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
@@ -16,6 +17,7 @@ const bridges = [
   GatekeeperBridge,
   CollectorBridge,
   HarRecorderBridge,
+  BackgroundServerServiceBridge,
   Logging.LogBridge,
 ] as const
 

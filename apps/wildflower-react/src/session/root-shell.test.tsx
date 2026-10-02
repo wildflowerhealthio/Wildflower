@@ -124,6 +124,23 @@ vi.mock('../bridges/collector-sender-forwarder.tsx', () => ({
 vi.mock('../bridges/har-recorder-sender-forwarder.tsx', () => ({
   HarRecorderSenderForwarder: makePassthrough('HarRecorderSenderForwarder'),
 }))
+vi.mock('../bridges/background-server-service-sender-forwarder.tsx', () => ({
+  BackgroundServerServiceSenderForwarder: makePassthrough('BackgroundServerServiceSenderForwarder'),
+}))
+// `renderApp` builds the server status store through the real
+// `react-kitchen-sink` store plumbing, which this harness mocks away; the
+// provider is a passthrough and the store a no-op, as for the pending-consent
+// store above.
+vi.mock('background-server-service-react', () => ({
+  ServerServiceStatusProvider: makePassthrough('ServerServiceStatusProvider'),
+  makeServerServiceStatusStore: () => ({
+    subscribable: {
+      get: Effect.succeed(null),
+      changes: { pipe: () => ({}) },
+    },
+    setStatus: () => {},
+  }),
+}))
 // `renderApp` wraps the tree in `telemetry-web`'s `<ErrorBoundary>` and
 // reports to `Sentry`. Neither is the thing under test, and the real
 // `ErrorBoundary` would mask assertion failures by swallowing them into
@@ -181,6 +198,7 @@ describe('renderApp InnerWrap lifecycle', () => {
     'AuthStateProvider',
     'CollectorSenderForwarder',
     'HarRecorderSenderForwarder',
+    'BackgroundServerServiceSenderForwarder',
   ] as const
 
   // `renderApp` mounts into `document.getElementById('root')` via
@@ -224,6 +242,7 @@ describe('renderApp InnerWrap lifecycle', () => {
         externalLinkRoot: () => 'https://example.test',
         platformSettingsItems: [],
         platformTabs: [],
+        platformBanner: null,
         redirectToDeviceLoginOnUnauthorized: false,
         serverKind: ServerKind.Wildflower(),
       })
