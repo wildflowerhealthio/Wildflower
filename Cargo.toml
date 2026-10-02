@@ -80,3 +80,11 @@ utoipa-axum = "0.3"
 # `unsafe_code` at `deny` (see its manifest) until #886 removes it.
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# Our fork of `tauri-plugin-background-service` 1.0.1 with two fixes: Android
+# starts the foreground service with no native core (#886), and iOS stops a
+# running service gracefully, with `PlatformExpiration`, before suspending the
+# app in the background. Tracks the fixes' branch (fork PR #2, stacked on #1);
+# `deny.toml` allows this git source.
+[patch.crates-io]
+tauri-plugin-background-service = { git = "https://github.com/wildflowerhealthio/tauri-background-service", branch = "fix/ios-background-grace-window" }

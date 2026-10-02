@@ -676,7 +676,7 @@ mod tests {
             .expect("the Application class is named relative to the app's namespace");
 
         let application_source = read_crate_file(&format!(
-            "gen/android/app/src/main/java/com/wildflower_tauri/app/{relative_class_name}.kt"
+            "gen/android/app/src/main/java/io/wildflowerhealth/hostapp/{relative_class_name}.kt"
         ));
         assert!(
             application_source.contains(&format!(
