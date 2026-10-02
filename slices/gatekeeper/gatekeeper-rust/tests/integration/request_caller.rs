@@ -44,7 +44,7 @@ async fn the_bearer_gate_stamps_the_token_s_client() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         stamped_caller(&response),
-        Some(RequestCaller::OAuthClient {
+        Some(RequestCaller {
             client_id: "scoped-app".to_owned()
         })
     );
@@ -85,7 +85,7 @@ async fn the_session_gate_stamps_the_token_s_client() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         stamped_caller(&response),
-        Some(RequestCaller::OAuthClient {
+        Some(RequestCaller {
             client_id: gatekeeper_rust::default_first_party_client_id()
         })
     );

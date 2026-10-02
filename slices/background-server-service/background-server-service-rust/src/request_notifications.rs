@@ -61,28 +61,25 @@ impl CallerActivity {
     }
 }
 
-/// The caller's part of its notification id. The kinds are prefixed so an OAuth
-/// client and a self-hosted app with the same id never share a notification.
+/// The caller's part of its notification id. A client's is prefixed, so a
+/// client whose id is `unidentified` never shares the unidentified group's.
 fn caller_id(caller: Option<&RequestCaller>) -> String {
     match caller {
-        Some(RequestCaller::OAuthClient { client_id }) => format!("client:{client_id}"),
-        Some(RequestCaller::SelfHostedApp { app_id }) => format!("app:{app_id}"),
+        Some(RequestCaller { client_id }) => format!("client:{client_id}"),
         None => "unidentified".to_owned(),
     }
 }
 
 fn arrival_subject(caller: Option<&RequestCaller>) -> &str {
     match caller {
-        Some(RequestCaller::OAuthClient { client_id }) => client_id,
-        Some(RequestCaller::SelfHostedApp { app_id }) => app_id,
+        Some(RequestCaller { client_id }) => client_id,
         None => "An unidentified caller",
     }
 }
 
 fn count_subject(caller: Option<&RequestCaller>) -> &str {
     match caller {
-        Some(RequestCaller::OAuthClient { client_id }) => client_id,
-        Some(RequestCaller::SelfHostedApp { app_id }) => app_id,
+        Some(RequestCaller { client_id }) => client_id,
         None => "Unidentified callers",
     }
 }
@@ -120,7 +117,7 @@ impl CallerRequests {
 
 /// The per-caller request notification policy.
 ///
-/// Each caller (an OAuth client, a self-hosted app, or the unidentified
+/// Each caller (an OAuth client, or the unidentified
 /// callers as one group of their own) has one notification. The first request
 /// after [`REQUEST_WINDOW`] without one notifies at once ([`CallerActivity::Arrived`]).
 /// Later requests update the count ([`CallerActivity::RecentRequests`]) at most
@@ -207,9 +204,9 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    fn app(app_id: &str) -> Option<RequestCaller> {
-        Some(RequestCaller::SelfHostedApp {
-            app_id: app_id.to_owned(),
+    fn client(client_id: &str) -> Option<RequestCaller> {
+        Some(RequestCaller {
+            client_id: client_id.to_owned(),
         })
     }
 
@@ -218,13 +215,10 @@ mod tests {
     }
 
     #[test]
-    fn notifications_name_the_caller_and_keep_kinds_apart() {
-        let client = Some(RequestCaller::OAuthClient {
-            client_id: "lifting".to_owned(),
-        });
+    fn notifications_name_the_caller_and_keep_the_unidentified_apart() {
         assert_eq!(
             CallerActivity::Arrived {
-                caller: client.clone()
+                caller: client("lifting")
             }
             .notification(),
             LocalNotification {
@@ -235,12 +229,12 @@ mod tests {
         );
         assert_eq!(
             CallerActivity::RecentRequests {
-                caller: app("lifting"),
+                caller: client("lifting"),
                 count: 42
             }
             .notification(),
             LocalNotification {
-                id: "server-requests:app:lifting".to_owned(),
+                id: "server-requests:client:lifting".to_owned(),
                 title: "Wildflower server".to_owned(),
                 body: "lifting: 42 requests in the last 5 min".to_owned(),
             }
@@ -258,6 +252,14 @@ mod tests {
             CallerActivity::Arrived { caller: None }.notification().id,
             "server-requests:unidentified"
         );
+        assert_eq!(
+            CallerActivity::Arrived {
+                caller: client("unidentified")
+            }
+            .notification()
+            .id,
+            "server-requests:client:unidentified"
+        );
     }
 
     #[test]
@@ -265,14 +267,17 @@ mod tests {
         let start = Instant::now();
         let mut coalescer = RequestNotificationCoalescer::new();
         assert_eq!(
-            coalescer.record(request(app("lifting")), start),
+            coalescer.record(request(client("lifting")), start),
             Some(CallerActivity::Arrived {
-                caller: app("lifting")
+                caller: client("lifting")
             })
         );
         for second in 1..=3 {
             assert_eq!(
-                coalescer.record(request(app("lifting")), start + Duration::from_secs(second)),
+                coalescer.record(
+                    request(client("lifting")),
+                    start + Duration::from_secs(second)
+                ),
                 None
             );
         }
@@ -287,7 +292,7 @@ mod tests {
         assert_eq!(
             coalescer.take_due_updates(start + REQUEST_UPDATE_INTERVAL),
             vec![CallerActivity::RecentRequests {
-                caller: app("lifting"),
+                caller: client("lifting"),
                 count: 4
             }]
         );
@@ -301,15 +306,13 @@ mod tests {
         at_ms: u64,
     }
 
-    /// The callers the properties draw from: two apps, a client with an app's
-    /// id, and the unidentified group.
+    /// The callers the properties draw from: two clients, a client named like
+    /// the unidentified group, and the unidentified group.
     fn caller() -> impl Strategy<Value = Option<RequestCaller>> {
         prop_oneof![
-            Just(app("lifting")),
-            Just(app("viewer")),
-            Just(Some(RequestCaller::OAuthClient {
-                client_id: "lifting".to_owned()
-            })),
+            Just(client("lifting")),
+            Just(client("viewer")),
+            Just(client("unidentified")),
             Just(None),
         ]
     }

@@ -2,7 +2,7 @@
 //! front relayed through the tunnel, report who made it to the host.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, which
-//! the gatekeeper bearer gates and the subdomain reverse proxy stamp (see
+//! the gatekeeper bearer gates stamp (see
 //! `shared_structures_rust::request_caller`). The host turns the reports into
 //! "this app is using your server" notifications.
 
@@ -55,7 +55,7 @@ mod tests {
     use axum::Router;
     use tower::ServiceExt;
 
-    /// A router whose `/app` response is stamped with a self-hosted app caller
+    /// A router whose `/app` response is stamped with an OAuth client caller
     /// and whose `/anonymous` response carries no caller, wrapped in the layer.
     fn reporting_router(forwarded_request_sender: mpsc::Sender<ForwardedRequest>) -> Router {
         Router::new()
@@ -63,11 +63,9 @@ mod tests {
                 "/app",
                 get(|| async {
                     let mut response = Response::new(Body::from("app"));
-                    response
-                        .extensions_mut()
-                        .insert(RequestCaller::SelfHostedApp {
-                            app_id: "lifting".to_owned(),
-                        });
+                    response.extensions_mut().insert(RequestCaller {
+                        client_id: "lifting".to_owned(),
+                    });
                     response
                 }),
             )
@@ -100,8 +98,8 @@ mod tests {
         assert_eq!(
             receiver.try_recv(),
             Ok(ForwardedRequest {
-                caller: Some(RequestCaller::SelfHostedApp {
-                    app_id: "lifting".to_owned()
+                caller: Some(RequestCaller {
+                    client_id: "lifting".to_owned()
                 })
             })
         );
