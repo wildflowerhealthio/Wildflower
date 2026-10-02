@@ -6,13 +6,10 @@ import {
   AppNotFoundSchema,
   CloudAppBodySchema,
   CloudAppDetailSchema,
-  CreateSelfHostedAppBodySchema,
   HomeScreenSchema,
   InsufficientScopeSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
-  SelfHostedAppBodySchema,
-  SelfHostedAppDetailSchema,
   SystemAppDetailSchema,
 } from './schemas.ts'
 
@@ -25,8 +22,8 @@ import {
  * surfaces as a `403 InsufficientScope` when the caller's token doesn't cover it.
  *
  * Per-kind detail/create/replace live on their own root resources (`/cloud-apps`,
- * `/self-hosted-apps`, `/system-apps`), each returning the flat per-kind detail
- * shape; `DELETE /apps/:id` removes any kind (204); `PUT /home-screen` atomically
+ * `/system-apps`), each returning the flat per-kind detail shape;
+ * `DELETE /apps/:id` removes a cloud app (204); `PUT /home-screen` atomically
  * reorders / enables every kind. A per-kind path given an id of another kind is a
  * `404`. See `docs/Apps/Explanation.md` and the per-endpoint schemas.
  */
@@ -57,36 +54,6 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
   )
-  // --- Self-hosted apps ---------------------------------------------------
-  .add(
-    // Install a self-hosted app from an uploaded zip — `multipart/form-data`
-    // ({@link CreateSelfHostedAppBodySchema}). A multipart endpoint's typed client
-    // payload is a `FormData` instance.
-    HttpApiEndpoint.post('CreateSelfHostedApp', '/self-hosted-apps')
-      .setPayload(CreateSelfHostedAppBodySchema)
-      .addSuccess(SelfHostedAppDetailSchema)
-      .addError(InvalidFieldSchema, { status: 400 })
-      .addError(InsufficientScopeSchema, { status: 403 })
-  )
-  .add(
-    HttpApiEndpoint.get('GetSelfHostedApp', '/self-hosted-apps/:id')
-      .setPath(AppIdPathSchema)
-      .addSuccess(SelfHostedAppDetailSchema)
-      .addError(InsufficientScopeSchema, { status: 403 })
-      .addError(AppNotFoundSchema, { status: 404 })
-  )
-  .add(
-    // Replace a self-hosted app's launch path; a non-self-hosted id is `404`, a
-    // seeded app is `409`.
-    HttpApiEndpoint.put('ReplaceSelfHostedApp', '/self-hosted-apps/:id')
-      .setPath(AppIdPathSchema)
-      .setPayload(SelfHostedAppBodySchema)
-      .addSuccess(SelfHostedAppDetailSchema)
-      .addError(InvalidFieldSchema, { status: 400 })
-      .addError(InsufficientScopeSchema, { status: 403 })
-      .addError(AppNotFoundSchema, { status: 404 })
-      .addError(AppNotEditableSchema, { status: 409 })
-  )
   // --- System apps (read-only) -------------------------------------------
   .add(
     HttpApiEndpoint.get('GetSystemApp', '/system-apps/:id')
@@ -98,7 +65,7 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
   // --- Unified delete + homescreen ---------------------------------------
   .add(
     // Delete any app (kind resolved via the registration). `204` on success; a
-    // system / seeded self-hosted app is `409`.
+    // system app is `409`.
     HttpApiEndpoint.del('DeleteApp', '/apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(HttpApiSchema.NoContent)

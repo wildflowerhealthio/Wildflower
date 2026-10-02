@@ -11,7 +11,7 @@ interface AppsListBodyProps {
 
 /**
  * The apps settings landing — a navigation-only list of **every** registered
- * app (system / cloud / self-hosted, enabled or not), each row linking to its
+ * app (system / cloud, enabled or not), each row linking to its
  * detail page, plus an "Add app" header action. Enable/disable and edit live on
  * the per-app detail page; reordering + hiding from the home screen live on the
  * `/home` Edit mode. Presentational + prop-driven so it renders in tests without

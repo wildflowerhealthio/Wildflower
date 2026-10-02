@@ -24,7 +24,7 @@ type FhirR4ResourcesClientRequirements = HttpClient.HttpClient | FhirR4Resources
  * prefix, so the client can address any FHIR server. Naming the base is the
  * **provider's** job, not this layer's: the host app re-applies `/fhir-r4` when
  * it wires this layer's `HttpClient` (`apps/wildflower-react`'s
- * `router-context.ts`), and a self-hosted SMART app prepends the `iss` verbatim
+ * `router-context.ts`), and a SMART app prepends the `iss` verbatim
  * (`fhir-r4-react/smart`'s `smartHttpClientLayer`).
  *
  * Leaves `HttpClient` unprovided for exactly that reason: the provider supplies

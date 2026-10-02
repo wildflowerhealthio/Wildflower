@@ -1,26 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import {
-  AsyncErrorView,
-  ErrorBanner,
-  Field,
-  FieldDescription,
-  PageHeader,
-  TextField,
-} from 'react-tundraish'
+import { AsyncErrorView, ErrorBanner, PageHeader } from 'react-tundraish'
 
-import { useCloudAppCreateMutation, useSelfHostedAppCreateMutation } from '../../../queries.ts'
+import { useCloudAppCreateMutation } from '../../../queries.ts'
 import { CloudAppFields, type CloudFields } from './-forms.tsx'
 import formStyles from './-forms.module.css'
-
-/** The two creatable kinds (system apps are seeded, not user-added). */
-type Mode = 'cloud' | 'self-hosted'
-
-const MODE_OPTIONS: readonly { readonly value: Mode; readonly label: string }[] = [
-  { value: 'cloud', label: 'Cloud' },
-  { value: 'self-hosted', label: 'Self-hosted' },
-]
 
 const EMPTY_CLOUD: CloudFields = { name: '', subtitle: '', url: '', requiresTunnel: false }
 
@@ -30,22 +14,14 @@ interface NewAppBodyProps {
 }
 
 /**
- * The create-app page. A full-width tabs picker switches between the **cloud**
- * arm (a JSON `POST /cloud-apps` — a URL template + requires-tunnel, via
- * {@link useCloudAppCreateMutation}) and the **self-hosted** arm (a multipart
- * `POST /self-hosted-apps` — a name + subtitle + uploaded `.zip` bundle, via
- * {@link useSelfHostedAppCreateMutation}). On success each invokes `onCreated`.
- * Presentational + prop-driven (the navigation callback is injected) so it
- * renders in tests without a live router.
+ * The create-app page: a cloud app's fields, posted as JSON to `POST /cloud-apps`
+ * via {@link useCloudAppCreateMutation} (system apps are seeded, not user-added).
+ * On success it invokes `onCreated`. Presentational + prop-driven (the
+ * navigation callback is injected) so it renders in tests without a live router.
  */
 const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
-  const [mode, setMode] = useState<Mode>('cloud')
   const createMutation = useCloudAppCreateMutation()
-  const selfHostedMutation = useSelfHostedAppCreateMutation()
   const [cloud, setCloud] = useState<CloudFields>(EMPTY_CLOUD)
-  const [selfHostedName, setSelfHostedName] = useState('')
-  const [selfHostedSubtitle, setSelfHostedSubtitle] = useState('')
-  const [selfHostedFile, setSelfHostedFile] = useState<File | null>(null)
 
   const submitCloud = (): void => {
     const name = cloud.name.trim()
@@ -64,111 +40,29 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
     )
   }
 
-  const submitSelfHosted = (): void => {
-    const name = selfHostedName.trim()
-    if (name === '' || selfHostedFile === null) return
-    const subtitle = selfHostedSubtitle.trim()
-    // The picked zip rides the merged create route as the `bundle` file part of
-    // a multipart form (the server extracts + installs it).
-    selfHostedMutation.mutate(
-      { name, bundle: selfHostedFile, ...(subtitle === '' ? {} : { subtitle }) },
-      { onSuccess: onCreated }
-    )
-  }
-
   return (
     <>
       <PageHeader title="Add app" backHref="/settings/apps" backLabel="Apps" />
-      <div className={formStyles['tabs']} role="tablist" aria-label="App type">
-        {MODE_OPTIONS.map((option) => (
+      <form
+        className={formStyles['form']}
+        onSubmit={(event) => {
+          event.preventDefault()
+          submitCloud()
+        }}
+      >
+        <ErrorBanner error={createMutation.error} />
+        <CloudAppFields fields={cloud} onChange={setCloud} disabled={createMutation.isPending} />
+        <div className={formStyles['actions']}>
           <button
-            key={option.value}
-            type="button"
-            role="tab"
-            aria-selected={mode === option.value}
-            className={cn(
-              formStyles['tab'],
-              mode === option.value ? formStyles['tab--active'] : null
-            )}
-            onClick={() => {
-              setMode(option.value)
-            }}
+            type="submit"
+            className="button-2 filled"
+            style={{ width: '100%' }}
+            disabled={createMutation.isPending}
           >
-            {option.label}
+            Add
           </button>
-        ))}
-      </div>
-
-      {mode === 'cloud' ? (
-        <form
-          className={formStyles['form']}
-          onSubmit={(event) => {
-            event.preventDefault()
-            submitCloud()
-          }}
-        >
-          <ErrorBanner error={createMutation.error} />
-          <CloudAppFields fields={cloud} onChange={setCloud} disabled={createMutation.isPending} />
-          <div className={formStyles['actions']}>
-            <button
-              type="submit"
-              className="button-2 filled"
-              style={{ width: '100%' }}
-              disabled={createMutation.isPending}
-            >
-              Add
-            </button>
-          </div>
-        </form>
-      ) : (
-        <form
-          className={formStyles['form']}
-          onSubmit={(event) => {
-            event.preventDefault()
-            submitSelfHosted()
-          }}
-        >
-          <ErrorBanner error={selfHostedMutation.error} />
-          <TextField
-            label="Name"
-            value={selfHostedName}
-            disabled={selfHostedMutation.isPending}
-            onChange={setSelfHostedName}
-          />
-          <TextField
-            label="Subtitle"
-            value={selfHostedSubtitle}
-            description="Optional — shown under the app name."
-            disabled={selfHostedMutation.isPending}
-            onChange={setSelfHostedSubtitle}
-          />
-          <Field label="Bundle (.zip)" htmlFor="new-app-bundle">
-            <input
-              id="new-app-bundle"
-              className="input-2"
-              type="file"
-              accept=".zip,application/zip"
-              disabled={selfHostedMutation.isPending}
-              onChange={(event) => {
-                setSelfHostedFile(event.target.files?.[0] ?? null)
-              }}
-            />
-            <FieldDescription>
-              The built app, zipped. It's served from its own isolated local origin.
-            </FieldDescription>
-          </Field>
-          <div className={formStyles['actions']}>
-            <button
-              type="submit"
-              className="button-2 filled"
-              style={{ width: '100%' }}
-              disabled={selfHostedMutation.isPending}
-            >
-              Add
-            </button>
-          </div>
-        </form>
-      )}
+        </div>
+      </form>
     </>
   )
 }

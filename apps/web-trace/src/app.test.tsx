@@ -82,9 +82,9 @@ describe('TraceApp', () => {
     expect(screen.getByRole('button', { name: /evening/ })).toBeDefined()
   })
 
-  // The two halves that a self-hosted origin makes non-obvious: the app is not
-  // served by the API, so a relative path would resolve against port 8091, and
-  // the granted token is the app's only credential.
+  // The two halves that the app's own origin makes non-obvious: the app is not
+  // served by the API, so a relative path would resolve against the app's own
+  // port, and the granted token is the app's only credential.
   it('should read from the FHIR server named by the handshake, with the granted token', async () => {
     // Arrange & Act
     mount(searchset([traceExchangeToWire(traceExchange({ sessionId: 'morning', requestId: 'a' }))]))

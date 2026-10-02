@@ -62,7 +62,7 @@ describe('AppLandingPage', () => {
       </AppLandingPage>
     )
 
-    // Assert — a self-hosted bundle points back at the canonical site
+    // Assert — an app bundle on any origin points back at the canonical site
     const header = within(screen.getByRole('banner'))
     expect(header.getByRole('link', { name: 'Medications' }).getAttribute('href')).toBe(
       'https://wildflowerhealth.io/medications-app'

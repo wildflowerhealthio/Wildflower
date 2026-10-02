@@ -16,14 +16,13 @@ interface Pill {
 }
 
 /** Kind → its human label + pill tone. Cloud is the "interesting" one (it's the
- * editable / tunnel-reachable kind), so it gets the `info` tint; system /
- * self-hosted stay neutral. */
+ * editable / tunnel-reachable kind), so it gets the `info` tint; system stays
+ * neutral. */
 const KIND_PILL: Record<
   AppRegistration['kind'],
   { readonly label: string; readonly tone: StatusTone }
 > = {
   system: { label: 'System', tone: 'neutral' },
-  'self-hosted': { label: 'Self-Hosted', tone: 'neutral' },
   cloud: { label: 'Cloud', tone: 'info' },
 }
 

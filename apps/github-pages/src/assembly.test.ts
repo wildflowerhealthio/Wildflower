@@ -300,14 +300,6 @@ describe('layout reconciliation with the packages it assembles', () => {
     }
   )
 
-  it('sources the first-party apps only from their own packages', () => {
-    // Nothing the site publishes is read out of the vendored self-hosted-apps
-    // tree: that directory holds only the third-party patient-browser build.
-    for (const section of siteSections) {
-      expect(section.sourceDir.startsWith('slices/apps/self-hosted-apps')).toBe(false)
-    }
-  })
-
   it.each(firstPartyApps)(
     'requires exactly the HTML entries $packageName builds',
     ({ packageName, appDir }) => {

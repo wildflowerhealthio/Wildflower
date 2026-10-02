@@ -35,8 +35,9 @@ const HEALTH_VIEWER_SCOPE =
  *   client (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
  *   dev server's loopback root as its redirect.
  *
- * Either way `clientId` equals the app-registration id it is launched through:
- * the host's redirect resolver looks an app up by `client_id`.
+ * Either way `clientId` equals the app row's `client_id`: a launch checks the
+ * caller's grant against that client's scopes, and `/authorize` matches the
+ * redirect against that client's registered URIs.
  */
 const HEALTH_VIEWER_CLIENT_ID = import.meta.env.DEV ? 'health-viewer-app-dev' : 'health-viewer-app'
 

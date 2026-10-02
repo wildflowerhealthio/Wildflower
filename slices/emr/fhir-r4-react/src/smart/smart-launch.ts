@@ -104,7 +104,7 @@ const shouldCompleteSmartLaunch = (search: string = window.location.search): boo
 }
 
 /**
- * The OAuth redirect URI for a self-hosted SMART app, from the URL of any page
+ * The OAuth redirect URI for a SMART app, from the URL of any page
  * served at its root: `href`'s directory (`new URL('.', href)`), without the
  * page's query or fragment.
  *

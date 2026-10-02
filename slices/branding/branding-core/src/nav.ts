@@ -74,7 +74,8 @@ type NavLink = AnchorNavLink | AbsoluteNavLink | SectionNavLink
  * navigation context. Current-URL-relative on the marketing site (so a
  * preview deploy under `/staging/pr-N/` routes into its sibling preview
  * builds rather than the canonical origin), and absolute from an app (so
- * a self-hosted bundle still points at the canonical site).
+ * an app bundle served from any other origin still points at the canonical
+ * site).
  *
  * @remarks
  * The marketing-site case is a plain relative reference — the browser

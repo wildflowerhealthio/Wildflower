@@ -54,7 +54,7 @@ const authorizeFromLaunchPage = async (
 }
 
 /**
- * The whole body of a self-hosted SMART app's `launch.html` entry: mirror the
+ * The whole body of a first-party SMART app's `launch.html` entry: mirror the
  * OS colour scheme, mount the launch page into `#root`, and start the EHR
  * launch — sending a failed one back to the app root.
  *

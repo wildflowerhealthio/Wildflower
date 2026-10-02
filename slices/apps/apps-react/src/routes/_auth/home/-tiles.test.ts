@@ -46,7 +46,6 @@ const labels = (app: AppRegistration): readonly string[] => tilePills(app).map((
 describe('tilePills', () => {
   test('always shows the kind label', () => {
     expect(labels(makeApp({ kind: 'system' }))).toEqual(['System'])
-    expect(labels(makeApp({ kind: 'self-hosted' }))).toEqual(['Self-Hosted'])
     expect(labels(makeApp({ kind: 'cloud' }))).toEqual(['Cloud'])
   })
 

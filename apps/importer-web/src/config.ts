@@ -48,13 +48,13 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  *   a redirect URI.
  * - The **vite dev server** (`vp run -F wildflower-importer dev`, on the port
  *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
- *   `importer-app-dev` *self-hosted* row (`apps-rust`'s `seed_dev_apps`) and its
+ *   `importer-app-dev` *cloud* row (`apps-rust`'s `seed_dev_apps`) and its
  *   client (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
- *   app-relative `"/"` redirect that resolves against the loopback origin.
+ *   dev server's loopback root (`http://localhost:{port}/`) as its redirect.
  *
- * Either way `clientId` MUST equal the app-registration id it is launched
- * through: the host's self-hosted redirect resolver looks an app up by
- * `client_id`, so the app-relative redirect only resolves when the two match.
+ * Either way `clientId` MUST equal the app row's `client_id`: a launch checks
+ * the caller's grant against that client's scopes, and `/authorize` matches the
+ * redirect against that client's registered URIs.
  *
  * The scope string MUST equal the `allowed_scopes` JSON array the
  * `gatekeeper-rust` migrations seed for `importer-app` — originally

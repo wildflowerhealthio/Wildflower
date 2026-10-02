@@ -62,7 +62,7 @@ interface SettingsAppProps extends SettingsPageProps {
  *
  * A router exists for one reason: the patient search takes its authed runner
  * from route context (`fhir-r4-react`'s `useRunAuthed`), which is how every
- * self-hosted SMART app's reads get one. The history is a *memory*
+ * SMART app's reads get one. The history is a *memory*
  * history — this page is the OAuth redirect target, so its real URL carries
  * `?code=…&state=…`, which a browser history would try to route. Memoised on
  * its inputs so a re-render does not rebuild the router under live query state.
