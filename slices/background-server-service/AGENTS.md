@@ -26,11 +26,18 @@ here.
   the service, the plugin-event and bridge listeners, the status emitter, and
   posting notifications and the native error dialog. Its tests pin the event
   mirror against the plugin's own serializer.
+- **`background-server-service-android-rust`** — the Android headless-core
+  shim, removed with #886: the JNI functions the plugin's `HeadlessBridge`
+  calls in the host's library, and `mark_host_running`, the process-global
+  flag `startCore` reads. It has no `tauri` dependency and tests on any target;
+  the host links it on Android only.
 
 `apps/wildflower-tauri` registers the notification and background-service
-plugins, builds the `ServerHostContext` in `.setup()`, attaches the glue and
-starts the service. The plugin's `background-service` config lives in its
-`tauri.conf.json`.
+plugins, builds the `ServerHostContext` in `.setup()`, attaches the glue, marks
+itself running for the Android shim and starts the service. The plugin's
+`background-service` config lives in its `tauri.conf.json`, and its Android
+`WildflowerApplication` points `HeadlessBridge.nativeLibName` at the host's
+library.
 
 ## Layering
 
@@ -45,6 +52,14 @@ starts the service. The plugin's `background-service` config lives in its
   previous runtime is still shutting down.
 - **A restart stops with `RESTART_STOP_REASON`**, so its stop half doesn't
   notify. Don't use that reason for anything else.
+- **`-android-rust` is the workspace's one `unsafe_code` exception.** Its
+  `[lints]` copy the workspace's with `unsafe_code` at `deny` instead of
+  `forbid` (a test compares the two), and only each JNI export's
+  `#[unsafe(no_mangle)]` allows it. Keep everything else in the crate safe, and
+  its reports in `headless_core_report.rs`, where they are tested.
+- **`startCore` accepts only once the host runs the server.** A start with no
+  host in the process must fail, so the plugin's failure handling runs instead
+  of a "running" notification with nothing behind it.
 
 ## References
 

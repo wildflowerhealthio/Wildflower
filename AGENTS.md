@@ -163,7 +163,7 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
 
 ## Rust / Tauri
 
-Polyglot repo: a 15-member Cargo workspace (~207 `.rs` files) alongside the TS packages. `rust-toolchain.toml` pins the toolchain, auto-downloaded on the first `cargo` command (multi-minute, one-time — don't kill it). `Cargo.toml` sets `unsafe_code = "forbid"`, clippy runs with `-D warnings`, and cargo-deny gates new deps/licenses. Run all Rust checks via `./scripts/checks/rust.sh` (see CI gates above).
+Polyglot repo: a 15-member Cargo workspace (~207 `.rs` files) alongside the TS packages. `rust-toolchain.toml` pins the toolchain, auto-downloaded on the first `cargo` command (multi-minute, one-time — don't kill it). `Cargo.toml` sets `unsafe_code = "forbid"` (the one exception, `background-server-service-android-rust`, denies it and allows it only on its JNI exports' `#[unsafe(no_mangle)]`, until #886 removes the crate), clippy runs with `-D warnings`, and cargo-deny gates new deps/licenses. Run all Rust checks via `./scripts/checks/rust.sh` (see CI gates above).
 
 ## Fresh container bootstrap
 
