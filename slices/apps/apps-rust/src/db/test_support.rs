@@ -16,7 +16,6 @@ pub(super) fn registration(id: &str, url: AppUrl) -> AppRegistration {
         name: id.to_owned(),
         subtitle: None,
         url,
-        local_only: false,
         client_id: None,
         requires_tunnel: false,
     }

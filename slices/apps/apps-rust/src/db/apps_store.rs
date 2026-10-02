@@ -194,7 +194,6 @@ mod tests {
                 app_registrations::on_homescreen.eq(true),
                 app_registrations::name.eq("Dup"),
                 app_registrations::url.eq("https://example.com/dup"),
-                app_registrations::local_only.eq(false),
                 app_registrations::requires_tunnel.eq(false),
             ))
             .execute(&mut conn);
@@ -327,11 +326,6 @@ mod tests {
         for old in ["wildflower-medication", "wildflower-web-trace"] {
             assert!(store.find_app(old).unwrap().is_none(), "{old} must be gone");
         }
-
-        // Web Trace can no longer claim local-only: its assets come from the
-        // published site.
-        let web_trace = store.find_app("web-trace-app").unwrap().unwrap();
-        assert!(!web_trace.local_only);
     }
 
     /// The server-docs console takes only `{origin}`, handed to it through its
@@ -380,10 +374,6 @@ mod tests {
         // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("importer-app"));
         assert!(
-            !registration.local_only,
-            "the importer's assets are served from wildflowerhealth.io",
-        );
-        assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
              tunnel's verified HTTPS origin",
@@ -411,10 +401,6 @@ mod tests {
         // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("ohif-viewer"));
         assert!(
-            !registration.local_only,
-            "the viewer's assets are served from wildflowerhealth.io",
-        );
-        assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
              tunnel's verified HTTPS origin",
@@ -439,10 +425,6 @@ mod tests {
             .expect("lifting-app must exist");
         // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("lifting-app"));
-        assert!(
-            !registration.local_only,
-            "the app's assets are served from wildflowerhealth.io",
-        );
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
@@ -766,16 +748,16 @@ mod tests {
         let mut conn = store.pool().get().unwrap();
         let without_url = sql_query(
             "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, local_only, requires_tunnel) \
-             VALUES ('x', 99, 1, 'x', 0, 0)",
+             (id, position, on_homescreen, name, requires_tunnel) \
+             VALUES ('x', 99, 1, 'x', 0)",
         )
         .execute(&mut conn);
         assert!(without_url.is_err(), "url is NOT NULL");
 
         let tied = sql_query(
             "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, url, local_only, requires_tunnel) \
-             VALUES ('x', 0, 1, 'x', 'https://example.com', 0, 0)",
+             (id, position, on_homescreen, name, url, requires_tunnel) \
+             VALUES ('x', 0, 1, 'x', 'https://example.com', 0)",
         )
         .execute(&mut conn);
         assert!(tied.is_err(), "position stays UNIQUE");
@@ -788,9 +770,12 @@ mod tests {
     /// reference the final `app_registrations` name).
     #[test]
     fn reverting_0012_restores_the_0011_schema() {
-        let store = SqliteAppsStore::open_in_memory().unwrap();
-        let lifting_url = stored_url(&store, "lifting-app");
-        let mut conn = store.pool().get().unwrap();
+        let pool = pool_migrated_through("0012");
+        let mut conn = pool.get().unwrap();
+        let lifting: CloudTarget =
+            sql_query("SELECT url FROM app_registrations WHERE id = 'lifting-app'")
+                .get_result(&mut conn)
+                .unwrap();
         embedded_migration("0012")
             .revert(&mut conn)
             .expect("revert 0012");
@@ -807,7 +792,7 @@ mod tests {
             sql_query("SELECT url FROM cloud_app_configurations WHERE id = 'lifting-app'")
                 .get_result(&mut conn)
                 .expect("the cloud configuration is restored");
-        assert_eq!(restored.url, lifting_url);
+        assert_eq!(restored.url, lifting.url);
         assert_eq!(
             count(
                 &mut conn,
@@ -832,6 +817,66 @@ mod tests {
             scratch_tables(&mut conn),
             0,
             "no rebuild scratch table is left behind"
+        );
+    }
+
+    /// An install at `0012` loses the `local_only` column when `0013` runs, and
+    /// every app — a user's own included — keeps its row, placement, and launch
+    /// template.
+    #[test]
+    fn an_install_already_at_0012_drops_local_only() {
+        let pool = pool_migrated_through("0012");
+        let mut conn = pool.get().unwrap();
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, local_only, requires_tunnel) \
+             VALUES ('my-app', 99, 0, 'My App', 'https://example.com/launch', 0, 0)",
+        )
+        .execute(&mut conn)
+        .expect("a 0012 registration insert must succeed");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0013 must apply");
+        let user_app = store
+            .find_app("my-app")
+            .unwrap()
+            .expect("the user's app survives");
+        assert_eq!(user_app.position, 99);
+        assert!(!user_app.on_homescreen);
+        assert_eq!(user_app.url.to_string(), "https://example.com/launch");
+        assert_eq!(
+            store.list_registrations().unwrap().len(),
+            SEEDED_IDS.len() + 1,
+            "every app survives",
+        );
+
+        let mut conn = store.pool().get().unwrap();
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM pragma_table_info('app_registrations') \
+                 WHERE name = 'local_only'",
+            ),
+            0,
+            "the local_only column is dropped",
+        );
+    }
+
+    /// Reverting `0013` restores `local_only`, cleared on every row.
+    #[test]
+    fn reverting_0013_restores_local_only_cleared() {
+        let pool = pool_migrated_through("0013");
+        let mut conn = pool.get().unwrap();
+        embedded_migration("0013")
+            .revert(&mut conn)
+            .expect("revert 0013");
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM app_registrations WHERE local_only = 0",
+            ),
+            count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations"),
+            "every row reads local_only = 0",
         );
     }
 }

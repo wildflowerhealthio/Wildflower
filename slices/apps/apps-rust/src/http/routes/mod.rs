@@ -237,7 +237,6 @@ mod tests {
             name: id.to_owned(),
             subtitle: None,
             url,
-            local_only: false,
             client_id: client_id.map(str::to_owned),
             requires_tunnel: false,
         };
@@ -274,7 +273,6 @@ mod tests {
         let growth = arr.iter().find(|v| v["id"] == "growth-chart").unwrap();
         assert_eq!(growth["isSmart"], true);
         assert_eq!(growth["requiresTunnel"], true);
-        assert_eq!(growth["localOnly"], false);
         assert!(growth["url"].as_str().unwrap().contains("{origin}"));
         for absent in ["position", "clientId"] {
             assert!(growth.get(absent).is_none(), "{absent} is not on the wire");

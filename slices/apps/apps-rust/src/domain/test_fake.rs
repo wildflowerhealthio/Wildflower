@@ -69,7 +69,7 @@ impl AppsStore for FakeAppsStore {
         let Some(stored) = apps.iter_mut().find(|reg| reg.id == registration.id) else {
             return Ok(None);
         };
-        // Editable subset only — never placement / client_id / local_only.
+        // Editable subset only — never placement / client_id.
         stored.name = registration.name.clone();
         stored.subtitle = registration.subtitle.clone();
         stored.url = registration.url.clone();
@@ -119,7 +119,6 @@ pub(crate) fn registration(id: &str) -> AppRegistration {
         url: "https://example.com/launch"
             .parse::<AppUrl>()
             .expect("a valid seed launch url"),
-        local_only: false,
         client_id: None,
         requires_tunnel: false,
     }

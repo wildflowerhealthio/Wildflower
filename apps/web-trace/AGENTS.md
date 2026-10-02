@@ -77,8 +77,8 @@ package growing a second, prop-threaded way in.
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
 - **Plain `FetchHttpClient.layer`, with no `telemetry-web`
-  `webTelemetryLayerFromEnv`.** The app is registered `local_only = 0` (its assets are
-  served from the published site). Its only outbound traffic is the FHIR server
+  `webTelemetryLayerFromEnv`.** The app's assets are served from the published
+  site, and its only outbound traffic is the FHIR server
   and, once the visitor says yes in `SmartAppRoot`'s consent dialog, Sentry; that
   layer would start reporting from the build's env without asking.
 - **`build` is `vp build`, with no `tsc` step** (unlike `apps/medications-app`).

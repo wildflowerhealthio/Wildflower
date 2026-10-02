@@ -427,7 +427,6 @@
           "onHomescreen",
           "name",
           "url",
-          "localOnly",
           "isSmart",
           "requiresTunnel"
         ],
@@ -453,10 +452,6 @@
           "url": {
             "type": "string",
             "description": "The launch URL template: `{origin}` is replaced with the served origin at\nlaunch time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]). It\nis origin-independent, never a request-resolved redirect target — see\n`docs/Apps/Explanation.md`. Serialized as its canonical string."
-          },
-          "localOnly": {
-            "type": "boolean",
-            "description": "The declared no-egress flag (a UI badge this pass)."
           },
           "isSmart": {
             "type": "boolean",

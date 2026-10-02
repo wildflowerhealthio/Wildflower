@@ -277,9 +277,9 @@ fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
 fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, subtitle, url, local_only, client_id, requires_tunnel) \
+             (id, position, on_homescreen, name, subtitle, url, client_id, requires_tunnel) \
          SELECT ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM app_registrations), \
-                1, ?, ?, ?, 0, ?, 0 \
+                1, ?, ?, ?, ?, 0 \
           WHERE NOT EXISTS (SELECT 1 FROM app_registrations WHERE id = ?)",
     )
     .bind::<Text, _>(app.id)
@@ -302,7 +302,7 @@ fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
 fn reconcile(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "UPDATE app_registrations \
-            SET name = ?, subtitle = ?, local_only = 0, client_id = ?, requires_tunnel = 0 \
+            SET name = ?, subtitle = ?, client_id = ?, requires_tunnel = 0 \
           WHERE id = ? AND url = ?",
     )
     .bind::<Text, _>(app.name)
@@ -485,9 +485,9 @@ mod tests {
         let mut conn = pool.get().unwrap();
         diesel::sql_query(
             "INSERT INTO app_registrations \
-                 (id, position, on_homescreen, name, subtitle, url, local_only, client_id, requires_tunnel) \
+                 (id, position, on_homescreen, name, subtitle, url, client_id, requires_tunnel) \
              VALUES ('medications-app-dev', 100, 0, 'My Meds', 'Mine', \
-                     'https://example.test/my-meds', 1, NULL, 1)",
+                     'https://example.test/my-meds', NULL, 1)",
         )
         .execute(&mut conn)
         .unwrap();
@@ -503,8 +503,10 @@ mod tests {
         );
         assert_eq!(registration.name, "My Meds", "the user's name must survive");
         assert_eq!(registration.subtitle.as_deref(), Some("Mine"));
-        assert!(registration.local_only, "the user's flags must survive");
-        assert!(registration.requires_tunnel);
+        assert!(
+            registration.requires_tunnel,
+            "the user's flags must survive"
+        );
         assert!(!registration.on_homescreen, "placement must survive");
         assert_eq!(
             registration.client_id, None,

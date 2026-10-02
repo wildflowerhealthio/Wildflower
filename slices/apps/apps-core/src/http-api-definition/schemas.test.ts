@@ -88,7 +88,6 @@ describe('AppRegistrationSchema', () => {
       onHomescreen: fc.boolean(),
       name: fc.string({ minLength: 1 }),
       url: fc.string({ minLength: 1 }),
-      localOnly: fc.boolean(),
       isSmart: fc.boolean(),
       requiresTunnel: fc.boolean(),
     })
@@ -109,7 +108,6 @@ describe('AppRegistrationSchema', () => {
       onHomescreen: true,
       name: 'X',
       url: 'https://example.com/launch?iss={origin}',
-      localOnly: false,
       isSmart: true,
       requiresTunnel: true,
     }

@@ -43,7 +43,6 @@ impl<S: AppsStore> AppsCreator<S> {
             name,
             subtitle,
             url,
-            local_only: false,
             client_id: None,
             requires_tunnel: payload.requires_tunnel,
         };

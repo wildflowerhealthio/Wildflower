@@ -37,8 +37,6 @@ const AppRegistrationSchema = Schema.Struct({
    * only at launch).
    */
   url: Schema.String,
-  /** The declared no-egress flag (a homescreen badge). */
-  localOnly: Schema.Boolean,
   /** Whether this is a SMART app (the registration carries a `client_id`). */
   isSmart: Schema.Boolean,
   /** Whether a launch must bring the tunnel up first (the Tunnel pill). */

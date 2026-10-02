@@ -59,7 +59,6 @@ const APP = {
   name: 'My App',
   onHomescreen: true,
   url: 'https://example.com/launch',
-  localOnly: false,
   isSmart: false,
   requiresTunnel: false,
 }

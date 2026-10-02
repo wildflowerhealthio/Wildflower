@@ -13,7 +13,6 @@ const app: AppRegistration = {
   onHomescreen: true,
   name: 'Growth Chart',
   url: 'https://example.com/launch',
-  localOnly: false,
   isSmart: false,
   requiresTunnel: false,
 }

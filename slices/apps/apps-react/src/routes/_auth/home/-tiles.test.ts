@@ -10,7 +10,6 @@ interface MakeAppOverrides {
   readonly id?: string
   readonly name?: string
   readonly onHomescreen?: boolean
-  readonly localOnly?: boolean
   readonly isSmart?: boolean
   readonly requiresTunnel?: boolean
   readonly subtitle?: string
@@ -21,7 +20,6 @@ const makeApp = (overrides: MakeAppOverrides = {}): AppRegistration => {
     id = 'app',
     name = 'App',
     onHomescreen = true,
-    localOnly = false,
     isSmart = false,
     requiresTunnel = false,
     subtitle,
@@ -31,7 +29,6 @@ const makeApp = (overrides: MakeAppOverrides = {}): AppRegistration => {
     name,
     url: 'https://example.com/launch',
     onHomescreen,
-    localOnly,
     isSmart,
     requiresTunnel,
     ...(subtitle === undefined ? {} : { subtitle }),
@@ -50,26 +47,17 @@ describe('tilePills', () => {
     expect(labels(makeApp({ isSmart: false }))).not.toContain('SMART')
   })
 
-  test('adds Local-Only only when localOnly', () => {
-    expect(labels(makeApp({ localOnly: true }))).toContain('Local-Only')
-    expect(labels(makeApp({ localOnly: false }))).not.toContain('Local-Only')
-  })
-
   test('adds Tunnel only when requiresTunnel', () => {
     expect(labels(makeApp({ requiresTunnel: true }))).toContain('Tunnel')
     expect(labels(makeApp({ requiresTunnel: false }))).not.toContain('Tunnel')
   })
 
-  test('shows all flags together in order (SMART, Local-Only, Tunnel)', () => {
-    expect(labels(makeApp({ isSmart: true, localOnly: true, requiresTunnel: true }))).toEqual([
-      'SMART',
-      'Local-Only',
-      'Tunnel',
-    ])
+  test('shows all flags together in order (SMART, Tunnel)', () => {
+    expect(labels(makeApp({ isSmart: true, requiresTunnel: true }))).toEqual(['SMART', 'Tunnel'])
   })
 
   test('every pill carries a unique key', () => {
-    const pills = tilePills(makeApp({ isSmart: true, localOnly: true, requiresTunnel: true }))
+    const pills = tilePills(makeApp({ isSmart: true, requiresTunnel: true }))
     const keys = pills.map((pill) => pill.key)
     expect(new Set(keys).size).toBe(keys.length)
   })

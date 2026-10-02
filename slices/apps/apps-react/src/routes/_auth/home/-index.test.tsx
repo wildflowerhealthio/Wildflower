@@ -60,7 +60,6 @@ const makeApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => (
   name: 'My App',
   onHomescreen: true,
   url: 'https://example.com/launch',
-  localOnly: false,
   isSmart: false,
   requiresTunnel: false,
   ...overrides,

@@ -29,7 +29,6 @@ diesel::table! {
         name -> Text,
         subtitle -> Nullable<Text>,
         url -> Text,
-        local_only -> Bool,
         client_id -> Nullable<Text>,
         requires_tunnel -> Bool,
     }
@@ -280,7 +279,6 @@ mod tests {
                 .expect("seeded row");
             assert!(reg.is_smart(), "{id} must be smart");
             assert!(reg.requires_tunnel, "{id} requires the tunnel");
-            assert!(!reg.local_only, "{id} is not local-only");
             assert!(
                 reg.url.to_string().contains("{launch}"),
                 "{id} carries its launch template",
@@ -335,7 +333,6 @@ mod tests {
         assert_eq!(store.find_app("app-x").unwrap(), Some(inserted.clone()));
         assert_eq!(inserted.position, 9, "the store assigns the tail position");
         assert!(inserted.on_homescreen);
-        assert!(!inserted.local_only);
         assert!(!inserted.is_smart(), "inserted app has no client_id");
         assert_eq!(inserted.url, external("https://example.com/launch"));
         assert!(!inserted.requires_tunnel);
