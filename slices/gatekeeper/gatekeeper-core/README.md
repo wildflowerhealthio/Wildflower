@@ -37,9 +37,8 @@ because the wire schemas in this package mirror their rows.
   `(clientId, deviceName)`, the durable record of a paired device). A
   `grants` SQL VIEW (`UNION ALL` of the two, with a `grantType` tag) backs
   the cross-kind reads; the wire stays one `grantType`-tagged union. See the
-  [grants contrast](../../../docs/Apps/Polymorphic%20Rows%20Explanation.md#contrast-grants-table-per-kind)
-  in apps' Polymorphic Rows Explanation for why grants took this over the
-  shared-registration shape.
+  [Polymorphic Rows Explanation](../../../docs/Persistence/Polymorphic%20Rows%20Explanation.md)
+  for why grants take this shape.
 - `signingKeys` — RSA keys backing JWS signatures and the JWKS
   endpoint. `isActive: boolean` selects the signing key; verify-side
   iterates all keys for rotation.

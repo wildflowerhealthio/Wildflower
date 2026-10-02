@@ -91,8 +91,8 @@ lives relative to the current surface:
   `/medications-app` (so they keep working on preview/staging deploys).
 - `fromApp` (`{ marketingBase: 'https://wildflowerhealth.io/' }`) — anchors
   resolve to absolute URLs like `https://wildflowerhealth.io/#built`; section
-  links to absolute URLs like `https://wildflowerhealth.io/medications-app` (so a
-  self-hosted app bundle points back at the canonical site).
+  links to absolute URLs like `https://wildflowerhealth.io/medications-app` (so an
+  app served from its own origin points back at the canonical site).
 
 `navHref` dispatches over the link kind; the brand link and section links both
 check `marketingBase === ''` to choose between the same-origin and absolute form.
@@ -107,7 +107,7 @@ order. In source mode the `*.module.css` rules arrive through the JS import
 chain; in built consumers they are bundled into `dist/style.css` via the
 `default` export condition. `branding-react`'s JS entry imports this stylesheet
 itself, so an app that renders any of its components gets the tokens without
-importing them (the self-hosted SMART apps rely on this).
+importing them (the first-party SMART apps rely on this).
 
 ## Deploy contract
 

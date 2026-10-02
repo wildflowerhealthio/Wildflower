@@ -20,7 +20,7 @@ SMART-built context). What differs is below.
   carried (token, server).
   `SettingsApp` mounts the router over that context, so the patient search
   takes its authed runner from route context (`fhir-r4-react`'s
-  `useRunAuthed`), like every other self-hosted SMART app's reads.
+  `useRunAuthed`), like every other first-party SMART app's reads.
 - `settings-page.tsx` — the page: `Either.all` of the connection and the
   recalled return target picks the confirmation or a refusal banner, whose
   message is an `Effect` `Match` on the refusal's tag.

@@ -6,8 +6,8 @@ import { RequireAuthMiddleware } from './require-auth.ts'
  * A `Grant` is a materialized consent decision — the Owner approved a client for
  * a scope set at a point in time — that survives across requests so the client
  * isn't re-approved on every call. It's **polymorphic** (a discriminated union on
- * `grantType`), mirroring the server's parent-`grants` + per-variant-child storage
- * 1:1 (see docs/Persistence/Polymorphic Rows Explanation.md):
+ * `grantType`), mirroring the server's per-variant grant tables behind a `grants`
+ * `UNION ALL` view 1:1 (see docs/Persistence/Polymorphic Rows Explanation.md):
  *
  * - `authorization_code` — an OAuth code-flow grant, carrying the exact
  *   `redirectUri` it covers ("Approved Apps");

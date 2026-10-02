@@ -17,7 +17,7 @@ This package is the SMART shell around them and the wiring between them.
 
 ## Boot structure
 
-Both entries run on `smart-app-react`, the chrome every self-hosted SMART app
+Both entries run on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)),
 exactly as `apps/medications-app` does.
 
@@ -115,8 +115,10 @@ The production `health-viewer-app` registry row and OAuth client are not
 seeded yet (#588). In development the debug-only `health-viewer-app-dev` row
 launches the vite dev server instead (below).
 
-`src/config.ts`'s `clientId` must equal the app id it is launched through — the
-host's redirect resolver looks an app up by `client_id` — and its scope string
+`src/config.ts`'s `clientId` must equal the `client_id` of the app row it is
+launched through — a launch checks the caller's grant against that client's
+scopes, and `/authorize` matches the redirect against that client's registered
+URIs — and its scope string
 must equal the seeded client's allowed scopes; `gatekeeper-rust`'s
 `seeding.rs` test reads `config.ts` to hold the dev client to it.
 
@@ -131,7 +133,7 @@ connect menu (the SMART Health IT sandbox works), sign in, and choose a patient
 (or All patients) in the app.
 
 **From a Wildflower host**: debug builds of the host seed a
-`health-viewer-app-dev` **cloud** row on that port plus its own OAuth client
+`health-viewer-app-dev` row on that port plus its own OAuth client
 (`apps-rust`'s `seed_dev_apps` / `gatekeeper-rust`'s `seed_dev_app_clients`),
 so the homescreen carries a "Health Viewer (Dev)" tile that launches whatever is
 serving that port — the vite dev server when it is up, nothing when it is down.

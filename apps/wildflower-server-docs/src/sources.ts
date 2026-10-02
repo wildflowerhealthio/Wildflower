@@ -8,7 +8,7 @@ import tunnelSpec from '../../../slices/tunnel/tunnel-rust/openapi/tunnel-admin.
 import type { OpenApiDocument } from './spec.ts'
 
 /**
- * The documented slices, in the order the running host lists them at `/docs`.
+ * The documented slices, in the order the console's sidebar lists them.
  *
  * The specs are the **committed snapshots** — the same files the Rust snapshot
  * tests and `api-sync.yml` hold to the live routes — imported straight from
@@ -16,7 +16,7 @@ import type { OpenApiDocument } from './spec.ts'
  * drift guard last agreed on, without the deploy having to compile the host.
  */
 export interface DocSource {
-  /** Sidebar heading. Matches the host's `/docs` group name exactly. */
+  /** Sidebar heading. */
   readonly title: string
   /** URL-safe id Scalar uses for the source in its routing. */
   readonly slug: string

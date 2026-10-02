@@ -1,8 +1,7 @@
 # Data Directory Explanation
 
 The host keeps everything it owns in one directory: both SQLite databases
-(`wildflower.sqlite` and `health-data.sqlite`), saved HAR recordings under `saved_data/`,
-uploaded and vendored self-hosted app bundles under `self-hosted-apps/`, and on
+(`wildflower.sqlite` and `health-data.sqlite`), saved HAR recordings under `saved_data/`, and on
 Android the materialized FHIR SearchParameter bundle under `fhir-search-params/`.
 `setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves that one
 directory and threads it through `ServerRuntimeConfig.app_data_dir`; every slice
@@ -116,8 +115,8 @@ Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist):
 - **`NSLocalNetworkUsageDescription`** — the string the system shows in its
   local-network permission prompt, required on macOS 15+ and iOS 14+ for any
   connection off the loopback interface. The `dev:ios` script serves the UI from a
-  LAN address, and the apps launch flow opens self-hosted apps that may live on
-  the same network. Without the key the OS denies the connection outright, and
+  LAN address, and the apps launch flow opens apps that may live on the same
+  network. Without the key the OS denies the connection outright, and
   never prompts — so the failure looks like a broken dev server rather than a
   missing plist entry.
 - **`NSAppTransportSecurity`** — App Transport Security blocks cleartext HTTP by

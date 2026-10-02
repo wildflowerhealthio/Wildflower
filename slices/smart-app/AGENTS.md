@@ -1,7 +1,7 @@
 # AGENTS.md — slices/smart-app
 
-The Wildflower chrome every self-hosted SMART app boots through. The SMART
-wiring (the handshake, the self-hosted runtime, the launch-error contract, the
+The Wildflower chrome every first-party SMART app boots through. The SMART
+wiring (the handshake, the SMART runtime, the launch-error contract, the
 standalone-launch primitives) is `fhir-r4-react/smart`'s, and the Wildflower
 look (header, footer, brand bar, landing layout) is `branding-react`'s. This
 slice is where the two meet, so neither has to know about the other.
