@@ -8,7 +8,6 @@ use std::sync::Arc;
 use axum::Router;
 
 use hfs::HfsDicomFileStore;
-pub use http::openapi_spec;
 pub use live_bindings::state::OhifServerState;
 
 pub use domain::capabilities::grantable_ohif_server_scopes;

@@ -69,7 +69,6 @@ pub use db::SqliteAppsStore;
 // Re-exported so a host can name the registration its `AppLaunchScopes` adapter
 // reads (see [`ports::AppLaunchScopes`]).
 pub use domain::AppRegistration;
-pub use http::openapi_spec;
 pub use live_bindings::state::AppsState;
 
 #[cfg(debug_assertions)]

@@ -21,8 +21,8 @@ pub fn router(state: Arc<OhifServerState>) -> Router {
     router.with_state(state)
 }
 
-#[must_use]
-pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+#[cfg(test)]
+fn openapi_spec() -> utoipa::openapi::OpenApi {
     let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("OHIF Server API", "0.0.0");
     spec

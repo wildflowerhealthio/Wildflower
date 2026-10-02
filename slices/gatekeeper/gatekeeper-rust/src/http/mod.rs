@@ -39,7 +39,7 @@ use crate::domain::capabilities::oauth::ClientScopesReader;
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 /// The shared `InsufficientScopeBody` is registered here so the
 /// [`InsufficientScopeResponses`](scope_capabilities_rust::InsufficientScopeResponses)
-/// addon in [`openapi_spec`] can `$ref` it on the scope-gated `/access` paths.
+/// addon in `openapi_spec` can `$ref` it on the scope-gated `/access` paths.
 #[derive(OpenApi)]
 #[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]
 struct ApiDoc;
@@ -57,6 +57,7 @@ fn documented_public_router() -> OpenApiRouter<Arc<GatekeeperState>> {
 /// plus the documented slice of `/access` (the `/clients` routes; the rest of
 /// the admin surface is not documented yet). Never served as-is — [`router`]
 /// mounts the `/access` half behind the session gate.
+#[cfg(test)]
 fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
     documented_public_router().nest("/access", routes::clients::openapi_router())
 }
@@ -135,8 +136,8 @@ pub fn client_allowed_scopes(
 /// routes that serve traffic. `info` is set explicitly so the committed snapshot
 /// doesn't churn with the crate version. It generates the committed snapshot the
 /// TS spec-drift test guards and the published server-docs console renders.
-#[must_use]
-pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+#[cfg(test)]
+fn openapi_spec() -> utoipa::openapi::OpenApi {
     use utoipa::Modify as _;
 
     let (_router, mut spec) = documented_router().split_for_parts();

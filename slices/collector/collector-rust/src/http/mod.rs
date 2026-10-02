@@ -48,8 +48,8 @@ pub fn router(state: Arc<CollectorState>) -> Router {
 /// is set explicitly so the committed snapshot doesn't churn with the crate
 /// version. It generates the committed snapshot the TS spec-drift test guards
 /// and the published server-docs console renders.
-#[must_use]
-pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+#[cfg(test)]
+fn openapi_spec() -> utoipa::openapi::OpenApi {
     let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("Collector Remotes API", "0.0.0");
     spec

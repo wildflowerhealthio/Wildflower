@@ -17,8 +17,7 @@ use utoipa_axum::routes;
 use crate::live_bindings::state::AppsState;
 
 /// Every apps route as an `OpenApiRouter` — the spec-bearing inner of
-/// [`router`](super::router) and the source of
-/// [`openapi_spec`](super::openapi_spec):
+/// [`router`](super::router):
 ///
 ///  - `GET`/`POST /apps` (registry list, create) and `GET`/`PUT`/`DELETE
 ///    /apps/{id}` (read, content replace, delete), each gated on

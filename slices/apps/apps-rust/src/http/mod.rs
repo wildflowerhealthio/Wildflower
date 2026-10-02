@@ -46,14 +46,18 @@ use utoipa_axum::router::OpenApiRouter;
 #[derive(OpenApi)]
 struct ApiDoc;
 
-/// The full apps surface as one `OpenAPI` document — every endpoint the TS
-/// `AppsApi` / `AppsAdminApi` clients speak (the gated catalogue and home-screen
-/// surface plus the launch route, behind the `wildflower/launch` umbrella). `info` is set
-/// explicitly so the committed snapshot doesn't churn with the crate version.
-#[must_use]
-pub fn openapi_spec() -> utoipa::openapi::OpenApi {
-    let combined = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router());
-    let (_router, mut spec) = combined.split_for_parts();
+/// The apps surface as an `OpenApiRouter`, so the spec is collected from the
+/// same routes that serve traffic.
+fn documented_router() -> OpenApiRouter<Arc<AppsState>> {
+    OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router())
+}
+
+/// The apps `OpenAPI` document — every endpoint the TS `AppsApi` /
+/// `AppsAdminApi` clients speak. `info` is set explicitly so the committed
+/// snapshot doesn't churn with the crate version.
+#[cfg(test)]
+fn openapi_spec() -> utoipa::openapi::OpenApi {
+    let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("Apps Catalogue API", "0.0.0");
     spec
 }
@@ -67,7 +71,7 @@ pub fn openapi_spec() -> utoipa::openapi::OpenApi {
 /// grant to cover its OAuth client's scopes. Carries no middleware — the host
 /// wraps it with its bearer gate (which inserts the caller's scope claims).
 pub fn router(state: Arc<AppsState>) -> Router {
-    let (router, _spec) = routes::openapi_router().split_for_parts();
+    let (router, _spec) = documented_router().split_for_parts();
     router.with_state(state)
 }
 

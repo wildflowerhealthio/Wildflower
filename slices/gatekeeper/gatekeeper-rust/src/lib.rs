@@ -62,8 +62,8 @@ pub use domain::{GatekeeperStore, GatekeeperTx};
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     client_allowed_scopes, ensure_bearer_header, gatekeeper_auth_middleware,
-    is_pre_auth_public_path, openapi_spec, require_loopback_peer_middleware,
-    GatekeeperAuthMiddleware, GatekeeperState, RequireLoopbackPeerMiddleware,
+    is_pre_auth_public_path, require_loopback_peer_middleware, GatekeeperAuthMiddleware,
+    GatekeeperState, RequireLoopbackPeerMiddleware,
 };
 pub use persistence_rust::DieselPool;
 // The loopback-dialog seam: the host implements it with its native dialog

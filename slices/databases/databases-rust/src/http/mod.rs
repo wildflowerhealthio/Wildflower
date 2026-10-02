@@ -20,7 +20,7 @@ use utoipa_axum::router::OpenApiRouter;
 /// Base `OpenAPI` document; the collected routes fill in paths + components. The
 /// shared `InsufficientScopeBody` is registered here (rather than via a
 /// per-handler `body = …`) so [`InsufficientScopeResponses`] can `$ref` it when
-/// it documents the `403` on the scope-gated paths — see [`openapi_spec`].
+/// it documents the `403` on the scope-gated paths — see `openapi_spec`.
 ///
 /// [`InsufficientScopeResponses`]: scope_capabilities_rust::InsufficientScopeResponses
 #[derive(OpenApi)]
@@ -45,8 +45,8 @@ pub fn router(state: Arc<DatabasesState>) -> Router {
 /// traffic. `info` is set explicitly so the committed snapshot doesn't churn
 /// with the crate version. It generates the committed snapshot the TS spec-drift
 /// test guards and the published server-docs console renders.
-#[must_use]
-pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+#[cfg(test)]
+fn openapi_spec() -> utoipa::openapi::OpenApi {
     use utoipa::Modify as _;
 
     let (_router, mut spec) = documented_router().split_for_parts();
