@@ -11,12 +11,44 @@ import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { makeAwaitEmbeddedAuthReady, makeEmbeddedAuthStateStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { addOsColorSchemeListener } from 'react-tundraish'
+import { configureRecovery } from 'tauri-plugin-background-service'
 import { webTelemetryLayerFromEnv } from 'telemetry-web'
 import { renderApp } from 'wildflower-react/app-root'
 import { bridges } from 'wildflower-react/bridges'
 import { ServerKind } from 'wildflower-react/server-kind'
+// Named imports, so only these two fields of the host's configuration reach
+// the bundle.
+import {
+  background_service_foreground_type as backgroundServiceForegroundType,
+  background_service_label as backgroundServiceLabel,
+} from '../tauri-shared-config.json'
 
 addOsColorSchemeListener()
+
+// The host starts the server itself, from Rust, at launch. This records that
+// the server should keep running, so the background-service plugin restarts it
+// after the OS ends the app: in an iOS background window, or through Android's
+// tap-to-resume notification. The start config is the one the host starts with,
+// read from the same `tauri-shared-config.json` the host's `build.rs` reads. The
+// server runs either way, so a failure only costs those restarts, and is logged.
+Effect.runFork(
+  Effect.tryPromise(() =>
+    configureRecovery({
+      enabled: true,
+      config: {
+        serviceLabel: backgroundServiceLabel,
+        foregroundServiceType: backgroundServiceForegroundType,
+      },
+    })
+  ).pipe(
+    Effect.catchAll((error) =>
+      Effect.logError(
+        '[background-service] the server will not restart after the OS ends the app',
+        error
+      )
+    )
+  )
+)
 
 // In-memory store, initial value `Unauthed`. On the Tauri path the SPA never
 // holds the bearer: the host authenticates the webview's direct-loopback

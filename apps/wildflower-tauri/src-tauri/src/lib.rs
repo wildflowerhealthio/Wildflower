@@ -5,13 +5,13 @@ mod native_webview_handle;
 use anyhow::Context;
 use background_server_service_rust::ServerHostContext;
 use background_server_service_tauri_rust::{
-    attach_background_server_service, report_server_failure, start_server_service,
-    WildflowerServerService,
+    report_server_failure, start_background_server_service, WildflowerServerService,
 };
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::ServerRuntimeConfig;
 use std::sync::Arc;
 use tauri::Manager;
+use tauri_plugin_background_service::StartConfig;
 use tokio::sync::watch;
 use url::Url;
 use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
@@ -55,6 +55,16 @@ const OWNER_UI_BASE_URL: &str = if cfg!(debug_assertions) {
 } else {
     env!("WILDFLOWER_OWNER_UI_BASE_URL")
 };
+
+// How the background service starts the server, from the same
+// `tauri-shared-config.json` (re-emitted by `build.rs`): the text of Android's
+// persistent foreground-service notification and its foreground-service type.
+// The TS shell imports the same pair from that file for the plugin's
+// `configureRecovery` (`src/main.tsx`), so the restarts the plugin makes itself
+// start the service as the host does.
+const BACKGROUND_SERVICE_LABEL: &str = env!("WILDFLOWER_BACKGROUND_SERVICE_LABEL");
+const BACKGROUND_SERVICE_FOREGROUND_TYPE: &str =
+    env!("WILDFLOWER_BACKGROUND_SERVICE_FOREGROUND_TYPE");
 
 /// Resolves the directory the host keeps its databases and saved files in:
 /// `Documents` on iOS, where it is the only part of the app container the Files
@@ -376,23 +386,28 @@ pub fn run() {
                     let (server_host_context, server_receivers) =
                         ServerHostContext::new(config, host_ports(app.handle(), publishers));
                     // Wire the server's status, restart and notifications
-                    // before it can start, so no run-state change is missed.
-                    attach_background_server_service(app.handle(), server_receivers);
-                    host_context_sender.send_replace(Some(server_host_context));
+                    // before a run can begin, so no run-state change is
+                    // missed, and start it from Rust, without waiting on the
+                    // page. A run waits for the context published below.
                     // Android: the plugin's foreground service asks this
                     // library's `HeadlessBridge.startCore` whether to report
                     // itself started, which it does only once this process
-                    // runs the host (the shim #886 removes). Calling into the
-                    // crate is also what links it, so its `#[no_mangle]` JNI
-                    // exports reach `libwildflower_tauri_lib.so`: rustc loads
-                    // no dependency the code never names.
+                    // runs the host (the shim #886 removes), so mark it before
+                    // the start below. Calling into the crate is also what
+                    // links it, so its `#[no_mangle]` JNI exports reach
+                    // `libwildflower_tauri_lib.so`: rustc loads no dependency
+                    // the code never names.
                     #[cfg(target_os = "android")]
                     background_server_service_android_rust::mark_host_running();
-                    // Start the server from Rust, before any page script runs.
-                    let start_handle = app.handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        start_server_service(&start_handle).await;
-                    });
+                    start_background_server_service(
+                        app.handle(),
+                        server_receivers,
+                        StartConfig {
+                            service_label: BACKGROUND_SERVICE_LABEL.to_owned(),
+                            foreground_service_type: BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned(),
+                        },
+                    );
+                    host_context_sender.send_replace(Some(server_host_context));
                 }
                 // Without a config there is no server to run; say so the way
                 // a failed run does, and keep the app up to show it.
@@ -425,9 +440,9 @@ mod tests {
             .validate()
             .expect("the background-service plugin config is valid");
         assert!(
-            plugin_config.android_foreground_service_types.contains(
-                &background_server_service_tauri_rust::FOREGROUND_SERVICE_TYPE.to_owned()
-            ),
+            plugin_config
+                .android_foreground_service_types
+                .contains(&super::BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned()),
             "androidForegroundServiceTypes {:?} must allow the service's type",
             plugin_config.android_foreground_service_types
         );
@@ -464,6 +479,59 @@ mod tests {
                     compact.contains(&format!("<key>{key}</key><true/>")),
                     "{relative} must declare {key} as true, or the data directory \
                      stays invisible in the Files app"
+                );
+            }
+        }
+    }
+
+    /// The strings in the `<array>` an Apple plist declares under `key`, read
+    /// from the compacted text like the other plist checks; empty when the key
+    /// is missing.
+    fn plist_string_array(relative: &str, key: &str) -> Vec<String> {
+        let compact = compact_apple_plist(relative);
+        let opening = format!("<key>{key}</key><array>");
+        let Some((_, after_opening)) = compact.split_once(&opening) else {
+            return Vec::new();
+        };
+        let (array_body, _) = after_opening
+            .split_once("</array>")
+            .unwrap_or_else(|| panic!("{relative}'s {key} array is never closed"));
+        array_body
+            .split("<string>")
+            .filter_map(|entry| entry.split_once("</string>"))
+            .map(|(value, _)| value.to_owned())
+            .collect()
+    }
+
+    /// The background service runs the server in the windows iOS grants
+    /// `BGAppRefreshTask` and `BGProcessingTask`, which iOS starts only for the
+    /// background modes and task identifiers the bundle declares. The plugin
+    /// registers its tasks as the bundle identifier plus `.bg-refresh` and
+    /// `.bg-processing` (`BackgroundServicePlugin.swift`), and Xcode expands
+    /// `$(PRODUCT_BUNDLE_IDENTIFIER)` to that same identifier. Both iOS plists,
+    /// for the same reason as the Files app keys.
+    #[test]
+    fn both_ios_plists_declare_background_tasks() {
+        for relative in [
+            "Info.ios.plist",
+            "gen/apple/wildflower-tauri_iOS/Info.plist",
+        ] {
+            let background_modes = plist_string_array(relative, "UIBackgroundModes");
+            for mode in ["fetch", "processing"] {
+                assert!(
+                    background_modes.iter().any(|declared| declared == mode),
+                    "{relative} must list {mode} in UIBackgroundModes, or iOS never \
+                     grants the server its background window; declared: {background_modes:?}"
+                );
+            }
+            let task_identifiers =
+                plist_string_array(relative, "BGTaskSchedulerPermittedIdentifiers");
+            for suffix in ["bg-refresh", "bg-processing"] {
+                let identifier = format!("$(PRODUCT_BUNDLE_IDENTIFIER).{suffix}");
+                assert!(
+                    task_identifiers.contains(&identifier),
+                    "{relative} must permit {identifier}, or the plugin's task \
+                     registration fails; declared: {task_identifiers:?}"
                 );
             }
         }
@@ -567,6 +635,10 @@ mod tests {
         }
     }
 
+    const ANDROID_NAMESPACE: &str = "http://schemas.android.com/apk/res/android";
+    const TOOLS_NAMESPACE: &str = "http://schemas.android.com/tools";
+    const ANDROID_MANIFEST: &str = "gen/android/app/src/main/AndroidManifest.xml";
+
     /// Reads a file next to this crate.
     fn read_crate_file(relative: &str) -> String {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
@@ -589,7 +661,7 @@ mod tests {
             .as_str()
             .expect("Cargo.toml sets [lib] name");
 
-        let android_manifest = read_crate_file("gen/android/app/src/main/AndroidManifest.xml");
+        let android_manifest = read_android_manifest();
         let application_tag = android_manifest
             .split_once("<application")
             .and_then(|(_, rest)| rest.split_once('>'))
@@ -613,6 +685,112 @@ mod tests {
             )),
             "{relative_class_name}.kt must set HeadlessBridge.nativeLibName to \
              \"{host_library_name}\", the library the host builds as"
+        );
+    }
+
+    /// Reads the app's tracked Android manifest, the one the build merges the
+    /// plugins' manifests into.
+    fn read_android_manifest() -> String {
+        read_crate_file(ANDROID_MANIFEST)
+    }
+
+    /// The `<{tag} android:name="{name}">` element in `manifest`, at any depth.
+    fn android_element<'document>(
+        manifest: &'document roxmltree::Document<'document>,
+        tag: &str,
+        name: &str,
+    ) -> Option<roxmltree::Node<'document, 'document>> {
+        manifest.descendants().find(|node| {
+            node.has_tag_name(tag) && node.attribute((ANDROID_NAMESPACE, "name")) == Some(name)
+        })
+    }
+
+    /// The background-service plugin's manifest asks for the permissions its
+    /// calling and other foreground-service types use. Android grants every
+    /// permission the merged manifest asks for, and Play reviews each, so the
+    /// app's manifest removes all the server doesn't use from the merge.
+    #[test]
+    fn android_manifest_removes_the_plugin_s_unused_permissions() {
+        let manifest_text = read_android_manifest();
+        let manifest =
+            roxmltree::Document::parse(&manifest_text).expect("the Android manifest is XML");
+        for permission in [
+            "android.permission.CAMERA",
+            "android.permission.RECORD_AUDIO",
+            "android.permission.MANAGE_OWN_CALLS",
+            "android.permission.USE_FULL_SCREEN_INTENT",
+            "android.permission.FOREGROUND_SERVICE_PHONE_CALL",
+            "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+            "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+            "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
+        ] {
+            let removal = android_element(&manifest, "uses-permission", permission)
+                .unwrap_or_else(|| panic!("{ANDROID_MANIFEST} must name {permission}"));
+            assert_eq!(
+                removal.attribute((TOOLS_NAMESPACE, "node")),
+                Some("remove"),
+                "{ANDROID_MANIFEST} must remove {permission} from the merge"
+            );
+        }
+        // Telecom binds the plugin's call service only with MANAGE_OWN_CALLS,
+        // removed above, so the service goes too.
+        let call_service = android_element(
+            &manifest,
+            "service",
+            "app.tauri.backgroundservice.BackgroundCallConnectionService",
+        )
+        .unwrap_or_else(|| panic!("{ANDROID_MANIFEST} must name the plugin's call service"));
+        assert_eq!(
+            call_service.attribute((TOOLS_NAMESPACE, "node")),
+            Some("remove")
+        );
+    }
+
+    /// The plugin declares its foreground service with every type it might
+    /// start as. The app narrows it to the one the server starts as, which the
+    /// plugin also checks a start against, and replaces the plugin's generic
+    /// `specialUse` reason with the server's own.
+    #[test]
+    fn android_manifest_narrows_the_plugin_s_foreground_service() {
+        let manifest_text = read_android_manifest();
+        let manifest =
+            roxmltree::Document::parse(&manifest_text).expect("the Android manifest is XML");
+        let lifecycle_service = android_element(
+            &manifest,
+            "service",
+            "app.tauri.backgroundservice.LifecycleService",
+        )
+        .unwrap_or_else(|| panic!("{ANDROID_MANIFEST} must declare the plugin's service"));
+        assert_eq!(
+            lifecycle_service.attribute((ANDROID_NAMESPACE, "foregroundServiceType")),
+            Some(super::BACKGROUND_SERVICE_FOREGROUND_TYPE),
+            "the service's foreground-service type must be the one the server starts as"
+        );
+        assert_eq!(
+            lifecycle_service.attribute((TOOLS_NAMESPACE, "replace")),
+            Some("android:foregroundServiceType"),
+            "the type must replace the plugin's, not merge into it"
+        );
+
+        let special_use_subtype = lifecycle_service
+            .children()
+            .find(|node| {
+                node.has_tag_name("property")
+                    && node.attribute((ANDROID_NAMESPACE, "name"))
+                        == Some("android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE")
+            })
+            .unwrap_or_else(|| panic!("{ANDROID_MANIFEST} must give the service its subtype"));
+        assert_eq!(
+            special_use_subtype.attribute((TOOLS_NAMESPACE, "replace")),
+            Some("android:value"),
+            "the subtype must replace the plugin's generic one"
+        );
+        let subtype = special_use_subtype
+            .attribute((ANDROID_NAMESPACE, "value"))
+            .unwrap_or_else(|| panic!("{ANDROID_MANIFEST}'s subtype must have a value"));
+        assert!(
+            subtype.contains("health records"),
+            "the subtype must say what the service does, not {subtype:?}"
         );
     }
 }
