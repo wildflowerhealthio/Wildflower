@@ -4,7 +4,7 @@
 use scopes_rust::{Permission, Scope, WildflowerResource};
 
 use crate::domain::actions::{self, AppPayload};
-use crate::domain::{AppInsertError, AppRegistration, AppsError, AppsStore};
+use crate::domain::{AppRegistration, AppsError, AppsStore};
 use crate::id_utils::mint_app_id;
 
 /// Register a new app — `wildflower/Apps.c`.
@@ -27,10 +27,9 @@ impl<S: AppsStore> AppsCreator<S> {
     }
 
     /// Create an app: mint the id, validate the content, synthesize the
-    /// registration, and insert. An [`AppInsertError::IdTaken`] means the
-    /// server-minted id was already taken (a vanishingly-unlikely 21-char
-    /// collision), surfaced as a logged [`AppsError::Infrastructure`] rather than
-    /// silently returning the existing row.
+    /// registration, and insert. A server-minted id that was already taken (a
+    /// vanishingly-unlikely 21-char collision) fails the insert as a logged
+    /// [`AppsError::Infrastructure`] rather than overwriting the existing row.
     pub(crate) fn create_app(&self, payload: AppPayload) -> Result<AppRegistration, AppsError> {
         let id = mint_app_id();
         let (name, subtitle, url) =
@@ -43,18 +42,10 @@ impl<S: AppsStore> AppsCreator<S> {
             name,
             subtitle,
             url,
-            local_only: false,
             client_id: None,
             requires_tunnel: payload.requires_tunnel,
         };
-        self.store
-            .insert_app(&registration)?
-            .map_err(|error| match error {
-                AppInsertError::IdTaken => {
-                    tracing::error!("app id collision on {}", registration.id);
-                    AppsError::infrastructure("insert_app id collision", "id already exists")
-                }
-            })
+        self.store.insert_app(&registration)
     }
 }
 

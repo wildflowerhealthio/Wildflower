@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumString};
 use url::Url;
 
-use crate::db::clients::{clients, JsonAllowedGrantTypes, JsonRedirectUris};
+use crate::db::clients::{clients, JsonAllowedGrantTypes, JsonUrls};
 use crate::db::shared::JsonStrings;
 
 /// OAuth client authentication category — `public` clients can't keep a secret (e.g. SPAs, native), `confidential` ones can.
@@ -78,7 +78,7 @@ pub struct Client {
     pub kind: ClientKind,
     /// Allowlist of absolute redirect URIs; `/authorize` requires an exact
     /// match against this set.
-    #[diesel(serialize_as = JsonRedirectUris, deserialize_as = JsonRedirectUris)]
+    #[diesel(serialize_as = JsonUrls, deserialize_as = JsonUrls)]
     pub redirect_uris: Vec<Url>,
     /// Scopes the client is permitted to request; any scope outside this set is rejected.
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
@@ -107,6 +107,15 @@ impl Client {
         requested
             .iter()
             .all(|requested_scope| self.allows_scope(requested_scope))
+    }
+
+    /// Whether `redirect_uri` exactly equals an entry on this client's
+    /// `redirect_uris` allowlist. This is the one allowlist verdict: both
+    /// `/authorize` and the consent read path call it, so a prompt can never
+    /// disagree with the endpoint that parked it.
+    #[must_use]
+    pub fn allows_redirect_uri(&self, redirect_uri: &Url) -> bool {
+        self.redirect_uris.contains(redirect_uri)
     }
 
     /// Whether some entry of this client's `allowed_scopes` covers

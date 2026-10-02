@@ -22,14 +22,9 @@ const { createStub } = vi.hoisted(() => ({
   createStub: { mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null as Error | null },
 }))
 
-vi.mock('../../../queries.ts', () => {
-  const unused = { mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }
-  return {
-    useAppCreateMutation: () => createStub,
-    // Imported transitively by `-forms.tsx` (AppEditForm) but unused here.
-    useAppReplaceMutation: () => unused,
-  }
-})
+vi.mock('../../../queries.ts', () => ({
+  useAppCreateMutation: () => createStub,
+}))
 
 import { NewAppBody } from './new.tsx'
 

@@ -31,7 +31,7 @@ diesel::table! {
 json_text_column!(
     /// A client's `redirect_uris` allowlist as a JSON TEXT column — an array of
     /// absolute URL strings.
-    JsonRedirectUris,
+    JsonUrls,
     Vec<url::Url>
 );
 json_text_column!(
@@ -616,7 +616,7 @@ mod tests {
 
     /// Each of the client row's custom column mappings rejects an out-of-domain
     /// stored value on read as a typed diesel error, never a panic: the JSON TEXT
-    /// newtypes ([`JsonRedirectUris`](super::JsonRedirectUris) / [`JsonStrings`](crate::db::shared::JsonStrings)
+    /// newtypes ([`JsonUrls`](super::JsonUrls) / [`JsonStrings`](crate::db::shared::JsonStrings)
     /// / [`JsonAllowedGrantTypes`](super::JsonAllowedGrantTypes)) on malformed JSON
     /// or an unknown enum member, and the [`ClientKind`] text-enum mapping on an
     /// unknown discriminant. A row tampered via raw SQL surfaces at the
@@ -627,8 +627,11 @@ mod tests {
         // `column = bad_value` tampered onto the migration-seeded `growth_chart`
         // row, each asserted to fail the read.
         for (column, bad_value) in [
-            ("redirect_uris", "not json"), // JsonRedirectUris: malformed JSON
-            ("redirect_uris", "[\"not a url\"]"), // JsonRedirectUris: valid JSON, not a URL
+            ("redirect_uris", "not json"),        // JsonUrls: malformed JSON
+            ("redirect_uris", "[\"not a url\"]"), // JsonUrls: valid JSON, not a URL
+            // JsonUrls: a path entry is not an absolute URL (why migration 0021
+            // strips them)
+            ("redirect_uris", "[\"/\"]"),
             ("allowed_scopes", "not json"), // JsonStrings: malformed JSON
             ("allowed_grant_types", "[\"totally_unknown\"]"), // JsonAllowedGrantTypes: unknown member
             ("kind", "bogus_kind"),                           // ClientKind: unknown discriminant

@@ -2119,9 +2119,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.22.2
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
@@ -2185,9 +2182,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.22.2
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
       effect-messaging-react:
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-react

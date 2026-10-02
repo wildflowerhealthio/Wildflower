@@ -60,6 +60,5 @@ async-trait = "0.1"
 # would insert, so the scope-gated `/apps` admin handlers pass end-to-end.
 scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
-http = "1"
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }

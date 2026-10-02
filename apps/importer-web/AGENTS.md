@@ -138,9 +138,8 @@ accepts the writes and the set has room to grow.
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
 - **Plain `FetchHttpClient.layer`, with no `telemetry-web`
-  `webTelemetryLayerFromEnv`.** Not for a `local_only` reason — this app is registered
-  `local_only = 0`, because its assets are served from wildflowerhealth.io and it
-  writes to the FHIR base the handshake named. The reason is that the importer's
+  `webTelemetryLayerFromEnv`.** The importer's assets are served from
+  wildflowerhealth.io and it writes to the FHIR base the handshake named; its
   only outbound traffic is that FHIR server and, once the visitor says yes in
   `SmartAppRoot`'s consent dialog, Sentry; that layer would start
   reporting from the build's env without asking, in a bundle whose whole job is
@@ -195,13 +194,12 @@ registered client cannot launch:
 - `slices/apps/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
   `importer-app` registration and its launch URL
   (`https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4`),
-  `local_only = 0`, `requires_tunnel = 1` (like `medications-app` / `web-trace-app`).
+  `requires_tunnel = 1` (like `medications-app` / `web-trace-app`).
 - `slices/gatekeeper/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
   — the `importer-app` OAuth client. Its one registered redirect is
   `https://wildflowerhealth.io/importer-app/`, the page it launches from.
 
-The `clientId` in `src/config.ts` must equal the app id in both. `local_only` is
-**0**, like the other first-party apps.
+The `clientId` in `src/config.ts` must equal the app id in both.
 
 A **debug build** additionally seeds an `importer-app-dev` row
 (`apps-rust`'s `dev_seed.rs`) whose launch URL names this app's vite dev-server

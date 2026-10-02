@@ -51,11 +51,7 @@ describe('AppBodySchema', () => {
 describe('AppUrlSchema', () => {
   it.each([
     'https://example.com',
-    'https://example.com/launch?launch=x',
-    '/apps/local',
-    '/fhir-r4/Patient/123',
-    '{origin}/some/path',
-    '{origin}/{launch}',
+    'https://example.com/launch?launch={launch}&iss={origin}/fhir-r4',
   ])('accepts %s', (url) => {
     expectRightToEqual(Schema.decodeUnknownEither(AppUrlSchema)(url), url)
   })
@@ -63,6 +59,8 @@ describe('AppUrlSchema', () => {
   it.each([
     '',
     'http://example.com',
+    '/apps/local',
+    '{origin}/some/path',
     'javascript:alert(1)',
     'data:text/html,<script>',
     'file:///etc/passwd',
@@ -88,7 +86,6 @@ describe('AppRegistrationSchema', () => {
       onHomescreen: fc.boolean(),
       name: fc.string({ minLength: 1 }),
       url: fc.string({ minLength: 1 }),
-      localOnly: fc.boolean(),
       isSmart: fc.boolean(),
       requiresTunnel: fc.boolean(),
     })
@@ -109,7 +106,6 @@ describe('AppRegistrationSchema', () => {
       onHomescreen: true,
       name: 'X',
       url: 'https://example.com/launch?iss={origin}',
-      localOnly: false,
       isSmart: true,
       requiresTunnel: true,
     }

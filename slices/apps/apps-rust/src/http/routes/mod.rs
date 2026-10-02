@@ -1,12 +1,10 @@
-//! HTTP routes for the apps slice, grouped into a [`gated_openapi_router`]
-//! (the catalogue reads and writes, and home-screen) and a
-//! [`launch_openapi_router`] (`POST /apps/{id}`), merged into [`openapi_router`]
-//! for the spec + route tests. The served routes and the OpenAPI spec come from the
-//! same `#[utoipa::path]`-annotated handlers. One file per route named by
-//! operation, under a folder tree mirroring the URL tree: [`apps`] holds `/apps`
-//! (list, create, read, replace, delete, launch) and [`home_screen`] the flat
-//! `/home-screen` route. The gating split is documented on the [`crate::http`]
-//! router builders these back.
+//! HTTP routes for the apps slice as one [`openapi_router`]: the catalogue reads
+//! and writes, home-screen, and the launch. The served routes and the OpenAPI spec
+//! come from the same `#[utoipa::path]`-annotated handlers. One file per route
+//! named by operation, under a folder tree mirroring the URL tree: [`apps`] holds
+//! `/apps` (list, create, read, replace, delete, launch) and [`home_screen`] the
+//! flat `/home-screen` route. The gating is documented on the
+//! [`router`](super::router) builder this backs.
 
 mod apps;
 mod home_screen;
@@ -18,14 +16,16 @@ use utoipa_axum::routes;
 
 use crate::live_bindings::state::AppsState;
 
-/// The scope-gated admin routes as an `OpenApiRouter`, each gated on
-/// `wildflower/Apps.{r,c,u,d}` (the spec-bearing inner of
-/// [`gated_router`](super::gated_router), which documents the gating split):
+/// Every apps route as an `OpenApiRouter` — the spec-bearing inner of
+/// [`router`](super::router):
 ///
 ///  - `GET`/`POST /apps` (registry list, create) and `GET`/`PUT`/`DELETE
-///    /apps/{id}` (read, content replace, delete) — see [`apps`];
-///  - `PUT /home-screen` (atomic reorder / enable) — see [`home_screen`].
-pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
+///    /apps/{id}` (read, content replace, delete), each gated on
+///    `wildflower/Apps.{r,c,u,d}`, and `POST /apps/{id}` (launch), gated on the
+///    `wildflower/launch` umbrella — see [`apps`];
+///  - `PUT /home-screen` (atomic reorder / enable), gated on `wildflower/Apps.u`
+///    — see [`home_screen`].
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     OpenApiRouter::new()
         .routes(routes!(
             apps::list_all::handle_list_apps,
@@ -34,24 +34,10 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
         .routes(routes!(
             apps::get_by_id::handle_get_app,
             apps::update_by_id::handle_update_app,
-            apps::delete_by_id::handle_delete_app
+            apps::delete_by_id::handle_delete_app,
+            apps::launch::handle_launch_app
         ))
         .routes(routes!(home_screen::handle_replace_home_screen))
-}
-
-/// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
-/// inner of [`launch_router`](super::launch_router), which documents why it's kept
-/// ungated and separate from [`gated_openapi_router`].
-pub(crate) fn launch_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    OpenApiRouter::new().routes(routes!(apps::launch::handle_launch_app))
-}
-
-/// The full apps surface (gated routes + launch) as one `OpenApiRouter`. Backs
-/// [`openapi_spec`](super::openapi_spec) — the committed snapshot. The host mounts the two halves separately (via
-/// [`gated_openapi_router`] / [`launch_openapi_router`]) so it can gate them
-/// differently; this combined form exists only to document the whole surface.
-pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    gated_openapi_router().merge(launch_openapi_router())
 }
 
 #[cfg(test)]
@@ -68,7 +54,9 @@ mod tests {
 
     // The port trait is in scope so the concrete store's `insert_app` /
     // `find_app` methods resolve in the fixtures.
-    use crate::domain::{AppRegistration, AppUrl, AppsStore};
+    use crate::db::test_support::SEEDED_IDS;
+    use crate::domain::test_fake::registration;
+    use crate::domain::{AppRegistration, AppsStore};
     use crate::http::test_support::{
         state, state_with_launch_scopes, state_with_sink, state_with_tunnel_and_handle, tunnel_at,
         tunnel_unavailable, FixedLaunchScopes,
@@ -209,45 +197,22 @@ mod tests {
         )
     }
 
-    /// The seeded registry, in display order.
-    const SEEDED_IDS: [&str; 9] = [
-        "growth-chart",
-        "medication-viewer",
-        "precise-hbr",
-        "medications-app",
-        "web-trace-app",
-        "web-server-docs",
-        "importer-app",
-        "ohif-viewer",
-        "lifting-app",
-    ];
-
     /// Seed an app directly through the store (the fixture shortcut a test uses
     /// instead of driving `POST /apps`).
-    fn seed_app(
-        store: &crate::db::SqliteAppsStore,
-        id: &str,
-        url: AppUrl,
-        client_id: Option<&str>,
-    ) {
-        let registration = AppRegistration {
-            id: id.to_owned(),
-            position: 0,
-            on_homescreen: true,
-            name: id.to_owned(),
-            subtitle: None,
-            url,
-            local_only: false,
-            client_id: client_id.map(str::to_owned),
-            requires_tunnel: false,
-        };
-        store.insert_app(&registration).unwrap().expect("inserted");
+    fn seed_app(store: &crate::db::SqliteAppsStore, id: &str, url: &str, client_id: Option<&str>) {
+        store
+            .insert_app(&AppRegistration {
+                url: url.parse().expect("a valid test launch url"),
+                client_id: client_id.map(str::to_owned),
+                ..registration(id)
+            })
+            .expect("inserted");
     }
 
-    /// Seed a non-SMART app that launches against the served origin — the
+    /// Seed a non-SMART app whose template names the served origin — the
     /// fixture the provenance and umbrella tests drive.
     fn seed_plain(store: &crate::db::SqliteAppsStore, id: &str) {
-        seed_app(store, id, AppUrl::OriginRelative("/y".to_owned()), None);
+        seed_app(store, id, "https://app.example/y?iss={origin}", None);
     }
 
     #[tokio::test]
@@ -274,7 +239,6 @@ mod tests {
         let growth = arr.iter().find(|v| v["id"] == "growth-chart").unwrap();
         assert_eq!(growth["isSmart"], true);
         assert_eq!(growth["requiresTunnel"], true);
-        assert_eq!(growth["localOnly"], false);
         assert!(growth["url"].as_str().unwrap().contains("{origin}"));
         for absent in ["position", "clientId"] {
             assert!(growth.get(absent).is_none(), "{absent} is not on the wire");
@@ -346,15 +310,10 @@ mod tests {
         assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     }
 
-    /// Seed a **SMART** app (a `client_id` present) that launches against the
-    /// loopback origin — the fixture the per-app SMART launch tests drive.
+    /// Seed a **SMART** app (a `client_id` present) — the fixture the per-app
+    /// SMART launch tests drive.
     fn seed_smart(store: &crate::db::SqliteAppsStore, id: &str) {
-        seed_app(
-            store,
-            id,
-            AppUrl::OriginRelative("/smart".to_owned()),
-            Some("client-1"),
-        );
+        seed_app(store, id, "https://app.example/smart", Some("client-1"));
     }
 
     /// A SMART app launch additionally requires the caller's grant to cover its
@@ -467,9 +426,9 @@ mod tests {
         );
     }
 
-    /// A created (non-tunnel) app launches against the loopback origin.
+    /// A non-tunnel loopback launch substitutes the loopback origin.
     #[tokio::test]
-    async fn launch_origin_relative_resolves_against_loopback() {
+    async fn launch_substitutes_the_loopback_origin() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         seed_plain(&st.store, "app-y");
@@ -477,7 +436,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
         assert_eq!(
             handle.0.lock().expect("handle mutex").clone(),
-            vec!["http://127.0.0.1:8080/y".to_string()],
+            vec!["https://app.example/y?iss=http://127.0.0.1:8080".to_string()],
         );
     }
 
@@ -490,7 +449,10 @@ mod tests {
         seed_plain(&st.store, "app-y");
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(launch_url(res).await, "https://demo.example.com/y");
+        assert_eq!(
+            launch_url(res).await,
+            "https://app.example/y?iss=https://demo.example.com"
+        );
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 

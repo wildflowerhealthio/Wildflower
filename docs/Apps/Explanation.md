@@ -6,10 +6,10 @@ user's PHI can and can't go when they launch one.
 ## What an app is
 
 An app is a thing the user launches from the homescreen: a registry row naming a
-web page and the template that launches it. The interesting question about any
-app is **whether the patient's data can leave the device when it runs**. A set of
-**capability flags** carries the privacy verdict, and the `requires_tunnel` flag
-fixes how a launch reaches the device's FHIR server.
+web page and the template that launches it. Two facts about an app decide how
+it reaches the patient's data: whether it is a [SMART app](#smart-apps), which
+earns its own bearer for the API, and its `requires_tunnel` flag, which fixes how
+a launch reaches the device's FHIR server.
 
 An app's assets are served from its own origin, never the host's. Growth Chart,
 Medication Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
@@ -30,9 +30,7 @@ row sets it, the first-party ones included: their pages are HTTPS documents on
 loopback origin is unreachable remotely and refused by WebKit even on device.
 Only the debug-only `<id>-dev` rows below clear it, since their pages are served
 from `localhost` themselves. The trade-off: with the assets remote and the
-tunnel required, a first-party launch needs the network even on-device, and Web
-Trace does not claim `local_only`: its data never leaves the device, but its
-assets are remote.
+tunnel required, a first-party launch needs the network even on-device.
 
 The SMART apps this repository publishes (every app that mounts
 `smart-app-react`'s `SmartAppRoot`) send nothing from the browser but their FHIR
@@ -59,34 +57,28 @@ client (gatekeeper's `seed_dev_app_clients`) whose id equals the dev app id and
 whose redirect URI, `http://localhost:{port}` plus the app's callback path, is
 what `/authorize` matches.
 
-## Capabilities (orthogonal flags)
+## SMART apps
 
-- **SMART App** — **derived** from the app's relation to a registered OAuth
-  client: an app is a SMART app **iff it carries a `client_id`** that references
-  a row in the gatekeeper `clients` table. This is more direct (and can't drift)
-  than inferring SMART-ness from a `{launch}` placeholder in a URL template.
-- **Local-Only** — declared **and** enforced no-egress. This pass models the flag
-  and shows the badge; **enforcement (CSP `connect-src` / native filtering) is a
-  follow-up**, so the badge is a claim about intent, not yet a guarantee.
-- **Public / Confidential** — the SMART client type, carried by the linked
-  `clients` row. Glossary-only here: documented, not separately badged.
-
-PHI-safe ≈ Local-Only ∧ Public.
+An app is a **SMART app** iff it carries a `client_id` that references a row in
+the gatekeeper `clients` table. SMART-ness is derived from that relation to a
+registered OAuth client, which is more direct (and can't drift) than inferring it
+from a `{launch}` placeholder in a URL template. The SMART client type —
+**public** or **confidential** — is carried by the linked `clients` row; it is
+documented here, not separately badged.
 
 ## Data model
 
 One **`app_registrations`** table holds the whole app: `id` (the global id
 space, an explicit PK), `position` (UNIQUE, for ordering + drag-to-reorder),
-`on_homescreen`, `name`, `subtitle`, `url` (the launch template), `local_only`,
-the soft `client_id` reference, and `requires_tunnel` (a launch-readiness
-signal). `PUT /home-screen` is the single writer of ordering + `on_homescreen`.
+`on_homescreen`, `name`, `subtitle`, `url` (the launch template), the soft
+`client_id` reference, and `requires_tunnel` (a launch-readiness signal).
+`PUT /home-screen` is the single writer of ordering + `on_homescreen`.
 
 The `url` is an origin-independent template (`domain/app_url.rs`): an absolute
-`http(s)://` URL or an origin-relative path, either of which may embed `{origin}`
-and `{launch}` tokens. Anything else — `javascript:`, `data:`, a
-protocol-relative `//authority`, an `{origin}` followed by anything but a
-path/query/fragment boundary — is rejected on write, and a stored value that no
-longer parses fails the read as a typed error.
+`http(s)://` URL, which may embed `{origin}` and `{launch}` tokens. Anything else —
+`javascript:`, `data:`, a protocol-relative `//authority`, a `/path` or leading
+`{origin}` that would resolve against the host's own origin — is rejected on
+write, and a stored value that no longer parses fails the read as a typed error.
 
 Every app can be deleted: `DELETE /apps/{id}` drops its row. A user-deleted seed
 stays deleted across upgrades, because each seed migration runs once per
@@ -95,8 +87,8 @@ database.
 ### The registration is the wire shape
 
 `GET /apps` (and `PUT /home-screen`) return `AppRegistration[]` — one flat shape
-per app: `id`, `onHomescreen`, `name`, `subtitle?`, `url`, `localOnly`, `isSmart`
-(derived from `client_id`), and `requiresTunnel`. The array order is the display
+per app: `id`, `onHomescreen`, `name`, `subtitle?`, `url`, `isSmart` (derived
+from `client_id`), and `requiresTunnel`. The array order is the display
 order (`position` stays on the host). `GET /apps/{id}` returns the same shape for
 one app.
 
@@ -111,7 +103,7 @@ the right origin.
 `POST /apps` creates an app and `PUT /apps/{id}` replaces its content, both from
 the same JSON body (`name`, `subtitle`, `url`, `requiresTunnel`). The server mints
 a created app's id; the app lands at the end of the homescreen, with no
-`client_id` and `local_only` clear. A replace is a full **content** replace —
+`client_id`. A replace is a full **content** replace —
 `on_homescreen` and display order stay owned by `PUT /home-screen` — and an
 unknown id is a `404`. Both answer with the stored registration.
 

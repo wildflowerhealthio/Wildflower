@@ -65,7 +65,6 @@ use axum::Router;
 
 pub use config::{DatabaseDescriptor, DatabasesConfig};
 pub use files::purge_pending_deletions;
-pub use http::openapi_spec;
 pub use live_bindings::state::DatabasesState;
 
 /// Build the `/databases` router over the host's data directory, mirroring

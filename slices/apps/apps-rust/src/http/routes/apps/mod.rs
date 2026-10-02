@@ -2,8 +2,8 @@
 //! — the registry), `create` (`POST /apps`), `get_by_id` (`GET /apps/{id}`),
 //! `update_by_id` (`PUT /apps/{id}`), `delete_by_id` (`DELETE /apps/{id}`), and
 //! `launch` (`POST /apps/{id}`). Each file exposes a `#[utoipa::path]`-annotated
-//! handler; the route table in [`crate::http::routes`] wires them into the gated +
-//! launch routers.
+//! handler; the route table in [`crate::http::routes`] wires them into the one
+//! router.
 
 pub(crate) mod create;
 pub(crate) mod delete_by_id;

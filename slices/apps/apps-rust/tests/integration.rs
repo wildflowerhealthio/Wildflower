@@ -109,7 +109,8 @@ fn launch(uri: &str) -> Request<Body> {
 async fn fresh_install_lists_the_default_set() {
     let apps = spin_up();
     let res = apps
-        .combined_router()
+        .router
+        .clone()
         .oneshot(get("/apps"))
         .await
         .expect("oneshot");
@@ -142,7 +143,7 @@ async fn fresh_install_lists_the_default_set() {
 #[tokio::test]
 async fn app_round_trip() {
     let (apps, handle) = spin_up_with_handle();
-    let router = apps.combined_router();
+    let router = apps.router.clone();
     let create_res = router
         .clone()
         .oneshot(post_create(
@@ -204,7 +205,7 @@ async fn app_round_trip() {
 #[tokio::test]
 async fn seeded_app_is_fully_editable() {
     let apps = spin_up();
-    let router = apps.combined_router();
+    let router = apps.router.clone();
     let put_res = router
         .clone()
         .oneshot(put(
@@ -251,7 +252,7 @@ async fn seeded_app_is_fully_editable() {
 #[tokio::test]
 async fn home_screen_reorders_and_disables_an_app() {
     let apps = spin_up();
-    let router = apps.combined_router();
+    let router = apps.router.clone();
     // Move lifting-app to the front and disable it; keep the rest in order.
     let body = serde_json::json!([
         { "id": "lifting-app", "onHomescreen": false },
@@ -298,7 +299,7 @@ async fn home_screen_reorders_and_disables_an_app() {
 #[tokio::test]
 async fn deleted_seeded_app_stays_deleted() {
     let apps = spin_up();
-    let router = apps.combined_router();
+    let router = apps.router.clone();
     let res = router
         .clone()
         .oneshot(delete("/apps/growth-chart"))
@@ -322,7 +323,8 @@ async fn deleted_seeded_app_stays_deleted() {
 async fn create_rejects_javascript_url() {
     let apps = spin_up();
     let res = apps
-        .combined_router()
+        .router
+        .clone()
         .oneshot(post_create("Bad", "javascript:alert(1)", false))
         .await
         .expect("oneshot");

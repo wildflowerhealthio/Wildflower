@@ -58,7 +58,6 @@ use axum::Router;
 pub use persistence_rust::DieselPool;
 
 pub use db::SqliteRemotesStore;
-pub use http::openapi_spec;
 pub use live_bindings::state::CollectorState;
 
 // The per-slice grantable scope vocabulary — `wildflower/Accounts.{r,c,u,d}` —

@@ -61,7 +61,6 @@ pub use domain::{
 // domain no longer wraps in an action).
 use domain::TunnelStore;
 pub use health::HealthProbe;
-pub use http::openapi_spec;
 use live_bindings::state::TunnelState;
 // Re-exported so the host can name the pool type at the `setup_tunnel` call site
 // without a direct diesel dependency; the canonical home is persistence-rust.

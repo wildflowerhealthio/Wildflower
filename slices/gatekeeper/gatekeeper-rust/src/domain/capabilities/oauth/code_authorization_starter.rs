@@ -16,7 +16,6 @@ use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::capabilities::writers::{CodeAuthority, RequestApprover};
 use crate::domain::client::Client;
-use crate::domain::client_redirect::redirect_is_allowlisted;
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
@@ -147,7 +146,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         let redirect_allowlisted = maybe_existing_client
             .as_ref()
             .is_some_and(|existing_client| {
-                redirect_is_allowlisted(existing_client, &requested_redirect_uri)
+                existing_client.allows_redirect_uri(&requested_redirect_uri)
             });
         if registration_is_locked && !redirect_allowlisted {
             return Err(AuthorizationStartError::LocalPage(

@@ -29,8 +29,8 @@
 //! and nothing else.
 
 use anyhow::Context;
-use diesel::sql_types::{BigInt, Text};
-use diesel::{QueryableByName, RunQueryDsl, SqliteConnection};
+use diesel::sql_types::Text;
+use diesel::{OptionalExtension, QueryableByName, RunQueryDsl, SqliteConnection};
 use persistence_rust::DieselPool;
 
 use crate::db::SqliteAppsStore;
@@ -44,13 +44,10 @@ struct DevApp {
     /// production tile sitting next to it.
     name: &'static str,
     subtitle: &'static str,
-    /// The app's vite dev-server port, read from the shared
+    /// The launch URL, built from the app's vite dev-server port in the shared
     /// `slices/apps/dev-app-ports.json` — the same file the app's
     /// `vite.config.ts` reads for `server.port`, so the row and the dev server
-    /// cannot drift. Read in tests to assert the URL embeds the right port.
-    #[allow(dead_code)]
-    port: i32,
-    /// The launch URL, built from the port.
+    /// cannot drift.
     url: String,
 }
 
@@ -119,56 +116,48 @@ fn dev_apps() -> [DevApp; 8] {
             id: "medications-app-dev",
             name: "Medications (Dev)",
             subtitle: "Local vite dev server for apps/medications-app",
-            port: ports.medications_app_dev,
             url: dev_launch_url(ports.medications_app_dev),
         },
         DevApp {
             id: "web-trace-app-dev",
             name: "Web Trace (Dev)",
             subtitle: "Local vite dev server for apps/web-trace",
-            port: ports.web_trace_app_dev,
             url: dev_launch_url(ports.web_trace_app_dev),
         },
         DevApp {
             id: "web-server-docs-dev",
             name: "Server Docs (Dev)",
             subtitle: "Local vite dev server for apps/wildflower-server-docs",
-            port: ports.web_server_docs_dev,
             url: dev_launch_url(ports.web_server_docs_dev),
         },
         DevApp {
             id: "importer-app-dev",
             name: "Importer (Dev)",
             subtitle: "Local vite dev server for apps/importer-web",
-            port: ports.importer_app_dev,
             url: dev_launch_url(ports.importer_app_dev),
         },
         DevApp {
             id: "ohif-viewer-dev",
             name: "Imaging (Dev)",
             subtitle: "Local preview server for apps/ohif-viewer",
-            port: ports.ohif_viewer_dev,
             url: ohif_viewer_dev_url(ports.ohif_viewer_dev),
         },
         DevApp {
             id: "health-viewer-app-dev",
             name: "Health Viewer (Dev)",
             subtitle: "Local vite dev server for apps/health-viewer",
-            port: ports.health_viewer_app_dev,
             url: dev_launch_url(ports.health_viewer_app_dev),
         },
         DevApp {
             id: "synthetic-data-app-dev",
             name: "Synthetic Data (Dev)",
             subtitle: "Local vite dev server for apps/synthetic-data-app",
-            port: ports.synthetic_data_app_dev,
             url: dev_launch_url(ports.synthetic_data_app_dev),
         },
         DevApp {
             id: "lifting-app-dev",
             name: "Lifting (Dev)",
             subtitle: "Local vite dev server for apps/lifting-app",
-            port: ports.lifting_app_dev,
             url: dev_launch_url(ports.lifting_app_dev),
         },
     ]
@@ -225,33 +214,25 @@ enum DevRowOwnership {
     Foreign,
 }
 
-/// Counts behind [`DevRowOwnership`], read in one statement so the two halves
-/// can't be read either side of a concurrent write.
+/// The stored launch URL under a dev app's id — the ownership marker.
 #[derive(QueryableByName)]
-struct OwnershipCounts {
-    #[diesel(sql_type = BigInt)]
-    registrations: i64,
-    /// Registrations under this id that carry this seed's ownership marker.
-    #[diesel(sql_type = BigInt)]
-    owned_registrations: i64,
+struct StoredUrl {
+    #[diesel(sql_type = Text)]
+    url: String,
 }
 
 /// Classify what is stored under `app`'s id (see [`DevRowOwnership`]).
 fn ownership(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<DevRowOwnership> {
-    let counts: OwnershipCounts = diesel::sql_query(
-        "SELECT (SELECT COUNT(*) FROM app_registrations WHERE id = ?) AS registrations, \
-                (SELECT COUNT(*) FROM app_registrations WHERE id = ? AND url = ?) \
-                    AS owned_registrations",
-    )
-    .bind::<Text, _>(app.id)
-    .bind::<Text, _>(app.id)
-    .bind::<Text, _>(app.url.as_str())
-    .get_result(conn)
-    .context("read dev app ownership")?;
-    Ok(match (counts.registrations, counts.owned_registrations) {
-        (0, _) => DevRowOwnership::Absent,
-        (_, 0) => DevRowOwnership::Foreign,
-        _ => DevRowOwnership::Ours,
+    let stored: Option<StoredUrl> =
+        diesel::sql_query("SELECT url FROM app_registrations WHERE id = ?")
+            .bind::<Text, _>(app.id)
+            .get_result(conn)
+            .optional()
+            .context("read dev app ownership")?;
+    Ok(match stored {
+        None => DevRowOwnership::Absent,
+        Some(stored) if stored.url == app.url => DevRowOwnership::Ours,
+        Some(_) => DevRowOwnership::Foreign,
     })
 }
 
@@ -277,9 +258,9 @@ fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
 fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, subtitle, url, local_only, client_id, requires_tunnel) \
+             (id, position, on_homescreen, name, subtitle, url, client_id, requires_tunnel) \
          SELECT ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM app_registrations), \
-                1, ?, ?, ?, 0, ?, 0 \
+                1, ?, ?, ?, ?, 0 \
           WHERE NOT EXISTS (SELECT 1 FROM app_registrations WHERE id = ?)",
     )
     .bind::<Text, _>(app.id)
@@ -302,7 +283,7 @@ fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
 fn reconcile(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "UPDATE app_registrations \
-            SET name = ?, subtitle = ?, local_only = 0, client_id = ?, requires_tunnel = 0 \
+            SET name = ?, subtitle = ?, client_id = ?, requires_tunnel = 0 \
           WHERE id = ? AND url = ?",
     )
     .bind::<Text, _>(app.name)
@@ -350,11 +331,8 @@ mod tests {
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
-        let port = dev_apps()
-            .iter()
-            .find(|app| app.id == "ohif-viewer-dev")
-            .expect("the OHIF dev row")
-            .port;
+        let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
+        let port = ports.ohif_viewer_dev;
         let registration = dev_row(&store, "ohif-viewer-dev");
         assert_eq!(
             registration.url.to_string(),
@@ -371,11 +349,8 @@ mod tests {
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
-        let port = dev_apps()
-            .iter()
-            .find(|app| app.id == "health-viewer-app-dev")
-            .expect("the health viewer dev row")
-            .port;
+        let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
+        let port = ports.health_viewer_app_dev;
         let registration = dev_row(&store, "health-viewer-app-dev");
         assert_eq!(registration.name, "Health Viewer (Dev)");
         assert_eq!(
@@ -485,9 +460,9 @@ mod tests {
         let mut conn = pool.get().unwrap();
         diesel::sql_query(
             "INSERT INTO app_registrations \
-                 (id, position, on_homescreen, name, subtitle, url, local_only, client_id, requires_tunnel) \
+                 (id, position, on_homescreen, name, subtitle, url, client_id, requires_tunnel) \
              VALUES ('medications-app-dev', 100, 0, 'My Meds', 'Mine', \
-                     'https://example.test/my-meds', 1, NULL, 1)",
+                     'https://example.test/my-meds', NULL, 1)",
         )
         .execute(&mut conn)
         .unwrap();
@@ -503,8 +478,10 @@ mod tests {
         );
         assert_eq!(registration.name, "My Meds", "the user's name must survive");
         assert_eq!(registration.subtitle.as_deref(), Some("Mine"));
-        assert!(registration.local_only, "the user's flags must survive");
-        assert!(registration.requires_tunnel);
+        assert!(
+            registration.requires_tunnel,
+            "the user's flags must survive"
+        );
         assert!(!registration.on_homescreen, "placement must survive");
         assert_eq!(
             registration.client_id, None,

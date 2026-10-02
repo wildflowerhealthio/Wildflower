@@ -213,7 +213,6 @@ dependencies = [
  "axum",
  "diesel",
  "diesel_migrations",
- "http",
  "http-body-util",
  "persistence-rust",
  "rand 0.10.3",

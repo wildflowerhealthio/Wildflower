@@ -16,16 +16,15 @@ interface Pill {
 }
 
 /**
- * The pills a tile shows for an app's registry flags: `SMART` when `isSmart`,
- * `Local-Only` when `localOnly`, and `Tunnel` when `requiresTunnel` (so a launch
- * that needs the tunnel up is signalled before the user clicks into a `503`).
+ * The pills a tile shows for an app's registry flags: `SMART` when `isSmart` and
+ * `Tunnel` when `requiresTunnel` (so a launch that needs the tunnel up is
+ * signalled before the user clicks into a `503`).
  * Pure — derives the list from the row so it can be unit-tested without
  * rendering.
  */
 const tilePills = (app: AppRegistration): readonly Pill[] => {
   const pills: Pill[] = []
   if (app.isSmart) pills.push({ key: 'smart', label: 'SMART', tone: 'info' })
-  if (app.localOnly) pills.push({ key: 'local-only', label: 'Local-Only', tone: 'success' })
   if (app.requiresTunnel) pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
   return pills
 }

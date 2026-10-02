@@ -1,17 +1,81 @@
 //! The `SqliteAppsStore` adapter — the `SQLite` implementation of the
-//! [`AppsStore`](crate::domain::AppsStore) port. Holds the app-wide r2d2 pool of
-//! Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the shared
-//! database file, applies the embedded apps migrations once on construction, and
-//! implements the port by delegating to the query bodies in
-//! [`crate::db::app_registration`]. Mirrors `collector-rust`'s
+//! [`AppsStore`](crate::domain::AppsStore) port over the one `app_registrations`
+//! table. Holds the app-wide r2d2 pool of Diesel `SqliteConnection`s
+//! (`persistence_rust::DieselPool`) onto the shared database file, applies the
+//! embedded apps migrations once on construction, and implements the port's
+//! queries: the catalogue read, the by-id read, the insert / content replace /
+//! delete mutators, and the atomic homescreen placement rewrite (the single
+//! writer of `position` / `on_homescreen`). Mirrors `collector-rust`'s
 //! `SqliteRemotesStore`.
+//!
+//! This file also owns the [`app_registrations`] `table!` definition and the
+//! [`AppUrlColumn`] mapping for its `url` column — both referenced by the domain
+//! [`AppRegistration`](crate::domain::AppRegistration)'s diesel derive, so they
+//! stay `pub`. Insert and replace hand back the stored registration via
+//! `RETURNING` on the writing statement — no separate read-back — which also
+//! re-decodes the stored `url`, so a value that no longer round-trips surfaces as
+//! a typed error.
+
+use std::collections::HashSet;
 
 use anyhow::Context;
+use diesel::deserialize::{FromSql, FromSqlRow};
+use diesel::expression::AsExpression;
+use diesel::prelude::*;
+use diesel::serialize::{IsNull, Output, ToSql};
+use diesel::sql_types::Text;
+use diesel::sqlite::{Sqlite, SqliteValue};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 
-use crate::db::app_registration;
-use crate::domain::{AppInsertError, AppRegistration, AppsError, AppsStore};
+use crate::domain::{is_exact_registry_permutation, AppRegistration, AppUrl, AppsError, AppsStore};
+
+diesel::table! {
+    app_registrations (id) {
+        id -> Text,
+        position -> BigInt,
+        on_homescreen -> Bool,
+        name -> Text,
+        subtitle -> Nullable<Text>,
+        url -> Text,
+        client_id -> Nullable<Text>,
+        requires_tunnel -> Bool,
+    }
+}
+
+/// An [`AppUrl`] bound to / read from the `url` TEXT column as its string. A
+/// stored value that no longer parses surfaces as a diesel deserialization error,
+/// never a panic or an unsafe redirect target. A row struct plugs it in on its
+/// plain `AppUrl` field with `#[diesel(serialize_as = …, deserialize_as = …)]`.
+#[derive(Debug, AsExpression, FromSqlRow)]
+#[diesel(sql_type = Text)]
+pub struct AppUrlColumn(AppUrl);
+
+impl From<AppUrl> for AppUrlColumn {
+    fn from(url: AppUrl) -> Self {
+        Self(url)
+    }
+}
+
+impl From<AppUrlColumn> for AppUrl {
+    fn from(column: AppUrlColumn) -> Self {
+        column.0
+    }
+}
+
+impl FromSql<Text, Sqlite> for AppUrlColumn {
+    fn from_sql(value: SqliteValue<'_, '_, '_>) -> diesel::deserialize::Result<Self> {
+        let text = <String as FromSql<Text, Sqlite>>::from_sql(value)?;
+        Ok(Self(text.parse()?))
+    }
+}
+
+impl ToSql<Text, Sqlite> for AppUrlColumn {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Sqlite>) -> diesel::serialize::Result {
+        out.set_value(self.0.to_string());
+        Ok(IsNull::No)
+    }
+}
 
 /// This slice's migration namespace in the shared database. Applied versions are
 /// bookkept per-namespace by [`persistence_rust::run_diesel_migrations`], so
@@ -92,51 +156,404 @@ impl SqliteAppsStore {
 }
 
 /// The `SQLite` implementation of the port: each method checks a connection out
-/// of the pool (via [`connection`](Self::connection)) and hands it to the matching
-/// query body in [`crate::db::app_registration`]. The bodies live there so this
-/// file stays the migration + pool handle, and the query SQL stays next to the
-/// `table!` it maps. Every method returns the port's PRIMITIVE shape — absence as
-/// `None`, delete outcome as `bool`, an insert that wrote nothing as the typed
-/// [`AppInsertError`] — leaving the semantic verdicts to the
+/// of the pool (via [`connection`](SqliteAppsStore::connection)) and runs its
+/// query on it. Every method returns the port's PRIMITIVE shape — absence as
+/// `None`, a delete outcome as `bool` — leaving the semantic verdicts to the
 /// [`capabilities`](crate::domain::capabilities).
 impl AppsStore for SqliteAppsStore {
     fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppsError> {
-        let mut conn = self.connection()?;
-        app_registration::list_registrations_on(&mut conn)
+        list_registrations_on(&mut *self.connection()?)
     }
 
     fn find_app(&self, id: &str) -> Result<Option<AppRegistration>, AppsError> {
-        app_registration::find_app(&mut *self.connection()?, id)
+        app_registrations::table
+            .find(id)
+            .select(AppRegistration::as_select())
+            .first(&mut *self.connection()?)
+            .optional()
+            .map_err(|e| AppsError::infrastructure("find app failed", e))
     }
 
-    fn insert_app(
-        &self,
-        registration: &AppRegistration,
-    ) -> Result<Result<AppRegistration, AppInsertError>, AppsError> {
-        app_registration::insert_app(&mut self.connection()?, registration)
+    fn insert_app(&self, registration: &AppRegistration) -> Result<AppRegistration, AppsError> {
+        // IMMEDIATE so the `next_position` read + insert can't race a concurrent create —
+        // see the transaction-discipline section of `docs/Apps/Store Explanation.md`.
+        self.connection()?.immediate_transaction(|conn| {
+            // The store owns `position` (tail append); everything else is the caller's.
+            diesel::insert_into(app_registrations::table)
+                .values(AppRegistration {
+                    position: next_position(conn)?,
+                    ..registration.clone()
+                })
+                .returning(AppRegistration::as_returning())
+                .get_result(conn)
+                .map_err(|e| {
+                    tracing::error!(id = %registration.id, "app insert failed: {e}");
+                    AppsError::infrastructure(
+                        "app insert failed",
+                        format!("id={}: {e}", registration.id),
+                    )
+                })
+        })
     }
 
     fn replace_app(
         &self,
         registration: &AppRegistration,
     ) -> Result<Option<AppRegistration>, AppsError> {
-        app_registration::replace_app(&mut *self.connection()?, registration)
+        diesel::update(app_registrations::table.find(&registration.id))
+            .set((
+                app_registrations::name.eq(&registration.name),
+                app_registrations::subtitle.eq(&registration.subtitle),
+                app_registrations::url.eq(AppUrlColumn::from(registration.url.clone())),
+                app_registrations::requires_tunnel.eq(registration.requires_tunnel),
+            ))
+            .returning(AppRegistration::as_returning())
+            .get_result(&mut *self.connection()?)
+            .optional()
+            .map_err(|e| AppsError::infrastructure("app update failed", e))
     }
 
     fn delete_app(&self, id: &str) -> Result<bool, AppsError> {
-        app_registration::delete_app(&mut *self.connection()?, id)
+        let removed = diesel::delete(app_registrations::table.find(id))
+            .execute(&mut *self.connection()?)
+            .map_err(|e| AppsError::infrastructure("delete app failed", e))?;
+        Ok(removed == 1)
     }
 
     fn replace_placements(
         &self,
         entries: &[(String, bool)],
     ) -> Result<Option<Vec<AppRegistration>>, AppsError> {
-        app_registration::replace_placements(&mut self.connection()?, entries)
+        // IMMEDIATE so the permutation read and the renumber can't be split by a concurrent
+        // add/remove — see the transaction-discipline section of
+        // `docs/Apps/Store Explanation.md`.
+        self.connection()?.immediate_transaction(|conn| {
+            // Validate against the live registry under the same transaction as the
+            // renumber: the body must be an exact permutation of the current ids. The
+            // set logic is a pure domain function; here we only supply the two id sets.
+            let current_ids = all_registration_ids(conn)?;
+            let body_ids: Vec<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
+            if !is_exact_registry_permutation(&current_ids, &body_ids) {
+                return Ok(None);
+            }
+
+            // Move every row to a disjoint negative range first so the per-row
+            // renumber below never transiently violates `UNIQUE(position)`
+            // (SQLite's UNIQUE is immediate, not deferrable).
+            diesel::sql_query("UPDATE app_registrations SET position = -1 - position")
+                .execute(conn)
+                .map_err(|e| AppsError::infrastructure("placement renumber staging failed", e))?;
+            for (index, (id, on_homescreen)) in entries.iter().enumerate() {
+                // A registry with more than i64::MAX apps can't exist, but map rather
+                // than panic so any conversion failure rolls the transaction back.
+                let position = i64::try_from(index)
+                    .map_err(|e| AppsError::infrastructure("home-screen index exceeds i64", e))?;
+                diesel::update(app_registrations::table.find(id))
+                    .set((
+                        app_registrations::position.eq(position),
+                        app_registrations::on_homescreen.eq(on_homescreen),
+                    ))
+                    .execute(conn)
+                    .map_err(|e| AppsError::infrastructure("placement renumber failed", e))?;
+            }
+
+            // Read the new registry inside the transaction so the response can't
+            // reflect a write that landed after the renumber.
+            let updated = list_registrations_on(conn)?;
+            Ok(Some(updated))
+        })
     }
+}
+
+/// The catalogue read against an arbitrary connection — shared by
+/// [`list_registrations`](AppsStore::list_registrations) and the placement
+/// transaction (which calls it on its open transaction so the post-renumber read
+/// stays in the same transaction).
+fn list_registrations_on(conn: &mut SqliteConnection) -> Result<Vec<AppRegistration>, AppsError> {
+    app_registrations::table
+        .order(app_registrations::position)
+        .select(AppRegistration::as_select())
+        .load(conn)
+        .map_err(|e| AppsError::infrastructure("list registrations failed", e))
+}
+
+/// The next display position: `MAX(position) + 1` (0 for an empty registry).
+/// [`insert_app`](AppsStore::insert_app) appends at the tail with it.
+fn next_position(conn: &mut SqliteConnection) -> Result<i64, AppsError> {
+    let max: Option<i64> = app_registrations::table
+        .select(diesel::dsl::max(app_registrations::position))
+        .first(conn)
+        .map_err(|e| AppsError::infrastructure("next-position read failed", e))?;
+    Ok(max.map_or(0, |m| m + 1))
+}
+
+/// Every registration id (the global app-id space) as a set — the home-screen
+/// permutation check's live-registry input, read inside the placement transaction.
+fn all_registration_ids(conn: &mut SqliteConnection) -> Result<HashSet<String>, AppsError> {
+    Ok(app_registrations::table
+        .select(app_registrations::id)
+        .load::<String>(conn)
+        .map_err(|e| AppsError::infrastructure("registration-ids read failed", e))?
+        .into_iter()
+        .collect())
 }
 
 #[cfg(test)]
 mod tests {
+    use diesel::prelude::*;
+
+    use super::*;
+    use crate::db::test_support::{error_text, SEEDED_IDS};
+    use crate::domain::test_fake::registration;
+
+    fn launch_url(raw: &str) -> AppUrl {
+        raw.parse().expect("a valid test launch url")
+    }
+
+    /// `list_registrations` reports `is_smart`, `requires_tunnel`, and the launch
+    /// template per row.
+    #[test]
+    fn list_registrations_reports_the_facts_per_row() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let registrations = store.list_registrations().unwrap();
+        for id in ["growth-chart", "medication-viewer", "precise-hbr"] {
+            let reg = registrations
+                .iter()
+                .find(|r| r.id == id)
+                .expect("seeded row");
+            assert!(reg.is_smart(), "{id} must be smart");
+            assert!(reg.requires_tunnel, "{id} requires the tunnel");
+            assert!(
+                reg.url.to_string().contains("{launch}"),
+                "{id} carries its launch template",
+            );
+        }
+    }
+
+    /// `find_app` reads the whole app; an unknown id is `None`.
+    #[test]
+    fn find_app_reads_the_whole_app() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let registration = store.find_app("growth-chart").unwrap().expect("seeded");
+        assert_eq!(registration.name, "Growth Chart");
+        assert!(registration.is_smart());
+        assert!(registration.requires_tunnel);
+        assert!(registration.url.to_string().contains("growth-chart-app"));
+        assert!(store.find_app("no-such-id").unwrap().is_none());
+    }
+
+    /// A stored `url` that no longer parses surfaces as a typed read error (the
+    /// `AppUrlColumn` deserialize), not a silent unsafe value. A `javascript:`
+    /// scheme is one such rejected shape (an XSS redirect target).
+    #[test]
+    fn find_app_rejects_an_unparseable_stored_url() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+        diesel::sql_query(
+            "UPDATE app_registrations SET url = 'javascript:alert(1)' WHERE id = 'growth-chart'",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        drop(conn);
+        let error = store
+            .find_app("growth-chart")
+            .expect_err("an unparseable url must fail the read");
+        assert!(
+            error_text(&error).contains("find app failed"),
+            "error should name the read: {error:?}",
+        );
+    }
+
+    #[test]
+    fn insert_app_returns_the_stored_registration_and_round_trips() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let inserted = store.insert_app(&registration("app-x")).expect("inserted");
+        assert_eq!(store.find_app("app-x").unwrap(), Some(inserted.clone()));
+        assert_eq!(inserted.position, 9, "the store assigns the tail position");
+        assert!(inserted.on_homescreen);
+        assert!(!inserted.is_smart(), "inserted app has no client_id");
+        assert_eq!(inserted.url, launch_url("https://example.com/launch"));
+        assert!(!inserted.requires_tunnel);
+    }
+
+    /// A taken id fails the insert as an infrastructure error naming the id —
+    /// the primary key rejects it, so nothing is written and the existing row is
+    /// untouched.
+    #[test]
+    fn insert_app_rejects_a_taken_id() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let app = registration("app-x");
+        store.insert_app(&app).expect("inserted");
+        let error = store
+            .insert_app(&AppRegistration {
+                name: "Second".to_owned(),
+                ..app
+            })
+            .expect_err("a second insert with the same id must fail");
+        assert!(
+            error_text(&error).contains("id=app-x"),
+            "error should name the id: {error:?}",
+        );
+        let stored = store.find_app("app-x").unwrap().unwrap();
+        assert_eq!(stored.name, "app-x", "the existing row is untouched");
+        assert_eq!(stored.position, 9);
+    }
+
+    #[test]
+    fn replace_app_writes_the_editable_fields() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        store.insert_app(&registration("app-x")).expect("inserted");
+
+        let mut edited = AppRegistration {
+            url: launch_url("https://example.com/edited"),
+            ..registration("app-x")
+        };
+        edited.name = "Renamed".to_owned();
+        edited.subtitle = Some("the new subtitle".to_owned());
+        edited.requires_tunnel = true;
+        let replaced = store.replace_app(&edited).unwrap().expect("replaced");
+        assert_eq!(replaced.name, "Renamed");
+        assert_eq!(replaced.subtitle.as_deref(), Some("the new subtitle"));
+        assert!(replaced.requires_tunnel);
+        assert_eq!(replaced.url, launch_url("https://example.com/edited"));
+        assert_eq!(store.find_app("app-x").unwrap(), Some(replaced));
+    }
+
+    /// A content replace must not touch `on_homescreen` — `PUT /home-screen` is that
+    /// flag's single writer — even though the caller-built registration carries the
+    /// `on_homescreen = true` default.
+    #[test]
+    fn replace_app_leaves_on_homescreen_alone() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        store.insert_app(&registration("app-x")).expect("inserted");
+
+        let entries: Vec<(String, bool)> = store
+            .list_registrations()
+            .unwrap()
+            .iter()
+            .map(|reg| (reg.id.clone(), reg.id != "app-x"))
+            .collect();
+        store
+            .replace_placements(&entries)
+            .unwrap()
+            .expect("permutation");
+        assert!(!store.find_app("app-x").unwrap().unwrap().on_homescreen);
+
+        let mut edited = registration("app-x");
+        edited.name = "Renamed".to_owned();
+        let replaced = store.replace_app(&edited).unwrap().expect("replaced");
+        assert!(
+            !replaced.on_homescreen,
+            "a content replace must not re-show a hidden app",
+        );
+    }
+
+    #[test]
+    fn replace_app_returns_none_for_unknown_id() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        assert!(store.replace_app(&registration("ghost")).unwrap().is_none());
+    }
+
+    /// Delete removes the row, for a user-created and a seeded app alike.
+    #[test]
+    fn delete_app_removes_the_registration() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        store.insert_app(&registration("my-app")).expect("inserted");
+        assert!(store.delete_app("my-app").unwrap());
+        assert!(store.find_app("my-app").unwrap().is_none());
+        assert!(
+            !store.delete_app("my-app").unwrap(),
+            "a second delete of the same id removes nothing",
+        );
+
+        assert!(store.delete_app("growth-chart").unwrap());
+        assert!(store.find_app("growth-chart").unwrap().is_none());
+        assert!(!store.delete_app("no-such-id").unwrap());
+    }
+
+    /// `replace_placements` renumbers every row to its array index and applies
+    /// each `on_homescreen` flag, in one shot — leaving a dense `0..n` permutation
+    /// (no ties).
+    #[test]
+    fn replace_placements_renumbers_and_sets_on_homescreen() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let entries: Vec<(String, bool)> = SEEDED_IDS
+            .iter()
+            .rev()
+            .map(|id| ((*id).to_owned(), *id != "precise-hbr"))
+            .collect();
+        let updated = store
+            .replace_placements(&entries)
+            .unwrap()
+            .expect("an exact permutation renumbers and returns the registry");
+
+        let expected: Vec<String> = entries.iter().map(|(id, _)| id.clone()).collect();
+        let returned_ids: Vec<String> = updated.iter().map(|r| r.id.clone()).collect();
+        assert_eq!(returned_ids, expected);
+
+        for (position, (id, _)) in entries.iter().enumerate() {
+            let registration = store.find_app(id).unwrap().unwrap();
+            assert_eq!(
+                registration.position,
+                i64::try_from(position).unwrap(),
+                "{id} position"
+            );
+        }
+        assert!(
+            !store
+                .find_app("precise-hbr")
+                .unwrap()
+                .unwrap()
+                .on_homescreen
+        );
+        let ids: Vec<String> = store
+            .list_registrations()
+            .unwrap()
+            .iter()
+            .map(|r| r.id.clone())
+            .collect();
+        assert_eq!(ids, expected);
+    }
+
+    /// A body that isn't an exact permutation of the live registry returns
+    /// `Ok(None)` (→ `400`) and writes nothing.
+    #[test]
+    fn replace_placements_rejects_a_non_permutation_without_writing() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let ids_now = |store: &SqliteAppsStore| -> Vec<String> {
+            store
+                .list_registrations()
+                .unwrap()
+                .iter()
+                .map(|r| r.id.clone())
+                .collect()
+        };
+        let before = ids_now(&store);
+
+        let subset = vec![
+            ("growth-chart".to_owned(), true),
+            ("precise-hbr".to_owned(), true),
+        ];
+        assert!(store.replace_placements(&subset).unwrap().is_none());
+
+        let dup = vec![
+            ("growth-chart".to_owned(), true),
+            ("medication-viewer".to_owned(), true),
+            ("precise-hbr".to_owned(), true),
+            ("growth-chart".to_owned(), true),
+        ];
+        assert!(store.replace_placements(&dup).unwrap().is_none());
+
+        assert_eq!(
+            before,
+            ids_now(&store),
+            "a rejected body must not reorder anything"
+        );
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
     use diesel::migration::{Migration, MigrationSource, MigrationVersion};
     use diesel::prelude::*;
     use diesel::sql_types::{BigInt, Integer, Text};
@@ -145,21 +562,7 @@ mod tests {
     use persistence_rust::DieselPool;
 
     use super::*;
-    use crate::db::app_registration::app_registrations;
-    use crate::domain::AppUrl;
-
-    /// The seeded registry, in display order.
-    const SEEDED_IDS: [&str; 9] = [
-        "growth-chart",
-        "medication-viewer",
-        "precise-hbr",
-        "medications-app",
-        "web-trace-app",
-        "web-server-docs",
-        "importer-app",
-        "ohif-viewer",
-        "lifting-app",
-    ];
+    use crate::db::test_support::SEEDED_IDS;
 
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips the already-applied `0001`), and the seeded default registry
@@ -178,30 +581,6 @@ mod tests {
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
         assert_eq!(row_count, 9, "exactly the nine seeded default apps");
-    }
-
-    /// The `app_registrations` primary key gives global id uniqueness — a second
-    /// registration with a seeded id is rejected by the PK, so no two apps can
-    /// share an id.
-    #[test]
-    fn app_registrations_id_is_globally_unique() {
-        let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut conn = store.pool().get().unwrap();
-        let dup = diesel::insert_into(app_registrations::table)
-            .values((
-                app_registrations::id.eq("growth-chart"),
-                app_registrations::position.eq(99_i64),
-                app_registrations::on_homescreen.eq(true),
-                app_registrations::name.eq("Dup"),
-                app_registrations::url.eq("https://example.com/dup"),
-                app_registrations::local_only.eq(false),
-                app_registrations::requires_tunnel.eq(false),
-            ))
-            .execute(&mut conn);
-        assert!(
-            dup.is_err(),
-            "duplicate app_registrations id must violate the PK"
-        );
     }
 
     /// The port hands back the seeded registry, in display order.
@@ -327,11 +706,6 @@ mod tests {
         for old in ["wildflower-medication", "wildflower-web-trace"] {
             assert!(store.find_app(old).unwrap().is_none(), "{old} must be gone");
         }
-
-        // Web Trace can no longer claim local-only: its assets come from the
-        // published site.
-        let web_trace = store.find_app("web-trace-app").unwrap().unwrap();
-        assert!(!web_trace.local_only);
     }
 
     /// The server-docs console takes only `{origin}`, handed to it through its
@@ -380,10 +754,6 @@ mod tests {
         // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("importer-app"));
         assert!(
-            !registration.local_only,
-            "the importer's assets are served from wildflowerhealth.io",
-        );
-        assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
              tunnel's verified HTTPS origin",
@@ -411,10 +781,6 @@ mod tests {
         // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("ohif-viewer"));
         assert!(
-            !registration.local_only,
-            "the viewer's assets are served from wildflowerhealth.io",
-        );
-        assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
              tunnel's verified HTTPS origin",
@@ -439,10 +805,6 @@ mod tests {
             .expect("lifting-app must exist");
         // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("lifting-app"));
-        assert!(
-            !registration.local_only,
-            "the app's assets are served from wildflowerhealth.io",
-        );
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
@@ -618,73 +980,6 @@ mod tests {
         );
     }
 
-    /// After `0011` the rebuilt registry still enforces what `0001` declared:
-    /// `kind` admits only system and cloud, and deleting a registration cascades
-    /// to its configuration (the rebuilt configuration tables reference the final
-    /// `app_registrations` name).
-    #[test]
-    fn the_0011_registry_narrows_kind_and_keeps_its_cascade() {
-        let pool = pool_migrated_through("0011");
-        let mut conn = pool.get().unwrap();
-
-        let rejected = sql_query(
-            "INSERT INTO app_registrations \
-             (id, kind, position, on_homescreen, name, local_only, requires_tunnel) \
-             VALUES ('x', 'self-hosted', 99, 1, 'x', 1, 0)",
-        )
-        .execute(&mut conn);
-        assert!(
-            rejected.is_err(),
-            "the kind CHECK must reject a removed kind"
-        );
-
-        sql_query("DELETE FROM app_registrations WHERE id IN ('growth-chart', 'api-docs')")
-            .execute(&mut conn)
-            .unwrap();
-        assert_eq!(
-            count(
-                &mut conn,
-                "SELECT COUNT(*) AS count FROM cloud_app_configurations WHERE id = 'growth-chart'",
-            ),
-            0,
-            "the cloud configuration cascades",
-        );
-        assert_eq!(
-            count(
-                &mut conn,
-                "SELECT COUNT(*) AS count FROM system_app_configurations WHERE id = 'api-docs'",
-            ),
-            0,
-            "the system configuration cascades",
-        );
-    }
-
-    /// Reverting `0011` restores the `0010` schema — the wider `kind` CHECK and an
-    /// empty self-hosted configuration table — over the surviving rows.
-    #[test]
-    fn reverting_0011_restores_the_0010_schema() {
-        let pool = pool_migrated_through("0011");
-        let mut conn = pool.get().unwrap();
-        embedded_migration("0011")
-            .revert(&mut conn)
-            .expect("revert 0011");
-
-        create_self_hosted_app(&mut conn, "my-upload", 8082);
-        assert_eq!(
-            count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations"),
-            12,
-            "the eleven surviving apps plus the new self-hosted row",
-        );
-        assert_eq!(
-            count(
-                &mut conn,
-                "SELECT COUNT(*) AS count FROM cloud_app_configurations WHERE id = 'lifting-app'",
-            ),
-            1,
-            "the surviving apps keep their configurations",
-        );
-    }
-
     /// An install at `0011` — the two system apps, the seeded cloud apps, and a
     /// user's own cloud app, one of them hidden — upgrades onto the single table:
     /// the system apps are gone, every cloud app carries its launch template on its
@@ -720,10 +1015,7 @@ mod tests {
 
         assert_eq!(stored_url(&store, "growth-chart"), growth_chart_before.url);
         let user_app = store.find_app("my-cloud-app").unwrap().unwrap();
-        assert_eq!(
-            user_app.url,
-            AppUrl::External("https://example.com/launch".to_owned())
-        );
+        assert_eq!(user_app.url.to_string(), "https://example.com/launch");
         assert!(user_app.client_id.is_none());
         assert!(
             !store
@@ -766,16 +1058,16 @@ mod tests {
         let mut conn = store.pool().get().unwrap();
         let without_url = sql_query(
             "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, local_only, requires_tunnel) \
-             VALUES ('x', 99, 1, 'x', 0, 0)",
+             (id, position, on_homescreen, name, requires_tunnel) \
+             VALUES ('x', 99, 1, 'x', 0)",
         )
         .execute(&mut conn);
         assert!(without_url.is_err(), "url is NOT NULL");
 
         let tied = sql_query(
             "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, url, local_only, requires_tunnel) \
-             VALUES ('x', 0, 1, 'x', 'https://example.com', 0, 0)",
+             (id, position, on_homescreen, name, url, requires_tunnel) \
+             VALUES ('x', 0, 1, 'x', 'https://example.com', 0)",
         )
         .execute(&mut conn);
         assert!(tied.is_err(), "position stays UNIQUE");
@@ -788,9 +1080,12 @@ mod tests {
     /// reference the final `app_registrations` name).
     #[test]
     fn reverting_0012_restores_the_0011_schema() {
-        let store = SqliteAppsStore::open_in_memory().unwrap();
-        let lifting_url = stored_url(&store, "lifting-app");
-        let mut conn = store.pool().get().unwrap();
+        let pool = pool_migrated_through("0012");
+        let mut conn = pool.get().unwrap();
+        let lifting: CloudTarget =
+            sql_query("SELECT url FROM app_registrations WHERE id = 'lifting-app'")
+                .get_result(&mut conn)
+                .unwrap();
         embedded_migration("0012")
             .revert(&mut conn)
             .expect("revert 0012");
@@ -807,7 +1102,7 @@ mod tests {
             sql_query("SELECT url FROM cloud_app_configurations WHERE id = 'lifting-app'")
                 .get_result(&mut conn)
                 .expect("the cloud configuration is restored");
-        assert_eq!(restored.url, lifting_url);
+        assert_eq!(restored.url, lifting.url);
         assert_eq!(
             count(
                 &mut conn,
@@ -833,5 +1128,105 @@ mod tests {
             0,
             "no rebuild scratch table is left behind"
         );
+    }
+
+    /// An install at `0012` loses the `local_only` column when `0013` runs, and
+    /// every app — a user's own included — keeps its row, placement, and launch
+    /// template.
+    #[test]
+    fn an_install_already_at_0012_drops_local_only() {
+        let pool = pool_migrated_through("0012");
+        let mut conn = pool.get().unwrap();
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, local_only, requires_tunnel) \
+             VALUES ('my-app', 9, 0, 'My App', 'https://example.com/launch', 0, 0)",
+        )
+        .execute(&mut conn)
+        .expect("a 0012 registration insert must succeed");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0013 must apply");
+        let user_app = store
+            .find_app("my-app")
+            .unwrap()
+            .expect("the user's app survives");
+        assert_eq!(user_app.position, 9);
+        assert!(!user_app.on_homescreen);
+        assert_eq!(user_app.url.to_string(), "https://example.com/launch");
+        assert_eq!(
+            store.list_registrations().unwrap().len(),
+            SEEDED_IDS.len() + 1,
+            "every app survives",
+        );
+
+        let mut conn = store.pool().get().unwrap();
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM pragma_table_info('app_registrations') \
+                 WHERE name = 'local_only'",
+            ),
+            0,
+            "the local_only column is dropped",
+        );
+    }
+
+    /// Reverting `0013` restores `local_only`, cleared on every row.
+    #[test]
+    fn reverting_0013_restores_local_only_cleared() {
+        let pool = pool_migrated_through("0013");
+        let mut conn = pool.get().unwrap();
+        embedded_migration("0013")
+            .revert(&mut conn)
+            .expect("revert 0013");
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM app_registrations WHERE local_only = 0",
+            ),
+            count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations"),
+            "every row reads local_only = 0",
+        );
+    }
+
+    /// An install at `0013` holding user-created apps with origin-relative
+    /// templates loses exactly those when `0014` runs; every absolute-URL app
+    /// keeps its template, and positions are a dense `0..n` in the same order.
+    #[test]
+    fn an_install_already_at_0013_loses_its_origin_relative_apps() {
+        let pool = pool_migrated_through("0013");
+        let mut conn = pool.get().unwrap();
+        for (id, url) in [
+            ("relative-path", "/my/app"),
+            ("kept-https", "https://example.com/launch?iss={origin}"),
+            ("origin-template", "{origin}/x?launch={launch}"),
+            ("kept-http", "http://localhost:5199/launch.html"),
+        ] {
+            sql_query(
+                "INSERT INTO app_registrations \
+                 (id, position, on_homescreen, name, url, requires_tunnel) \
+                 VALUES (?, (SELECT MAX(position) + 1 FROM app_registrations), 1, ?, ?, 0)",
+            )
+            .bind::<Text, _>(id)
+            .bind::<Text, _>(id)
+            .bind::<Text, _>(url)
+            .execute(&mut conn)
+            .expect("a 0013 registration insert must succeed");
+        }
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0014 must apply");
+        let registrations = store.list_registrations().unwrap();
+        let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
+        let mut expected: Vec<&str> = SEEDED_IDS.to_vec();
+        expected.extend(["kept-https", "kept-http"]);
+        assert_eq!(
+            ids, expected,
+            "the origin-relative apps are gone and the rest keep their order"
+        );
+        let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
+        let dense: Vec<i64> = (0..).take(positions.len()).collect();
+        assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
     }
 }

@@ -10,7 +10,7 @@
 //!      decisions disagree.
 //!   2. The `wildflower/launch` umbrella is enforced *before this handler runs* by
 //!      the [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher) extractor
-//!      (the host wraps the launch router with the bearer gate that inserts the
+//!      (the host wraps the apps router with the bearer gate that inserts the
 //!      caller's scope claims). An under-umbrella caller `403`s before `find_app`
 //!      or target resolution, so it triggers no `tunnel.try_start()` and learns
 //!      nothing about existence (`404`) or reachability (`503`).
@@ -56,8 +56,8 @@ use crate::live_bindings::LiveAppLauncher;
 /// drives this through the typed client so the owner bearer rides along.
 /// Scope-gated on the `wildflower/launch` umbrella through
 /// [`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant
-/// to cover its OAuth client's scopes (checked in [`launch`]). See the module docs
-/// for the resolve-then-dispatch flow and the auth posture.
+/// to cover its OAuth client's scopes (checked here). See the module docs for the
+/// resolve-then-dispatch flow and the auth posture.
 #[utoipa::path(
     post,
     tag = "Launch",
@@ -76,17 +76,6 @@ pub(crate) async fn handle_launch_app(
     State(state): State<Arc<AppsState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
-) -> Result<Response, AppsError> {
-    launch(&launcher, state, headers, id).await
-}
-
-/// The launch body behind [`handle_launch_app`]: gate, resolve, then dispatch on
-/// the request's provenance (see the module docs).
-async fn launch(
-    launcher: &LiveAppLauncher,
-    state: Arc<AppsState>,
-    headers: HeaderMap,
-    id: String,
 ) -> Result<Response, AppsError> {
     // Read once (see module docs, step 1): a header that fails validation reads as
     // Loopback; a forwarded host that cleared validation but failed to parse as a

@@ -2,24 +2,21 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-// The route file calls `createFileRoute(...)` at import and renders a TanStack
-// `<Link>` in the header; stub both so the screen renders without a
-// `RouterProvider`. `Link` becomes a plain anchor.
+// The header renders a TanStack `<Link>`; stub it as a plain anchor so the page
+// renders without a `RouterProvider`.
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
-    createFileRoute: () => (config: unknown) => config,
-    useNavigate: () => (): void => undefined,
     Link: ({ to, children }: { to?: string; children?: ReactNode }) => <a href={to}>{children}</a>,
   }
 })
 
-// The page + its edit form + the by-id read all come from `queries.ts`; stub them
-// so the tests assert the exact payloads each control sends. `mocks.app` /
-// `mocks.list` are set per test.
+// The page and its edit form read their mutations and the list from `queries.ts`;
+// stub them so the tests assert the exact payloads each control sends.
+// `mocks.list` is set per test.
 const { homeScreenStub, deleteStub, replaceStub, mocks } = vi.hoisted(() => {
-  const mockState: { app: unknown; list: readonly unknown[] } = { app: undefined, list: [] }
+  const mockState: { list: readonly unknown[] } = { list: [] }
   return {
     homeScreenStub: {
       mutate: vi.fn(),
@@ -48,28 +45,26 @@ vi.mock('../../../queries.ts', () => ({
   useAppDeleteMutation: () => deleteStub,
   useAppReplaceMutation: () => replaceStub,
   useAppsListQuery: () => ({ data: mocks.list }),
-  useAppQuery: () => ({ data: mocks.app }),
-  appQueryOptions: vi.fn(),
 }))
 
-import { AppDetailScreen } from './$id.tsx'
+import { AppDetailPage } from './-app-detail-page.tsx'
+
+const noop = (): void => {}
 
 const APP = {
   id: 'my-app',
   name: 'My App',
   onHomescreen: true,
   url: 'https://example.com/launch',
-  localOnly: false,
   isSmart: false,
   requiresTunnel: false,
 }
 
-describe('app detail screen', () => {
+describe('<AppDetailPage>', () => {
   beforeEach(() => {
     homeScreenStub.mutate.mockClear()
     deleteStub.mutate.mockClear()
     replaceStub.mutate.mockClear()
-    mocks.app = APP
     mocks.list = [APP]
   })
 
@@ -78,7 +73,7 @@ describe('app detail screen', () => {
   })
 
   test('the enable switch PUTs the whole home screen with this app flipped', () => {
-    render(<AppDetailScreen id="my-app" />)
+    render(<AppDetailPage app={APP} onRemoved={noop} />)
 
     fireEvent.click(screen.getByRole('switch', { name: 'Show on home screen' }))
 
@@ -89,7 +84,7 @@ describe('app detail screen', () => {
   })
 
   test('saving PUTs the edited content to the app', () => {
-    render(<AppDetailScreen id="my-app" />)
+    render(<AppDetailPage app={APP} onRemoved={noop} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -105,7 +100,7 @@ describe('app detail screen', () => {
   })
 
   test('the app can be deleted by id', () => {
-    render(<AppDetailScreen id="my-app" />)
+    render(<AppDetailPage app={APP} onRemoved={noop} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete from my device' }))
 

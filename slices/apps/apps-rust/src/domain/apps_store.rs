@@ -1,10 +1,9 @@
 //! The [`AppsStore`] **port** — the pure trait the domain depends on for
 //! persistence. No diesel or axum here: the port speaks only
-//! [`AppRegistration`]s. It signals absence / non-permutation through `Option`, a
-//! delete miss through `bool`, and an insert that wrote nothing through the typed
-//! [`AppInsertError`] rather than a bare `None`, raising only the opaque
+//! [`AppRegistration`]s. It signals absence / non-permutation through `Option` and
+//! a delete miss through `bool`, raising only the opaque
 //! [`Infrastructure`](AppsError::Infrastructure) failure. The semantic outcomes
-//! (`NotFound`, `InvalidHomeScreen`, the id-collision mapping) — and the synthesis
+//! (`NotFound`, `InvalidHomeScreen`) — and the synthesis
 //! of the registration a create/replace persists — are decided one layer up, in
 //! the [`capabilities`](crate::domain::capabilities), so both the `SQLite` adapter
 //! and an in-memory test fake implement the same contract.
@@ -19,10 +18,9 @@ use crate::domain::{AppRegistration, AppsError};
 /// needs over [`AppRegistration`]s, raising the opaque
 /// [`AppsError::Infrastructure`]. Absence is a return-type signal (`find_app`
 /// returns `None`; `replace_app` returns `None` when it affects no row;
-/// `delete_app` returns `false` on a miss); an insert that wrote nothing is the
-/// typed [`AppInsertError`]; a non-permutation placement body is `None` — NOT
-/// semantic errors. The capabilities map those signals onto `NotFound` /
-/// `InvalidHomeScreen` and the id-collision verdict, and synthesize the
+/// `delete_app` returns `false` on a miss); a non-permutation placement body is
+/// `None` — NOT semantic errors. The capabilities map those signals onto
+/// `NotFound` / `InvalidHomeScreen`, and synthesize the
 /// registration each write persists. The `SQLite` adapter
 /// (`crate::db::SqliteAppsStore`) implements it; unit tests swap in the in-memory
 /// `FakeAppsStore`.
@@ -48,18 +46,15 @@ pub trait AppsStore {
 
     /// Insert a fresh app from a caller-built `registration`. The store owns the
     /// display `position` (assigned at the tail, overriding whatever the caller
-    /// passed); everything else on the registration is used as given. Returns
-    /// [`AppInsertError::IdTaken`] — nothing written — when the id was already
-    /// taken (a conflict rather than a silent overwrite), else the inserted
-    /// registration returned via `RETURNING`.
+    /// passed); everything else on the registration is used as given. Returns the
+    /// inserted registration via `RETURNING`.
     ///
     /// # Errors
     ///
-    /// [`AppsError::Infrastructure`] on a checkout / transaction failure.
-    fn insert_app(
-        &self,
-        registration: &AppRegistration,
-    ) -> Result<Result<AppRegistration, AppInsertError>, AppsError>;
+    /// [`AppsError::Infrastructure`] on a checkout / transaction failure, or when
+    /// the id is already taken (the primary key rejects it rather than silently
+    /// overwriting; ids are server-minted, so a collision is a fault).
+    fn insert_app(&self, registration: &AppRegistration) -> Result<AppRegistration, AppsError>;
 
     /// Replace an app's editable fields from a caller-built `registration`,
     /// located by `registration.id`: `name` / `subtitle` / `url` /
@@ -99,15 +94,4 @@ pub trait AppsStore {
         &self,
         entries: &[(String, bool)],
     ) -> Result<Option<Vec<AppRegistration>>, AppsError>;
-}
-
-/// Why [`insert_app`](AppsStore::insert_app) wrote nothing (the transaction was
-/// dropped unwritten). The only non-infrastructure way an insert fails: the id was
-/// already taken. Distinguished (rather than a bare `None`) so the create
-/// capability (`AppsCreator::create_app`) reports the true cause instead of
-/// assuming a collision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppInsertError {
-    /// The id was already present in the registry — no row was written.
-    IdTaken,
 }

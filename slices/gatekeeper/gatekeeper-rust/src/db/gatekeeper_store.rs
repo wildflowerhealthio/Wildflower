@@ -42,29 +42,9 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// Applied once per database in [`SqliteGatekeeperStore::new`] via
 /// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
 /// (see that runner for why the stock diesel harness can't be shared across
-/// slices). Migration `0001` deliberately DROPs the tables the retired rusqlite
-/// migrations managed (destructive rebaseline — see its header), `0002` creates
-/// the cross-kind `grants` VIEW over the two concrete grant tables (its own
-/// migration so it can be up/down'd independently), `0003` seeds the SMART
-/// sample-app clients, and `0004` / `0005` each register one first-party SMART
-/// app's client — one migration per app, matching the per-app seed migrations in
-/// the apps slice. `0006` renames those two (`wildflower-medication` →
-/// `medications-app`, `wildflower-web-trace` → `web-trace-app`, keeping the
-/// `client_id == app id` invariant) and adds their
-/// published-site redirect URI; `0007` seeds
-/// the server-docs API console's client; `0008` the Importer's; `0009` (two
-/// migrations share the prefix) the OHIF imaging viewer's and the widening of
-/// the Importer's write scopes; `0010` repoints the viewer's redirect onto its
-/// `/fhir-viewer` route; `0011` repairs the Medications and Web Trace clients on
-/// any install `0006` left short; `0012` seeds the hosted owner UI's
-/// (`wildflower-react`) client and `0013` returns it to its app root; `0015` /
-/// `0016` repair installs that ran only one of the two `0009`s; `0017` seeds
-/// FHIR Sync for Pebble's client and `0018` widens its Observation scope;
-/// `0019` seeds Lifting's; and `0020` drops `launch/patient` from the
-/// Medications and Lifting clients, which pick the patient in the app, giving
-/// Medications `system/Patient.rs` for its picker; and `0021` strips every path
-/// entry from `redirect_uris`, leaving absolute URLs only. Because each migration runs only once
-/// per database, an upgrade neither re-drops nor re-seeds.
+/// slices). Each migration's header says what it changes and why (see
+/// `migrations/`); because each runs only once per database, an upgrade neither
+/// re-drops nor re-seeds.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`GatekeeperStore`] port. Cheap to clone (the

@@ -1,8 +1,8 @@
 //! [`AppRegistration`] — the authoritative `app_registrations` row: one row per
 //! app, holding the global id, the homescreen placement (`position` /
-//! `on_homescreen`), the catalogue facts (`name` / `subtitle` / `local_only` /
-//! the soft `client_id` / the launch-readiness `requires_tunnel`), and the launch
-//! `url` template. It is BOTH the diesel-mapped domain row and the `GET /apps` wire
+//! `on_homescreen`), the catalogue facts (`name` / `subtitle` / the soft
+//! `client_id` / the launch-readiness `requires_tunnel`), and the launch `url`
+//! template. It is BOTH the diesel-mapped domain row and the `GET /apps` wire
 //! item — one flat struct serialized directly (the "domain-is-wire" registration),
 //! so there is no second projection to drift from.
 //!
@@ -18,7 +18,7 @@ use serde::{Serialize, Serializer};
 use utoipa::ToSchema;
 
 use super::AppUrl;
-use crate::db::app_registration::{app_registrations, AppUrlColumn};
+use crate::db::apps_store::{app_registrations, AppUrlColumn};
 
 /// A registration row — one app's whole record. Diesel maps it to/from
 /// `app_registrations` (the [`AppUrlColumn`] mapping on `url`); serde projects it
@@ -48,8 +48,6 @@ pub struct AppRegistration {
     #[diesel(serialize_as = AppUrlColumn, deserialize_as = AppUrlColumn)]
     #[schema(value_type = String)]
     pub url: AppUrl,
-    /// The declared no-egress flag (a UI badge this pass).
-    pub local_only: bool,
     /// Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART
     /// apps. Never leaves the host: the wire carries the derived `isSmart` boolean.
     #[serde(rename = "isSmart", serialize_with = "serialize_client_id_as_is_smart")]
@@ -98,15 +96,10 @@ mod tests {
 
     fn registration(client_id: Option<&str>) -> AppRegistration {
         AppRegistration {
-            id: "app-x".to_owned(),
             position: 3,
-            on_homescreen: true,
             name: "App X".to_owned(),
-            subtitle: None,
-            url: AppUrl::External("https://example.com/launch".to_owned()),
-            local_only: false,
             client_id: client_id.map(str::to_owned),
-            requires_tunnel: false,
+            ..crate::domain::test_fake::registration("app-x")
         }
     }
 
@@ -122,7 +115,6 @@ mod tests {
                 "onHomescreen": true,
                 "name": "App X",
                 "url": "https://example.com/launch",
-                "localOnly": false,
                 "isSmart": true,
                 "requiresTunnel": false,
             }),

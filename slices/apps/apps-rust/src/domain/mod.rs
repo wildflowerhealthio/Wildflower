@@ -30,7 +30,7 @@ pub(crate) use app_registration::is_exact_registry_permutation;
 pub use app_registration::AppRegistration;
 pub use app_url::{AppUrl, AppUrlError, LaunchParams};
 pub use apps_error::AppsError;
-pub use apps_store::{AppInsertError, AppsStore};
+pub use apps_store::AppsStore;
 // The apps admin surface's grantable scope vocabulary (mirrors gatekeeper's
 // `grantable_admin_scopes`) — re-exported so a consent surface / registry test can
 // name it; `Apps.{r,c,u,d}` today.

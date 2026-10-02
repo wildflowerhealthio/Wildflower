@@ -34,23 +34,6 @@ const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
 /** The by-id query key for an app (`GET /apps/{id}`). */
 const appQueryKey = (id: string) => ['apps', 'byId', id] as const
 
-/**
- * Shared `mutationKey` for every `PUT /home-screen` writer. The home screen's
- * drag-reorder and the editor's enable toggle each call
- * {@link useReplaceHomeScreenMutation} from their own component, so they hold
- * *separate* mutation instances. Tagging both with this key lets either surface
- * observe an in-flight home-screen write across components via `useIsMutating`.
- */
-const HOME_SCREEN_MUTATION_KEY = ['apps', 'home-screen'] as const
-
-/**
- * Shared `mutationKey` for every app content writer. Each app's editor holds its
- * **own** replace mutation instance, so the apps editor's
- * one-write-at-a-time fieldset lock can only see those writes across components
- * via `useIsMutating` on this key.
- */
-const APP_CONTENT_MUTATION_KEY = ['apps', 'app-content'] as const
-
 /** Shared by route `loader` (`ensureQueryData`) and {@link useAppsListQuery}. */
 const appsListQueryOptions = (
   runAuthed: RunAuthed
@@ -120,7 +103,6 @@ const useAppReplaceMutation = (): UseMutationResult<
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationKey: APP_CONTENT_MUTATION_KEY,
     mutationFn: ({ id, payload }) =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
@@ -160,7 +142,6 @@ const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeS
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationKey: HOME_SCREEN_MUTATION_KEY,
     mutationFn: (payload) =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
@@ -174,9 +155,7 @@ const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeS
 }
 
 export {
-  APP_CONTENT_MUTATION_KEY,
   APPS_LIST_QUERY_KEY,
-  HOME_SCREEN_MUTATION_KEY,
   appQueryKey,
   appQueryOptions,
   appsListQueryOptions,

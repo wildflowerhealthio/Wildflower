@@ -38,7 +38,7 @@ pub mod client;
 pub mod client_credentials;
 // Pure builders for the OAuth client-callback URLs (`redirect_uri` + `code`/`error`
 // + `state`) — no axum/store coupling, so the `/oauth` surface and the Owner
-// consent action can return the same URL. Lifted out of `http::routes::oauth`.
+// consent action can return the same URL.
 pub mod client_redirect;
 // The trust-on-first-use registration verdict: how a pending authorization-code
 // request compares against the `clients` row it names right now. Derived on every

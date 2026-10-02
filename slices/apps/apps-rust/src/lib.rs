@@ -21,7 +21,7 @@
 //!    implementation of the [`domain::AppsStore`] port) over the app-wide diesel
 //!    r2d2 pool (`persistence_rust::DieselPool`), migrated with embedded diesel
 //!    migrations.
-//!  - [`http`] — the slice's routers. `GET /apps` lists the registry in display
+//!  - [`http`] — the slice's router. `GET /apps` lists the registry in display
 //!    order; `POST /apps` creates an app; `GET`/`PUT`/`DELETE /apps/{id}` read,
 //!    replace, and remove one; `POST /apps/{id}` launches it; `PUT /home-screen`
 //!    atomically reorders / enables any app.
@@ -69,7 +69,6 @@ pub use db::SqliteAppsStore;
 // Re-exported so a host can name the registration its `AppLaunchScopes` adapter
 // reads (see [`ports::AppLaunchScopes`]).
 pub use domain::AppRegistration;
-pub use http::openapi_spec;
 pub use live_bindings::state::AppsState;
 
 #[cfg(debug_assertions)]
@@ -80,38 +79,18 @@ pub mod ports;
 
 use ports::AppLaunchScopes;
 
-/// Result of [`setup_apps`]: the two routers a host mounts (gated + launch),
-/// plus the shared state.
-///
-/// The host wraps **both** [`Self::gated_router`] and [`Self::launch_router`] with
-/// its bearer gate (the one that inserts the caller's scope claims): the admin
-/// surface is gated on `wildflower/Apps.*` and the launch surface on the
-/// `wildflower/launch` umbrella (plus a per-app SMART check in the handler), so the
-/// two are kept separate only so the host can size the launch body limit / exempts
-/// differently.
+/// Result of [`setup_apps`]: the router a host mounts, plus the shared state.
 pub struct Apps {
-    /// The admin routes: `GET`/`POST /apps`, `GET`/`PUT`/`DELETE /apps/{id}`, and
-    /// `PUT /home-screen` — each scope-gated on `wildflower/Apps.*`. The host wraps this with its bearer
-    /// gate (which inserts the scope claims the `Scoped<…>` capabilities read).
-    pub gated_router: Router,
-    /// The launch route `POST /apps/{id}`, scope-gated on the
-    /// `wildflower/launch` umbrella (plus the per-app SMART check). The host wraps
-    /// this with the same bearer gate so the `Scoped<AppLauncher>` extractor has
-    /// claims.
-    pub launch_router: Router,
+    /// Every apps route: the admin routes (`GET`/`POST /apps`,
+    /// `GET`/`PUT`/`DELETE /apps/{id}`, `PUT /home-screen`), each scope-gated on
+    /// `wildflower/Apps.*`, and the launch route `POST /apps/{id}`, scope-gated on
+    /// the `wildflower/launch` umbrella (plus the per-app SMART check). Carries no
+    /// middleware: the host wraps it with its bearer gate, which inserts the scope
+    /// claims the `Scoped<…>` capabilities read.
+    pub router: Router,
     /// Shared handler state (the store, the loopback base URL, the tunnel, the
     /// on-device webview seam, and the launch-scope port).
     pub state: Arc<AppsState>,
-}
-
-impl Apps {
-    /// The full apps surface (gated routes + launch) as one router. For tests and
-    /// any host that mounts everything behind a single gate; the Tauri host
-    /// instead mounts [`Self::gated_router`] and [`Self::launch_router`]
-    /// separately so it can gate them differently.
-    pub fn combined_router(&self) -> Router {
-        self.gated_router.clone().merge(self.launch_router.clone())
-    }
 }
 
 /// Build the apps router over the host-owned diesel connection `pool`, mirroring
@@ -151,8 +130,7 @@ pub fn setup_apps(
     ));
 
     Ok(Apps {
-        gated_router: http::gated_router(Arc::clone(&state)),
-        launch_router: http::launch_router(Arc::clone(&state)),
+        router: http::router(Arc::clone(&state)),
         state,
     })
 }

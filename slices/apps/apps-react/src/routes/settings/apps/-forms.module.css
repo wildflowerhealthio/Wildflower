@@ -23,11 +23,6 @@
   flex-wrap: wrap;
 }
 
-.error {
-  color: var(--color-red-5);
-  margin: 0;
-}
-
 /* A ToggleSwitch stacked over its explanatory helper line. */
 .toggle-field {
   display: flex;
