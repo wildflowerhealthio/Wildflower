@@ -9228,6 +9228,7 @@ dependencies = [
  "gatekeeper-rust",
  "har-recorder-tauri-rust",
  "openssl",
+ "roxmltree",
  "serde",
  "serde_json",
  "shared-structures-rust",

@@ -8,6 +8,7 @@
     "opener:default",
     "log:default",
     "dialog:default",
-    "native-webview:default"
+    "native-webview:default",
+    "background-service:allow-configure-recovery"
   ]
 }
