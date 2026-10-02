@@ -55,6 +55,8 @@ mod tests {
 
     // The port trait is in scope so the concrete store's `insert_app` /
     // `find_app` methods resolve in the fixtures.
+    use crate::db::test_support::SEEDED_IDS;
+    use crate::domain::test_fake::registration;
     use crate::domain::{AppRegistration, AppsStore};
     use crate::http::test_support::{
         state, state_with_launch_scopes, state_with_sink, state_with_tunnel_and_handle, tunnel_at,
@@ -196,33 +198,16 @@ mod tests {
         )
     }
 
-    /// The seeded registry, in display order.
-    const SEEDED_IDS: [&str; 9] = [
-        "growth-chart",
-        "medication-viewer",
-        "precise-hbr",
-        "medications-app",
-        "web-trace-app",
-        "web-server-docs",
-        "importer-app",
-        "ohif-viewer",
-        "lifting-app",
-    ];
-
     /// Seed an app directly through the store (the fixture shortcut a test uses
     /// instead of driving `POST /apps`).
     fn seed_app(store: &crate::db::SqliteAppsStore, id: &str, url: &str, client_id: Option<&str>) {
-        let registration = AppRegistration {
-            id: id.to_owned(),
-            position: 0,
-            on_homescreen: true,
-            name: id.to_owned(),
-            subtitle: None,
-            url: url.parse().expect("a valid test launch url"),
-            client_id: client_id.map(str::to_owned),
-            requires_tunnel: false,
-        };
-        store.insert_app(&registration).unwrap().expect("inserted");
+        store
+            .insert_app(&AppRegistration {
+                url: url.parse().expect("a valid test launch url"),
+                client_id: client_id.map(str::to_owned),
+                ..registration(id)
+            })
+            .expect("inserted");
     }
 
     /// Seed a non-SMART app whose template names the served origin — the

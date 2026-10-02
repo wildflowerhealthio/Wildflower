@@ -1,33 +1,25 @@
-//! Shared `#[cfg(test)]` builders for the db query-body tests — the small helpers
-//! the test modules seed a real in-memory
-//! [`SqliteAppsStore`](super::SqliteAppsStore) with. Centralized here (rather than
-//! duplicated per file) the way `domain` keeps its fixtures in `test_fake`.
+//! Shared `#[cfg(test)]` fixtures for the tests that run against a real
+//! in-memory [`SqliteAppsStore`](super::SqliteAppsStore). Registrations to seed
+//! it with come from [`registration`](crate::domain::test_fake::registration).
 
-use crate::domain::{AppRegistration, AppUrl, AppsError};
+use crate::domain::AppsError;
 
-/// A caller-built registration (the shape the HTTP layer hands the store): on the
-/// home screen, `position` a placeholder the store overrides. `name` defaults to
-/// the id.
-pub(super) fn registration(id: &str, url: AppUrl) -> AppRegistration {
-    AppRegistration {
-        id: id.to_owned(),
-        position: 0,
-        on_homescreen: true,
-        name: id.to_owned(),
-        subtitle: None,
-        url,
-        client_id: None,
-        requires_tunnel: false,
-    }
-}
-
-pub(super) fn external(url: &str) -> AppUrl {
-    url.parse().expect("a valid test launch url")
-}
+/// The migration-seeded registry, in display order.
+pub(crate) const SEEDED_IDS: [&str; 9] = [
+    "growth-chart",
+    "medication-viewer",
+    "precise-hbr",
+    "medications-app",
+    "web-trace-app",
+    "web-server-docs",
+    "importer-app",
+    "ohif-viewer",
+    "lifting-app",
+];
 
 /// The `context: source` text of an [`AppsError::Infrastructure`], for asserting on
 /// the failure a corrupt-row read names.
-pub(super) fn error_text(error: &AppsError) -> String {
+pub(crate) fn error_text(error: &AppsError) -> String {
     match error {
         AppsError::Infrastructure { context, source } => format!("{context}: {source}"),
         other => format!("{other:?}"),

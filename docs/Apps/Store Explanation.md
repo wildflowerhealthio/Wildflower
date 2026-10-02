@@ -14,21 +14,18 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
   _primitive_ persistence over `AppRegistration`s. The insert/replace methods
   take a caller-built registration; the store assigns the display `position` on
   insert and uses everything else as given. Absence and non-permutation are
-  **return-type signals** (`Option`), a delete miss is `bool`, and an insert that
-  wrote nothing is the typed `AppInsertError`; the only error it raises is the
-  opaque `AppsError::Infrastructure`.
+  **return-type signals** (`Option`) and a delete miss is `bool`; the only error
+  it raises is the opaque `AppsError::Infrastructure`.
 - **`SqliteAppsStore` (adapter)** — the `SQLite` implementation
-  (`db/apps_store.rs`) over the app-wide diesel pool. It checks a connection out
-  of the pool per call and delegates to the `pub(super)` query bodies in
-  `db/app_registration.rs`, which owns the `app_registrations` `table!`, its
-  `AppUrlColumn`, every query, and the placement rewrite. Each is a free function
-  taking `&mut PooledDieselConnection` (or `&mut SqliteConnection` for the read
-  helpers a mutator calls in-transaction).
+  (`db/apps_store.rs`) over the app-wide diesel pool. The same file owns the
+  `app_registrations` `table!` and its `AppUrlColumn`; each port method checks a
+  connection out of the pool and runs its query on it, and the placement rewrite
+  and create run their reads in-transaction through small private helpers.
 - **`domain/capabilities/`** — the slice's _semantics_, one scope-gated
   capability per operation (`AppsReader`, `AppsCreator`, `AppsEditor`,
   `AppsDeleter`, `AppLauncher`). Each maps the store's primitive signals onto the
-  semantic `AppsError` variants (`NotFound`, `InvalidHomeScreen`, the id-collision
-  verdict) and synthesizes the registration a create/replace persists, using the
+  semantic `AppsError` variants (`NotFound`, `InvalidHomeScreen`) and
+  synthesizes the registration a create/replace persists, using the
   shared write-side validator and `AppPayload` input struct in
   `domain/actions/`. The admin HTTP handlers acquire a `Scoped<…>` capability and
   never touch the store directly; the launch handler looks the app up in the
@@ -90,6 +87,6 @@ store:
    transaction.
 
 The capabilities resolve an app before validating any field, so a bad `url` on an
-unknown id is still a **404**. A create mints the id server-side; an
-`AppInsertError::IdTaken` on that minted id is a logged infrastructure error, not
-a silent overwrite.
+unknown id is still a **404**. A create mints the id server-side; the primary key
+rejects a collision on that minted id, which surfaces as a logged infrastructure
+error naming the id, never a silent overwrite.

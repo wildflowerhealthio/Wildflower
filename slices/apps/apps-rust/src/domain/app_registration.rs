@@ -18,7 +18,7 @@ use serde::{Serialize, Serializer};
 use utoipa::ToSchema;
 
 use super::AppUrl;
-use crate::db::app_registration::{app_registrations, AppUrlColumn};
+use crate::db::apps_store::{app_registrations, AppUrlColumn};
 
 /// A registration row — one app's whole record. Diesel maps it to/from
 /// `app_registrations` (the [`AppUrlColumn`] mapping on `url`); serde projects it
@@ -96,14 +96,10 @@ mod tests {
 
     fn registration(client_id: Option<&str>) -> AppRegistration {
         AppRegistration {
-            id: "app-x".to_owned(),
             position: 3,
-            on_homescreen: true,
             name: "App X".to_owned(),
-            subtitle: None,
-            url: "https://example.com/launch".parse().unwrap(),
             client_id: client_id.map(str::to_owned),
-            requires_tunnel: false,
+            ..crate::domain::test_fake::registration("app-x")
         }
     }
 

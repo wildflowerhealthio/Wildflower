@@ -1,8 +1,8 @@
 //! The in-memory [`AppsStore`] fake shared by the scope-gated
 //! [`capabilities`](crate::domain::capabilities) unit tests, plus the small data
 //! builders they seed it with.
-//! Modelling the real primitive semantics — `insert_app` reports a duplicate id as
-//! [`AppInsertError::IdTaken`], `find_app` / `replace_app` report an absent id as
+//! Modelling the real primitive semantics — `insert_app` fails a duplicate id as
+//! [`AppsError::Infrastructure`] (the primary-key violation), `find_app` / `replace_app` report an absent id as
 //! `None`, `delete_app` reports a miss as `false`, `replace_placements` reports a
 //! non-permutation as `None` — it stores registrations with no diesel and no
 //! database, so the capabilities' semantic mapping is exercised directly. The
@@ -10,9 +10,7 @@
 
 use std::cell::RefCell;
 
-use crate::domain::{
-    is_exact_registry_permutation, AppInsertError, AppRegistration, AppUrl, AppsError, AppsStore,
-};
+use crate::domain::{is_exact_registry_permutation, AppRegistration, AppUrl, AppsError, AppsStore};
 
 #[derive(Default)]
 pub(crate) struct FakeAppsStore {
@@ -28,10 +26,6 @@ impl FakeAppsStore {
             .max()
             .map_or(0, |m| m + 1)
     }
-
-    fn id_taken(&self, id: &str) -> bool {
-        self.apps.borrow().iter().any(|reg| reg.id == id)
-    }
 }
 
 impl AppsStore for FakeAppsStore {
@@ -45,12 +39,17 @@ impl AppsStore for FakeAppsStore {
         Ok(self.apps.borrow().iter().find(|reg| reg.id == id).cloned())
     }
 
-    fn insert_app(
-        &self,
-        registration: &AppRegistration,
-    ) -> Result<Result<AppRegistration, AppInsertError>, AppsError> {
-        if self.id_taken(&registration.id) {
-            return Ok(Err(AppInsertError::IdTaken));
+    fn insert_app(&self, registration: &AppRegistration) -> Result<AppRegistration, AppsError> {
+        if self
+            .apps
+            .borrow()
+            .iter()
+            .any(|reg| reg.id == registration.id)
+        {
+            return Err(AppsError::infrastructure(
+                "app insert failed",
+                format!("id={} already exists", registration.id),
+            ));
         }
         // The store owns `position`; everything else is the caller's.
         let stored = AppRegistration {
@@ -58,7 +57,7 @@ impl AppsStore for FakeAppsStore {
             ..registration.clone()
         };
         self.apps.borrow_mut().push(stored.clone());
-        Ok(Ok(stored))
+        Ok(stored)
     }
 
     fn replace_app(
@@ -109,6 +108,10 @@ impl AppsStore for FakeAppsStore {
     }
 }
 
+/// A registration with default content — the one builder every test seeds a
+/// store or fixture from, overriding fields with struct-update syntax. On the
+/// home screen, not SMART, no tunnel; `position` is a placeholder a store
+/// overrides, and `name` defaults to the id.
 pub(crate) fn registration(id: &str) -> AppRegistration {
     AppRegistration {
         id: id.to_owned(),
@@ -128,7 +131,5 @@ pub(crate) fn registration(id: &str) -> AppRegistration {
 /// HTTP layer mints it in production) and default content — the registration the
 /// capability tests build a store from.
 pub(crate) fn create_app(store: &FakeAppsStore, id: &str) -> Result<AppRegistration, AppsError> {
-    store.insert_app(&registration(id))?.map_err(|_| {
-        AppsError::infrastructure("test seed app id already taken", format!("id={id}"))
-    })
+    store.insert_app(&registration(id))
 }
