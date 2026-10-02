@@ -8,5 +8,5 @@
   "local_granted_scopes": "system/*.cruds wildflower/*.cruds wildflower/launch",
   "first_party_client_id": "wildflower-host",
   "owner_ui_base_url": "https://wildflowerhealth.io/app/",
-  "owner_ui_dev_base_url": "http://localhost:5195/"
+  "owner_ui_dev_base_url": "http://localhost:5200/"
 }

@@ -8,7 +8,7 @@ test('deviceEntryUrlOn moves the server’s device-entry page onto the given cop
     fc.property(
       fc.constantFrom(
         'https://wildflowerhealthio.github.io/staging/pr-7/app/',
-        'http://localhost:5195/',
+        'http://localhost:5200/',
         'https://wildflowerhealth.io/app/'
       ),
       fc.webUrl({ withQueryParameters: true }),
