@@ -22,7 +22,7 @@ import {
  * query → runner → FHIR-client → `HttpClient` path with a stub transport.
  * Only the transport is a stub; the runner is built through
  * `fhir-r4-react/smart` so a bearer token rides the wire, exactly as a
- * self-hosted app's does.
+ * SMART app's does.
  *
  * What this pins that the old HAR-only test could not:
  *   - the search category is the comma-joined `system|code` union across

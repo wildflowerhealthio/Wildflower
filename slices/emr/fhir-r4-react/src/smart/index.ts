@@ -103,7 +103,7 @@ export {
   smartHttpClientLayer,
   type BuildSmartQueryClientOptions,
   type SmartSession,
-} from './self-hosted-runtime.ts'
+} from './smart-runtime.ts'
 
 export {
   isSmartHandshakeQuery,

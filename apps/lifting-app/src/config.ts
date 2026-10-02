@@ -39,8 +39,9 @@ const LIFTING_SCOPE =
  * - The **vite dev server** (`vp run -F lifting-app dev`, on the port
  *   `slices/apps/dev-app-ports.json` pins) launches as `lifting-app-dev`.
  *
- * Either way `clientId` equals the app-registration id it is launched through:
- * the host's redirect resolver looks an app up by `client_id`.
+ * Either way `clientId` equals the app row's `client_id`: a launch checks the
+ * caller's grant against that client's scopes, and `/authorize` matches the
+ * redirect against that client's registered URIs.
  */
 const LIFTING_CLIENT_ID = import.meta.env.DEV ? 'lifting-app-dev' : 'lifting-app'
 

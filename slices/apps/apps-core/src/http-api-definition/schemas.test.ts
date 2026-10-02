@@ -15,12 +15,10 @@ import {
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
   KindSchema,
-  SelfHostedAppBodySchema,
-  SelfHostedAppDetailSchema,
   SystemAppDetailSchema,
 } from './schemas.ts'
 
-const KINDS = ['system', 'self-hosted', 'cloud'] as const
+const KINDS = ['system', 'cloud'] as const
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
@@ -53,27 +51,6 @@ describe('CloudAppBodySchema', () => {
         expect.objectContaining({ _tag: 'ParseError' })
       )
     }
-  })
-})
-
-describe('SelfHostedAppBodySchema', () => {
-  it('accepts a bare body, a launch path, and an empty (cleared) launch path', () => {
-    for (const body of [
-      {},
-      { launchPath: '/launch.html?iss={origin}/fhir-r4' },
-      { launchPath: '' },
-    ]) {
-      expectRightToEqual(Schema.decodeUnknownEither(SelfHostedAppBodySchema)(body), body)
-    }
-  })
-
-  it('rejects a non-origin-relative launch path', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(SelfHostedAppBodySchema)({
-        launchPath: 'https://evil.example/launch',
-      }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
   })
 })
 
@@ -202,24 +179,6 @@ describe('per-kind detail schemas', () => {
     )
   })
 
-  it('SelfHostedAppDetailSchema carries launchPath?, seeded, and isRemovable', () => {
-    const seeded = {
-      ...registration,
-      kind: 'self-hosted',
-      seeded: true,
-      isRemovable: false,
-    }
-    expectRightToEqual(Schema.decodeUnknownEither(SelfHostedAppDetailSchema)(seeded), seeded)
-    const withPath = {
-      ...registration,
-      kind: 'self-hosted',
-      launchPath: '/launch.html',
-      seeded: false,
-      isRemovable: true,
-    }
-    expectRightToEqual(Schema.decodeUnknownEither(SelfHostedAppDetailSchema)(withPath), withPath)
-  })
-
   it('SystemAppDetailSchema carries the url but no isRemovable', () => {
     const detail = { ...registration, kind: 'system', url: '{origin}/docs' }
     expectRightToEqual(Schema.decodeUnknownEither(SystemAppDetailSchema)(detail), detail)
@@ -243,8 +202,8 @@ describe('AppNotFoundSchema', () => {
 })
 
 describe('InvalidFieldSchema', () => {
-  it('accepts the InvalidUrl, InvalidName, and InvalidZip discriminants', () => {
-    for (const error of ['InvalidUrl', 'InvalidName', 'InvalidZip'] as const) {
+  it('accepts the InvalidUrl and InvalidName discriminants', () => {
+    for (const error of ['InvalidUrl', 'InvalidName'] as const) {
       expectRightToEqual(
         Schema.decodeUnknownEither(InvalidFieldSchema)({ error, message: 'nope' }),
         { error, message: 'nope' }
@@ -263,7 +222,7 @@ describe('InvalidFieldSchema', () => {
 describe('HomeScreenSchema', () => {
   it('decodes an ordered list of { id, onHomescreen } entries', () => {
     const body = [
-      { id: 'patient-browser', onHomescreen: true },
+      { id: 'medications-app', onHomescreen: true },
       { id: 'api-view', onHomescreen: false },
     ]
     expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)(body), body)

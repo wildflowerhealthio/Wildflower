@@ -39,15 +39,15 @@ const MEDICATIONS_SCOPE =
  *   `0005_first_party_apps_to_cloud`), whose client
  *   (`0006_rename_first_party_app_clients`) registers that absolute Pages URL as
  *   its redirect URI.
- * - The **vite dev server** (`vp run -F medications-app dev`, on the port `slices/apps/dev-app-ports.json` pins)
- *   is launched through the debug-only `medications-app-dev` *self-hosted* row
- *   (`apps-rust`'s `seed_dev_apps`) and its client
- *   (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
- *   app-relative `"/"` redirect that resolves against the loopback origin.
+ * - The **vite dev server** (`vp run -F medications-app dev`, on the port
+ *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
+ *   `medications-app-dev` *cloud* row (`apps-rust`'s `seed_dev_apps`) and its
+ *   client (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
+ *   dev server's loopback root (`http://localhost:{port}/`) as its redirect.
  *
- * Either way `clientId` MUST equal the app-registration id it is launched
- * through: the host's self-hosted redirect resolver looks an app up by
- * `client_id`, so the app-relative redirect only resolves when the two match.
+ * Either way `clientId` MUST equal the app row's `client_id`: a launch checks
+ * the caller's grant against that client's scopes, and `/authorize` matches the
+ * redirect against that client's registered URIs.
  * Changing either id takes a migration (production) or a dev-seed change.
  *
  * `iss` / `launch` are read from the launch URL by fhirclient, so they are not

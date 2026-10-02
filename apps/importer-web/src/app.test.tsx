@@ -102,7 +102,7 @@ describe('ImporterApp', () => {
     expect(firstResource).toBeGreaterThan(sourceFileCreate)
   })
 
-  // The two halves that a self-hosted origin makes non-obvious: the app is not
+  // The two halves that the app's own origin makes non-obvious: the app is not
   // served by the API, so a relative path would resolve against the app's own
   // port, and the granted token is the app's only credential. This app writes, so both halves have to hold for writes too —
   // an unaddressed PUT is not a failed read, it is a record written somewhere

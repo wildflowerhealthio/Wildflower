@@ -15,10 +15,9 @@ import { appsListQueryOptions, type AppRegistration } from '../../../queries.ts'
  */
 const KIND_ROUTE: Record<
   AppRegistration['kind'],
-  '/settings/apps/cloud/$id' | '/settings/apps/self-hosted/$id' | '/settings/apps/system/$id'
+  '/settings/apps/cloud/$id' | '/settings/apps/system/$id'
 > = {
   cloud: '/settings/apps/cloud/$id',
-  'self-hosted': '/settings/apps/self-hosted/$id',
   system: '/settings/apps/system/$id',
 }
 

@@ -56,7 +56,7 @@ const TunnelStateViewSchema = Schema.Struct({
 
 /**
  * Write-only relay connection block — the four fields needed to dial the
- * self-hosted rathole relay. Mirrors the Rust `RelayInput`. Never
+ * user's own rathole relay. Mirrors the Rust `RelayInput`. Never
  * returned in {@link TunnelStateViewSchema}, so the client can only *set* it,
  * not echo it back.
  */

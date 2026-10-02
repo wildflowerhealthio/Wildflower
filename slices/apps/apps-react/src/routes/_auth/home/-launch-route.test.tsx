@@ -15,12 +15,12 @@ describe('LaunchScreen', () => {
     const run = recordingRun(Either.right('navigated'))
 
     // Act
-    const { rerender } = render(<LaunchScreen id="patient-browser" {...run.props} />)
-    rerender(<LaunchScreen id="patient-browser" {...run.props} />)
+    const { rerender } = render(<LaunchScreen id="medications-app" {...run.props} />)
+    rerender(<LaunchScreen id="medications-app" {...run.props} />)
 
     // Assert — one launch despite the re-render, and no bounce home.
     await waitFor(() => {
-      expect(run.launched).toEqual(['patient-browser'])
+      expect(run.launched).toEqual(['medications-app'])
     })
     expect(run.wentHome).toEqual([])
   })
@@ -28,7 +28,7 @@ describe('LaunchScreen', () => {
   it('should go home when the host opened the app natively', async () => {
     const run = recordingRun(Either.right('openedOnHost'))
 
-    render(<LaunchScreen id="patient-browser" {...run.props} />)
+    render(<LaunchScreen id="medications-app" {...run.props} />)
 
     await waitFor(() => {
       expect(run.wentHome).toEqual([undefined])
@@ -38,7 +38,7 @@ describe('LaunchScreen', () => {
   it('should go home carrying the failure for the banner', async () => {
     const run = recordingRun(Either.left('eyJlcnJvciI6IkFwcE5vdEZvdW5kIn0'))
 
-    render(<LaunchScreen id="patient-browser" {...run.props} />)
+    render(<LaunchScreen id="medications-app" {...run.props} />)
 
     await waitFor(() => {
       expect(run.wentHome).toEqual(['eyJlcnJvciI6IkFwcE5vdEZvdW5kIn0'])

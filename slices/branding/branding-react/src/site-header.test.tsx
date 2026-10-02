@@ -43,7 +43,7 @@ describe('SiteHeader', () => {
     // Arrange / Act
     render(<SiteHeader nav={fromApp} />)
 
-    // Assert — a self-hosted bundle points back at the canonical origin.
+    // Assert — an app bundle on any origin points back at the canonical origin.
     const nav = screen.getByRole('navigation', { name: 'Apps' })
     const hrefs = within(nav)
       .getAllByRole('link')

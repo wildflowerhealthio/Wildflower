@@ -1,12 +1,7 @@
 import { useState, type JSX } from 'react'
 import { ErrorBanner, FieldDescription, TextField, ToggleSwitch } from 'react-tundraish'
 
-import {
-  useCloudAppReplaceMutation,
-  useSelfHostedAppReplaceMutation,
-  type CloudAppDetail,
-  type SelfHostedAppDetail,
-} from '../../../queries.ts'
+import { useCloudAppReplaceMutation, type CloudAppDetail } from '../../../queries.ts'
 import formStyles from './-forms.module.css'
 
 /**
@@ -144,50 +139,5 @@ const CloudEditForm = ({ app }: { readonly app: CloudAppDetail }): JSX.Element =
   )
 }
 
-/**
- * Inline launch-path editor for an uploaded self-hosted app. Prefilled from the
- * {@link SelfHostedAppDetail}'s `launchPath` (a SMART launcher path with
- * `{origin}` / `{launch}` tokens); saving `PUT`s it to `/self-hosted-apps/:id`
- * via {@link useSelfHostedAppReplaceMutation}, and an empty value clears it back
- * to root-serving (`index.html`).
- */
-const SelfHostedLaunchPathEditor = ({
-  app,
-}: {
-  readonly app: SelfHostedAppDetail
-}): JSX.Element => {
-  const replaceMutation = useSelfHostedAppReplaceMutation()
-  const [launchPath, setLaunchPath] = useState(app.launchPath ?? '')
-
-  return (
-    <form
-      className={formStyles['form']}
-      onSubmit={(event) => {
-        event.preventDefault()
-        replaceMutation.mutate({ id: app.id, launchPath: launchPath.trim() })
-      }}
-    >
-      <ErrorBanner error={replaceMutation.error} />
-      <TextField
-        label="Launch path"
-        value={launchPath}
-        placeholder="/launch.html?launch={launch}&iss={origin}/fhir-r4"
-        description="Supports the {origin} and {launch} tokens; empty serves index.html."
-        disabled={replaceMutation.isPending}
-        onChange={(next) => {
-          // Clear any prior error as the user resumes editing.
-          if (replaceMutation.error !== null) replaceMutation.reset()
-          setLaunchPath(next)
-        }}
-      />
-      <div className={formStyles['actions']}>
-        <button type="submit" className="button-3 filled" disabled={replaceMutation.isPending}>
-          Save
-        </button>
-      </div>
-    </form>
-  )
-}
-
-export { CloudAppFields, CloudEditForm, SelfHostedLaunchPathEditor }
+export { CloudAppFields, CloudEditForm }
 export type { CloudFields }

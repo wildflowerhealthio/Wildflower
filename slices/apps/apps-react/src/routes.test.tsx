@@ -33,7 +33,6 @@ describe('apps route tree', () => {
       '/settings/apps/$id',
       '/settings/apps/cloud/$id',
       '/settings/apps/new',
-      '/settings/apps/self-hosted/$id',
       '/settings/apps/system/$id',
     ])
   })
@@ -49,7 +48,6 @@ describe('apps route tree', () => {
       '/settings/apps/$id',
       '/settings/apps/cloud/$id',
       '/settings/apps/new',
-      '/settings/apps/self-hosted/$id',
       '/settings/apps/system/$id',
     ])
   })

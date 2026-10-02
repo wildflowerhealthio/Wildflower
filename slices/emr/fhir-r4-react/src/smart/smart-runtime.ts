@@ -11,7 +11,7 @@ import {
 } from '../router-context.ts'
 
 /**
- * The SMART handshake resolved to the two facts a self-hosted app's HTTP layer
+ * The SMART handshake resolved to the two facts a SMART app's HTTP layer
  * needs.
  *
  * @remarks
@@ -39,9 +39,9 @@ const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test
  * server and carries the SMART bearer token.
  *
  * @remarks
- * Both halves are needed because a self-hosted app is served from its **own**
- * origin (`http://127.0.0.1:8091/` on device, an app's own site in the cloud),
- * not the FHIR server's. Left alone, the typed client's relative `/Patient…`
+ * Both halves are needed because a SMART app is served from its **own** origin
+ * (its published site, or `http://localhost:{port}/` under its dev server), not
+ * the FHIR server's. Left alone, the typed client's relative `/Patient…`
  * paths would resolve against the app's origin, and nothing else authenticates
  * the app cross-origin. So this app authenticates the way any third-party SMART
  * app does: with the token it was granted.
@@ -108,15 +108,15 @@ interface BuildSmartQueryClientOptions {
 }
 
 /**
- * The `QueryClient` a self-hosted SMART app runs on.
+ * The `QueryClient` a SMART app runs on.
  *
  * @param options - Where the client's query failures are reported
  *
  * @remarks
- * In-memory only, no persister: what a self-hosted app reads is the data
- * already on the device, and the app is the surface that reads it — a second
- * on-disk copy of it, outside the store, buys nothing. `refetchOnWindowFocus` is
- * off because a self-hosted viewer has nothing that goes stale on focus.
+ * In-memory only, no persister: what a SMART app reads is the data already on
+ * its FHIR server, and the app is the surface that reads it — a second on-disk
+ * copy of it, outside the store, buys nothing. `refetchOnWindowFocus` is off
+ * because a SMART viewer has nothing that goes stale on focus.
  *
  * Exported so the app can build the client **once**, provide it at the tree root
  * (where {@link useSmartHandshake} runs the token exchange, before any router

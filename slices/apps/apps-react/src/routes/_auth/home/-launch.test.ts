@@ -69,13 +69,13 @@ describe('launchApp', () => {
   })
 
   test('navigates to the launch URL a forwarded launch answers with', async () => {
-    const stub = resolvingRunAuthed({ url: 'https://patient-browser.demo.example.com/' })
+    const stub = resolvingRunAuthed({ url: 'https://medications-app.demo.example.com/' })
     const nav = recordingNavigate()
 
     const result = await launchApp({ runAuthed: stub.runAuthed, navigate: nav.navigate }, app.id)
 
     expect(result).toEqual(Either.right('navigated'))
-    expect(nav.seen).toEqual(['https://patient-browser.demo.example.com/'])
+    expect(nav.seen).toEqual(['https://medications-app.demo.example.com/'])
   })
 
   test('encodes a 403 InsufficientScope so the banner can name the missing scopes', async () => {

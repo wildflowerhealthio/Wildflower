@@ -10,7 +10,7 @@ import {
   buildSmartRouterContext,
   smartHttpClientLayer,
   type SmartSession,
-} from './self-hosted-runtime.ts'
+} from './smart-runtime.ts'
 
 /**
  * Drive one request through a layer and hand back what actually went on the

@@ -74,7 +74,7 @@ function ConsentStatusControl(): JSX.Element {
 }
 
 /**
- * The top-level root every self-hosted SMART app mounts: the telemetry consent
+ * The top-level root every first-party SMART app mounts: the telemetry consent
  * gate, then one `QueryClientProvider` around two branches in shared
  * Wildflower chrome.
  *
