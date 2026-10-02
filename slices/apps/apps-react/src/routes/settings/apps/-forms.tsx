@@ -1,38 +1,37 @@
 import { useState, type JSX } from 'react'
 import { ErrorBanner, FieldDescription, TextField, ToggleSwitch } from 'react-tundraish'
 
-import { useCloudAppReplaceMutation, type CloudAppDetail } from '../../../queries.ts'
+import { useAppReplaceMutation, type AppRegistration } from '../../../queries.ts'
 import formStyles from './-forms.module.css'
 
 /**
  * Shared form pieces for the apps settings pages. The `-` prefix keeps this
  * module out of the route tree the TanStack plugin generates from this
- * directory (the `index.tsx` / `new.tsx` / `$id.tsx` / per-kind `$id` files are
- * the real routes).
+ * directory (the `index.tsx` / `new.tsx` / `$id.tsx` files are the real routes).
  */
 
-/** Controlled state for the cloud app fields, shared by create + edit. */
-interface CloudFields {
+/** Controlled state for an app's editable fields, shared by create + edit. */
+interface AppFields {
   readonly name: string
   readonly subtitle: string
   readonly url: string
   readonly requiresTunnel: boolean
 }
 
-interface CloudAppFieldsProps {
-  readonly fields: CloudFields
-  readonly onChange: (fields: CloudFields) => void
+interface AppFieldInputsProps {
+  readonly fields: AppFields
+  readonly onChange: (fields: AppFields) => void
   readonly disabled?: boolean
 }
 
 /**
- * The four controlled inputs a cloud app carries (name / subtitle / launch URL /
+ * The four controlled inputs an app carries (name / subtitle / launch URL /
  * requires-tunnel), used by both the create page and the per-app edit page. The
  * URL description spells out the `{origin}` / `{launch}` tokens the server
  * substitutes at launch (matching `apps-core/http-api-definition`'s
  * `Schemas.AppUrlSchema`).
  */
-const CloudAppFields = ({ fields, onChange, disabled }: CloudAppFieldsProps): JSX.Element => (
+const AppFieldInputs = ({ fields, onChange, disabled }: AppFieldInputsProps): JSX.Element => (
   <>
     <TextField
       label="Name"
@@ -83,14 +82,14 @@ const CloudAppFields = ({ fields, onChange, disabled }: CloudAppFieldsProps): JS
 )
 
 /**
- * Full-replace editor for a cloud app's content — name / subtitle / launch URL /
- * requires-tunnel, prefilled from the {@link CloudAppDetail}. Saving `PUT`s the
- * whole content to `/cloud-apps/:id` via {@link useCloudAppReplaceMutation}; an
- * empty subtitle clears it.
+ * Full-replace editor for an app's content — name / subtitle / launch URL /
+ * requires-tunnel, prefilled from the {@link AppRegistration}. Saving `PUT`s the
+ * whole content to `/apps/:id` via {@link useAppReplaceMutation}; an empty
+ * subtitle clears it.
  */
-const CloudEditForm = ({ app }: { readonly app: CloudAppDetail }): JSX.Element => {
-  const replaceMutation = useCloudAppReplaceMutation()
-  const [fields, setFields] = useState<CloudFields>({
+const AppEditForm = ({ app }: { readonly app: AppRegistration }): JSX.Element => {
+  const replaceMutation = useAppReplaceMutation()
+  const [fields, setFields] = useState<AppFields>({
     name: app.name,
     subtitle: app.subtitle ?? '',
     url: app.url,
@@ -122,7 +121,7 @@ const CloudEditForm = ({ app }: { readonly app: CloudAppDetail }): JSX.Element =
       }}
     >
       <ErrorBanner error={replaceMutation.error} />
-      <CloudAppFields
+      <AppFieldInputs
         fields={fields}
         disabled={replaceMutation.isPending}
         onChange={(next) => {
@@ -139,5 +138,5 @@ const CloudEditForm = ({ app }: { readonly app: CloudAppDetail }): JSX.Element =
   )
 }
 
-export { CloudAppFields, CloudEditForm }
-export type { CloudFields }
+export { AppEditForm, AppFieldInputs }
+export type { AppFields }

@@ -8,7 +8,6 @@
 mod auth;
 mod config;
 mod delegate;
-mod openapi;
 mod patient_everything;
 mod smart_configuration;
 mod swappable_hfs;
@@ -27,7 +26,6 @@ use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
 pub use crate::config::EmrConfig;
-pub use crate::openapi::openapi_spec;
 pub use crate::swappable_hfs::SwappableHfs;
 
 const FHIR_R4_PATH: &str = "/fhir-r4";

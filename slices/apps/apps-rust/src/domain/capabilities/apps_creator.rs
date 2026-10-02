@@ -3,13 +3,11 @@
 
 use scopes_rust::{Permission, Scope, WildflowerResource};
 
-use crate::domain::actions::{self, CloudAppPayload};
-use crate::domain::{
-    AppKind, AppRegistration, AppsError, AppsStore, CloudAppConfiguration, CloudInsertError,
-};
+use crate::domain::actions::{self, AppPayload};
+use crate::domain::{AppInsertError, AppRegistration, AppsError, AppsStore};
 use crate::id_utils::mint_app_id;
 
-/// Register a new cloud app — `wildflower/Apps.c`.
+/// Register a new app — `wildflower/Apps.c`.
 pub(crate) fn apps_creator_scopes() -> Vec<Scope> {
     vec![Scope::wildflower(
         WildflowerResource::Apps,
@@ -17,7 +15,7 @@ pub(crate) fn apps_creator_scopes() -> Vec<Scope> {
     )]
 }
 
-/// Registration of new apps — `POST /cloud-apps`. Gated by `wildflower/Apps.c`.
+/// Registration of new apps — `POST /apps`. Gated by `wildflower/Apps.c`.
 /// Holds the store, lifted from the state.
 pub(crate) struct AppsCreator<S: AppsStore> {
     store: S,
@@ -28,37 +26,33 @@ impl<S: AppsStore> AppsCreator<S> {
         Self { store }
     }
 
-    /// Create a cloud app: mint the id, validate the content, synthesize the
-    /// `(registration, configuration)`, and insert. A [`CloudInsertError::IdTaken`]
-    /// means the server-minted id was already taken (a vanishingly-unlikely 21-char
+    /// Create an app: mint the id, validate the content, synthesize the
+    /// registration, and insert. An [`AppInsertError::IdTaken`] means the
+    /// server-minted id was already taken (a vanishingly-unlikely 21-char
     /// collision), surfaced as a logged [`AppsError::Infrastructure`] rather than
     /// silently returning the existing row.
-    pub(crate) fn create_cloud_app(
-        &self,
-        payload: CloudAppPayload,
-    ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
+    pub(crate) fn create_app(&self, payload: AppPayload) -> Result<AppRegistration, AppsError> {
         let id = mint_app_id();
         let (name, subtitle, url) =
-            actions::validate_cloud_fields(payload.name, payload.subtitle, payload.url)?;
+            actions::validate_app_fields(payload.name, payload.subtitle, payload.url)?;
         let registration = AppRegistration {
             id,
-            kind: AppKind::Cloud,
             // The store assigns the tail `position`; this is a placeholder.
             position: 0,
             on_homescreen: true,
             name,
             subtitle,
+            url,
             local_only: false,
             client_id: None,
             requires_tunnel: payload.requires_tunnel,
         };
-        let config = CloudAppConfiguration { url };
         self.store
-            .insert_cloud_app(&registration, &config)?
+            .insert_app(&registration)?
             .map_err(|error| match error {
-                CloudInsertError::IdTaken => {
+                AppInsertError::IdTaken => {
                     tracing::error!("app id collision on {}", registration.id);
-                    AppsError::infrastructure("insert_cloud_app id collision", "id already exists")
+                    AppsError::infrastructure("insert_app id collision", "id already exists")
                 }
             })
     }
@@ -70,18 +64,17 @@ mod tests {
     use crate::domain::test_fake::FakeAppsStore;
 
     #[test]
-    fn creator_creates_cloud_apps() {
+    fn creator_creates_apps() {
         let creator = AppsCreator::new(FakeAppsStore::default());
-        let (registration, config) = creator
-            .create_cloud_app(CloudAppPayload {
+        let registration = creator
+            .create_app(AppPayload {
                 name: "My App".to_owned(),
                 subtitle: None,
                 url: "https://example.com/launch".to_owned(),
                 requires_tunnel: false,
             })
             .expect("create");
-        assert_eq!(registration.kind, AppKind::Cloud);
         assert!(!registration.id.is_empty());
-        assert!(config.url.to_string().contains("example.com"));
+        assert!(registration.url.to_string().contains("example.com"));
     }
 }

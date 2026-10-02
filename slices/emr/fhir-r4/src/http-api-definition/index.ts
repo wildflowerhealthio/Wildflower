@@ -26,8 +26,8 @@ import * as ServiceRequest from './service-request.ts'
  * consumers that know they are talking to Wildflower's own host: the host app's
  * client wiring (`apps/wildflower-react`'s `router-context.ts`) and the OpenAPI
  * snapshot generation (`openapi-drift.test.ts`), which keeps the committed
- * `emr-rust/openapi/fhir-r4.openapi.json` — the `/docs` page's source — showing
- * the mounted paths.
+ * `emr-rust/openapi/fhir-r4.openapi.json` — the server-docs console's source —
+ * showing the mounted paths.
  */
 const FhirResourcesApiPrefix = '/fhir-r4'
 

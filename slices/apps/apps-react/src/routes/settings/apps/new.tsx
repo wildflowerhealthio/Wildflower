@@ -2,11 +2,11 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
 import { AsyncErrorView, ErrorBanner, PageHeader } from 'react-tundraish'
 
-import { useCloudAppCreateMutation } from '../../../queries.ts'
-import { CloudAppFields, type CloudFields } from './-forms.tsx'
+import { useAppCreateMutation } from '../../../queries.ts'
+import { AppFieldInputs, type AppFields } from './-forms.tsx'
 import formStyles from './-forms.module.css'
 
-const EMPTY_CLOUD: CloudFields = { name: '', subtitle: '', url: '', requiresTunnel: false }
+const EMPTY_FIELDS: AppFields = { name: '', subtitle: '', url: '', requiresTunnel: false }
 
 interface NewAppBodyProps {
   /** Called after a successful create — the route navigates back to the list. */
@@ -14,25 +14,24 @@ interface NewAppBodyProps {
 }
 
 /**
- * The create-app page: a cloud app's fields, posted as JSON to `POST /cloud-apps`
- * via {@link useCloudAppCreateMutation} (system apps are seeded, not user-added).
- * On success it invokes `onCreated`. Presentational + prop-driven (the
+ * The create-app page: an app's fields, posted as JSON to `POST /apps` via
+ * {@link useAppCreateMutation}. On success it invokes `onCreated`. Presentational + prop-driven (the
  * navigation callback is injected) so it renders in tests without a live router.
  */
 const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
-  const createMutation = useCloudAppCreateMutation()
-  const [cloud, setCloud] = useState<CloudFields>(EMPTY_CLOUD)
+  const createMutation = useAppCreateMutation()
+  const [fields, setFields] = useState<AppFields>(EMPTY_FIELDS)
 
-  const submitCloud = (): void => {
-    const name = cloud.name.trim()
-    const url = cloud.url.trim()
+  const submit = (): void => {
+    const name = fields.name.trim()
+    const url = fields.url.trim()
     if (name === '' || url === '') return
-    const subtitle = cloud.subtitle.trim()
+    const subtitle = fields.subtitle.trim()
     createMutation.mutate(
       {
         name,
         url,
-        requiresTunnel: cloud.requiresTunnel,
+        requiresTunnel: fields.requiresTunnel,
         // Empty subtitle is omitted so the server stores "no subtitle".
         ...(subtitle === '' ? {} : { subtitle }),
       },
@@ -47,11 +46,11 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
         className={formStyles['form']}
         onSubmit={(event) => {
           event.preventDefault()
-          submitCloud()
+          submit()
         }}
       >
         <ErrorBanner error={createMutation.error} />
-        <CloudAppFields fields={cloud} onChange={setCloud} disabled={createMutation.isPending} />
+        <AppFieldInputs fields={fields} onChange={setFields} disabled={createMutation.isPending} />
         <div className={formStyles['actions']}>
           <button
             type="submit"

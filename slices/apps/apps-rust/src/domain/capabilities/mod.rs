@@ -23,9 +23,9 @@
 //! (resource, permission) → required-scope mapping lives with each capability — one
 //! `*_scopes()` function colocated in its file — read by **both** that capability's
 //! binding and [`grantable_apps_scopes`] (which composes them here in the module
-//! root), so *enforced* and *grantable* can't drift. Each per-kind read inlines the
-//! store's `find_app` + [`AppsError::NotFound`] shape (the launch route inlines the
-//! same), so there is no shared cross-kind read helper.
+//! root), so *enforced* and *grantable* can't drift. The by-id read inlines the
+//! store's `find_app` + [`AppsError::NotFound`] shape (the editor and the launch
+//! route inline the same), so there is no shared read helper.
 //!
 //! (The cross-cutting launch capability is a separate, hybrid concern — see the
 //! launch handler.)
@@ -184,7 +184,7 @@ mod tests {
             checked += 1;
         }
         assert!(
-            checked >= 7,
+            checked >= 6,
             "only {checked} handler files enumerated — did src/http/routes move?",
         );
     }

@@ -37,7 +37,7 @@ pub enum AppUrl {
     /// An absolute URL the launch flow passes through verbatim (after any
     /// `{origin}` / `{launch}` substitution). Parsed from `http://` and
     /// `https://` strings, so an `External` is always an absolute, off-device
-    /// target. Cloud apps carry one as their stored template.
+    /// target. An app carries one as its stored template.
     External(String),
     /// An on-device target — the part that follows the served origin (a leading
     /// `/path`, `?query`, `#fragment`, or empty for the bare origin).

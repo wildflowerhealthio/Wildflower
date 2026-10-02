@@ -1,8 +1,7 @@
 //! The [`text_column!`] macro that generates this slice's parse-backed TEXT-column
-//! newtypes, plus [`AppUrlColumn`] — the one such column shared across kinds (the
-//! `TEXT ↔ `[`AppUrl`] binding both the cloud and system configuration rows plug
-//! in). The per-kind text column [`AppKindColumn`](super::app_registration) is built
-//! from the same macro in the registration file.
+//! newtypes — the `url` column's
+//! [`AppUrlColumn`](super::app_registration::AppUrlColumn) is built from it in the
+//! registration file.
 //!
 //! Each generated newtype rejects an out-of-domain stored value on read (an
 //! unparseable string) as a diesel deserialization error rather than a panic or a
@@ -12,8 +11,6 @@
 //! domain type. Mirrors both the shared
 //! [`JsonText`](shared_structures_rust::json_text::JsonText) pattern the collector
 //! slice uses and gatekeeper's `text_enum_column!` / `json_text_column!` macros.
-
-use crate::domain::AppUrl;
 
 /// Define a newtype that binds/reads its inner domain type through a TEXT column via
 /// the inner type's [`Display`](std::fmt::Display)/[`FromStr`](std::str::FromStr): the
@@ -77,12 +74,3 @@ macro_rules! text_column {
     };
 }
 pub(super) use text_column;
-
-text_column!(
-    /// An [`AppUrl`] bound to / read from a TEXT column as its canonical string, shared
-    /// by the cloud and system configuration rows. A stored value that no longer parses
-    /// surfaces as a diesel deserialization error, never a panic or an unsafe redirect
-    /// target.
-    pub(super) AppUrlColumn(AppUrl),
-    serialize: |url| url.to_string(),
-);

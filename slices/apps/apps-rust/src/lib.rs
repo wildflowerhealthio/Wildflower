@@ -1,34 +1,18 @@
 //! `apps-rust` — the host-side apps slice.
 //!
-//! A curated app registry with one wire surface. Storage is **one shared
-//! registration + one per-kind configuration**: an authoritative
-//! `app_registrations` table (the global id space, the shared catalogue facts, and
-//! the homescreen placement) plus a per-kind configuration table for each kind
-//! (`system_app_configurations`, `cloud_app_configurations`), real FKs
-//! configuration → registration with `ON DELETE CASCADE`. The `kind` column names
-//! which configuration holds a registration's payload; a whole app is a
-//! `(registration, configuration)` pair. The taxonomy (System / Cloud) and its
-//! privacy model are canonical in `docs/Apps/Explanation.md`; the mechanical
-//! mapping here:
-//!
-//!  - **System** ([`domain::SystemAppConfiguration`], the
-//!    `system_app_configurations` payload) — an ordinary seeded row (its launch URL
-//!    in `system_app_configurations.url`); never user-editable.
-//!  - **Cloud** ([`domain::CloudAppConfiguration`], the `cloud_app_configurations`
-//!    payload) — created / replaced / deleted through the `/cloud-apps` resource.
+//! A curated app registry with one wire surface. Storage is the one
+//! `app_registrations` table: per app, the global id, the catalogue facts, the
+//! launch `url` template, and the homescreen placement. Every app is a launch
+//! template reached from a remote origin (reaching PHI back through the tunnel
+//! when `requires_tunnel`); its model and privacy posture are canonical in
+//! `docs/Apps/Explanation.md`.
 //!
 //! Layered like `collector-rust`:
 //!
 //!  - [`domain`] — [`domain::AppRegistration`] (the diesel-mapped
-//!    `app_registrations` row AND the uniform `GET /apps` wire item), the per-kind
-//!    configuration types ([`domain::CloudAppConfiguration`] /
-//!    [`domain::SystemAppConfiguration`], each its table's payload), the [`domain::AppConfiguration`] union a `find_app`
-//!    read returns beside its registration (the cross-kind seams — launch dispatch,
-//!    delete — operate on the `(registration, configuration)` pair directly, with no
-//!    combined "app" type), [`domain::AppKind`] (the discriminator),
+//!    `app_registrations` row AND the `GET /apps` wire item),
 //!    [`domain::AppsError`] (the failure vocabulary), and [`domain::AppUrl`] (the
-//!    write-side URL validator). The per-kind editor wire shapes live in
-//!    `http::wire_representations`, built from the pair.
+//!    write-side URL validator).
 //!  - [`live_bindings`] — the router state ([`AppsState`](live_bindings::state::AppsState))
 //!    at the crate root, and the per-capability `FixedScopeCapability` bindings
 //!    that name the concrete store; kept out of [`http`] so `domain/`
@@ -36,12 +20,11 @@
 //!  - [`db`] — the `SQLite` store adapter ([`db::SqliteAppsStore`], the
 //!    implementation of the [`domain::AppsStore`] port) over the app-wide diesel
 //!    r2d2 pool (`persistence_rust::DieselPool`), migrated with embedded diesel
-//!    migrations; the uniform list is a join-free registry read, a detail is the
-//!    registration + one typed configuration read.
+//!    migrations.
 //!  - [`http`] — the slice's routers. `GET /apps` lists the registry in display
-//!    order; `GET`/`POST /apps/{id}` dispatches the launch on the app's kind;
-//!    `DELETE /apps/{id}` removes any removable kind; the per-kind `/cloud-apps` /
-//!    `/system-apps` resources carry detail / create / replace; `PUT /home-screen` atomically reorders / enables any app.
+//!    order; `POST /apps` creates an app; `GET`/`PUT`/`DELETE /apps/{id}` read,
+//!    replace, and remove one; `POST /apps/{id}` launches it; `PUT /home-screen`
+//!    atomically reorders / enables any app.
 //!
 //! ## Launch / tunnel seam
 //!
@@ -49,7 +32,7 @@
 //! provenance (loopback vs. forwarded) — see the launch handler module. The launch
 //! surface is scope-gated on the `wildflower/launch` umbrella (a SMART app
 //! additionally requires the caller's grant to cover its client scopes). A
-//! `requires_tunnel` (cloud) launch resolves through the shared
+//! `requires_tunnel` launch resolves through the shared
 //! [`TunnelService`](shared_structures_rust::tunnel_service::TunnelService)
 //! contract, keeping apps-rust decoupled from tunnel-rust.
 
@@ -107,12 +90,11 @@ use ports::AppLaunchScopes;
 /// two are kept separate only so the host can size the launch body limit / exempts
 /// differently.
 pub struct Apps {
-    /// The admin routes: `GET /apps`, `DELETE /apps/{id}`, `PUT /home-screen`, and
-    /// the per-kind `/cloud-apps` / `/system-apps` resources —
-    /// each scope-gated on `wildflower/Apps.*`. The host wraps this with its bearer
+    /// The admin routes: `GET`/`POST /apps`, `GET`/`PUT`/`DELETE /apps/{id}`, and
+    /// `PUT /home-screen` — each scope-gated on `wildflower/Apps.*`. The host wraps this with its bearer
     /// gate (which inserts the scope claims the `Scoped<…>` capabilities read).
     pub gated_router: Router,
-    /// The launch routes `GET`/`POST /apps/{id}`, scope-gated on the
+    /// The launch route `POST /apps/{id}`, scope-gated on the
     /// `wildflower/launch` umbrella (plus the per-app SMART check). The host wraps
     /// this with the same bearer gate so the `Scoped<AppLauncher>` extractor has
     /// claims.
@@ -158,8 +140,7 @@ pub fn setup_apps(
     launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> anyhow::Result<Apps> {
     // `SqliteAppsStore::new` runs the embedded migrations — building the
-    // `app_registrations` table and its configuration tables. The one store serves
-    // them all.
+    // `app_registrations` table the store serves.
     let store = SqliteAppsStore::new(pool).context("failed to open apps store")?;
     let state = Arc::new(AppsState::new(
         store,

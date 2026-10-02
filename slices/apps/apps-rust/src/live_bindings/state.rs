@@ -27,8 +27,7 @@ use crate::OnDeviceWebviewHandle;
 /// `State<Arc<AppsState>>` (launch glue) or lifted into a `Scoped<…>` capability
 /// (every data-touching admin handler) per the tunnel-rust / gatekeeper pattern.
 pub struct AppsState {
-    /// The apps store — serves the parent registry plus the per-kind
-    /// configurations.
+    /// The apps store — serves the `app_registrations` registry.
     pub(crate) store: SqliteAppsStore,
     /// The base URL clients reach when the tunnel is down. The non-tunnel launch
     /// origin ([`Self::loopback_origin`]) derives from it. A `requires_tunnel`

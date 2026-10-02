@@ -10,30 +10,28 @@ import {
 import formStyles from './-forms.module.css'
 
 /**
- * The shared chrome every per-kind app detail page renders around its
- * kind-specific edit region (`children`): the header, an error banner, the
- * "Show on home screen" enable toggle, and — when the app is `removable` — the
- * delete section. The `-` prefix keeps it out of the generated route tree.
+ * The app detail page's chrome around its edit form (`children`): the header, an
+ * error banner, the "Show on home screen" enable toggle, and the delete section.
+ * The `-` prefix keeps it out of the generated route tree.
  *
  * Enable is homescreen-curation state, so the toggle re-PUTs the **whole**
- * ordered list with this app's flag flipped (the single writer of `enabled`);
- * its `checked` reads the live list entry (which `PUT /home-screen` invalidates),
- * not the per-kind detail. Presentational + prop-driven so it renders in tests
- * without a live router.
+ * ordered list with this app's flag flipped (the single writer of
+ * `onHomescreen`); its `checked` reads the live list entry (which
+ * `PUT /home-screen` invalidates), not the by-id read. Presentational +
+ * prop-driven so it renders in tests without a live router.
  */
-interface BaseAppDetailPageProps {
+interface AppDetailPageProps {
   readonly app: {
     readonly id: string
     readonly name: string
-    readonly removable: boolean
   }
   /** Called after a successful remove — the route navigates back to the list. */
   readonly onRemoved: () => void
-  /** The kind-specific edit region (a form, or a read-only note). */
+  /** The edit form. */
   readonly children: ReactNode
 }
 
-const BaseAppDetailPage = ({ app, onRemoved, children }: BaseAppDetailPageProps): JSX.Element => {
+const AppDetailPage = ({ app, onRemoved, children }: AppDetailPageProps): JSX.Element => {
   const { data: apps } = useAppsListQuery()
   const homeScreenMutation = useReplaceHomeScreenMutation()
   const deleteMutation = useAppsAdminDeleteMutation()
@@ -79,28 +77,24 @@ const BaseAppDetailPage = ({ app, onRemoved, children }: BaseAppDetailPageProps)
 
       {children}
 
-      {app.removable ? (
-        <>
-          <hr className={formStyles['divider']} aria-hidden="true" />
-          <p className={cn(formStyles['delete-note'], 'text-body-3')}>
-            Deletes this app from this device. It doesn't necessarily erase data the app has already
-            stored elsewhere.
-          </p>
-          <div className={formStyles['actions']}>
-            <button
-              type="button"
-              className="button-3 outline accent-red"
-              style={{ width: '100%' }}
-              disabled={deleteMutation.isPending}
-              onClick={remove}
-            >
-              Delete from my device
-            </button>
-          </div>
-        </>
-      ) : null}
+      <hr className={formStyles['divider']} aria-hidden="true" />
+      <p className={cn(formStyles['delete-note'], 'text-body-3')}>
+        Deletes this app from this device. It doesn't necessarily erase data the app has already
+        stored elsewhere.
+      </p>
+      <div className={formStyles['actions']}>
+        <button
+          type="button"
+          className="button-3 outline accent-red"
+          style={{ width: '100%' }}
+          disabled={deleteMutation.isPending}
+          onClick={remove}
+        >
+          Delete from my device
+        </button>
+      </div>
     </>
   )
 }
 
-export { BaseAppDetailPage }
+export { AppDetailPage }

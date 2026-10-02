@@ -16,10 +16,6 @@
 pub enum AppsError {
     /// 404 — no app has this id.
     NotFound { id: String },
-    /// 409 — the app exists but isn't editable/removable: a system app. (A
-    /// per-kind path given an id of another kind is a
-    /// `404` instead — the kind mismatch can't be expressed.)
-    NotEditable { id: String },
     /// 400 — the submitted URL failed the write-side validator.
     InvalidUrl { message: String },
     /// 400 — the submitted name was empty / unusable.
@@ -50,7 +46,6 @@ impl std::fmt::Display for AppsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppsError::NotFound { id } => write!(f, "no app has id {id}"),
-            AppsError::NotEditable { id } => write!(f, "app {id} is not editable"),
             AppsError::InvalidUrl { message } => write!(f, "invalid url: {message}"),
             AppsError::InvalidName { message } => write!(f, "invalid name: {message}"),
             AppsError::Unavailable { reason } => write!(f, "launch unavailable: {reason}"),

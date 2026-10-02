@@ -20,23 +20,19 @@ const useRunAuthed = (): RunAuthed =>
   useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
 /**
- * Catalogue row as it arrives from `GET /apps` — the uniform
- * {@link Schemas.AppRegistrationSchema} (no `provenance` union to narrow).
- * Everything the homescreen tile renders is here; the per-kind payload (`url`)
- * is an editor concern read on a per-kind detail lookup.
+ * An app as it arrives from `GET /apps` and `GET /apps/{id}` — the
+ * {@link Schemas.AppRegistrationSchema}: everything the homescreen tile renders
+ * and the editor edits.
  */
 type AppRegistration = Schema.Schema.Type<typeof Schemas.AppRegistrationSchema>
-type CloudAppDetail = Schema.Schema.Type<typeof Schemas.CloudAppDetailSchema>
-type SystemAppDetail = Schema.Schema.Type<typeof Schemas.SystemAppDetailSchema>
-type CloudAppBody = Schema.Schema.Type<typeof Schemas.CloudAppBodySchema>
+type AppBody = Schema.Schema.Type<typeof Schemas.AppBodySchema>
 type HomeScreenPayload = Schema.Schema.Type<typeof Schemas.HomeScreenSchema>
 
 /** Mutations invalidate this key on success so the next render refetches. */
 const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
 
-/** The per-kind detail query key for an app id (`GET /{kind}-apps/{id}`). */
-const appDetailQueryKey = (kind: AppRegistration['kind'], id: string) =>
-  ['apps', 'detail', kind, id] as const
+/** The by-id query key for an app (`GET /apps/{id}`). */
+const appDetailQueryKey = (id: string) => ['apps', 'detail', id] as const
 
 /**
  * Shared `mutationKey` for every `PUT /home-screen` writer. The home screen's
@@ -48,8 +44,8 @@ const appDetailQueryKey = (kind: AppRegistration['kind'], id: string) =>
 const HOME_SCREEN_MUTATION_KEY = ['apps', 'home-screen'] as const
 
 /**
- * Shared `mutationKey` for every per-kind content writer. Each cloud app's
- * editor holds its **own** replace mutation instance, so the apps editor's
+ * Shared `mutationKey` for every app content writer. Each app's editor holds its
+ * **own** replace mutation instance, so the apps editor's
  * one-write-at-a-time fieldset lock can only see those writes across components
  * via `useIsMutating` on this key.
  */
@@ -73,61 +69,38 @@ const appsListQueryOptions = (
 const useAppsListQuery = (): UseSuspenseQueryResult<readonly AppRegistration[], Error> =>
   useSuspenseQuery(appsListQueryOptions(useRunAuthed()))
 
-/** Detail read `GET /cloud-apps/{id}` — the cloud editor detail (404 if not cloud). */
-const cloudAppQueryOptions = (
+/** By-id read `GET /apps/{id}` — the editor's app (404 if unknown). */
+const appQueryOptions = (
   runAuthed: RunAuthed,
   id: string
 ): UseSuspenseQueryOptions<
-  CloudAppDetail,
+  AppRegistration,
   Error,
-  CloudAppDetail,
+  AppRegistration,
   ReturnType<typeof appDetailQueryKey>
 > =>
   queryOptions({
-    queryKey: appDetailQueryKey('cloud', id),
+    queryKey: appDetailQueryKey(id),
     queryFn: () =>
       runAuthed(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].GetCloudApp({ path: { id } }))
+        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].GetApp({ path: { id } }))
       ),
   })
 
-const useCloudAppQuery = (id: string): UseSuspenseQueryResult<CloudAppDetail, Error> =>
-  useSuspenseQuery(cloudAppQueryOptions(useRunAuthed(), id))
-
-/** Detail read `GET /system-apps/{id}` (404 if not system). */
-const systemAppQueryOptions = (
-  runAuthed: RunAuthed,
-  id: string
-): UseSuspenseQueryOptions<
-  SystemAppDetail,
-  Error,
-  SystemAppDetail,
-  ReturnType<typeof appDetailQueryKey>
-> =>
-  queryOptions({
-    queryKey: appDetailQueryKey('system', id),
-    queryFn: () =>
-      runAuthed(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].GetSystemApp({ path: { id } })
-        )
-      ),
-  })
-
-const useSystemAppQuery = (id: string): UseSuspenseQueryResult<SystemAppDetail, Error> =>
-  useSuspenseQuery(systemAppQueryOptions(useRunAuthed(), id))
+const useAppQuery = (id: string): UseSuspenseQueryResult<AppRegistration, Error> =>
+  useSuspenseQuery(appQueryOptions(useRunAuthed(), id))
 
 /**
- * Admin `CreateCloudApp` (POST /cloud-apps) — a JSON body. Invalidates
+ * Admin `CreateApp` (POST /apps) — a JSON body. Invalidates
  * {@link APPS_LIST_QUERY_KEY} so the new tile appears.
  */
-const useCloudAppCreateMutation = (): UseMutationResult<unknown, Error, CloudAppBody> => {
+const useAppCreateMutation = (): UseMutationResult<unknown, Error, AppBody> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload) =>
       runAuthed(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateCloudApp({ payload }))
+        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload }))
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
@@ -136,13 +109,13 @@ const useCloudAppCreateMutation = (): UseMutationResult<unknown, Error, CloudApp
 }
 
 /**
- * Admin `ReplaceCloudApp` (PUT /cloud-apps/:id) — a JSON content replace.
- * Invalidates the list and this app's cloud detail.
+ * Admin `ReplaceApp` (PUT /apps/:id) — a JSON content replace. Invalidates the
+ * list and this app's by-id read.
  */
-const useCloudAppReplaceMutation = (): UseMutationResult<
+const useAppReplaceMutation = (): UseMutationResult<
   unknown,
   Error,
-  { readonly id: string; readonly payload: CloudAppBody }
+  { readonly id: string; readonly payload: AppBody }
 > => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
@@ -151,12 +124,12 @@ const useCloudAppReplaceMutation = (): UseMutationResult<
     mutationFn: ({ id, payload }) =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].ReplaceCloudApp({ path: { id }, payload })
+          c['apps-admin'].ReplaceApp({ path: { id }, payload })
         )
       ),
     onSuccess: async (_result, { id }) => {
       await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
-      await queryClient.invalidateQueries({ queryKey: appDetailQueryKey('cloud', id) })
+      await queryClient.invalidateQueries({ queryKey: appDetailQueryKey(id) })
     },
   })
 }
@@ -181,10 +154,10 @@ const useAppsAdminDeleteMutation = (): UseMutationResult<
 }
 
 /**
- * `ReplaceHomeScreen` (PUT /home-screen). Unlike the per-kind content edits, this
- * applies to **every** kind — it's the homescreen's single writer of order +
- * `enabled`. The payload is the full ordered list `[{ id, enabled }]` (array index
- * = display position); the server renumbers + flips atomically. Invalidates
+ * `ReplaceHomeScreen` (PUT /home-screen). Unlike the per-app content edits, this
+ * applies to **every** app — it's the homescreen's single writer of order +
+ * `onHomescreen`. The payload is the full ordered list `[{ id, onHomescreen }]`
+ * (array index = display position); the server renumbers + flips atomically. Invalidates
  * {@link APPS_LIST_QUERY_KEY} on success so the reordered list refetches.
  */
 const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeScreenPayload> => {
@@ -209,15 +182,13 @@ export {
   APPS_LIST_QUERY_KEY,
   HOME_SCREEN_MUTATION_KEY,
   appDetailQueryKey,
+  appQueryOptions,
   appsListQueryOptions,
-  cloudAppQueryOptions,
-  systemAppQueryOptions,
+  useAppCreateMutation,
+  useAppQuery,
+  useAppReplaceMutation,
   useAppsAdminDeleteMutation,
   useAppsListQuery,
-  useCloudAppCreateMutation,
-  useCloudAppQuery,
-  useCloudAppReplaceMutation,
   useReplaceHomeScreenMutation,
-  useSystemAppQuery,
 }
-export type { AppRegistration, CloudAppBody, CloudAppDetail, HomeScreenPayload, SystemAppDetail }
+export type { AppBody, AppRegistration, HomeScreenPayload }

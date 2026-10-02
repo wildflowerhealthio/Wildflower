@@ -3,10 +3,8 @@
 
 use scopes_rust::{Permission, Scope, WildflowerResource};
 
-use crate::domain::actions::{self, CloudAppPayload};
-use crate::domain::{
-    AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
-};
+use crate::domain::actions::{self, AppPayload};
+use crate::domain::{AppRegistration, AppsError, AppsStore};
 
 /// Edit an app's content / home-screen placement — `wildflower/Apps.u`.
 pub(crate) fn apps_editor_scopes() -> Vec<Scope> {
@@ -16,9 +14,10 @@ pub(crate) fn apps_editor_scopes() -> Vec<Scope> {
     )]
 }
 
-/// Content + home-screen edits — `PUT /cloud-apps/{id}`, `PUT /home-screen`. Gated by `wildflower/Apps.u`. Separate from
-/// [`AppsCreator`](super::AppsCreator) / [`AppsDeleter`](super::AppsDeleter) so an
-/// edit handler structurally can't create or delete.
+/// Content + home-screen edits — `PUT /apps/{id}`, `PUT /home-screen`. Gated by
+/// `wildflower/Apps.u`. Separate from [`AppsCreator`](super::AppsCreator) /
+/// [`AppsDeleter`](super::AppsDeleter) so an edit handler structurally can't create
+/// or delete.
 pub(crate) struct AppsEditor<S: AppsStore> {
     store: S,
 }
@@ -28,38 +27,31 @@ impl<S: AppsStore> AppsEditor<S> {
         Self { store }
     }
 
-    /// Replace a cloud app's content; a non-cloud id is `404`. Resolves the kind
-    /// before validating any field (a bad url on a non-cloud id is still a `404`),
-    /// then overlays the edited fields onto the current registration — the store
-    /// writes only the editable subset, so placement stays untouched.
-    pub(crate) fn update_cloud_app(
+    /// Replace an app's content; an unknown id is `404`. Resolves the app before
+    /// validating any field (a bad url on an unknown id is still a `404`), then
+    /// overlays the edited fields onto the current registration — the store writes
+    /// only the editable subset, so placement stays untouched.
+    pub(crate) fn update_app(
         &self,
         id: &str,
-        payload: CloudAppPayload,
-    ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
-        let (current, configuration) = self
+        payload: AppPayload,
+    ) -> Result<AppRegistration, AppsError> {
+        let current = self
             .store
             .find_app(id)?
             .ok_or_else(|| AppsError::NotFound { id: id.to_owned() })?;
-        if !matches!(configuration, AppConfiguration::Cloud(_)) {
-            return Err(AppsError::NotFound { id: id.to_owned() });
-        }
         let (name, subtitle, url) =
-            actions::validate_cloud_fields(payload.name, payload.subtitle, payload.url)?;
+            actions::validate_app_fields(payload.name, payload.subtitle, payload.url)?;
         let edited = AppRegistration {
             name,
             subtitle,
+            url,
             requires_tunnel: payload.requires_tunnel,
             ..current
         };
-        self.store
-            .replace_cloud_app(&edited, &CloudAppConfiguration { url })?
-            .ok_or_else(|| {
-                AppsError::infrastructure(
-                    "cloud app vanished between find and replace",
-                    format!("id={id}"),
-                )
-            })
+        self.store.replace_app(&edited)?.ok_or_else(|| {
+            AppsError::infrastructure("app vanished between find and replace", format!("id={id}"))
+        })
     }
 
     /// Atomically reorder + enable/disable the whole registry; a non-permutation
@@ -79,17 +71,17 @@ impl<S: AppsStore> AppsEditor<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::test_fake::{create_cloud, system, FakeAppsStore};
+    use crate::domain::test_fake::{create_app, FakeAppsStore};
 
     #[test]
     fn editor_replaces_content_and_reorders() {
         let store = FakeAppsStore::default();
-        create_cloud(&store, "cloud-x").expect("seed cloud");
+        create_app(&store, "app-x").expect("seed app");
         let editor = AppsEditor::new(store);
-        let (registration, _config) = editor
-            .update_cloud_app(
-                "cloud-x",
-                CloudAppPayload {
+        let registration = editor
+            .update_app(
+                "app-x",
+                AppPayload {
                     name: "Renamed".to_owned(),
                     subtitle: None,
                     url: "https://example.com/x".to_owned(),
@@ -98,6 +90,7 @@ mod tests {
             )
             .expect("replace");
         assert_eq!(registration.name, "Renamed");
+        assert_eq!(registration.url.to_string(), "https://example.com/x");
         // A full-registry permutation reorders; a partial body is InvalidHomeScreen.
         assert!(matches!(
             editor.update_home_screen(&[("nope".to_owned(), true)]),
@@ -105,31 +98,15 @@ mod tests {
         ));
     }
 
-    /// A cloud replace resolves the kind before validating any field: an unknown
-    /// id and a wrong-kind id are both `404`, and the wrong-kind `404` wins even
-    /// over a bad url (the field is never reached).
+    /// A replace resolves the app before validating any field: an unknown id is
+    /// `404` even with a bad url (the field is never reached).
     #[test]
-    fn editor_cloud_replace_unknown_or_wrong_kind_is_not_found() {
-        let store = FakeAppsStore::default();
-        system(&store, "sys-x");
-        let editor = AppsEditor::new(store);
+    fn editor_replace_of_an_unknown_id_is_not_found() {
+        let editor = AppsEditor::new(FakeAppsStore::default());
         assert!(matches!(
-            editor.update_cloud_app(
+            editor.update_app(
                 "ghost",
-                CloudAppPayload {
-                    name: "n".to_owned(),
-                    subtitle: None,
-                    url: "https://x.example".to_owned(),
-                    requires_tunnel: false,
-                },
-            ),
-            Err(AppsError::NotFound { .. })
-        ));
-        // A system id is not a cloud app — the wrong-kind 404 wins over the bad url.
-        assert!(matches!(
-            editor.update_cloud_app(
-                "sys-x",
-                CloudAppPayload {
+                AppPayload {
                     name: "n".to_owned(),
                     subtitle: None,
                     url: "javascript:alert(1)".to_owned(),

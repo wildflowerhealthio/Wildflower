@@ -28,15 +28,6 @@ pub(crate) struct AppNotFoundBody {
     pub(crate) id: String,
 }
 
-/// Wire shape for `AppNotEditable` (409) — the app exists but isn't editable /
-/// removable: a system app. (A per-kind path given an id of another kind is a
-/// `404`, not a `409` — the mismatch can't be expressed.)
-#[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct AppNotEditableBody {
-    pub(crate) error: &'static str,
-    pub(crate) id: String,
-}
-
 /// Wire shape for a 400 carrying a discriminant + human-readable reason. Reused
 /// for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name) — both
 /// write-side field validations the client renders inline. The `error` discriminant lets a client
@@ -75,14 +66,6 @@ impl IntoResponse for AppsError {
                 StatusCode::NOT_FOUND,
                 Json(AppNotFoundBody {
                     error: "AppNotFound",
-                    id,
-                }),
-            )
-                .into_response(),
-            AppsError::NotEditable { id } => (
-                StatusCode::CONFLICT,
-                Json(AppNotEditableBody {
-                    error: "AppNotEditable",
                     id,
                 }),
             )

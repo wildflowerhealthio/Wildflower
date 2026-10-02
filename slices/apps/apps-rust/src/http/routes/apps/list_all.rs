@@ -1,9 +1,6 @@
 //! `GET /apps` — return the catalogue: every app's [`AppRegistration`], already
-//! ordered by `position` (the store reads `app_registrations ORDER BY position`,
-//! join-free). It is the registry, not the homescreen, so disabled rows are
-//! included. Uniform (no `provenance` union): everything the homescreen tile
-//! renders is on the registration; per-kind payload (`url`, `launchPath`) is an
-//! editor concern read on a per-kind detail lookup.
+//! ordered by `position` (the store reads `app_registrations ORDER BY position`).
+//! It is the registry, not the homescreen, so disabled rows are included.
 
 use axum::Json;
 

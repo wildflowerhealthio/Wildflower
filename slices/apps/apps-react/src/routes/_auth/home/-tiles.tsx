@@ -15,34 +15,15 @@ interface Pill {
   readonly tone: StatusTone
 }
 
-/** Kind → its human label + pill tone. Cloud is the "interesting" one (it's the
- * editable / tunnel-reachable kind), so it gets the `info` tint; system stays
- * neutral. */
-const KIND_PILL: Record<
-  AppRegistration['kind'],
-  { readonly label: string; readonly tone: StatusTone }
-> = {
-  system: { label: 'System', tone: 'neutral' },
-  cloud: { label: 'Cloud', tone: 'info' },
-}
-
 /**
- * The human label for a kind — the single source of truth shared with the apps
- * editor, so the home tile and the editor never disagree on casing.
- */
-const kindLabel = (kind: AppRegistration['kind']): string => KIND_PILL[kind].label
-
-/**
- * The pills a tile shows for an app's registry flags: always the kind, plus
- * `SMART` when `smart`, `Local-Only` when `localOnly`, and `Tunnel` when
- * `requiresTunnel` (so a launch that needs the tunnel up is signalled before the
- * user clicks into a `503`). Pure — derives the list from the row so it can be
- * unit-tested without rendering. `requiresTunnel` reads straight off the uniform
- * registration (no per-kind narrowing).
+ * The pills a tile shows for an app's registry flags: `SMART` when `isSmart`,
+ * `Local-Only` when `localOnly`, and `Tunnel` when `requiresTunnel` (so a launch
+ * that needs the tunnel up is signalled before the user clicks into a `503`).
+ * Pure — derives the list from the row so it can be unit-tested without
+ * rendering.
  */
 const tilePills = (app: AppRegistration): readonly Pill[] => {
-  const kind = KIND_PILL[app.kind]
-  const pills: Pill[] = [{ key: 'kind', label: kind.label, tone: kind.tone }]
+  const pills: Pill[] = []
   if (app.isSmart) pills.push({ key: 'smart', label: 'SMART', tone: 'info' })
   if (app.localOnly) pills.push({ key: 'local-only', label: 'Local-Only', tone: 'success' })
   if (app.requiresTunnel) pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
@@ -206,5 +187,5 @@ const SortableAppTile = ({
   )
 }
 
-export { kindLabel, launchPlaceFor, SortableAppTile, tilePills }
+export { launchPlaceFor, SortableAppTile, tilePills }
 export type { LaunchPlace, Pill, SortableAppTileProps }

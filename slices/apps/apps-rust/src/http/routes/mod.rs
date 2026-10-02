@@ -1,16 +1,15 @@
 //! HTTP routes for the apps slice, grouped into a [`gated_openapi_router`]
-//! (list, home-screen, and the per-kind resources) and a [`launch_openapi_router`]
-//! (`POST /apps/{id}`), merged into [`openapi_router`] for the spec + route
-//! tests. The served routes and the OpenAPI spec come from the same
-//! `#[utoipa::path]`-annotated handlers. One file per route named by operation,
-//! under a folder tree mirroring the URL tree: [`apps`] holds `/apps` (list,
-//! launch, delete), [`cloud_apps`] / [`system_apps`] the per-kind root resources, and [`home_screen`] the flat `/home-screen` route. The
-//! gating split is documented on the [`crate::http`] router builders these back.
+//! (the catalogue reads and writes, and home-screen) and a
+//! [`launch_openapi_router`] (`POST /apps/{id}`), merged into [`openapi_router`]
+//! for the spec + route tests. The served routes and the OpenAPI spec come from the
+//! same `#[utoipa::path]`-annotated handlers. One file per route named by
+//! operation, under a folder tree mirroring the URL tree: [`apps`] holds `/apps`
+//! (list, create, read, replace, delete, launch) and [`home_screen`] the flat
+//! `/home-screen` route. The gating split is documented on the [`crate::http`]
+//! router builders these back.
 
 mod apps;
-mod cloud_apps;
 mod home_screen;
-mod system_apps;
 
 use std::sync::Arc;
 
@@ -23,22 +22,21 @@ use crate::live_bindings::state::AppsState;
 /// `wildflower/Apps.{r,c,u,d}` (the spec-bearing inner of
 /// [`gated_router`](super::gated_router), which documents the gating split):
 ///
-///  - `GET /apps` (uniform registry list) + `DELETE /apps/{id}` (unified delete) —
-///    see [`apps`];
-///  - `PUT /home-screen` (atomic reorder / enable, any kind) — see [`home_screen`];
-///  - the per-kind root resources `GET`/`POST`/`PUT /cloud-apps…` and
-///    `GET /system-apps/{id}` — see [`cloud_apps`] / [`system_apps`].
+///  - `GET`/`POST /apps` (registry list, create) and `GET`/`PUT`/`DELETE
+///    /apps/{id}` (read, content replace, delete) — see [`apps`];
+///  - `PUT /home-screen` (atomic reorder / enable) — see [`home_screen`].
 pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     OpenApiRouter::new()
-        .routes(routes!(apps::list_all::handle_list_apps))
-        .routes(routes!(apps::delete_by_id::handle_delete_app))
-        .routes(routes!(home_screen::handle_replace_home_screen))
-        .routes(routes!(cloud_apps::create::handle_create_cloud_app))
         .routes(routes!(
-            cloud_apps::get_by_id::handle_get_cloud_app,
-            cloud_apps::update_by_id::handle_update_cloud_app
+            apps::list_all::handle_list_apps,
+            apps::create::handle_create_app
         ))
-        .routes(routes!(system_apps::get_by_id::handle_get_system_app))
+        .routes(routes!(
+            apps::get_by_id::handle_get_app,
+            apps::update_by_id::handle_update_app,
+            apps::delete_by_id::handle_delete_app
+        ))
+        .routes(routes!(home_screen::handle_replace_home_screen))
 }
 
 /// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
@@ -49,8 +47,7 @@ pub(crate) fn launch_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
 }
 
 /// The full apps surface (gated routes + launch) as one `OpenApiRouter`. Backs
-/// [`openapi_spec`](super::openapi_spec) — the committed snapshot and the host's
-/// unified `/docs`. The host mounts the two halves separately (via
+/// [`openapi_spec`](super::openapi_spec) — the committed snapshot. The host mounts the two halves separately (via
 /// [`gated_openapi_router`] / [`launch_openapi_router`]) so it can gate them
 /// differently; this combined form exists only to document the whole surface.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
@@ -69,9 +66,9 @@ mod tests {
     use shared_structures_rust::OnDeviceWebviewHandle;
     use tower::ServiceExt;
 
-    // The port trait is in scope so the concrete store's `insert_cloud_app` /
+    // The port trait is in scope so the concrete store's `insert_app` /
     // `find_app` methods resolve in the fixtures.
-    use crate::domain::{AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration};
+    use crate::domain::{AppRegistration, AppUrl, AppsStore};
     use crate::http::test_support::{
         state, state_with_launch_scopes, state_with_sink, state_with_tunnel_and_handle, tunnel_at,
         tunnel_unavailable, FixedLaunchScopes,
@@ -204,32 +201,53 @@ mod tests {
             .unwrap()
     }
 
-    /// A cloud create — `POST /cloud-apps` JSON.
-    fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
+    /// A create — `POST /apps` JSON.
+    fn post_create(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
         post_json(
-            "/cloud-apps",
+            "/apps",
             serde_json::json!({ "name": name, "url": url, "requiresTunnel": requires_tunnel }),
         )
     }
 
-    /// Seed a cloud app directly through the store (the fixture shortcut a test uses
-    /// instead of driving `POST /cloud-apps`).
-    fn seed_cloud(store: &crate::db::SqliteAppsStore, id: &str, url: AppUrl) {
+    /// The seeded registry, in display order.
+    const SEEDED_IDS: [&str; 9] = [
+        "growth-chart",
+        "medication-viewer",
+        "precise-hbr",
+        "medications-app",
+        "web-trace-app",
+        "web-server-docs",
+        "importer-app",
+        "ohif-viewer",
+        "lifting-app",
+    ];
+
+    /// Seed an app directly through the store (the fixture shortcut a test uses
+    /// instead of driving `POST /apps`).
+    fn seed_app(
+        store: &crate::db::SqliteAppsStore,
+        id: &str,
+        url: AppUrl,
+        client_id: Option<&str>,
+    ) {
         let registration = AppRegistration {
             id: id.to_owned(),
-            kind: AppKind::Cloud,
             position: 0,
             on_homescreen: true,
             name: id.to_owned(),
             subtitle: None,
+            url,
             local_only: false,
-            client_id: None,
+            client_id: client_id.map(str::to_owned),
             requires_tunnel: false,
         };
-        store
-            .insert_cloud_app(&registration, &CloudAppConfiguration { url })
-            .unwrap()
-            .expect("inserted");
+        store.insert_app(&registration).unwrap().expect("inserted");
+    }
+
+    /// Seed a non-SMART app that launches against the served origin — the
+    /// fixture the provenance and umbrella tests drive.
+    fn seed_plain(store: &crate::db::SqliteAppsStore, id: &str) {
+        seed_app(store, id, AppUrl::OriginRelative("/y".to_owned()), None);
     }
 
     #[tokio::test]
@@ -243,51 +261,24 @@ mod tests {
             .iter()
             .map(|v| v["id"].as_str().unwrap())
             .collect();
-        assert_eq!(
-            ids,
-            vec![
-                "api-view",
-                "api-docs",
-                "growth-chart",
-                "medication-viewer",
-                "precise-hbr",
-                "medications-app",
-                "web-trace-app",
-                "web-server-docs",
-                "importer-app",
-                "ohif-viewer",
-                "lifting-app",
-            ],
-        );
+        assert_eq!(ids, SEEDED_IDS);
     }
 
-    /// The list is a uniform `AppRegistration[]` keyed on `kind`: every item
-    /// carries the shared facts, and the per-kind payload (`url`) stays off the
-    /// list — it's an editor concern read on a detail lookup.
+    /// Every list item is the app's registration: the catalogue facts and the
+    /// stored launch template; `position` and `clientId` stay on the host.
     #[tokio::test]
-    async fn list_apps_is_a_uniform_registration_with_kind() {
+    async fn list_apps_items_carry_the_registration_and_its_url() {
         let st = state();
         let (_status, body) = send(&st, get("/apps")).await;
         let arr = body.as_array().unwrap();
         let growth = arr.iter().find(|v| v["id"] == "growth-chart").unwrap();
-        assert_eq!(growth["kind"], "cloud");
         assert_eq!(growth["isSmart"], true);
         assert_eq!(growth["requiresTunnel"], true);
         assert_eq!(growth["localOnly"], false);
-        assert!(
-            growth.get("url").is_none(),
-            "the list carries no payload url: {growth}"
-        );
-        assert!(
-            growth.get("isRemovable").is_none(),
-            "removable is an editor concern"
-        );
-
-        let api_view = arr.iter().find(|v| v["id"] == "api-view").unwrap();
-        assert_eq!(api_view["kind"], "system");
-        assert_eq!(api_view["localOnly"], true);
-        assert_eq!(api_view["isSmart"], false);
-        assert_eq!(api_view["requiresTunnel"], false);
+        assert!(growth["url"].as_str().unwrap().contains("{origin}"));
+        for absent in ["position", "clientId"] {
+            assert!(growth.get(absent).is_none(), "{absent} is not on the wire");
+        }
     }
 
     #[tokio::test]
@@ -305,12 +296,9 @@ mod tests {
     async fn loopback_launch_without_umbrella_scope_is_403() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        let res = send_raw_scoped(
-            &st,
-            post_launch("/apps/api-docs"),
-            Some("wildflower/*.cruds"),
-        )
-        .await;
+        seed_plain(&st.store, "app-y");
+        let res =
+            send_raw_scoped(&st, post_launch("/apps/app-y"), Some("wildflower/*.cruds")).await;
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
         assert!(
             handle.0.lock().expect("handle mutex").is_empty(),
@@ -345,41 +333,28 @@ mod tests {
     #[tokio::test]
     async fn forwarded_launch_requires_the_umbrella_scope() {
         let st = state();
-        let ok = send_raw(&st, post_forwarded("/apps/api-docs")).await;
+        seed_plain(&st.store, "app-y");
+        let ok = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(ok.status(), StatusCode::OK);
 
         let denied = send_raw_scoped(
             &st,
-            post_forwarded("/apps/api-docs"),
+            post_forwarded("/apps/app-y"),
             Some("wildflower/*.cruds"),
         )
         .await;
         assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     }
 
-    /// Seed a **SMART** cloud app (a `client_id` present) that launches against the
+    /// Seed a **SMART** app (a `client_id` present) that launches against the
     /// loopback origin — the fixture the per-app SMART launch tests drive.
-    fn seed_smart_cloud(store: &crate::db::SqliteAppsStore, id: &str) {
-        let registration = AppRegistration {
-            id: id.to_owned(),
-            kind: AppKind::Cloud,
-            position: 0,
-            on_homescreen: true,
-            name: id.to_owned(),
-            subtitle: None,
-            local_only: false,
-            client_id: Some("client-1".to_owned()),
-            requires_tunnel: false,
-        };
-        store
-            .insert_cloud_app(
-                &registration,
-                &CloudAppConfiguration {
-                    url: AppUrl::OriginRelative("/smart".to_owned()),
-                },
-            )
-            .unwrap()
-            .expect("inserted");
+    fn seed_smart(store: &crate::db::SqliteAppsStore, id: &str) {
+        seed_app(
+            store,
+            id,
+            AppUrl::OriginRelative("/smart".to_owned()),
+            Some("client-1"),
+        );
     }
 
     /// A SMART app launch additionally requires the caller's grant to cover its
@@ -392,7 +367,7 @@ mod tests {
             Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
             FixedLaunchScopes::requiring("patient/Observation.r"),
         );
-        seed_smart_cloud(&st.store, "smart-app");
+        seed_smart(&st.store, "smart-app");
         let res = send_raw_scoped(
             &st,
             post_launch("/apps/smart-app"),
@@ -412,7 +387,7 @@ mod tests {
             Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
             FixedLaunchScopes::requiring("patient/Observation.r"),
         );
-        seed_smart_cloud(&st.store, "smart-app");
+        seed_smart(&st.store, "smart-app");
         let (status, body) = send_scoped(
             &st,
             post_launch("/apps/smart-app"),
@@ -429,7 +404,7 @@ mod tests {
     }
 
     /// A non-SMART app ignores the launch-scopes port entirely: even with a port
-    /// requiring a scope the caller lacks, a system app launches (the SMART check
+    /// requiring a scope the caller lacks, it launches (the SMART check
     /// short-circuits on `is_smart() == false`).
     #[tokio::test]
     async fn launch_non_smart_app_ignores_the_launch_scopes_port() {
@@ -438,56 +413,19 @@ mod tests {
             Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
             FixedLaunchScopes::requiring("patient/Observation.r"),
         );
-        // api-docs is a seeded SYSTEM app (non-SMART).
-        let res = send_raw_scoped(
-            &st,
-            post_launch("/apps/api-docs"),
-            Some("wildflower/launch"),
-        )
-        .await;
+        seed_plain(&st.store, "app-y");
+        let res = send_raw_scoped(&st, post_launch("/apps/app-y"), Some("wildflower/launch")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
     }
 
-    /// A system app launches via its stored source URL, resolved against the
-    /// loopback origin for a local caller.
-    #[tokio::test]
-    async fn launch_system_app_resolves_stored_url() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        let res = send_raw(&st, post_launch("/apps/api-docs")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        let opened = handle.0.lock().expect("handle mutex").clone();
-        assert_eq!(opened, vec!["http://127.0.0.1:8080/docs".to_string()]);
-    }
-
-    /// A registration whose child payload row is missing (raw SQL tampering) is a
-    /// corrupt registry — the launch read fails as a logged 500 (never a panic).
-    #[tokio::test]
-    async fn launch_registration_missing_child_is_500() {
-        use diesel::prelude::*;
-
-        let st = state();
-        let mut conn = st.store.pool().get().unwrap();
-        diesel::sql_query(
-            "INSERT INTO app_registrations (id, kind, position, on_homescreen, name, local_only, requires_tunnel) \
-             VALUES ('ghost-system', 'system', 99, 1, 'Ghost', 1, 0)",
-        )
-        .execute(&mut conn)
-        .unwrap();
-        drop(conn);
-        let res = send_raw(&st, post_launch("/apps/ghost-system")).await;
-        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    /// No launch sets a cookie — forwarded or loopback, system or cloud.
+    /// No launch sets a cookie — forwarded or loopback.
     #[tokio::test]
     async fn no_launch_sets_a_cookie() {
         let st = state();
-        seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
+        seed_plain(&st.store, "app-y");
         for (request, status) in [
-            (post_forwarded("/apps/api-docs"), StatusCode::OK),
             (post_forwarded("/apps/app-y"), StatusCode::OK),
-            (post_launch("/apps/api-docs"), StatusCode::NO_CONTENT),
+            (post_launch("/apps/app-y"), StatusCode::NO_CONTENT),
         ] {
             let res = send_raw(&st, request).await;
             assert_eq!(res.status(), status);
@@ -495,9 +433,9 @@ mod tests {
         }
     }
 
-    /// A cloud `requires_tunnel` launch with the tunnel down is 503; no popup.
+    /// A `requires_tunnel` launch with the tunnel down is 503; no popup.
     #[tokio::test]
-    async fn launch_cloud_requires_tunnel_with_tunnel_down_is_503() {
+    async fn launch_requires_tunnel_with_tunnel_down_is_503() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_tunnel_and_handle(
             tunnel_unavailable(),
@@ -509,9 +447,9 @@ mod tests {
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 
-    /// A cloud `requires_tunnel` launch resolves to the verified tunnel origin.
+    /// A `requires_tunnel` launch resolves to the verified tunnel origin.
     #[tokio::test]
-    async fn launch_cloud_resolves_to_the_verified_tunnel_origin() {
+    async fn launch_resolves_to_the_verified_tunnel_origin() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_tunnel_and_handle(
             tunnel_at("https://dev1.example.com"),
@@ -529,12 +467,12 @@ mod tests {
         );
     }
 
-    /// A created (non-tunnel) cloud app launches against the loopback origin.
+    /// A created (non-tunnel) app launches against the loopback origin.
     #[tokio::test]
-    async fn launch_cloud_origin_relative_resolves_against_loopback() {
+    async fn launch_origin_relative_resolves_against_loopback() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
+        seed_plain(&st.store, "app-y");
         let res = send_raw(&st, post_launch("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
         assert_eq!(
@@ -543,35 +481,31 @@ mod tests {
         );
     }
 
-    /// A forwarded cloud launch resolves `{origin}` against the served origin and
+    /// A forwarded launch resolves `{origin}` against the served origin and
     /// answers the URL rather than opening a host popup.
     #[tokio::test]
-    async fn launch_cloud_forwarded_answers_the_served_origin_url() {
+    async fn launch_forwarded_answers_the_served_origin_url() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
+        seed_plain(&st.store, "app-y");
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(launch_url(res).await, "https://demo.example.com/y");
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 
-    /// A cloud row whose stored url no longer parses fails the typed read → 500.
+    /// A row whose stored url no longer parses fails the typed read → 500.
     #[tokio::test]
-    async fn launch_rejects_unparseable_stored_cloud_url_as_500() {
+    async fn launch_rejects_unparseable_stored_url_as_500() {
         use diesel::prelude::*;
 
         let st = state();
         let mut conn = st.store.pool().get().unwrap();
+        // growth-chart requires the tunnel; drop requires_tunnel too so the launch
+        // reaches the url read rather than 503-ing on the down tunnel.
         diesel::sql_query(
-            "UPDATE cloud_app_configurations SET url = 'javascript:alert(1)' WHERE id = 'growth-chart'",
-        )
-        .execute(&mut conn)
-        .unwrap();
-        // growth-chart requires the tunnel; drop requires_tunnel (now on the parent)
-        // so the launch reaches the url read rather than 503-ing on the down tunnel.
-        diesel::sql_query(
-            "UPDATE app_registrations SET requires_tunnel = 0 WHERE id = 'growth-chart'",
+            "UPDATE app_registrations SET url = 'javascript:alert(1)', requires_tunnel = 0 \
+             WHERE id = 'growth-chart'",
         )
         .execute(&mut conn)
         .unwrap();
@@ -585,23 +519,22 @@ mod tests {
         let st = state();
         let (status, body) = send(
             &st,
-            post_create_cloud("My App", "https://example.com/launch", false),
+            post_create("My App", "https://example.com/launch", false),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
-        assert_eq!(body["kind"], "cloud");
         assert!(body["onHomescreen"].as_bool().unwrap());
-        assert_eq!(body["isRemovable"], true);
+        assert_eq!(body["url"], "https://example.com/launch");
         let id = body["id"].as_str().unwrap().to_string();
         assert!(!id.is_empty());
 
         let (status, body) = send(
             &st,
             put_json(
-                &format!("/cloud-apps/{id}"),
+                &format!("/apps/{id}"),
                 serde_json::json!({
                     "name": "Renamed",
-                    "url": "https://example.com/launch",
+                    "url": "https://example.com/other",
                     "requiresTunnel": false,
                 }),
             ),
@@ -609,7 +542,11 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["name"], "Renamed");
-        assert_eq!(body["kind"], "cloud");
+        assert_eq!(body["url"], "https://example.com/other");
+
+        let (status, body) = send(&st, get(&format!("/apps/{id}"))).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert_eq!(body["name"], "Renamed");
 
         let res = send_raw(&st, delete(&format!("/apps/{id}"))).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
@@ -619,56 +556,31 @@ mod tests {
     #[tokio::test]
     async fn create_rejects_bad_url_and_empty_name() {
         let st = state();
-        let (status, body) =
-            send(&st, post_create_cloud("Bad", "javascript:alert(1)", false)).await;
+        let (status, body) = send(&st, post_create("Bad", "javascript:alert(1)", false)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"], "InvalidUrl");
 
-        let (status, body) = send(&st, post_create_cloud("", "https://example.com/x", false)).await;
+        let (status, body) = send(&st, post_create("", "https://example.com/x", false)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"], "InvalidName");
     }
 
-    /// The per-kind write/detail paths 404 on an id of another kind (the mismatch
-    /// can't be expressed as a 409) and on an unknown id. Delete of a system app is
-    /// 409.
+    /// The by-id read, replace, and delete all 404 on an unknown id; a replace
+    /// resolves the app before validating any field, so a bad url on an unknown id
+    /// is still a 404.
     #[tokio::test]
-    async fn per_kind_paths_reject_wrong_kind_and_unknown() {
+    async fn by_id_paths_reject_an_unknown_id() {
         let st = state();
 
-        // A cloud path given a system id is a 404.
-        for id in ["api-docs", "api-view"] {
-            let (status, body) = send(
-                &st,
-                put_json(
-                    &format!("/cloud-apps/{id}"),
-                    serde_json::json!({ "name": "x", "url": "https://example.com/x", "requiresTunnel": false }),
-                ),
-            )
-            .await;
-            assert_eq!(status, StatusCode::NOT_FOUND, "{id} cloud replace");
-            assert_eq!(body["error"], "AppNotFound");
-
-            let (status, _) = send(&st, get(&format!("/cloud-apps/{id}"))).await;
-            assert_eq!(status, StatusCode::NOT_FOUND, "{id} cloud detail");
-        }
-
-        // A system path given a cloud id is a 404.
-        let (status, _) = send(&st, get("/system-apps/growth-chart")).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "system path to a cloud id");
-
-        // Delete of a system app is a 409; unknown id a 404.
-        for id in ["api-docs", "api-view"] {
-            let (status, body) = send(&st, delete(&format!("/apps/{id}"))).await;
-            assert_eq!(status, StatusCode::CONFLICT, "{id} delete");
-            assert_eq!(body["error"], "AppNotEditable");
-        }
+        let (status, body) = send(&st, get("/apps/no-such-id")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["error"], "AppNotFound");
 
         let (status, body) = send(
             &st,
             put_json(
-                "/cloud-apps/no-such-id",
-                serde_json::json!({ "name": "x", "url": "https://example.com/x", "requiresTunnel": false }),
+                "/apps/no-such-id",
+                serde_json::json!({ "name": "x", "url": "javascript:alert(1)", "requiresTunnel": false }),
             ),
         )
         .await;
@@ -680,78 +592,41 @@ mod tests {
         assert_eq!(body["error"], "AppNotFound");
     }
 
-    /// A seeded cloud app's content is replaceable through `/cloud-apps/{id}`, and
-    /// the response carries the new `url`; it's deletable via the unified path.
+    /// A seeded app's content is replaceable through `/apps/{id}`, and the
+    /// response carries the new `url`; it's deletable too.
     #[tokio::test]
-    async fn seeded_cloud_app_can_be_edited_and_deleted() {
+    async fn seeded_app_can_be_edited_and_deleted() {
         let st = state();
         let (status, body) = send(
             &st,
             put_json(
-                "/cloud-apps/growth-chart",
+                "/apps/growth-chart",
                 serde_json::json!({ "name": "Renamed", "url": "https://example.com/x", "requiresTunnel": true }),
             ),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["name"], "Renamed");
-        assert_eq!(body["kind"], "cloud");
         assert_eq!(body["url"], "https://example.com/x");
         assert_eq!(body["requiresTunnel"], true);
+        assert_eq!(body["isSmart"], true, "a replace keeps the client_id");
 
         let res = send_raw(&st, delete("/apps/growth-chart")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
-    }
-
-    /// A cloud detail read carries the stored url template + `removable: true`; a
-    /// system detail is read-only (no `removable`).
-    #[tokio::test]
-    async fn per_kind_detail_reads_carry_payload_and_removable() {
-        let st = state();
-
-        let (status, body) = send(&st, get("/cloud-apps/growth-chart")).await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["kind"], "cloud");
-        assert_eq!(body["isRemovable"], true);
-        assert!(body["url"].as_str().unwrap().contains("{origin}"));
-
-        let (status, body) = send(&st, get("/system-apps/api-docs")).await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["kind"], "system");
-        assert_eq!(body["url"], "{origin}/docs");
-        assert!(
-            body.get("isRemovable").is_none(),
-            "system detail has no removable"
-        );
-    }
-
-    /// Editability resolves before field validation: a cloud-body PUT to a system
-    /// id is `404` (not a cloud app), even though its url is also bad.
-    #[tokio::test]
-    async fn cloud_replace_of_system_id_with_bad_url_is_404() {
-        let st = state();
-        let (status, body) = send(
-            &st,
-            put_json(
-                "/cloud-apps/api-docs",
-                serde_json::json!({ "name": "x", "url": "javascript:alert(1)", "requiresTunnel": false }),
-            ),
-        )
-        .await;
+        let (status, _) = send(&st, get("/apps/growth-chart")).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body["error"], "AppNotFound");
     }
 
-    /// A cloud `PUT` fully replaces content: an explicit `subtitle` sets it, and
+    /// A `PUT` fully replaces content: an explicit `subtitle` sets it, and
     /// omitting it (or sending `""`) clears it back to absent.
     #[tokio::test]
-    async fn replace_cloud_content_sets_and_clears_subtitle() {
+    async fn replace_content_sets_and_clears_subtitle() {
         let st = state();
         let id = {
             let (_, body) = send(
                 &st,
                 post_json(
-                    "/cloud-apps",
+                    "/apps",
                     serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "requiresTunnel": false, "subtitle": "" }),
                 ),
             )
@@ -765,7 +640,7 @@ mod tests {
         let (_, body) = send(
             &st,
             put_json(
-                &format!("/cloud-apps/{id}"),
+                &format!("/apps/{id}"),
                 serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "requiresTunnel": false, "subtitle": "hi" }),
             ),
         )
@@ -774,7 +649,7 @@ mod tests {
         let (_, body) = send(
             &st,
             put_json(
-                &format!("/cloud-apps/{id}"),
+                &format!("/apps/{id}"),
                 serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "requiresTunnel": false }),
             ),
         )
@@ -795,17 +670,15 @@ mod tests {
         )
     }
 
-    /// `PUT /home-screen` reorders + disables across every kind in one shot, and
-    /// returns the registry in the new order.
+    /// `PUT /home-screen` reorders + disables in one shot, and returns the
+    /// registry in the new order.
     #[tokio::test]
-    async fn home_screen_reorders_and_disables_any_kind() {
+    async fn home_screen_reorders_and_disables() {
         let st = state();
         let ordered = [
             ("precise-hbr", true),
             ("medication-viewer", true),
-            ("growth-chart", true),
-            ("api-docs", false),
-            ("api-view", true),
+            ("growth-chart", false),
             ("medications-app", true),
             ("web-trace-app", true),
             ("web-server-docs", true),
@@ -828,8 +701,6 @@ mod tests {
                 "precise-hbr",
                 "medication-viewer",
                 "growth-chart",
-                "api-docs",
-                "api-view",
                 "medications-app",
                 "web-trace-app",
                 "web-server-docs",
@@ -838,13 +709,13 @@ mod tests {
                 "lifting-app",
             ],
         );
-        let api_docs = body
+        let growth = body
             .as_array()
             .unwrap()
             .iter()
-            .find(|v| v["id"] == "api-docs")
+            .find(|v| v["id"] == "growth-chart")
             .unwrap();
-        assert_eq!(api_docs["onHomescreen"], false, "api-docs was disabled");
+        assert_eq!(growth["onHomescreen"], false, "growth-chart was disabled");
 
         let (_, list) = send(&st, get("/apps")).await;
         let listed: Vec<&str> = list
@@ -864,7 +735,7 @@ mod tests {
             &st,
             put_json(
                 "/home-screen",
-                home_screen_body(&[("api-view", true), ("api-docs", true)]),
+                home_screen_body(&[("growth-chart", true), ("precise-hbr", true)]),
             ),
         )
         .await;
@@ -881,8 +752,6 @@ mod tests {
             put_json(
                 "/home-screen",
                 home_screen_body(&[
-                    ("api-view", true),
-                    ("api-docs", true),
                     ("growth-chart", true),
                     ("medication-viewer", true),
                     ("precise-hbr", true),
@@ -945,7 +814,7 @@ mod tests {
         let st = state();
         let (status, body) = send_scoped(
             &st,
-            post_create_cloud("My App", "https://example.com/launch", false),
+            post_create("My App", "https://example.com/launch", false),
             read_only,
         )
         .await;
@@ -979,14 +848,14 @@ mod tests {
         );
     }
 
-    /// The scope gate runs **before** the handler body: an under-scoped delete of a
-    /// protected app is `403` (the scope check), not the `409` it would be with the
-    /// scope — a forgotten permission can't leak the removability verdict.
+    /// The scope gate runs **before** the handler body: an under-scoped delete of
+    /// an unknown id is `403` (the scope check), not the `404` it would be with the
+    /// scope — a forgotten permission can't leak existence.
     #[tokio::test]
     async fn scope_gate_precedes_the_handler_verdict() {
         let st = state();
         let (status, body) =
-            send_scoped(&st, delete("/apps/api-docs"), Some("wildflower/Apps.r")).await;
+            send_scoped(&st, delete("/apps/no-such-id"), Some("wildflower/Apps.r")).await;
         assert_eq!(status, StatusCode::FORBIDDEN);
         assert_eq!(body["error"], "InsufficientScope");
     }

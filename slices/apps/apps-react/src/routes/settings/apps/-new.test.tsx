@@ -15,7 +15,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   }
 })
 
-// The create body reads the cloud create mutation from `queries.ts`; stub it so
+// The create body reads the create mutation from `queries.ts`; stub it so
 // the tests assert the payload it posts and that `onCreated` is wired to the
 // mutation's success callback.
 const { createStub } = vi.hoisted(() => ({
@@ -25,9 +25,9 @@ const { createStub } = vi.hoisted(() => ({
 vi.mock('../../../queries.ts', () => {
   const unused = { mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }
   return {
-    useCloudAppCreateMutation: () => createStub,
-    // Imported transitively by `-forms.tsx` (CloudAppFields) but unused here.
-    useCloudAppReplaceMutation: () => unused,
+    useAppCreateMutation: () => createStub,
+    // Imported transitively by `-forms.tsx` (AppEditForm) but unused here.
+    useAppReplaceMutation: () => unused,
   }
 })
 

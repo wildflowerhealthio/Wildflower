@@ -8,7 +8,7 @@ const makeApp = (id: string, onHomescreen = true): AppRegistration => ({
   id,
   name: id,
   onHomescreen,
-  kind: 'system',
+  url: 'https://example.com/launch',
   localOnly: false,
   isSmart: false,
   requiresTunnel: false,
