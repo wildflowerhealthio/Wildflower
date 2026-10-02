@@ -55,20 +55,6 @@ pub fn stop_notification(reason: ServiceStopReason) -> Option<LocalNotification>
     Some(stopped(title, body.to_owned()))
 }
 
-/// The notification for the app leaving the screen on iOS with the server
-/// serving. iOS suspends the app soon after, without telling it, and a
-/// suspended server answers nothing; the run doesn't stop, so no stop
-/// notification follows. This is the only warning.
-#[must_use]
-pub fn background_pause_notification() -> LocalNotification {
-    stopped(
-        "Wildflower server pausing",
-        "iOS pauses the server shortly after Wildflower leaves the screen. Open the app to \
-         keep it reachable."
-            .to_owned(),
-    )
-}
-
 /// The notification for a run that failed with `error`.
 #[must_use]
 pub fn failure_notification(error: &str) -> LocalNotification {
