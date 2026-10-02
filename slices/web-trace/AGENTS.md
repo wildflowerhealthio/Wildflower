@@ -26,9 +26,9 @@ exchange through `web-trace-core`'s codec. It imports the encoding; it never
 re-derives it.
 
 The surface that mounts the viewer lives outside the slice too:
-[`apps/web-trace`](../../apps/web-trace/AGENTS.md) is a self-hosted SMART app
+[`apps/web-trace`](../../apps/web-trace/AGENTS.md) is a first-party SMART app
 that wraps `web-trace-react`. It is a host, not a second viewer — the auth
-wiring a self-hosted origin needs (bearer token, FHIR base prefix, the router
+wiring an app on its own origin needs (bearer token, FHIR base prefix, the router
 `useRunAuthed` reads through) is all it adds, plus the tabstrip that chooses
 between the slice's two panels. **Every viewing surface belongs to the slice**,
 the exchange detail included: the app briefly owned one and the result was two

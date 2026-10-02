@@ -5,10 +5,8 @@ The static API console published at
 [Scalar](https://scalar.com) reference for the Wildflower server's HTTP API,
 pointed at whichever running server the reader chooses.
 
-It is the public, no-install twin of the `/docs` route a running host serves —
-same six slices, same group names — with one difference in where the documents
-come from. The host merges each slice's spec live, in-process; this page bundles
-the **committed OpenAPI snapshots**:
+It documents six slices, one sidebar group each, from the **committed OpenAPI
+snapshots**:
 
 | Sidebar group | Snapshot                                                                  |
 | ------------- | ------------------------------------------------------------------------- |

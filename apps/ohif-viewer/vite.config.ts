@@ -32,8 +32,8 @@ export default defineConfig({
       },
     },
   },
-  // The homescreen's "Imaging (Dev)" tile launches this port and nothing else
-  // serves it, so the preview server must hold exactly it. Run with `vp run -F ohif-viewer dev`.
+  // The homescreen's "Imaging (Dev)" tile launches this port, so the preview
+  // server must hold exactly it. Run with `vp run -F ohif-viewer dev`.
   preview: devAppServer('ohif-viewer-dev'),
   test: {
     ...base.test,

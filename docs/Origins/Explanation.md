@@ -1,10 +1,9 @@
 # Origins Explanation
 
 How the on-device server decides **which origin it is answering as** for a given
-request, and why that one decision shows up in three places: a token's `iss`
-claim, a token's `aud` claim, and the hostnames the subdomain reverse proxy
-dispatches. The mechanics live in `shared-structures-rust`
-([`CANONICAL_ISSUER`], [`served_origin`], [`subdomain_host`]); this is the
+request, and why that one decision shows up in two places: a token's `iss`
+claim and a token's `aud` claim. The mechanics live in `shared-structures-rust`
+([`CANONICAL_ISSUER`], [`served_origin`]); this is the
 narrative those modules and their consumers (gatekeeper, emr, apps, tunnel)
 point back to instead of each re-deriving it.
 
@@ -121,34 +120,13 @@ above the FHIR router must let those paths through unauthenticated. The canonica
 allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (emr-rust), which mirrors HFS's own
 `EXEMPT_PATHS`.
 
-## Subdomain dispatch for self-hosted apps
+## Loopback is the trust boundary
 
-A Self-Hosted app reachable through the relay lives at a dedicated public
-hostname, `https://<id>.<public_host>/`. That `<id>.<public_host>` shape has
-**one** definition, [`subdomain_host`], shared by two sides that must never
-drift:
-
-- the **producer** — the apps slice's launch redirect, which emits the URL;
-- the **consumer** — the host's subdomain-dispatch middleware, which matches the
-  same shape on inbound forwarded requests and reverse-proxies them to that
-  app's loopback static listener.
-
-If the join changed on one side only, forwarded launches would fall through to
-the API — unreachable from a remote browser, with no error. A round-trip test
-pins the agreement. The split is shape-only: a matched label is still filtered
-against the known-apps catalogue by the caller.
-
-### Loopback is the trust boundary
-
-The subdomain reverse proxy forwards a `<id>.<public_host>` request to the app's
-loopback listener **before** the API's auth layer. Remote reachability of
-on-device data over those hostnames therefore depends on **the trusted front
-authenticating the subdomains** — the proxy adds no gate of its own. This is a
-deliberate boundary: the front is the gate for the remote self-hosted surface.
-The same loopback-socket gate ([`require_loopback_peer`]) is what lets every
-slice trust the `Forwarded` header in the first place — a non-loopback peer is
-rejected before any handler runs. See [Apps Explanation](../Apps/Explanation.md)
-for how this lands in the apps auth posture.
+The loopback-socket gate ([`require_loopback_peer`]) is what lets every slice
+trust the `Forwarded` header: a non-loopback peer is rejected before any handler
+runs, so every request a handler sees came from this machine or through the
+trusted front. See [Apps Explanation](../Apps/Explanation.md) for how this lands
+in the apps auth posture.
 
 ## Loopback owner dialog
 
@@ -186,15 +164,14 @@ restate the grammar.
 
 ## See also
 
-- [Apps Explanation](../Apps/Explanation.md) — provenance, the self-hosted
-  subdomain surface, and the apps-side auth posture.
+- [Apps Explanation](../Apps/Explanation.md) — launch provenance and the
+  apps-side auth posture.
 - [Gatekeeper Jargon Explanation](../../slices/gatekeeper/docs/Jargon%20Explanation.md)
   — `iss` / `aud` / Owner / Client / SMART terms.
 
 [`CANONICAL_ISSUER`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
 [`served_origin`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`served_base_url_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
-[`subdomain_host`]: ../../slices/shared-structures/shared-structures-rust/src/subdomain_host.rs
 [`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
 [`UNAUTHENTICATED_FHIR_PATHS`]: ../../slices/emr/emr-rust/src/lib.rs
 [`SwappableHfs`]: ../../slices/emr/emr-rust/src/swappable_hfs.rs

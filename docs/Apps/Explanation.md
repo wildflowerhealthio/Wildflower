@@ -1,103 +1,65 @@
 # Apps Explanation
 
-What an "app" is in Wildflower, how apps are classified, and where a user's
-PHI can and can't go when they launch one.
+What an "app" is in Wildflower, how its launch target is resolved, and where a
+user's PHI can and can't go when they launch one.
 
-## The problem the taxonomy solves
+## What an app is
 
-An app is a thing the user launches from the homescreen. The interesting
-question about any app is **where it runs and whether the patient's data can
-leave the device when it does**. Two orthogonal axes answer it: **kind** (where
-the app is served from) and a set of **capability flags** (what it may do with
-PHI). Kind fixes how a launch target resolves; the flags carry the privacy
-verdict. The storage layout is **class-table-inheritance**: one authoritative
-`app_registrations` parent table (the global id space, the shared catalogue fields,
-and the homescreen placement) with a `kind` discriminator and three symmetric
-per-kind child payload tables (`system_app_configurations`, `cloud_app_configurations`, `self_hosted_app_configurations`),
-real FKs child→parent. A row is its registration plus the one child its `kind`
-names. (This replaces the earlier table-per-struct layout, and revises the
-class-table-inheritance objection — the registry is a real domain object, not an
-abstract base class; see [Polymorphic Rows](./Polymorphic%20Rows%20Explanation.md),
-which lays out this shape as one option and contrasts it with gatekeeper grants'.)
+An app is a thing the user launches from the homescreen: a registry row naming a
+web page and the template that launches it. The interesting question about any
+app is **whether the patient's data can leave the device when it runs**. A set of
+**capability flags** carries the privacy verdict, and the `requires_tunnel` flag
+fixes how a launch reaches the device's FHIR server.
 
-## Group A — Kind (one per app, fixed identity)
+An app's assets are served from its own origin, never the host's. Growth Chart,
+Medication Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
+Medications (`medications-app`), Web Trace (`web-trace-app`), the Server Docs
+console (`web-server-docs`), Importer (`importer-app`), the OHIF imaging viewer
+(`ohif-viewer`) and Lifting (`lifting-app`) — are published to
+<https://wildflowerhealth.io> by `apps/github-pages` and launched from there.
+Serving the deployed copy means a shipped app updates when the site deploys
+rather than when the user installs a new desktop build.
 
-Kind is **where the app is served from**, which fixes how its launch target is
-resolved. It is part of the app's identity; the schema permits a later
-cloud↔self-hosted re-point, but there is no switch UI yet.
+An app reaches PHI through `{origin}` in its stored launch template, and
+`requires_tunnel` decides which origin that is: set, it forces the tunnel up and
+substitutes the tunnel's verified HTTPS origin, so a launch fails `503` when the
+tunnel can't come up; clear, it substitutes the **served** origin — loopback for
+an on-device launch, the forwarded public origin for a remote one. Every seeded
+row sets it, the first-party ones included: their pages are HTTPS documents on
+<https://wildflowerhealth.io>, and an `iss={origin}` fetch from there to a
+loopback origin is unreachable remotely and refused by WebKit even on device.
+Only the debug-only `<id>-dev` rows below clear it, since their pages are served
+from `localhost` themselves. The trade-off: with the assets remote and the
+tunnel required, a first-party launch needs the network even on-device, and Web
+Trace does not claim `local_only`: its data never leaves the device, but its
+assets are remote.
 
-- **System** — served by the structure of Wildflower itself: a shell route (API
-  View, API Docs) or a compiled-in backend. Source-defined only — the user can
-  never add, register, or delete one. Always ready to serve. A system app is an
-  ordinary seeded `app_registrations` row (`kind = system`) with a `system_app_configurations`
-  payload holding its launch template; shipping a change to a system app is a
-  migration (the DB is authoritative — there is no longer a compiled-in
-  `SYSTEM_APPS` list).
-- **Self-Hosted** — web assets served from the device on a **dedicated, isolated
-  origin** (a loopback port, or the user's domain via subdomain dispatch). The
-  isolated origin is what lets a Self-Hosted app make data-residence guarantees.
-  A Self-Hosted app is either **seeded** (a Wildflower-shipped vendored build,
-  synced into app-data at host startup — only Patient Browser) or **uploaded** (a
-  user-supplied `.zip` extracted at runtime by the `wildflower/Apps.c`-gated
-  `POST /self-hosted-apps` upload endpoint). Both serve the same way; they
-  differ only in origin and removability (see the data model).
-- **Cloud** — assets served from a **remote** origin. Growth Chart, Medication
-  Viewer, and PRECISE-HBR are Cloud, and so are the **first-party** apps —
-  Medications (`medications-app`), Web Trace (`web-trace-app`), the Server Docs
-  console (`web-server-docs`), Importer (`importer-app`), the OHIF imaging viewer
-  (`ohif-viewer`) and Lifting (`lifting-app`) — which are published to
-  <https://wildflowerhealth.io> by `apps/github-pages` and launched from there
-  (apps migrations `0005_first_party_apps_to_cloud`, `0006`, `0007` and `0010`).
-  Serving the deployed copy means a shipped app updates when the site deploys
-  rather than when the user installs a new desktop build.
+The SMART apps this repository publishes (every app that mounts
+`smart-app-react`'s `SmartAppRoot`) send nothing from the browser but their FHIR
+traffic until the visitor answers a telemetry consent dialog, which comes before
+anything else on the page. Only after a yes do they report to Sentry, each to
+its own project: crash reports, which can carry data the app loaded, and
+anonymized performance data, each behind its own switch. See the
+[Telemetry Explanation](../../slices/telemetry/docs/Telemetry%20Explanation.md).
 
-  A Cloud app reaches PHI through `{origin}` in its stored launch template, and
-  `requires_tunnel` decides which origin that is: set it forces the tunnel up and
-  substitutes the tunnel's verified HTTPS origin, so a launch fails `503` when the
-  tunnel can't come up; clear it substitutes the **served** origin — loopback for
-  an on-device launch, the forwarded public origin for a remote one. Every seeded
-  Cloud row sets it, the first-party ones included: their pages are HTTPS
-  documents on <https://wildflowerhealth.io>, and an `iss={origin}` fetch from
-  there to a loopback origin is unreachable remotely and refused by WebKit even
-  on device. Only the debug-only `<id>-dev` rows below clear it, since their
-  pages are served from `localhost` themselves. The trade-off: with
-  the assets remote and the tunnel required, a first-party launch needs the
-  network even on-device, and Web Trace does not claim `local_only`: its data
-  never leaves the device, but its assets are remote.
+### Dev rows
 
-  The SMART apps this repository publishes (every app that mounts
-  `smart-app-react`'s `SmartAppRoot`) send
-  nothing from the browser but their FHIR traffic until the visitor answers a
-  telemetry consent dialog, which comes before anything else on the page. Only
-  after a yes do they report to Sentry, each to its own project: crash reports,
-  which can carry data the app loaded, and anonymized performance data, each
-  behind its own switch. See the
-  [Telemetry Explanation](../../slices/telemetry/docs/Telemetry%20Explanation.md).
+In **debug builds only** each first-party app additionally gets an `<id>-dev`
+row bound to that app's vite dev-server port (pinned once in
+`slices/apps/dev-app-ports.json`, which the Rust seed embeds and the vite
+configs read through the shared `devAppServer` helper in the root
+`vite.config.base.ts`), so a developer's local build is what the tile launches.
+Those rows are a runtime seed (`apps-rust/src/dev_seed.rs`), never a migration —
+migrations run unconditionally, so a migration-seeded dev row would exist in
+release databases too.
 
-  In **debug builds only** each first-party app additionally gets an `<id>-dev`
-  row bound to that app's vite dev-server port (pinned once in
-  `slices/apps/dev-app-ports.json`, which the Rust seed embeds and the vite
-  configs read through the shared `devAppServer` helper in the root
-  `vite.config.base.ts`), so a developer's local build is what the tile
-  launches. Those
-  rows are a runtime seed (`apps-rust/src/dev_seed.rs`), never a migration —
-  migrations run unconditionally, so a migration-seeded dev row would exist in
-  release databases too.
+A dev tile launches whatever is serving the port — the vite (or preview) server
+when it is up, nothing when it is down. Each SMART dev row has its own OAuth
+client (gatekeeper's `seed_dev_app_clients`) whose id equals the dev app id and
+whose redirect URI, `http://localhost:{port}` plus the app's callback path, is
+what `/authorize` matches.
 
-  The dev rows are Cloud too: the first-party apps build into their own
-  `dist/` for the published site, so there is no vendored build for the host to
-  fall back to. A tile launches whatever is serving the port — the vite (or
-  preview) server when it is up, nothing when it is down — and the host binds no
-  listener that could contend with it. Each pays for this with its OAuth
-  redirect: an app-relative entry resolves only for a Self-Hosted row, so its dev
-  client registers the absolute loopback route instead.
-
-System vs Self-Hosted is about **origin isolation, not where the bytes shipped
-from**: Patient Browser ships inside the download yet is Self-Hosted (it gets its
-own isolated origin); API View ships the same way yet is System (it's a shell
-route on the main origin).
-
-## Group B — Capabilities (orthogonal flags)
+## Capabilities (orthogonal flags)
 
 - **SMART App** — **derived** from the app's relation to a registered OAuth
   client: an app is a SMART app **iff it carries a `client_id`** that references
@@ -109,83 +71,49 @@ route on the main origin).
 - **Public / Confidential** — the SMART client type, carried by the linked
   `clients` row. Glossary-only here: documented, not separately badged.
 
-**The privacy verdict comes from the flags, not the kind.** PHI-safe ≈
-Local-Only ∧ Public. A Cloud app is not automatically unsafe and a Self-Hosted
-app is not automatically safe — the flags decide.
+PHI-safe ≈ Local-Only ∧ Public.
 
 ## Data model
 
-**Class-table-inheritance.** One authoritative **`app_registrations`** parent holds
-the shared catalogue fields and the homescreen placement for an app of every
-kind: `id` (the global id space, an explicit PK), the `kind` discriminator
-(`CHECK IN ('system','cloud','self-hosted')`), `position` (UNIQUE, for ordering +
-drag-to-reorder), `on_homescreen`, `name`, `subtitle`, `local_only`, the soft
-`client_id` reference, and `requires_tunnel` (a launch-readiness signal; false
-for system/self-hosted). It is the single writer of ordering + `on_homescreen`
-(`PUT /home-screen`).
+One **`app_registrations`** table holds the whole app: `id` (the global id
+space, an explicit PK), `position` (UNIQUE, for ordering + drag-to-reorder),
+`on_homescreen`, `name`, `subtitle`, `url` (the launch template), `local_only`,
+the soft `client_id` reference, and `requires_tunnel` (a launch-readiness
+signal). `PUT /home-screen` is the single writer of ordering + `on_homescreen`.
 
-Each kind's payload lives in a **child table** keyed `id … REFERENCES
-app_registrations(id) ON DELETE CASCADE`, so a payload can't exist without its
-registration and deleting the registration cascades:
+The `url` is an origin-independent template (`domain/app_url.rs`): an absolute
+`http(s)://` URL or an origin-relative path, either of which may embed `{origin}`
+and `{launch}` tokens. Anything else — `javascript:`, `data:`, a
+protocol-relative `//authority`, an `{origin}` followed by anything but a
+path/query/fragment boundary — is rejected on write, and a stored value that no
+longer parses fails the read as a typed error.
 
-- `cloud_app_configurations` — `url` (the launch URL template).
-- `system_app_configurations` — `url` (the `{origin}`-relative launch template; a system app is
-  an ordinary seeded row now, not a compiled-in const).
-- `self_hosted_app_configurations` — the stable dedicated loopback `port` (UNIQUE), the on-disk
-  `content_folder`, the public `subdomain` label (UNIQUE, `<subdomain>.<public_host>`),
-  a `seeded` flag, and a nullable `launch_path`. Folder and subdomain are explicit
-  columns, not derived from the `id`. `seeded = 1` marks the migration-seeded
-  shipped apps (Patient Browser); upload-endpoint rows are `seeded = 0`.
-  `launch_path` is the SMART launch path **inferred at install** — set when the
-  uploaded bundle ships a `launch.html`
-  (`/launch.html?launch={launch}&iss={origin}/fhir-r4`), `NULL` for a root-served
-  (`index.html`) app. Like the cloud `url` it's an origin-independent template.
+Every app can be deleted: `DELETE /apps/{id}` drops its row. A user-deleted seed
+stays deleted across upgrades, because each seed migration runs once per
+database.
 
-**Reads are typed queries against real tables** (no `apps_view`, no NULLable
-union): the uniform catalogue is a join-free `SELECT * FROM app_registrations ORDER BY
-position`; a detail read fetches the registration then the one child its `kind`
-names. The one CTI invariant SQLite can't enforce across tables — a registration
-must have its payload row — is checked at that single detail read as a typed
-`Infrastructure` error.
+### The registration is the wire shape
 
-**Removability.** A Cloud app and an **uploaded** (`seeded = 0`) Self-Hosted app
-can be deleted — `DELETE /apps/{id}` drops the registration (the child cascades)
-and, for self-hosted, stops the listener and removes the on-disk files. A
-**seeded** Self-Hosted app and System apps are protected: their delete returns
-`409 AppNotEditable`. The per-kind detail shapes surface this as the `isRemovable`
-flag (true for cloud and non-seeded self-hosted), which the editor's Remove
-button follows.
+`GET /apps` (and `PUT /home-screen`) return `AppRegistration[]` — one flat shape
+per app: `id`, `onHomescreen`, `name`, `subtitle?`, `url`, `localOnly`, `isSmart`
+(derived from `client_id`), and `requiresTunnel`. The array order is the display
+order (`position` stays on the host). `GET /apps/{id}` returns the same shape for
+one app.
 
-### The catalogue is a uniform `AppRegistration[]`
+The `url` on the wire is the **stored template**, never a **request-resolved**
+launch URL: the concrete target — with the caller's origin and a fresh `{launch}`
+nonce substituted — is materialized only by the launch endpoint
+(`POST /apps/{id}`), per request, so a forwarded and a loopback caller each get
+the right origin.
 
-`GET /apps` (and `PUT /home-screen`) return a **uniform** `AppRegistration[]` —
-one flat shape per app of every kind, no union to narrow: `id`, `kind`,
-`onHomescreen`, `name`, `subtitle?`, `localOnly`, `isSmart` (derived from
-`client_id`), and `requiresTunnel`. The array order is the display order
-(`position` stays on the host). Everything the homescreen tile renders is here; the
-per-kind payload (`url`, `launchPath`) is an editor concern, read on a **per-kind
-detail** lookup (`GET /cloud-apps/{id}`, `/self-hosted-apps/{id}`,
-`/system-apps/{id}`), whose shape is the registration fields plus that kind's
-payload (and `isRemovable`).
+### Creating and editing
 
-Detail shapes expose the **stored, origin-independent templates** (the cloud `url`
-and the self-hosted `launchPath`, both with `{origin}` / `{launch}` tokens) but
-never a **request-resolved** launch URL: the concrete target — with the caller's
-origin and a fresh `{launch}` nonce substituted — is materialized only by the
-launch endpoint (`GET`/`POST /apps/{id}`), per request, so a forwarded and a
-loopback caller each get the right origin.
-
-### Editing app content — per-kind resources
-
-Content edits go through the per-kind resources: `PUT /cloud-apps/{id}` (a JSON
-body replacing `name` / `subtitle` / `url` / `requiresTunnel`) and
-`PUT /self-hosted-apps/{id}` (replacing `launchPath`; empty clears it back to
-root-serving). It is a full **content** replace — `on_homescreen` and display order
-stay owned by `PUT /home-screen`. A per-kind path given an id of another kind is a
-**404** (the kind mismatch can no longer be expressed as a `409`); a seeded
-self-hosted app is `409 AppNotEditable`; system apps have no edit surface. The
-response is the refreshed per-kind detail shape. Create is likewise per-kind:
-`POST /cloud-apps` (JSON) and `POST /self-hosted-apps` (multipart upload).
+`POST /apps` creates an app and `PUT /apps/{id}` replaces its content, both from
+the same JSON body (`name`, `subtitle`, `url`, `requiresTunnel`). The server mints
+a created app's id; the app lands at the end of the homescreen, with no
+`client_id` and `local_only` clear. A replace is a full **content** replace —
+`on_homescreen` and display order stay owned by `PUT /home-screen` — and an
+unknown id is a `404`. Both answer with the stored registration.
 
 ### `client_id` is a soft reference
 
@@ -198,17 +126,13 @@ derives `isSmart` from its presence alone and never reads the `clients` table. T
 invariant — every seeded `client_id` corresponds to a seeded gatekeeper client —
 is held by keeping the two slices' seeds in lockstep (the seeded apps'
 `client_id`s in the apps migrations, the matching clients in the gatekeeper
-ones — including the rename of both first-party apps, which moves `id` and
-`client_id` together across `apps` `0005` and `gatekeeper` `0006`), each guarded
-by its own seed test, rather than by the database.
+ones), each guarded by its own seed test, rather than by the database.
 
-A **self-hosted** app's `client_id` additionally has to _equal_ its app id: the
-server resolves that kind of app's app-relative redirect URI by looking the app up
-by `client_id` (`wildflower-server-rust`'s `self_hosted_redirect_resolver.rs`). A cloud app has no such
-resolution, so its client must register an **absolute** redirect URI — which is
-why the first-party clients gained
-`https://wildflowerhealth.io/<app>/` alongside the app-relative `"/"` they keep
-for their `…-dev` siblings.
+A client's redirect URIs are absolute URLs, matched by exact equality at
+`/authorize`. Each first-party client registers its published callback page —
+the app root `https://wildflowerhealth.io/<app>/` for most apps,
+`https://wildflowerhealth.io/ohif-viewer/fhir-viewer` for OHIF; its `<app>-dev`
+sibling registers `http://localhost:{port}` plus the same path.
 
 ## Auth posture and the remote trust boundary
 
@@ -219,8 +143,8 @@ default-safe capability pattern (`scope-capabilities-rust`; see
 [Scope-Gated Endpoints How-To](../Authorization/Scope-Gated%20Endpoints%20How-To.md)),
 so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScopes }`:
 
-- `GET /apps` and the admin surface (`/cloud-apps`, `/self-hosted-apps`,
-  `/system-apps`, `DELETE /apps/{id}`, `PUT /home-screen`) are gated on
+- `GET /apps`, `GET /apps/{id}`, `POST /apps`, `PUT /apps/{id}`,
+  `DELETE /apps/{id}` and `PUT /home-screen` are gated on
   `wildflower/Apps.{r,c,u,d}` — a read/create/update/delete grant per capability.
 - The launch (`POST /apps/{id}`) is gated in two layers: a static
   `wildflower/launch` **umbrella** the `Scoped<AppLauncher>` extractor enforces (a
@@ -245,20 +169,16 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
   the browser opens by itself from the link has no session. The signed-in
   owner UI's URLs don't name a server, so that tab lands on the server picker.
 
-Separately, a Self-Hosted app reachable remotely is served by the host's
-**subdomain reverse proxy**: a forwarded `<id>.<public_host>` request is proxied
-straight to that app's loopback static listener, **before** the API's auth layer.
-Remote reachability of on-device data over those hostnames therefore depends on
-**the trusted front authenticating the subdomains** — the proxy itself adds no
-gate. This is a deliberate boundary, not an oversight: the front is the gate for
-the remote self-hosted surface. (An in-code gate for those origins is possible
-future hardening.)
-
 ### No launch sets a cookie
 
 The server authenticates by `Authorization: Bearer` alone, so no launch plants
 a session for the app it opens. A SMART app earns its own bearer through its
-OAuth flow. A non-SMART app on loopback calling the loopback API is covered by
-the host's loopback-provenance owner trust. A non-SMART self-hosted app opened
-through a forwarded launch, at `https://<id>.<public_host>/`, carries no
-credential for its calls back to the API — only a SMART app works remotely.
+OAuth flow. A non-SMART app has no credential of its own, so only a SMART app
+reaches the API.
+
+## See also
+
+- [Apps Store Explanation](./Store%20Explanation.md) — how `apps-rust` persists
+  the registry and the invariants its writes hold.
+- [Origins Explanation](../Origins/Explanation.md) — the served origin `{origin}`
+  resolves to.

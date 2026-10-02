@@ -2,7 +2,7 @@
   "name": "apps-core",
   "version": "0.0.0",
   "private": true,
-  "description": "App registry, hosting-tier escalation protocol, and HTTP API for launching FHIR apps.",
+  "description": "App registry and HTTP API for launching FHIR apps.",
   "license": "MIT",
   "repository": {
     "type": "git",

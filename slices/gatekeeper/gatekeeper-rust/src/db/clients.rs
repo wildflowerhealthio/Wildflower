@@ -353,9 +353,8 @@ mod tests {
         );
 
         // `web-trace-app` (the Web Trace viewer) pins two decisions across its
-        // seed (`0005`) and the rename (`0006`): the **absolute** published-site
-        // redirect the app launches from as a cloud app, and a read-only
-        // `system/` resource scope, because trace
+        // seed (`0005`) and the rename (`0006`): the published-site redirect the
+        // app launches from, and a read-only `system/` resource scope, because trace
         // `DocumentReference`s carry no `subject` and so aren't reachable through
         // patient context.
         let web_trace = store.client_by_id("web-trace-app").unwrap().unwrap();
@@ -389,8 +388,7 @@ mod tests {
             );
         }
 
-        // `medications-app` carries the absolute published-site redirect it
-        // launches from as a cloud app.
+        // `medications-app` carries the published-site redirect it launches from.
         let medications = store.client_by_id("medications-app").unwrap().unwrap();
         assert_eq!(
             medications.redirect_uris,
@@ -490,9 +488,8 @@ mod tests {
                 .expect("a valid absolute redirect")],
         );
 
-        // `importer-app` (the Importer) is a cloud client like `medications-app`
-        // and `web-trace-app`: the absolute published-site redirect it launches
-        // from as a cloud app (seeded by `0008`). It is the one seeded
+        // `importer-app` (the Importer) carries the published-site redirect it
+        // launches from (seeded by `0008`). It is the one seeded
         // SMART client whose scopes **carry writes**: importing persists what a
         // captured session contained. The set `0008` seeded was widened by
         // `0009_widen_importer_client_write_scopes` to add `Practitioner`,
@@ -529,9 +526,9 @@ mod tests {
                 "system/ImagingStudy.cruds".to_string(),
             ],
         );
-        // `ohif-viewer` (the OHIF imaging viewer) is a cloud client like the three
-        // above, seeded by `0009` and repointed onto the `/fhir-viewer` route by
-        // `0010`, and read-only. This vector must stay
+        // `ohif-viewer` (the OHIF imaging viewer) carries its published-site
+        // redirect, seeded by `0009` and repointed onto the `/fhir-viewer` route
+        // by `0010`, and is read-only. This vector must stay
         // element-for-element equal to the `smartScope` string in
         // `apps/ohif-viewer/config/app-config.js` — nothing spans the JS/Rust
         // boundary to check it, so this assertion is the Rust-side mirror of that
@@ -557,8 +554,9 @@ mod tests {
             ],
         );
         // `fhir-sync-pebble` (the Pebble watchapp's settings page) is
-        // standalone-only, so it carries only its absolute Pages redirect, and
-        // its scopes are `system/`: the page picks the patient after the grant.
+        // standalone-only: it carries its published-site redirect, and its scopes
+        // are `system/`, with no `launch`: the page picks the patient after the
+        // grant.
         // This vector must stay element-for-element equal to the `scope` string
         // in `apps/fhir-sync-pebble-web/src/config.ts` — nothing spans the
         // TS/Rust boundary to check it.
@@ -579,8 +577,8 @@ mod tests {
                 "system/Observation.cu".to_string(),
             ],
         );
-        // `lifting-app` (Lifting) is a cloud client like the ones above, seeded
-        // by `0019`, and its scopes carry writes: the training plan
+        // `lifting-app` (Lifting) carries its published-site redirect, seeded by
+        // `0019`, and its scopes carry writes: the training plan
         // definition's `PlanDefinition`, a `ServiceRequest` per exercise, and
         // each workout's `Procedure` and per-set `Observation`s. There is no
         // `launch/patient`: the app picks the lifter itself (`0020`).
@@ -630,8 +628,8 @@ mod tests {
         // row, each asserted to fail the read.
         for (column, bad_value) in [
             ("redirect_uris", "not json"), // JsonRedirectUris: malformed JSON
-            ("redirect_uris", "[\"not a url\"]"), // JsonRedirectUris: valid JSON, neither URL nor path
-            ("allowed_scopes", "not json"),       // JsonStrings: malformed JSON
+            ("redirect_uris", "[\"not a url\"]"), // JsonRedirectUris: valid JSON, not a URL
+            ("allowed_scopes", "not json"), // JsonStrings: malformed JSON
             ("allowed_grant_types", "[\"totally_unknown\"]"), // JsonAllowedGrantTypes: unknown member
             ("kind", "bogus_kind"),                           // ClientKind: unknown discriminant
         ] {

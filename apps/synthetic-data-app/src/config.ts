@@ -28,7 +28,7 @@ const SYNTHETIC_DATA_SCOPE =
  *   `synthetic-data-app`.
  * - The **vite dev server** (`vp run -F synthetic-data-app dev`, on the port
  *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
- *   `synthetic-data-app-dev` cloud row (`apps-rust`'s `seed_dev_apps`) and its
+ *   `synthetic-data-app-dev` row (`apps-rust`'s `seed_dev_apps`) and its
  *   client (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
  *   dev server's loopback root as its redirect.
  *

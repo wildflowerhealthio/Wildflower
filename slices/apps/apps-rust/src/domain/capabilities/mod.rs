@@ -24,8 +24,8 @@
 //! `*_scopes()` function colocated in its file — read by **both** that capability's
 //! binding and [`grantable_apps_scopes`] (which composes them here in the module
 //! root), so *enforced* and *grantable* can't drift. The by-id read inlines the
-//! store's `find_app` + [`AppsError::NotFound`] shape (the editor and the launch
-//! route inline the same), so there is no shared read helper.
+//! store's `find_app` + [`AppsError::NotFound`] shape, as do the editor and the
+//! launch route.
 //!
 //! (The cross-cutting launch capability is a separate, hybrid concern — see the
 //! launch handler.)

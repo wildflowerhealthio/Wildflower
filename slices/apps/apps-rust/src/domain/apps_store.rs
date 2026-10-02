@@ -29,7 +29,7 @@ use crate::domain::{AppRegistration, AppsError};
 ///
 /// Every create / replace returns the stored registration via `RETURNING`, *from
 /// the same statement that wrote it*, so a caller's response can't drift from
-/// stored state (see `docs/Apps/Store and Install Explanation.md`).
+/// stored state (see `docs/Apps/Store Explanation.md`).
 pub trait AppsStore {
     /// The `GET /apps` catalogue: every app's registration, ordered by `position`.
     ///
@@ -90,7 +90,7 @@ pub trait AppsStore {
     /// permutation of the live registry.
     ///
     /// The sole writer of `position` / `on_homescreen`. See
-    /// `docs/Apps/Store and Install Explanation.md`.
+    /// `docs/Apps/Store Explanation.md`.
     ///
     /// # Errors
     ///

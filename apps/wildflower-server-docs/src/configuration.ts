@@ -56,8 +56,7 @@ interface ConsoleConfiguration {
 
 /**
  * The configuration rendering every documented slice against `serverUrl`. One
- * source per slice, so the sidebar groups by slice under the same names the
- * running host uses at `/docs`.
+ * source per slice, so the sidebar groups by slice.
  *
  * `accessToken` prefills the bearer field every source shares, so a reader who
  * has signed in can send an authorised request without pasting anything. Signed

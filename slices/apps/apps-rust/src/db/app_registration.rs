@@ -70,8 +70,8 @@ pub(super) fn find_app(
         .map_err(|e| AppsError::infrastructure("find app failed", e))
 }
 
-/// Whether any app already holds this id — the registration PK, so the global id
-/// space. [`insert_app`] calls it to reject a colliding id.
+/// Whether any app already holds this id — the registration PK, so ids are unique
+/// across every app. [`insert_app`] calls it to reject a colliding id.
 fn id_taken(conn: &mut SqliteConnection, id: &str) -> Result<bool, AppsError> {
     diesel::select(diesel::dsl::exists(
         app_registrations::table.filter(app_registrations::id.eq(id)),
@@ -106,7 +106,7 @@ pub(super) fn insert_app(
     registration: &AppRegistration,
 ) -> Result<Result<AppRegistration, AppInsertError>, AppsError> {
     // IMMEDIATE so the `next_position` read + insert can't race a concurrent create —
-    // see the transaction-discipline section of `docs/Apps/Store and Install Explanation.md`.
+    // see the transaction-discipline section of `docs/Apps/Store Explanation.md`.
     conn.immediate_transaction(|conn| {
         if id_taken(conn, &registration.id)? {
             return Ok(Err(AppInsertError::IdTaken));
@@ -173,7 +173,7 @@ pub(super) fn delete_app(conn: &mut SqliteConnection, id: &str) -> Result<bool, 
 /// the live registry — the caller maps that to `400 InvalidHomeScreen`.
 ///
 /// The sole writer of `position` / `on_homescreen`. See the
-/// single-writer section of `docs/Apps/Store and Install Explanation.md`.
+/// single-writer section of `docs/Apps/Store Explanation.md`.
 ///
 /// # Errors
 ///
@@ -184,7 +184,7 @@ pub(super) fn replace_placements(
 ) -> Result<Option<Vec<AppRegistration>>, AppsError> {
     // IMMEDIATE so the permutation read and the renumber can't be split by a concurrent
     // add/remove — see the transaction-discipline section of
-    // `docs/Apps/Store and Install Explanation.md`.
+    // `docs/Apps/Store Explanation.md`.
     conn.immediate_transaction(|conn| {
         // Validate against the live registry under the same transaction as the
         // renumber: the body must be an exact permutation of the current ids. The

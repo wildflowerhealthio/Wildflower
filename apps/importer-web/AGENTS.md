@@ -1,7 +1,7 @@
 # AGENTS.md — apps/importer-web
 
-The Importer, shipped as a **cloud** SMART-on-FHIR app served from the published
-GitHub Pages site (`/importer-app`), with a debug-only cloud dev row for local
+The Importer, shipped as a SMART-on-FHIR app served from the published
+GitHub Pages site (`/importer-app`), with a debug-only dev row for local
 development. It pairs
 [`importer-react`](../../slices/importer/importer-react/AGENTS.md)'s
 `ImporterScreen` with
@@ -30,7 +30,7 @@ are load-bearing — see [Seeded registration](#seeded-registration).
 ## Why this app has a router and a bearer token
 
 The wiring itself is **not this app's** — it lives in
-[`fhir-r4-react/smart`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.ts),
+[`fhir-r4-react/smart`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.ts),
 because every SMART app served from its own origin needs the same thing. `app.tsx`
 imports `buildSmartRouterContext` from there directly — there is no local
 re-export to edit, deliberately, so a change to the behaviour has to be made in
@@ -61,7 +61,7 @@ package growing a second, prop-threaded way in.
 
 The app is reachable two ways, both wired here:
 
-- **EHR launch** — the homescreen tile (the `importer-app` cloud row) opens
+- **EHR launch** — the homescreen tile (the `importer-app` row) opens
   `launch.html`, which starts the SMART authorize redirect against the FHIR base
   the host names (`iss={origin}/fhir-r4`). `index.html` is the redirect target.
 - **Standalone launch** — a visitor lands on the published `index.html` directly.
@@ -197,14 +197,13 @@ registered client cannot launch:
   (`https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4`),
   `local_only = 0`, `requires_tunnel = 1` (like `medications-app` / `web-trace-app`).
 - `slices/gatekeeper/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
-  — the `importer-app` OAuth client, with the app-relative `"/"` redirect (for
-  the dev row) plus the absolute `https://wildflowerhealth.io/importer-app/`
-  redirect it launches from as a cloud app.
+  — the `importer-app` OAuth client. Its one registered redirect is
+  `https://wildflowerhealth.io/importer-app/`, the page it launches from.
 
 The `clientId` in `src/config.ts` must equal the app id in both. `local_only` is
-**0**, like the other two cloud apps.
+**0**, like the other first-party apps.
 
-A **debug build** additionally seeds a cloud `importer-app-dev` row
+A **debug build** additionally seeds an `importer-app-dev` row
 (`apps-rust`'s `dev_seed.rs`) whose launch URL names this app's vite dev-server
 port (`slices/apps/dev-app-ports.json` → `5193`), plus its sibling OAuth client
 (`gatekeeper-rust`'s `seed_dev_app_clients`) carrying the same write scopes. That
@@ -223,7 +222,7 @@ into it. The marketing site links there from its "collection of apps" section
 
 ## Boot and chrome
 
-Both entries run on `smart-app-react`, the chrome every self-hosted SMART app
+Both entries run on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
 `main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
@@ -257,7 +256,7 @@ workspace `source` condition at bundle time.
 
 - The auth wiring in isolation — prefix derivation, the relative/absolute split,
   and that an absent token sets no header — is
-  [`fhir-r4-react`'s `self-hosted-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.test.ts).
+  [`fhir-r4-react`'s `smart-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.test.ts).
 - The import flow's own semantics — zero writes to reach a preview, `meta.source`
   on every written resource, partial results, cancel — are
   [`importer-react`'s `importer-screen.test.tsx`](../../slices/importer/importer-react/src/importer-screen.test.tsx).
@@ -288,9 +287,7 @@ workspace `source` condition at bundle time.
   preview-then-confirm opt-in seam.
 - [apps/web-trace AGENTS.md](../web-trace/AGENTS.md) — the read-only twin this
   app is cloned from.
-- [Store and Install Explanation](../../docs/Apps/Store%20and%20Install%20Explanation.md)
-  — how a first-party app is registered as a cloud row and served, and how the
-  debug-only `-dev` rows work.
-- [self-hosted-apps README](../../slices/apps/self-hosted-apps/README.md) — why
-  first-party apps are cloud rows and nothing of this app is vendored.
+- [Apps Explanation](../../docs/Apps/Explanation.md) — how a first-party app is
+  registered and launched from the published site, and how the debug-only `-dev`
+  rows work.
 - [apps/AGENTS.md](../AGENTS.md) — the rules every app follows.

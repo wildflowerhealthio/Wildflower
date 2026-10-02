@@ -89,9 +89,8 @@ defineSpecDriftTest({
   // Optional: `requestsNotCompared` for endpoints whose *request body* can't
   // normalize equal across languages — e.g. a raw binary upload that utoipa
   // renders as `Vec<u8>` (`integer[]`) while Effect emits
-  // `{type:'string',format:'binary'}` (`apps`' `POST /self-hosted-apps` zip
-  // body). Their params/responses still compare; pin the excluded body with a
-  // focused test so it can't silently drift.
+  // `{type:'string',format:'binary'}`. Their params/responses still compare;
+  // pin the excluded body with a focused test so it can't silently drift.
 })
 ```
 
@@ -131,19 +130,15 @@ Value)]`. That emits an empty schema `{}`, which the drift engine normalizes to
   a `#[serde(transparent)]` newtype, …) — the wire shape is the raw inner value,
   and `value_type = Value` documents exactly that opacity.
 
-## Serving the merged spec at `/docs`
+## Publishing the API reference
 
-The same document each snapshot pins is also served at runtime. Every documented
-slice exposes a public `openapi_spec() -> utoipa::openapi::OpenApi` (the snapshot
-test now delegates to it), and the Tauri host merges the four into one document
-and serves it as an interactive [Scalar](https://scalar.com) reference at
-`/docs`. The merge + Scalar router live in
-[`shared-structures-rust`'s `openapi_docs`](../../slices/shared-structures/shared-structures-rust/src/openapi_docs.rs)
-(behind the `openapi-docs` feature); the server wires it in `api_router`
-(`slices/wildflower-server/wildflower-server-rust/src/lib.rs`), gated exactly like the rest of
-the admin API. Paths in each slice's spec already carry that slice's host mount
-prefix, so the merge needs no re-nesting. It's the same generated document, so
-`/docs` can't drift from the snapshots — no extra guard is needed.
+The committed snapshots are also the published API reference.
+[`apps/wildflower-server-docs`](../../apps/wildflower-server-docs/README.md)
+bundles them into an interactive [Scalar](https://scalar.com) console, one
+sidebar source per slice, pointed at whichever server the reader chooses. Paths
+in each slice's spec already carry that slice's host mount prefix, so the
+console needs no re-nesting. It ships the same files the drift check holds to
+the live routes, so it can't drift from the server — no extra guard is needed.
 
 FHIR/HFS is the one **inverted** group: HFS (the embedded third-party FHIR
 server) emits no OpenAPI spec, only a FHIR CapabilityStatement at
@@ -152,18 +147,14 @@ server) emits no OpenAPI spec, only a FHIR CapabilityStatement at
 side** — `OpenApi.fromApi` on the `fhir-r4` Effect `HttpApi`, kept fresh by
 `slices/emr/fhir-r4/src/http-api-definition/openapi-drift.test.ts` (regenerate
 with `UPDATE_OPENAPI=1 vp test --config slices/emr/fhir-r4/vite.config.ts
-openapi-drift`) — and `emr_rust::openapi_spec()` merely embeds and parses it.
-It documents "the surface as the client uses it", and is **not** a drift guard
+openapi-drift`). It documents "the surface as the client uses it", and is **not** a drift guard
 against HFS itself (that pairing stays hand-synchronized; see the emr slice
 docs).
 
-To keep the merged page readable, each handler's `#[utoipa::path]` carries a
+To keep the console readable, each handler's `#[utoipa::path]` carries a
 fine-grained `tag` (e.g. `OAuth 2.0`, `Catalogue`) — so tags are part of the
 committed snapshot, and the drift check ignores them (it compares wire shape, not
-tags). The aggregator then groups each slice's tags under a slice-named
-`x-tagGroups` entry, which Scalar renders as a two-level sidebar (slice →
-operation tags). The group names are presentation-only and passed by the host, so
-they never touch the snapshots.
+tags).
 
 ## See also
 

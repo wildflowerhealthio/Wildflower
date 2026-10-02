@@ -47,9 +47,10 @@ its authed runner from route context. Like the Importer, **this app writes.**
   `SYNTHETIC_DATA_SCOPE` is `launch openid fhirUser` plus `system/<Type>.cu`
   for each type the importers write. A type the scope string leaves out is
   rejected per entry, and shows in the results.
-- **`clientId` equals the app id it is launched through**
-  (`synthetic-data-app`, or `synthetic-data-app-dev` in a vite dev build): the
-  host's redirect resolver looks an app up by `client_id`.
+- **`clientId` equals the `client_id` of the app row it is launched through**
+  (`synthetic-data-app`, or `synthetic-data-app-dev` in a vite dev build): a
+  launch checks the caller's grant against that client's scopes, and
+  `/authorize` matches the redirect against that client's registered URIs.
 - **The session never reaches the snapshot's host.** The screen fetches the
   snapshot's files itself, without credentials; the bearer token rides only on
   requests to the FHIR base.
@@ -58,7 +59,7 @@ its authed runner from route context. Like the Importer, **this app writes.**
 
 The production `synthetic-data-app` registry row and OAuth client are not
 seeded yet. In development, debug builds of the host seed a
-`synthetic-data-app-dev` **cloud** row on the port
+`synthetic-data-app-dev` row on the port
 `slices/apps/dev-app-ports.json` pins (5198) and its OAuth client
 (`apps-rust`'s `seed_dev_apps`, `gatekeeper-rust`'s `seed_dev_app_clients`),
 so the homescreen carries a "Synthetic Data (Dev)" tile that launches whatever

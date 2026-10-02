@@ -25,7 +25,7 @@ export default defineConfig({
   // address a debug Tauri host links its owner-UI pages to — so those links land
   // here and the OAuth redirect URI stays stable. It is pinned here rather than via `devAppServer` /
   // `slices/apps/dev-app-ports.json`: every key in that file seeds a debug-only
-  // `<app>-dev` **cloud** homescreen row (`apps-rust/src/dev_seed.rs`), and the
+  // `<app>-dev` homescreen row (`apps-rust/src/dev_seed.rs`), and the
   // hosted owner UI is deliberately NOT a homescreen app (out of scope for #696,
   // and that dev-row mechanism is being deprecated). 5200 sits just past the
   // file's range (its …-dev ports run 5190–5199); `strictPort` fails loudly on a

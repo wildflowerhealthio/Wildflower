@@ -1,10 +1,11 @@
 # AGENTS.md — apps/web-trace
 
 The Web Trace viewer, a SMART-on-FHIR app published to
-<https://wildflowerhealth.io/web-trace-app> and launched as a cloud app (with a
+<https://wildflowerhealth.io/web-trace-app> and launched from there (with a
 `web-trace-app-dev` row in debug builds — see below). It wraps
 [`web-trace-react`](../../slices/web-trace/web-trace-react/AGENTS.md) — the app
-itself holds no viewing logic, only the wiring a self-hosted origin needs.
+itself holds no viewing logic, only the wiring a SMART app on its own origin
+needs.
 
 `apps/medications-app` is the template for the bundle shape (two HTML entries,
 a relative `base`, a build into the package's own `dist/`).
@@ -12,7 +13,7 @@ What is _not_ shared with it is the auth wiring below.
 
 ## Boot and branding
 
-Both entries run on `smart-app-react`, the chrome every self-hosted SMART app
+Both entries run on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
 `main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
@@ -36,15 +37,15 @@ aggregator shell resolves the workspace `source` condition.
 ## Why this app has a router and a bearer token
 
 The wiring itself is **not this app's** — it lives in
-[`fhir-r4-react/smart`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.ts),
-because every self-hosted SMART app needs the same thing and this app was only
-the first. `app.tsx` imports `buildSmartRouterContext` from there directly —
-there is no local re-export to edit, deliberately, so a change to the behaviour
-has to be made in the one place that owns it. The guardrail listing the three
+[`fhir-r4-react/smart`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.ts),
+because every first-party SMART app needs the same thing. `app.tsx` imports
+`buildSmartRouterContext` from there directly — there is no local re-export to
+edit, deliberately, so a change to the behaviour has to be made in the one place
+that owns it. The guardrail listing the three
 properties that must survive is in
 [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md).
 
-Two facts about a self-hosted app drive everything in that runtime:
+Two facts about a SMART app on its own origin drive everything in that runtime:
 
 - **It is served from its own origin** — the published site in production, the
   vite dev server's loopback port in dev — never the API's. The typed FHIR client
@@ -63,9 +64,8 @@ package growing a second, prop-threaded way in.
 
 ## Traps
 
-- **Three of the traps that used to be listed here are the shared runtime's
-  now** — the typed client emits base-relative FHIR paths and the provider names
-  the base (here: `client.state.serverUrl` prepended verbatim, no `iss` parsing
+- **Three traps belong to the shared runtime** — the typed client emits
+  base-relative FHIR paths and the provider names the base (here: `client.state.serverUrl` prepended verbatim, no `iss` parsing
   and no `Left`), the bearer token that rides only the requests the layer
   addressed, and the transport staying a parameter. They are enforced in
   `fhir-r4-react/smart`; the guardrail that spells all three out is in
@@ -131,26 +131,25 @@ One place: **the published site**, at
 [`/web-trace-app`](https://wildflowerhealth.io/web-trace-app). `vp build` writes
 this package's default `dist/`, and `github-pages` copies it into the Pages
 artifact ([apps/github-pages/README.md](../github-pages/README.md)). This is the
-**production** launch target: the `web-trace-app` registry row is a _cloud_ row
-pointing at that URL. Nothing ships on device — in development the
+**production** launch target: the `web-trace-app` registry row points at that
+URL. Nothing ships on device — in development the
 `web-trace-app-dev` row launches the vite dev server instead (see below).
 
 ## Registration
 
-The `web-trace-app` app row (a cloud row) and its OAuth client are seeded by
+The `web-trace-app` app row and its OAuth client are seeded by
 migrations that must stay in lockstep — an app registration whose `client_id` has
 no registered client cannot launch:
 
-- `slices/apps/apps-rust/migrations/0004_seed_wildflower_web_trace_app/` (the
-  original self-hosted seed) and
-  `0005_first_party_apps_to_cloud/` (the rename to `web-trace-app` + the flip to
-  a cloud row served from the published site)
+- `slices/apps/apps-rust/migrations/0004_seed_wildflower_web_trace_app/` and
+  `0005_first_party_apps_to_cloud/`
 - `slices/gatekeeper/gatekeeper-rust/migrations/0005_seed_wildflower_web_trace_client/`
   and `0006_rename_first_party_app_clients/`
 
-`src/config.ts`'s `clientId` must equal the app id it is launched through, for
-both the production and the dev registration — the host's redirect resolver looks
-an app up by `client_id`.
+`src/config.ts`'s `clientId` must equal the `client_id` of the app row it is
+launched through, for both the production and the dev registration: a launch
+checks the caller's grant against that client's scopes, and `/authorize` matches
+the redirect against that client's registered URIs.
 
 ## Running the dev server
 
@@ -158,7 +157,7 @@ an app up by `client_id`.
 vp run -F wildflower-web-trace dev     # strictPort, from slices/apps/dev-app-ports.json
 ```
 
-Debug builds of the host additionally seed a `web-trace-app-dev` **cloud** row
+Debug builds of the host additionally seed a `web-trace-app-dev` row
 on that port plus its own OAuth client (`apps-rust`'s `seed_dev_apps` /
 `gatekeeper-rust`'s `seed_dev_app_clients`), so the homescreen carries a "Web
 Trace (Dev)" tile that launches whatever is serving that port — the vite dev
@@ -168,7 +167,7 @@ port has a single source, `slices/apps/dev-app-ports.json`:
 `vite.config.base.ts` and `apps-rust` embeds it, so the dev server and the row
 cannot drift.
 
-The seed only ever writes rows it owns. If an app you uploaded already holds the
+The seed only ever writes rows it owns. If another app already holds the
 `web-trace-app-dev` id, the seed logs a warning and leaves it untouched rather
 than adopting it — you get no dev tile until that app is renamed.
 
@@ -178,8 +177,7 @@ than adopting it — you get no dev tile until that app is renamed.
   arbitrary server bases), the relative/absolute split, and that an absent token
   sets no header rather than a
   `Bearer` with nothing after it — is
-  [`fhir-r4-react`'s `self-hosted-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.test.ts),
-  moved there with the code it covers.
+  [`fhir-r4-react`'s `smart-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.test.ts).
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the Web
   Trace Viewer (the landing `h1` is `APP_DESCRIPTIONS.webTrace.name`). The
   chrome gate itself — both branches, the latch, the `ConnectMenu` wiring, the
@@ -187,7 +185,7 @@ than adopting it — you get no dev tile until that app is renamed.
   `smart-app-react`'s `smart-app-root.test.tsx`.
 - `app.test.tsx` — the whole tree over a stub transport. It asserts the URL and
   the `Authorization` header that actually went on the wire, so the two
-  self-hosted-origin facts above are pinned rather than assumed. It also walks
+  own-origin facts above are pinned rather than assumed. It also walks
   the panel down to an exchange detail and back out, which is what would catch a
   detail surface reappearing here: a second `Back to exchanges` on the page makes
   `getByRole` raise, and the walk back out asserts the panel's "All recordings"
@@ -200,15 +198,13 @@ Body decoding and header-row keying are the slice's tests now, in
 
 ## References
 
-- [emr slice AGENTS.md](../../slices/emr/AGENTS.md) — the shared self-hosted
-  SMART runtime this app imports (`fhir-r4-react/smart`), and the three
+- [emr slice AGENTS.md](../../slices/emr/AGENTS.md) — the shared SMART
+  runtime this app imports (`fhir-r4-react/smart`), and the three
   auth-critical properties it must keep.
 - [web-trace-react AGENTS.md](../../slices/web-trace/web-trace-react/AGENTS.md) —
   the viewer this app mounts, and its traps.
 - [web-trace slice AGENTS.md](../../slices/web-trace/AGENTS.md) — the
   store-raw / view-raw / anonymize-at-export asymmetry.
-- [Store and Install Explanation](../../docs/Apps/Store%20and%20Install%20Explanation.md)
-  — how a seeded self-hosted app is registered, ported, and served.
-- [self-hosted-apps README](../../slices/apps/self-hosted-apps/README.md) — why
-  first-party apps are cloud rows and nothing of this app is vendored.
+- [Apps Explanation](../../docs/Apps/Explanation.md) — how a first-party app
+  is registered and launched from the published site.
 - [apps/AGENTS.md](../AGENTS.md) — the rules every app follows.

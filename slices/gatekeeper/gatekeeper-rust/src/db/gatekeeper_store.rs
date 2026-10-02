@@ -51,7 +51,7 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// the apps slice. `0006` renames those two (`wildflower-medication` →
 /// `medications-app`, `wildflower-web-trace` → `web-trace-app`, keeping the
 /// `client_id == app id` invariant) and adds their
-/// published-site redirect URI now that they launch as cloud apps; `0007` seeds
+/// published-site redirect URI; `0007` seeds
 /// the server-docs API console's client; `0008` the Importer's; `0009` (two
 /// migrations share the prefix) the OHIF imaging viewer's and the widening of
 /// the Importer's write scopes; `0010` repoints the viewer's redirect onto its

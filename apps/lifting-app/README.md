@@ -17,7 +17,7 @@ writes what core returns.
 
 ## Boot structure
 
-Both entries run on `smart-app-react`, the chrome every self-hosted SMART app
+Both entries run on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)),
 exactly as `apps/health-viewer` does.
 
@@ -172,19 +172,21 @@ these four resource types. Nothing ships on device.
 ## Registration
 
 `src/config.ts`'s `clientId` is `lifting-app` in a production build and
-`lifting-app-dev` under the vite dev server, and must equal the app id it is
-launched through — the host's redirect resolver looks an app up by
-`client_id` — and its scope string must equal the client's allowed scopes.
+`lifting-app-dev` under the vite dev server, and must equal the `client_id` of
+the app row it is launched through — a launch checks the caller's grant against
+that client's scopes, and `/authorize` matches the redirect against that
+client's registered URIs — and its scope string must equal the client's allowed
+scopes.
 
-- **`lifting-app`** is a cloud row (apps migration `0010_seed_lifting_app`)
+- **`lifting-app`** is a row (apps migration `0010_seed_lifting_app`)
   launching
   `https://wildflowerhealth.io/lifting-app/launch.html?launch={launch}&iss={origin}/fhir-r4`
-  with `requires_tunnel` set, as every first-party cloud row has. Its public
+  with `requires_tunnel` set, as every first-party row has. Its public
   OAuth client (gatekeeper migration `0019_seed_lifting_app_client`, its
   scopes as `0020_first_party_apps_pick_the_patient` left them) redirects to
-  `/` and `https://wildflowerhealth.io/lifting-app/`.
+  `https://wildflowerhealth.io/lifting-app/`.
 - **`lifting-app-dev`** is seeded in debug builds only, at runtime rather than
-  by a migration: a cloud row on the dev server's port
+  by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
   `http://localhost:<port>/` (`gatekeeper-rust/src/seeding.rs`).
 

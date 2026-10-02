@@ -81,7 +81,7 @@ standalone testing.
 
 The Wildflower server seeds what the viewer needs:
 
-- apps migration `0007_seed_ohif_viewer_app` registers the `ohif-viewer` cloud
+- apps migration `0007_seed_ohif_viewer_app` registers the `ohif-viewer`
   app row whose launch URL is the worklist launch above;
 - gatekeeper migration `0009_seed_ohif_viewer_client` registers the `ohif-viewer`
   public PKCE client with `https://wildflowerhealth.io/ohif-viewer/` as its
@@ -105,16 +105,11 @@ A debug build of the host also seeds an `ohif-viewer-dev` row and client
 `dist/` on that port, and `app-config.js` sends the `ohif-viewer-dev` client ID
 when served from a loopback origin.
 
-Like the other first-party apps' dev rows, this one is a **cloud** row —
+Like the other first-party apps' dev rows, this one launches
 `http://localhost:<port>/fhir-viewer?…`, the production launch template against
-the preview origin. Nothing is vendored under `slices/apps/self-hosted-apps/`
-for it, so a self-hosted row would give the host no fallback content to serve
-and its loopback listener would only contend with the preview server for the
-port; a cloud row leaves the preview server the sole origin, so the viewer's
-cross-origin behaviour in dev matches production. The cost is that the
-app-relative `"/"` redirect no longer resolves (the host's resolver only
-resolves those for self-hosted rows), so the dev client's **absolute**
-`http://localhost:<port>/fhir-viewer` entry is what matches the launch —
+the preview origin. The preview server is the sole origin, so the viewer's
+cross-origin behaviour in dev matches production. The dev client's
+`http://localhost:<port>/fhir-viewer` redirect URI is what matches the launch —
 exact-URL, hence the route rather than the root. The tile serves nothing until
 the preview is running.
 

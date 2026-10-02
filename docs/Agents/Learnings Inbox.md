@@ -18,39 +18,16 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 `import config from './tauri-shared-config.json'` bakes the entire document — every unrelated field and comment — into the bundle even when one field is read. `import { loopback_hostname, loopback_port } from …` lets rolldown drop the rest. Worth doing whenever a shared config file is imported into a page that ships publicly.
 
-## Renaming a diesel-seeded row id means deleting its child payload first
-
-`self_hosted_app_configurations.id` (and every per-kind apps payload table) is a
-FK onto `app_registrations(id)` with `ON DELETE CASCADE` and **no `ON UPDATE`
-action**, and every pooled connection runs with `PRAGMA foreign_keys = ON`. So an
-`UPDATE app_registrations SET id = …` while a payload row still references the old
-id fails the constraint — and a failed migration aborts `SqliteAppsStore::open`,
-taking the whole registry down. Order the statements payload-delete → registration
-rename → new payload insert (see apps migration `0005_first_party_apps_to_cloud`).
-
-## A dev-only seeded row cannot be a migration — but it must run before `setup_apps`
+## A dev-only seeded row cannot be a migration
 
 Migrations are embedded, run unconditionally, and are tracked by version, so
 anything a migration writes exists in release databases too. Debug-only rows
 therefore have to be a runtime seed behind `#[cfg(debug_assertions)]` (module-level
-gating, not just the call site, or a release build still compiles the code). The
-non-obvious constraint: `setup_apps` materializes the self-hosted catalogue once
-and the host binds one loopback listener per row from that snapshot, so a dev seed
-that runs _after_ it gets no listener. Seeding on its own `SqliteAppsStore` before
-`setup_apps` is what makes the rows both migrated and bound.
+gating, not just the call site, or a release build still compiles the code).
 
 ## `vp pack` (tsdown/rolldown) cannot import binary assets — use a data-URL TS module
 
 `import iconSrc from './assets/app-icon.png'` fails with "stream did not contain valid UTF-8" because tsdown reads every import as text. The workaround is a generated TypeScript module exporting the PNG as a `data:image/png;base64,...` string. At 128x128 the base64 adds ~22 KB to the bundle, acceptable for a single icon. The `branding-react` slice uses this pattern for its `src/assets/app-icon.ts`; the regeneration command is documented in the file's header comment.
-
-## A self-hosted app's OAuth `client_id` must equal its app id; a cloud app's must not rely on it
-
-The host's `SelfHostedRedirectResolver` resolves an app-relative redirect URI
-(`"/"`) by looking the app up **by `client_id`** and requiring the row to be
-self-hosted. Flipping an app to `kind = cloud` therefore silently breaks its
-app-relative redirect — it resolves to nothing and matches no request (fail-closed,
-so it looks like a rejected `redirect_uri` rather than a config error). A cloud app
-needs an absolute redirect URI registered instead.
 
 ## Wrapping one slice's `HttpClient` separately still keeps the request-time credentialed-fetch tag
 
@@ -385,9 +362,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 
 ## `bundle.resources` paths must exist at compile time, even in debug builds
 
-**Discovered during**: ruthmarks/first-party-apps-own-dist (#541, narrowing the self-hosted-apps resource mapping)
-**Learning**: `tauri-build` resolves and copies every `bundle.resources` entry from the crate's `build.rs` on every compile, including debug builds and `cargo check`, not just when bundling a release. A path that doesn't exist fails with `ResourcePathNotFound`, and a glob that matches nothing fails with `GlobPathNotFound` (`tauri-utils` `resources.rs`). So a resource can only name a directory that a fresh clone and CI have. A gitignored vendored build such as `slices/apps/self-hosted-apps/patient-browser/` can't be named directly. Map a tracked parent directory instead, which is why `tauri.conf.json` still maps all of `self-hosted-apps/`.
-**Suggested destination**: slices/apps/self-hosted-apps/README.md already covers the specific case; a general note belongs in a Tauri/Rust reference
+**Discovered during**: ruthmarks/first-party-apps-own-dist (#541)
+**Learning**: `tauri-build` resolves and copies every `bundle.resources` entry from the crate's `build.rs` on every compile, including debug builds and `cargo check`, not just when bundling a release. A path that doesn't exist fails with `ResourcePathNotFound`, and a glob that matches nothing fails with `GlobPathNotFound` (`tauri-utils` `resources.rs`). So a resource can only name a directory that a fresh clone and CI have. A gitignored build output can't be named directly; map a tracked parent directory instead.
+**Suggested destination**: a Tauri/Rust reference
 
 ## A CSS `@import` of a package stylesheet ships it twice when the package's JS also imports it
 
@@ -404,7 +381,7 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 ## The server is bearer-only; there is no cookie auth to fall back on
 
 **Discovered during**: claude/wildflower-cookie-auth-audit-z4hncx (removing `wf_auth` / `wf_auth_exp`)
-**Learning**: The gatekeeper extractor reads `Authorization: Bearer` and nothing else, no grant or logout sets a cookie, and the API's CORS layer never allows credentials. So a top-level browser navigation to a gated route (a `/fhir-r4/...` URL opened in a browser tab, a non-SMART self-hosted app on a remote subdomain) is always a `401`: only a page whose JS attaches a bearer, or a direct-loopback caller on the desktop (the host's loopback-provenance owner trust), is authenticated. Anything that needs remote access to on-device data must be a SMART app that earns its own bearer. Before adding a gated route meant to be opened as a page, re-read "Bearer-only auth makes HTML pages public" in Strategies.md.
+**Learning**: The gatekeeper extractor reads `Authorization: Bearer` and nothing else, no grant or logout sets a cookie, and the API's CORS layer never allows credentials. So a top-level browser navigation to a gated route (a `/fhir-r4/...` URL opened in a browser tab) is always a `401`: only a page whose JS attaches a bearer, or a direct-loopback caller on the desktop (the host's loopback-provenance owner trust), is authenticated. Anything that needs remote access to on-device data must be a SMART app that earns its own bearer. Before adding a gated route meant to be opened as a page, re-read "Bearer-only auth makes HTML pages public" in Strategies.md.
 **Suggested destination**: Origins Explanation or the gatekeeper Jargon Explanation
 
 ## The web owner UI talks to gatekeeper as two different clients
