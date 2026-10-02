@@ -1,7 +1,7 @@
-import { useState, type JSX } from 'react'
-import { ErrorBanner, FieldDescription, TextField, ToggleSwitch } from 'react-tundraish'
+import type { JSX } from 'react'
+import { FieldDescription, TextField, ToggleSwitch } from 'react-tundraish'
 
-import { useAppReplaceMutation, type AppRegistration } from '../../../queries.ts'
+import type { AppBody } from '../../../queries.ts'
 import formStyles from './-forms.module.css'
 
 /**
@@ -82,61 +82,22 @@ const AppFieldInputs = ({ fields, onChange, disabled }: AppFieldInputsProps): JS
 )
 
 /**
- * Full-replace editor for an app's content — name / subtitle / launch URL /
- * requires-tunnel, prefilled from the {@link AppRegistration}. Saving `PUT`s the
- * whole content to `/apps/:id` via {@link useAppReplaceMutation}; an empty
- * subtitle clears it.
+ * The JSON body the fields submit to `POST /apps` / `PUT /apps/:id`, or
+ * `undefined` while a required field (name, URL) is blank. Every field is
+ * trimmed, and an empty subtitle is omitted so the server stores "no subtitle".
  */
-const AppEditForm = ({ app }: { readonly app: AppRegistration }): JSX.Element => {
-  const replaceMutation = useAppReplaceMutation()
-  const [fields, setFields] = useState<AppFields>({
-    name: app.name,
-    subtitle: app.subtitle ?? '',
-    url: app.url,
-    requiresTunnel: app.requiresTunnel,
-  })
-
-  const save = (): void => {
-    const name = fields.name.trim()
-    const url = fields.url.trim()
-    if (name === '' || url === '') return
-    const subtitle = fields.subtitle.trim()
-    replaceMutation.mutate({
-      id: app.id,
-      payload: {
-        name,
-        url,
-        requiresTunnel: fields.requiresTunnel,
-        ...(subtitle === '' ? {} : { subtitle }),
-      },
-    })
+const appBodyFrom = (fields: AppFields): AppBody | undefined => {
+  const name = fields.name.trim()
+  const url = fields.url.trim()
+  if (name === '' || url === '') return undefined
+  const subtitle = fields.subtitle.trim()
+  return {
+    name,
+    url,
+    requiresTunnel: fields.requiresTunnel,
+    ...(subtitle === '' ? {} : { subtitle }),
   }
-
-  return (
-    <form
-      className={formStyles['form']}
-      onSubmit={(event) => {
-        event.preventDefault()
-        save()
-      }}
-    >
-      <ErrorBanner error={replaceMutation.error} />
-      <AppFieldInputs
-        fields={fields}
-        disabled={replaceMutation.isPending}
-        onChange={(next) => {
-          if (replaceMutation.error !== null) replaceMutation.reset()
-          setFields(next)
-        }}
-      />
-      <div className={formStyles['actions']}>
-        <button type="submit" className="button-3 filled" disabled={replaceMutation.isPending}>
-          Save
-        </button>
-      </div>
-    </form>
-  )
 }
 
-export { AppEditForm, AppFieldInputs }
+export { AppFieldInputs, appBodyFrom }
 export type { AppFields }

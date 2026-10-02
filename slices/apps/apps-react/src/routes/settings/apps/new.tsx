@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react'
 import { AsyncErrorView, ErrorBanner, PageHeader } from 'react-tundraish'
 
 import { useAppCreateMutation } from '../../../queries.ts'
-import { AppFieldInputs, type AppFields } from './-forms.tsx'
+import { AppFieldInputs, appBodyFrom, type AppFields } from './-forms.tsx'
 import formStyles from './-forms.module.css'
 
 const EMPTY_FIELDS: AppFields = { name: '', subtitle: '', url: '', requiresTunnel: false }
@@ -23,20 +23,9 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
   const [fields, setFields] = useState<AppFields>(EMPTY_FIELDS)
 
   const submit = (): void => {
-    const name = fields.name.trim()
-    const url = fields.url.trim()
-    if (name === '' || url === '') return
-    const subtitle = fields.subtitle.trim()
-    createMutation.mutate(
-      {
-        name,
-        url,
-        requiresTunnel: fields.requiresTunnel,
-        // Empty subtitle is omitted so the server stores "no subtitle".
-        ...(subtitle === '' ? {} : { subtitle }),
-      },
-      { onSuccess: onCreated }
-    )
+    const body = appBodyFrom(fields)
+    if (body === undefined) return
+    createMutation.mutate(body, { onSuccess: onCreated })
   }
 
   return (

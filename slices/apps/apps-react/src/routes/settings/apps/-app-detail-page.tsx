@@ -1,17 +1,67 @@
-import type { JSX, ReactNode } from 'react'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, PageHeader, ToggleSwitch } from 'react-tundraish'
 
 import {
   useAppDeleteMutation,
+  useAppReplaceMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
+  type AppRegistration,
 } from '../../../queries.ts'
+import { AppFieldInputs, appBodyFrom, type AppFields } from './-forms.tsx'
 import formStyles from './-forms.module.css'
 
 /**
- * The app detail page's chrome around its edit form (`children`): the header, an
- * error banner, the "Show on home screen" enable toggle, and the delete section.
+ * Full-replace editor for an app's content — name / subtitle / launch URL /
+ * requires-tunnel, prefilled from the {@link AppRegistration}. Saving `PUT`s the
+ * whole content to `/apps/:id` via {@link useAppReplaceMutation}; an empty
+ * subtitle clears it.
+ */
+const AppEditForm = ({ app }: { readonly app: AppRegistration }): JSX.Element => {
+  const replaceMutation = useAppReplaceMutation()
+  const [fields, setFields] = useState<AppFields>({
+    name: app.name,
+    subtitle: app.subtitle ?? '',
+    url: app.url,
+    requiresTunnel: app.requiresTunnel,
+  })
+
+  const save = (): void => {
+    const payload = appBodyFrom(fields)
+    if (payload === undefined) return
+    replaceMutation.mutate({ id: app.id, payload })
+  }
+
+  return (
+    <form
+      className={formStyles['form']}
+      onSubmit={(event) => {
+        event.preventDefault()
+        save()
+      }}
+    >
+      <ErrorBanner error={replaceMutation.error} />
+      <AppFieldInputs
+        fields={fields}
+        disabled={replaceMutation.isPending}
+        onChange={(next) => {
+          if (replaceMutation.error !== null) replaceMutation.reset()
+          setFields(next)
+        }}
+      />
+      <div className={formStyles['actions']}>
+        <button type="submit" className="button-3 filled" disabled={replaceMutation.isPending}>
+          Save
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/**
+ * The app detail page: the header, an error banner, the "Show on home screen"
+ * enable toggle, the {@link AppEditForm}, and the delete section.
  * The `-` prefix keeps it out of the generated route tree.
  *
  * Enable is homescreen-curation state, so the toggle re-PUTs the **whole**
@@ -21,17 +71,12 @@ import formStyles from './-forms.module.css'
  * prop-driven so it renders in tests without a live router.
  */
 interface AppDetailPageProps {
-  readonly app: {
-    readonly id: string
-    readonly name: string
-  }
+  readonly app: AppRegistration
   /** Called after a successful remove — the route navigates back to the list. */
   readonly onRemoved: () => void
-  /** The edit form. */
-  readonly children: ReactNode
 }
 
-const AppDetailPage = ({ app, onRemoved, children }: AppDetailPageProps): JSX.Element => {
+const AppDetailPage = ({ app, onRemoved }: AppDetailPageProps): JSX.Element => {
   const { data: apps } = useAppsListQuery()
   const homeScreenMutation = useReplaceHomeScreenMutation()
   const deleteMutation = useAppDeleteMutation()
@@ -75,7 +120,7 @@ const AppDetailPage = ({ app, onRemoved, children }: AppDetailPageProps): JSX.El
 
       <hr className={formStyles['divider']} aria-hidden="true" />
 
-      {children}
+      <AppEditForm app={app} />
 
       <hr className={formStyles['divider']} aria-hidden="true" />
       <p className={cn(formStyles['delete-note'], 'text-body-3')}>

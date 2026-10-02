@@ -38,7 +38,6 @@
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
     "shared-structures-core": "workspace:*",
@@ -50,7 +49,6 @@
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "kitchen-sink": "workspace:*",
     "shared-structures-core": "workspace:*"
   }

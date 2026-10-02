@@ -4,26 +4,22 @@ import { AsyncErrorView } from 'react-tundraish'
 
 import { appQueryOptions, useAppQuery } from '../../../queries.ts'
 import { AppDetailPage } from './-app-detail-page.tsx'
-import { AppEditForm } from './-forms.tsx'
 
 /**
  * `/settings/apps/$id` — the app detail page. Reads the app (`GET /apps/:id`) and
- * renders the {@link AppDetailPage} (enable toggle + delete) around the
- * {@link AppEditForm}. An unknown id `404`s the read → the route's
- * `errorComponent`.
+ * renders the {@link AppDetailPage} (enable toggle, edit form, delete). An unknown
+ * id `404`s the read → the route's `errorComponent`.
  */
 const AppDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
   const navigate = useNavigate()
   const { data: app } = useAppQuery(id)
   return (
     <AppDetailPage
-      app={{ id: app.id, name: app.name }}
+      app={app}
       onRemoved={() => {
         void navigate({ to: '/settings/apps' })
       }}
-    >
-      <AppEditForm app={app} />
-    </AppDetailPage>
+    />
   )
 }
 
