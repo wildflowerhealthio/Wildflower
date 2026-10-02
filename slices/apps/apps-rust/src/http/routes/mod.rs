@@ -1,12 +1,10 @@
-//! HTTP routes for the apps slice, grouped into a [`gated_openapi_router`]
-//! (the catalogue reads and writes, and home-screen) and a
-//! [`launch_openapi_router`] (`POST /apps/{id}`), merged into [`openapi_router`]
-//! for the spec + route tests. The served routes and the OpenAPI spec come from the
-//! same `#[utoipa::path]`-annotated handlers. One file per route named by
-//! operation, under a folder tree mirroring the URL tree: [`apps`] holds `/apps`
-//! (list, create, read, replace, delete, launch) and [`home_screen`] the flat
-//! `/home-screen` route. The gating split is documented on the [`crate::http`]
-//! router builders these back.
+//! HTTP routes for the apps slice as one [`openapi_router`]: the catalogue reads
+//! and writes, home-screen, and the launch. The served routes and the OpenAPI spec
+//! come from the same `#[utoipa::path]`-annotated handlers. One file per route
+//! named by operation, under a folder tree mirroring the URL tree: [`apps`] holds
+//! `/apps` (list, create, read, replace, delete, launch) and [`home_screen`] the
+//! flat `/home-screen` route. The gating is documented on the
+//! [`router`](super::router) builder this backs.
 
 mod apps;
 mod home_screen;
@@ -18,14 +16,17 @@ use utoipa_axum::routes;
 
 use crate::live_bindings::state::AppsState;
 
-/// The scope-gated admin routes as an `OpenApiRouter`, each gated on
-/// `wildflower/Apps.{r,c,u,d}` (the spec-bearing inner of
-/// [`gated_router`](super::gated_router), which documents the gating split):
+/// Every apps route as an `OpenApiRouter` — the spec-bearing inner of
+/// [`router`](super::router) and the source of
+/// [`openapi_spec`](super::openapi_spec):
 ///
 ///  - `GET`/`POST /apps` (registry list, create) and `GET`/`PUT`/`DELETE
-///    /apps/{id}` (read, content replace, delete) — see [`apps`];
-///  - `PUT /home-screen` (atomic reorder / enable) — see [`home_screen`].
-pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
+///    /apps/{id}` (read, content replace, delete), each gated on
+///    `wildflower/Apps.{r,c,u,d}`, and `POST /apps/{id}` (launch), gated on the
+///    `wildflower/launch` umbrella — see [`apps`];
+///  - `PUT /home-screen` (atomic reorder / enable), gated on `wildflower/Apps.u`
+///    — see [`home_screen`].
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     OpenApiRouter::new()
         .routes(routes!(
             apps::list_all::handle_list_apps,
@@ -34,24 +35,10 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
         .routes(routes!(
             apps::get_by_id::handle_get_app,
             apps::update_by_id::handle_update_app,
-            apps::delete_by_id::handle_delete_app
+            apps::delete_by_id::handle_delete_app,
+            apps::launch::handle_launch_app
         ))
         .routes(routes!(home_screen::handle_replace_home_screen))
-}
-
-/// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
-/// inner of [`launch_router`](super::launch_router), which documents why it's kept
-/// ungated and separate from [`gated_openapi_router`].
-pub(crate) fn launch_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    OpenApiRouter::new().routes(routes!(apps::launch::handle_launch_app))
-}
-
-/// The full apps surface (gated routes + launch) as one `OpenApiRouter`. Backs
-/// [`openapi_spec`](super::openapi_spec) — the committed snapshot. The host mounts the two halves separately (via
-/// [`gated_openapi_router`] / [`launch_openapi_router`]) so it can gate them
-/// differently; this combined form exists only to document the whole surface.
-pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    gated_openapi_router().merge(launch_openapi_router())
 }
 
 #[cfg(test)]

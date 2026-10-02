@@ -9,9 +9,6 @@
 //! Keeping them here (rather than beside the routes) marks them as seams: pure
 //! traits with no apps-slice logic, so apps-rust never learns the gatekeeper
 //! token format.
-//!
-//! (The loopback launch's owner gate — the former `owner_auth` port — was retired
-//! once the `wildflower/launch` scope gate covered the launch surface.)
 
 pub mod app_launch_scopes;
 

@@ -8,8 +8,8 @@
 //!
 //!  - [`routes`] — one file per route named by operation, under a folder tree
 //!    mirroring the URL tree (`routes/apps/*` for the `/apps` segment,
-//!    `routes/home_screen.rs` for the flat `/home-screen` route). The
-//!    gated/launch router split lives in [`routes`]; the route files stay pure.
+//!    `routes/home_screen.rs` for the flat `/home-screen` route). The route
+//!    table lives in [`routes`]; the route files stay pure.
 //!  - [`errors`] — the wire bodies + `impl IntoResponse` for
 //!    [`AppsError`](crate::domain::AppsError).
 //!  - [`ports`](crate::ports) — the host-seam dependency-inversion trait
@@ -20,14 +20,11 @@
 //! ([`crate::live_bindings::state`]) so the scope-gated capability bindings sit
 //! beside it (see that module).
 //!
-//! The surface is exposed as two routers so the host can gate them differently:
-//! both [`gated_router`] (the catalogue reads and writes + `PUT /home-screen`) and
-//! [`launch_router`] (`POST /apps/{id}`) carry no middleware and are each
-//! wrapped by the host's bearer gate (which inserts the caller's scope claims). The
-//! gated surface is scope-gated per handler on `wildflower/Apps.*`; the launch
-//! surface on the `wildflower/launch` umbrella (plus a per-app SMART check in the
-//! handler). They stay separate only so the host can size the launch body limit /
-//! exempts differently.
+//! The surface is exposed as one [`router`] carrying no middleware; the host wraps
+//! it with its bearer gate (which inserts the caller's scope claims). Each handler
+//! is scope-gated: the catalogue reads and writes and `PUT /home-screen` on
+//! `wildflower/Apps.*`, the launch on the `wildflower/launch` umbrella (plus a
+//! per-app SMART check in the handler).
 
 mod errors;
 mod routes;
@@ -61,23 +58,16 @@ pub fn openapi_spec() -> utoipa::openapi::OpenApi {
     spec
 }
 
-/// Build the scope-gated admin routes (`GET`/`POST /apps`,
+/// Build every apps route: the admin routes (`GET`/`POST /apps`,
 /// `GET`/`PUT`/`DELETE /apps/{id}`, and `PUT /home-screen`), each gated on
-/// `wildflower/Apps.{r,c,u,d}`. Carries
-/// no middleware — the host wraps it with its bearer gate (which inserts the
-/// caller's scope claims).
-pub fn gated_router(state: Arc<AppsState>) -> Router {
-    let (router, _spec) = routes::gated_openapi_router().split_for_parts();
-    router.with_state(state)
-}
-
-/// Build the launch route (`POST /apps/{id}`). Carries no middleware — the
-/// host wraps it with its bearer gate; the `wildflower/launch` umbrella is enforced
-/// by the [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher)
-/// extractor before the handler runs, and a SMART app additionally requires the
-/// caller's grant to cover its OAuth client's scopes.
-pub fn launch_router(state: Arc<AppsState>) -> Router {
-    let (router, _spec) = routes::launch_openapi_router().split_for_parts();
+/// `wildflower/Apps.{r,c,u,d}`, and the launch route (`POST /apps/{id}`), gated on
+/// the `wildflower/launch` umbrella by the
+/// [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher) extractor
+/// before the handler runs, with a SMART app additionally requiring the caller's
+/// grant to cover its OAuth client's scopes. Carries no middleware — the host
+/// wraps it with its bearer gate (which inserts the caller's scope claims).
+pub fn router(state: Arc<AppsState>) -> Router {
+    let (router, _spec) = routes::openapi_router().split_for_parts();
     router.with_state(state)
 }
 

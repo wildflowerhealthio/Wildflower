@@ -10,7 +10,7 @@
 //!      decisions disagree.
 //!   2. The `wildflower/launch` umbrella is enforced *before this handler runs* by
 //!      the [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher) extractor
-//!      (the host wraps the launch router with the bearer gate that inserts the
+//!      (the host wraps the apps router with the bearer gate that inserts the
 //!      caller's scope claims). An under-umbrella caller `403`s before `find_app`
 //!      or target resolution, so it triggers no `tunnel.try_start()` and learns
 //!      nothing about existence (`404`) or reachability (`503`).

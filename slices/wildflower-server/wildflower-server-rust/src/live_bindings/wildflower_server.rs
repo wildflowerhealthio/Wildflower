@@ -250,14 +250,12 @@ pub async fn set_up(
         .context("failed to set up tunnel")?;
     let gated_tunnel = tunnel.router.layer(gatekeeper_auth_layer.clone());
 
-    // The apps catalogue surface. `GET /apps` (list), the admin surface (`POST
-    // /apps`, `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are
-    // scope-gated on `wildflower/Apps.*` behind the gatekeeper bearer gate
-    // (`gated_apps`, below). The launch route `POST /apps/{id}`
-    // (`apps.launch_router`) is scope-gated on the `wildflower/launch` umbrella
-    // behind the same bearer gate (`gated_launch`, below), with a per-app SMART
-    // check in the handler; a forwarded launch rides the front trust boundary for
-    // the redirect. A `requires_tunnel` launch resolves to
+    // The apps surface, behind the gatekeeper bearer gate (`gated_apps`, below).
+    // `GET /apps` (list), the admin surface (`POST /apps`,
+    // `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are scope-gated on
+    // `wildflower/Apps.*`. The launch route `POST /apps/{id}` is scope-gated on the
+    // `wildflower/launch` umbrella, with a per-app SMART check in the handler; a
+    // forwarded launch rides the front trust boundary for the redirect. A `requires_tunnel` launch resolves to
     // the tunnel's verified origin through the tunnel service (or fails 503
     // LaunchUnavailable when the tunnel can't be brought up). The apps slice derives
     // the loopback launch origin from `loopback_base_url`.
@@ -294,7 +292,7 @@ pub async fn set_up(
     // The per-app SMART launch-scope seam: resolves a SMART app's OAuth client
     // scopes so the launch handler can require the caller's grant to cover them.
     // The launch umbrella (`wildflower/launch`) is enforced separately by the
-    // bearer gate + `Scoped<AppLauncher>` on the launch router (below).
+    // bearer gate + `Scoped<AppLauncher>` on the launch route (below).
     let launch_scopes: Arc<dyn AppLaunchScopes> = Arc::new(GatekeeperAppLaunchScopes {
         state: gatekeeper.state.clone(),
     });
@@ -309,12 +307,10 @@ pub async fn set_up(
         launch_scopes,
     )
     .context("failed to set up apps")?;
-    let gated_apps = apps.gated_router.layer(gatekeeper_auth_layer.clone());
-    // The launch surface, scope-gated on the `wildflower/launch` umbrella: wrapped
-    // by the SAME bearer gate as the admin surface so the `Scoped<AppLauncher>`
-    // extractor has the caller's scope claims (the per-app SMART check then runs
-    // in-handler).
-    let gated_launch = apps.launch_router.layer(gatekeeper_auth_layer.clone());
+    // The bearer gate gives every `Scoped<…>` extractor the caller's scope claims,
+    // the launch's `Scoped<AppLauncher>` included (the per-app SMART check then
+    // runs in-handler).
+    let gated_apps = apps.router.layer(gatekeeper_auth_layer.clone());
 
     // The data-management surface (`/databases`): export + delete the host's
     // SQLite databases. It owns no store — it works at the file level on the
@@ -380,12 +376,6 @@ pub async fn set_up(
             Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
         ))
         .merge(gated_apps)
-        // The launch surface, bearer-gated like `gated_apps` so the
-        // `Scoped<AppLauncher>` extractor sees the caller's scope claims (it gates
-        // on the `wildflower/launch` umbrella; the per-app SMART check runs
-        // in-handler). Built as its own gated router so its raised body limit /
-        // exemptions can differ from the admin surface.
-        .merge(gated_launch)
         .merge(gated_databases)
         // No slice claimed the route: `404`, pointing a browser at the hosted
         // owner UI (the server serves no UI of its own). See `not_found.rs`.
