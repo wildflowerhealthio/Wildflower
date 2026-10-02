@@ -21,8 +21,8 @@ describe('risk-map / pnpm-workspace.yaml reconciliation', () => {
     // These roots MUST come from the file, not a second hardcoded copy.
     expect(positive).toContain('apps/*')
     expect(positive).toContain('slices/**')
-    // The self-hosted-apps exclusion is a negation, not a member glob.
-    expect(negative).toContain('slices/apps/self-hosted-apps/**')
+    // The nested node_modules exclusion is a negation, not a member glob.
+    expect(negative).toContain('**/node_modules/**')
   })
 
   it('emits every workspace-matched package into the risk map', () => {
@@ -36,10 +36,10 @@ describe('risk-map / pnpm-workspace.yaml reconciliation', () => {
     for (const name of names) expect(map[name]).toBeTypeOf('number')
   })
 
-  it('honors the !slices/apps/self-hosted-apps negation', () => {
+  it('honors the !**/node_modules/** negation', () => {
     const packages = Effect.runSync(loadPackages(repoRoot))
-    const selfHosted = packages.filter((p) => p.relDir.startsWith('slices/apps/self-hosted-apps'))
-    expect(selfHosted).toEqual([])
+    const nested = packages.filter((p) => p.relDir.split('/').includes('node_modules'))
+    expect(nested).toEqual([])
   })
 
   it('partitions !-prefixed entries into negations, others into positives', () => {
