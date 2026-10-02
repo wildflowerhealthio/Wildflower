@@ -1,0 +1,20 @@
+/* Spacing for the server settings page; every colour and control style comes
+ * from tundra-css and `react-tundraish`. */
+.server-settings-page__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* The server's own error chain: a machine string, so mono and wrapping. */
+.server-settings-page__error {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  word-break: break-word;
+}
+
+.server-settings-page__tunnel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}

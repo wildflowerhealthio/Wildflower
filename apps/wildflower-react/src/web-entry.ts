@@ -116,6 +116,8 @@ const underBasepath = (basepath: string, route: string): string =>
  *   Nothing then names a server, so the reader picks one rather than being
  *   signed straight back in.
  * - `platformTabs`: none.
+ * - `platformBanner`: none — no host runs a server for this page, so there is
+ *   no server status to show.
  * - `redirectToDeviceLoginOnUnauthorized`: true — a 401 that outlives the
  *   boot-race retry still falls back to the device-code screen. The landing
  *   page signs in by SMART redirect instead (`sign-in.ts`), so that route is
@@ -142,6 +144,7 @@ const makeWebEntryOptions = (
   | 'readBearer'
   | 'platformSettingsItems'
   | 'platformTabs'
+  | 'platformBanner'
   | 'redirectToDeviceLoginOnUnauthorized'
 > & { readonly bearerStore: BearerAuthStateStore } => {
   const bearerStore = makeBearerAuthStateStore()
@@ -168,6 +171,7 @@ const makeWebEntryOptions = (
       }),
     ],
     platformTabs: [],
+    platformBanner: null,
     redirectToDeviceLoginOnUnauthorized: true,
   }
 }

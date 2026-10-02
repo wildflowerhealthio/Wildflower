@@ -19,9 +19,14 @@ A bridge with nothing registered has no record, and every inbound tag for it is 
 
 `unregister(bridge, record)` only relinquishes the slot if it still holds that exact `record`. A successor mount (StrictMode double-mount, rapid remount) may already have taken the slot; unregistering unconditionally would drop the fresher handler. The set-if-equal check makes stale cleanups no-ops, which is why a slice builds its record once and reuses that same object.
 
-## The gatekeeper exception
+## The boot-stable exceptions
 
-Gatekeeper does **not** register on mount. `makeGatekeeperWebHandlers` is a boot-stable record, seeded through `makeTauriTransport`'s `initial` option, that writes into the entry's `AuthStateStore` and the in-app `ActivePendingConsentStore`. The host pushes `AuthTokenIssued` in response to the page's `__Ready`, _before_ the `_auth` gate renders, so the handler has to be in place from the start. React **subscribes** to those stores rather than being a mounted handler.
+Gatekeeper and the background server service do **not** register on mount. Each has a boot-stable record, seeded through `makeTauriTransport`'s `initial` option, that writes into a store built outside React:
+
+- `makeGatekeeperWebHandlers` writes into the entry's `AuthStateStore` and the in-app `ActivePendingConsentStore`. The host pushes `AuthTokenIssued` in response to the page's `__Ready`, _before_ the `_auth` gate renders.
+- `makeBackgroundServerServiceWebHandlers` writes into the in-app `ServerServiceStatusStore`. The host answers every `__Ready` with the current `ServerServiceStatus` and otherwise sends one only when the status changes, so a handler registered on mount would miss the snapshot the page starts from.
+
+In both cases the handler has to be in place from the start, and React **subscribes** to the stores rather than being a mounted handler.
 
 ## Page lifetime and boot ordering
 

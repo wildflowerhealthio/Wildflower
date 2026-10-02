@@ -1,4 +1,10 @@
+// oxlint-disable import/max-dependencies -- the Tauri entry wires every host-backed slice (transport, auth, server status, recovery) into the app root
 import { createBrowserHistory } from '@tanstack/react-router'
+import { BackgroundServerServiceBridge } from 'background-server-service-core'
+import {
+  makeBackgroundServerServiceWebHandlers,
+  ServerStatusBanner,
+} from 'background-server-service-react'
 import { sectionUrl } from 'branding-core'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
@@ -75,14 +81,24 @@ renderApp({
   // `wildflower-react/instrument` above does: the consent dialog governs the
   // web entry only.
   effectTelemetryLayer: webTelemetryLayerFromEnv(),
-  // No platform settings rows: a logout row is meaningless here (the session is
-  // the host's loopback-owner trust, re-authenticated per request, so the page
-  // holds nothing to forget or revoke). The entry, not the settings route,
-  // encodes that.
-  platformSettingsItems: [],
+  // The server this host runs. No logout row: it is meaningless here (the
+  // session is the host's loopback-owner trust, re-authenticated per request,
+  // so the page holds nothing to forget or revoke). The entry, not the
+  // settings route, encodes both.
+  platformSettingsItems: [
+    {
+      id: 'server',
+      title: 'Server',
+      subtitle: 'The Wildflower server running on this device',
+      href: '/settings/server',
+    },
+  ],
   // Desktop-only: the recorder drives the native sniffer webview and the host
   // writes the `.har` into `saved_data`, neither of which a browser tab has.
   platformTabs: [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }],
+  // This host runs the Wildflower server, so the shell says when it isn't
+  // running and offers to restart it.
+  platformBanner: <ServerStatusBanner />,
   // A 401 here is anomalous (a boot-race before the host token is minted, or an
   // expired host token), NOT a prompt to sign in: the webview is
   // host-authenticated by the loopback-owner trust, there's no user login to
@@ -112,12 +128,12 @@ renderApp({
   // take the first present token from the store.
   awaitAuthReady: (transportReady) =>
     makeAwaitEmbeddedAuthReady(tokenStore.subscribable, transportReady),
-  // Tauri-native transport over per-tag events; only the gatekeeper
-  // bridge needs a boot-stable handler (the host pushes the token and
-  // any pending-consent head before any slice mounts). Other
-  // slices register on mount through the coordinator, exactly as on
-  // embedded.
-  makeTransport: (writeIssuedToken, setActivePendingConsent) =>
+  // Tauri-native transport over per-tag events. The gatekeeper and
+  // background-server-service bridges need boot-stable handlers: the host
+  // answers `__Ready` with the token, any pending-consent head and the server
+  // status before any slice mounts. Other slices register on mount through
+  // the coordinator, exactly as on embedded.
+  makeTransport: (writeIssuedToken, setActivePendingConsent, setServerServiceStatus) =>
     makeTauriTransport({
       bridges,
       initial: {
@@ -125,6 +141,8 @@ renderApp({
           writeIssuedToken,
           setActivePendingConsent
         ),
+        [BackgroundServerServiceBridge.name]:
+          makeBackgroundServerServiceWebHandlers(setServerServiceStatus),
       },
     }).then((transport) => {
       // Webview console → `bridge:Log` events → the Rust log facade.
