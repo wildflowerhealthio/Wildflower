@@ -81,6 +81,14 @@ describe('makeWebEntryOptions', () => {
     expect(options.apiBaseUrl).toBe(DEFAULT_SERVER_URL)
   })
 
+  it('should render no platform banner, since no host runs a server for the page', () => {
+    // Arrange / Act
+    const options = makeWebEntryOptions(stubPage(), '/app/', DEFAULT_SERVER_URL)
+
+    // Assert
+    expect(options.platformBanner).toBeNull()
+  })
+
   it('should link other devices to the page’s own origin', () => {
     // Arrange / Act
     const options = makeWebEntryOptions(stubPage(), '/staging/pr-7/app/', RUTH_SERVER_URL)

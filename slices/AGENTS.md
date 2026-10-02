@@ -96,9 +96,12 @@ watches the server through host-owned observer channels.
 runtime behind a run gate, so a restart leaves nothing of the previous server
 behind, and holds the bridge's status mirror and the notification decisions,
 all without `tauri`; `background-server-service-tauri-rust` drives it from
-`tauri-plugin-background-service` and posts the notifications; and
+`tauri-plugin-background-service` and posts the notifications;
 `background-server-service-android-rust` exports the JNI functions the plugin's
-Android foreground service calls in the host's library, until #886 removes it.
+Android foreground service calls in the host's library, until #886 removes it;
+`background-server-service-core` is the bridge's TS schema; and
+`background-server-service-react` the banner and `/settings/server` page that
+render the host's status snapshot and restart the server.
 
 `smart-app` is the Wildflower chrome a self-hosted SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 

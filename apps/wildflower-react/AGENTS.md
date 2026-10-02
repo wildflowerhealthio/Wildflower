@@ -33,9 +33,12 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   shows no Telemetry row there (`session/telemetry-settings-items.ts`).
 - **The entry decides, not a branch on `entry`.** Platform differences reach
   the shared tree as `RenderAppOptions` fields (`effectTelemetryLayer`,
-  `platformSettingsItems`, `platformTabs`,
+  `platformSettingsItems`, `platformTabs`, `platformBanner`,
   `redirectToDeviceLoginOnUnauthorized`, `serverKind`), or as a provider the
-  entry mounts (the consent gate).
+  entry mounts (the consent gate). `main-tauri` contributes the server status
+  banner `<RootShell>` renders above every route and the Settings row for
+  `/settings/server`; `main-web` passes `platformBanner: null`, since no host
+  runs a server for it.
 - **A plain SMART server gets only Home.** `main-web` can sign in to a SMART
   on FHIR server that is not a Wildflower server (discovery found its
   configuration at the URL itself, not under `/fhir-r4`). `sign-in.ts`'s

@@ -56,6 +56,7 @@ export const routes = rootRoute('__root.tsx', [
     physical('', routesDir('gatekeeper', 'settings')),
     physical('', routesDir('databases', 'settings')),
     physical('', routesDir('apps', 'settings')),
+    physical('', routesDir('background-server-service', 'settings')),
   ]),
   index('index.tsx'),
   route('/fhir-home', 'fhir-home.tsx'),

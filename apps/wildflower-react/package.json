@@ -48,6 +48,8 @@
     "@tanstack/react-router": "catalog:",
     "apps-core": "workspace:*",
     "apps-react": "workspace:*",
+    "background-server-service-core": "workspace:*",
+    "background-server-service-react": "workspace:*",
     "branding-core": "workspace:*",
     "branding-react": "workspace:*",
     "collector-fundamentals": "workspace:*",

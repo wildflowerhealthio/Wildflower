@@ -3,8 +3,8 @@
 //!
 //! The TS schema in `background-server-service-core` is the contract the web
 //! side decodes against; the golden tests below pin this side's exact bytes to
-//! the wire strings the [Design Explanation](../../docs/Design%20Explanation.md)
-//! documents. See the
+//! the wire strings in `slices/background-server-service/bridge-wire-golden.json`,
+//! which the TS side's `bridge.test.ts` decodes and re-encodes too. See the
 //! [Wire Pinning How-To](../../../../docs/Messaging/Wire%20Pinning%20How-To.md).
 
 use serde::{Deserialize, Serialize};
@@ -110,6 +110,23 @@ mod tests {
     use proptest::prelude::*;
     use serde_json::Value;
 
+    /// The wire strings shared with `background-server-service-core`'s
+    /// `bridge.test.ts`, so neither side can change a field alone.
+    const GOLDEN: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../bridge-wire-golden.json"
+    ));
+
+    /// The string at `pointer` (a JSON pointer) in the shared golden file.
+    fn golden(pointer: &str) -> String {
+        let golden: Value = serde_json::from_str(GOLDEN).expect("bridge-wire-golden.json parses");
+        golden
+            .pointer(pointer)
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("bridge-wire-golden.json has a string at {pointer}"))
+            .to_owned()
+    }
+
     fn status(
         state: ServerServiceState,
         stop_reason: Option<ServiceStopReason>,
@@ -166,7 +183,7 @@ mod tests {
                 NotificationPermission::Granted
             ))
             .expect("serialize"),
-            r#"{"_tag":"ServerServiceStatus","state":"running","stopReason":null,"lastError":null,"notifications":"granted"}"#
+            golden("/serverServiceStatus/running")
         );
     }
 
@@ -181,7 +198,7 @@ mod tests {
                 NotificationPermission::Denied
             ))
             .expect("serialize"),
-            r#"{"_tag":"ServerServiceStatus","state":"stopped","stopReason":"platformExpiration","lastError":"failed to bind to 127.0.0.1:8080: Address already in use","notifications":"denied"}"#
+            golden("/serverServiceStatus/stopped")
         );
     }
 
@@ -196,41 +213,49 @@ mod tests {
                 NotificationPermission::Unknown
             ))
             .expect("serialize"),
-            r#"{"_tag":"ServerServiceStatus","state":"starting","stopReason":"appStop","lastError":null,"notifications":"unknown"}"#
+            golden("/serverServiceStatus/starting")
         );
     }
 
-    /// Every stop reason's wire string — the plugin's own camelCase names.
+    /// Every stop reason's wire string — the plugin's own camelCase names, the
+    /// list the TS side's `ServiceStopReason` literals are checked against.
     #[test]
     fn stop_reasons_serialize_to_the_plugin_names() {
-        let cases = [
-            (ServiceStopReason::UserStop, "userStop"),
-            (ServiceStopReason::AppStop, "appStop"),
-            (ServiceStopReason::PlatformTimeout, "platformTimeout"),
-            (ServiceStopReason::PlatformExpiration, "platformExpiration"),
-            (
-                ServiceStopReason::NativeNotificationStop,
-                "nativeNotificationStop",
-            ),
-            (ServiceStopReason::OsRestart, "osRestart"),
-            (ServiceStopReason::BootRecovery, "bootRecovery"),
-            (ServiceStopReason::TaskCompleted, "taskCompleted"),
-            (ServiceStopReason::Error, "error"),
-            (ServiceStopReason::ProcessExit, "processExit"),
+        let golden: Value = serde_json::from_str(GOLDEN).expect("bridge-wire-golden.json parses");
+        let golden_reasons: Vec<&str> = golden["stopReasons"]
+            .as_array()
+            .expect("stopReasons")
+            .iter()
+            .map(|reason| reason.as_str().expect("a stop reason string"))
+            .collect();
+        let reasons = [
+            ServiceStopReason::UserStop,
+            ServiceStopReason::AppStop,
+            ServiceStopReason::PlatformTimeout,
+            ServiceStopReason::PlatformExpiration,
+            ServiceStopReason::NativeNotificationStop,
+            ServiceStopReason::OsRestart,
+            ServiceStopReason::BootRecovery,
+            ServiceStopReason::TaskCompleted,
+            ServiceStopReason::Error,
+            ServiceStopReason::ProcessExit,
         ];
-        for (reason, wire) in cases {
-            assert_eq!(
-                serde_json::to_string(&reason).expect("serialize"),
-                format!("\"{wire}\"")
-            );
-        }
+        let serialized: Vec<String> = reasons
+            .iter()
+            .map(|reason| serde_json::to_string(reason).expect("serialize"))
+            .collect();
+        let quoted_golden: Vec<String> = golden_reasons
+            .iter()
+            .map(|reason| format!("\"{reason}\""))
+            .collect();
+        assert_eq!(serialized, quoted_golden);
     }
 
     /// The inbound direction: the exact string the TS side sends decodes.
     #[test]
     fn restart_server_deserializes_from_the_pinned_wire_format() {
         assert_eq!(
-            serde_json::from_str::<BackgroundServerServiceWebToHost>(r#"{"_tag":"RestartServer"}"#)
+            serde_json::from_str::<BackgroundServerServiceWebToHost>(&golden("/restartServer"))
                 .expect("deserialize"),
             BackgroundServerServiceWebToHost::RestartServer
         );
