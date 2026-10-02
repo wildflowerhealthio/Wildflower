@@ -15,12 +15,17 @@ here.
   - The serde mirror of the bridge (`bridge.rs`: `ServerServiceStatus`,
     `RestartServer`) with golden tests, and of the plugin's lifecycle events
     (`plugin_event.rs`).
-  - `ServerHostContext::run_server` (`server_run.rs`): one run of the server
-    behind the `RunGate`, on a dedicated runtime, publishing its
+  - `ServerHostContext::run_server` (`live_bindings/server_run.rs`): one run
+    of the server behind the `RunGate`, on a dedicated runtime, publishing its
     `ServerRunState`. `tests/restart.rs` restarts the real server through it.
   - The notification decisions: the per-caller request coalescer, the stop
     notification per reason, the tunnel-drop detector, and what a foreground
     resume does.
+  - Layout: the wire mirrors (`bridge.rs`, `plugin_event.rs`) at the crate
+    root; `domain/` the run gate, `ServerRunState`, the foreground-resume rule
+    and the notification decisions, testable without I/O; `live_bindings/` a
+    server run bound to `wildflower-server-rust`, with its dedicated thread and
+    runtime in `server_run/dedicated_runtime.rs`.
 - **`background-server-service-tauri-rust`** — the glue: the plugin's
   `BackgroundService` impl (`WildflowerServerService`), starting and restarting
   the service, the plugin-event and bridge listeners, the status emitter, and

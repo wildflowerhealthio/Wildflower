@@ -27,12 +27,12 @@ use url::Url;
 const APP_ENTRY_PATHS: [&str; 2] = ["/", "/home"];
 
 /// What the fallback needs to point a lost browser at the hosted owner UI.
-pub struct NotFoundConfig {
+pub(crate) struct NotFoundConfig {
     /// The hosted owner UI the link opens.
-    pub owner_ui_base: OwnerUiBase,
+    pub(crate) owner_ui_base: OwnerUiBase,
     /// The loopback base URL, the served origin of an unforwarded request (see
     /// [`served_base_url_for`]).
-    pub loopback_base_url: Url,
+    pub(crate) loopback_base_url: Url,
 }
 
 /// Wire shape of the JSON `404` for a route no slice serves.
@@ -49,7 +49,7 @@ struct RouteNotFoundBody {
 }
 
 /// Build the fallback handler over `config`.
-pub fn fallback(
+pub(crate) fn fallback(
     config: Arc<NotFoundConfig>,
 ) -> impl Fn(Method, HeaderMap, Uri) -> std::future::Ready<Response> + Clone + Send + Sync + 'static
 {

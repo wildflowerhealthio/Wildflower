@@ -140,7 +140,7 @@ and serves it as an interactive [Scalar](https://scalar.com) reference at
 `/docs`. The merge + Scalar router live in
 [`shared-structures-rust`'s `openapi_docs`](../../slices/shared-structures/shared-structures-rust/src/openapi_docs.rs)
 (behind the `openapi-docs` feature); the server wires it in `api_router`
-(`slices/wildflower-server/wildflower-server-rust/src/lib.rs`), gated exactly like the rest of
+(`slices/wildflower-server/wildflower-server-rust/src/live_bindings/wildflower_server.rs`), gated exactly like the rest of
 the admin API. Paths in each slice's spec already carry that slice's host mount
 prefix, so the merge needs no re-nesting. It's the same generated document, so
 `/docs` can't drift from the snapshots — no extra guard is needed.

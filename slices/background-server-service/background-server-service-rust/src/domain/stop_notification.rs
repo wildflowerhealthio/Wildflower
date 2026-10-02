@@ -1,6 +1,6 @@
 //! The notification for each stop of the server.
 
-use crate::notification::LocalNotification;
+use crate::domain::notification::LocalNotification;
 use crate::plugin_event::ServiceStopReason;
 
 /// The id every stop notification shares, so a burst of stops replaces one

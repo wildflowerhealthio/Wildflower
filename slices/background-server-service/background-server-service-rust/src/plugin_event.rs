@@ -40,7 +40,7 @@ pub enum ServiceStopReason {
     UserStop,
     /// The host stopped the service to restart it. Nothing else in this app,
     /// and nothing in the plugin, stops with this reason (see
-    /// [`RESTART_STOP_REASON`](crate::stop_notification::RESTART_STOP_REASON)).
+    /// [`RESTART_STOP_REASON`](crate::domain::stop_notification::RESTART_STOP_REASON)).
     AppStop,
     /// The platform's foreground-service time limit ran out (Android).
     PlatformTimeout,
