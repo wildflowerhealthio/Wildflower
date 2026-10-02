@@ -17,7 +17,6 @@
 use url::Url;
 
 use crate::domain::client::Client;
-use crate::domain::client_redirect::redirect_is_allowlisted;
 
 /// Whether the registration an authorization-code request presents (see
 /// [`PresentedClientRegistration`]) is accepted as it stands against the current
@@ -102,7 +101,7 @@ pub(crate) fn classify_registration(
         return ClientRegistrationVerdict::New;
     };
     let redirect_uri_is_new =
-        !redirect_is_allowlisted(existing_client, presented_registration.redirect_uri);
+        !existing_client.allows_redirect_uri(presented_registration.redirect_uri);
     let unregistered_requested_scopes = uncovered_scopes(
         &existing_client.allowed_scopes,
         presented_registration.scopes,

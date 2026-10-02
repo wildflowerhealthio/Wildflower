@@ -1,7 +1,7 @@
 //! Diesel column mappings shared across more than one persistence concern, plus
 //! the two macros that generate every column mapping in this slice (`shared` and
 //! per-concern alike). A column mapping used by exactly one concern lives in that
-//! concern's `db/<concern>.rs` file (e.g. [`JsonUrls`](super::clients) with the
+//! concern's `db/<concern>.rs` file (e.g. [`JsonUrls`](super::clients::JsonUrls) with the
 //! client); the ones here — [`JsonStrings`], [`UrlText`], and the [`GrantType`]
 //! enum mapping — are the ones two or more concerns bind.
 //!
