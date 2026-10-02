@@ -8,12 +8,11 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 - **`wildflower-server-rust`** — `serve(config, host, shutdown)` opens the
   host's databases, sets up every server slice (gatekeeper, emr, OHIF, collector,
   tunnel, apps, databases, the `/docs` reference), gates them, and serves them on
-  the loopback port behind the loopback owner trust, the loopback-peer gate, the
-  CORS policy and the tunnel's subdomain reverse proxy, until `shutdown` is
-  cancelled. It also holds the server-side adapters that join two slices: the
-  apps-store `SelfHostedRedirectResolver` for gatekeeper, the reqwest
-  `HealthProbe` for the tunnel, and HFS's base URL following the tunnel's public
-  host. The unmatched-route `404` is here too.
+  the loopback port behind the loopback owner trust, the loopback-peer gate and
+  the CORS policy, until `shutdown` is cancelled. It also holds the server-side
+  adapters that join two slices: the gatekeeper-backed `AppLaunchScopes` for
+  apps, the reqwest `HealthProbe` for the tunnel, and HFS's base URL following
+  the tunnel's public host. The unmatched-route `404` is here too.
 
 ## Layering
 
@@ -22,10 +21,10 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 - **The host hands in what it owns.** `WildflowerServerConfig` carries the values
   `apps/wildflower-tauri` derives at build time (`tauri-shared-config.json`,
   build-time env) or from its platform paths (the app-data dir, the FHIR
-  SearchParameter bundle dir, the vendored self-hosted apps). `HostPorts` carries
-  its native adapters as trait objects (`LoopbackConsentPrompt`,
-  `OnDeviceWebviewHandle`) and the `watch` senders its bridge reads. The server
-  reads none of the host's build-time configuration or platform paths itself.
+  SearchParameter bundle dir). `HostPorts` carries its native adapters as trait
+  objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
+  senders its bridge reads. The server reads none of the host's build-time
+  configuration or platform paths itself.
 - **Background tasks follow the runtime.** Slices `tokio::spawn` long-lived tasks
   onto the runtime that runs `serve`; cancelling `shutdown` stops the listener,
   not those tasks.

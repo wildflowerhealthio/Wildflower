@@ -92,7 +92,7 @@
             }
           },
           "503": {
-            "description": "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)",
+            "description": "No reachable launch target (a requires_tunnel app while the tunnel is down)",
             "content": {
               "application/json": {
                 "schema": {
@@ -107,7 +107,7 @@
         "tags": [
           "Catalogue"
         ],
-        "summary": "`DELETE /apps/{id}` — remove a cloud app or an uploaded self-hosted app.\nScope-gated on `wildflower/Apps.d` through [`Scoped<LiveAppsDeleter>`].",
+        "summary": "`DELETE /apps/{id}` — remove a cloud app. Scope-gated on `wildflower/Apps.d`\nthrough [`Scoped<LiveAppsDeleter>`].",
         "operationId": "handle_delete_app",
         "parameters": [
           {
@@ -145,7 +145,7 @@
             }
           },
           "409": {
-            "description": "The app exists but is not removable (system / seeded self-hosted apps)",
+            "description": "The app exists but is not removable (system apps)",
             "content": {
               "application/json": {
                 "schema": {
@@ -387,189 +387,6 @@
         }
       }
     },
-    "/self-hosted-apps": {
-      "post": {
-        "tags": [
-          "Self-hosted apps"
-        ],
-        "summary": "`POST /self-hosted-apps` — install a self-hosted app from the uploaded `bundle`.\nScope-gated on `wildflower/Apps.c` through [`Scoped<LiveAppsCreator>`]; the body\nlimit is raised for this route (see the router wiring).",
-        "operationId": "handle_create_self_hosted_app",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSelfHostedAppMultipart"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The installed self-hosted app detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SelfHostedAppDetail"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Empty/unusable or already-taken name (`InvalidName`) or a bad bundle (`InvalidZip`)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidFieldBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/Apps.c`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/self-hosted-apps/{id}": {
-      "get": {
-        "tags": [
-          "Self-hosted apps"
-        ],
-        "summary": "`GET /self-hosted-apps/{id}` — the self-hosted editor detail. Scope-gated on\n`wildflower/Apps.r` through [`Scoped<LiveAppsReader>`].",
-        "operationId": "handle_get_self_hosted_app",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "App id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The self-hosted app detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SelfHostedAppDetail"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No self-hosted app has this id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotFoundBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Self-hosted apps"
-        ],
-        "summary": "`PUT /self-hosted-apps/{id}` — replace a self-hosted app's launch path.\nScope-gated on `wildflower/Apps.u` through [`Scoped<LiveAppsEditor>`].",
-        "operationId": "handle_update_self_hosted_app",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "App id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SelfHostedAppBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The updated self-hosted app detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SelfHostedAppDetail"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The launch path isn't origin-relative (`InvalidUrl`)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidFieldBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/Apps.u`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No self-hosted app has this id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotFoundBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "A seeded self-hosted app is edit-protected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotEditableBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/system-apps/{id}": {
       "get": {
         "tags": [
@@ -627,16 +444,15 @@
     "schemas": {
       "AppKind": {
         "type": "string",
-        "description": "Which kind an app is — the discriminator. Serialized as its kebab string\n(`\"system\"` / `\"self-hosted\"` / `\"cloud\"`), the same value stored in the\n`CHECK`-constrained `app_registrations.kind` column and sent on the wire.",
+        "description": "Which kind an app is — the discriminator. Serialized as its kebab string\n(`\"system\"` / `\"cloud\"`), the same value stored in the\n`CHECK`-constrained `app_registrations.kind` column and sent on the wire.",
         "enum": [
           "system",
-          "self-hosted",
           "cloud"
         ]
       },
       "AppNotEditableBody": {
         "type": "object",
-        "description": "Wire shape for `AppNotEditable` (409) — the app exists but isn't editable /\nremovable: a system app, or a seeded self-hosted app. (A per-kind path given an\nid of another kind is a `404`, not a `409` — the mismatch can't be expressed.)",
+        "description": "Wire shape for `AppNotEditable` (409) — the app exists but isn't editable /\nremovable: a system app. (A per-kind path given an id of another kind is a\n`404`, not a `409` — the mismatch can't be expressed.)",
         "required": [
           "error",
           "id"
@@ -711,7 +527,7 @@
           },
           "requiresTunnel": {
             "type": "boolean",
-            "description": "Whether a launch must bring the tunnel up first (a launch-readiness pill).\n`false` for system / self-hosted; meaningful only for cloud apps."
+            "description": "Whether a launch must bring the tunnel up first (a launch-readiness pill).\n`false` for system apps; meaningful only for cloud apps."
           }
         }
       },
@@ -767,30 +583,6 @@
         ],
         "description": "The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the shared registration fields\nplus the stored `url` template and `isRemovable`. Built from the cloud\n`(registration, configuration)` pair."
       },
-      "CreateSelfHostedAppMultipart": {
-        "type": "object",
-        "description": "Documents the `multipart/form-data` body for OpenAPI. The handler reads the\nparts manually via [`Multipart`], so this is never deserialized directly (the\n`Deserialize` derive only carries the `serde` rename to the generated schema).\n`name` is always present; `subtitle` is optional; `bundle` is the uploaded zip.\nMatches the TS `CreateSelfHostedAppBodySchema`.",
-        "required": [
-          "name",
-          "bundle"
-        ],
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "bundle": {
-            "type": "string",
-            "format": "binary",
-            "description": "The app's static files as a zip."
-          }
-        }
-      },
       "HomeScreenEntry": {
         "type": "object",
         "description": "One entry in the `PUT /home-screen` body: an app id and its desired\n`onHomescreen` flag. The entry's index in the array is its new display\n`position`. Matches the TS `HomeScreenEntrySchema`.",
@@ -830,7 +622,7 @@
       },
       "InvalidFieldBody": {
         "type": "object",
-        "description": "Wire shape for a 400 carrying a discriminant + human-readable reason. Reused\nfor `InvalidUrl` (a bad app URL / launch path), `InvalidName` (an empty name),\nand `InvalidZip` (an unusable uploaded bundle) — all write-side field\nvalidations the client renders inline. The `error` discriminant lets a client\ntell them apart.",
+        "description": "Wire shape for a 400 carrying a discriminant + human-readable reason. Reused\nfor `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name) — both\nwrite-side field validations the client renders inline. The `error` discriminant lets a client\ntell them apart.",
         "required": [
           "error",
           "message"
@@ -869,7 +661,7 @@
         "properties": {
           "url": {
             "type": "string",
-            "description": "The absolute launch URL (public subdomain or rendered cloud template)."
+            "description": "The absolute launch URL (a rendered system or cloud template)."
           }
         }
       },
@@ -891,7 +683,7 @@
       },
       "RegistrationWire": {
         "type": "object",
-        "description": "The registration fields every per-kind detail carries, `#[serde(flatten)]`ed into\neach wire shape so the eight shared fields — and their `From<&AppRegistration>`\nprojection — are declared once rather than copied across the three detail structs.\n`isSmart` is derived from the host-only `client_id`; `position` never leaves the\nhost.",
+        "description": "The registration fields every per-kind detail carries, `#[serde(flatten)]`ed into\neach wire shape so the eight shared fields — and their `From<&AppRegistration>`\nprojection — are declared once rather than copied across the detail structs.\n`isSmart` is derived from the host-only `client_id`; `position` never leaves the\nhost.",
         "required": [
           "id",
           "kind",
@@ -930,50 +722,6 @@
             "type": "boolean"
           }
         }
-      },
-      "SelfHostedAppBody": {
-        "type": "object",
-        "description": "The `PUT /self-hosted-apps/{id}` body — the editable launch path. Absent or\nempty clears it back to root-serving. Matches the TS\n`SelfHostedAppBodySchema`.",
-        "properties": {
-          "launchPath": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "SelfHostedAppDetail": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/RegistrationWire"
-          },
-          {
-            "type": "object",
-            "required": [
-              "seeded",
-              "isRemovable"
-            ],
-            "properties": {
-              "launchPath": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "The stored SMART launch path (origin-relative, with `{origin}` / `{launch}`\ntokens), or absent for a root-served (`index.html`) app."
-              },
-              "seeded": {
-                "type": "boolean",
-                "description": "`true` for a migration-seeded app (edit/delete-protected)."
-              },
-              "isRemovable": {
-                "type": "boolean",
-                "description": "Whether the owner can remove this app (`!seeded`)."
-              }
-            }
-          }
-        ],
-        "description": "The `GET`/`POST`/`PUT /self-hosted-apps…` wire shape — the registration fields\nplus `launchPath` (absent for a root-served bundle), `seeded`, and\n`isRemovable`. The public `subdomain` / loopback `port` / on-disk\n`content_folder` are host-internal and stay off the wire."
       },
       "SystemAppDetail": {
         "allOf": [

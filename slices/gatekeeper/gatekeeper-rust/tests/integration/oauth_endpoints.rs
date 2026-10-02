@@ -100,7 +100,7 @@ async fn authorize_disabled_client_is_still_rejected() {
             client_id: "test-app".to_string(),
             name: "Disabled Test Client".to_string(),
             kind: ClientKind::Public,
-            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap().into()],
+            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
             allowed_scopes: vec!["read".to_string()],
             allowed_grant_types: AllowedGrantType::ALL.to_vec(),
             secret_hash: None,
@@ -318,7 +318,7 @@ async fn authorize_first_party_disallowed_scope_still_redirects_invalid_scope() 
         .client_by_id("wildflower-host")
         .unwrap()
         .expect("the seeded first-party client");
-    host.redirect_uris = vec![Url::parse("https://app.example/cb").unwrap().into()];
+    host.redirect_uris = vec![Url::parse("https://app.example/cb").unwrap()];
     store.upsert_client(&host).expect("allowlist a redirect");
 
     let res = get_authorize(

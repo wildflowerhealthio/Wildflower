@@ -4,17 +4,17 @@
 //! database file, applies the embedded apps migrations once on construction, and
 //! implements the port by delegating to the per-kind query bodies in
 //! [`crate::db::app_registration`] / [`crate::db::cloud_apps`] /
-//! [`crate::db::self_hosted_apps`] / [`crate::db::all_kinds_apps`]. Mirrors
+//! [`crate::db::all_kinds_apps`]. Mirrors
 //! `collector-rust`'s `SqliteRemotesStore`.
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 
-use crate::db::{all_kinds_apps, app_registration, cloud_apps, self_hosted_apps};
+use crate::db::{all_kinds_apps, app_registration, cloud_apps};
 use crate::domain::{
     AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
-    CloudInsertError, SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload,
+    CloudInsertError,
 };
 
 /// This slice's migration namespace in the shared database. Applied versions are
@@ -38,15 +38,17 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// app served from the same site; `0007` appends the OHIF imaging viewer, a
 /// fourth CLOUD app from that site, and `0008` moves its launch onto the FHIR
 /// Viewer route; `0009` repairs the Medications and Web Trace rows on any install
-/// `0005` left short of cloud; and `0010` appends Lifting, another first-party
-/// CLOUD app from the same site. Because each migration runs only once per
+/// `0005` left short of cloud; `0010` appends Lifting, another first-party
+/// CLOUD app from the same site; and `0011` deletes every self-hosted
+/// registration, drops `self_hosted_app_configurations`, and narrows the `kind`
+/// CHECK to system + cloud. Because each migration runs only once per
 /// database, a user-deleted seed stays deleted across upgrades. The debug-only
 /// `…-dev` cloud rows are deliberately NOT migrations — see
 /// `apps-rust/src/dev_seed.rs`.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`AppsStore`] port — serves the registrations plus
-/// the cloud + self-hosted configurations. Cheap to clone (the pool is an `Arc`
+/// the cloud + system configurations. Cheap to clone (the pool is an `Arc`
 /// inside), so it drops straight into the axum state.
 #[derive(Clone)]
 pub struct SqliteAppsStore {
@@ -110,13 +112,12 @@ impl SqliteAppsStore {
 /// The `SQLite` implementation of the port: each method checks a connection out
 /// of the pool (via [`connection`](Self::connection)) and hands it to the matching
 /// per-kind query body ([`crate::db::app_registration`] / [`crate::db::cloud_apps`] /
-/// [`crate::db::self_hosted_apps`] / [`crate::db::all_kinds_apps`]). The bodies live
+/// [`crate::db::all_kinds_apps`]). The bodies live
 /// there so this file stays the migration + pool handle, and the query SQL stays
 /// next to the `table!` + row types it maps. Every method returns the port's PRIMITIVE shape
 /// — absence as `None`, delete outcome as `bool`, a cloud insert that wrote nothing
 /// as the granular typed [`CloudInsertError`] — leaving the semantic verdicts to
-/// [`crate::domain::actions`]. (The self-hosted insert is the exception: it maps its
-/// taken-slug / port-exhaustion outcomes onto `AppsError` directly.)
+/// the [`capabilities`](crate::domain::capabilities).
 impl AppsStore for SqliteAppsStore {
     fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppsError> {
         let mut conn = self.connection()?;
@@ -128,13 +129,6 @@ impl AppsStore for SqliteAppsStore {
         all_kinds_apps::find_app_on(&mut conn, id)
     }
 
-    fn list_self_hosted_apps(
-        &self,
-    ) -> Result<Vec<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
-        let mut conn = self.connection()?;
-        self_hosted_apps::list_self_hosted_apps_on(&mut conn)
-    }
-
     fn insert_cloud_app(
         &self,
         registration: &AppRegistration,
@@ -143,34 +137,12 @@ impl AppsStore for SqliteAppsStore {
         cloud_apps::insert_cloud_app(&mut self.connection()?, registration, config)
     }
 
-    fn insert_self_hosted_app(
-        &self,
-        registration: &AppRegistration,
-        payload: &SelfHostedAppConfigurationPayload,
-        reserved_ports: &[u16],
-    ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-        self_hosted_apps::insert_self_hosted_app(
-            &mut self.connection()?,
-            registration,
-            payload,
-            reserved_ports,
-        )
-    }
-
     fn replace_cloud_app(
         &self,
         registration: &AppRegistration,
         config: &CloudAppConfiguration,
     ) -> Result<Option<(AppRegistration, CloudAppConfiguration)>, AppsError> {
         cloud_apps::replace_cloud_app(&mut self.connection()?, registration, config)
-    }
-
-    fn replace_self_hosted_app(
-        &self,
-        registration: &AppRegistration,
-        payload: &SelfHostedAppConfigurationPayload,
-    ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
-        self_hosted_apps::replace_self_hosted_app(&mut self.connection()?, registration, payload)
     }
 
     fn delete_app(&self, id: &str) -> Result<bool, AppsError> {
@@ -212,7 +184,7 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 12, "exactly the twelve seeded default apps");
+        assert_eq!(row_count, 11, "exactly the eleven seeded default apps");
     }
 
     /// The `app_registrations` primary key gives global id uniqueness across kinds
@@ -252,7 +224,6 @@ mod tests {
         assert_eq!(
             ids,
             vec![
-                "patient-browser",
                 "api-view",
                 "api-docs",
                 "growth-chart",
@@ -268,18 +239,9 @@ mod tests {
         );
     }
 
-    /// The loopback origin a self-hosted row was seeded onto.
-    #[derive(QueryableByName)]
-    struct SeededOrigin {
-        #[diesel(sql_type = Integer)]
-        port: i32,
-        #[diesel(sql_type = Text)]
-        subdomain: String,
-    }
-
     /// [`MIGRATIONS`] narrowed to the versions at or below `.0` — it drives a
-    /// database to the state an install was in *before* a seed migration ran, so a
-    /// test can occupy the port and subdomain that seed prefers and then let it run.
+    /// database to the state an install was in *before* a later migration ran, so a
+    /// test can set up rows that migration must cope with and then let it run.
     struct MigrationsThrough(&'static str);
 
     impl MigrationSource<Sqlite> for MigrationsThrough {
@@ -291,35 +253,23 @@ mod tests {
         }
     }
 
-    /// Register a non-seeded self-hosted app holding `port` and `subdomain` — the
-    /// row an upload leaves behind (its subdomain is its slug, which is its id).
-    fn occupy(conn: &mut SqliteConnection, slug: &str, port: i32) {
+    /// Register a user-created cloud app at the tail — the row a `POST
+    /// /cloud-apps` leaves behind.
+    fn create_user_cloud_app(conn: &mut SqliteConnection, id: &str) {
         sql_query(
             "INSERT INTO app_registrations \
              (id, kind, position, on_homescreen, name, local_only, requires_tunnel) \
-             VALUES (?, 'self-hosted', (SELECT MAX(position) + 1 FROM app_registrations), 1, ?, 1, 0)",
+             VALUES (?, 'cloud', (SELECT MAX(position) + 1 FROM app_registrations), 1, ?, 0, 0)",
         )
-        .bind::<Text, _>(slug)
-        .bind::<Text, _>(slug)
+        .bind::<Text, _>(id)
+        .bind::<Text, _>(id)
         .execute(conn)
         .expect("registration insert must succeed");
-        sql_query(
-            "INSERT INTO self_hosted_app_configurations \
-             (id, port, content_folder, subdomain, seeded) VALUES (?, ?, ?, ?, 0)",
-        )
-        .bind::<Text, _>(slug)
-        .bind::<Integer, _>(port)
-        .bind::<Text, _>(format!("{slug}-folder"))
-        .bind::<Text, _>(slug)
-        .execute(conn)
-        .expect("configuration insert must succeed");
-    }
-
-    fn origin_of(conn: &mut SqliteConnection, id: &str) -> SeededOrigin {
-        sql_query("SELECT port, subdomain FROM self_hosted_app_configurations WHERE id = ?")
+        sql_query("INSERT INTO cloud_app_configurations (id, url) VALUES (?, ?)")
             .bind::<Text, _>(id)
-            .get_result(conn)
-            .expect("the seeded self-hosted row must exist")
+            .bind::<Text, _>("https://example.com/launch")
+            .execute(conn)
+            .expect("configuration insert must succeed");
     }
 
     /// The launch template a cloud row was seeded/migrated onto.
@@ -330,9 +280,7 @@ mod tests {
     }
 
     /// After 0005 the two first-party apps are CLOUD rows pointing at the
-    /// published GitHub Pages site, under their renamed ids, and their
-    /// self-hosted payloads are gone. Patient Browser is untouched — it is still
-    /// the one seeded self-hosted app, on the port 0002 documents.
+    /// published GitHub Pages site, under their renamed ids.
     #[test]
     fn first_party_apps_are_cloud_rows_on_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
@@ -356,8 +304,7 @@ mod tests {
                 matches!(configuration, AppConfiguration::Cloud(_)),
                 "{id} must be a cloud app",
             );
-            // The client_id must track the id: the host's self-hosted redirect
-            // resolver looks an app up by client_id.
+            // client_id tracks id, as every registration does.
             assert_eq!(registration.client_id.as_deref(), Some(id));
             assert!(
                 registration.requires_tunnel,
@@ -370,14 +317,6 @@ mod tests {
                     .get_result(&mut conn)
                     .expect("the cloud configuration row must exist");
             assert_eq!(target.url, url);
-            let leftovers: i64 = sql_query(
-                "SELECT COUNT(*) AS count FROM self_hosted_app_configurations WHERE id = ?",
-            )
-            .bind::<Text, _>(id)
-            .get_result::<RowCount>(&mut conn)
-            .expect("count must read")
-            .count;
-            assert_eq!(leftovers, 0, "{id}'s self-hosted payload must be gone");
         }
 
         // The old ids are fully retired.
@@ -389,13 +328,6 @@ mod tests {
         // published site now.
         let (web_trace, _) = store.find_app("web-trace-app").unwrap().unwrap();
         assert!(!web_trace.local_only);
-
-        // Patient Browser is untouched by 0005.
-        let patient_browser = origin_of(&mut conn, "patient-browser");
-        assert_eq!(
-            (patient_browser.port, patient_browser.subdomain.as_str()),
-            (8081, "patient-browser"),
-        );
     }
 
     /// The server-docs console is a cloud row that takes only `{origin}`, handed
@@ -561,7 +493,7 @@ mod tests {
     }
 
     /// An install already at `0009` gains Lifting when it upgrades — at the
-    /// tail, after an app the user uploaded before upgrading, since `position`
+    /// tail, after an app the user created before upgrading, since `position`
     /// is UNIQUE and `0010` appends rather than naming a literal slot.
     #[test]
     fn an_install_already_at_0009_gains_lifting_at_the_tail() {
@@ -573,14 +505,14 @@ mod tests {
             MigrationsThrough("0009"),
         )
         .unwrap();
-        occupy(&mut conn, "my-upload", 8082);
+        create_user_cloud_app(&mut conn, "my-app");
         drop(conn);
 
-        let store = SqliteAppsStore::new(pool).expect("0010 must apply over the upload");
-        let (upload, _) = store
-            .find_app("my-upload")
+        let store = SqliteAppsStore::new(pool).expect("0010 must apply over the user's app");
+        let (user_app, _) = store
+            .find_app("my-app")
             .unwrap()
-            .expect("the upload survives");
+            .expect("the user's app survives");
         let (lifting, configuration) = store
             .find_app("lifting-app")
             .unwrap()
@@ -588,8 +520,8 @@ mod tests {
         assert!(matches!(configuration, AppConfiguration::Cloud(_)));
         assert_eq!(
             lifting.position,
-            upload.position + 1,
-            "Lifting takes the tail, after the upload",
+            user_app.position + 1,
+            "Lifting takes the tail, after the user's app",
         );
     }
 
@@ -643,77 +575,171 @@ mod tests {
         count: i64,
     }
 
-    /// `port` and `subdomain` are UNIQUE, so an install that uploaded an app onto
-    /// 8091 / `web-trace` before upgrading into 0004 would abort the migration —
-    /// and with it `SqliteAppsStore::new`, leaving the registry unopenable. The
-    /// seed allocates around the collision instead: the next port above the
-    /// allocated ones, and the app id as the subdomain.
+    fn count(conn: &mut SqliteConnection, query: &str) -> i64 {
+        sql_query(query)
+            .get_result::<RowCount>(conn)
+            .unwrap_or_else(|e| panic!("`{query}` must read: {e}"))
+            .count
+    }
+
+    /// Register an uploaded self-hosted app — the kind `0011` removes — at the
+    /// tail.
+    fn create_self_hosted_app(conn: &mut SqliteConnection, id: &str, port: i32) {
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, kind, position, on_homescreen, name, local_only, requires_tunnel) \
+             VALUES (?, 'self-hosted', (SELECT MAX(position) + 1 FROM app_registrations), 1, ?, 1, 0)",
+        )
+        .bind::<Text, _>(id)
+        .bind::<Text, _>(id)
+        .execute(conn)
+        .expect("registration insert must succeed");
+        sql_query(
+            "INSERT INTO self_hosted_app_configurations \
+             (id, port, content_folder, subdomain, seeded) VALUES (?, ?, ?, ?, 0)",
+        )
+        .bind::<Text, _>(id)
+        .bind::<Integer, _>(port)
+        .bind::<Text, _>(id)
+        .bind::<Text, _>(id)
+        .execute(conn)
+        .expect("configuration insert must succeed");
+    }
+
+    /// An install at `0010` holding the seeded `patient-browser` and an uploaded
+    /// app loses both when `0011` runs; every other app keeps its configuration
+    /// and its relative order, renumbered to a dense `0..n`.
     #[test]
-    fn web_trace_seed_allocates_around_a_taken_port_and_subdomain() {
+    fn an_install_already_at_0010_loses_its_self_hosted_apps() {
         let pool = persistence_rust::open_in_memory_pool().unwrap();
         let mut conn = pool.get().unwrap();
         persistence_rust::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MigrationsThrough("0003"),
+            MigrationsThrough("0010"),
         )
         .unwrap();
-        occupy(&mut conn, "web-trace", 8091);
+        create_self_hosted_app(&mut conn, "my-upload", 8082);
+        create_user_cloud_app(&mut conn, "my-cloud-app");
+        drop(conn);
 
-        // Stops at 0004 deliberately: 0005 moves this app to a cloud row and drops
-        // the self-hosted payload, so the fallback under test is only observable
-        // at the version that wrote it.
-        persistence_rust::run_diesel_migrations(
-            &mut conn,
-            MIGRATION_NAMESPACE,
-            MigrationsThrough("0004"),
-        )
-        .expect("0004 must apply over the collision, not abort the migration run");
-
-        let seeded = origin_of(&mut conn, "wildflower-web-trace");
-        assert_eq!(seeded.port, 8092, "the next port above every allocated one");
-        assert_eq!(seeded.subdomain, "wildflower-web-trace");
-        let upload = origin_of(&mut conn, "web-trace");
+        let store = SqliteAppsStore::new(pool).expect("0011 must apply");
+        let registrations = store.list_registrations().unwrap();
+        let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
         assert_eq!(
-            (upload.port, upload.subdomain.as_str()),
-            (8091, "web-trace"),
-            "the upload keeps the origin it was allocated — the seed moves, not it",
+            ids,
+            vec![
+                "api-view",
+                "api-docs",
+                "growth-chart",
+                "medication-viewer",
+                "precise-hbr",
+                "medications-app",
+                "web-trace-app",
+                "web-server-docs",
+                "importer-app",
+                "ohif-viewer",
+                "lifting-app",
+                "my-cloud-app",
+            ],
+            "the self-hosted rows are gone and the rest keep their order",
+        );
+        let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
+        let dense: Vec<i64> = (0..).take(positions.len()).collect();
+        assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
+        for registration in &registrations {
+            assert!(
+                store.find_app(&registration.id).unwrap().is_some(),
+                "{} keeps its configuration across the rebuild",
+                registration.id,
+            );
+        }
+
+        let mut conn = store.pool().get().unwrap();
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM sqlite_master \
+                 WHERE name = 'self_hosted_app_configurations'",
+            ),
+            0,
+            "the self-hosted configuration table is dropped",
+        );
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM sqlite_master WHERE name LIKE '%\\_new' ESCAPE '\\'",
+            ),
+            0,
+            "no rebuild scratch table is left behind",
         );
     }
 
-    /// The same for 0003, whose 8090 / `medication` pair is taken by an upload named
-    /// "Medication". 0004 then runs over the *displaced* medication row: its 8091 is
-    /// gone too, so it allocates once more — the fallbacks compose down the chain.
+    /// After `0011` the rebuilt registry still enforces what `0001` declared:
+    /// `kind` admits only system and cloud, and deleting a registration cascades
+    /// to its configuration (the rebuilt configuration tables reference the final
+    /// `app_registrations` name).
     #[test]
-    fn medication_seed_allocates_around_a_taken_port_and_subdomain() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
-        let mut conn = pool.get().unwrap();
-        persistence_rust::run_diesel_migrations(
-            &mut conn,
-            MIGRATION_NAMESPACE,
-            MigrationsThrough("0002"),
-        )
-        .unwrap();
-        occupy(&mut conn, "medication", 8090);
+    fn the_rebuilt_registry_narrows_kind_and_keeps_its_cascade() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
 
-        // Stops at 0004 for the same reason as the test above.
-        persistence_rust::run_diesel_migrations(
-            &mut conn,
-            MIGRATION_NAMESPACE,
-            MigrationsThrough("0004"),
+        let rejected = sql_query(
+            "INSERT INTO app_registrations \
+             (id, kind, position, on_homescreen, name, local_only, requires_tunnel) \
+             VALUES ('x', 'self-hosted', 99, 1, 'x', 1, 0)",
         )
-        .expect("0003 must apply over the collision, not abort the migration run");
-
-        let medication = origin_of(&mut conn, "wildflower-medication");
-        assert_eq!(
-            (medication.port, medication.subdomain.as_str()),
-            (8091, "wildflower-medication"),
+        .execute(&mut conn);
+        assert!(
+            rejected.is_err(),
+            "the kind CHECK must reject a removed kind"
         );
-        let web_trace = origin_of(&mut conn, "wildflower-web-trace");
+
+        sql_query("DELETE FROM app_registrations WHERE id IN ('growth-chart', 'api-docs')")
+            .execute(&mut conn)
+            .unwrap();
         assert_eq!(
-            (web_trace.port, web_trace.subdomain.as_str()),
-            (8092, "web-trace"),
-            "0004's own subdomain was never taken — only its port had to move",
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM cloud_app_configurations WHERE id = 'growth-chart'",
+            ),
+            0,
+            "the cloud configuration cascades",
+        );
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM system_app_configurations WHERE id = 'api-docs'",
+            ),
+            0,
+            "the system configuration cascades",
+        );
+    }
+
+    /// Reverting `0011` restores the `0010` schema — the wider `kind` CHECK and an
+    /// empty self-hosted configuration table — over the surviving rows.
+    #[test]
+    fn reverting_0011_restores_the_0010_schema() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+        let migration_0011 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0011"))
+            .expect("0011 is embedded");
+        migration_0011.revert(&mut conn).expect("revert 0011");
+
+        create_self_hosted_app(&mut conn, "my-upload", 8082);
+        assert_eq!(
+            count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations",),
+            12,
+            "the eleven surviving apps plus the new self-hosted row",
+        );
+        drop(conn);
+        assert!(
+            store.find_app("lifting-app").unwrap().is_some(),
+            "the surviving apps keep their configurations",
         );
     }
 }

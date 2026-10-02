@@ -16,7 +16,6 @@ use crate::domain::client_redirect::{build_client_error_redirect_url, build_clie
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
-use crate::http::ServedOrigin;
 
 use super::wait_page::wait_page_location;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveLoopbackOwnerApprover};
@@ -190,7 +189,6 @@ pub struct AuthorizeParams {
 pub(super) async fn handle_authorize_request(
     code_authorization_starter: Live<LiveCodeAuthorizationStarter>,
     loopback_owner_approver: Live<LiveLoopbackOwnerApprover>,
-    origin: ServedOrigin,
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
@@ -215,7 +213,6 @@ pub(super) async fn handle_authorize_request(
             redirect_uri: &params.redirect_uri,
             client_state: &params.state,
         },
-        &origin,
         FreshIds {
             request_id: Uuid::new_v4().to_string(),
             code: generate_authorization_code(),
@@ -244,11 +241,8 @@ pub(super) async fn handle_authorize_request(
                 Some(RequestProvenance::Loopback)
             );
             if asks_loopback_dialog(is_direct_loopback, &params.client_id) {
-                let asking = Arc::new(loopback_owner_approver.0).ask_and_decide(
-                    request_id.clone(),
-                    origin.0.clone(),
-                    generate_authorization_code,
-                );
+                let asking = Arc::new(loopback_owner_approver.0)
+                    .ask_and_decide(request_id.clone(), generate_authorization_code);
                 tokio::spawn(async move {
                     match asking.await {
                         Ok(decision) => tracing::info!(?decision, "loopback dialog decided"),

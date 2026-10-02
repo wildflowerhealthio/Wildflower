@@ -89,7 +89,7 @@ impl From<TunnelSettingsRow> for TunnelSettings {
             revision: row.revision,
             // `public_host` passes through as stored (a blank string is
             // normalized to `None` only at the seed/consume points that care —
-            // see `seed_if_absent` and `TunnelControl::current_public_host`).
+            // see `seed_if_absent` and the daemon's liveness snapshot).
             public_host: row.public_host,
             requested_running: row.requested_running,
             relay_settings: relay_from_columns(

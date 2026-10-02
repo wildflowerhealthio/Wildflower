@@ -16,12 +16,13 @@ use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::capabilities::writers::{CodeAuthority, RequestApprover};
 use crate::domain::client::Client;
-use crate::domain::client_registration::RegistrationClassifier;
+use crate::domain::client_redirect::redirect_is_allowlisted;
+use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::oauth_error_kind::OAuthErrorKind;
 use crate::domain::GatekeeperStore;
-use crate::ports::{PendingConsentPublisher, SelfHostedRedirectResolver};
+use crate::ports::PendingConsentPublisher;
 
 /// Lifetime of a pending authorization request waiting for Owner approval.
 pub(crate) const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
@@ -96,24 +97,20 @@ impl From<GatekeeperError> for AuthorizationStartError {
 pub(crate) struct CodeAuthorizationStarter<S: GatekeeperStore> {
     store: S,
     publisher: Arc<dyn PendingConsentPublisher>,
-    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
     first_party_client_id: Arc<str>,
 }
 
 impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
-    /// Build the starter over the store, the popup republish port, the
-    /// self-hosted redirect seam, and the first-party `client_id` — all lifted
-    /// from the state.
+    /// Build the starter over the store, the popup republish port, and the
+    /// first-party `client_id` — all lifted from the state.
     pub(crate) fn new(
         store: S,
         publisher: Arc<dyn PendingConsentPublisher>,
-        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
         first_party_client_id: Arc<str>,
     ) -> Self {
         CodeAuthorizationStarter {
             store,
             publisher,
-            self_hosted_redirects,
             first_party_client_id,
         }
     }
@@ -127,8 +124,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
     /// [`crate::domain::client_registration`]): a request outside the
     /// registration is parked with a warning rather than rejected, never takes
     /// the fast path, and — while its redirect is untrusted — renders every
-    /// failure locally rather than risk an open redirect. `served_origin` is the
-    /// base an app-relative redirect entry resolves against.
+    /// failure locally rather than risk an open redirect.
     ///
     /// # Errors
     ///
@@ -136,17 +132,12 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
     pub(crate) fn start(
         &self,
         authorize_query: &AuthorizeRequest<'_>,
-        served_origin: &str,
         ids: FreshIds,
         now: DateTime<Utc>,
     ) -> Result<AuthorizeNextStep, AuthorizationStartError> {
         if !self.store.has_active_signing_key()? {
             return Err(AuthorizationStartError::NoActiveSigningKey);
         }
-        let classifier = RegistrationClassifier {
-            self_hosted_redirects: self.self_hosted_redirects.as_ref(),
-            served_origin,
-        };
         let registration_is_locked = self.registration_is_locked(authorize_query.client_id);
         let maybe_existing_client =
             self.load_client(authorize_query.client_id, registration_is_locked)?;
@@ -156,7 +147,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         let redirect_allowlisted = maybe_existing_client
             .as_ref()
             .is_some_and(|existing_client| {
-                classifier.redirect_is_allowlisted(existing_client, &requested_redirect_uri)
+                redirect_is_allowlisted(existing_client, &requested_redirect_uri)
             });
         if registration_is_locked && !redirect_allowlisted {
             return Err(AuthorizationStartError::LocalPage(
@@ -184,12 +175,11 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
                 });
             }
         }
-        let registration_verdict = classifier.classify(
-            authorize_query.client_id,
-            maybe_existing_client.as_ref(),
-            &requested_redirect_uri,
-            &requested_scopes,
-        );
+        let registration_verdict = classify_registration(&PresentedClientRegistration {
+            maybe_existing_client: maybe_existing_client.as_ref(),
+            redirect_uri: &requested_redirect_uri,
+            scopes: &requested_scopes,
+        });
         let coverage = GrantCoverage::resolve(
             &self.store,
             &registration_verdict,
@@ -338,13 +328,12 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
-    use crate::domain::client::{ClientKind, RegisteredRedirectUri};
+    use crate::domain::client::ClientKind;
     use crate::domain::grant::AuthorizationCodeGrant;
 
     use crate::domain::test_fake::{
         client, code_grant, seed_active_signing_key, FakeGatekeeperStore, RecordingPublisher,
     };
-    use crate::ports::NoSelfHostedRedirects;
 
     const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 
@@ -375,12 +364,8 @@ mod tests {
     ) {
         seed_active_signing_key(&store);
         let publisher = Arc::new(RecordingPublisher::default());
-        let code_authorization_starter = CodeAuthorizationStarter::new(
-            store,
-            publisher.clone(),
-            Arc::new(NoSelfHostedRedirects),
-            "host".into(),
-        );
+        let code_authorization_starter =
+            CodeAuthorizationStarter::new(store, publisher.clone(), "host".into());
         (code_authorization_starter, publisher)
     }
 
@@ -405,7 +390,6 @@ mod tests {
         let outcome = code_authorization_starter
             .start(
                 &request("app", "patient/Patient.r openid"),
-                "http://127.0.0.1",
                 ids(),
                 Utc::now(),
             )
@@ -445,7 +429,6 @@ mod tests {
         let outcome = code_authorization_starter
             .start(
                 &request("app", "patient/Patient.r openid"),
-                "http://127.0.0.1",
                 ids(),
                 Utc::now(),
             )
@@ -474,31 +457,21 @@ mod tests {
     fn unknown_clients_park_and_untrusted_redirects_fail_locally() {
         let (code_authorization_starter, _) = starter(FakeGatekeeperStore::default());
         let outcome = code_authorization_starter
-            .start(
-                &request("newcomer", "openid"),
-                "http://127.0.0.1",
-                ids(),
-                Utc::now(),
-            )
+            .start(&request("newcomer", "openid"), ids(), Utc::now())
             .expect("parked_request for the owner");
         assert!(matches!(outcome, AuthorizeNextStep::AwaitOwner { .. }));
 
         let mut bad_type = request("newcomer", "openid");
         bad_type.response_type = "token";
         assert!(matches!(
-            code_authorization_starter.start(&bad_type, "http://127.0.0.1", ids(), Utc::now()),
+            code_authorization_starter.start(&bad_type, ids(), Utc::now()),
             Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::UnsupportedResponseType
             ))
         ));
 
         assert!(matches!(
-            code_authorization_starter.start(
-                &request("host", "openid"),
-                "http://127.0.0.1",
-                ids(),
-                Utc::now()
-            ),
+            code_authorization_starter.start(&request("host", "openid"), ids(), Utc::now()),
             Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::UnknownClient
             ))
@@ -513,9 +486,7 @@ mod tests {
         store
             .upsert_client(&Client {
                 kind: ClientKind::Public,
-                redirect_uris: vec![RegisteredRedirectUri::Absolute(
-                    Url::parse("https://example.com/cb").unwrap(),
-                )],
+                redirect_uris: vec![Url::parse("https://example.com/cb").unwrap()],
                 ..client("host", &["openid"])
             })
             .unwrap();
@@ -523,7 +494,7 @@ mod tests {
         let mut bad_type = request("host", "openid");
         bad_type.response_type = "token";
         assert!(matches!(
-            code_authorization_starter.start(&bad_type, "http://127.0.0.1", ids(), Utc::now()),
+            code_authorization_starter.start(&bad_type, ids(), Utc::now()),
             Err(AuthorizationStartError::Redirectable {
                 error: OAuthErrorCode::UnsupportedResponseType,
                 ..
@@ -532,7 +503,6 @@ mod tests {
         assert!(matches!(
             code_authorization_starter.start(
                 &request("host", "openid patient/Patient.r"),
-                "http://127.0.0.1",
                 ids(),
                 Utc::now()
             ),
@@ -550,16 +520,10 @@ mod tests {
         let code_authorization_starter = CodeAuthorizationStarter::new(
             store,
             Arc::new(RecordingPublisher::default()),
-            Arc::new(NoSelfHostedRedirects),
             "host".into(),
         );
         assert!(matches!(
-            code_authorization_starter.start(
-                &request("app", "openid"),
-                "http://127.0.0.1",
-                ids(),
-                Utc::now()
-            ),
+            code_authorization_starter.start(&request("app", "openid"), ids(), Utc::now()),
             Err(AuthorizationStartError::NoActiveSigningKey)
         ));
         assert!(code_authorization_starter

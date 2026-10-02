@@ -42,12 +42,6 @@ served-origin = ["dep:axum"]
 # only the `-rust` slices that persist with diesel pull `diesel`/`serde_json`;
 # the lean default build is unaffected.
 diesel-json-text = ["dep:diesel", "dep:serde_json"]
-# Opt-in: the `<id>.<public_host>` subdomain shape (`subdomain_host`,
-# `subdomain_url`, `try_split_subdomain`) shared by the apps slice's launch
-# redirect (producer) and the host's forwarded-request reverse proxy (consumer).
-# Pure string code, no extra deps — enabled by apps-rust and the
-# shared-structures-server-rust crate so the producer/consumer can't drift.
-subdomain-url = []
 
 [dependencies]
 # `serde` is non-optional: the always-on `bridge` module derives

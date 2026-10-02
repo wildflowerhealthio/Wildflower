@@ -12,23 +12,21 @@ use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::capabilities::writers::{CodeAuthority, GrantRecorder, RequestApprover};
 use crate::domain::client_redirect::build_client_redirect_url;
-use crate::domain::client_registration::RegistrationClassifier;
+use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::ports::PendingConsentPublisher;
 use scopes_rust::Grant;
 
-/// Everything an approval needs beyond the prompt itself: who is approving, how
-/// to judge the client's registration, which client's registration is locked,
+/// Everything an approval needs beyond the prompt itself: who is approving,
+/// which client's registration is locked,
 /// whether the approval is remembered, and the instant the writes are stamped
-/// with. Bundled (rather than six more parameters) so
+/// with. Bundled (rather than four more parameters) so
 /// [`approve_oauth_consent`]'s signature stays readable.
 pub(crate) struct ApprovalContext<'a> {
     /// The deciding Owner's own granted scopes — the bound on what the
     /// approval may delegate (see [`DelegatedScopes::clamp`]).
     pub(crate) approver_grant: &'a Grant,
-    /// Judges the request against the client's current registration.
-    pub(crate) classifier: &'a RegistrationClassifier<'a>,
     /// The first-party host's `client_id` — the one client whose registration
     /// is locked: never trusted on first use, never widened by an approval.
     pub(crate) first_party_client_id: &'a str,
@@ -108,12 +106,11 @@ pub(crate) fn approve_oauth_consent(
     if registration_is_locked && maybe_existing_client.is_none() {
         return Err(make_consent_not_found());
     }
-    let registration_verdict = ctx.classifier.classify(
-        &request.client_id,
-        maybe_existing_client.as_ref(),
-        requested_redirect_uri,
-        &request.requested_scopes,
-    );
+    let registration_verdict = classify_registration(&PresentedClientRegistration {
+        maybe_existing_client: maybe_existing_client.as_ref(),
+        redirect_uri: requested_redirect_uri,
+        scopes: &request.requested_scopes,
+    });
     if registration_verdict.needs_acknowledgement() && !input.acknowledged_registration {
         return Err(GatekeeperError::RegistrationNotAcknowledged { id: id.to_owned() });
     }

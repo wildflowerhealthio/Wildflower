@@ -3,9 +3,9 @@
 //!
 //! [`serve`] opens the host's databases, sets up each server slice (gatekeeper,
 //! FHIR R4, OHIF, collector, tunnel, apps, databases, the `/docs` reference),
-//! gates them, wraps them in the loopback owner trust, the loopback-peer gate,
-//! the CORS policy and the tunnel's subdomain reverse proxy, and serves the
-//! result on the loopback port until its shutdown token is cancelled.
+//! gates them, wraps them in the loopback owner trust, the loopback-peer gate and
+//! the CORS policy, and serves the result on the loopback port until its shutdown
+//! token is cancelled.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's
@@ -14,7 +14,6 @@
 mod hfs_base_url;
 mod loopback_owner_trust;
 mod not_found;
-mod self_hosted_redirect_resolver;
 mod tunnel_adapters;
 
 use std::net::SocketAddr;
@@ -22,7 +21,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
-use apps_rust::{ports::AppLaunchScopes, setup_apps, AppsConfig, SelfHostedAppsService};
+use apps_rust::{ports::AppLaunchScopes, setup_apps, AppsConfig};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
@@ -31,7 +30,6 @@ use gatekeeper_rust::{
 };
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
-use shared_structures_server_rust::{ProxyTable, TunnelSubdomainReverseProxy};
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -57,14 +55,6 @@ pub struct WildflowerServerConfig {
     /// The directory holding the FHIR R4 SearchParameter bundle HFS indexes from
     /// (see [`EmrConfig::search_parameter_data_dir`]).
     pub search_parameter_data_dir: PathBuf,
-    /// The vendored self-hosted app builds, copied into the served
-    /// `self-hosted-apps` dir at startup. A missing directory means no vendored
-    /// apps (see [`apps_rust::sync_vendored_self_hosted_apps`]).
-    pub vendored_self_hosted_apps_dir: PathBuf,
-    /// Whether the startup copy of [`Self::vendored_self_hosted_apps_dir`]
-    /// overwrites apps already in the served dir (mirroring a dev source tree)
-    /// rather than only filling in missing ones.
-    pub overwrite_vendored_self_hosted_apps: bool,
     /// The hosted owner UI every browser-facing link points at.
     pub owner_ui_base: OwnerUiBase,
     /// The scopes gatekeeper seeds the first-party client with and mints the host
@@ -164,8 +154,8 @@ fn api_cors_layer() -> CorsLayer {
 /// # Remarks
 ///
 /// Slices spawn background tasks (the tunnel supervisor, gatekeeper's re-mint
-/// and sweeps, the FHIR base-URL follower, the self-hosted app listeners) onto
-/// the runtime that runs this future; they are not tied to `shutdown`.
+/// and sweeps, the FHIR base-URL follower) onto the runtime that runs this
+/// future; they are not tied to `shutdown`.
 pub async fn serve(
     config: WildflowerServerConfig,
     host: HostPorts,
@@ -174,8 +164,6 @@ pub async fn serve(
     let WildflowerServerConfig {
         runtime,
         search_parameter_data_dir,
-        vendored_self_hosted_apps_dir,
-        overwrite_vendored_self_hosted_apps,
         owner_ui_base,
         host_owner_scopes,
         first_party_client_id,
@@ -261,16 +249,13 @@ pub async fn serve(
         persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
 
     // DEBUG BUILDS ONLY: the `…-dev` app rows pointing at the first-party apps'
-    // vite dev servers, plus their matching OAuth clients. The two first-party
-    // apps ship as cloud rows served from https://wildflowerhealth.io, which is
-    // the wrong target while developing them — these self-hosted siblings launch
-    // `http://127.0.0.1:<vite port>/` instead. They are a runtime seed rather than
+    // vite dev servers, plus their matching OAuth clients. The first-party apps
+    // ship as cloud rows served from https://wildflowerhealth.io, which is the
+    // wrong target while developing them — these cloud siblings launch
+    // `http://localhost:<vite port>/` instead. They are a runtime seed rather than
     // a migration precisely so they cannot exist in a release database (a
     // migration runs unconditionally); both the seeds and this call site are
     // `cfg(debug_assertions)`, so release builds contain no code that writes them.
-    // Run BEFORE `setup_apps` so the rows are in the catalogue it materializes for
-    // the startup listener binding below — a bind that fails because vite already
-    // holds the port is expected and tolerated (see `SelfHostedAppsService::start`).
     // Best-effort: a failure only costs the dev tiles, never startup.
     #[cfg(debug_assertions)]
     {
@@ -282,18 +267,6 @@ pub async fn serve(
         }
     }
 
-    // Resolves a self-hosted app's `{port, subdomain}` for gatekeeper's
-    // app-relative redirect matching (see `self_hosted_redirect_resolver`). Built
-    // from the shared pool here so it is ready before the gatekeeper state; its
-    // own `SqliteAppsStore` applies the apps migrations (idempotent with the one
-    // `setup_apps` builds later).
-    let redirect_resolver = Arc::new(
-        self_hosted_redirect_resolver::AppsStoreRedirectResolver::new(
-            apps_rust::SqliteAppsStore::new(diesel_pool.clone())
-                .context("failed to open apps store for redirect resolution")?,
-        ),
-    );
-
     // `setup_gatekeeper` publishes the freshly-minted host owner token (and
     // pending-consent heads) on the host's channels; the host's bridge delivers
     // them to the webview.
@@ -303,7 +276,6 @@ pub async fn serve(
         &gatekeeper_config,
         &host.host_owner_token_sender,
         host.active_pending_consent_sender,
-        redirect_resolver,
         host.loopback_consent_prompt,
     )
     .context("failed to set up gatekeeper")?;
@@ -360,8 +332,7 @@ pub async fn serve(
     // front trust boundary for the redirect. A `requires_tunnel` launch resolves to
     // the tunnel's verified origin through the tunnel service (or fails 503
     // LaunchUnavailable when the tunnel can't be brought up). The apps slice derives
-    // the launch origin and the self-hosted listeners' hostname from
-    // `loopback_base_url`, so they can't drift.
+    // the loopback launch origin from `loopback_base_url`.
     let apps_config = AppsConfig {
         loopback_base_url: loopback_base_url.clone(),
     };
@@ -394,52 +365,6 @@ pub async fn serve(
         state: gatekeeper.state.clone(),
     });
 
-    // Static self-hosted apps are served from this directory under app-data at
-    // request time (the apps slice's `SelfHostedAppsService` builds each app's
-    // file-serving router from its `<content_folder>/` subdirectory here, and the
-    // upload handler stages extracted bundles under it). Created up front so it's
-    // a stable, discoverable place to drop an app's files; an empty/missing dir
-    // just 404s. Best-effort — a creation failure only means the apps routes 404
-    // until it exists, so it must not abort server startup.
-    let self_hosted_apps_dir = runtime.app_data_dir.join("self-hosted-apps");
-    if let Err(error) = std::fs::create_dir_all(&self_hosted_apps_dir) {
-        tracing::warn!(
-            "failed to create self-hosted-apps dir {}: {error}",
-            self_hosted_apps_dir.display()
-        );
-    }
-
-    // Refresh the vendored self-hosted app builds into the serving dir — the host
-    // chooses the source and whether it overwrites (see
-    // `apps_rust::sync_vendored_self_hosted_apps`).
-    if let Err(error) = apps_rust::sync_vendored_self_hosted_apps(
-        &vendored_self_hosted_apps_dir,
-        &self_hosted_apps_dir,
-        overwrite_vendored_self_hosted_apps,
-    ) {
-        tracing::warn!("failed to sync vendored self-hosted apps: {error}");
-    }
-
-    // The `id -> loopback port` table the reverse proxy reads per request and the
-    // apps slice registers each self-hosted app into. A cloneable `Arc` handle,
-    // so the registration the slice does is visible to the live proxy.
-    let proxy_table = ProxyTable::new();
-
-    // The apps slice owns the self-hosted lifecycle. Each self-hosted app gets
-    // its own dedicated loopback origin (`http://{loopback_hostname}:{port}/`) —
-    // its own security context (own storage, own cookies, no Same-Origin Policy
-    // share with the main API) — and is registered into `proxy_table` so it's
-    // also reachable remotely at `<app-id>.<public-host>` for forwarded traffic.
-    // Built before `setup_apps` and handed in (both hold the `Arc`), so the
-    // upload/delete handlers bring apps online/offline through the same instance
-    // that binds the startup seed listeners below.
-    let self_hosted = Arc::new(SelfHostedAppsService::new(
-        &loopback_base_url,
-        self_hosted_apps_dir,
-        proxy_table.clone(),
-        Arc::clone(&tunnel_service),
-    ));
-
     // A loopback launch hands the resolved URL to the host's on-device webview
     // handle, which opens it in a native popup (the server 204s).
     let apps = setup_apps(
@@ -447,7 +372,6 @@ pub async fn serve(
         &apps_config,
         Arc::clone(&tunnel_service),
         host.on_device_webview_handle,
-        Arc::clone(&self_hosted),
         launch_scopes,
     )
     .context("failed to set up apps")?;
@@ -536,10 +460,6 @@ pub async fn serve(
     // `api_cors_layer`). Trust doesn't come from CORS here anyway: the
     // loopback gate rejects non-local peers and auth rides the bearer
     // header.
-    //
-    // The whole API stack — built first because it's the reverse proxy's
-    // fallback, handed in at construction. A forwarded request that doesn't
-    // match a self-hosted subdomain (and every loopback request) runs this.
     let api_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
@@ -594,45 +514,9 @@ pub async fn serve(
         .layer(require_loopback_peer_middleware())
         .layer(api_cors_layer());
 
-    // The reverse proxy wraps the API stack as the outermost layer: a forwarded
-    // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`
-    // is reverse-proxied to that app's loopback port (the same listener a local
-    // launch reaches); loopback and apex-host traffic runs the api_router.
-    let proxy = TunnelSubdomainReverseProxy::new(
-        loopback_base_url.clone(),
-        Arc::clone(&tunnel_service),
-        api_router,
-        proxy_table.clone(),
-    );
-
-    // Bind every self-hosted app's loopback listener + proxy registration at
-    // startup — both migration-seeded rows and previously-uploaded ones. The DB
-    // row's `port` is the source of truth for the bind; the apps slice renders
-    // the launch target from the same value, so redirect and listener can't
-    // drift. The runtime upload/delete handlers drive the same `self_hosted`
-    // instance for restartless install/uninstall. A failure to bring one app
-    // online must not abort startup, so it's logged and skipped. The loopback
-    // API origin + tunnel feed the per-request template rendering (`apiOrigin`)
-    // in each app's router — loopback callers get the loopback origin, forwarded
-    // callers `https://<public_host>`.
-    for (registration, config) in &apps.self_hosted_apps_at_start {
-        if let Err(error) = self_hosted.start(&registration.id, config).await {
-            tracing::warn!(
-                "failed to start self-hosted app {}: {error}",
-                registration.id
-            );
-        }
-    }
-    // Hold the orchestrator while serving — dropping it would drop the running
-    // listeners' shutdown signals and take the self-hosted apps offline.
-    // (`apps.state` holds a clone of the same `Arc`, so the handlers share it.)
-    let _self_hosted = self_hosted;
-
     axum::serve(
         listener,
-        proxy
-            .into_router()
-            .into_make_service_with_connect_info::<SocketAddr>(),
+        api_router.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown.cancelled_owned())
     .await?;

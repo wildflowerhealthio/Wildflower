@@ -244,7 +244,7 @@ async fn an_approved_loopback_login_is_issued_a_redeemable_code_and_no_grant() {
         .client_by_id(HOSTED_UI)
         .expect("query")
         .expect("client row");
-    assert!(registered.redirect_uris.contains(&app_redirect().into()));
+    assert!(registered.redirect_uris.contains(&app_redirect()));
     assert!(store
         .grant_by_client_and_redirect(HOSTED_UI, &app_redirect())
         .expect("query")

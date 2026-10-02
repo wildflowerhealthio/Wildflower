@@ -4,29 +4,20 @@
 //! tests. The served routes and the OpenAPI spec come from the same
 //! `#[utoipa::path]`-annotated handlers. One file per route named by operation,
 //! under a folder tree mirroring the URL tree: [`apps`] holds `/apps` (list,
-//! launch, delete), [`cloud_apps`] / [`self_hosted_apps`] / [`system_apps`] the
-//! per-kind root resources, and [`home_screen`] the flat `/home-screen` route. The
+//! launch, delete), [`cloud_apps`] / [`system_apps`] the per-kind root resources, and [`home_screen`] the flat `/home-screen` route. The
 //! gating split is documented on the [`crate::http`] router builders these back.
 
 mod apps;
 mod cloud_apps;
 mod home_screen;
-mod self_hosted_apps;
 mod system_apps;
 
 use std::sync::Arc;
 
-use axum::extract::DefaultBodyLimit;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::live_bindings::state::AppsState;
-
-/// The raw request-body cap for `POST /self-hosted-apps` (which accepts a
-/// self-hosted upload). Scoped to just that route (the rest of the surface keeps
-/// axum's small default), sized to the largest bundle we accept — the 512 MiB
-/// *extracted* cap still applies inside the handler.
-const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 
 /// The scope-gated admin routes as an `OpenApiRouter`, each gated on
 /// `wildflower/Apps.{r,c,u,d}` (the spec-bearing inner of
@@ -35,20 +26,9 @@ const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 ///  - `GET /apps` (uniform registry list) + `DELETE /apps/{id}` (unified delete) —
 ///    see [`apps`];
 ///  - `PUT /home-screen` (atomic reorder / enable, any kind) — see [`home_screen`];
-///  - the per-kind root resources `GET`/`POST`/`PUT /cloud-apps…`,
-///    `GET`/`POST`/`PUT /self-hosted-apps…`, `GET /system-apps/{id}` — see
-///    [`cloud_apps`] / [`self_hosted_apps`] / [`system_apps`].
+///  - the per-kind root resources `GET`/`POST`/`PUT /cloud-apps…` and
+///    `GET /system-apps/{id}` — see [`cloud_apps`] / [`system_apps`].
 pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    // `POST /self-hosted-apps` accepts a self-hosted upload, so its body limit is
-    // raised well above axum's small default; building it as its own router and
-    // layering the limit there scopes the raise to this one route (a `.layer` on
-    // the whole router would loosen every endpoint).
-    let upload_router = OpenApiRouter::new()
-        .routes(routes!(
-            self_hosted_apps::create::handle_create_self_hosted_app
-        ))
-        .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES));
-
     OpenApiRouter::new()
         .routes(routes!(apps::list_all::handle_list_apps))
         .routes(routes!(apps::delete_by_id::handle_delete_app))
@@ -58,12 +38,7 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
             cloud_apps::get_by_id::handle_get_cloud_app,
             cloud_apps::update_by_id::handle_update_cloud_app
         ))
-        .routes(routes!(
-            self_hosted_apps::get_by_id::handle_get_self_hosted_app,
-            self_hosted_apps::update_by_id::handle_update_self_hosted_app
-        ))
         .routes(routes!(system_apps::get_by_id::handle_get_system_app))
-        .merge(upload_router)
 }
 
 /// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
@@ -95,15 +70,11 @@ mod tests {
     use tower::ServiceExt;
 
     // The port trait is in scope so the concrete store's `insert_cloud_app` /
-    // `insert_self_hosted_app` / `find_app` methods resolve in the fixtures.
-    use crate::domain::{
-        AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration,
-        SelfHostedAppConfigurationPayload,
-    };
+    // `find_app` methods resolve in the fixtures.
+    use crate::domain::{AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration};
     use crate::http::test_support::{
-        state, state_with_launch_scopes, state_with_sink, state_with_tunnel,
-        state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable, tunnel_with_public_host,
-        FixedLaunchScopes,
+        state, state_with_launch_scopes, state_with_sink, state_with_tunnel_and_handle, tunnel_at,
+        tunnel_unavailable, FixedLaunchScopes,
     };
     use crate::live_bindings::state::AppsState;
     use scope_capabilities_rust::ScopeClaims;
@@ -233,41 +204,6 @@ mod tests {
             .unwrap()
     }
 
-    /// Build a `multipart/form-data` POST with text fields and an optional file
-    /// part — the shape `POST /self-hosted-apps` takes.
-    fn post_multipart(
-        uri: &str,
-        fields: &[(&str, &str)],
-        file: Option<(&str, &[u8])>,
-    ) -> Request<Body> {
-        let boundary = "TESTBOUNDARY";
-        let mut body: Vec<u8> = Vec::new();
-        for (key, value) in fields {
-            body.extend_from_slice(
-                format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n")
-                    .as_bytes(),
-            );
-        }
-        if let Some((key, contents)) = file {
-            body.extend_from_slice(
-                format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"; filename=\"bundle.zip\"\r\nContent-Type: application/zip\r\n\r\n")
-                    .as_bytes(),
-            );
-            body.extend_from_slice(contents);
-            body.extend_from_slice(b"\r\n");
-        }
-        body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-        Request::builder()
-            .method("POST")
-            .uri(uri)
-            .header(
-                "content-type",
-                format!("multipart/form-data; boundary={boundary}"),
-            )
-            .body(Body::from(body))
-            .unwrap()
-    }
-
     /// A cloud create — `POST /cloud-apps` JSON.
     fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
         post_json(
@@ -296,35 +232,6 @@ mod tests {
             .expect("inserted");
     }
 
-    /// Seed a self-hosted app directly through the store (the fixture shortcut a test
-    /// uses instead of driving `POST /self-hosted-apps`).
-    fn seed_self_hosted(
-        store: &crate::db::SqliteAppsStore,
-        name: &str,
-        slug: &str,
-        launch_path: Option<&str>,
-    ) {
-        let registration = AppRegistration {
-            id: slug.to_owned(),
-            kind: AppKind::SelfHosted,
-            position: 0,
-            on_homescreen: true,
-            name: name.to_owned(),
-            subtitle: None,
-            local_only: true,
-            client_id: None,
-            requires_tunnel: false,
-        };
-        let create = SelfHostedAppConfigurationPayload {
-            content_folder: format!("{slug}-folder"),
-            subdomain: slug.to_owned(),
-            launch_path: launch_path.map(str::to_owned),
-        };
-        store
-            .insert_self_hosted_app(&registration, &create, &[])
-            .expect("inserted");
-    }
-
     #[tokio::test]
     async fn list_apps_returns_all_seeded_apps_in_order() {
         let st = state();
@@ -339,7 +246,6 @@ mod tests {
         assert_eq!(
             ids,
             vec![
-                "patient-browser",
                 "api-view",
                 "api-docs",
                 "growth-chart",
@@ -356,8 +262,8 @@ mod tests {
     }
 
     /// The list is a uniform `AppRegistration[]` keyed on `kind`: every item
-    /// carries the shared facts, and the per-kind payload (`url`, `launchPath`)
-    /// stays off the list — it's an editor concern read on a detail lookup.
+    /// carries the shared facts, and the per-kind payload (`url`) stays off the
+    /// list — it's an editor concern read on a detail lookup.
     #[tokio::test]
     async fn list_apps_is_a_uniform_registration_with_kind() {
         let st = state();
@@ -573,56 +479,20 @@ mod tests {
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    /// A forwarded launch of a self-hosted app with `public_host` answers the
-    /// public subdomain for the caller's page to navigate to — a `200` body, not a
-    /// redirect a `fetch` would follow invisibly.
-    #[tokio::test]
-    async fn launch_self_hosted_forwarded_answers_the_subdomain() {
-        let st = state_with_tunnel(tunnel_with_public_host("demo.example.com"));
-        let res = send_raw(&st, post_forwarded("/apps/patient-browser")).await;
-        assert_eq!(res.status(), StatusCode::OK);
-        assert!(res.headers().get("location").is_none());
-        assert_eq!(
-            launch_url(res).await,
-            "https://patient-browser.demo.example.com/"
-        );
-    }
-
-    /// No launch sets a cookie — forwarded or loopback, self-hosted or cloud.
+    /// No launch sets a cookie — forwarded or loopback, system or cloud.
     #[tokio::test]
     async fn no_launch_sets_a_cookie() {
-        let st = state_with_tunnel(tunnel_with_public_host("demo.example.com"));
+        let st = state();
         seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
         for (request, status) in [
-            (post_forwarded("/apps/patient-browser"), StatusCode::OK),
+            (post_forwarded("/apps/api-docs"), StatusCode::OK),
             (post_forwarded("/apps/app-y"), StatusCode::OK),
-            (post_launch("/apps/patient-browser"), StatusCode::NO_CONTENT),
+            (post_launch("/apps/api-docs"), StatusCode::NO_CONTENT),
         ] {
             let res = send_raw(&st, request).await;
             assert_eq!(res.status(), status);
             assert!(res.headers().get("set-cookie").is_none());
         }
-    }
-
-    /// A forwarded self-hosted launch with no `public_host` is 503.
-    #[tokio::test]
-    async fn launch_self_hosted_forwarded_without_public_host_is_503() {
-        let st = state();
-        let (status, body) = send(&st, post_forwarded("/apps/patient-browser")).await;
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(body["error"], "LaunchUnavailable");
-    }
-
-    /// A loopback self-hosted launch 204s with its fixed loopback origin.
-    #[tokio::test]
-    async fn launch_self_hosted_loopback_204s_to_its_origin() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        let res = send_raw(&st, post_launch("/apps/patient-browser")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        assert!(res.headers().get("location").is_none());
-        let opened = handle.0.lock().expect("handle mutex").clone();
-        assert_eq!(opened, vec!["http://127.0.0.1:8081/".to_string()]);
     }
 
     /// A cloud `requires_tunnel` launch with the tunnel down is 503; no popup.
@@ -760,14 +630,14 @@ mod tests {
     }
 
     /// The per-kind write/detail paths 404 on an id of another kind (the mismatch
-    /// can no longer be expressed as a 409), 409 on a seeded self-hosted edit, and
-    /// 404 on an unknown id. Delete of a system / seeded app is 409.
+    /// can't be expressed as a 409) and on an unknown id. Delete of a system app is
+    /// 409.
     #[tokio::test]
     async fn per_kind_paths_reject_wrong_kind_and_unknown() {
         let st = state();
 
-        // A cloud path given a system / self-hosted id is a 404.
-        for id in ["api-docs", "patient-browser"] {
+        // A cloud path given a system id is a 404.
+        for id in ["api-docs", "api-view"] {
             let (status, body) = send(
                 &st,
                 put_json(
@@ -783,34 +653,12 @@ mod tests {
             assert_eq!(status, StatusCode::NOT_FOUND, "{id} cloud detail");
         }
 
-        // A self-hosted path to a seeded app is a 409; to a cloud id a 404.
-        let (status, body) = send(
-            &st,
-            put_json(
-                "/self-hosted-apps/patient-browser",
-                serde_json::json!({ "launchPath": "/launch.html" }),
-            ),
-        )
-        .await;
-        assert_eq!(status, StatusCode::CONFLICT, "seeded self-hosted edit");
-        assert_eq!(body["error"], "AppNotEditable");
+        // A system path given a cloud id is a 404.
+        let (status, _) = send(&st, get("/system-apps/growth-chart")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "system path to a cloud id");
 
-        let (status, _) = send(
-            &st,
-            put_json(
-                "/self-hosted-apps/growth-chart",
-                serde_json::json!({ "launchPath": "/launch.html" }),
-            ),
-        )
-        .await;
-        assert_eq!(
-            status,
-            StatusCode::NOT_FOUND,
-            "self-hosted path to a cloud id"
-        );
-
-        // Delete of a system / seeded app is a 409; unknown id a 404.
-        for id in ["api-docs", "patient-browser"] {
+        // Delete of a system app is a 409; unknown id a 404.
+        for id in ["api-docs", "api-view"] {
             let (status, body) = send(&st, delete(&format!("/apps/{id}"))).await;
             assert_eq!(status, StatusCode::CONFLICT, "{id} delete");
             assert_eq!(body["error"], "AppNotEditable");
@@ -867,12 +715,6 @@ mod tests {
         assert_eq!(body["isRemovable"], true);
         assert!(body["url"].as_str().unwrap().contains("{origin}"));
 
-        let (status, body) = send(&st, get("/self-hosted-apps/patient-browser")).await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["kind"], "self-hosted");
-        assert_eq!(body["seeded"], true);
-        assert_eq!(body["isRemovable"], false);
-
         let (status, body) = send(&st, get("/system-apps/api-docs")).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["kind"], "system");
@@ -893,127 +735,6 @@ mod tests {
             put_json(
                 "/cloud-apps/api-docs",
                 serde_json::json!({ "name": "x", "url": "javascript:alert(1)", "requiresTunnel": false }),
-            ),
-        )
-        .await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body["error"], "AppNotFound");
-    }
-
-    /// A self-hosted app's launch path is editable through `/self-hosted-apps/{id}`.
-    #[tokio::test]
-    async fn replace_self_hosted_launch_path_edits_and_launches() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        seed_self_hosted(&st.store, "My App", "my-app", None);
-
-        let (status, body) = send(
-            &st,
-            put_json(
-                "/self-hosted-apps/my-app",
-                serde_json::json!({ "launchPath": "/launch.html?launch={launch}&iss={origin}/fhir-r4" }),
-            ),
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK, "body: {body}");
-        assert_eq!(body["kind"], "self-hosted");
-        assert_eq!(body["isRemovable"], true);
-        assert_eq!(
-            body["launchPath"],
-            "/launch.html?launch={launch}&iss={origin}/fhir-r4"
-        );
-
-        let res = send_raw(&st, post_launch("/apps/my-app")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        let opened = handle.0.lock().expect("handle mutex").clone();
-        let [url] = opened.as_slice() else {
-            panic!("exactly one URL, got {opened:?}");
-        };
-        assert!(
-            url.starts_with("http://127.0.0.1:8082/launch.html?launch="),
-            "the edited launcher drives the launch: {url}",
-        );
-        assert!(url.ends_with("&iss=http://127.0.0.1:8080/fhir-r4"), "{url}");
-    }
-
-    /// Clearing `launchPath` (empty string) reverts a self-hosted app to
-    /// root-serving.
-    #[tokio::test]
-    async fn replace_self_hosted_clear_launch_path_reverts_to_root() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        seed_self_hosted(
-            &st.store,
-            "My App",
-            "my-app",
-            Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
-        );
-
-        let (status, body) = send(
-            &st,
-            put_json(
-                "/self-hosted-apps/my-app",
-                serde_json::json!({ "launchPath": "" }),
-            ),
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK, "body: {body}");
-        assert!(
-            body.get("launchPath").is_none(),
-            "a cleared launch path is absent"
-        );
-
-        let res = send_raw(&st, post_launch("/apps/my-app")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        assert_eq!(
-            handle.0.lock().expect("handle mutex").clone(),
-            vec!["http://127.0.0.1:8082/".to_string()],
-            "a cleared launch path serves the bare origin",
-        );
-    }
-
-    /// A non-origin-relative `launchPath` is rejected `400 InvalidUrl`.
-    #[tokio::test]
-    async fn replace_self_hosted_rejects_a_non_relative_launch_path() {
-        let st = state();
-        seed_self_hosted(&st.store, "My App", "my-app", None);
-        let (status, body) = send(
-            &st,
-            put_json(
-                "/self-hosted-apps/my-app",
-                serde_json::json!({ "launchPath": "https://evil.example/launch" }),
-            ),
-        )
-        .await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(body["error"], "InvalidUrl");
-    }
-
-    /// A seeded self-hosted app is launch-path protected — `409 AppNotEditable`.
-    #[tokio::test]
-    async fn replace_seeded_self_hosted_launch_path_is_409() {
-        let st = state();
-        let (status, body) = send(
-            &st,
-            put_json(
-                "/self-hosted-apps/patient-browser",
-                serde_json::json!({ "launchPath": "/launch.html" }),
-            ),
-        )
-        .await;
-        assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(body["error"], "AppNotEditable");
-    }
-
-    /// A self-hosted path targeting a cloud id is a `404` (wrong kind).
-    #[tokio::test]
-    async fn replace_self_hosted_of_cloud_id_is_404() {
-        let st = state();
-        let (status, body) = send(
-            &st,
-            put_json(
-                "/self-hosted-apps/growth-chart",
-                serde_json::json!({ "launchPath": "/launch.html" }),
             ),
         )
         .await;
@@ -1085,7 +806,6 @@ mod tests {
             ("growth-chart", true),
             ("api-docs", false),
             ("api-view", true),
-            ("patient-browser", true),
             ("medications-app", true),
             ("web-trace-app", true),
             ("web-server-docs", true),
@@ -1110,7 +830,6 @@ mod tests {
                 "growth-chart",
                 "api-docs",
                 "api-view",
-                "patient-browser",
                 "medications-app",
                 "web-trace-app",
                 "web-server-docs",
@@ -1162,11 +881,16 @@ mod tests {
             put_json(
                 "/home-screen",
                 home_screen_body(&[
-                    ("patient-browser", true),
                     ("api-view", true),
                     ("api-docs", true),
                     ("growth-chart", true),
                     ("medication-viewer", true),
+                    ("precise-hbr", true),
+                    ("medications-app", true),
+                    ("web-trace-app", true),
+                    ("web-server-docs", true),
+                    ("importer-app", true),
+                    ("ohif-viewer", true),
                     ("ghost", true),
                 ]),
             ),
@@ -1174,194 +898,6 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
         assert_eq!(body["error"], "InvalidHomeScreen");
-    }
-
-    /// A tiny valid zip (a single `index.html` at the root).
-    fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
-        use std::io::Write as _;
-        let mut cursor = std::io::Cursor::new(Vec::new());
-        {
-            let mut writer = zip::ZipWriter::new(&mut cursor);
-            let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
-                .compression_method(zip::CompressionMethod::Stored);
-            for (name, contents) in entries {
-                if let Some(dir) = name.strip_suffix('/') {
-                    writer.add_directory(dir, options).unwrap();
-                } else {
-                    writer.start_file(*name, options).unwrap();
-                    writer.write_all(contents).unwrap();
-                }
-            }
-            writer.finish().unwrap();
-        }
-        cursor.into_inner()
-    }
-
-    /// A self-hosted upload — `POST /self-hosted-apps` multipart with the `name`
-    /// and the zip `bundle` file part.
-    fn post_zip(name: &str, bytes: Vec<u8>) -> Request<Body> {
-        post_multipart(
-            "/self-hosted-apps",
-            &[("name", name)],
-            Some(("bundle", &bytes)),
-        )
-    }
-
-    /// The stored `content_folder` for an installed app — the on-disk location
-    /// is store-internal (a per-install mint id), so tests resolve it.
-    fn content_folder(st: &Arc<AppsState>, id: &str) -> String {
-        st.store
-            .find_app(id)
-            .unwrap()
-            .expect("installed app row")
-            .1
-            .as_self_hosted()
-            .expect("self-hosted payload")
-            .content_folder
-            .clone()
-    }
-
-    /// A valid upload installs the app: `200` + `SelfHostedAppDetail`, a DB row,
-    /// the files on disk under the row's `content_folder`, and the tile listed last.
-    #[tokio::test]
-    async fn upload_installs_a_self_hosted_app() {
-        let st = state();
-        let bytes = zip_bytes(&[("index.html", b"<h1>UP</h1>")]);
-        let (status, body) = send(&st, post_zip("My App", bytes)).await;
-        assert_eq!(status, StatusCode::OK, "body: {body}");
-        assert_eq!(body["id"], "my-app");
-        assert_eq!(body["kind"], "self-hosted");
-        assert_eq!(body["isRemovable"], true);
-        assert_eq!(body["localOnly"], true);
-
-        let folder = content_folder(&st, "my-app");
-        assert_ne!(folder, "my-app", "the folder is the mint id, not the slug");
-        let index = st.self_hosted.apps_dir().join(&folder).join("index.html");
-        assert_eq!(std::fs::read_to_string(&index).unwrap(), "<h1>UP</h1>");
-
-        let (_s, list) = send(&st, get("/apps")).await;
-        let ids: Vec<&str> = list
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v["id"].as_str().unwrap())
-            .collect();
-        assert_eq!(ids.last(), Some(&"my-app"), "uploaded app is listed last");
-    }
-
-    /// A bundle wrapped in a single top folder serves `index.html` at the root.
-    #[tokio::test]
-    async fn upload_hoists_a_single_wrapper_folder() {
-        let st = state();
-        let bytes = zip_bytes(&[("my-app/", b""), ("my-app/index.html", b"<h1>WRAPPED</h1>")]);
-        let (status, body) = send(&st, post_zip("My App", bytes)).await;
-        assert_eq!(status, StatusCode::OK, "body: {body}");
-        let index = st
-            .self_hosted
-            .apps_dir()
-            .join(content_folder(&st, "my-app"))
-            .join("index.html");
-        assert_eq!(std::fs::read_to_string(&index).unwrap(), "<h1>WRAPPED</h1>");
-    }
-
-    /// End-to-end: a bundle shipping `launch.html` is installed as a SMART launcher.
-    #[tokio::test]
-    async fn upload_with_launch_html_launches_the_smart_launcher() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        let bytes = zip_bytes(&[("launch.html", b"<launcher>"), ("index.html", b"<app>")]);
-        let (status, body) = send(&st, post_zip("My App", bytes)).await;
-        assert_eq!(status, StatusCode::OK, "body: {body}");
-
-        let res = send_raw(&st, post_launch("/apps/my-app")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        let opened = handle.0.lock().expect("handle mutex").clone();
-        let [url] = opened.as_slice() else {
-            panic!("exactly one URL, got {opened:?}");
-        };
-        assert!(
-            url.starts_with("http://127.0.0.1:8082/launch.html?launch="),
-            "launcher hangs off the app's own loopback origin: {url}",
-        );
-        assert!(
-            url.ends_with("&iss=http://127.0.0.1:8080/fhir-r4"),
-            "iss resolves to the host API origin, not the app's port: {url}",
-        );
-        assert!(
-            !url.contains("{launch}") && !url.contains("{origin}"),
-            "every placeholder is substituted: {url}",
-        );
-    }
-
-    /// A duplicate name (same slug) is rejected `400 InvalidName`; the first app
-    /// stays untouched.
-    #[tokio::test]
-    async fn upload_rejects_a_duplicate_name() {
-        let st = state();
-        let (s1, first) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"a")]))).await;
-        assert_eq!(s1, StatusCode::OK);
-        assert_eq!(first["id"], "my-app");
-
-        let (s2, body) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"b")]))).await;
-        assert_eq!(s2, StatusCode::BAD_REQUEST);
-        assert_eq!(body["error"], "InvalidName");
-        // The original app is still the only `my-app`, its files intact.
-        let (_s, list) = send(&st, get("/apps")).await;
-        let my_apps = list
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|v| v["id"] == "my-app")
-            .count();
-        assert_eq!(my_apps, 1, "the duplicate upload created no second row");
-    }
-
-    /// Garbage bytes are rejected `400 InvalidZip`, with no row created.
-    #[tokio::test]
-    async fn upload_rejects_garbage_bytes() {
-        let st = state();
-        let (status, body) = send(&st, post_zip("My App", b"not a zip".to_vec())).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(body["error"], "InvalidZip");
-        assert!(st.store.find_app("my-app").unwrap().is_none());
-    }
-
-    /// A name that slugs to nothing is rejected `400 InvalidName`.
-    #[tokio::test]
-    async fn upload_rejects_a_nameless_slug() {
-        let st = state();
-        let (status, body) = send(&st, post_zip("!!!", zip_bytes(&[("index.html", b"x")]))).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(body["error"], "InvalidName");
-    }
-
-    /// An uploaded app is deletable (`204`, rows + files gone); the seeded
-    /// patient-browser stays protected (`409`).
-    #[tokio::test]
-    async fn uploaded_app_is_deletable_but_seeded_is_protected() {
-        let st = state();
-        let (_s, created) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"x")]))).await;
-        let id = created["id"].as_str().unwrap().to_owned();
-        let dir = st.self_hosted.apps_dir().join(content_folder(&st, &id));
-        assert!(dir.exists(), "files present after install");
-
-        let res = send_raw(&st, delete(&format!("/apps/{id}"))).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        assert!(st.store.find_app(&id).unwrap().is_none(), "row removed");
-        assert!(!dir.exists(), "files removed");
-
-        let (_s, list) = send(&st, get("/apps")).await;
-        assert!(
-            list.as_array()
-                .unwrap()
-                .iter()
-                .all(|v| v["id"] != id.as_str()),
-            "deleted app no longer listed",
-        );
-
-        let (status, body) = send(&st, delete("/apps/patient-browser")).await;
-        assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(body["error"], "AppNotEditable");
     }
 
     // --- Scope gating (the `Scoped<…>` admin capabilities) --------------------

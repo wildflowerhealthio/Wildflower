@@ -11,7 +11,6 @@ packages:
   - global/effect-messaging/*
   - global/pebble/*
   - slices/**
-  - '!slices/apps/self-hosted-apps/**'
   # `slices/**` otherwise reaches into nested `node_modules`. Most package-local
   # `node_modules` hold only symlinks back to workspace packages, but a dep whose
   # version conflicts with a hoisted transitive copy (ajv 8 under `web-trace-core`

@@ -38,7 +38,7 @@
 		</dict>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Wildflower loads its interface and self-hosted apps from servers on your local network, including the development server used by debug builds.</string>
+	<string>Wildflower loads its interface and apps from servers on your local network, including the development server used by debug builds.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

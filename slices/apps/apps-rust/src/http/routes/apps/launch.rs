@@ -22,7 +22,7 @@
 //!      missing scopes, before any side-effect. A non-SMART app needs only the
 //!      umbrella.
 //!   5. Resolve the launch target by the app's kind (System → compiled-in source,
-//!      Self-Hosted → loopback/subdomain, Cloud → the stored template). Fails
+//!      Cloud → the stored template). Fails
 //!      `503 LaunchUnavailable` when no *reachable* target exists.
 //!   6. Dispatch on the request's provenance: a loopback launch `204`s after
 //!      handing the URL to the host webview; a forwarded launch answers `200` with
@@ -49,7 +49,7 @@ use shared_structures_rust::served_origin::{request_provenance, RequestProvenanc
 
 use crate::domain::{
     AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration, LaunchParams,
-    SelfHostedAppConfiguration, SystemAppConfiguration,
+    SystemAppConfiguration,
 };
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
 use crate::id_utils::mint_launch_nonce;
@@ -72,7 +72,7 @@ use crate::live_bindings::LiveAppLauncher;
         (status = 204, description = "Host sink opened the launch URL for a loopback caller"),
         (status = 403, description = "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes", body = InsufficientScopeBody),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
-        (status = 503, description = "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)", body = LaunchUnavailableBody),
+        (status = 503, description = "No reachable launch target (a requires_tunnel app while the tunnel is down)", body = LaunchUnavailableBody),
     ),
 )]
 pub(crate) async fn handle_launch_app(
@@ -152,8 +152,7 @@ async fn launch(
 }
 
 /// Resolve an app (its `(registration, configuration)` pair) to its
-/// provenance-aware launch URL (loopback origin, public subdomain, or a rendered
-/// cloud template), dispatching on the `configuration` kind — the whole app came
+/// provenance-aware launch URL (a rendered system or cloud template), dispatching on the `configuration` kind — the whole app came
 /// out of one store read, so the kind-specific launch data is already in hand (a
 /// system app always carries a valid compiled-in source; a corrupt registry row
 /// fails inside the store read as a typed error, never here). `503` if the matched
@@ -171,9 +170,6 @@ async fn resolve_launch(
 ) -> Result<String, AppsError> {
     match configuration {
         AppConfiguration::System(config) => Ok(render_system_target(state, config, provenance)),
-        AppConfiguration::SelfHosted(config) => {
-            render_self_hosted_target(config, state, provenance)
-        }
         AppConfiguration::Cloud(config) => {
             render_cloud_target(state, provenance, registration, config).await
         }
@@ -195,32 +191,6 @@ fn render_system_target(
         origin: &origin,
         launch: &launch,
     })
-}
-
-/// Render a self-hosted app's launch target off its own origin — the loopback
-/// `http://{host}:{port}/` for a loopback caller, else the public subdomain
-/// ([`SelfHostedAppConfiguration::subdomain_url`]). A forwarded launch with **no** `public_host` configured has no reachable target,
-/// so it `503 LaunchUnavailable`s rather than handing back loopback. Any
-/// `launch_path` is applied by [`SelfHostedAppConfiguration::render_launch`].
-fn render_self_hosted_target(
-    config: &SelfHostedAppConfiguration,
-    state: &AppsState,
-    provenance: &RequestProvenance,
-) -> Result<String, AppsError> {
-    let app_base = match provenance {
-        RequestProvenance::Forwarded { .. } => {
-            let Some(public_host) = state.tunnel.current_public_host() else {
-                return Err(AppsError::Unavailable {
-                    reason: "no public host is configured for this remote launch".to_owned(),
-                });
-            };
-            config.subdomain_url(&public_host)
-        }
-        RequestProvenance::Loopback => config.local_launch_url(&state.loopback_hostname()),
-    };
-    let served = served_origin(state, provenance);
-    let launch = mint_launch_nonce();
-    Ok(config.render_launch(&app_base, &served, &launch))
 }
 
 /// Render a cloud app's launch target: resolve the served origin (or the tunnel's
@@ -280,7 +250,7 @@ async fn resolve_origin(
 /// caller's page to navigate to.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct LaunchTargetBody {
-    /// The absolute launch URL (public subdomain or rendered cloud template).
+    /// The absolute launch URL (a rendered system or cloud template).
     pub url: String,
 }
 

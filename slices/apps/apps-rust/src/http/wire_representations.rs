@@ -1,6 +1,6 @@
 //! Wire **representations** for the per-kind editor surface — the JSON detail
-//! shapes the `GET`/`POST`/`PUT /cloud-apps…`, `…/self-hosted-apps…`, and
-//! `GET /system-apps/{id}` routes serialize. Each is built from the
+//! shapes the `GET`/`POST`/`PUT /cloud-apps…` and `GET /system-apps/{id}` routes
+//! serialize. Each is built from the
 //! `(AppRegistration, …Configuration)` pair the store hands back
 //! (`From<(&AppRegistration, &…Configuration)>`): the shared registration facts plus
 //! the kind's payload and — for the editable kinds — the `isRemovable` verdict.
@@ -20,12 +20,12 @@ use utoipa::ToSchema;
 
 use crate::domain::{
     AppKind, AppRegistration, AppUrl, CloudAppConfiguration, CommonAppConfig,
-    SelfHostedAppConfiguration, SystemAppConfiguration,
+    SystemAppConfiguration,
 };
 
 /// The registration fields every per-kind detail carries, `#[serde(flatten)]`ed into
 /// each wire shape so the eight shared fields — and their `From<&AppRegistration>`
-/// projection — are declared once rather than copied across the three detail structs.
+/// projection — are declared once rather than copied across the detail structs.
 /// `isSmart` is derived from the host-only `client_id`; `position` never leaves the
 /// host.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
@@ -78,36 +78,6 @@ impl From<(&AppRegistration, &CloudAppConfiguration)> for CloudAppDetail {
         Self {
             registration: registration.into(),
             url: config.url.clone(),
-            is_removable: config.is_removable(),
-        }
-    }
-}
-
-/// The `GET`/`POST`/`PUT /self-hosted-apps…` wire shape — the registration fields
-/// plus `launchPath` (absent for a root-served bundle), `seeded`, and
-/// `isRemovable`. The public `subdomain` / loopback `port` / on-disk
-/// `content_folder` are host-internal and stay off the wire.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SelfHostedAppDetail {
-    #[serde(flatten)]
-    pub registration: RegistrationWire,
-    /// The stored SMART launch path (origin-relative, with `{origin}` / `{launch}`
-    /// tokens), or absent for a root-served (`index.html`) app.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub launch_path: Option<String>,
-    /// `true` for a migration-seeded app (edit/delete-protected).
-    pub seeded: bool,
-    /// Whether the owner can remove this app (`!seeded`).
-    pub is_removable: bool,
-}
-
-impl From<(&AppRegistration, &SelfHostedAppConfiguration)> for SelfHostedAppDetail {
-    fn from((registration, config): (&AppRegistration, &SelfHostedAppConfiguration)) -> Self {
-        Self {
-            registration: registration.into(),
-            launch_path: config.launch_path.clone(),
-            seeded: config.seeded,
             is_removable: config.is_removable(),
         }
     }
@@ -176,24 +146,6 @@ mod tests {
                 "isRemovable": true,
             }),
         );
-    }
-
-    #[test]
-    fn self_hosted_detail_reflects_seeded_and_launch_path() {
-        let reg = registration(AppKind::SelfHosted, None);
-        let config = SelfHostedAppConfiguration {
-            port: 8082,
-            content_folder: "zip-app".to_owned(),
-            subdomain: "zip-app".to_owned(),
-            seeded: true,
-            launch_path: Some("/launch.html".to_owned()),
-        };
-        let json = serde_json::to_value(SelfHostedAppDetail::from((&reg, &config))).unwrap();
-        assert_eq!(json["kind"], "self-hosted");
-        assert_eq!(json["seeded"], true);
-        assert_eq!(json["isRemovable"], false);
-        assert_eq!(json["launchPath"], "/launch.html");
-        assert_eq!(json["isSmart"], false);
     }
 
     #[test]

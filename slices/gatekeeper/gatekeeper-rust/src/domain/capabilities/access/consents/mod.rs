@@ -8,8 +8,7 @@
 //! Owner holds.
 //!
 //! The code-flow surfaces also carry the **registration verdict** (see
-//! [`crate::domain::client_registration`]), which is why both capabilities hold
-//! a [`SelfHostedRedirectResolver`] and take a `served_origin`.
+//! [`crate::domain::client_registration`]).
 
 use std::sync::Arc;
 
@@ -17,10 +16,12 @@ use chrono::{DateTime, Utc};
 use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client_registration::{ClientRegistrationVerdict, RegistrationClassifier};
+use crate::domain::client_registration::{
+    classify_registration, ClientRegistrationVerdict, PresentedClientRegistration,
+};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
-use crate::ports::{PendingConsentPublisher, SelfHostedRedirectResolver};
+use crate::ports::PendingConsentPublisher;
 
 mod delegation;
 mod device;
@@ -131,33 +132,18 @@ pub(crate) struct ApproveDeviceConsentInput {
 /// `/access/oauth-consents/{id}` and `/access/devices/{userCode}`.
 pub(crate) struct ConsentReader<S: GatekeeperStore> {
     store: S,
-    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
 }
 
 impl<S: GatekeeperStore> ConsentReader<S> {
-    /// Build the reader over a store handle and the self-hosted redirect seam,
-    /// both lifted from the state. The seam feeds the
-    /// [registration verdict](ClientRegistrationVerdict) each prompt carries.
-    pub(crate) fn new(
-        store: S,
-        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
-    ) -> Self {
-        ConsentReader {
-            store,
-            self_hosted_redirects,
-        }
+    /// Build the reader over a store handle lifted from the state.
+    pub(crate) fn new(store: S) -> Self {
+        ConsentReader { store }
     }
 
     /// Load a pending authorization-code consent prompt for the Owner UI, with
     /// the client's display name and its registration verdict resolved against
-    /// the current row. `served_origin` is the origin the Owner UI's request
-    /// arrived on — the base an app-relative redirect entry resolves against, so
-    /// the verdict agrees with the one `/authorize` computed.
-    pub(crate) fn oauth_consent(
-        &self,
-        id: &str,
-        served_origin: &str,
-    ) -> Result<OAuthConsentView, GatekeeperError> {
+    /// the current row.
+    pub(crate) fn oauth_consent(&self, id: &str) -> Result<OAuthConsentView, GatekeeperError> {
         let pending_request = load_pending_code_request(&self.store, id)?;
         let requested_redirect_uri = pending_request.redirect_uri().clone();
         let request = pending_request.into_request();
@@ -168,16 +154,11 @@ impl<S: GatekeeperStore> ConsentReader<S> {
             || request.client_id.clone(),
             |existing_client| existing_client.name.clone(),
         );
-        let classifier = RegistrationClassifier {
-            self_hosted_redirects: self.self_hosted_redirects.as_ref(),
-            served_origin,
-        };
-        let registration_verdict = classifier.classify(
-            &request.client_id,
-            maybe_existing_client.as_ref(),
-            &requested_redirect_uri,
-            &request.requested_scopes,
-        );
+        let registration_verdict = classify_registration(&PresentedClientRegistration {
+            maybe_existing_client: maybe_existing_client.as_ref(),
+            redirect_uri: &requested_redirect_uri,
+            scopes: &request.requested_scopes,
+        });
         Ok(OAuthConsentView {
             request,
             requested_redirect_uri,
@@ -215,28 +196,25 @@ pub(crate) struct ConsentDecider<S: GatekeeperStore> {
     store: S,
     publisher: Arc<dyn PendingConsentPublisher>,
     approver_grant: Grant,
-    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
     first_party_client_id: Arc<str>,
 }
 
 impl<S: GatekeeperStore> ConsentDecider<S> {
     /// Build the decider over a store handle, the republish port, the approver's
-    /// own granted scopes, the self-hosted redirect seam, and the first-party
-    /// `client_id` — all lifted from the state + claims. The last two feed the
-    /// [registration verdict](ClientRegistrationVerdict) a code-flow approval is checked
-    /// against.
+    /// own granted scopes, and the first-party `client_id` — all lifted from the
+    /// state + claims. The last decides which client's registration is locked
+    /// when a code-flow approval is checked against its
+    /// [registration verdict](ClientRegistrationVerdict).
     pub(crate) fn new(
         store: S,
         publisher: Arc<dyn PendingConsentPublisher>,
         approver_grant: Grant,
-        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
         first_party_client_id: Arc<str>,
     ) -> Self {
         ConsentDecider {
             store,
             publisher,
             approver_grant,
-            self_hosted_redirects,
             first_party_client_id,
         }
     }
@@ -245,15 +223,13 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
     /// approver's own authority fails the approval with a `403`, and an
     /// unacknowledged [`New`](ClientRegistrationVerdict::New) /
     /// [`WouldWiden`](ClientRegistrationVerdict::WouldWiden) registration fails it with a
-    /// `409`. `served_origin` is the origin the approval arrived on, so the
-    /// verdict matches the one the prompt rendered.
+    /// `409`.
     pub(crate) fn approve_oauth(
         &self,
         id: &str,
         input: ApproveOAuthConsentInput,
         generate_code: impl FnOnce() -> String,
         now: DateTime<Utc>,
-        served_origin: &str,
     ) -> Result<ConsentOutcome, GatekeeperError> {
         approve_oauth_consent(
             &self.store,
@@ -263,10 +239,6 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
             generate_code,
             &ApprovalContext {
                 approver_grant: &self.approver_grant,
-                classifier: &RegistrationClassifier {
-                    self_hosted_redirects: self.self_hosted_redirects.as_ref(),
-                    served_origin,
-                },
                 first_party_client_id: &self.first_party_client_id,
                 memory: ApprovalMemory::RememberAsStandingGrant,
                 now,
@@ -310,20 +282,11 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
-    use crate::domain::client::RegisteredRedirectUri;
     use crate::domain::test_fake::{
         client, code_request, device_request, FakeGatekeeperStore, RecordingPublisher,
     };
-    use crate::ports::NoSelfHostedRedirects;
 
-    /// The classifier the code-consent tests share: no self-hosted app (so
-    /// app-relative entries resolve to nothing) and the loopback served origin.
-    const TEST_CLASSIFIER: RegistrationClassifier<'static> = RegistrationClassifier {
-        self_hosted_redirects: &NoSelfHostedRedirects,
-        served_origin: "http://127.0.0.1",
-    };
-
-    /// Approve a code-flow consent with the shared classifier and the real
+    /// Approve a code-flow consent with the real
     /// first-party id — which the `client` fixture never uses, so the fixture
     /// client always takes the trust-on-first-use path.
     fn approve_code(
@@ -342,7 +305,6 @@ mod tests {
             generate_code,
             &ApprovalContext {
                 approver_grant,
-                classifier: &TEST_CLASSIFIER,
                 first_party_client_id: crate::FIRST_PARTY_CLIENT_ID,
                 memory: ApprovalMemory::RememberAsStandingGrant,
                 now: Utc::now(),
@@ -515,9 +477,7 @@ mod tests {
         assert_eq!(registered.kind, crate::domain::client::ClientKind::Public);
         assert_eq!(
             registered.redirect_uris,
-            vec![RegisteredRedirectUri::Absolute(
-                url::Url::parse("https://example.com/cb").unwrap()
-            )],
+            vec![url::Url::parse("https://example.com/cb").unwrap()],
         );
         assert_eq!(registered.allowed_scopes, vec!["read".to_owned()]);
         assert_eq!(
@@ -536,8 +496,7 @@ mod tests {
     fn approve_oauth_consent_widens_a_changed_registration() {
         let store = FakeGatekeeperStore::default();
         let publisher = RecordingPublisher::default();
-        let elsewhere =
-            RegisteredRedirectUri::Absolute(url::Url::parse("https://other.example/cb").unwrap());
+        let elsewhere = url::Url::parse("https://other.example/cb").unwrap();
         let registered_at = Utc::now() - Duration::days(30);
         let mut existing = client("client", &["read"]);
         existing.redirect_uris = vec![elsewhere.clone()];
@@ -566,7 +525,7 @@ mod tests {
             widened.redirect_uris,
             vec![
                 elsewhere,
-                RegisteredRedirectUri::Absolute(url::Url::parse("https://example.com/cb").unwrap()),
+                url::Url::parse("https://example.com/cb").unwrap(),
             ],
         );
         // `write` was requested but pruned at consent, so it is NOT registered.
@@ -881,10 +840,8 @@ mod tests {
                 Utc::now() + Duration::minutes(5),
             ))
             .unwrap();
-        let reader = ConsentReader::new(store, Arc::new(NoSelfHostedRedirects));
-        let view = reader
-            .oauth_consent("req-1", "http://127.0.0.1")
-            .expect("view");
+        let reader = ConsentReader::new(store);
+        let view = reader.oauth_consent("req-1").expect("view");
         assert_eq!(view.request.id, "req-1");
         assert_eq!(
             view.requested_redirect_uri.as_str(),
@@ -923,9 +880,9 @@ mod tests {
         .expect("corrupt the stored row");
         drop(conn);
 
-        let reader = ConsentReader::new(store, Arc::new(NoSelfHostedRedirects));
+        let reader = ConsentReader::new(store);
         assert!(matches!(
-            reader.oauth_consent("req-1", "http://127.0.0.1"),
+            reader.oauth_consent("req-1"),
             Err(GatekeeperError::Infrastructure { .. })
         ));
         assert!(matches!(

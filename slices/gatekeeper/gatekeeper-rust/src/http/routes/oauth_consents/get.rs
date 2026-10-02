@@ -10,7 +10,6 @@ use crate::domain::capabilities::{OAuthConsentView, Scoped};
 use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
-use crate::http::ServedOrigin;
 use crate::live_bindings::LiveConsentReader;
 
 /// Body returned to the Owner UI when it loads an authorization-code consent
@@ -84,7 +83,6 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 
 async fn handle_get_oauth_consent(
     consents: Scoped<LiveConsentReader>,
-    origin: ServedOrigin,
     Path(id): Path<String>,
 ) -> Result<Json<OAuthConsent>, GatekeeperError> {
     let OAuthConsentView {
@@ -92,7 +90,7 @@ async fn handle_get_oauth_consent(
         requested_redirect_uri,
         client_name,
         registration_verdict,
-    } = consents.oauth_consent(&id, &origin)?;
+    } = consents.oauth_consent(&id)?;
     Ok(Json(OAuthConsent {
         id: id.clone(),
         client_id: request.client_id,

@@ -1,13 +1,11 @@
 //! [`AppKind`] — the discriminator: which per-kind configuration table
-//! (`system_app_configurations` / `cloud_app_configurations` /
-//! `self_hosted_app_configurations`) holds a registration's payload row. It is the
+//! (`system_app_configurations` / `cloud_app_configurations`) holds a
+//! registration's payload row. It is the
 //! `app_registrations.kind` column value, the
 //! `GET /apps` wire discriminator, and the kind an [`AppConfiguration`](super::AppConfiguration)
 //! reports via [`AppConfiguration::kind`](super::AppConfiguration::kind) and the
-//! launch / delete seams dispatch on. Replaces the former `Provenance` (renamed
-//! slice-wide to free *provenance*
-//! for the launch path's unrelated `RequestProvenance`). The taxonomy and privacy
-//! model are canonical in `docs/Apps/Explanation.md`.
+//! launch / delete seams dispatch on. The taxonomy and privacy model are
+//! canonical in `docs/Apps/Explanation.md`.
 
 use std::fmt;
 use std::str::FromStr;
@@ -16,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Which kind an app is — the discriminator. Serialized as its kebab string
-/// (`"system"` / `"self-hosted"` / `"cloud"`), the same value stored in the
+/// (`"system"` / `"cloud"`), the same value stored in the
 /// `CHECK`-constrained `app_registrations.kind` column and sent on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -25,9 +23,6 @@ pub enum AppKind {
     /// ([`SystemAppConfiguration`](super::SystemAppConfiguration),
     /// `system_app_configurations`).
     System,
-    /// A locally-served app on a dedicated loopback `port`
-    /// (`self_hosted_app_configurations`).
-    SelfHosted,
     /// A remote launch template reaching PHI through the tunnel
     /// (`cloud_app_configurations`).
     Cloud,
@@ -41,7 +36,6 @@ impl AppKind {
     pub fn as_str(&self) -> &'static str {
         match self {
             AppKind::System => "system",
-            AppKind::SelfHosted => "self-hosted",
             AppKind::Cloud => "cloud",
         }
     }
@@ -73,7 +67,6 @@ impl FromStr for AppKind {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "system" => Ok(AppKind::System),
-            "self-hosted" => Ok(AppKind::SelfHosted),
             "cloud" => Ok(AppKind::Cloud),
             other => Err(AppKindParseError(other.to_owned())),
         }
@@ -86,7 +79,7 @@ mod tests {
 
     #[test]
     fn as_str_round_trips_through_from_str() {
-        for k in [AppKind::System, AppKind::SelfHosted, AppKind::Cloud] {
+        for k in [AppKind::System, AppKind::Cloud] {
             assert_eq!(k.as_str().parse::<AppKind>(), Ok(k));
         }
     }
@@ -103,7 +96,7 @@ mod tests {
     /// the serde rename and `as_str` must agree.
     #[test]
     fn serde_matches_as_str() {
-        for k in [AppKind::System, AppKind::SelfHosted, AppKind::Cloud] {
+        for k in [AppKind::System, AppKind::Cloud] {
             let json = serde_json::to_string(&k).unwrap();
             assert_eq!(json, format!("\"{}\"", k.as_str()));
         }

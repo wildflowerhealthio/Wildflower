@@ -2,9 +2,7 @@
 //! newtypes, plus [`AppUrlColumn`] — the one such column shared across kinds (the
 //! `TEXT ↔ `[`AppUrl`] binding both the cloud and system configuration rows plug
 //! in). The per-kind text column [`AppKindColumn`](super::app_registration) is built
-//! from the same macro in the registration file; [`PortColumn`](super::self_hosted_apps)
-//! is `INTEGER`-backed (a `u16 ⇄ i32` narrowing, not a text parse) so it stays
-//! hand-written there.
+//! from the same macro in the registration file.
 //!
 //! Each generated newtype rejects an out-of-domain stored value on read (an
 //! unparseable string) as a diesel deserialization error rather than a panic or a

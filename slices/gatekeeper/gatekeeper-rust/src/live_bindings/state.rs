@@ -69,13 +69,6 @@ pub struct GatekeeperState {
     /// [`PendingConsentPublisher::republish_active`](crate::ports::PendingConsentPublisher::republish_active)
     /// seam after the write completes.
     pub(crate) active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
-    /// Resolves a `client_id` to a self-hosted app's redirect topology so
-    /// `/authorize` can expand an app-relative `redirect_uri` entry against the
-    /// request's provenance (see
-    /// [`SelfHostedRedirectResolver`](crate::ports::SelfHostedRedirectResolver)).
-    /// The host wires the apps-store-backed impl; a host with no self-hosted apps
-    /// (and tests) wires the no-op, so relative entries simply never match.
-    pub(crate) self_hosted_redirects: Arc<dyn crate::ports::SelfHostedRedirectResolver>,
     /// The host's native loopback dialog (see
     /// [`LoopbackConsentPrompt`](crate::ports::LoopbackConsentPrompt)):
     /// `/authorize` puts a direct-loopback login by the hosted owner UI to it. A

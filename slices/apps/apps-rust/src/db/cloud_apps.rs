@@ -24,7 +24,7 @@ diesel::table! {
 
 // This configuration's PK is a FK into `app_registrations`, so it joins to its
 // registration on `id`; the cross-kind `find_app_on` left-joins it there. The
-// four-way `allow_tables_to_appear_in_same_query!` lives in `all_kinds_apps`.
+// cross-kind `allow_tables_to_appear_in_same_query!` lives in `all_kinds_apps`.
 diesel::joinable!(cloud_app_configurations -> app_registrations (id));
 
 /// The `cloud_app_configurations` payload — the remote launch URL template. `id` is
@@ -168,7 +168,7 @@ mod tests {
         );
         assert_eq!(registration.kind, AppKind::Cloud);
         assert_eq!(
-            registration.position, 12,
+            registration.position, 11,
             "the store assigns the tail position"
         );
         assert!(registration.on_homescreen);
@@ -196,7 +196,7 @@ mod tests {
             "second insert with the same id is a no-op",
         );
         let (fetched, _) = store.find_app("app-x").unwrap().unwrap();
-        assert_eq!(fetched.position, 12);
+        assert_eq!(fetched.position, 11);
     }
 
     /// A seeded app's id can't be re-created — `app_registrations` already holds it,
@@ -293,12 +293,12 @@ mod tests {
         );
     }
 
-    /// `replace_cloud_app` only touches cloud apps — a self-hosted / system id
-    /// is a no-op `None`, and mutates nothing.
+    /// `replace_cloud_app` only touches cloud apps — a system id is a no-op
+    /// `None`, and mutates nothing.
     #[test]
     fn replace_cloud_app_ignores_non_cloud_ids() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        for id in ["patient-browser", "api-docs"] {
+        for id in ["api-view", "api-docs"] {
             let replaced = store
                 .replace_cloud_app(
                     &cloud_registration(id),

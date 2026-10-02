@@ -41,7 +41,7 @@ pub enum WildflowerResource {
     /// bumps a subject's epoch and so kills *both* token kinds.
     Token,
     /// The apps catalogue + home-screen surface (`/apps`, `/cloud-apps`,
-    /// `/self-hosted-apps`, `/system-apps`, `/home-screen`): read the catalogue
+    /// `/system-apps`, `/home-screen`): read the catalogue
     /// (`.r`) and manage entries (`.c`/`.u`/`.d`). Launching an app is a separate,
     /// explicitly-granted capability — the `wildflower/launch` known scope
     /// ([`KnownScope::AnyScopedAppLaunch`](crate::KnownScope::AnyScopedAppLaunch))

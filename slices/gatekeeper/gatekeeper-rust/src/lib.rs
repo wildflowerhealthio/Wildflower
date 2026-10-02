@@ -66,9 +66,6 @@ pub use http::{
     GatekeeperAuthMiddleware, GatekeeperState, RequireLoopbackPeerMiddleware,
 };
 pub use persistence_rust::DieselPool;
-// The self-hosted redirect seam: the host implements it (backed by the apps
-// store) and passes it into `setup_gatekeeper`, so its trait + types are public.
-pub use ports::{NoSelfHostedRedirects, SelfHostedRedirectResolver, SelfHostedRedirectTopology};
 // The loopback-dialog seam: the host implements it with its native dialog
 // plugin and passes it into `setup_gatekeeper`, so its trait + types are public.
 pub use ports::{
@@ -246,7 +243,6 @@ pub fn setup_gatekeeper(
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
     active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
-    self_hosted_redirects: Arc<dyn ports::SelfHostedRedirectResolver>,
     loopback_consent_prompt: Arc<dyn ports::LoopbackConsentPrompt>,
 ) -> anyhow::Result<Gatekeeper> {
     // The host owner token is minted from `host_owner_scopes` (the live app sources
@@ -295,7 +291,6 @@ pub fn setup_gatekeeper(
         first_party_client_id: config.first_party_client_id.clone().into(),
         owner_ui_base: config.owner_ui_base.clone(),
         active_pending_consent_sender: active_pending_consent_tx,
-        self_hosted_redirects,
         loopback_consent_prompt,
         host_owner_grant: Grant::parse(config.host_owner_scopes.iter().map(String::as_str)),
     });

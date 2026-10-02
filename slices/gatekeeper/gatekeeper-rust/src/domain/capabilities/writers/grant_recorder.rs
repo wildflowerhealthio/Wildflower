@@ -10,7 +10,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::domain::authority::DelegatedScopes;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegisteredRedirectUri};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
@@ -207,7 +207,7 @@ fn new_registration(
         client_id: client_id.to_owned(),
         name: client_id.to_owned(),
         kind: ClientKind::Public,
-        redirect_uris: vec![RegisteredRedirectUri::Absolute(redirect_uri.clone())],
+        redirect_uris: vec![redirect_uri.clone()],
         allowed_scopes: widened_scopes(&[], granted_scopes),
         allowed_grant_types: AllowedGrantType::ALL.to_vec(),
         secret_hash: None,
@@ -238,9 +238,7 @@ fn widen_registration(
     adds_redirect: bool,
 ) -> Client {
     if adds_redirect {
-        client
-            .redirect_uris
-            .push(RegisteredRedirectUri::Absolute(redirect_uri.clone()));
+        client.redirect_uris.push(redirect_uri.clone());
     }
     client.allowed_scopes = widened_scopes(&client.allowed_scopes, granted_scopes);
     client
@@ -343,10 +341,7 @@ mod tests {
             .unwrap()
             .expect("registered on first use");
         assert_eq!(row.allowed_scopes, ["patient/Patient.r", "openid"]);
-        assert_eq!(
-            row.redirect_uris,
-            [RegisteredRedirectUri::Absolute(redirect())]
-        );
+        assert_eq!(row.redirect_uris, [redirect()]);
         assert_eq!(row.kind, ClientKind::Public);
     }
 
@@ -357,14 +352,8 @@ mod tests {
     fn record_code_grant_widening_appends_only_a_new_redirect() {
         let elsewhere = Url::parse("https://other.example/cb").unwrap();
         for (redirect_uri_is_new, expected_redirects) in [
-            (false, vec![RegisteredRedirectUri::Absolute(redirect())]),
-            (
-                true,
-                vec![
-                    RegisteredRedirectUri::Absolute(redirect()),
-                    RegisteredRedirectUri::Absolute(elsewhere.clone()),
-                ],
-            ),
+            (false, vec![redirect()]),
+            (true, vec![redirect(), elsewhere.clone()]),
         ] {
             let store = FakeGatekeeperStore::default();
             store.upsert_client(&client("app", &["openid"])).unwrap();
@@ -522,10 +511,7 @@ mod tests {
         let appended = widen_registration(registered.clone(), &elsewhere, &granted, true);
         assert_eq!(
             appended.redirect_uris,
-            [
-                registered.redirect_uris[0].clone(),
-                RegisteredRedirectUri::Absolute(elsewhere),
-            ]
+            [registered.redirect_uris[0].clone(), elsewhere,]
         );
     }
 }

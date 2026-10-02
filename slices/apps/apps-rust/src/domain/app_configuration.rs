@@ -10,10 +10,7 @@
 //! delegates to the variant's [`CommonAppConfig`] impl, and the `as_*` accessors
 //! narrow to a concrete configuration for the per-kind detail reads.
 
-use super::{
-    AppKind, CloudAppConfiguration, CommonAppConfig, SelfHostedAppConfiguration,
-    SystemAppConfiguration,
-};
+use super::{AppKind, CloudAppConfiguration, CommonAppConfig, SystemAppConfiguration};
 
 /// A per-kind app configuration of runtime-resolved kind — the payload half of the
 /// `(AppRegistration, AppConfiguration)` pair a `find_app` read returns.
@@ -23,8 +20,6 @@ pub enum AppConfiguration {
     System(SystemAppConfiguration),
     /// A cloud app's `cloud_app_configurations` payload.
     Cloud(CloudAppConfiguration),
-    /// A self-hosted app's `self_hosted_app_configurations` payload.
-    SelfHosted(SelfHostedAppConfiguration),
 }
 
 impl AppConfiguration {
@@ -34,7 +29,6 @@ impl AppConfiguration {
         match self {
             AppConfiguration::System(_) => SystemAppConfiguration::KIND,
             AppConfiguration::Cloud(_) => CloudAppConfiguration::KIND,
-            AppConfiguration::SelfHosted(_) => SelfHostedAppConfiguration::KIND,
         }
     }
 
@@ -45,7 +39,6 @@ impl AppConfiguration {
         match self {
             AppConfiguration::System(config) => config.is_removable(),
             AppConfiguration::Cloud(config) => config.is_removable(),
-            AppConfiguration::SelfHosted(config) => config.is_removable(),
         }
     }
 
@@ -54,15 +47,6 @@ impl AppConfiguration {
     pub fn as_cloud(&self) -> Option<&CloudAppConfiguration> {
         match self {
             AppConfiguration::Cloud(config) => Some(config),
-            _ => None,
-        }
-    }
-
-    /// The self-hosted configuration, `None` for other kinds.
-    #[must_use]
-    pub fn as_self_hosted(&self) -> Option<&SelfHostedAppConfiguration> {
-        match self {
-            AppConfiguration::SelfHosted(config) => Some(config),
             _ => None,
         }
     }
@@ -88,16 +72,6 @@ mod tests {
         })
     }
 
-    fn self_hosted(seeded: bool) -> AppConfiguration {
-        AppConfiguration::SelfHosted(SelfHostedAppConfiguration {
-            port: 8081,
-            content_folder: "app-x".to_owned(),
-            subdomain: "app-x".to_owned(),
-            seeded,
-            launch_path: None,
-        })
-    }
-
     fn system() -> AppConfiguration {
         AppConfiguration::System(SystemAppConfiguration {
             url: AppUrl::OriginRelative("/docs".to_owned()),
@@ -108,7 +82,6 @@ mod tests {
     #[test]
     fn kind_derives_from_the_variant() {
         assert_eq!(system().kind(), AppKind::System);
-        assert_eq!(self_hosted(true).kind(), AppKind::SelfHosted);
         assert_eq!(cloud().kind(), AppKind::Cloud);
     }
 
@@ -118,12 +91,7 @@ mod tests {
         let cloud = cloud();
         assert!(cloud.is_removable());
         assert!(cloud.as_cloud().is_some());
-        assert!(cloud.as_self_hosted().is_none());
-
-        assert!(
-            !self_hosted(true).is_removable(),
-            "a seeded self-hosted app is protected"
-        );
+        assert!(cloud.as_system().is_none());
 
         let system = system();
         assert!(!system.is_removable());

@@ -1,10 +1,11 @@
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use url::Url;
 use utoipa::ToSchema;
 
 use crate::domain::capabilities::{ClientView, Scoped};
-use crate::domain::client::{AllowedGrantType, ClientKind, RegisteredRedirectUri};
+use crate::domain::client::{AllowedGrantType, ClientKind};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::live_bindings::LiveClientsReader;
 
@@ -20,9 +21,9 @@ pub(crate) struct ClientBody {
     /// `public` or `confidential`.
     #[schema(value_type = String)]
     kind: ClientKind,
-    /// Absolute URLs, or app-relative paths (a leading `/`) for self-hosted apps.
+    /// Absolute redirect URLs, matched exactly at `/oauth/authorize`.
     #[schema(value_type = Vec<String>)]
-    redirect_uris: Vec<RegisteredRedirectUri>,
+    redirect_uris: Vec<Url>,
     allowed_scopes: Vec<String>,
     /// The `grant_type` values the client may use at `/oauth/token`.
     #[schema(value_type = Vec<String>)]

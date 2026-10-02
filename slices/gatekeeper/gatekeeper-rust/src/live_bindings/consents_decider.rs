@@ -35,7 +35,6 @@ impl Capability for LiveConsentDecider {
             state.store.clone(),
             publisher,
             granted,
-            state.self_hosted_redirects.clone(),
             state.first_party_client_id.clone(),
         )
     }

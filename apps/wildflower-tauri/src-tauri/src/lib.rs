@@ -119,9 +119,9 @@ async fn run_server(
     app_handle: tauri::AppHandle,
     // Tauri's bundled-resource directory, resolved in `.setup()` (where the
     // `AppHandle` path API is available) and threaded in rather than added to
-    // `ServerRuntimeConfig`. The release build reads the FHIR SearchParameter
-    // bundle and copies the vendored self-hosted app builds from it; the dev
-    // build ignores it in favour of the workspace source tree.
+    // `ServerRuntimeConfig`. The desktop/iOS release build reads the FHIR
+    // SearchParameter bundle from it; the dev build ignores it in favour of the
+    // workspace source tree, and Android in favour of the embedded copy.
     resource_dir: std::path::PathBuf,
 ) -> anyhow::Result<()> {
     let owner_ui_base = OwnerUiBase::parse(OWNER_UI_BASE_URL)
@@ -129,8 +129,7 @@ async fn run_server(
     // The FHIR R4 SearchParameter bundle HFS indexes from is a deployed asset,
     // not embedded in the binary — dev reads it from the workspace source tree,
     // release from the bundled resource dir (declared in `tauri.conf.json` under
-    // `bundle.resources`, copied to `<resource_dir>/fhir-search-params/`). Same
-    // dev/release split as the vendored self-hosted apps below.
+    // `bundle.resources`, copied to `<resource_dir>/fhir-search-params/`).
     // Android: `bundle.resources` land in the APK's `assets/`, which are NOT real
     // filesystem paths — `resource_dir()` returns a virtual path `std::fs` (and so
     // HFS's `SqliteBackend`) can't read, and HFS `bail!`s "bundle not found". Tauri
@@ -142,12 +141,11 @@ async fn run_server(
     // drops it from `bundle.resources` (a `null` merge-patch override) so the APK
     // ships the bundle once (the binary embed) rather than twice.
     // Desktop/iOS keep reading the deployed resource straight off disk (their
-    // resource dir is a real directory). NOTE: the sibling `self-hosted-apps/`
-    // resource has the same limitation, but `sync_vendored_self_hosted_apps`
-    // no-ops on a missing source dir, so it degrades to "no vendored apps" rather
-    // than failing startup.
+    // resource dir is a real directory).
     #[cfg(target_os = "android")]
     let search_parameter_data_dir = {
+        // Android reads the embedded bundle, never the resource dir.
+        drop(resource_dir);
         const EMBEDDED_SEARCH_PARAMETERS_R4: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../slices/emr/emr-rust/assets/search-parameters-r4.json"
@@ -188,20 +186,6 @@ async fn run_server(
     } else {
         resource_dir.join("fhir-search-params")
     };
-    // Refresh the vendored self-hosted app builds into the serving dir — dev
-    // overwrite-mirrors from the workspace source tree, release copies-if-missing
-    // from the bundled resources (see `apps_rust::sync_vendored_self_hosted_apps`).
-    let (vendored_source, overwrite_vendored) = if cfg!(debug_assertions) {
-        (
-            std::path::PathBuf::from(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../../slices/apps/self-hosted-apps"
-            )),
-            true,
-        )
-    } else {
-        (resource_dir.join("self-hosted-apps"), false)
-    };
     let host_owner_scopes: Vec<String> = LOCAL_GRANTED_SCOPES
         .split_whitespace()
         .map(str::to_owned)
@@ -230,8 +214,6 @@ async fn run_server(
     let config = WildflowerServerConfig {
         runtime,
         search_parameter_data_dir,
-        vendored_self_hosted_apps_dir: vendored_source,
-        overwrite_vendored_self_hosted_apps: overwrite_vendored,
         owner_ui_base,
         host_owner_scopes,
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
@@ -329,9 +311,8 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
 
             // Tauri's bundled-resource dir — resolved here (the path API needs
-            // the `AppHandle`) and threaded into the server task. In a release
-            // build the vendored self-hosted app builds are copied from
-            // `<resource_dir>/self-hosted-apps/`.
+            // the `AppHandle`) and threaded into the server task, which reads
+            // the FHIR SearchParameter bundle from it in a release build.
             let resource_dir = app.path().resource_dir()?;
 
             // Attach the bridge before the server task spawns: `listen`

@@ -2,9 +2,9 @@
 //! `SQLite` implementation of the [`AppsStore`](crate::domain::AppsStore) port: it
 //! holds the app-wide diesel r2d2 pool and applies the apps migrations onto it)
 //! plus the query bodies it delegates to. One authoritative `app_registrations` table
-//! (the global id space + shared facts + placement) with three per-kind configuration
-//! tables (`system_app_configurations` / `cloud_app_configurations` /
-//! `self_hosted_app_configurations`), real FKs configuration → registration.
+//! (the global id space + shared facts + placement) with two per-kind configuration
+//! tables (`system_app_configurations` / `cloud_app_configurations`), real FKs
+//! configuration → registration.
 //!
 //! [`SqliteAppsStore::new`] applies the embedded migrations once on a pooled
 //! connection via [`persistence_rust::run_diesel_migrations`] under this slice's
@@ -20,7 +20,7 @@
 //!  - [`app_registration`] — the shared `app_registrations` `table!`, its
 //!    `AppKindColumn`, and the registration-wide queries (uniform list, id / position
 //!    allocators, the placement rewrite);
-//!  - [`cloud_apps`] / [`self_hosted_apps`] / [`system_apps`] — each kind's
+//!  - [`cloud_apps`] / [`system_apps`] — each kind's
 //!    configuration `table!` + row struct + its mutators (system is read-only);
 //!  - [`all_kinds_apps`] — the reads/deletes that resolve any kind by id
 //!    (`find_app_on`, `delete_app`), importing the per-kind tables;
@@ -32,7 +32,6 @@ mod all_kinds_apps;
 pub(crate) mod app_registration;
 mod apps_store;
 mod cloud_apps;
-mod self_hosted_apps;
 mod shared;
 mod system_apps;
 

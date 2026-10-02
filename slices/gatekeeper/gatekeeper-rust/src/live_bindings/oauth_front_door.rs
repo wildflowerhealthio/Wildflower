@@ -24,7 +24,6 @@ impl FromState for LiveCodeAuthorizationStarter {
         CodeAuthorizationStarter::new(
             state.store.clone(),
             publisher,
-            state.self_hosted_redirects.clone(),
             state.first_party_client_id.clone(),
         )
     }
@@ -42,7 +41,6 @@ impl FromState for LiveLoopbackOwnerApprover {
             publisher,
             state.loopback_consent_prompt.clone(),
             state.host_owner_grant.clone(),
-            state.self_hosted_redirects.clone(),
             state.first_party_client_id.clone(),
         )
     }

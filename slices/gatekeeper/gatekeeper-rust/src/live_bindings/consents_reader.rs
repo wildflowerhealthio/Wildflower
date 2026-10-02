@@ -27,6 +27,6 @@ impl FixedScopeCapability for LiveConsentReader {
     }
 
     fn build(state: Arc<GatekeeperState>) -> Self {
-        ConsentReader::new(state.store.clone(), state.self_hosted_redirects.clone())
+        ConsentReader::new(state.store.clone())
     }
 }

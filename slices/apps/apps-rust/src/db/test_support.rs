@@ -1,13 +1,9 @@
-//! Shared `#[cfg(test)]` builders for the db query-body tests — the small helpers the
-//! per-kind test modules seed a real in-memory [`SqliteAppsStore`] with. Centralized
-//! here (rather than duplicated per file) the way `domain::actions` keeps its
-//! fixtures in `test_fake`.
+//! Shared `#[cfg(test)]` builders for the db query-body tests — the small helpers
+//! the per-kind test modules seed a real in-memory
+//! [`SqliteAppsStore`](super::SqliteAppsStore) with. Centralized here (rather than
+//! duplicated per file) the way `domain` keeps its fixtures in `test_fake`.
 
-use super::SqliteAppsStore;
-use crate::domain::{
-    AppKind, AppRegistration, AppUrl, AppsError, AppsStore, CloudAppConfiguration,
-    SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload,
-};
+use crate::domain::{AppKind, AppRegistration, AppUrl, AppsError, CloudAppConfiguration};
 
 /// A caller-built cloud registration (the shape the HTTP layer hands the store):
 /// kind `cloud`, on the home screen, `position` a placeholder the store overrides.
@@ -32,62 +28,6 @@ pub(super) fn cloud_config(url: AppUrl) -> CloudAppConfiguration {
 
 pub(super) fn external(url: &str) -> AppUrl {
     AppUrl::External(url.to_owned())
-}
-
-/// A caller-built self-hosted upload (the shape the HTTP layer hands the store): the
-/// registration with id = `slug` and a placeholder `position` the store overrides,
-/// plus the create payload with subdomain = `slug` and `content_folder` defaulting to
-/// `<slug>-folder` (the store allocates `port` and writes `seeded = false`).
-pub(super) fn new_upload(
-    name: &str,
-    slug: &str,
-) -> (AppRegistration, SelfHostedAppConfigurationPayload) {
-    (
-        AppRegistration {
-            id: slug.to_owned(),
-            kind: AppKind::SelfHosted,
-            position: 0,
-            on_homescreen: true,
-            name: name.to_owned(),
-            subtitle: None,
-            local_only: true,
-            client_id: None,
-            requires_tunnel: false,
-        },
-        SelfHostedAppConfigurationPayload {
-            content_folder: format!("{slug}-folder"),
-            subdomain: slug.to_owned(),
-            launch_path: None,
-        },
-    )
-}
-
-/// Insert an upload pair with no reserved ports — the common no-customization path —
-/// returning the stored pair.
-pub(super) fn insert_upload(
-    store: &SqliteAppsStore,
-    name: &str,
-    slug: &str,
-) -> (AppRegistration, SelfHostedAppConfiguration) {
-    let (registration, config) = new_upload(name, slug);
-    store
-        .insert_self_hosted_app(&registration, &config, &[])
-        .expect("inserted")
-}
-
-/// A self-hosted content-replace payload. Only `launch_path` is written on a replace,
-/// so the immutable `content_folder` / `subdomain` are ignored placeholders here.
-pub(super) fn replace_payload(launch_path: Option<&str>) -> SelfHostedAppConfigurationPayload {
-    SelfHostedAppConfigurationPayload {
-        content_folder: "ignored".to_owned(),
-        subdomain: "ignored".to_owned(),
-        launch_path: launch_path.map(str::to_owned),
-    }
-}
-
-/// The `launch_path` of a self-hosted `(registration, configuration)` pair.
-pub(super) fn launch_path(pair: &(AppRegistration, SelfHostedAppConfiguration)) -> Option<String> {
-    pair.1.launch_path.clone()
 }
 
 /// The `context: source` text of an [`AppsError::Infrastructure`], for asserting on

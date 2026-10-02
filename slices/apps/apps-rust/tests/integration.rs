@@ -6,12 +6,11 @@
 
 use std::sync::Arc;
 
-use apps_rust::{ports::NoAppLaunchScopes, setup_apps, Apps, AppsConfig, SelfHostedAppsService};
+use apps_rust::{ports::NoAppLaunchScopes, setup_apps, Apps, AppsConfig};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
 use shared_structures_rust::tunnel_service::OfflineTunnel;
-use shared_structures_server_rust::ProxyTable;
 use tower::ServiceExt;
 use url::Url;
 
@@ -46,27 +45,11 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     };
     let handle = Arc::new(RecordingStubWebviewHandle::default());
     let tunnel = Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"));
-    // A throwaway apps dir + fresh proxy table back the self-hosted service the
-    // slice now takes; the integration tests here don't exercise upload/serve, so
-    // an empty dir is fine (it's left for the OS to reap).
-    let unique = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("clock after epoch")
-        .as_nanos();
-    let apps_dir = std::env::temp_dir().join(format!("wf-apps-int-{unique}"));
-    std::fs::create_dir_all(&apps_dir).expect("create temp apps dir");
-    let self_hosted = Arc::new(SelfHostedAppsService::new(
-        &Url::parse(LOOPBACK_BASE_URL).expect("valid base url"),
-        apps_dir,
-        ProxyTable::new(),
-        tunnel.clone(),
-    ));
     let apps = setup_apps(
         pool,
         &config,
         tunnel,
         handle.clone(),
-        self_hosted,
         Arc::new(NoAppLaunchScopes),
     )
     .expect("setup_apps");
@@ -141,7 +124,6 @@ async fn fresh_install_lists_the_default_set() {
     assert_eq!(
         ids,
         vec![
-            "patient-browser",
             "api-view",
             "api-docs",
             "growth-chart",
@@ -155,19 +137,6 @@ async fn fresh_install_lists_the_default_set() {
             "lifting-app",
         ],
     );
-}
-
-/// The self-hosted catalogue the host binds listeners for is materialized at
-/// setup.
-#[tokio::test]
-async fn self_hosted_apps_catalogue_is_materialized() {
-    let apps = spin_up();
-    let (_registration, config) = apps
-        .self_hosted_apps_at_start
-        .iter()
-        .find(|(reg, _)| reg.id == "patient-browser")
-        .expect("patient-browser is self-hosted");
-    assert_eq!(config.port, 8081);
 }
 
 /// A cloud app created through the admin surface shows up immediately in the
@@ -283,10 +252,10 @@ async fn seeded_cloud_app_is_fully_editable() {
     );
 }
 
-/// A self-hosted app appears in the uniform list (kind `self-hosted`, no `url`)
-/// but isn't reachable through the cloud resource — a wrong-kind id is a 404.
+/// A system app appears in the uniform list (kind `system`, no `url`) but isn't
+/// reachable through the cloud resource — a wrong-kind id is a 404.
 #[tokio::test]
-async fn self_hosted_app_listed_but_not_a_cloud_resource() {
+async fn system_app_listed_but_not_a_cloud_resource() {
     let apps = spin_up();
     let router = apps.combined_router();
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
@@ -295,16 +264,16 @@ async fn self_hosted_app_listed_but_not_a_cloud_resource() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|v| v["id"] == "patient-browser")
-        .expect("patient-browser in list");
-    assert_eq!(row["name"], "Patient Browser");
-    assert_eq!(row["kind"], "self-hosted");
+        .find(|v| v["id"] == "api-docs")
+        .expect("api-docs in list");
+    assert_eq!(row["name"], "API Docs");
+    assert_eq!(row["kind"], "system");
     assert!(row.get("url").is_none());
 
     let put_res = router
         .clone()
         .oneshot(put(
-            "/cloud-apps/patient-browser",
+            "/cloud-apps/api-docs",
             serde_json::json!({
                 "name": "tampered",
                 "url": "https://example.com/x",
@@ -316,19 +285,20 @@ async fn self_hosted_app_listed_but_not_a_cloud_resource() {
     assert_eq!(put_res.status(), StatusCode::NOT_FOUND);
 }
 
-/// A loopback launch of a self-hosted app 204s to its fixed loopback origin.
+/// A loopback launch of a system app 204s to its template rendered against the
+/// loopback origin.
 #[tokio::test]
-async fn self_hosted_app_launches_to_its_loopback_origin() {
+async fn system_app_launches_against_the_loopback_origin() {
     let (apps, handle) = spin_up_with_handle();
     let res = apps
         .combined_router()
-        .oneshot(launch("/apps/patient-browser"))
+        .oneshot(launch("/apps/api-docs"))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert_eq!(
         handle.0.lock().expect("handle mutex").clone(),
-        vec!["http://127.0.0.1:8081/".to_string()],
+        vec!["http://127.0.0.1:8080/docs".to_string()],
     );
 }
 
@@ -341,7 +311,6 @@ async fn home_screen_reorders_and_disables_a_system_app() {
     // Move api-docs to the front and disable it; keep the rest in order.
     let body = serde_json::json!([
         { "id": "api-docs", "onHomescreen": false },
-        { "id": "patient-browser", "onHomescreen": true },
         { "id": "api-view", "onHomescreen": true },
         { "id": "growth-chart", "onHomescreen": true },
         { "id": "medication-viewer", "onHomescreen": true },
@@ -369,7 +338,6 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         ids,
         vec![
             "api-docs",
-            "patient-browser",
             "api-view",
             "growth-chart",
             "medication-viewer",
