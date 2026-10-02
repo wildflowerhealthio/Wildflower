@@ -2,11 +2,12 @@ import { Schema } from 'effect'
 import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 
 /**
- * Validates an app launch-URL string (mirrors the Rust server's `AppUrl`).
- * Accepts an `https://` absolute URL, an origin-relative `/path` (not `//`, a
- * protocol-relative authority), or a template starting with `{origin}`
- * (substituted at launch). Rejects `http://`, `javascript:`, `data:`, `file:`,
- * etc. — open-redirect / XSS vectors when a launch hands the URL to a browser.
+ * Validates an app launch-URL string. Stricter than the Rust server's `AppUrl`,
+ * which also accepts `http://`. Accepts an `https://` absolute URL, an
+ * origin-relative `/path` (not `//`, a protocol-relative authority), or a
+ * template starting with `{origin}` (substituted at launch). Rejects `http://`,
+ * `javascript:`, `data:`, `file:`, etc. — open-redirect / XSS vectors when a
+ * launch hands the URL to a browser.
  */
 const AppUrlSchema = Schema.String.pipe(
   Schema.filter((value) => {
@@ -14,7 +15,7 @@ const AppUrlSchema = Schema.String.pipe(
     if (value.startsWith('{origin}')) return true
     if (value.startsWith('/') && !value.startsWith('//')) return true
     if (value.startsWith('https://')) return true
-    return 'url must be http://, https://, an origin-relative /path, or start with the {origin} placeholder'
+    return 'url must be an absolute https:// URL, an origin-relative /path, or start with the {origin} placeholder'
   })
 )
 

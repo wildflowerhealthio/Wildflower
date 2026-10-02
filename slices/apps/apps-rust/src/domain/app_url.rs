@@ -68,7 +68,7 @@ impl fmt::Display for AppUrlError {
         match self {
             AppUrlError::Empty => f.write_str("url must not be empty"),
             AppUrlError::Invalid => f.write_str(
-                "url must be http://, https://, an origin-relative /path, or start with the {origin} placeholder",
+                "url must be an absolute http:// or https:// URL, an origin-relative /path, or start with the {origin} placeholder",
             ),
         }
     }
@@ -121,7 +121,7 @@ impl AppUrl {
     ///
     /// The result is safe by construction: an [`AppUrl::OriginRelative`] always
     /// renders same-origin and an [`AppUrl::External`] always stays on its
-    /// `https://` authority (the placeholders only ever land in the path/query),
+    /// own authority (the placeholders only ever land in the path/query),
     /// so no launch-time re-validation is needed.
     #[must_use]
     pub fn to_url_with_params(&self, params: &LaunchParams<'_>) -> String {
