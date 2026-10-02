@@ -473,3 +473,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/bg-server-2-service (adding local notifications)
 **Learning**: Adding `tauri-plugin-notification = "2"` resolves to the newest 2.x, and 2.5.x requires `tauri` ≥ 2.12, so Cargo quietly moves the whole Tauri stack forward in `Cargo.lock`. To add the plugin without that, pin the manifest to `=2.4.0` once so the lock resolves it on the current `tauri`, then relax the manifest back to `"2"`; the lock keeps 2.4.0 until a deliberate `tauri` upgrade.
 **Suggested destination**: docs/Dependencies (a Rust dependency How-To)
+
+## `tauri-plugin-notification`'s Android `request_permission` never answers once granted
+
+**Discovered during**: claude/bg-server-3-mobile (asking for the notification permission at first launch)
+**Learning**: In 2.4.0 the Kotlin `requestPermissions` on Android 13+ only requests when the permission isn't granted, and has no `else` branch to resolve the invoke, so Rust's blocking `request_permission()` waits forever on a device that already granted it. Read `permission_state()` first and ask only on `Prompt`/`PromptWithRationale`, from a blocking thread (both calls block on the native side). Also, two permission requests on screen at once cancel the second, which this plugin then reports as `denied` (`areNotificationsEnabled()` is still false); `tauri-plugin-background-service` asks for `POST_NOTIFICATIONS` itself on every start, so ask before starting it.
+**Suggested destination**: a Tauri plugin gotchas Reference

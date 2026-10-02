@@ -1,12 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" android:installLocation="auto">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:installLocation="auto">
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- tauri-plugin-background-service's manifest asks for what its calling,
+         ringing and other foreground-service types need. The Wildflower server
+         runs as a specialUse foreground service and needs none of it, so the
+         merge drops each one. What the server does need comes from the plugin
+         and stays: FOREGROUND_SERVICE, FOREGROUND_SERVICE_SPECIAL_USE,
+         POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, ACCESS_NETWORK_STATE. -->
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" tools:node="remove" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <application
-        android:name=".WildflowerApplication"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.wildflower_tauri"
@@ -34,5 +50,27 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- The plugin's foreground service, narrowed to the one type the
+             server starts as (background_service_foreground_type in
+             tauri-shared-config.json), with the reason Play asks of a
+             specialUse service in place of the plugin's generic one. -->
+        <service
+            android:name="app.tauri.backgroundservice.LifecycleService"
+            android:foregroundServiceType="specialUse"
+            tools:replace="android:foregroundServiceType">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Serves the owner's own health records to their own apps over their personal tunnel"
+                tools:replace="android:value" />
+        </service>
+
+        <!-- The plugin's self-managed Telecom service carries calls, and binds
+             only with MANAGE_OWN_CALLS, which is dropped above. The plugin
+             still registers its phone account at load; without the permission
+             Telecom refuses it with a SecurityException the plugin catches. -->
+        <service
+            android:name="app.tauri.backgroundservice.BackgroundCallConnectionService"
+            tools:node="remove" />
     </application>
 </manifest>

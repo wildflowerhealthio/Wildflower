@@ -32,15 +32,6 @@ use tokio::sync::{mpsc, watch, Notify};
 
 mod stop_reason;
 
-/// The text of Android's persistent foreground-service notification. The
-/// plugin has no way to change it once the service has started.
-const SERVICE_LABEL: &str = "Wildflower server is running";
-
-/// The Android foreground-service type the service starts as. It must be in
-/// the plugin config's `androidForegroundServiceTypes` allowlist
-/// (`tauri.conf.json`), which the plugin checks on every platform.
-pub const FOREGROUND_SERVICE_TYPE: &str = "specialUse";
-
 /// Tauri window label of the main webview, whose suspend and resume restart
 /// the server on a phone.
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -102,28 +93,27 @@ impl<R: Runtime> BackgroundService<R> for WildflowerServerService {
     }
 }
 
-/// Start the background service. A service that is already running counts as
-/// started. A failure to start is reported like a server failure: logged, a
-/// notification, and the native error dialog.
-pub async fn start_server_service<R: Runtime>(app: &AppHandle<R>) {
+/// Start the background service as `start_config` says. A service that is
+/// already running counts as started. A failure to start is reported like a
+/// server failure: logged, a notification, and the native error dialog.
+async fn start_server_service<R: Runtime>(app: &AppHandle<R>, start_config: &StartConfig) {
     let Some(service_manager) = app.try_state::<ServiceManagerHandle<R>>() else {
         report_server_failure(app, "the background-service plugin is not registered");
         return;
     };
-    let start_config = StartConfig {
-        service_label: SERVICE_LABEL.to_owned(),
-        foreground_service_type: FOREGROUND_SERVICE_TYPE.to_owned(),
-    };
-    match service_manager.start(app.clone(), start_config).await {
+    match service_manager
+        .start(app.clone(), start_config.clone())
+        .await
+    {
         Ok(()) | Err(ServiceError::AlreadyRunning) => {}
         Err(error) => report_server_failure(app, &format!("failed to start: {error}")),
     }
 }
 
-/// Stop the service if it is running, then start it. The stop uses
-/// [`RESTART_STOP_REASON`], so it posts no stop notification; the new run waits
-/// for the old one at the run gate.
-pub async fn restart_server_service<R: Runtime>(app: &AppHandle<R>) {
+/// Stop the service if it is running, then start it as `start_config` says. The
+/// stop uses [`RESTART_STOP_REASON`], so it posts no stop notification; the new
+/// run waits for the old one at the run gate.
+async fn restart_server_service<R: Runtime>(app: &AppHandle<R>, start_config: &StartConfig) {
     let Some(service_manager) = app.try_state::<ServiceManagerHandle<R>>() else {
         report_server_failure(app, "the background-service plugin is not registered");
         return;
@@ -132,15 +122,21 @@ pub async fn restart_server_service<R: Runtime>(app: &AppHandle<R>) {
         .stop_with_reason(stop_reason::to_plugin(RESTART_STOP_REASON))
         .await
     {
-        Ok(()) | Err(ServiceError::NotRunning) => start_server_service(app).await,
+        Ok(()) | Err(ServiceError::NotRunning) => start_server_service(app, start_config).await,
         Err(error) => report_server_failure(app, &format!("failed to stop for a restart: {error}")),
     }
 }
 
-/// Wire the service's status, its restart request, and its notifications.
+/// Wire the service's status, its restart request, and its notifications, then
+/// start it. Every start, restarts included, uses `start_config`: the text of
+/// Android's persistent foreground-service notification, which the plugin can't
+/// change once the service has started, and the Android foreground-service type,
+/// which the plugin config's `androidForegroundServiceTypes` must allow (the
+/// plugin checks it on every platform).
 ///
 /// - Emits a [`ServerServiceStatus`] on [`BRIDGE_EVENT`] whenever the run state
-///   or the last stop reason changes, and in reply to every `__Ready`.
+///   or the last stop reason changes, in reply to every `__Ready`, and once the
+///   notification permission is answered.
 /// - Restarts the service on a `RestartServer` from the page.
 /// - Listens on the plugin's [`BACKGROUND_SERVICE_EVENT`] for stop reasons,
 ///   posting the stop notification, and for errors, which also raise the native
@@ -149,12 +145,17 @@ pub async fn restart_server_service<R: Runtime>(app: &AppHandle<R>) {
 ///   notification.
 /// - On a phone, starts the server when the app comes back to the foreground
 ///   with it stopped, and on iOS restarts a running one.
+/// - Asks for permission to post notifications if the OS has never asked
+///   (see [`ask_for_notification_permission`]), then starts the service. The
+///   start comes from here rather than the page, so the server runs whether or
+///   not the webview loads.
 ///
 /// Registers its listeners synchronously, so call it from `setup()` before the
 /// page can send `__Ready`. Call once per app lifecycle.
-pub fn attach_background_server_service<R: Runtime>(
+pub fn start_background_server_service<R: Runtime>(
     app: &AppHandle<R>,
     receivers: ServerServiceReceivers,
+    start_config: StartConfig,
 ) {
     // The shared bridge channel has no automated cross-process tag guard, so
     // the boot log records who dispatches what.
@@ -167,26 +168,42 @@ pub fn attach_background_server_service<R: Runtime>(
         tunnel_liveness,
         forwarded_requests,
     } = receivers;
-    let page_ready = Arc::new(Notify::new());
+    let status_wanted = Arc::new(Notify::new());
     let (last_stop_reason_sender, last_stop_reason) = watch::channel(None);
 
-    listen_for_bridge_messages(app, Arc::clone(&page_ready));
+    listen_for_bridge_messages(app, Arc::clone(&status_wanted), start_config.clone());
     listen_for_plugin_events(app, last_stop_reason_sender, run_state.clone());
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    start_or_restart_on_foreground_resume(app, run_state.clone());
+    start_or_restart_on_foreground_resume(app, run_state.clone(), start_config.clone());
     tauri::async_runtime::spawn(emit_status_changes(
         app.clone(),
-        page_ready,
+        Arc::clone(&status_wanted),
         run_state,
         last_stop_reason,
     ));
     tauri::async_runtime::spawn(post_request_notifications(app.clone(), forwarded_requests));
     tauri::async_runtime::spawn(post_tunnel_notifications(app.clone(), tunnel_liveness));
+
+    let launch_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // Asked before the first start: the plugin's own start asks too, and on
+        // Android a second ask while the first is on screen is cancelled, which
+        // the notification plugin reports as a refusal. A grant answered here
+        // leaves the plugin nothing to ask.
+        ask_for_notification_permission(&launch_handle).await;
+        status_wanted.notify_one();
+        start_server_service(&launch_handle, &start_config).await;
+    });
 }
 
-/// Route the page's `__Ready` and `RestartServer`. Sibling slices' tags and
-/// this slice's own `ServerServiceStatus` echo are dropped.
-fn listen_for_bridge_messages<R: Runtime>(app: &AppHandle<R>, page_ready: Arc<Notify>) {
+/// Route the page's `__Ready` (a status snapshot is wanted) and `RestartServer`
+/// (a restart as `start_config` says). Sibling slices' tags and this slice's
+/// own `ServerServiceStatus` echo are dropped.
+fn listen_for_bridge_messages<R: Runtime>(
+    app: &AppHandle<R>,
+    status_wanted: Arc<Notify>,
+    start_config: StartConfig,
+) {
     let handle = app.clone();
     app.listen(BRIDGE_EVENT, move |event| {
         let payload = event.payload();
@@ -200,13 +217,14 @@ fn listen_for_bridge_messages<R: Runtime>(app: &AppHandle<R>, page_ready: Arc<No
             }
         };
         if tag == READY_TAG {
-            page_ready.notify_one();
+            status_wanted.notify_one();
         } else if tag == RESTART_SERVER {
             match serde_json::from_str::<BackgroundServerServiceWebToHost>(payload) {
                 Ok(BackgroundServerServiceWebToHost::RestartServer) => {
                     let handle = handle.clone();
+                    let start_config = start_config.clone();
                     tauri::async_runtime::spawn(async move {
-                        restart_server_service(&handle).await;
+                        restart_server_service(&handle, &start_config).await;
                     });
                 }
                 Err(error) => log::warn!(
@@ -257,17 +275,17 @@ fn listen_for_plugin_events<R: Runtime>(
 }
 
 /// Emit the current [`ServerServiceStatus`] on every run-state or stop-reason
-/// change and every `__Ready`. One task emits every snapshot, so the last one
-/// the page receives is always the current one.
+/// change and whenever `status_wanted` is notified. One task emits every
+/// snapshot, so the last one the page receives is always the current one.
 async fn emit_status_changes<R: Runtime>(
     app: AppHandle<R>,
-    page_ready: Arc<Notify>,
+    status_wanted: Arc<Notify>,
     mut run_state: watch::Receiver<ServerRunState>,
     mut last_stop_reason: watch::Receiver<Option<ServiceStopReason>>,
 ) {
     loop {
         tokio::select! {
-            () = page_ready.notified() => {}
+            () = status_wanted.notified() => {}
             changed = run_state.changed() => if changed.is_err() {
                 log::error!("[background-server-service] run-state channel closed; status delivery stopped");
                 return;
@@ -356,6 +374,7 @@ async fn post_tunnel_notifications<R: Runtime>(
 fn start_or_restart_on_foreground_resume<R: Runtime>(
     app: &AppHandle<R>,
     run_state: watch::Receiver<ServerRunState>,
+    start_config: StartConfig,
 ) {
     use background_server_service_rust::{ForegroundResume, ResumeAction};
 
@@ -384,12 +403,17 @@ fn start_or_restart_on_foreground_resume<R: Runtime>(
             _ => None,
         };
         let handle = handle.clone();
+        let start_config = start_config.clone();
         match action {
             Some(ResumeAction::Start) => {
-                tauri::async_runtime::spawn(async move { start_server_service(&handle).await });
+                tauri::async_runtime::spawn(async move {
+                    start_server_service(&handle, &start_config).await;
+                });
             }
             Some(ResumeAction::Restart) => {
-                tauri::async_runtime::spawn(async move { restart_server_service(&handle).await });
+                tauri::async_runtime::spawn(async move {
+                    restart_server_service(&handle, &start_config).await;
+                });
             }
             None => {}
         }
@@ -414,6 +438,55 @@ fn notification_permission<R: Runtime>(app: &AppHandle<R>) -> NotificationPermis
             log::warn!("[background-server-service] notification permission unreadable: {error}");
             NotificationPermission::Unknown
         }
+    }
+}
+
+/// Ask the OS for permission to post notifications when it has never asked
+/// (iOS, and Android 13 and later), and log the answer when it isn't a grant.
+/// The server never depends on the answer; the snapshot reports it.
+///
+/// Only a `Prompt` state is asked about. An unreadable state isn't: on Android
+/// the notification plugin never answers a request for a permission already
+/// granted, and the service's start waits on this. Desktop always reads as
+/// granted. The plugin's mobile calls block until the native side answers, and
+/// the request until the person does, so both run on a blocking thread.
+async fn ask_for_notification_permission<R: Runtime>(app: &AppHandle<R>) {
+    let handle = app.clone();
+    let asked = tauri::async_runtime::spawn_blocking(move || {
+        let Some(notifications) = handle.try_state::<Notification<R>>() else {
+            return Err("the notification plugin is not registered".to_owned());
+        };
+        let permission_before_asking = notifications
+            .permission_state()
+            .map_err(|error| format!("the permission is unreadable: {error}"))?;
+        match permission_before_asking {
+            PermissionState::Prompt | PermissionState::PromptWithRationale => notifications
+                .request_permission()
+                .map(Some)
+                .map_err(|error| format!("the request failed: {error}")),
+            PermissionState::Granted | PermissionState::Denied => Ok(None),
+        }
+    })
+    .await;
+    match asked {
+        Ok(Ok(Some(PermissionState::Granted))) => {
+            log::info!("[background-server-service] notifications allowed");
+        }
+        Ok(Ok(Some(
+            answer @ (PermissionState::Denied
+            | PermissionState::Prompt
+            | PermissionState::PromptWithRationale),
+        ))) => log::warn!(
+            "[background-server-service] notifications not allowed ({answer}); the server runs, but its notifications won't show"
+        ),
+        // Already answered, on an earlier launch or in the OS settings.
+        Ok(Ok(None)) => {}
+        Ok(Err(error)) => log::warn!(
+            "[background-server-service] notification permission not asked for: {error}"
+        ),
+        Err(error) => log::error!(
+            "[background-server-service] the notification permission task failed: {error}"
+        ),
     }
 }
 
