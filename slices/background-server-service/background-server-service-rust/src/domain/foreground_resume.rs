@@ -1,7 +1,7 @@
 //! What the host does with the server when the app comes back to the
 //! foreground on a phone.
 
-use crate::server_run::ServerRunState;
+use crate::domain::server_run_state::ServerRunState;
 
 /// What a foreground resume does to the server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

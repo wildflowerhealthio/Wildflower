@@ -15,6 +15,13 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   gatekeeper-backed `AppLaunchScopes` for apps, the reqwest `HealthProbe` for the
   tunnel, and HFS's base URL following the tunnel's public host. The
   unmatched-route `404` is here too.
+  - Layout: `config.rs` at the crate root, the host's inputs
+    (`WildflowerServerConfig`, `HostPorts`, `ServerObservers`); `adapters/`
+    other slices' ports implemented here (apps' `AppLaunchScopes`, the tunnel's
+    `HealthProbe`); `http/` the server's own middleware (CORS, the loopback
+    owner trust, the forwarded-request report) and the `404`; `live_bindings/`
+    `set_up`, `WildflowerServer`, the database catalogue and HFS's base URL
+    following the tunnel.
 
 ## Layering
 

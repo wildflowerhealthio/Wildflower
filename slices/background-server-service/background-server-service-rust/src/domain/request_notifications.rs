@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller};
 
-use crate::notification::LocalNotification;
+use crate::domain::notification::LocalNotification;
 
 /// How long a caller must go without a request for its next one to count as a
 /// new arrival, and the span the request count covers.

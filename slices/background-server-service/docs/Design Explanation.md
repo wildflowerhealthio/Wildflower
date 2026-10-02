@@ -32,6 +32,12 @@ Around the service the host:
 | `background-server-service-tauri-rust`                        | The `BackgroundService` impl (`WildflowerServerService`), starting and restarting the service, the `background-service://event` listener for stop reasons and errors, the `RestartServer` listener, the status emitter, notifications through `tauri-plugin-notification`, the native error dialog, and the foreground-resume hook (`WindowEvent::Suspended` → `Resumed`).                                                                                                                                  |
 | `background-server-service-android-rust`                      | The Android headless-core shim: the JNI functions the plugin's `HeadlessBridge` calls in the host's library (`startCore`, `stopCore`, `notifyNetworkChanged`, `callAction`, `notificationAction`), and `mark_host_running`, the flag `.setup()` sets. The host links it on Android only. The one crate that allows `unsafe_code`, for its exports' `#[unsafe(no_mangle)]` alone. Removed with #886.                                                                                                         |
 
+`background-server-service-rust` is layered like the other Rust slices: the
+wire mirrors (`bridge.rs`, `plugin_event.rs`) at the crate root; the run gate,
+`ServerRunState`, the foreground-resume rule and the notification decisions in
+`domain/`; and a server run on its dedicated thread and runtime in
+`live_bindings/`.
+
 `apps/wildflower-tauri` keeps `.setup()`, plugin registration, the compile-time
 constants from `tauri-shared-config.json` (passed into the server's config, not
 read by the slice), the plugin's `background-service` config in

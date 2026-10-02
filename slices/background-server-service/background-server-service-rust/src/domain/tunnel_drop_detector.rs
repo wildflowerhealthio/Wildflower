@@ -2,7 +2,7 @@
 
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelStatus};
 
-use crate::notification::LocalNotification;
+use crate::domain::notification::LocalNotification;
 
 /// The id both tunnel notifications share, so "reconnected" replaces
 /// "disconnected".

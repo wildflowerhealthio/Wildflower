@@ -9,8 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::server_run_state::ServerRunState;
 use crate::plugin_event::ServiceStopReason;
-use crate::server_run::ServerRunState;
 
 /// Host→web tag literal for [`BackgroundServerServiceHostToWeb::ServerServiceStatus`].
 pub const SERVER_SERVICE_STATUS: &str = "ServerServiceStatus";

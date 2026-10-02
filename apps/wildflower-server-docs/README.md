@@ -193,7 +193,7 @@ Requests are sent **straight from the reader's browser** to the chosen server â€
 there is no proxy â€” so they are cross-origin and subject to the browser's rules:
 
 - The Wildflower API applies one CORS layer across its whole surface
-  (`api_cors_layer` in `slices/wildflower-server/wildflower-server-rust/src/lib.rs`),
+  (`api_cors_layer` in `slices/wildflower-server/wildflower-server-rust/src/http/middleware/cors.rs`),
   which mirrors the requesting origin and headers back rather than sending `*`,
   so the `Authorization` header is allowed and a cross-origin call from this
   page is accepted by the server.
