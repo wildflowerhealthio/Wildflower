@@ -27,7 +27,7 @@ pub type GatekeeperAuthMiddleware =
 /// The downstream-slice authN middleware — `401` for a missing/invalid bearer
 /// token, except `exempt_paths` which pass through (pass `&[]` to gate every
 /// path). Inserts `ScopeClaims` for downstream `Scoped<…>` capabilities, and
-/// stamps the response with the verified [`RequestCaller::OAuthClient`] (an
+/// stamps the response with the verified [`RequestCaller`] (an
 /// exempt path's response carries none).
 /// `Clone` — build once, clone per router. See
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`.
@@ -62,11 +62,9 @@ pub fn gatekeeper_auth_middleware(
             let mut response = next.run(req).await;
             // Name the verified caller on the response, as `require_valid_session`
             // does, for the host's forwarded-request observer.
-            response
-                .extensions_mut()
-                .insert(RequestCaller::OAuthClient {
-                    client_id: claims.subject,
-                });
+            response.extensions_mut().insert(RequestCaller {
+                client_id: claims.subject,
+            });
             response
         })
     };

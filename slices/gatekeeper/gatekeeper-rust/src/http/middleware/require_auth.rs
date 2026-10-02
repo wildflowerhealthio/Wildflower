@@ -35,7 +35,7 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 /// `ScopeClaims`. Both run the same [`verify_request_claims`] pipeline.
 ///
 /// Both also stamp the verified OAuth client on the response as a
-/// [`RequestCaller::OAuthClient`] extension, so the host can say which app is
+/// [`RequestCaller`] extension, so the host can say which app is
 /// using the server over the tunnel.
 pub async fn require_valid_session(
     State(state): State<Arc<GatekeeperState>>,
@@ -47,7 +47,7 @@ pub async fn require_valid_session(
         Ok(claims) => claims,
         Err(response) => return *response,
     };
-    let caller = RequestCaller::OAuthClient {
+    let caller = RequestCaller {
         client_id: claims.subject.clone(),
     };
     // Hand the verified claims (incl. the `scope` claim) to the handler layer.
