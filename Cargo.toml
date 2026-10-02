@@ -5,6 +5,9 @@ members = [
   "apps/wildflower-tauri/src-tauri",
   "plugins/tauri-plugin-native-webview",
   "slices/apps/apps-rust",
+  "slices/background-server-service/background-server-service-android-rust",
+  "slices/background-server-service/background-server-service-rust",
+  "slices/background-server-service/background-server-service-tauri-rust",
   "slices/browser-sniffer/browser-sniffer-tauri-rust",
   "slices/collector/collector-rust",
   "slices/databases/databases-rust",
@@ -72,5 +75,8 @@ utoipa-axum = "0.3"
 # Forbidding unsafe makes any `unsafe` block a compile error (not just a lint),
 # across local builds and CI alike. The default clippy groups are enforced
 # separately as hard errors by the rust-lint workflow's deny-warnings run.
+# `background-server-service-android-rust` is the one member that doesn't opt
+# in: its JNI exports need `#[unsafe(no_mangle)]`, so it copies this table with
+# `unsafe_code` at `deny` (see its manifest) until #886 removes it.
 [workspace.lints.rust]
 unsafe_code = "forbid"

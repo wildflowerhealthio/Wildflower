@@ -43,7 +43,7 @@ scopes-rust = { path = "../../scopes/scopes-rust" }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
   "health-check",
   # `served_base_url_for`: the unmatched-route 404 links back to the request's
-  # served origin (see `src/not_found.rs`); `is_forwarded` for the loopback
+  # served origin (see `src/http/not_found.rs`); `is_forwarded` for the loopback
   # owner trust.
   "served-origin",
 ] }

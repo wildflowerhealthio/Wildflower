@@ -1,6 +1,8 @@
-//! `serve`'s lifecycle: cancelling its shutdown token makes it return `Ok`, and
-//! the loopback port is then free for a second `serve` over the same app-data
-//! dir and the same host channels, which comes up and answers `/health`.
+//! The server's lifecycle: once `set_up` has bound the port, cancelling
+//! `serve`'s shutdown token makes it return `Ok`, and the loopback port is then
+//! free for a second server over the same app-data dir and the same host
+//! channels, which comes up and answers `/health`. While serving, the host's
+//! observers see the tunnel's liveness and each forwarded request.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -8,14 +10,15 @@ use std::time::Duration;
 
 use gatekeeper_rust::{NoLoopbackConsentPrompt, PendingConsentHead};
 use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use wildflower_server_rust::{serve, HostPorts, WildflowerServerConfig};
+use wildflower_server_rust::{set_up, HostPorts, ServerObservers, WildflowerServerConfig};
 
-/// How long one `serve` may take to come up or wind down before the test fails
+/// How long one server may take to come up or wind down before the test fails
 /// rather than hangs. Startup indexes the FHIR SearchParameter bundle, which is
 /// the slow part.
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -55,23 +58,17 @@ fn server_config(app_data_dir: PathBuf, loopback_base_url: Url) -> WildflowerSer
     }
 }
 
-/// Spawn `serve` and wait until it has bound the loopback port. `serve` binds
-/// before gatekeeper mints the host owner token, so the token arriving on
-/// `owner_tokens` means a connection to the port now queues for the server.
-/// Fails if `serve` returns first, so a startup error surfaces as itself.
+/// Set the server up, which binds the loopback port, then spawn `serve`.
 async fn start_serving(
     config: WildflowerServerConfig,
     host_ports: HostPorts,
-    owner_tokens: &mut watch::Receiver<Option<String>>,
+    observers: ServerObservers,
     shutdown: CancellationToken,
 ) -> JoinHandle<anyhow::Result<()>> {
-    owner_tokens.mark_unchanged();
-    let mut server = tokio::spawn(serve(config, host_ports, shutdown));
-    tokio::select! {
-        minted = owner_tokens.changed() => minted.expect("the test holds the owner-token sender"),
-        early = &mut server => panic!("serve returned before binding: {early:?}"),
-    }
-    server
+    let server = set_up(config, host_ports, observers)
+        .await
+        .expect("the server sets up and binds");
+    tokio::spawn(server.serve(shutdown))
 }
 
 async fn health_status(loopback_base_url: &Url) -> reqwest::StatusCode {
@@ -90,7 +87,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
 
     // Host-owned channels, shared by both runs as the host's bridge shares them.
     // The receivers stand in for the bridge's.
-    let (host_owner_token_sender, mut owner_tokens) = watch::channel(None);
+    let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
     let (active_pending_consent_sender, _pending_consents) =
         watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
@@ -98,6 +95,12 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         on_device_webview_handle: Arc::new(NoOnDeviceWebview),
         host_owner_token_sender,
         active_pending_consent_sender,
+    };
+    let (tunnel_liveness_sender, mut tunnel_liveness) = watch::channel(None);
+    let (forwarded_request_sender, mut forwarded_requests) = mpsc::channel(8);
+    let observers = ServerObservers {
+        tunnel_liveness_sender,
+        forwarded_request_sender,
     };
     let config = server_config(app_data_dir.path().to_owned(), loopback_base_url.clone());
 
@@ -107,7 +110,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         start_serving(
             config.clone(),
             host_ports.clone(),
-            &mut owner_tokens,
+            observers.clone(),
             first_shutdown.clone(),
         ),
     )
@@ -117,6 +120,33 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         health_status(&loopback_base_url).await,
         reqwest::StatusCode::OK
     );
+    // The loopback `/health` above is not reported; a forwarded one is, with no
+    // caller (`/health` is ungated).
+    let forwarded_health = reqwest::Client::new()
+        .get(loopback_base_url.join("health").expect("health URL"))
+        .header(
+            "forwarded",
+            "for=192.0.2.1;host=demo.example.com;proto=https",
+        )
+        .send()
+        .await
+        .expect("a forwarded GET /health reaches the server");
+    assert_eq!(forwarded_health.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        tokio::time::timeout(LIFECYCLE_TIMEOUT, forwarded_requests.recv())
+            .await
+            .expect("the forwarded request is reported in time"),
+        Some(ForwardedRequest { caller: None })
+    );
+    assert!(
+        forwarded_requests.try_recv().is_err(),
+        "only the forwarded request is reported"
+    );
+    // The host sees the tunnel's liveness without holding the tunnel slice.
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, tunnel_liveness.wait_for(Option::is_some))
+        .await
+        .expect("the tunnel liveness is published in time")
+        .expect("the test holds the liveness sender");
 
     first_shutdown.cancel();
     tokio::time::timeout(LIFECYCLE_TIMEOUT, first)
@@ -128,12 +158,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     let second_shutdown = CancellationToken::new();
     let second = tokio::time::timeout(
         LIFECYCLE_TIMEOUT,
-        start_serving(
-            config,
-            host_ports,
-            &mut owner_tokens,
-            second_shutdown.clone(),
-        ),
+        start_serving(config, host_ports, observers, second_shutdown.clone()),
     )
     .await
     .expect("the second serve binds the same port in time");

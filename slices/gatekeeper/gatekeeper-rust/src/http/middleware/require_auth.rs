@@ -5,6 +5,7 @@ use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
+use shared_structures_rust::request_caller::RequestCaller;
 
 use crate::domain::token::VerifiedClaims;
 use crate::http::errors;
@@ -32,6 +33,10 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 /// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
 /// wraps the host's downstream slice routers and inserts the framework-neutral
 /// `ScopeClaims`. Both run the same [`verify_request_claims`] pipeline.
+///
+/// Both also stamp the verified OAuth client on the response as a
+/// [`RequestCaller`] extension, so the host can say which app is
+/// using the server over the tunnel.
 pub async fn require_valid_session(
     State(state): State<Arc<GatekeeperState>>,
     headers: HeaderMap,
@@ -42,11 +47,18 @@ pub async fn require_valid_session(
         Ok(claims) => claims,
         Err(response) => return *response,
     };
+    let caller = RequestCaller {
+        client_id: claims.subject.clone(),
+    };
     // Hand the verified claims (incl. the `scope` claim) to the handler layer.
     // The scope-gated extractors read them from here rather than re-verifying —
     // authN runs exactly once, at this layer.
     req.extensions_mut().insert(claims);
-    next.run(req).await
+    let mut response = next.run(req).await;
+    // Name the verified caller on the response, for the host's forwarded-request
+    // observer (see `shared_structures_rust::request_caller`).
+    response.extensions_mut().insert(caller);
+    response
 }
 
 /// The shared authN pipeline both claims-inserting gates run: extract the

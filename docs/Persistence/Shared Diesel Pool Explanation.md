@@ -30,7 +30,7 @@ connection's pragmas), so a write rides out brief contention instead of failing
 instantly with `SQLITE_BUSY`. For a single-user desktop app with short writes
 that's ample; a pathological stalled write elsewhere can surface as a ≤5 s stall →
 `SQLITE_BUSY` → 500. The composition root
-(`serve` in `slices/wildflower-server/wildflower-server-rust/src/lib.rs`) is where
+(`set_up` in `slices/wildflower-server/wildflower-server-rust/src/live_bindings/wildflower_server.rs`) is where
 the pool is built and the trade-off is accepted.
 
 ## The store holds the pool

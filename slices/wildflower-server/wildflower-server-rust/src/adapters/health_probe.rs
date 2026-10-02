@@ -19,12 +19,12 @@ use tunnel_rust::HealthProbe;
 
 /// A `reqwest`-backed `/health` probe. `rustls` TLS (no openssl), consistent
 /// with the project's openssl avoidance.
-pub struct ReqwestHealthProbe {
+pub(crate) struct ReqwestHealthProbe {
     client: reqwest::Client,
 }
 
 impl ReqwestHealthProbe {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let client = reqwest::Client::builder()
             // Pin rustls explicitly (the feature is enabled): the public relay
             // edge serves a normal CA cert, validated against the bundled roots.
