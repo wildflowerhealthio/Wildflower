@@ -146,7 +146,6 @@ mod tests {
 
     use super::*;
     use crate::db::app_registration::app_registrations;
-    use crate::domain::AppUrl;
 
     /// The seeded registry, in display order.
     const SEEDED_IDS: [&str; 9] = [
@@ -702,10 +701,7 @@ mod tests {
 
         assert_eq!(stored_url(&store, "growth-chart"), growth_chart_before.url);
         let user_app = store.find_app("my-cloud-app").unwrap().unwrap();
-        assert_eq!(
-            user_app.url,
-            AppUrl::External("https://example.com/launch".to_owned())
-        );
+        assert_eq!(user_app.url.to_string(), "https://example.com/launch");
         assert!(user_app.client_id.is_none());
         assert!(
             !store
@@ -830,7 +826,7 @@ mod tests {
         sql_query(
             "INSERT INTO app_registrations \
              (id, position, on_homescreen, name, url, local_only, requires_tunnel) \
-             VALUES ('my-app', 99, 0, 'My App', 'https://example.com/launch', 0, 0)",
+             VALUES ('my-app', 9, 0, 'My App', 'https://example.com/launch', 0, 0)",
         )
         .execute(&mut conn)
         .expect("a 0012 registration insert must succeed");
@@ -841,7 +837,7 @@ mod tests {
             .find_app("my-app")
             .unwrap()
             .expect("the user's app survives");
-        assert_eq!(user_app.position, 99);
+        assert_eq!(user_app.position, 9);
         assert!(!user_app.on_homescreen);
         assert_eq!(user_app.url.to_string(), "https://example.com/launch");
         assert_eq!(
@@ -878,5 +874,45 @@ mod tests {
             count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations"),
             "every row reads local_only = 0",
         );
+    }
+
+    /// An install at `0013` holding user-created apps with origin-relative
+    /// templates loses exactly those when `0014` runs; every absolute-URL app
+    /// keeps its template, and positions are a dense `0..n` in the same order.
+    #[test]
+    fn an_install_already_at_0013_loses_its_origin_relative_apps() {
+        let pool = pool_migrated_through("0013");
+        let mut conn = pool.get().unwrap();
+        for (id, url) in [
+            ("relative-path", "/my/app"),
+            ("kept-https", "https://example.com/launch?iss={origin}"),
+            ("origin-template", "{origin}/x?launch={launch}"),
+            ("kept-http", "http://localhost:5199/launch.html"),
+        ] {
+            sql_query(
+                "INSERT INTO app_registrations \
+                 (id, position, on_homescreen, name, url, requires_tunnel) \
+                 VALUES (?, (SELECT MAX(position) + 1 FROM app_registrations), 1, ?, ?, 0)",
+            )
+            .bind::<Text, _>(id)
+            .bind::<Text, _>(id)
+            .bind::<Text, _>(url)
+            .execute(&mut conn)
+            .expect("a 0013 registration insert must succeed");
+        }
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0014 must apply");
+        let registrations = store.list_registrations().unwrap();
+        let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
+        let mut expected: Vec<&str> = SEEDED_IDS.to_vec();
+        expected.extend(["kept-https", "kept-http"]);
+        assert_eq!(
+            ids, expected,
+            "the origin-relative apps are gone and the rest keep their order"
+        );
+        let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
+        let dense: Vec<i64> = (0..).take(positions.len()).collect();
+        assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
     }
 }

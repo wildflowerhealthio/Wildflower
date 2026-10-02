@@ -68,7 +68,7 @@ mod tests {
 
     // The port trait is in scope so the concrete store's `insert_app` /
     // `find_app` methods resolve in the fixtures.
-    use crate::domain::{AppRegistration, AppUrl, AppsStore};
+    use crate::domain::{AppRegistration, AppsStore};
     use crate::http::test_support::{
         state, state_with_launch_scopes, state_with_sink, state_with_tunnel_and_handle, tunnel_at,
         tunnel_unavailable, FixedLaunchScopes,
@@ -224,29 +224,24 @@ mod tests {
 
     /// Seed an app directly through the store (the fixture shortcut a test uses
     /// instead of driving `POST /apps`).
-    fn seed_app(
-        store: &crate::db::SqliteAppsStore,
-        id: &str,
-        url: AppUrl,
-        client_id: Option<&str>,
-    ) {
+    fn seed_app(store: &crate::db::SqliteAppsStore, id: &str, url: &str, client_id: Option<&str>) {
         let registration = AppRegistration {
             id: id.to_owned(),
             position: 0,
             on_homescreen: true,
             name: id.to_owned(),
             subtitle: None,
-            url,
+            url: url.parse().expect("a valid test launch url"),
             client_id: client_id.map(str::to_owned),
             requires_tunnel: false,
         };
         store.insert_app(&registration).unwrap().expect("inserted");
     }
 
-    /// Seed a non-SMART app that launches against the served origin — the
+    /// Seed a non-SMART app whose template names the served origin — the
     /// fixture the provenance and umbrella tests drive.
     fn seed_plain(store: &crate::db::SqliteAppsStore, id: &str) {
-        seed_app(store, id, AppUrl::OriginRelative("/y".to_owned()), None);
+        seed_app(store, id, "https://app.example/y?iss={origin}", None);
     }
 
     #[tokio::test]
@@ -344,15 +339,10 @@ mod tests {
         assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     }
 
-    /// Seed a **SMART** app (a `client_id` present) that launches against the
-    /// loopback origin — the fixture the per-app SMART launch tests drive.
+    /// Seed a **SMART** app (a `client_id` present) — the fixture the per-app
+    /// SMART launch tests drive.
     fn seed_smart(store: &crate::db::SqliteAppsStore, id: &str) {
-        seed_app(
-            store,
-            id,
-            AppUrl::OriginRelative("/smart".to_owned()),
-            Some("client-1"),
-        );
+        seed_app(store, id, "https://app.example/smart", Some("client-1"));
     }
 
     /// A SMART app launch additionally requires the caller's grant to cover its
@@ -465,9 +455,9 @@ mod tests {
         );
     }
 
-    /// A created (non-tunnel) app launches against the loopback origin.
+    /// A non-tunnel loopback launch substitutes the loopback origin.
     #[tokio::test]
-    async fn launch_origin_relative_resolves_against_loopback() {
+    async fn launch_substitutes_the_loopback_origin() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         seed_plain(&st.store, "app-y");
@@ -475,7 +465,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
         assert_eq!(
             handle.0.lock().expect("handle mutex").clone(),
-            vec!["http://127.0.0.1:8080/y".to_string()],
+            vec!["https://app.example/y?iss=http://127.0.0.1:8080".to_string()],
         );
     }
 
@@ -488,7 +478,10 @@ mod tests {
         seed_plain(&st.store, "app-y");
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(launch_url(res).await, "https://demo.example.com/y");
+        assert_eq!(
+            launch_url(res).await,
+            "https://app.example/y?iss=https://demo.example.com"
+        );
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 

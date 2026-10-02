@@ -239,7 +239,7 @@ mod tests {
     use super::super::test_support::{error_text, external, registration};
     use crate::db::SqliteAppsStore;
     // The port trait is in scope so the concrete adapter's methods resolve.
-    use crate::domain::{AppInsertError, AppUrl, AppsStore};
+    use crate::domain::{AppInsertError, AppsStore};
 
     /// The seeded registry, in display order.
     const SEEDED_IDS: [&str; 9] = [
@@ -377,7 +377,7 @@ mod tests {
             .unwrap()
             .expect("inserted");
 
-        let mut edited = registration("app-x", AppUrl::OriginRelative("/path".to_owned()));
+        let mut edited = registration("app-x", external("https://example.com/edited"));
         edited.name = "Renamed".to_owned();
         edited.subtitle = Some("the new subtitle".to_owned());
         edited.requires_tunnel = true;
@@ -385,7 +385,7 @@ mod tests {
         assert_eq!(replaced.name, "Renamed");
         assert_eq!(replaced.subtitle.as_deref(), Some("the new subtitle"));
         assert!(replaced.requires_tunnel);
-        assert_eq!(replaced.url, AppUrl::OriginRelative("/path".to_owned()));
+        assert_eq!(replaced.url, external("https://example.com/edited"));
         assert_eq!(store.find_app("app-x").unwrap(), Some(replaced));
     }
 

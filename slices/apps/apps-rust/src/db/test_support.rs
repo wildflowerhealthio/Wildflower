@@ -22,7 +22,7 @@ pub(super) fn registration(id: &str, url: AppUrl) -> AppRegistration {
 }
 
 pub(super) fn external(url: &str) -> AppUrl {
-    AppUrl::External(url.to_owned())
+    url.parse().expect("a valid test launch url")
 }
 
 /// The `context: source` text of an [`AppsError::Infrastructure`], for asserting on

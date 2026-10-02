@@ -75,11 +75,10 @@ space, an explicit PK), `position` (UNIQUE, for ordering + drag-to-reorder),
 `PUT /home-screen` is the single writer of ordering + `on_homescreen`.
 
 The `url` is an origin-independent template (`domain/app_url.rs`): an absolute
-`http(s)://` URL or an origin-relative path, either of which may embed `{origin}`
-and `{launch}` tokens. Anything else — `javascript:`, `data:`, a
-protocol-relative `//authority`, an `{origin}` followed by anything but a
-path/query/fragment boundary — is rejected on write, and a stored value that no
-longer parses fails the read as a typed error.
+`http(s)://` URL, which may embed `{origin}` and `{launch}` tokens. Anything else —
+`javascript:`, `data:`, a protocol-relative `//authority`, a `/path` or leading
+`{origin}` that would resolve against the host's own origin — is rejected on
+write, and a stored value that no longer parses fails the read as a typed error.
 
 Every app can be deleted: `DELETE /apps/{id}` drops its row. A user-deleted seed
 stays deleted across upgrades, because each seed migration runs once per

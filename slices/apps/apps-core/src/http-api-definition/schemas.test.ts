@@ -51,18 +51,16 @@ describe('AppBodySchema', () => {
 describe('AppUrlSchema', () => {
   it.each([
     'https://example.com',
-    'https://example.com/launch?launch=x',
-    '/apps/local',
-    '/fhir-r4/Patient/123',
-    '{origin}/some/path',
-    '{origin}/{launch}',
+    'https://example.com/launch?launch={launch}&iss={origin}/fhir-r4',
+    'http://localhost:5193/launch.html',
   ])('accepts %s', (url) => {
     expectRightToEqual(Schema.decodeUnknownEither(AppUrlSchema)(url), url)
   })
 
   it.each([
     '',
-    'http://example.com',
+    '/apps/local',
+    '{origin}/some/path',
     'javascript:alert(1)',
     'data:text/html,<script>',
     'file:///etc/passwd',

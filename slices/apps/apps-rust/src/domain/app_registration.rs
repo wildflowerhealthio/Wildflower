@@ -101,7 +101,7 @@ mod tests {
             on_homescreen: true,
             name: "App X".to_owned(),
             subtitle: None,
-            url: AppUrl::External("https://example.com/launch".to_owned()),
+            url: "https://example.com/launch".parse().unwrap(),
             client_id: client_id.map(str::to_owned),
             requires_tunnel: false,
         }
