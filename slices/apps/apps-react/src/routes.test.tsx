@@ -31,9 +31,7 @@ describe('apps route tree', () => {
       '/_auth/home/launch/$id',
       '/settings/apps/',
       '/settings/apps/$id',
-      '/settings/apps/cloud/$id',
       '/settings/apps/new',
-      '/settings/apps/system/$id',
     ])
   })
 
@@ -46,9 +44,7 @@ describe('apps route tree', () => {
       '/home/launch/$id',
       '/settings/apps/',
       '/settings/apps/$id',
-      '/settings/apps/cloud/$id',
       '/settings/apps/new',
-      '/settings/apps/system/$id',
     ])
   })
 })

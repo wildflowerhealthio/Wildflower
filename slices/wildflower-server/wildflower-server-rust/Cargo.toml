@@ -5,10 +5,10 @@ edition.workspace = true
 publish.workspace = true
 
 # The Wildflower server: `serve` composes every server slice (gatekeeper, emr,
-# OHIF, collector, tunnel, apps, databases, the `/docs` reference) into the
-# loopback API and serves it until its shutdown token is cancelled. No `tauri`
-# dependency — the Tauri host hands in its native adapters as trait objects —
-# so it compiles and tests without GTK.
+# OHIF, collector, tunnel, apps, databases) into the loopback API and serves it
+# until its shutdown token is cancelled. No `tauri` dependency — the Tauri host
+# hands in its native adapters as trait objects — so it compiles and tests
+# without GTK.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
@@ -42,9 +42,6 @@ persistence-rust = { path = "../../persistence/persistence-rust" }
 scopes-rust = { path = "../../scopes/scopes-rust" }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
   "health-check",
-  # The unified `/docs` Scalar surface — merge each slice's `openapi_spec()`
-  # into one document and serve it.
-  "openapi-docs",
   # `served_base_url_for`: the unmatched-route 404 links back to the request's
   # served origin (see `src/not_found.rs`); `is_forwarded` for the loopback
   # owner trust.

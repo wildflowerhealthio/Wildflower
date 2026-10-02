@@ -1,81 +1,66 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 import {
+  AppBodySchema,
   AppIdPathSchema,
   AppListSchema,
-  AppNotEditableSchema,
   AppNotFoundSchema,
-  CloudAppBodySchema,
-  CloudAppDetailSchema,
+  AppRegistrationSchema,
   HomeScreenSchema,
   InsufficientScopeSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
-  SystemAppDetailSchema,
 } from './schemas.ts'
 
 /**
- * Owner-only mutations + per-kind detail reads on the apps catalogue. The group
- * itself carries no middleware — `wildflower-server` (or any other composing app)
+ * Owner-only mutations + by-id reads on the apps catalogue. The group itself
+ * carries no middleware — `wildflower-server` (or any other composing app)
  * applies `RequireAuthMiddleware` when adding `AppsAdminApi` to its root
  * `HttpApi`, so slice cores stay free of auth dependencies. Each endpoint is
  * additionally scope-gated on the Rust side (`wildflower/Apps.{r,c,u,d}`), which
  * surfaces as a `403 InsufficientScope` when the caller's token doesn't cover it.
  *
- * Per-kind detail/create/replace live on their own root resources (`/cloud-apps`,
- * `/system-apps`), each returning the flat per-kind detail shape;
- * `DELETE /apps/:id` removes a cloud app (204); `PUT /home-screen` atomically
- * reorders / enables every kind. A per-kind path given an id of another kind is a
- * `404`. See `docs/Apps/Explanation.md` and the per-endpoint schemas.
+ * `POST /apps` creates an app and `GET`/`PUT`/`DELETE /apps/:id` read, replace,
+ * and remove one, each returning the {@link AppRegistrationSchema} (delete
+ * answers `204`); `PUT /home-screen` atomically reorders / enables every app.
+ * See `docs/Apps/Explanation.md` and the per-endpoint schemas.
  */
 const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
-  // --- Cloud apps ---------------------------------------------------------
   .add(
-    // Create a cloud app from a JSON body ({@link CloudAppBodySchema}).
-    HttpApiEndpoint.post('CreateCloudApp', '/cloud-apps')
-      .setPayload(CloudAppBodySchema)
-      .addSuccess(CloudAppDetailSchema)
+    // Create an app from a JSON body ({@link AppBodySchema}).
+    HttpApiEndpoint.post('CreateApp', '/apps')
+      .setPayload(AppBodySchema)
+      .addSuccess(AppRegistrationSchema)
       .addError(InvalidFieldSchema, { status: 400 })
       .addError(InsufficientScopeSchema, { status: 403 })
   )
   .add(
-    HttpApiEndpoint.get('GetCloudApp', '/cloud-apps/:id')
+    HttpApiEndpoint.get('GetApp', '/apps/:id')
       .setPath(AppIdPathSchema)
-      .addSuccess(CloudAppDetailSchema)
+      .addSuccess(AppRegistrationSchema)
       .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
   )
   .add(
-    // Full-replace a cloud app's content; a non-cloud id is `404`.
-    HttpApiEndpoint.put('ReplaceCloudApp', '/cloud-apps/:id')
+    // Full-replace an app's content.
+    HttpApiEndpoint.put('ReplaceApp', '/apps/:id')
       .setPath(AppIdPathSchema)
-      .setPayload(CloudAppBodySchema)
-      .addSuccess(CloudAppDetailSchema)
+      .setPayload(AppBodySchema)
+      .addSuccess(AppRegistrationSchema)
       .addError(InvalidFieldSchema, { status: 400 })
       .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
   )
-  // --- System apps (read-only) -------------------------------------------
   .add(
-    HttpApiEndpoint.get('GetSystemApp', '/system-apps/:id')
-      .setPath(AppIdPathSchema)
-      .addSuccess(SystemAppDetailSchema)
-      .addError(InsufficientScopeSchema, { status: 403 })
-      .addError(AppNotFoundSchema, { status: 404 })
-  )
-  // --- Unified delete + homescreen ---------------------------------------
-  .add(
-    // Delete any app (kind resolved via the registration). `204` on success; a
-    // system app is `409`.
+    // Delete an app. `204` on success.
     HttpApiEndpoint.del('DeleteApp', '/apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(HttpApiSchema.NoContent)
       .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
-      .addError(AppNotEditableSchema, { status: 409 })
   )
   .add(
-    // The full ordered homescreen (all kinds), distinct from the per-kind content
-    // edits above — see {@link HomeScreenSchema}.
+    // The full ordered homescreen, distinct from the content edits above — see
+    // {@link HomeScreenSchema}.
     HttpApiEndpoint.put('ReplaceHomeScreen', '/home-screen')
       .setPayload(HomeScreenSchema)
       .addSuccess(AppListSchema)

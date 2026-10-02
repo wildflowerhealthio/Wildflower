@@ -3,7 +3,6 @@ import type { JSX } from 'react'
 import { AsyncErrorView, ItemList, PageHeader, type ItemListItem } from 'react-tundraish'
 
 import { appsListQueryOptions, useAppsListQuery, type AppRegistration } from '../../../queries.ts'
-import { kindLabel } from '../../_auth/home/-tiles.tsx'
 
 interface AppsListBodyProps {
   readonly apps: readonly AppRegistration[]
@@ -11,8 +10,8 @@ interface AppsListBodyProps {
 
 /**
  * The apps settings landing — a navigation-only list of **every** registered
- * app (system / cloud, enabled or not), each row linking to its
- * detail page, plus an "Add app" header action. Enable/disable and edit live on
+ * app (enabled or not), each row linking to its detail page, plus an "Add app"
+ * header action. Enable/disable and edit live on
  * the per-app detail page; reordering + hiding from the home screen live on the
  * `/home` Edit mode. Presentational + prop-driven so it renders in tests without
  * the route loader.
@@ -23,7 +22,6 @@ const toItem = (app: AppRegistration): ItemListItem => ({
   id: app.id,
   title: app.name,
   subtitle: app.subtitle,
-  badge: kindLabel(app.kind),
   href: `/settings/apps/${app.id}`,
 })
 

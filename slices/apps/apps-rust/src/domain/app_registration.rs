@@ -1,18 +1,15 @@
-//! [`AppRegistration`] — the authoritative `app_registrations` row: one
-//! registration per app of every kind, holding the global id, the [`AppKind`]
-//! discriminator, the homescreen placement (`position` / `on_homescreen`), and the
-//! shared catalogue facts (`name` / `subtitle` / `local_only` / the soft
-//! `client_id` / the launch-readiness `requires_tunnel`). It is BOTH the
-//! diesel-mapped domain row and the uniform `GET /apps` wire item — one flat struct
-//! serialized directly (the "domain-is-wire" registration), so there is no union to
-//! narrow and no second projection to drift from.
+//! [`AppRegistration`] — the authoritative `app_registrations` row: one row per
+//! app, holding the global id, the homescreen placement (`position` /
+//! `on_homescreen`), the catalogue facts (`name` / `subtitle` / `local_only` /
+//! the soft `client_id` / the launch-readiness `requires_tunnel`), and the launch
+//! `url` template. It is BOTH the diesel-mapped domain row and the `GET /apps` wire
+//! item — one flat struct serialized directly (the "domain-is-wire" registration),
+//! so there is no second projection to drift from.
 //!
 //! On the wire it is camelCase; `position` is omitted (the `GET /apps` array order
 //! IS the display order) and `client_id` is projected as the derived boolean
 //! `isSmart` (SMART ⇔ a `client_id` is present) — the column itself never leaves
-//! the host. The per-kind configuration structs
-//! ([`CloudAppConfiguration`](super::CloudAppConfiguration) etc.) carry only their
-//! payload; a whole app is a `(AppRegistration, …Configuration)` pair.
+//! the host.
 
 use std::collections::HashSet;
 
@@ -20,23 +17,19 @@ use diesel::prelude::{Insertable, Queryable, Selectable};
 use serde::{Serialize, Serializer};
 use utoipa::ToSchema;
 
-use super::AppKind;
-use crate::db::app_registration::{app_registrations, AppKindColumn};
+use super::AppUrl;
+use crate::db::app_registration::{app_registrations, AppUrlColumn};
 
-/// A registration row — the shared half of one app's record. Diesel maps it
-/// to/from `app_registrations` (the [`AppKindColumn`] mapping on `kind`); serde
-/// projects it onto the `GET /apps` wire item (`position` omitted, `client_id` →
-/// `isSmart`).
+/// A registration row — one app's whole record. Diesel maps it to/from
+/// `app_registrations` (the [`AppUrlColumn`] mapping on `url`); serde projects it
+/// onto the wire item (`position` omitted, `client_id` → `isSmart`).
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable, Serialize, ToSchema)]
 #[diesel(table_name = app_registrations)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 #[serde(rename_all = "camelCase")]
 pub struct AppRegistration {
-    /// Stable id, globally unique across all kinds (the registration PK).
+    /// Stable id, globally unique (the registration PK).
     pub id: String,
-    /// The discriminator — which configuration table holds this id's payload.
-    #[diesel(serialize_as = AppKindColumn, deserialize_as = AppKindColumn)]
-    pub kind: AppKind,
     /// The homescreen display position (dense `0..n`, UNIQUE). Not on the wire —
     /// the `GET /apps` array order encodes it.
     #[serde(skip_serializing)]
@@ -48,6 +41,13 @@ pub struct AppRegistration {
     /// `None` means "no subtitle"; the wire omits an absent one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
+    /// The launch URL template: `{origin}` is replaced with the served origin at
+    /// launch time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]). It
+    /// is origin-independent, never a request-resolved redirect target — see
+    /// `docs/Apps/Explanation.md`. Serialized as its canonical string.
+    #[diesel(serialize_as = AppUrlColumn, deserialize_as = AppUrlColumn)]
+    #[schema(value_type = String)]
+    pub url: AppUrl,
     /// The declared no-egress flag (a UI badge this pass).
     pub local_only: bool,
     /// Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART
@@ -56,7 +56,6 @@ pub struct AppRegistration {
     #[schema(rename = "isSmart", value_type = bool)]
     pub client_id: Option<String>,
     /// Whether a launch must bring the tunnel up first (a launch-readiness pill).
-    /// `false` for system apps; meaningful only for cloud apps.
     pub requires_tunnel: bool,
 }
 
@@ -97,32 +96,32 @@ fn serialize_client_id_as_is_smart<S: Serializer>(
 mod tests {
     use super::*;
 
-    fn registration(kind: AppKind, client_id: Option<&str>) -> AppRegistration {
+    fn registration(client_id: Option<&str>) -> AppRegistration {
         AppRegistration {
             id: "app-x".to_owned(),
-            kind,
             position: 3,
             on_homescreen: true,
             name: "App X".to_owned(),
             subtitle: None,
+            url: AppUrl::External("https://example.com/launch".to_owned()),
             local_only: false,
             client_id: client_id.map(str::to_owned),
             requires_tunnel: false,
         }
     }
 
-    /// The wire item omits `position` and projects `client_id` to `isSmart`; an
-    /// absent subtitle is omitted.
+    /// The wire item omits `position`, projects `client_id` to `isSmart`, and
+    /// carries `url` as its canonical string; an absent subtitle is omitted.
     #[test]
     fn serializes_to_the_uniform_registration_shape() {
-        let json = serde_json::to_value(registration(AppKind::Cloud, Some("client"))).unwrap();
+        let json = serde_json::to_value(registration(Some("client"))).unwrap();
         assert_eq!(
             json,
             serde_json::json!({
                 "id": "app-x",
-                "kind": "cloud",
                 "onHomescreen": true,
                 "name": "App X",
+                "url": "https://example.com/launch",
                 "localOnly": false,
                 "isSmart": true,
                 "requiresTunnel": false,
@@ -137,8 +136,8 @@ mod tests {
 
     #[test]
     fn is_smart_follows_client_id() {
-        assert!(registration(AppKind::Cloud, Some("c")).is_smart());
-        assert!(!registration(AppKind::System, None).is_smart());
+        assert!(registration(Some("c")).is_smart());
+        assert!(!registration(None).is_smart());
     }
 
     fn id_set(ids: &[&str]) -> HashSet<String> {

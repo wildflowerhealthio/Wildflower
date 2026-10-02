@@ -40,9 +40,8 @@ pub enum WildflowerResource {
     /// resource behind `POST /access/revocations`, which denylists a `jti` or
     /// bumps a subject's epoch and so kills *both* token kinds.
     Token,
-    /// The apps catalogue + home-screen surface (`/apps`, `/cloud-apps`,
-    /// `/system-apps`, `/home-screen`): read the catalogue
-    /// (`.r`) and manage entries (`.c`/`.u`/`.d`). Launching an app is a separate,
+    /// The apps catalogue + home-screen surface (`/apps`, `/home-screen`): read
+    /// the catalogue (`.r`) and manage entries (`.c`/`.u`/`.d`). Launching an app is a separate,
     /// explicitly-granted capability — the `wildflower/launch` known scope
     /// ([`KnownScope::AnyScopedAppLaunch`](crate::KnownScope::AnyScopedAppLaunch))
     /// — not a permission on this resource.

@@ -69,10 +69,10 @@ fn get(uri: &str) -> Request<Body> {
     with_owner_claims(Request::get(uri).body(Body::empty()).expect("build"))
 }
 
-/// A cloud create — `POST /cloud-apps` as JSON.
-fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
+/// A create — `POST /apps` as JSON.
+fn post_create(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
     post_json(
-        "/cloud-apps",
+        "/apps",
         serde_json::json!({ "name": name, "url": url, "requiresTunnel": requires_tunnel }),
     )
 }
@@ -124,8 +124,6 @@ async fn fresh_install_lists_the_default_set() {
     assert_eq!(
         ids,
         vec![
-            "api-view",
-            "api-docs",
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
@@ -139,15 +137,15 @@ async fn fresh_install_lists_the_default_set() {
     );
 }
 
-/// A cloud app created through the admin surface shows up immediately in the
-/// public list (one shared state) and round-trips through launch + delete.
+/// An app created through the admin surface shows up immediately in the public
+/// list (one shared state) and round-trips through launch + delete.
 #[tokio::test]
-async fn cloud_app_round_trip() {
+async fn app_round_trip() {
     let (apps, handle) = spin_up_with_handle();
     let router = apps.combined_router();
     let create_res = router
         .clone()
-        .oneshot(post_create_cloud(
+        .oneshot(post_create(
             "Round Trip",
             "https://example.com/launch",
             false,
@@ -168,7 +166,7 @@ async fn cloud_app_round_trip() {
         .find(|v| v["id"] == serde_json::Value::String(id.clone()))
         .expect("created row visible through the list");
     assert_eq!(found["name"], "Round Trip");
-    assert_eq!(found["kind"], "cloud");
+    assert_eq!(found["url"], "https://example.com/launch");
 
     let launch_res = router
         .clone()
@@ -200,17 +198,17 @@ async fn cloud_app_round_trip() {
     );
 }
 
-/// A seeded cloud app's content (name / url) is replaceable through `/cloud-apps`;
-/// the edit persists into the public list. (`enabled` is not content — that's
-/// `PUT /home-screen`.)
+/// A seeded app's content (name / url) is replaceable through `PUT /apps/{id}`;
+/// the edit persists into the public list and the by-id read. (`onHomescreen` is
+/// not content — that's `PUT /home-screen`.)
 #[tokio::test]
-async fn seeded_cloud_app_is_fully_editable() {
+async fn seeded_app_is_fully_editable() {
     let apps = spin_up();
     let router = apps.combined_router();
     let put_res = router
         .clone()
         .oneshot(put(
-            "/cloud-apps/growth-chart",
+            "/apps/growth-chart",
             serde_json::json!({
                 "name": "Renamed Chart",
                 "url": "https://example.com/replacement",
@@ -222,7 +220,6 @@ async fn seeded_cloud_app_is_fully_editable() {
     assert_eq!(put_res.status(), StatusCode::OK);
     let body = body_json(put_res.into_body()).await;
     assert_eq!(body["name"], "Renamed Chart");
-    assert_eq!(body["kind"], "cloud");
     assert_eq!(body["url"], "https://example.com/replacement");
 
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
@@ -234,84 +231,30 @@ async fn seeded_cloud_app_is_fully_editable() {
         .find(|v| v["id"] == "growth-chart")
         .expect("growth-chart in list");
     assert_eq!(row["name"], "Renamed Chart");
-    assert!(
-        row.get("url").is_none(),
-        "the uniform list carries no payload url"
-    );
+    assert_eq!(row["url"], "https://example.com/replacement");
 
-    // The replaced url is read back through the cloud detail resource.
     let detail_res = router
         .clone()
-        .oneshot(get("/cloud-apps/growth-chart"))
+        .oneshot(get("/apps/growth-chart"))
         .await
         .expect("oneshot");
+    assert_eq!(detail_res.status(), StatusCode::OK);
     let detail = body_json(detail_res.into_body()).await;
     assert_eq!(
         detail["url"], "https://example.com/replacement",
-        "the cloud detail carries the replaced url template",
+        "the by-id read carries the replaced url template",
     );
 }
 
-/// A system app appears in the uniform list (kind `system`, no `url`) but isn't
-/// reachable through the cloud resource — a wrong-kind id is a 404.
+/// `PUT /home-screen` atomically reorders + disables and persists — the
+/// positions come back a dense `0..n` permutation (no ties).
 #[tokio::test]
-async fn system_app_listed_but_not_a_cloud_resource() {
+async fn home_screen_reorders_and_disables_an_app() {
     let apps = spin_up();
     let router = apps.combined_router();
-    let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
-    let list = body_json(list_res.into_body()).await;
-    let row = list
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|v| v["id"] == "api-docs")
-        .expect("api-docs in list");
-    assert_eq!(row["name"], "API Docs");
-    assert_eq!(row["kind"], "system");
-    assert!(row.get("url").is_none());
-
-    let put_res = router
-        .clone()
-        .oneshot(put(
-            "/cloud-apps/api-docs",
-            serde_json::json!({
-                "name": "tampered",
-                "url": "https://example.com/x",
-                "requiresTunnel": false,
-            }),
-        ))
-        .await
-        .expect("oneshot");
-    assert_eq!(put_res.status(), StatusCode::NOT_FOUND);
-}
-
-/// A loopback launch of a system app 204s to its template rendered against the
-/// loopback origin.
-#[tokio::test]
-async fn system_app_launches_against_the_loopback_origin() {
-    let (apps, handle) = spin_up_with_handle();
-    let res = apps
-        .combined_router()
-        .oneshot(launch("/apps/api-docs"))
-        .await
-        .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::NO_CONTENT);
-    assert_eq!(
-        handle.0.lock().expect("handle mutex").clone(),
-        vec!["http://127.0.0.1:8080/docs".to_string()],
-    );
-}
-
-/// `PUT /home-screen` atomically reorders + disables any provenance and persists
-/// — the positions come back a dense `0..n` permutation (no ties).
-#[tokio::test]
-async fn home_screen_reorders_and_disables_a_system_app() {
-    let apps = spin_up();
-    let router = apps.combined_router();
-    // Move api-docs to the front and disable it; keep the rest in order.
+    // Move lifting-app to the front and disable it; keep the rest in order.
     let body = serde_json::json!([
-        { "id": "api-docs", "onHomescreen": false },
-        { "id": "api-view", "onHomescreen": true },
+        { "id": "lifting-app", "onHomescreen": false },
         { "id": "growth-chart", "onHomescreen": true },
         { "id": "medication-viewer", "onHomescreen": true },
         { "id": "precise-hbr", "onHomescreen": true },
@@ -320,7 +263,6 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         { "id": "web-server-docs", "onHomescreen": true },
         { "id": "importer-app", "onHomescreen": true },
         { "id": "ohif-viewer", "onHomescreen": true },
-        { "id": "lifting-app", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -337,8 +279,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
     assert_eq!(
         ids,
         vec![
-            "api-docs",
-            "api-view",
+            "lifting-app",
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
@@ -347,16 +288,15 @@ async fn home_screen_reorders_and_disables_a_system_app() {
             "web-server-docs",
             "importer-app",
             "ohif-viewer",
-            "lifting-app",
         ],
     );
-    let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();
-    assert_eq!(api_docs["onHomescreen"], false);
+    let lifting = arr.iter().find(|v| v["id"] == "lifting-app").unwrap();
+    assert_eq!(lifting["onHomescreen"], false);
 }
 
-/// A deleted seeded cloud app stays deleted (migration runner seeds once).
+/// A deleted seeded app stays deleted (migration runner seeds once).
 #[tokio::test]
-async fn deleted_seeded_cloud_app_stays_deleted() {
+async fn deleted_seeded_app_stays_deleted() {
     let apps = spin_up();
     let router = apps.combined_router();
     let res = router
@@ -383,7 +323,7 @@ async fn create_rejects_javascript_url() {
     let apps = spin_up();
     let res = apps
         .combined_router()
-        .oneshot(post_create_cloud("Bad", "javascript:alert(1)", false))
+        .oneshot(post_create("Bad", "javascript:alert(1)", false))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);

@@ -37,9 +37,178 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "`POST /apps` — create an app. Scope-gated on `wildflower/Apps.c` through\n[`Scoped<LiveAppsCreator>`].",
+        "operationId": "handle_create_app",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The created app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRegistration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/apps/{id}": {
+      "get": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "`GET /apps/{id}` — one app. Scope-gated on `wildflower/Apps.r` through\n[`Scoped<LiveAppsReader>`].",
+        "operationId": "handle_get_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRegistration"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "`PUT /apps/{id}` — replace an app's content. Scope-gated on\n`wildflower/Apps.u` through [`Scoped<LiveAppsEditor>`].",
+        "operationId": "handle_update_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRegistration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.u`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "Launch"
@@ -107,7 +276,7 @@
         "tags": [
           "Catalogue"
         ],
-        "summary": "`DELETE /apps/{id}` — remove a cloud app. Scope-gated on `wildflower/Apps.d`\nthrough [`Scoped<LiveAppsDeleter>`].",
+        "summary": "`DELETE /apps/{id}` — remove an app. Scope-gated on `wildflower/Apps.d`\nthrough [`Scoped<LiveAppsDeleter>`].",
         "operationId": "handle_delete_app",
         "parameters": [
           {
@@ -136,189 +305,6 @@
           },
           "404": {
             "description": "No app has this id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotFoundBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The app exists but is not removable (system apps)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotEditableBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/cloud-apps": {
-      "post": {
-        "tags": [
-          "Cloud apps"
-        ],
-        "summary": "`POST /cloud-apps` — create a cloud app. Scope-gated on `wildflower/Apps.c`\nthrough [`Scoped<LiveAppsCreator>`].",
-        "operationId": "handle_create_cloud_app",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CloudAppBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The created cloud app detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CloudAppDetail"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidFieldBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/Apps.c`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/cloud-apps/{id}": {
-      "get": {
-        "tags": [
-          "Cloud apps"
-        ],
-        "summary": "`GET /cloud-apps/{id}` — the cloud editor detail. Scope-gated on\n`wildflower/Apps.r` through [`Scoped<LiveAppsReader>`].",
-        "operationId": "handle_get_cloud_app",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "App id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The cloud app detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CloudAppDetail"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No cloud app has this id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotFoundBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Cloud apps"
-        ],
-        "summary": "`PUT /cloud-apps/{id}` — replace a cloud app's content. Scope-gated on\n`wildflower/Apps.u` through [`Scoped<LiveAppsEditor>`].",
-        "operationId": "handle_update_cloud_app",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "App id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CloudAppBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The updated cloud app detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CloudAppDetail"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidFieldBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/Apps.u`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No cloud app has this id",
             "content": {
               "application/json": {
                 "schema": {
@@ -386,154 +372,13 @@
           }
         }
       }
-    },
-    "/system-apps/{id}": {
-      "get": {
-        "tags": [
-          "System apps"
-        ],
-        "summary": "`GET /system-apps/{id}` — the system read-only detail. Scope-gated on\n`wildflower/Apps.r` through [`Scoped<LiveAppsReader>`].",
-        "operationId": "handle_get_system_app",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "App id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The system app detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SystemAppDetail"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No system app has this id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotFoundBody"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
     "schemas": {
-      "AppKind": {
-        "type": "string",
-        "description": "Which kind an app is — the discriminator. Serialized as its kebab string\n(`\"system\"` / `\"cloud\"`), the same value stored in the\n`CHECK`-constrained `app_registrations.kind` column and sent on the wire.",
-        "enum": [
-          "system",
-          "cloud"
-        ]
-      },
-      "AppNotEditableBody": {
+      "AppBody": {
         "type": "object",
-        "description": "Wire shape for `AppNotEditable` (409) — the app exists but isn't editable /\nremovable: a system app. (A per-kind path given an id of another kind is a\n`404`, not a `409` — the mismatch can't be expressed.)",
-        "required": [
-          "error",
-          "id"
-        ],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        }
-      },
-      "AppNotFoundBody": {
-        "type": "object",
-        "description": "Wire shape for `AppNotFound`. Matches the TS `AppNotFoundSchema`.",
-        "required": [
-          "error",
-          "id"
-        ],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        }
-      },
-      "AppRegistration": {
-        "type": "object",
-        "description": "A registration row — the shared half of one app's record. Diesel maps it\nto/from `app_registrations` (the [`AppKindColumn`] mapping on `kind`); serde\nprojects it onto the `GET /apps` wire item (`position` omitted, `client_id` →\n`isSmart`).",
-        "required": [
-          "id",
-          "kind",
-          "onHomescreen",
-          "name",
-          "localOnly",
-          "isSmart",
-          "requiresTunnel"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Stable id, globally unique across all kinds (the registration PK)."
-          },
-          "kind": {
-            "$ref": "#/components/schemas/AppKind",
-            "description": "The discriminator — which configuration table holds this id's payload."
-          },
-          "onHomescreen": {
-            "type": "boolean",
-            "description": "Whether the app's tile shows on the home screen. Curated atomically by\n`PUT /home-screen` (see [`replace_placements`](super::AppsStore::replace_placements))."
-          },
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "`None` means \"no subtitle\"; the wire omits an absent one."
-          },
-          "localOnly": {
-            "type": "boolean",
-            "description": "The declared no-egress flag (a UI badge this pass)."
-          },
-          "isSmart": {
-            "type": "boolean",
-            "description": "Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `isSmart` boolean."
-          },
-          "requiresTunnel": {
-            "type": "boolean",
-            "description": "Whether a launch must bring the tunnel up first (a launch-readiness pill).\n`false` for system apps; meaningful only for cloud apps."
-          }
-        }
-      },
-      "CloudAppBody": {
-        "type": "object",
-        "description": "The JSON body shared by `POST /cloud-apps` (create) and `PUT /cloud-apps/{id}`\n(content replace): a cloud app's editable content. `url` is read as a raw string\nso a bad value yields the structured `400 InvalidUrl` rather than a generic\ndeserialize error. Matches the TS `CloudAppBodySchema`.",
+        "description": "The JSON body shared by `POST /apps` (create) and `PUT /apps/{id}` (content\nreplace): an app's editable content. `url` is read as a raw string so a bad\nvalue yields the structured `400 InvalidUrl` rather than a generic deserialize\nerror. Matches the TS `AppBodySchema`.",
         "required": [
           "name",
           "url",
@@ -558,30 +403,70 @@
           }
         }
       },
-      "CloudAppDetail": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/RegistrationWire"
-          },
-          {
-            "type": "object",
-            "required": [
-              "url",
-              "isRemovable"
-            ],
-            "properties": {
-              "url": {
-                "type": "string",
-                "description": "The stored launch URL template (`{origin}` / `{launch}` tokens), serialized\nas its canonical string."
-              },
-              "isRemovable": {
-                "type": "boolean",
-                "description": "Always `true` for a cloud app; carried for a uniform editor contract."
-              }
-            }
-          }
+      "AppNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `AppNotFound`. Matches the TS `AppNotFoundSchema`.",
+        "required": [
+          "error",
+          "id"
         ],
-        "description": "The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the shared registration fields\nplus the stored `url` template and `isRemovable`. Built from the cloud\n`(registration, configuration)` pair."
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "AppRegistration": {
+        "type": "object",
+        "description": "A registration row — one app's whole record. Diesel maps it to/from\n`app_registrations` (the [`AppUrlColumn`] mapping on `url`); serde projects it\nonto the wire item (`position` omitted, `client_id` → `isSmart`).",
+        "required": [
+          "id",
+          "onHomescreen",
+          "name",
+          "url",
+          "localOnly",
+          "isSmart",
+          "requiresTunnel"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable id, globally unique (the registration PK)."
+          },
+          "onHomescreen": {
+            "type": "boolean",
+            "description": "Whether the app's tile shows on the home screen. Curated atomically by\n`PUT /home-screen` (see [`replace_placements`](super::AppsStore::replace_placements))."
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`None` means \"no subtitle\"; the wire omits an absent one."
+          },
+          "url": {
+            "type": "string",
+            "description": "The launch URL template: `{origin}` is replaced with the served origin at\nlaunch time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]). It\nis origin-independent, never a request-resolved redirect target — see\n`docs/Apps/Explanation.md`. Serialized as its canonical string."
+          },
+          "localOnly": {
+            "type": "boolean",
+            "description": "The declared no-egress flag (a UI badge this pass)."
+          },
+          "isSmart": {
+            "type": "boolean",
+            "description": "Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `isSmart` boolean."
+          },
+          "requiresTunnel": {
+            "type": "boolean",
+            "description": "Whether a launch must bring the tunnel up first (a launch-readiness pill)."
+          }
+        }
       },
       "HomeScreenEntry": {
         "type": "object",
@@ -661,7 +546,7 @@
         "properties": {
           "url": {
             "type": "string",
-            "description": "The absolute launch URL (a rendered system or cloud template)."
+            "description": "The absolute launch URL (the app's rendered template)."
           }
         }
       },
@@ -680,68 +565,6 @@
             "type": "string"
           }
         }
-      },
-      "RegistrationWire": {
-        "type": "object",
-        "description": "The registration fields every per-kind detail carries, `#[serde(flatten)]`ed into\neach wire shape so the eight shared fields — and their `From<&AppRegistration>`\nprojection — are declared once rather than copied across the detail structs.\n`isSmart` is derived from the host-only `client_id`; `position` never leaves the\nhost.",
-        "required": [
-          "id",
-          "kind",
-          "onHomescreen",
-          "name",
-          "localOnly",
-          "isSmart",
-          "requiresTunnel"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/AppKind"
-          },
-          "onHomescreen": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "localOnly": {
-            "type": "boolean"
-          },
-          "isSmart": {
-            "type": "boolean"
-          },
-          "requiresTunnel": {
-            "type": "boolean"
-          }
-        }
-      },
-      "SystemAppDetail": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/RegistrationWire"
-          },
-          {
-            "type": "object",
-            "required": [
-              "url"
-            ],
-            "properties": {
-              "url": {
-                "type": "string",
-                "description": "The stored launch URL template (`{origin}` token), serialized as its\ncanonical string. Display-only — a system app is never editable."
-              }
-            }
-          }
-        ],
-        "description": "The read-only `GET /system-apps/{id}` wire shape — the registration fields plus\nthe display-only `url` template. A system app is never editable, so it carries\nno `isRemovable`."
       }
     }
   }

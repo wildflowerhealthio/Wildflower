@@ -43,9 +43,8 @@ pub fn router(state: Arc<DatabasesState>) -> Router {
 
 /// The databases `OpenAPI` document, collected from the same routes that serve
 /// traffic. `info` is set explicitly so the committed snapshot doesn't churn
-/// with the crate version. Two consumers read it: the committed snapshot the TS
-/// spec-drift test guards, and the host's unified `/docs` Scalar surface, which
-/// merges this with the other slices' documents.
+/// with the crate version. It generates the committed snapshot the TS spec-drift
+/// test guards and the published server-docs console renders.
 #[must_use]
 pub fn openapi_spec() -> utoipa::openapi::OpenApi {
     use utoipa::Modify as _;

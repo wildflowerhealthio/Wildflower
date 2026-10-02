@@ -63,13 +63,12 @@ defineSpecDriftTest({
   name: 'apps catalogue (admin)',
   serverSpec,
   clientApi: AppsAdminApi,
-  /** Endpoints compared — `(path, lowercase method)`. Per-kind detail/create/
-   * replace on their own root resources, the unified delete, and home-screen. */
+  /** Endpoints compared — `(path, lowercase method)`: create, the by-id read /
+   * replace / delete, and home-screen. */
   scope: [
-    ['/cloud-apps', 'post'],
-    ['/cloud-apps/{id}', 'get'],
-    ['/cloud-apps/{id}', 'put'],
-    ['/system-apps/{id}', 'get'],
+    ['/apps', 'post'],
+    ['/apps/{id}', 'get'],
+    ['/apps/{id}', 'put'],
     ['/apps/{id}', 'delete'],
     ['/home-screen', 'put'],
   ],

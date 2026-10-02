@@ -2,10 +2,9 @@
 //! served by [`serve`].
 //!
 //! [`serve`] opens the host's databases, sets up each server slice (gatekeeper,
-//! FHIR R4, OHIF, collector, tunnel, apps, databases, the `/docs` reference),
-//! gates them, wraps them in the loopback owner trust, the loopback-peer gate and
-//! the CORS policy, and serves the result on the loopback port until its shutdown
-//! token is cancelled.
+//! FHIR R4, OHIF, collector, tunnel, apps, databases), gates them, wraps them in
+//! the loopback owner trust, the loopback-peer gate and the CORS policy, and
+//! serves the result on the loopback port until its shutdown token is cancelled.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's
@@ -64,8 +63,6 @@ pub struct WildflowerServerConfig {
     pub first_party_client_id: String,
     /// Tunnel connection defaults seeded into unconfigured settings at startup.
     pub tunnel_seed: tunnel_rust::SettingsSeed,
-    /// The host app's version, shown as the version of the `/docs` API reference.
-    pub app_version: String,
 }
 
 /// The host's side of [`serve`]: its native adapters and the channels the
@@ -168,7 +165,6 @@ pub async fn serve(
         host_owner_scopes,
         first_party_client_id,
         tunnel_seed,
-        app_version,
     } = config;
 
     // Apply any deletions the Owner scheduled from the data-management screen
@@ -323,13 +319,14 @@ pub async fn serve(
         .context("failed to set up tunnel")?;
     let gated_tunnel = tunnel.router.layer(gatekeeper_auth_layer.clone());
 
-    // The apps catalogue surface. `GET /apps` (list), the cloud-admin write
-    // surface (POST/PUT/DELETE /apps), and `PUT /home-screen` are scope-gated on
-    // `wildflower/Apps.*` behind the gatekeeper bearer gate (`gated_apps`, below).
-    // The launch route `GET`/`POST /apps/{id}` (`apps.launch_router`) is scope-gated
-    // on the `wildflower/launch` umbrella behind the same bearer gate (`gated_launch`,
-    // below), with a per-app SMART check in the handler; a forwarded launch rides the
-    // front trust boundary for the redirect. A `requires_tunnel` launch resolves to
+    // The apps catalogue surface. `GET /apps` (list), the admin surface (`POST
+    // /apps`, `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are
+    // scope-gated on `wildflower/Apps.*` behind the gatekeeper bearer gate
+    // (`gated_apps`, below). The launch route `POST /apps/{id}`
+    // (`apps.launch_router`) is scope-gated on the `wildflower/launch` umbrella
+    // behind the same bearer gate (`gated_launch`, below), with a per-app SMART
+    // check in the handler; a forwarded launch rides the front trust boundary for
+    // the redirect. A `requires_tunnel` launch resolves to
     // the tunnel's verified origin through the tunnel service (or fails 503
     // LaunchUnavailable when the tunnel can't be brought up). The apps slice derives
     // the loopback launch origin from `loopback_base_url`.
@@ -420,37 +417,8 @@ pub async fn serve(
         ],
     };
     let gated_databases =
-        databases_rust::setup_databases(&databases_config).layer(gatekeeper_auth_layer.clone());
+        databases_rust::setup_databases(&databases_config).layer(gatekeeper_auth_layer);
 
-    // The unified API docs (`/docs`): merge every documented slice's spec —
-    // collected from the very routes that serve traffic — into one document and
-    // serve it as an interactive Scalar reference. Each slice is a named group so
-    // Scalar renders a two-level sidebar (slice → the slice's operation tags);
-    // the group name is presentation-only and lives here, not in the snapshots.
-    // The `api-docs` system app (`apps-rust`) points here. Gated exactly like the
-    // rest of the admin API: a loopback caller passes on connection provenance
-    // (the loopback owner trust presents the owner bearer), a forwarded caller on
-    // a valid bearer.
-    // FHIR/HFS itself exposes no OpenAPI spec (only a FHIR CapabilityStatement
-    // at `/fhir-r4/metadata`), so the "FHIR R4" group below is a committed
-    // snapshot generated from the TS `fhir-r4` `HttpApi` rather than collected
-    // from routes — it documents the FHIR surface as the Wildflower client
-    // uses it, not the whole of HFS. See `emr_rust::openapi_spec`.
-    let gated_docs = shared_structures_rust::openapi_docs::merged_scalar_router(
-        "/docs",
-        "Wildflower API",
-        &app_version,
-        [
-            ("Gatekeeper", gatekeeper_rust::openapi_spec()),
-            ("Apps", apps_rust::openapi_spec()),
-            ("Databases", databases_rust::openapi_spec()),
-            ("Collector", collector_rust::openapi_spec()),
-            ("OHIF Server", ohif_server_rust::openapi_spec()),
-            ("Tunnel", tunnel_rust::openapi_spec()),
-            ("FHIR R4", emr_rust::openapi_spec()),
-        ],
-    )
-    .layer(gatekeeper_auth_layer);
     // The webview page is NOT served from this origin — it loads from
     // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
     // asset protocol (`tauri://localhost`) in builds, while API fetches
@@ -482,7 +450,6 @@ pub async fn serve(
         // exemptions can differ from the admin surface.
         .merge(gated_launch)
         .merge(gated_databases)
-        .merge(gated_docs)
         // No slice claimed the route: `404`, pointing a browser at the hosted
         // owner UI (the server serves no UI of its own). See `not_found.rs`.
         .fallback(not_found::fallback(Arc::new(not_found::NotFoundConfig {

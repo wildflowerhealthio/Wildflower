@@ -3,12 +3,9 @@
 
 use scopes_rust::{Permission, Scope, WildflowerResource};
 
-use crate::domain::{
-    AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
-    SystemAppConfiguration,
-};
+use crate::domain::{AppRegistration, AppsError, AppsStore};
 
-/// Read the catalogue + per-kind detail — `wildflower/Apps.r`.
+/// Read the catalogue + an app's detail — `wildflower/Apps.r`.
 pub(crate) fn apps_reader_scopes() -> Vec<Scope> {
     vec![Scope::wildflower(
         WildflowerResource::Apps,
@@ -16,9 +13,9 @@ pub(crate) fn apps_reader_scopes() -> Vec<Scope> {
     )]
 }
 
-/// Read access to the catalogue — `GET /apps` (the uniform registry), and the
-/// per-kind detail reads (`GET /cloud-apps/{id}`, `/system-apps/{id}`). Gated by `wildflower/Apps.r`. Generic over the store port
-/// so the read logic is exercised against the in-memory fake.
+/// Read access to the catalogue — `GET /apps` (the registry) and `GET /apps/{id}`
+/// (one app). Gated by `wildflower/Apps.r`. Generic over the store port so the
+/// read logic is exercised against the in-memory fake.
 pub(crate) struct AppsReader<S: AppsStore> {
     store: S,
 }
@@ -33,71 +30,29 @@ impl<S: AppsStore> AppsReader<S> {
         self.store.list_registrations()
     }
 
-    /// A cloud app's editor detail, or `404` if no cloud app has the id (an
-    /// unknown id, or one of another kind).
-    pub(crate) fn cloud(
-        &self,
-        id: &str,
-    ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
-        match self
-            .store
+    /// One app, or `404` if no app has the id.
+    pub(crate) fn get(&self, id: &str) -> Result<AppRegistration, AppsError> {
+        self.store
             .find_app(id)?
-            .ok_or_else(|| AppsError::NotFound { id: id.to_owned() })?
-        {
-            (registration, AppConfiguration::Cloud(config)) => Ok((registration, config)),
-            _ => Err(AppsError::NotFound { id: id.to_owned() }),
-        }
-    }
-
-    /// A system app's read-only detail, or `404` if no system app has the id.
-    pub(crate) fn system(
-        &self,
-        id: &str,
-    ) -> Result<(AppRegistration, SystemAppConfiguration), AppsError> {
-        match self
-            .store
-            .find_app(id)?
-            .ok_or_else(|| AppsError::NotFound { id: id.to_owned() })?
-        {
-            (registration, AppConfiguration::System(config)) => Ok((registration, config)),
-            _ => Err(AppsError::NotFound { id: id.to_owned() }),
-        }
+            .ok_or_else(|| AppsError::NotFound { id: id.to_owned() })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::test_fake::{create_cloud, system, FakeAppsStore};
-    use crate::domain::AppKind;
-
-    fn reader(seed: impl FnOnce(&FakeAppsStore)) -> AppsReader<FakeAppsStore> {
-        let store = FakeAppsStore::default();
-        seed(&store);
-        AppsReader::new(store)
-    }
+    use crate::domain::test_fake::{create_app, FakeAppsStore};
 
     #[test]
-    fn reader_lists_and_reads_per_kind_through_the_store() {
-        let reader = reader(|store| {
-            create_cloud(store, "cloud-x").expect("seed cloud");
-            system(store, "sys-x");
-        });
+    fn reader_lists_and_reads_through_the_store() {
+        let store = FakeAppsStore::default();
+        create_app(&store, "app-x").expect("seed app");
+        create_app(&store, "app-y").expect("seed app");
+        let reader = AppsReader::new(store);
         assert_eq!(reader.list().expect("list").len(), 2);
-        assert_eq!(reader.cloud("cloud-x").expect("cloud").0.id, "cloud-x");
-        assert_eq!(
-            reader.system("sys-x").expect("system").0.kind,
-            AppKind::System
-        );
-        // A per-kind read of the wrong kind is a 404 (the inlined find_app resolves
-        // the runtime kind and the arm falls through).
+        assert_eq!(reader.get("app-x").expect("app").id, "app-x");
         assert!(matches!(
-            reader.cloud("sys-x"),
-            Err(AppsError::NotFound { .. })
-        ));
-        // An unknown id is likewise a 404.
-        assert!(matches!(
-            reader.cloud("ghost"),
+            reader.get("ghost"),
             Err(AppsError::NotFound { .. })
         ));
     }

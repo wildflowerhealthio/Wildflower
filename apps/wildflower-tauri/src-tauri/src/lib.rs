@@ -218,7 +218,6 @@ async fn run_server(
         host_owner_scopes,
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
         tunnel_seed: tunnel_seed_from_build_env(),
-        app_version: env!("CARGO_PKG_VERSION").to_owned(),
     };
 
     // The server runs for the app's lifetime, so nothing cancels its shutdown

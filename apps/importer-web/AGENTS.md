@@ -188,12 +188,12 @@ accepts the writes and the set has room to grow.
 
 ## Seeded registration
 
-The app is registered as a **cloud** row served from the published site, by two
+The app is registered as a row served from the published site, by two
 migrations that must land together — an app registration whose `client_id` has no
 registered client cannot launch:
 
 - `slices/apps/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
-  `importer-app` cloud registration + its `cloud_app_configurations` launch URL
+  `importer-app` registration and its launch URL
   (`https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4`),
   `local_only = 0`, `requires_tunnel = 1` (like `medications-app` / `web-trace-app`).
 - `slices/gatekeeper/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`

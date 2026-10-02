@@ -7,9 +7,9 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 
 - **`wildflower-server-rust`** — `serve(config, host, shutdown)` opens the
   host's databases, sets up every server slice (gatekeeper, emr, OHIF, collector,
-  tunnel, apps, databases, the `/docs` reference), gates them, and serves them on
-  the loopback port behind the loopback owner trust, the loopback-peer gate and
-  the CORS policy, until `shutdown` is cancelled. It also holds the server-side
+  tunnel, apps, databases), gates them, and serves them on the loopback port
+  behind the loopback owner trust, the loopback-peer gate and the CORS policy,
+  until `shutdown` is cancelled. It also holds the server-side
   adapters that join two slices: the gatekeeper-backed `AppLaunchScopes` for
   apps, the reqwest `HealthProbe` for the tunnel, and HFS's base URL following
   the tunnel's public host. The unmatched-route `404` is here too.

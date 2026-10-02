@@ -1,4 +1,4 @@
-//! The apps slice's HTTP surface — list, launch, home-screen, and the cloud-admin
+//! The apps slice's HTTP surface — list, launch, home-screen, and the admin
 //! write surface — built as `utoipa_axum::OpenApiRouter`s, so the same
 //! `#[utoipa::path]`-annotated handlers that serve traffic also produce the
 //! committed OpenAPI snapshot (`openapi/apps.openapi.json`) that the TS spec-drift
@@ -21,7 +21,7 @@
 //! beside it (see that module).
 //!
 //! The surface is exposed as two routers so the host can gate them differently:
-//! both [`gated_router`] (list + cloud-admin + `PUT /home-screen`) and
+//! both [`gated_router`] (the catalogue reads and writes + `PUT /home-screen`) and
 //! [`launch_router`] (`POST /apps/{id}`) carry no middleware and are each
 //! wrapped by the host's bearer gate (which inserts the caller's scope claims). The
 //! gated surface is scope-gated per handler on `wildflower/Apps.*`; the launch
@@ -33,7 +33,6 @@ mod errors;
 mod routes;
 #[cfg(test)]
 pub(crate) mod test_support;
-pub(crate) mod wire_representations;
 
 // The router builders below name the shared state. Its canonical public path is
 // `apps_rust::live_bindings::state::AppsState` (also re-exported crate-root as
@@ -51,8 +50,8 @@ use utoipa_axum::router::OpenApiRouter;
 struct ApiDoc;
 
 /// The full apps surface as one `OpenAPI` document — every endpoint the TS
-/// `AppsApi` client speaks (the gated list/cloud-admin/home-screen surface plus
-/// the launch route, now behind the `wildflower/launch` umbrella). `info` is set
+/// `AppsApi` / `AppsAdminApi` clients speak (the gated catalogue and home-screen
+/// surface plus the launch route, behind the `wildflower/launch` umbrella). `info` is set
 /// explicitly so the committed snapshot doesn't churn with the crate version.
 #[must_use]
 pub fn openapi_spec() -> utoipa::openapi::OpenApi {
@@ -62,9 +61,9 @@ pub fn openapi_spec() -> utoipa::openapi::OpenApi {
     spec
 }
 
-/// Build the scope-gated admin routes (`GET /apps`, `DELETE /apps/{id}`,
-/// `PUT /home-screen`, and the per-kind `/cloud-apps` / `/system-apps`
-/// resources), each gated on `wildflower/Apps.{r,c,u,d}`. Carries
+/// Build the scope-gated admin routes (`GET`/`POST /apps`,
+/// `GET`/`PUT`/`DELETE /apps/{id}`, and `PUT /home-screen`), each gated on
+/// `wildflower/Apps.{r,c,u,d}`. Carries
 /// no middleware — the host wraps it with its bearer gate (which inserts the
 /// caller's scope claims).
 pub fn gated_router(state: Arc<AppsState>) -> Router {

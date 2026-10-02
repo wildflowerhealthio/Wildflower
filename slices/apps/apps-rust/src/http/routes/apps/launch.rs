@@ -1,7 +1,7 @@
 //! `POST /apps/{id}` — resolve an app id to a launch target.
 //!
-//! Two orthogonal axes meet here: the app's kind (its [`AppConfiguration`] variant)
-//! fixes how the launch URL is *resolved*, while the *request's*
+//! Two orthogonal axes meet here: the app's `requires_tunnel` flag fixes which
+//! origin its launch template is *resolved* against, while the *request's*
 //! [`RequestProvenance`] (loopback vs. forwarded) fixes how it's *dispatched*. The
 //! flow:
 //!
@@ -21,8 +21,7 @@
 //!      shortfall `403`s with the shared `InsufficientScope` JSON body naming the
 //!      missing scopes, before any side-effect. A non-SMART app needs only the
 //!      umbrella.
-//!   5. Resolve the launch target by the app's kind (System → compiled-in source,
-//!      Cloud → the stored template). Fails
+//!   5. Resolve the launch target from the stored template. Fails
 //!      `503 LaunchUnavailable` when no *reachable* target exists.
 //!   6. Dispatch on the request's provenance: a loopback launch `204`s after
 //!      handing the URL to the host webview; a forwarded launch answers `200` with
@@ -47,10 +46,7 @@ use utoipa::ToSchema;
 use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
-use crate::domain::{
-    AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration, LaunchParams,
-    SystemAppConfiguration,
-};
+use crate::domain::{AppRegistration, AppsError, AppsStore, LaunchParams};
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
 use crate::id_utils::mint_launch_nonce;
 use crate::live_bindings::state::AppsState;
@@ -107,12 +103,10 @@ async fn launch(
     // in-handler loopback owner gate. An under-umbrella caller was `403`d before
     // this handler ran, so it triggered no lookup or side-effect.
 
-    // 404 before resolving — an unknown id is never an availability failure. The
-    // store hands back the `(registration, configuration)` pair; both halves feed
-    // the kind-dispatched resolve below (no "combined app" — the tuple is the app).
-    // Inlined `find_app` + `NotFound` (the same shape each admin read capability
-    // inlines — there is no shared `get_app` helper) — the read's one launch caller.
-    let (registration, configuration) = state
+    // 404 before resolving — an unknown id is never an availability failure.
+    // Inlined `find_app` + `NotFound` (the same shape the admin read capability
+    // inlines — there is no shared read helper).
+    let registration = state
         .store
         .find_app(&id)?
         .ok_or_else(|| AppsError::NotFound { id: id.clone() })?;
@@ -134,7 +128,7 @@ async fn launch(
 
     // Resolve before dispatching: an unreachable target bails here with
     // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
-    let target_url = resolve_launch(&registration, &configuration, &state, &provenance).await?;
+    let target_url = resolve_launch(&registration, &state, &provenance).await?;
 
     match &provenance {
         // The loopback caller cleared the umbrella + SMART gates above; hand the URL
@@ -151,12 +145,12 @@ async fn launch(
     }
 }
 
-/// Resolve an app (its `(registration, configuration)` pair) to its
-/// provenance-aware launch URL (a rendered system or cloud template), dispatching on the `configuration` kind — the whole app came
-/// out of one store read, so the kind-specific launch data is already in hand (a
-/// system app always carries a valid compiled-in source; a corrupt registry row
-/// fails inside the store read as a typed error, never here). `503` if the matched
-/// app has no reachable target.
+/// Resolve an app to its provenance-aware launch URL: resolve the served origin
+/// (or the tunnel's verified origin for a `requires_tunnel` launch), then
+/// substitute `{origin}` / `{launch}` in the stored [`AppUrl`](crate::domain::AppUrl)
+/// template. The `url` was validated at the store read (the column decode), so no
+/// parse can fail here. Fails `503 LaunchUnavailable` when a `requires_tunnel`
+/// launch can't bring the tunnel up (see [`resolve_origin`]).
 ///
 /// Lives beside the launch handler rather than in `domain` on purpose: the
 /// resolution reaches into `AppsState` (the tunnel, the loopback config) and yields
@@ -164,49 +158,12 @@ async fn launch(
 /// that http/runtime coupling.
 async fn resolve_launch(
     registration: &AppRegistration,
-    configuration: &AppConfiguration,
     state: &AppsState,
     provenance: &RequestProvenance,
-) -> Result<String, AppsError> {
-    match configuration {
-        AppConfiguration::System(config) => Ok(render_system_target(state, config, provenance)),
-        AppConfiguration::Cloud(config) => {
-            render_cloud_target(state, provenance, registration, config).await
-        }
-    }
-}
-
-/// Render a system app's launch target from its stored [`SystemAppConfiguration`]:
-/// substitute `{origin}` (the served origin) + `{launch}` (a fresh nonce). The
-/// `url` was validated at the store read (the [`AppUrl`](crate::domain::AppUrl)
-/// column decode), so no parse can fail here.
-fn render_system_target(
-    state: &AppsState,
-    config: &SystemAppConfiguration,
-    provenance: &RequestProvenance,
-) -> String {
-    let origin = served_origin(state, provenance);
-    let launch = mint_launch_nonce();
-    config.url.to_url_with_params(&LaunchParams {
-        origin: &origin,
-        launch: &launch,
-    })
-}
-
-/// Render a cloud app's launch target: resolve the served origin (or the tunnel's
-/// verified origin for a `requires_tunnel` launch), then substitute `{origin}` /
-/// `{launch}` in the stored [`AppUrl`](crate::domain::AppUrl) template. Fails
-/// `503 LaunchUnavailable` when a `requires_tunnel` launch can't bring the tunnel
-/// up (see [`resolve_origin`]).
-async fn render_cloud_target(
-    state: &AppsState,
-    provenance: &RequestProvenance,
-    registration: &AppRegistration,
-    config: &CloudAppConfiguration,
 ) -> Result<String, AppsError> {
     let origin = resolve_origin(state, provenance, registration.requires_tunnel).await?;
     let launch = mint_launch_nonce();
-    Ok(config.url.to_url_with_params(&LaunchParams {
+    Ok(registration.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
     }))
@@ -223,7 +180,7 @@ fn served_origin(state: &AppsState, provenance: &RequestProvenance) -> String {
     }
 }
 
-/// Resolve the launch origin for a cloud app.
+/// Resolve the launch origin for an app.
 ///
 /// A non-tunnel launch resolves to the *served* origin (see [`served_origin`]) so
 /// the launch URL is something the caller can actually reach. A
@@ -250,7 +207,7 @@ async fn resolve_origin(
 /// caller's page to navigate to.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct LaunchTargetBody {
-    /// The absolute launch URL (a rendered system or cloud template).
+    /// The absolute launch URL (the app's rendered template).
     pub url: String,
 }
 

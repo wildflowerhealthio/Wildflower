@@ -9,10 +9,10 @@ import { launchApp, type LaunchContext } from './-launch.ts'
 
 // A minimal uniform registration — `launchApp` reads only `id`.
 const app: AppRegistration = {
-  id: 'pt-browser',
+  id: 'growth-chart',
   onHomescreen: true,
-  name: 'Patient Browser',
-  kind: 'system',
+  name: 'Growth Chart',
+  url: 'https://example.com/launch',
   localOnly: false,
   isSmart: false,
   requiresTunnel: false,

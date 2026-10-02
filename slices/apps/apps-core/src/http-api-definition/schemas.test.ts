@@ -4,28 +4,22 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  AppNotEditableSchema,
+  AppBodySchema,
   AppNotFoundSchema,
   AppRegistrationSchema,
   AppUrlSchema,
-  CloudAppBodySchema,
-  CloudAppDetailSchema,
   HomeScreenSchema,
   InsufficientScopeSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
-  KindSchema,
-  SystemAppDetailSchema,
 } from './schemas.ts'
-
-const KINDS = ['system', 'cloud'] as const
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
-describe('CloudAppBodySchema', () => {
-  it('accepts a well-formed cloud body', () => {
+describe('AppBodySchema', () => {
+  it('accepts a well-formed body', () => {
     const body = { name: 'My App', url: 'https://example.com/launch', requiresTunnel: false }
-    expectRightToEqual(Schema.decodeUnknownEither(CloudAppBodySchema)(body), body)
+    expectRightToEqual(Schema.decodeUnknownEither(AppBodySchema)(body), body)
   })
 
   // The write side accepts `""` (which the read schema rejects); the server
@@ -37,7 +31,7 @@ describe('CloudAppBodySchema', () => {
       requiresTunnel: false,
       subtitle: '',
     }
-    expectRightToEqual(Schema.decodeUnknownEither(CloudAppBodySchema)(body), body)
+    expectRightToEqual(Schema.decodeUnknownEither(AppBodySchema)(body), body)
   })
 
   it('rejects an empty name, a bad url, or a missing url', () => {
@@ -47,7 +41,7 @@ describe('CloudAppBodySchema', () => {
       { name: 'X', requiresTunnel: false },
     ]) {
       expectLeftToEqual(
-        Schema.decodeUnknownEither(CloudAppBodySchema)(bad),
+        Schema.decodeUnknownEither(AppBodySchema)(bad),
         expect.objectContaining({ _tag: 'ParseError' })
       )
     }
@@ -82,26 +76,6 @@ describe('AppUrlSchema', () => {
   })
 })
 
-describe('KindSchema', () => {
-  it('accepts the three kebab values', () => {
-    for (const k of KINDS) {
-      expectRightToEqual(Schema.decodeUnknownEither(KindSchema)(k), k)
-    }
-  })
-
-  it('rejects any non-kind string', () => {
-    fc.assert(
-      fc.property(
-        fc.string().filter((s) => !(KINDS as readonly string[]).includes(s)),
-        (s) => {
-          expect(Schema.decodeUnknownEither(KindSchema)(s)._tag).toBe('Left')
-        }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-})
-
 describe('AppRegistrationSchema', () => {
   const withOptionalSubtitle = <T extends object>(base: T): fc.Arbitrary<T> =>
     fc
@@ -111,16 +85,16 @@ describe('AppRegistrationSchema', () => {
   const registrationArb = fc
     .record({
       id: fc.string({ minLength: 1 }),
-      kind: fc.constantFrom(...KINDS),
       onHomescreen: fc.boolean(),
       name: fc.string({ minLength: 1 }),
+      url: fc.string({ minLength: 1 }),
       localOnly: fc.boolean(),
       isSmart: fc.boolean(),
       requiresTunnel: fc.boolean(),
     })
     .chain(withOptionalSubtitle)
 
-  it('decodes any well-formed uniform registration to itself', () => {
+  it('decodes any well-formed registration to itself', () => {
     fc.assert(
       fc.property(registrationArb, (entry) => {
         expectRightToEqual(Schema.decodeUnknownEither(AppRegistrationSchema)(entry), entry)
@@ -129,59 +103,24 @@ describe('AppRegistrationSchema', () => {
     )
   })
 
-  it('rejects an empty-string subtitle, a bad kind, and a missing shared field', () => {
+  it('rejects an empty-string subtitle and a missing field', () => {
     const base = {
       id: 'x',
-      kind: 'cloud',
       onHomescreen: true,
       name: 'X',
+      url: 'https://example.com/launch?iss={origin}',
       localOnly: false,
       isSmart: true,
       requiresTunnel: true,
     }
-    for (const bad of [
-      { ...base, subtitle: '' },
-      { ...base, kind: 'external' },
-      { id: 'x', kind: 'cloud', name: 'X', localOnly: false, isSmart: true, requiresTunnel: true },
-    ]) {
+    const { onHomescreen: _onHomescreen, ...withoutOnHomescreen } = base
+    const { url: _url, ...withoutUrl } = base
+    for (const bad of [{ ...base, subtitle: '' }, withoutOnHomescreen, withoutUrl]) {
       expectLeftToEqual(
         Schema.decodeUnknownEither(AppRegistrationSchema)(bad),
         expect.objectContaining({ _tag: 'ParseError' })
       )
     }
-  })
-})
-
-describe('per-kind detail schemas', () => {
-  const registration = {
-    id: 'x',
-    kind: 'cloud',
-    onHomescreen: true,
-    name: 'X',
-    localOnly: false,
-    isSmart: true,
-    requiresTunnel: true,
-  }
-
-  it('CloudAppDetailSchema carries the url template + isRemovable', () => {
-    const detail = {
-      ...registration,
-      url: 'https://example.com/launch?iss={origin}',
-      isRemovable: true,
-    }
-    expectRightToEqual(Schema.decodeUnknownEither(CloudAppDetailSchema)(detail), detail)
-  })
-
-  it('CloudAppDetailSchema rejects a body missing url or isRemovable', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(CloudAppDetailSchema)({ ...registration, isRemovable: true }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-  })
-
-  it('SystemAppDetailSchema carries the url but no isRemovable', () => {
-    const detail = { ...registration, kind: 'system', url: '{origin}/docs' }
-    expectRightToEqual(Schema.decodeUnknownEither(SystemAppDetailSchema)(detail), detail)
   })
 })
 
@@ -223,7 +162,7 @@ describe('HomeScreenSchema', () => {
   it('decodes an ordered list of { id, onHomescreen } entries', () => {
     const body = [
       { id: 'medications-app', onHomescreen: true },
-      { id: 'api-view', onHomescreen: false },
+      { id: 'growth-chart', onHomescreen: false },
     ]
     expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)(body), body)
   })
@@ -258,22 +197,6 @@ describe('InvalidHomeScreenSchema', () => {
   it('rejects any other error literal', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(InvalidHomeScreenSchema)({ error: 'AppNotFound', message: 'x' }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-  })
-})
-
-describe('AppNotEditableSchema', () => {
-  it('accepts the declared 409 payload', () => {
-    expectRightToEqual(
-      Schema.decodeUnknownEither(AppNotEditableSchema)({ error: 'AppNotEditable', id: 'api-docs' }),
-      { error: 'AppNotEditable', id: 'api-docs' }
-    )
-  })
-
-  it('rejects any other error literal', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(AppNotEditableSchema)({ error: 'AppNotFound', id: 'x' }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

@@ -2,20 +2,16 @@
 //! [`AppsStore`](crate::domain::AppsStore) port. Holds the app-wide r2d2 pool of
 //! Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the shared
 //! database file, applies the embedded apps migrations once on construction, and
-//! implements the port by delegating to the per-kind query bodies in
-//! [`crate::db::app_registration`] / [`crate::db::cloud_apps`] /
-//! [`crate::db::all_kinds_apps`]. Mirrors
-//! `collector-rust`'s `SqliteRemotesStore`.
+//! implements the port by delegating to the query bodies in
+//! [`crate::db::app_registration`]. Mirrors `collector-rust`'s
+//! `SqliteRemotesStore`.
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 
-use crate::db::{all_kinds_apps, app_registration, cloud_apps};
-use crate::domain::{
-    AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
-    CloudInsertError,
-};
+use crate::db::app_registration;
+use crate::domain::{AppInsertError, AppRegistration, AppsError, AppsStore};
 
 /// This slice's migration namespace in the shared database. Applied versions are
 /// bookkept per-namespace by [`persistence_rust::run_diesel_migrations`], so
@@ -39,17 +35,19 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// fourth CLOUD app from that site, and `0008` moves its launch onto the FHIR
 /// Viewer route; `0009` repairs the Medications and Web Trace rows on any install
 /// `0005` left short of cloud; `0010` appends Lifting, another first-party
-/// CLOUD app from the same site; and `0011` deletes every self-hosted
-/// registration, drops `self_hosted_app_configurations`, and narrows the `kind`
-/// CHECK to system + cloud. Because each migration runs only once per
-/// database, a user-deleted seed stays deleted across upgrades. The debug-only
-/// `…-dev` cloud rows are deliberately NOT migrations — see
-/// `apps-rust/src/dev_seed.rs`.
+/// CLOUD app from the same site; `0011` deletes every self-hosted registration,
+/// drops `self_hosted_app_configurations`, and narrows the `kind` CHECK to
+/// system + cloud; and `0012` deletes the two system apps and collapses the
+/// registry onto `app_registrations` alone (its `url` copied from
+/// `cloud_app_configurations`, the `kind` column and both configuration tables
+/// dropped). Because each migration runs only once per database, a user-deleted
+/// seed stays deleted across upgrades. The debug-only `…-dev` rows are
+/// deliberately NOT migrations — see `apps-rust/src/dev_seed.rs`.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-/// The `SQLite` adapter for the [`AppsStore`] port — serves the registrations plus
-/// the cloud + system configurations. Cheap to clone (the pool is an `Arc`
-/// inside), so it drops straight into the axum state.
+/// The `SQLite` adapter for the [`AppsStore`] port — serves the `app_registrations`
+/// rows. Cheap to clone (the pool is an `Arc` inside), so it drops straight into
+/// the axum state.
 #[derive(Clone)]
 pub struct SqliteAppsStore {
     // The host-owned app-wide r2d2 pool (`persistence_rust::open_pool`) onto the
@@ -93,7 +91,7 @@ impl SqliteAppsStore {
     }
 
     /// Check a connection out of the pool, mapping an exhausted-pool failure to an
-    /// opaque [`AppsError::Infrastructure`]. Each per-kind query body runs on one of
+    /// opaque [`AppsError::Infrastructure`]. Each query body runs on one of
     /// these, checked out per call — diesel's connection API is `&mut`, so the store
     /// hands out a fresh connection rather than sharing one.
     fn connection(&self) -> Result<PooledDieselConnection, AppsError> {
@@ -111,42 +109,38 @@ impl SqliteAppsStore {
 
 /// The `SQLite` implementation of the port: each method checks a connection out
 /// of the pool (via [`connection`](Self::connection)) and hands it to the matching
-/// per-kind query body ([`crate::db::app_registration`] / [`crate::db::cloud_apps`] /
-/// [`crate::db::all_kinds_apps`]). The bodies live
-/// there so this file stays the migration + pool handle, and the query SQL stays
-/// next to the `table!` + row types it maps. Every method returns the port's PRIMITIVE shape
-/// — absence as `None`, delete outcome as `bool`, a cloud insert that wrote nothing
-/// as the granular typed [`CloudInsertError`] — leaving the semantic verdicts to
-/// the [`capabilities`](crate::domain::capabilities).
+/// query body in [`crate::db::app_registration`]. The bodies live there so this
+/// file stays the migration + pool handle, and the query SQL stays next to the
+/// `table!` it maps. Every method returns the port's PRIMITIVE shape — absence as
+/// `None`, delete outcome as `bool`, an insert that wrote nothing as the typed
+/// [`AppInsertError`] — leaving the semantic verdicts to the
+/// [`capabilities`](crate::domain::capabilities).
 impl AppsStore for SqliteAppsStore {
     fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppsError> {
         let mut conn = self.connection()?;
         app_registration::list_registrations_on(&mut conn)
     }
 
-    fn find_app(&self, id: &str) -> Result<Option<(AppRegistration, AppConfiguration)>, AppsError> {
-        let mut conn = self.connection()?;
-        all_kinds_apps::find_app_on(&mut conn, id)
+    fn find_app(&self, id: &str) -> Result<Option<AppRegistration>, AppsError> {
+        app_registration::find_app(&mut *self.connection()?, id)
     }
 
-    fn insert_cloud_app(
+    fn insert_app(
         &self,
         registration: &AppRegistration,
-        config: &CloudAppConfiguration,
-    ) -> Result<Result<(AppRegistration, CloudAppConfiguration), CloudInsertError>, AppsError> {
-        cloud_apps::insert_cloud_app(&mut self.connection()?, registration, config)
+    ) -> Result<Result<AppRegistration, AppInsertError>, AppsError> {
+        app_registration::insert_app(&mut self.connection()?, registration)
     }
 
-    fn replace_cloud_app(
+    fn replace_app(
         &self,
         registration: &AppRegistration,
-        config: &CloudAppConfiguration,
-    ) -> Result<Option<(AppRegistration, CloudAppConfiguration)>, AppsError> {
-        cloud_apps::replace_cloud_app(&mut self.connection()?, registration, config)
+    ) -> Result<Option<AppRegistration>, AppsError> {
+        app_registration::replace_app(&mut *self.connection()?, registration)
     }
 
     fn delete_app(&self, id: &str) -> Result<bool, AppsError> {
-        all_kinds_apps::delete_app(&mut self.connection()?, id)
+        app_registration::delete_app(&mut *self.connection()?, id)
     }
 
     fn replace_placements(
@@ -164,9 +158,24 @@ mod tests {
     use diesel::sql_types::{BigInt, Integer, Text};
     use diesel::sqlite::{Sqlite, SqliteConnection};
     use diesel::{sql_query, QueryableByName};
+    use persistence_rust::DieselPool;
 
     use super::*;
     use crate::db::app_registration::app_registrations;
+    use crate::domain::AppUrl;
+
+    /// The seeded registry, in display order.
+    const SEEDED_IDS: [&str; 9] = [
+        "growth-chart",
+        "medication-viewer",
+        "precise-hbr",
+        "medications-app",
+        "web-trace-app",
+        "web-server-docs",
+        "importer-app",
+        "ohif-viewer",
+        "lifting-app",
+    ];
 
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips the already-applied `0001`), and the seeded default registry
@@ -184,23 +193,23 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 11, "exactly the eleven seeded default apps");
+        assert_eq!(row_count, 9, "exactly the nine seeded default apps");
     }
 
-    /// The `app_registrations` primary key gives global id uniqueness across kinds
-    /// — a second registration with a seeded id is rejected by the PK, so no two
-    /// apps (of any kind) can share an id.
+    /// The `app_registrations` primary key gives global id uniqueness — a second
+    /// registration with a seeded id is rejected by the PK, so no two apps can
+    /// share an id.
     #[test]
     fn app_registrations_id_is_globally_unique() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let mut conn = store.pool().get().unwrap();
         let dup = diesel::insert_into(app_registrations::table)
             .values((
-                app_registrations::id.eq("api-docs"),
-                app_registrations::kind.eq("cloud"),
+                app_registrations::id.eq("growth-chart"),
                 app_registrations::position.eq(99_i64),
                 app_registrations::on_homescreen.eq(true),
                 app_registrations::name.eq("Dup"),
+                app_registrations::url.eq("https://example.com/dup"),
                 app_registrations::local_only.eq(false),
                 app_registrations::requires_tunnel.eq(false),
             ))
@@ -221,22 +230,7 @@ mod tests {
             .iter()
             .map(|r| r.id.clone())
             .collect();
-        assert_eq!(
-            ids,
-            vec![
-                "api-view",
-                "api-docs",
-                "growth-chart",
-                "medication-viewer",
-                "precise-hbr",
-                "medications-app",
-                "web-trace-app",
-                "web-server-docs",
-                "importer-app",
-                "ohif-viewer",
-                "lifting-app",
-            ],
-        );
+        assert_eq!(ids, SEEDED_IDS);
     }
 
     /// [`MIGRATIONS`] narrowed to the versions at or below `.0` — it drives a
@@ -253,8 +247,34 @@ mod tests {
         }
     }
 
-    /// Register a user-created cloud app at the tail — the row a `POST
-    /// /cloud-apps` leaves behind.
+    /// A fresh in-memory pool migrated through `version` — an install that has not
+    /// yet run the migrations after it.
+    fn pool_migrated_through(version: &'static str) -> DieselPool {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let mut conn = pool.get().unwrap();
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough(version),
+        )
+        .unwrap();
+        drop(conn);
+        pool
+    }
+
+    /// The migration with this version, as embedded.
+    fn embedded_migration(version: &str) -> Box<dyn Migration<Sqlite>> {
+        MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from(version))
+            .unwrap_or_else(|| panic!("{version} is embedded"))
+    }
+
+    /// Register a user-created cloud app at the tail in the `0001`–`0011` layout —
+    /// the registration plus its `cloud_app_configurations` row a `POST
+    /// /cloud-apps` left behind.
     fn create_user_cloud_app(conn: &mut SqliteConnection, id: &str) {
         sql_query(
             "INSERT INTO app_registrations \
@@ -272,19 +292,28 @@ mod tests {
             .expect("configuration insert must succeed");
     }
 
-    /// The launch template a cloud row was seeded/migrated onto.
+    /// The launch template a `0001`–`0011` cloud configuration row holds.
     #[derive(QueryableByName)]
     struct CloudTarget {
         #[diesel(sql_type = Text)]
         url: String,
     }
 
-    /// After 0005 the two first-party apps are CLOUD rows pointing at the
-    /// published GitHub Pages site, under their renamed ids.
+    /// The stored launch template of a seeded app, read through the port.
+    fn stored_url(store: &SqliteAppsStore, id: &str) -> String {
+        store
+            .find_app(id)
+            .unwrap()
+            .unwrap_or_else(|| panic!("{id} must exist"))
+            .url
+            .to_string()
+    }
+
+    /// The first-party apps point at the published GitHub Pages site, under the
+    /// ids `0005` gave them.
     #[test]
-    fn first_party_apps_are_cloud_rows_on_the_published_site() {
+    fn first_party_apps_launch_from_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut conn = store.pool().get().unwrap();
 
         for (id, url) in [
             (
@@ -296,14 +325,10 @@ mod tests {
                 "https://wildflowerhealth.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
             ),
         ] {
-            let (registration, configuration) = store
+            let registration = store
                 .find_app(id)
                 .unwrap()
                 .unwrap_or_else(|| panic!("{id} must exist under its renamed id"));
-            assert!(
-                matches!(configuration, AppConfiguration::Cloud(_)),
-                "{id} must be a cloud app",
-            );
             // client_id tracks id, as every registration does.
             assert_eq!(registration.client_id.as_deref(), Some(id));
             assert!(
@@ -311,12 +336,7 @@ mod tests {
                 "{id} is launched from the published site, so its `iss={{origin}}` FHIR \
                  target must resolve through the tunnel's verified origin",
             );
-            let target: CloudTarget =
-                sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
-                    .bind::<Text, _>(id)
-                    .get_result(&mut conn)
-                    .expect("the cloud configuration row must exist");
-            assert_eq!(target.url, url);
+            assert_eq!(registration.url.to_string(), url);
         }
 
         // The old ids are fully retired.
@@ -325,29 +345,24 @@ mod tests {
         }
 
         // Web Trace can no longer claim local-only: its assets come from the
-        // published site now.
-        let (web_trace, _) = store.find_app("web-trace-app").unwrap().unwrap();
+        // published site.
+        let web_trace = store.find_app("web-trace-app").unwrap().unwrap();
         assert!(!web_trace.local_only);
     }
 
-    /// The server-docs console is a cloud row that takes only `{origin}`, handed
-    /// to it through its `?server=` contract. Unlike the SMART launchers it is not
-    /// given a `{launch}` nonce (it signs in standalone), so the seeded template
-    /// must carry neither `{launch}` nor `iss` — the mismatch that would otherwise
-    /// leave the tile pointed at the loopback default is what this pins.
+    /// The server-docs console takes only `{origin}`, handed to it through its
+    /// `?server=` contract. Unlike the SMART launchers it is not given a
+    /// `{launch}` nonce (it signs in standalone), so the seeded template must carry
+    /// neither `{launch}` nor `iss` — the mismatch that would otherwise leave the
+    /// tile pointed at the loopback default is what this pins.
     #[test]
-    fn server_docs_console_is_a_cloud_row_targeted_by_server_param() {
+    fn server_docs_console_is_targeted_by_server_param() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut conn = store.pool().get().unwrap();
 
-        let (registration, configuration) = store
+        let registration = store
             .find_app("web-server-docs")
             .unwrap()
             .expect("web-server-docs must exist");
-        assert!(
-            matches!(configuration, AppConfiguration::Cloud(_)),
-            "web-server-docs must be a cloud app",
-        );
         // client_id tracks id, as every registration does.
         assert_eq!(registration.client_id.as_deref(), Some("web-server-docs"));
         assert!(
@@ -356,37 +371,28 @@ mod tests {
              tunnel's verified HTTPS origin",
         );
 
-        let target: CloudTarget =
-            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
-                .bind::<Text, _>("web-server-docs")
-                .get_result(&mut conn)
-                .expect("the cloud configuration row must exist");
+        let url = registration.url.to_string();
         assert_eq!(
-            target.url,
+            url,
             "https://wildflowerhealth.io/wildflower-server-docs/?server={origin}",
         );
         assert!(
-            !target.url.contains("{launch}") && !target.url.contains("iss="),
+            !url.contains("{launch}") && !url.contains("iss="),
             "the console reads `?server=`, not a SMART `{{launch}}`/`iss` launch",
         );
     }
 
-    /// The Importer ships as a first-party CLOUD row (apps migration `0006`),
-    /// launched from its published Pages copy — a SMART EHR launch, unlike the
-    /// server-docs console's `?server=` target.
+    /// The Importer ships as a first-party app (apps migration `0006`), launched
+    /// from its published Pages copy — a SMART EHR launch, unlike the server-docs
+    /// console's `?server=` target.
     #[test]
-    fn importer_is_a_cloud_row_launched_from_the_published_site() {
+    fn importer_launches_from_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut conn = store.pool().get().unwrap();
 
-        let (registration, configuration) = store
+        let registration = store
             .find_app("importer-app")
             .unwrap()
             .expect("importer-app must exist");
-        assert!(
-            matches!(configuration, AppConfiguration::Cloud(_)),
-            "importer-app must be a cloud app",
-        );
         // client_id tracks id, as every registration does.
         assert_eq!(registration.client_id.as_deref(), Some("importer-app"));
         assert!(
@@ -398,37 +404,26 @@ mod tests {
             "the published page's `iss={{origin}}` fetch must resolve through the \
              tunnel's verified HTTPS origin",
         );
-
-        let target: CloudTarget =
-            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
-                .bind::<Text, _>("importer-app")
-                .get_result(&mut conn)
-                .expect("the cloud configuration row must exist");
         assert_eq!(
-            target.url,
+            registration.url.to_string(),
             "https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
         );
     }
 
-    /// The OHIF imaging viewer ships as a first-party CLOUD row (apps migration
-    /// `0007`), launched from its published Pages copy. Its launch URL is a
-    /// route, not a `launch.html`: OHIF reads the SMART parameters off whichever
-    /// route it is opened on. `0008` moved that route from the viewer's root to
-    /// the FHIR Viewer mode (`/fhir-viewer`) and added `clientId`, so the
-    /// template asserted here is the composed end state of `0007` + `0008`.
+    /// The OHIF imaging viewer ships as a first-party app (apps migration `0007`),
+    /// launched from its published Pages copy. Its launch URL is a route, not a
+    /// `launch.html`: OHIF reads the SMART parameters off whichever route it is
+    /// opened on. `0008` moved that route from the viewer's root to the FHIR
+    /// Viewer mode (`/fhir-viewer`) and added `clientId`, so the template asserted
+    /// here is the composed end state of `0007` + `0008`.
     #[test]
-    fn ohif_viewer_is_a_cloud_row_launched_at_the_fhir_viewer_route() {
+    fn ohif_viewer_launches_at_the_fhir_viewer_route() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut conn = store.pool().get().unwrap();
 
-        let (registration, configuration) = store
+        let registration = store
             .find_app("ohif-viewer")
             .unwrap()
             .expect("ohif-viewer must exist");
-        assert!(
-            matches!(configuration, AppConfiguration::Cloud(_)),
-            "ohif-viewer must be a cloud app",
-        );
         // client_id tracks id, as every registration does.
         assert_eq!(registration.client_id.as_deref(), Some("ohif-viewer"));
         assert!(
@@ -440,35 +435,24 @@ mod tests {
             "the published page's `iss={{origin}}` fetch must resolve through the \
              tunnel's verified HTTPS origin",
         );
-
-        let target: CloudTarget =
-            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
-                .bind::<Text, _>("ohif-viewer")
-                .get_result(&mut conn)
-                .expect("the cloud configuration row must exist");
         assert_eq!(
-            target.url,
+            registration.url.to_string(),
             "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer",
         );
     }
 
-    /// Lifting ships as a first-party CLOUD row (apps migration `0010`),
-    /// launched from its published Pages copy's `launch.html` — a SMART EHR
-    /// launch, with no slash between `launch.html` and the query (GitHub Pages
-    /// serves no file for `launch.html/`).
+    /// Lifting ships as a first-party app (apps migration `0010`), launched from
+    /// its published Pages copy's `launch.html` — a SMART EHR launch, with no slash
+    /// between `launch.html` and the query (GitHub Pages serves no file for
+    /// `launch.html/`).
     #[test]
-    fn lifting_app_is_a_cloud_row_launched_at_its_launch_page() {
+    fn lifting_app_launches_at_its_launch_page() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut conn = store.pool().get().unwrap();
 
-        let (registration, configuration) = store
+        let registration = store
             .find_app("lifting-app")
             .unwrap()
             .expect("lifting-app must exist");
-        assert!(
-            matches!(configuration, AppConfiguration::Cloud(_)),
-            "lifting-app must be a cloud app",
-        );
         // client_id tracks id, as every registration does.
         assert_eq!(registration.client_id.as_deref(), Some("lifting-app"));
         assert!(
@@ -480,14 +464,8 @@ mod tests {
             "the published page's `iss={{origin}}` fetch must resolve through the \
              tunnel's verified HTTPS origin",
         );
-
-        let target: CloudTarget =
-            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
-                .bind::<Text, _>("lifting-app")
-                .get_result(&mut conn)
-                .expect("the cloud configuration row must exist");
         assert_eq!(
-            target.url,
+            registration.url.to_string(),
             "https://wildflowerhealth.io/lifting-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
         );
     }
@@ -497,27 +475,18 @@ mod tests {
     /// is UNIQUE and `0010` appends rather than naming a literal slot.
     #[test]
     fn an_install_already_at_0009_gains_lifting_at_the_tail() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
-        let mut conn = pool.get().unwrap();
-        persistence_rust::run_diesel_migrations(
-            &mut conn,
-            MIGRATION_NAMESPACE,
-            MigrationsThrough("0009"),
-        )
-        .unwrap();
-        create_user_cloud_app(&mut conn, "my-app");
-        drop(conn);
+        let pool = pool_migrated_through("0009");
+        create_user_cloud_app(&mut pool.get().unwrap(), "my-app");
 
         let store = SqliteAppsStore::new(pool).expect("0010 must apply over the user's app");
-        let (user_app, _) = store
+        let user_app = store
             .find_app("my-app")
             .unwrap()
             .expect("the user's app survives");
-        let (lifting, configuration) = store
+        let lifting = store
             .find_app("lifting-app")
             .unwrap()
             .expect("0010 must seed lifting-app on an upgraded install");
-        assert!(matches!(configuration, AppConfiguration::Cloud(_)));
         assert_eq!(
             lifting.position,
             user_app.position + 1,
@@ -534,19 +503,11 @@ mod tests {
     /// applies both migrations and cannot tell the two apart.
     #[test]
     fn an_install_already_at_0007_is_upgraded_onto_the_fhir_viewer_launch() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
-        let mut conn = pool.get().unwrap();
-        persistence_rust::run_diesel_migrations(
-            &mut conn,
-            MIGRATION_NAMESPACE,
-            MigrationsThrough("0007"),
-        )
-        .unwrap();
-
+        let pool = pool_migrated_through("0007");
         let seeded: CloudTarget =
             sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
                 .bind::<Text, _>("ohif-viewer")
-                .get_result(&mut conn)
+                .get_result(&mut pool.get().unwrap())
                 .expect("0007 must have seeded the cloud configuration row");
         assert_eq!(
             seeded.url,
@@ -554,16 +515,9 @@ mod tests {
             "0007 must stay exactly as it shipped — an install that ran it sees no edit",
         );
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .unwrap();
-
-        let upgraded: CloudTarget =
-            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
-                .bind::<Text, _>("ohif-viewer")
-                .get_result(&mut conn)
-                .expect("the cloud configuration row must survive the upgrade");
+        let store = SqliteAppsStore::new(pool).expect("the later migrations must apply");
         assert_eq!(
-            upgraded.url,
+            stored_url(&store, "ohif-viewer"),
             "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer",
         );
     }
@@ -580,6 +534,23 @@ mod tests {
             .get_result::<RowCount>(conn)
             .unwrap_or_else(|e| panic!("`{query}` must read: {e}"))
             .count
+    }
+
+    /// How many schema objects of this name exist.
+    fn schema_objects_named(conn: &mut SqliteConnection, name: &str) -> i64 {
+        sql_query("SELECT COUNT(*) AS count FROM sqlite_master WHERE name = ?")
+            .bind::<Text, _>(name)
+            .get_result::<RowCount>(conn)
+            .expect("sqlite_master must read")
+            .count
+    }
+
+    /// How many rebuild scratch tables (`…_new`) are left behind.
+    fn scratch_tables(conn: &mut SqliteConnection) -> i64 {
+        count(
+            conn,
+            "SELECT COUNT(*) AS count FROM sqlite_master WHERE name LIKE '%\\_new' ESCAPE '\\'",
+        )
     }
 
     /// Register an uploaded self-hosted app — the kind `0011` removes — at the
@@ -611,67 +582,55 @@ mod tests {
     /// and its relative order, renumbered to a dense `0..n`.
     #[test]
     fn an_install_already_at_0010_loses_its_self_hosted_apps() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = pool_migrated_through("0010");
         let mut conn = pool.get().unwrap();
+        create_self_hosted_app(&mut conn, "my-upload", 8082);
+        create_user_cloud_app(&mut conn, "my-cloud-app");
         persistence_rust::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MigrationsThrough("0010"),
+            MigrationsThrough("0011"),
         )
-        .unwrap();
-        create_self_hosted_app(&mut conn, "my-upload", 8082);
-        create_user_cloud_app(&mut conn, "my-cloud-app");
-        drop(conn);
+        .expect("0011 must apply");
 
-        let store = SqliteAppsStore::new(pool).expect("0011 must apply");
-        let registrations = store.list_registrations().unwrap();
-        let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            vec![
-                "api-view",
-                "api-docs",
-                "growth-chart",
-                "medication-viewer",
-                "precise-hbr",
-                "medications-app",
-                "web-trace-app",
-                "web-server-docs",
-                "importer-app",
-                "ohif-viewer",
-                "lifting-app",
-                "my-cloud-app",
-            ],
-            "the self-hosted rows are gone and the rest keep their order",
-        );
-        let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
-        let dense: Vec<i64> = (0..).take(positions.len()).collect();
-        assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
-        for registration in &registrations {
-            assert!(
-                store.find_app(&registration.id).unwrap().is_some(),
-                "{} keeps its configuration across the rebuild",
-                registration.id,
-            );
-        }
-
-        let mut conn = store.pool().get().unwrap();
         assert_eq!(
             count(
                 &mut conn,
-                "SELECT COUNT(*) AS count FROM sqlite_master \
-                 WHERE name = 'self_hosted_app_configurations'",
+                "SELECT COUNT(*) AS count FROM app_registrations WHERE kind = 'self-hosted'",
             ),
+            0,
+            "the self-hosted rows are gone",
+        );
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM app_registrations AS registration \
+                 WHERE registration.position = \
+                   (SELECT COUNT(*) FROM app_registrations AS earlier \
+                     WHERE earlier.position < registration.position)",
+            ),
+            count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations"),
+            "positions are renumbered to a dense 0..n",
+        );
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM app_registrations \
+                 WHERE id NOT IN (SELECT id FROM cloud_app_configurations) \
+                   AND id NOT IN (SELECT id FROM system_app_configurations)",
+            ),
+            0,
+            "every surviving app keeps its configuration across the rebuild",
+        );
+        assert_eq!(
+            schema_objects_named(&mut conn, "self_hosted_app_configurations"),
             0,
             "the self-hosted configuration table is dropped",
         );
         assert_eq!(
-            count(
-                &mut conn,
-                "SELECT COUNT(*) AS count FROM sqlite_master WHERE name LIKE '%\\_new' ESCAPE '\\'",
-            ),
+            scratch_tables(&mut conn),
             0,
-            "no rebuild scratch table is left behind",
+            "no rebuild scratch table is left behind"
         );
     }
 
@@ -680,9 +639,9 @@ mod tests {
     /// to its configuration (the rebuilt configuration tables reference the final
     /// `app_registrations` name).
     #[test]
-    fn the_rebuilt_registry_narrows_kind_and_keeps_its_cascade() {
-        let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut conn = store.pool().get().unwrap();
+    fn the_0011_registry_narrows_kind_and_keeps_its_cascade() {
+        let pool = pool_migrated_through("0011");
+        let mut conn = pool.get().unwrap();
 
         let rejected = sql_query(
             "INSERT INTO app_registrations \
@@ -720,26 +679,175 @@ mod tests {
     /// empty self-hosted configuration table — over the surviving rows.
     #[test]
     fn reverting_0011_restores_the_0010_schema() {
-        let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut conn = store.pool().get().unwrap();
-        let migration_0011 = MIGRATIONS
-            .migrations()
-            .expect("embedded migrations")
-            .into_iter()
-            .find(|migration| migration.name().version() == MigrationVersion::from("0011"))
-            .expect("0011 is embedded");
-        migration_0011.revert(&mut conn).expect("revert 0011");
+        let pool = pool_migrated_through("0011");
+        let mut conn = pool.get().unwrap();
+        embedded_migration("0011")
+            .revert(&mut conn)
+            .expect("revert 0011");
 
         create_self_hosted_app(&mut conn, "my-upload", 8082);
         assert_eq!(
-            count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations",),
+            count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations"),
             12,
             "the eleven surviving apps plus the new self-hosted row",
         );
-        drop(conn);
-        assert!(
-            store.find_app("lifting-app").unwrap().is_some(),
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM cloud_app_configurations WHERE id = 'lifting-app'",
+            ),
+            1,
             "the surviving apps keep their configurations",
+        );
+    }
+
+    /// An install at `0011` — the two system apps, the seeded cloud apps, and a
+    /// user's own cloud app, one of them hidden — upgrades onto the single table:
+    /// the system apps are gone, every cloud app carries its launch template on its
+    /// registration with its placement and flags intact, positions are a dense
+    /// `0..n` in the same order, and the `kind` column and both configuration
+    /// tables are dropped.
+    #[test]
+    fn an_install_already_at_0011_collapses_onto_app_registrations() {
+        let pool = pool_migrated_through("0011");
+        let mut conn = pool.get().unwrap();
+        create_user_cloud_app(&mut conn, "my-cloud-app");
+        sql_query("UPDATE app_registrations SET on_homescreen = 0 WHERE id = 'precise-hbr'")
+            .execute(&mut conn)
+            .unwrap();
+        let growth_chart_before: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = 'growth-chart'")
+                .get_result(&mut conn)
+                .unwrap();
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0012 must apply");
+        let registrations = store.list_registrations().unwrap();
+        let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
+        let mut expected: Vec<&str> = SEEDED_IDS.to_vec();
+        expected.push("my-cloud-app");
+        assert_eq!(
+            ids, expected,
+            "the system apps are gone and the rest keep their order"
+        );
+        let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
+        let dense: Vec<i64> = (0..).take(positions.len()).collect();
+        assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
+
+        assert_eq!(stored_url(&store, "growth-chart"), growth_chart_before.url);
+        let user_app = store.find_app("my-cloud-app").unwrap().unwrap();
+        assert_eq!(
+            user_app.url,
+            AppUrl::External("https://example.com/launch".to_owned())
+        );
+        assert!(user_app.client_id.is_none());
+        assert!(
+            !store
+                .find_app("precise-hbr")
+                .unwrap()
+                .unwrap()
+                .on_homescreen,
+            "a hidden app stays hidden",
+        );
+
+        let mut conn = store.pool().get().unwrap();
+        for dropped in ["cloud_app_configurations", "system_app_configurations"] {
+            assert_eq!(
+                schema_objects_named(&mut conn, dropped),
+                0,
+                "{dropped} is dropped"
+            );
+        }
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM pragma_table_info('app_registrations') \
+                 WHERE name = 'kind'",
+            ),
+            0,
+            "the kind column is dropped",
+        );
+        assert_eq!(
+            scratch_tables(&mut conn),
+            0,
+            "no rebuild scratch table is left behind"
+        );
+    }
+
+    /// The collapsed registry requires a launch template on every row and keeps
+    /// `position` UNIQUE.
+    #[test]
+    fn the_collapsed_registry_requires_a_url_and_a_unique_position() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+        let without_url = sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, local_only, requires_tunnel) \
+             VALUES ('x', 99, 1, 'x', 0, 0)",
+        )
+        .execute(&mut conn);
+        assert!(without_url.is_err(), "url is NOT NULL");
+
+        let tied = sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, local_only, requires_tunnel) \
+             VALUES ('x', 0, 1, 'x', 'https://example.com', 0, 0)",
+        )
+        .execute(&mut conn);
+        assert!(tied.is_err(), "position stays UNIQUE");
+    }
+
+    /// Reverting `0012` restores the `0011` schema over the surviving apps: each
+    /// registration is a `cloud` row whose `url` is back in
+    /// `cloud_app_configurations`, `system_app_configurations` exists empty, and
+    /// deleting a registration cascades to its configuration (the restored tables
+    /// reference the final `app_registrations` name).
+    #[test]
+    fn reverting_0012_restores_the_0011_schema() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let lifting_url = stored_url(&store, "lifting-app");
+        let mut conn = store.pool().get().unwrap();
+        embedded_migration("0012")
+            .revert(&mut conn)
+            .expect("revert 0012");
+
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM app_registrations WHERE kind = 'cloud'",
+            ),
+            9,
+            "every surviving app is a cloud row",
+        );
+        let restored: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = 'lifting-app'")
+                .get_result(&mut conn)
+                .expect("the cloud configuration is restored");
+        assert_eq!(restored.url, lifting_url);
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM system_app_configurations",
+            ),
+            0,
+            "the system configuration table is restored empty",
+        );
+
+        sql_query("DELETE FROM app_registrations WHERE id = 'lifting-app'")
+            .execute(&mut conn)
+            .unwrap();
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM cloud_app_configurations WHERE id = 'lifting-app'",
+            ),
+            0,
+            "the restored configuration cascades",
+        );
+        assert_eq!(
+            scratch_tables(&mut conn),
+            0,
+            "no rebuild scratch table is left behind"
         );
     }
 }

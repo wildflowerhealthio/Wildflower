@@ -46,9 +46,8 @@ pub fn router(state: Arc<CollectorState>) -> Router {
 /// The collector `OpenAPI` document — every endpoint the TS `CollectorApi`
 /// client speaks — collected from the same routes that serve traffic. `info`
 /// is set explicitly so the committed snapshot doesn't churn with the crate
-/// version. Two consumers read it: the committed snapshot the TS spec-drift
-/// test guards, and the host's unified `/docs` Scalar surface, which merges
-/// this with the other slices' documents.
+/// version. It generates the committed snapshot the TS spec-drift test guards
+/// and the published server-docs console renders.
 #[must_use]
 pub fn openapi_spec() -> utoipa::openapi::OpenApi {
     let (_router, mut spec) = documented_router().split_for_parts();

@@ -1,4 +1,4 @@
-//! The [`LiveAppsReader`] binding — reads the catalogue + per-kind detail through
+//! The [`LiveAppsReader`] binding — reads the catalogue + an app through
 //! the concrete `SqliteAppsStore`. See the [module docs](super) for the binding
 //! seam.
 
@@ -11,7 +11,7 @@ use super::state::AppsState;
 use crate::db::SqliteAppsStore;
 use crate::domain::capabilities::{apps_reader_scopes, AppsReader};
 
-/// Read the catalogue + per-kind detail — `Scoped<LiveAppsReader>` in the handler.
+/// Read the catalogue + an app — `Scoped<LiveAppsReader>` in the handler.
 pub(crate) type LiveAppsReader = AppsReader<SqliteAppsStore>;
 
 impl FixedScopeCapability for LiveAppsReader {

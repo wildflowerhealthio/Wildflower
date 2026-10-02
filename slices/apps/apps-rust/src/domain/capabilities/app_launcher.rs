@@ -88,7 +88,6 @@ fn is_resource_scope(scope: &Scope) -> bool {
 mod tests {
     use super::*;
     use crate::domain::test_fake::registration;
-    use crate::domain::AppKind;
 
     /// A fake [`AppLaunchScopes`] returning a fixed required-scope set. The
     /// capability only consults it for a SMART app, so a non-SMART test never
@@ -116,7 +115,7 @@ mod tests {
     }
 
     fn smart_registration() -> AppRegistration {
-        let mut reg = registration("smart-app", AppKind::Cloud);
+        let mut reg = registration("smart-app");
         reg.client_id = Some("client-1".to_owned());
         reg
     }
@@ -190,7 +189,7 @@ mod tests {
         // A non-SMART app (no `client_id`) short-circuits to no missing scopes even
         // with an empty grant — the SMART port is never consulted (so the required
         // set below is irrelevant).
-        let reg = registration("system-app", AppKind::System);
+        let reg = registration("plain-app");
         assert!(reg.client_id.is_none());
         assert!(launcher("", &["patient/Observation.r"])
             .missing_launch_scopes(&reg)

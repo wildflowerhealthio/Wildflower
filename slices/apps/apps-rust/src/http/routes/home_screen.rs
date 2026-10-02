@@ -1,5 +1,5 @@
 //! `PUT /home-screen` — atomically replace the homescreen ordering **and**
-//! `onHomescreen` flags for the whole registry, every kind, in one transaction.
+//! `onHomescreen` flags for the whole registry in one transaction.
 //!
 //! The body is the full ordered list `[{ id, onHomescreen }]`: an entry's index in
 //! the array *is* its new display `position`. The dense-`0..n` /
@@ -8,8 +8,7 @@
 //! port method (the [`AppsEditor::update_home_screen`](crate::domain::capabilities)
 //! call this handler makes maps its non-permutation `None` onto
 //! `400 InvalidHomeScreen`).
-//! The per-kind `PUT /cloud-apps/{id}` etc. edit an app's *content* — homescreen
-//! curation lives here.
+//! `PUT /apps/{id}` edits an app's *content* — homescreen curation lives here.
 
 use axum::Json;
 use serde::Deserialize;

@@ -14,8 +14,8 @@ import {
  * and mounts `LaunchApp` behind the launch scope gate (a forwarded launch rides
  * the front trust boundary; the per-app SMART check is in-handler) — see
  * `docs/Apps/Explanation.md` §"Auth posture". The client attaches a bearer that a
- * gating host enforces and an ungated host ignores. The cloud-admin mutations live
- * on `AppsAdminApi`.
+ * gating host enforces and an ungated host ignores. The admin reads and mutations
+ * live on `AppsAdminApi`.
  */
 const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
   .add(

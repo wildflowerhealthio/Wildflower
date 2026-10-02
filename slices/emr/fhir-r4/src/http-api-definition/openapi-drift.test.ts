@@ -7,8 +7,8 @@
  * AGENTS.md). Instead, the Effect `HttpApi` here is the source, and the
  * committed snapshot at `emr-rust/openapi/fhir-r4.openapi.json` is its
  * generated projection — "the system how we use it", not a full description of
- * HFS. `emr-rust` embeds that snapshot to publish the FHIR surface on the
- * host's unified `/docs` Scalar page. This test only keeps the committed file
+ * HFS. The published server-docs console renders that snapshot as the FHIR
+ * surface. This test only keeps the committed file
  * in sync with the `HttpApi`; it is NOT a drift guard against HFS itself (that
  * remains hand-synchronized — see `docs/Client Capabilities Reference.md`).
  *

@@ -19,72 +19,32 @@ const AppUrlSchema = Schema.String.pipe(
 )
 
 /**
- * Which kind an app is — the class-table-inheritance discriminator (mirrors the
- * Rust `AppKind`): `system` (a shell route) or `cloud` (a remote origin,
- * optionally reached through the tunnel). On the wire it's the lowercase-kebab
- * string.
+ * Wire shape for `GET /apps`, `PUT /home-screen`, and `GET`/`POST`/`PUT /apps…`
+ * — one `AppRegistration` per app (mirrors the Rust `AppRegistration`). `isSmart`
+ * is derived from the row's soft `client_id`; `position` stays on the host (the
+ * `GET /apps` array order is the display order).
  */
-const KindSchema = Schema.Literal('system', 'cloud')
-
-/**
- * The fields every registration carries, from the authoritative
- * `app_registrations` row — the uniform shape everything renders. `isSmart` is
- * derived from the row's soft `client_id`; `position` stays on the host (the
- * `GET /apps` array order is the display order). The per-kind detail shapes below
- * add their payload.
- */
-const registrationFields = {
+const AppRegistrationSchema = Schema.Struct({
   id: Schema.String,
-  /** The discriminator — which kind of app this is. */
-  kind: KindSchema,
   /** Whether the app's tile shows on the home screen. */
   onHomescreen: Schema.Boolean,
   name: Schema.String,
   /** Optional descriptive line shown under the app name. */
   subtitle: Schema.optional(Schema.NonEmptyString),
+  /**
+   * The stored launch URL **template** (`{origin}` / `{launch}` tokens, resolved
+   * only at launch).
+   */
+  url: Schema.String,
   /** The declared no-egress flag (a homescreen badge). */
   localOnly: Schema.Boolean,
   /** Whether this is a SMART app (the registration carries a `client_id`). */
   isSmart: Schema.Boolean,
-  /**
-   * Whether a launch must bring the tunnel up first (the Tunnel pill). `false`
-   * for system apps; meaningful only for cloud apps.
-   */
+  /** Whether a launch must bring the tunnel up first (the Tunnel pill). */
   requiresTunnel: Schema.Boolean,
-} as const
-
-/**
- * Wire shape for `GET /apps` and `PUT /home-screen` — one uniform
- * `AppRegistration` per app of every kind (mirrors the Rust `AppRegistration`),
- * no `provenance` union to narrow. Everything the homescreen tile renders is
- * here; the per-kind payload (`url`) is an editor concern read on a
- * per-kind detail lookup.
- */
-const AppRegistrationSchema = Schema.Struct(registrationFields)
+})
 
 const AppListSchema = Schema.Array(AppRegistrationSchema)
-
-/**
- * Wire shape for `GET`/`POST`/`PUT /cloud-apps…` (mirrors the Rust
- * `CloudAppDetail`) — the registration fields plus the stored launch `url`
- * **template** (`{origin}` / `{launch}` tokens, resolved only at launch) and
- * `isRemovable` (always `true` for a cloud app).
- */
-const CloudAppDetailSchema = Schema.Struct({
-  ...registrationFields,
-  url: Schema.String,
-  isRemovable: Schema.Boolean,
-})
-
-/**
- * Wire shape for `GET /system-apps/{id}` (mirrors the Rust `SystemAppDetail`) —
- * the registration fields plus the display-only launch `url` template. A system
- * app is never editable, so there is no create / replace shape and no `removable`.
- */
-const SystemAppDetailSchema = Schema.Struct({
-  ...registrationFields,
-  url: Schema.String,
-})
 
 /**
  * One entry in the `PUT /home-screen` body: an app id and its desired
@@ -102,7 +62,7 @@ const HomeScreenEntrySchema = Schema.Struct({
  * `{ id, onHomescreen }` entries. Must list **every** registry app exactly once
  * (array order = display order); the server renumbers `position` to the array
  * index and applies each `onHomescreen` atomically. The single writer of order +
- * placement, across every kind.
+ * placement.
  */
 const HomeScreenSchema = Schema.Array(HomeScreenEntrySchema)
 
@@ -110,17 +70,6 @@ const AppIdPathSchema = Schema.Struct({ id: Schema.String })
 
 const AppNotFoundSchema = Schema.Struct({
   error: Schema.Literal('AppNotFound'),
-  id: Schema.String,
-})
-
-/**
- * Body for `AppNotEditable` (409) — the app exists but can't be edited/removed:
- * a system app. (A per-kind path given an id of
- * another kind is a `404`, not a `409` — the kind mismatch can't be expressed.)
- * Mirrors the Rust `AppNotEditableBody`.
- */
-const AppNotEditableSchema = Schema.Struct({
-  error: Schema.Literal('AppNotEditable'),
   id: Schema.String,
 })
 
@@ -137,13 +86,12 @@ const InvalidFieldSchema = Schema.Struct({
 })
 
 /**
- * Body shared by `POST /cloud-apps` (create) and `PUT /cloud-apps/:id` (content
- * replace) — a cloud app's editable content as **JSON** (mirrors the Rust
- * `CloudAppBody`).
+ * Body shared by `POST /apps` (create) and `PUT /apps/:id` (content replace) — an
+ * app's editable content as **JSON** (mirrors the Rust `AppBody`).
  * `name` is non-empty and `url` is well-formed ({@link AppUrlSchema}); empty
  * `subtitle` (`""`) or an omitted one clears it.
  */
-const CloudAppBodySchema = Schema.Struct({
+const AppBodySchema = Schema.Struct({
   name: Schema.NonEmptyString,
   subtitle: Schema.optional(Schema.String),
   url: AppUrlSchema,
@@ -178,20 +126,16 @@ const InvalidHomeScreenSchema = Schema.Struct({
 const LaunchTargetSchema = Schema.Struct({ url: Schema.String })
 
 export {
+  AppBodySchema,
   AppIdPathSchema,
   AppListSchema,
-  AppNotEditableSchema,
   AppNotFoundSchema,
   AppRegistrationSchema,
   AppUrlSchema,
-  CloudAppBodySchema,
-  CloudAppDetailSchema,
   HomeScreenEntrySchema,
   HomeScreenSchema,
   InsufficientScopeSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
-  KindSchema,
   LaunchTargetSchema,
-  SystemAppDetailSchema,
 }

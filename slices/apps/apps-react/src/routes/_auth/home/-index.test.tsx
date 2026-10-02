@@ -55,18 +55,18 @@ import type { AppRegistration } from '../../../queries.ts'
 import { encodeLaunchError } from './-launch-error.ts'
 import { AppsHomeBody } from './index.tsx'
 
-const cloudApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => ({
+const makeApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => ({
   id: 'cloud-app',
   name: 'Cloud App',
   onHomescreen: true,
-  kind: 'cloud',
+  url: 'https://example.com/launch',
   localOnly: false,
   isSmart: false,
   requiresTunnel: false,
   ...overrides,
 })
 
-const APP = cloudApp()
+const APP = makeApp()
 
 describe('<AppsHomeBody> reorder-failure banner', () => {
   beforeEach(() => {
@@ -154,7 +154,7 @@ describe('<AppsHomeBody> edit mode', () => {
   })
 
   test('tapping "Hide" PUTs the whole home screen with that app disabled', () => {
-    const other = cloudApp({ id: 'other-app', name: 'Other App' })
+    const other = makeApp({ id: 'other-app', name: 'Other App' })
     render(<AppsHomeBody apps={[APP, other]} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit home screen' }))
@@ -188,12 +188,12 @@ describe('<AppsHomeBody> live content', () => {
     // re-seed `order` — the bug was that tiles rendered off `order` and so
     // stayed stale. Tile content now reads live from `apps`, so a same-instance
     // rerender with an edited name/subtitle/pill must show through immediately.
-    const { rerender } = render(<AppsHomeBody apps={[cloudApp()]} />)
+    const { rerender } = render(<AppsHomeBody apps={[makeApp()]} />)
     expect(screen.getByText('Cloud App')).toBeDefined()
 
     rerender(
       <AppsHomeBody
-        apps={[cloudApp({ name: 'Renamed App', subtitle: 'Fresh subtitle', requiresTunnel: true })]}
+        apps={[makeApp({ name: 'Renamed App', subtitle: 'Fresh subtitle', requiresTunnel: true })]}
       />
     )
 
@@ -210,16 +210,14 @@ describe('<AppsHomeBody> live content', () => {
     // it. Hide the first tile, then rerender with an edited name for the second:
     // the hidden tile stays gone (optimistic `order` survives) and the surviving
     // tile shows its fresh name (content still comes from `apps`).
-    const first = cloudApp({ id: 'first-app', name: 'First App' })
-    const second = cloudApp({ id: 'second-app', name: 'Second App' })
+    const first = makeApp({ id: 'first-app', name: 'First App' })
+    const second = makeApp({ id: 'second-app', name: 'Second App' })
     const { rerender } = render(<AppsHomeBody apps={[first, second]} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit home screen' }))
     fireEvent.click(screen.getByRole('button', { name: 'Hide First App' }))
 
-    rerender(
-      <AppsHomeBody apps={[first, cloudApp({ id: 'second-app', name: 'Second Renamed' })]} />
-    )
+    rerender(<AppsHomeBody apps={[first, makeApp({ id: 'second-app', name: 'Second Renamed' })]} />)
 
     const list = screen.getByRole('list')
     expect(within(list).queryByText('First App')).toBeNull()

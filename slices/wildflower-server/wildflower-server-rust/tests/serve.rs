@@ -52,7 +52,6 @@ fn server_config(app_data_dir: PathBuf, loopback_base_url: Url) -> WildflowerSer
             .collect(),
         first_party_client_id: gatekeeper_rust::FIRST_PARTY_CLIENT_ID.to_owned(),
         tunnel_seed: tunnel_rust::SettingsSeed::default(),
-        app_version: "0.0.0-test".to_owned(),
     }
 }
 
