@@ -105,8 +105,8 @@ mod tests {
             "https://wildflowerhealth.io/app/"
         );
         assert_eq!(
-            base("http://localhost:5195").as_url().as_str(),
-            "http://localhost:5195/"
+            base("http://localhost:5200").as_url().as_str(),
+            "http://localhost:5200/"
         );
     }
 
