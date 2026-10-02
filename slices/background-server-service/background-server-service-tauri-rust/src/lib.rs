@@ -174,7 +174,7 @@ pub fn start_background_server_service<R: Runtime>(
     listen_for_bridge_messages(app, Arc::clone(&status_wanted), start_config.clone());
     listen_for_plugin_events(app, last_stop_reason_sender, run_state.clone());
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    start_or_restart_on_foreground_resume(app, run_state.clone(), start_config.clone());
+    follow_foreground_and_background(app, run_state.clone(), start_config.clone());
     tauri::async_runtime::spawn(emit_status_changes(
         app.clone(),
         Arc::clone(&status_wanted),
@@ -364,14 +364,15 @@ async fn post_tunnel_notifications<R: Runtime>(
     );
 }
 
-/// Follow the main window's suspend and resume, and start or restart the
-/// server on a resume that follows a suspend (see
+/// Follow the main window's suspend and resume: warn on iOS that the server
+/// is about to be suspended with the app, and start or restart the server on a
+/// resume that follows a suspend (see
 /// [`background_server_service_rust::ForegroundResume`]).
 ///
 /// The window events, not `RunEvent::Resumed`: tauri-runtime-wry raises that
 /// one on an event-loop poll, not when the app comes back.
 #[cfg(any(target_os = "ios", target_os = "android"))]
-fn start_or_restart_on_foreground_resume<R: Runtime>(
+fn follow_foreground_and_background<R: Runtime>(
     app: &AppHandle<R>,
     run_state: watch::Receiver<ServerRunState>,
     start_config: StartConfig,
@@ -394,7 +395,17 @@ fn start_or_restart_on_foreground_resume<R: Runtime>(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let action = match event {
             tauri::WindowEvent::Suspended => {
-                foreground.suspended();
+                if let Some(warning) =
+                    foreground.suspended(&run_state.borrow(), cfg!(target_os = "ios"))
+                {
+                    // Off the main thread this event arrives on: the
+                    // notification plugin's mobile call blocks until the
+                    // native side, which runs there, answers.
+                    let handle = handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        show_notification(&handle, &warning);
+                    });
+                }
                 None
             }
             tauri::WindowEvent::Resumed => {

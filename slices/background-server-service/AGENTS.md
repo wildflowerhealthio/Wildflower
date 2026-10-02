@@ -19,8 +19,8 @@ here.
     of the server behind the `RunGate`, on a dedicated runtime, publishing its
     `ServerRunState`. `tests/restart.rs` restarts the real server through it.
   - The notification decisions: the per-caller request coalescer, the stop
-    notification per reason, the tunnel-drop detector, and what a foreground
-    resume does.
+    notification per reason, the tunnel-drop detector, the iOS warning on
+    leaving the screen, and what a foreground resume does.
   - Layout: the wire mirrors (`bridge.rs`, `plugin_event.rs`) at the crate
     root; `domain/` the run gate, `ServerRunState`, the foreground-resume rule
     and the notification decisions, testable without I/O; `live_bindings/` a

@@ -1,7 +1,9 @@
-//! What the host does with the server when the app comes back to the
-//! foreground on a phone.
+//! What the host does with the server when the app leaves the screen on a
+//! phone and when it comes back to the foreground.
 
+use crate::domain::notification::LocalNotification;
 use crate::domain::server_run_state::ServerRunState;
+use crate::domain::stop_notification::background_pause_notification;
 
 /// What a foreground resume does to the server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,9 +31,22 @@ impl ForegroundResume {
         Self::default()
     }
 
-    /// The app went to the background.
-    pub fn suspended(&mut self) {
+    /// The app went to the background with the server in `run_state`.
+    /// Returns the warning to post when `listener_may_be_reclaimed`, which is
+    /// also the platform that suspends a backgrounded app (iOS), and the
+    /// server is serving or about to.
+    pub fn suspended(
+        &mut self,
+        run_state: &ServerRunState,
+        listener_may_be_reclaimed: bool,
+    ) -> Option<LocalNotification> {
         self.suspended = true;
+        match run_state {
+            ServerRunState::Stopped { .. } => None,
+            ServerRunState::Starting | ServerRunState::Running => {
+                listener_may_be_reclaimed.then(background_pause_notification)
+            }
+        }
     }
 
     /// The app came back to the foreground with the server in `run_state`.
@@ -82,7 +97,7 @@ mod tests {
     fn a_stopped_server_starts_on_resume() {
         for listener_may_be_reclaimed in [false, true] {
             let mut foreground = ForegroundResume::new();
-            foreground.suspended();
+            foreground.suspended(&ServerRunState::Running, false);
             assert_eq!(
                 foreground.resumed(
                     &ServerRunState::Stopped {
@@ -98,25 +113,41 @@ mod tests {
     #[test]
     fn a_running_server_restarts_only_where_its_listener_may_be_gone() {
         let mut foreground = ForegroundResume::new();
-        foreground.suspended();
+        foreground.suspended(&ServerRunState::Running, false);
         assert_eq!(
             foreground.resumed(&ServerRunState::Running, true),
             Some(ResumeAction::Restart)
         );
 
-        foreground.suspended();
+        foreground.suspended(&ServerRunState::Running, false);
         assert_eq!(foreground.resumed(&ServerRunState::Running, false), None);
     }
 
     #[test]
     fn each_suspend_counts_for_one_resume() {
         let mut foreground = ForegroundResume::new();
-        foreground.suspended();
+        foreground.suspended(&ServerRunState::Running, false);
         let stopped = ServerRunState::Stopped { error: None };
         assert_eq!(
             foreground.resumed(&stopped, false),
             Some(ResumeAction::Start)
         );
         assert_eq!(foreground.resumed(&stopped, false), None);
+    }
+
+    #[test]
+    fn leaving_the_screen_warns_only_where_a_serving_server_is_suspended() {
+        for run_state in RUN_STATES {
+            for listener_may_be_reclaimed in [false, true] {
+                let mut foreground = ForegroundResume::new();
+                let warning = foreground.suspended(&run_state, listener_may_be_reclaimed);
+                let serving = !matches!(run_state, ServerRunState::Stopped { .. });
+                assert_eq!(
+                    warning,
+                    (serving && listener_may_be_reclaimed).then(background_pause_notification),
+                    "{run_state:?}, listener_may_be_reclaimed: {listener_may_be_reclaimed}"
+                );
+            }
+        }
     }
 }
