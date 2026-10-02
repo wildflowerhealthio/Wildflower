@@ -183,8 +183,9 @@ scopes.
   `https://wildflowerhealth.io/lifting-app/launch.html?launch={launch}&iss={origin}/fhir-r4`
   with `requires_tunnel` set, as every first-party row has. Its public
   OAuth client (gatekeeper migration `0019_seed_lifting_app_client`, its
-  scopes as `0020_first_party_apps_pick_the_patient` left them) redirects to
-  `https://wildflowerhealth.io/lifting-app/`.
+  scopes as `0020_first_party_apps_pick_the_patient` left them) redirects only to
+  `https://wildflowerhealth.io/lifting-app/`, since
+  `0021_drop_app_relative_redirect_uris` dropped its app-relative `"/"`.
 - **`lifting-app-dev`** is seeded in debug builds only, at runtime rather than
   by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to

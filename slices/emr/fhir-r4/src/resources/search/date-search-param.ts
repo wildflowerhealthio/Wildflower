@@ -208,8 +208,8 @@ const DateSearchParam = Schema.transformOrFail(Schema.String, DateSearchValue, {
   encode: (decoded) =>
     ParseResult.succeed(`${Option.getOrElse(decoded.prefix, () => '')}${decoded.value}`),
 }).annotations({
-  // Names the wire schema in the generated OpenAPI so the host's `/docs`
-  // Scalar page documents the `date` search parameter instead of showing an
+  // Names the wire schema in the generated OpenAPI so the server-docs
+  // console documents the `date` search parameter instead of showing an
   // opaque string. Pinned by `openapi-drift.test.ts`.
   identifier: 'FhirDateSearch',
   description:

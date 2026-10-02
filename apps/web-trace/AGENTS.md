@@ -38,9 +38,10 @@ aggregator shell resolves the workspace `source` condition.
 
 The wiring itself is **not this app's** — it lives in
 [`fhir-r4-react/smart`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.ts),
-because every first-party SMART app needs the same thing. `app.tsx` imports `buildSmartRouterContext` from there directly —
-there is no local re-export to edit, deliberately, so a change to the behaviour
-has to be made in the one place that owns it. The guardrail listing the three
+because every first-party SMART app needs the same thing. `app.tsx` imports
+`buildSmartRouterContext` from there directly — there is no local re-export to
+edit, deliberately, so a change to the behaviour has to be made in the one place
+that owns it. The guardrail listing the three
 properties that must survive is in
 [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md).
 
@@ -63,8 +64,8 @@ package growing a second, prop-threaded way in.
 
 ## Traps
 
-- **Three traps belong to the shared runtime** — the typed client emits base-relative FHIR paths and the provider names
-  the base (here: `client.state.serverUrl` prepended verbatim, no `iss` parsing
+- **Three traps belong to the shared runtime** — the typed client emits
+  base-relative FHIR paths and the provider names the base (here: `client.state.serverUrl` prepended verbatim, no `iss` parsing
   and no `Left`), the bearer token that rides only the requests the layer
   addressed, and the transport staying a parameter. They are enforced in
   `fhir-r4-react/smart`; the guardrail that spells all three out is in

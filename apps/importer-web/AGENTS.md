@@ -197,8 +197,9 @@ registered client cannot launch:
   (`https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4`),
   `local_only = 0`, `requires_tunnel = 1` (like `medications-app` / `web-trace-app`).
 - `slices/gatekeeper/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
-  — the `importer-app` OAuth client, whose registered redirect is the absolute
-  `https://wildflowerhealth.io/importer-app/` it launches from.
+  — the `importer-app` OAuth client. Its one registered redirect, after
+  `0021_drop_app_relative_redirect_uris` dropped the app-relative `"/"`, is the
+  absolute `https://wildflowerhealth.io/importer-app/` it launches from.
 
 The `clientId` in `src/config.ts` must equal the app id in both. `local_only` is
 **0**, like the other first-party apps.

@@ -246,8 +246,8 @@ pub async fn serve(
 
     // DEBUG BUILDS ONLY: the `…-dev` app rows pointing at the first-party apps'
     // vite dev servers, plus their matching OAuth clients. The first-party apps
-    // ship as cloud rows served from https://wildflowerhealth.io, which is the
-    // wrong target while developing them — these cloud siblings launch
+    // ship as rows served from https://wildflowerhealth.io, which is the
+    // wrong target while developing them — these siblings launch
     // `http://localhost:<vite port>/` instead. They are a runtime seed rather than
     // a migration precisely so they cannot exist in a release database (a
     // migration runs unconditionally); both the seeds and this call site are

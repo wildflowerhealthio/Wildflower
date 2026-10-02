@@ -31,7 +31,7 @@ const HEALTH_VIEWER_SCOPE =
  *   `health-viewer-app`.
  * - The **vite dev server** (`vp run -F health-viewer-app dev`, on the port
  *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
- *   `health-viewer-app-dev` cloud row (`apps-rust`'s `seed_dev_apps`) and its
+ *   `health-viewer-app-dev` row (`apps-rust`'s `seed_dev_apps`) and its
  *   client (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
  *   dev server's loopback root as its redirect.
  *

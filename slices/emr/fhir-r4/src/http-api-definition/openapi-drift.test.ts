@@ -98,10 +98,9 @@ function generateFhirR4OpenApiSpec(): Spec {
 
   // The HttpApi no longer bakes in the mount prefix — the typed client emits
   // base-relative paths so it can address arbitrary FHIR servers. Re-apply the
-  // prefix here so the committed snapshot embedded by `emr-rust` for the host's
-  // `/docs` page keeps showing the mounted `/fhir-r4/…` paths, byte-identical to
-  // before the de-prefix. `Object.entries`/`fromEntries` preserve insertion
-  // order, so generation order (asserted below) is unchanged.
+  // prefix here so the committed snapshot the published server-docs console
+  // bundles shows the mounted `/fhir-r4/…` paths. `Object.entries`/`fromEntries`
+  // preserve insertion order, so generation order (asserted below) is unchanged.
   spec.paths = Object.fromEntries(
     Object.entries(spec.paths).map(([path, operations]) => [
       `${FhirResourcesApiPrefix}${path}`,
