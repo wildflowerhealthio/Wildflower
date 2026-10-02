@@ -760,15 +760,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "background-server-service-android-rust"
-version = "0.0.0"
-dependencies = [
- "jni",
- "serde_json",
- "toml 0.9.6",
-]
-
-[[package]]
 name = "background-server-service-rust"
 version = "0.0.0"
 dependencies = [
@@ -9218,7 +9209,6 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "apps-rust",
- "background-server-service-android-rust",
  "background-server-service-rust",
  "background-server-service-tauri-rust",
  "browser-sniffer-tauri-rust",
@@ -9242,7 +9232,6 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tokio",
- "toml 0.9.6",
  "tunnel-rust",
  "url",
  "wildflower-server-rust",
