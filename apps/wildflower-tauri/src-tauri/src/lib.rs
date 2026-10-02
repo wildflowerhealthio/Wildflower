@@ -378,6 +378,15 @@ pub fn run() {
                     // before it can start, so no run-state change is missed.
                     attach_background_server_service(app.handle(), server_receivers);
                     host_context_sender.send_replace(Some(server_host_context));
+                    // Android: the plugin's foreground service asks this
+                    // library's `HeadlessBridge.startCore` whether to report
+                    // itself started, which it does only once this process
+                    // runs the host (the shim #886 removes). Calling into the
+                    // crate is also what links it, so its `#[no_mangle]` JNI
+                    // exports reach `libwildflower_tauri_lib.so`: rustc loads
+                    // no dependency the code never names.
+                    #[cfg(target_os = "android")]
+                    background_server_service_android_rust::mark_host_running();
                     // Start the server from Rust, before any page script runs.
                     let start_handle = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
@@ -555,5 +564,54 @@ mod tests {
                  what the host actually loads"
             );
         }
+    }
+
+    /// Reads a file next to this crate.
+    fn read_crate_file(relative: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+    }
+
+    /// The background-service plugin's Android `HeadlessBridge` loads its JNI
+    /// functions from the library `HeadlessBridge.nativeLibName` names, and
+    /// the host's `Application` subclass sets that before any component of the
+    /// process starts. Both sides come from source: the `[lib] name` this
+    /// crate builds as, and the class the manifest's `<application>` names. A
+    /// wrong name or a missing `android:name` fails every service start.
+    #[test]
+    fn the_android_application_points_headless_bridge_at_the_host_library() {
+        let cargo_manifest: toml::Table = read_crate_file("Cargo.toml")
+            .parse()
+            .expect("Cargo.toml is TOML");
+        let host_library_name = cargo_manifest["lib"]["name"]
+            .as_str()
+            .expect("Cargo.toml sets [lib] name");
+
+        let android_manifest = read_crate_file("gen/android/app/src/main/AndroidManifest.xml");
+        let application_tag = android_manifest
+            .split_once("<application")
+            .and_then(|(_, rest)| rest.split_once('>'))
+            .map(|(attributes, _)| attributes)
+            .expect("the Android manifest has an <application> element");
+        let application_class = application_tag
+            .split_once("android:name=\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(class_name, _)| class_name)
+            .expect("<application> names its Application class");
+        let relative_class_name = application_class
+            .strip_prefix('.')
+            .expect("the Application class is named relative to the app's namespace");
+
+        let application_source = read_crate_file(&format!(
+            "gen/android/app/src/main/java/com/wildflower_tauri/app/{relative_class_name}.kt"
+        ));
+        assert!(
+            application_source.contains(&format!(
+                "HeadlessBridge.nativeLibName = \"{host_library_name}\""
+            )),
+            "{relative_class_name}.kt must set HeadlessBridge.nativeLibName to \
+             \"{host_library_name}\", the library the host builds as"
+        );
     }
 }
