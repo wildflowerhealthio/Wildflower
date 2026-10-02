@@ -52,13 +52,13 @@ describe('AppUrlSchema', () => {
   it.each([
     'https://example.com',
     'https://example.com/launch?launch={launch}&iss={origin}/fhir-r4',
-    'http://localhost:5193/launch.html',
   ])('accepts %s', (url) => {
     expectRightToEqual(Schema.decodeUnknownEither(AppUrlSchema)(url), url)
   })
 
   it.each([
     '',
+    'http://example.com',
     '/apps/local',
     '{origin}/some/path',
     'javascript:alert(1)',
