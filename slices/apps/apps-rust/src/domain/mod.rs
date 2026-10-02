@@ -7,11 +7,11 @@
 //! ports-and-adapters seam; each capability owns its operation's store logic
 //! (synthesizing the registration a create/replace persists, mapping the store's
 //! primitive signals onto [`AppsError`]) — including the by-id read, which each
-//! capability inlines as `find_app` + `NotFound` (the launch route inlines the
-//! same shape; there is no shared read helper) — while the [`actions`] module holds
-//! the write-side validator they share (multi-caller logic kept out of the
-//! capabilities; collector inlined its single-caller equivalents into its
-//! capabilities, tunnel keeps a single-file `domain::actions`).
+//! capability inlines as `find_app` + `NotFound` (as does the launch route) —
+//! while the [`actions`] module holds the write-side validator they share
+//! (multi-caller logic kept out of the capabilities; collector inlined its
+//! single-caller equivalents into its capabilities, tunnel keeps a single-file
+//! `domain::actions`).
 
 pub(crate) mod actions;
 mod app_registration;

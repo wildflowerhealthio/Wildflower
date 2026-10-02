@@ -1,9 +1,9 @@
-# Apps Store and Install Explanation
+# Apps Store Explanation
 
 The implementation companion to the [Apps Explanation](./Explanation.md). That
 doc explains the app model and privacy posture; this one explains how the
-`apps-rust` store persists and installs apps — the invariants the code leans on
-so the HTTP handlers stay thin.
+`apps-rust` store persists apps — the invariants the code leans on so the HTTP
+handlers stay thin.
 
 ## Ports and adapters
 
@@ -30,18 +30,19 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
   semantic `AppsError` variants (`NotFound`, `InvalidHomeScreen`, the id-collision
   verdict) and synthesizes the registration a create/replace persists, using the
   shared write-side validator and `AppPayload` input struct in
-  `domain/actions/`. The HTTP handlers acquire a `Scoped<…>` capability and never
-  touch the store directly. The capabilities are unit-tested against an
-  in-memory `FakeAppsStore` (`domain/test_fake.rs`) — no db, no HTTP.
+  `domain/actions/`. The admin HTTP handlers acquire a `Scoped<…>` capability and
+  never touch the store directly; the launch handler looks the app up in the
+  store itself and uses `AppLauncher` for the umbrella and per-app scope checks.
+  The capabilities are unit-tested against an in-memory `FakeAppsStore`
+  (`domain/test_fake.rs`) — no db, no HTTP.
 
 Migrations are embedded diesel migrations (`apps-rust/migrations/`) applied once
 in `SqliteAppsStore::new` under this slice's **namespace** (`"apps"`) via
 `persistence_rust::run_diesel_migrations`, so the apps slice's `0001` and another
 diesel slice's `0001` are tracked as distinct `(namespace, version)` rows and
-never collide in diesel's stock `__diesel_schema_migrations`. The schema
-(`0001_app_registrations`) and the default-registry seed (`0002_seed_default_apps`)
-are separate migrations, so the shipped default set versions independently of the
-table definitions.
+never collide in diesel's stock `__diesel_schema_migrations`. The table
+definition and the shipped apps' seeds are separate migrations, so the shipped
+set versions independently of the schema.
 
 ## The store speaks registrations
 

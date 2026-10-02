@@ -213,7 +213,7 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// The first-party SMART apps (Medications, Web Trace, Importer, the OHIF
 /// imaging viewer, Lifting) ship as rows served from
 /// <https://wildflowerhealth.io> (apps migrations `0005_first_party_apps_to_cloud`
-/// onward), whose clients register an *absolute* Pages redirect URI. A debug
+/// onward), whose clients register the published-site redirect URI. A debug
 /// build also gets an `<app>-dev` row (`apps_rust::dev_seed`) whose launch
 /// URL points at the app's local vite dev server on the port
 /// `dev-app-ports.json` pins, and that row needs its own client whose id equals

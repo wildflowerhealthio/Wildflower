@@ -142,8 +142,7 @@ migrations that must stay in lockstep — an app registration whose `client_id` 
 no registered client cannot launch:
 
 - `slices/apps/apps-rust/migrations/0004_seed_wildflower_web_trace_app/` and
-  `0005_first_party_apps_to_cloud/` (the rename to `web-trace-app`, served from
-  the published site)
+  `0005_first_party_apps_to_cloud/`
 - `slices/gatekeeper/gatekeeper-rust/migrations/0005_seed_wildflower_web_trace_client/`
   and `0006_rename_first_party_app_clients/`
 

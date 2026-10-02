@@ -103,8 +103,7 @@ lockstep — an app registration whose `client_id` has no registered client cann
 launch:
 
 - `slices/apps/apps-rust/migrations/0003_seed_wildflower_medication_app/` and
-  `0005_first_party_apps_to_cloud/` (the rename to `medications-app`, served from
-  the published site)
+  `0005_first_party_apps_to_cloud/`
 - `slices/gatekeeper/gatekeeper-rust/migrations/0004_seed_wildflower_medication_client/`
   and `0006_rename_first_party_app_clients/`
 

@@ -511,7 +511,7 @@ mod tests {
         let appended = widen_registration(registered.clone(), &elsewhere, &granted, true);
         assert_eq!(
             appended.redirect_uris,
-            [registered.redirect_uris[0].clone(), elsewhere,]
+            [registered.redirect_uris[0].clone(), elsewhere]
         );
     }
 }

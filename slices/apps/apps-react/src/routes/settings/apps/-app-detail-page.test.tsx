@@ -16,10 +16,10 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 })
 
 // The page + its edit form + the by-id read all come from `queries.ts`; stub them
-// so the tests assert the exact payloads each control sends. `mocks.detail` /
+// so the tests assert the exact payloads each control sends. `mocks.app` /
 // `mocks.list` are set per test.
 const { homeScreenStub, deleteStub, replaceStub, mocks } = vi.hoisted(() => {
-  const mockState: { detail: unknown; list: readonly unknown[] } = { detail: undefined, list: [] }
+  const mockState: { app: unknown; list: readonly unknown[] } = { app: undefined, list: [] }
   return {
     homeScreenStub: {
       mutate: vi.fn(),
@@ -45,10 +45,10 @@ const { homeScreenStub, deleteStub, replaceStub, mocks } = vi.hoisted(() => {
 
 vi.mock('../../../queries.ts', () => ({
   useReplaceHomeScreenMutation: () => homeScreenStub,
-  useAppsAdminDeleteMutation: () => deleteStub,
+  useAppDeleteMutation: () => deleteStub,
   useAppReplaceMutation: () => replaceStub,
   useAppsListQuery: () => ({ data: mocks.list }),
-  useAppQuery: () => ({ data: mocks.detail }),
+  useAppQuery: () => ({ data: mocks.app }),
   appQueryOptions: vi.fn(),
 }))
 
@@ -69,7 +69,7 @@ describe('app detail screen', () => {
     homeScreenStub.mutate.mockClear()
     deleteStub.mutate.mockClear()
     replaceStub.mutate.mockClear()
-    mocks.detail = APP
+    mocks.app = APP
     mocks.list = [APP]
   })
 

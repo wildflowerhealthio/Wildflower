@@ -17,8 +17,8 @@ pub(crate) fn app_launcher_scopes() -> Vec<Scope> {
     vec![Scope::any_scoped_app_launch()]
 }
 
-/// Launch authorization — the **hybrid** capability behind `GET` / `POST
-/// /apps/{id}`. Unlike the fixed-scope admin capabilities, its binding implements
+/// Launch authorization — the **hybrid** capability behind `POST /apps/{id}`.
+/// Unlike the fixed-scope admin capabilities, its binding implements
 /// [`Capability`](scope_capabilities_rust::Capability) directly: the static umbrella
 /// `wildflower/launch` (from [`app_launcher_scopes`](super::app_launcher_scopes)) is
 /// enforced by the [`Scoped`](scope_capabilities_rust::Scoped) extractor, **and** the

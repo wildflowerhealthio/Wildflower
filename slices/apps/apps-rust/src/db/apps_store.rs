@@ -23,24 +23,8 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// database in [`SqliteAppsStore::new`] via
 /// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`] (see
 /// that runner for why the stock diesel harness can't be used across slices).
-/// Migration `0001` builds the `app_registrations` table and its three
-/// configuration tables; `0002` seeds the default registry (kept separate so the
-/// schema and the shipped data version independently); `0003` and `0004` each
-/// append one shipped first-party SMART app — one migration per app, so which
-/// apps ship versions independently of both the schema and the baseline set;
-/// `0005` renames those two to `medications-app` / `web-trace-app` and turns them
-/// into CLOUD rows served from the published GitHub Pages site (adding the
-/// server-docs console); `0006` appends the Importer as a third first-party CLOUD
-/// app served from the same site; `0007` appends the OHIF imaging viewer, a
-/// fourth CLOUD app from that site, and `0008` moves its launch onto the FHIR
-/// Viewer route; `0009` repairs the Medications and Web Trace rows on any install
-/// `0005` left short of cloud; `0010` appends Lifting, another first-party
-/// CLOUD app from the same site; `0011` deletes every self-hosted registration,
-/// drops `self_hosted_app_configurations`, and narrows the `kind` CHECK to
-/// system + cloud; and `0012` deletes the two system apps and collapses the
-/// registry onto `app_registrations` alone (its `url` copied from
-/// `cloud_app_configurations`, the `kind` column and both configuration tables
-/// dropped). Because each migration runs only once per database, a user-deleted
+/// The table definition and each shipped app's seed are separate migrations
+/// (see `migrations/`); because each runs only once per database, a user-deleted
 /// seed stays deleted across upgrades. The debug-only `…-dev` rows are
 /// deliberately NOT migrations — see `apps-rust/src/dev_seed.rs`.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -329,7 +313,7 @@ mod tests {
                 .find_app(id)
                 .unwrap()
                 .unwrap_or_else(|| panic!("{id} must exist under its renamed id"));
-            // client_id tracks id, as every registration does.
+            // A first-party app's client_id equals its id.
             assert_eq!(registration.client_id.as_deref(), Some(id));
             assert!(
                 registration.requires_tunnel,
@@ -363,7 +347,7 @@ mod tests {
             .find_app("web-server-docs")
             .unwrap()
             .expect("web-server-docs must exist");
-        // client_id tracks id, as every registration does.
+        // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("web-server-docs"));
         assert!(
             registration.requires_tunnel,
@@ -393,7 +377,7 @@ mod tests {
             .find_app("importer-app")
             .unwrap()
             .expect("importer-app must exist");
-        // client_id tracks id, as every registration does.
+        // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("importer-app"));
         assert!(
             !registration.local_only,
@@ -424,7 +408,7 @@ mod tests {
             .find_app("ohif-viewer")
             .unwrap()
             .expect("ohif-viewer must exist");
-        // client_id tracks id, as every registration does.
+        // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("ohif-viewer"));
         assert!(
             !registration.local_only,
@@ -453,7 +437,7 @@ mod tests {
             .find_app("lifting-app")
             .unwrap()
             .expect("lifting-app must exist");
-        // client_id tracks id, as every registration does.
+        // A first-party app's client_id equals its id.
         assert_eq!(registration.client_id.as_deref(), Some("lifting-app"));
         assert!(
             !registration.local_only,

@@ -15,7 +15,7 @@
 //!    placement rewrite);
 //!  - [`shared`] — the `text_column!` macro behind `AppUrlColumn`.
 //!
-//! For the app model these tables encode, see `docs/Apps/Explanation.md`.
+//! For the app model the table encodes, see `docs/Apps/Explanation.md`.
 
 pub(crate) mod app_registration;
 mod apps_store;

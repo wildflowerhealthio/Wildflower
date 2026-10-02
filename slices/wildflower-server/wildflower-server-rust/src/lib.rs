@@ -48,8 +48,8 @@ const WILDFLOWER_DB: &str = "wildflower.sqlite";
 /// (`tauri-shared-config.json`, build-time env) or from its platform paths.
 #[derive(Debug, Clone)]
 pub struct WildflowerServerConfig {
-    /// The loopback base URL the API binds and the app-data dir the databases and
-    /// served files live under.
+    /// The loopback base URL the API binds and the app-data dir the databases live
+    /// under.
     pub runtime: ServerRuntimeConfig,
     /// The directory holding the FHIR R4 SearchParameter bundle HFS indexes from
     /// (see [`EmrConfig::search_parameter_data_dir`]).
@@ -472,9 +472,9 @@ pub async fn serve(
     // directly, or relayed by the trusted front, which proxies remote callers
     // from loopback (and is distinguished downstream by the `Forwarded` header).
     // A genuinely non-loopback peer is rejected with `403` before any handler
-    // runs, so even an ungated, CORS-permissive endpoint like `POST /apps/{id}`
-    // (which can open a native popup on the owner's device) can't be driven by a
-    // non-loopback client. Applied outermost (after CORS) so it runs first. See
+    // runs, so even a bearer-gated, CORS-permissive endpoint like
+    // `POST /apps/{id}` (which can open a native popup on the owner's device) can't
+    // be driven by a non-loopback client. Applied outermost (after CORS) so it runs first. See
     // `require_loopback_peer_middleware` for how forwarded callers pass and why
     // re-gating the gatekeeper's already-gated routes is harmless.
     let api_router = api_router

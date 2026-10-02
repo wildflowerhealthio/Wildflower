@@ -7,7 +7,7 @@ import { RequireAuthMiddleware } from './require-auth.ts'
  * a scope set at a point in time — that survives across requests so the client
  * isn't re-approved on every call. It's **polymorphic** (a discriminated union on
  * `grantType`), mirroring the server's per-variant grant tables behind a `grants`
- * `UNION ALL` view 1:1 (see docs/Persistence/Polymorphic Rows Explanation.md):
+ * `UNION ALL` view 1:1 (see the gatekeeper-core README):
  *
  * - `authorization_code` — an OAuth code-flow grant, carrying the exact
  *   `redirectUri` it covers ("Approved Apps");

@@ -8,16 +8,7 @@ interface AppsListBodyProps {
   readonly apps: readonly AppRegistration[]
 }
 
-/**
- * The apps settings landing — a navigation-only list of **every** registered
- * app (enabled or not), each row linking to its detail page, plus an "Add app"
- * header action. Enable/disable and edit live on
- * the per-app detail page; reordering + hiding from the home screen live on the
- * `/home` Edit mode. Presentational + prop-driven so it renders in tests without
- * the route loader.
- */
-/** A catalogue row → its navigation list item (links to the detail page). The
- * enabled/hidden split is carried by the section it lands in, not a per-row tag. */
+/** A catalogue row → its navigation list item (links to the detail page). */
 const toItem = (app: AppRegistration): ItemListItem => ({
   id: app.id,
   title: app.name,
@@ -25,6 +16,13 @@ const toItem = (app: AppRegistration): ItemListItem => ({
   href: `/settings/apps/${app.id}`,
 })
 
+/**
+ * The apps settings landing — a navigation-only list of **every** registered
+ * app (enabled or not), each row linking to its detail page, plus an "Add app"
+ * header action. Enable/disable and edit live on the per-app detail page;
+ * reordering + hiding from the home screen live on the `/home` Edit mode.
+ * Presentational + prop-driven so it renders in tests without the route loader.
+ */
 const AppsListBody = ({ apps }: AppsListBodyProps): JSX.Element => {
   const onHomeScreen = apps.filter((app) => app.onHomescreen)
   const hidden = apps.filter((app) => !app.onHomescreen)

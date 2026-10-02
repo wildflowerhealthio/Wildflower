@@ -56,8 +56,8 @@ import { encodeLaunchError } from './-launch-error.ts'
 import { AppsHomeBody } from './index.tsx'
 
 const makeApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => ({
-  id: 'cloud-app',
-  name: 'Cloud App',
+  id: 'my-app',
+  name: 'My App',
   onHomescreen: true,
   url: 'https://example.com/launch',
   localOnly: false,
@@ -166,7 +166,7 @@ describe('<AppsHomeBody> edit mode', () => {
     // list — the target flips to `false`, the sibling keeps its slot + flag.
     expect(homeScreenStub.mutate).toHaveBeenCalledTimes(1)
     expect(homeScreenStub.mutate.mock.calls[0]?.[0]).toEqual([
-      { id: 'cloud-app', onHomescreen: false },
+      { id: 'my-app', onHomescreen: false },
       { id: 'other-app', onHomescreen: true },
     ])
   })
@@ -189,7 +189,7 @@ describe('<AppsHomeBody> live content', () => {
     // stayed stale. Tile content now reads live from `apps`, so a same-instance
     // rerender with an edited name/subtitle/pill must show through immediately.
     const { rerender } = render(<AppsHomeBody apps={[makeApp()]} />)
-    expect(screen.getByText('Cloud App')).toBeDefined()
+    expect(screen.getByText('My App')).toBeDefined()
 
     rerender(
       <AppsHomeBody
@@ -199,7 +199,7 @@ describe('<AppsHomeBody> live content', () => {
 
     // Same id + onHomescreen ⇒ the resync effect stays put, yet the live name,
     // subtitle, and the newly-required Tunnel pill all render.
-    expect(screen.queryByText('Cloud App')).toBeNull()
+    expect(screen.queryByText('My App')).toBeNull()
     expect(screen.getByText('Renamed App')).toBeDefined()
     expect(screen.getByText('Fresh subtitle')).toBeDefined()
     expect(screen.getByText('Tunnel')).toBeDefined()
@@ -241,15 +241,15 @@ describe('<AppsHomeBody> launch tiles', () => {
     render(<AppsHomeBody apps={[APP]} />)
 
     // A real link, so hover shows it and right-click → "Open in new tab" works.
-    const link = screen.getByRole('link', { name: /Cloud App/ })
-    expect(link.getAttribute('href')).toBe('/home/launch/cloud-app')
+    const link = screen.getByRole('link', { name: /My App/ })
+    expect(link.getAttribute('href')).toBe('/home/launch/my-app')
   })
 
   test('a plain click launches here, through this page’s session', () => {
     const open = vi.spyOn(window, 'open')
     render(<AppsHomeBody apps={[APP]} />)
 
-    const followed = fireEvent.click(screen.getByRole('link', { name: /Cloud App/ }))
+    const followed = fireEvent.click(screen.getByRole('link', { name: /My App/ }))
 
     expect(followed).toBe(false)
     expect(routeContext.runAuthed).toHaveBeenCalledTimes(1)
@@ -265,7 +265,7 @@ describe('<AppsHomeBody> launch tiles', () => {
     render(<AppsHomeBody apps={[APP]} />)
 
     // Act
-    const followed = fireEvent.click(screen.getByRole('link', { name: /Cloud App/ }), {
+    const followed = fireEvent.click(screen.getByRole('link', { name: /My App/ }), {
       ctrlKey: true,
     })
 
@@ -283,7 +283,7 @@ describe('<AppsHomeBody> launch tiles', () => {
     render(<AppsHomeBody apps={[APP]} />)
 
     const followed = fireEvent(
-      screen.getByRole('link', { name: /Cloud App/ }),
+      screen.getByRole('link', { name: /My App/ }),
       new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 })
     )
 

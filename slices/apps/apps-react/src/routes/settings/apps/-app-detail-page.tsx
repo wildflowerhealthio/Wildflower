@@ -3,7 +3,7 @@ import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, PageHeader, ToggleSwitch } from 'react-tundraish'
 
 import {
-  useAppsAdminDeleteMutation,
+  useAppDeleteMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
 } from '../../../queries.ts'
@@ -34,7 +34,7 @@ interface AppDetailPageProps {
 const AppDetailPage = ({ app, onRemoved, children }: AppDetailPageProps): JSX.Element => {
   const { data: apps } = useAppsListQuery()
   const homeScreenMutation = useReplaceHomeScreenMutation()
-  const deleteMutation = useAppsAdminDeleteMutation()
+  const deleteMutation = useAppDeleteMutation()
 
   const enabled = apps.find((entry) => entry.id === app.id)?.onHomescreen ?? false
 

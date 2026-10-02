@@ -22,8 +22,8 @@ use crate::OnDeviceWebviewHandle;
 
 /// Shared state threaded through the apps handlers. Holds the **concrete**
 /// [`SqliteAppsStore`] adapter (not `Arc<dyn AppsStore>` or a generic): the port
-/// abstraction lives in the domain `actions` the capabilities call, so the state
-/// and axum wiring stay monomorphic. Held in an `Arc` and extracted via
+/// abstraction is the [`crate::domain::AppsStore`] trait the capabilities are
+/// generic over, so the state and axum wiring stay monomorphic. Held in an `Arc` and extracted via
 /// `State<Arc<AppsState>>` (launch glue) or lifted into a `Scoped<…>` capability
 /// (every data-touching admin handler) per the tunnel-rust / gatekeeper pattern.
 pub struct AppsState {

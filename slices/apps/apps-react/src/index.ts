@@ -7,7 +7,7 @@ export { appTileStyles } from './styles/app-tile-styles.ts'
 export {
   APPS_LIST_QUERY_KEY,
   appsListQueryOptions,
-  useAppsAdminDeleteMutation,
+  useAppDeleteMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
   type AppRegistration,

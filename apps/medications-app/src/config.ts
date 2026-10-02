@@ -35,13 +35,13 @@ const MEDICATIONS_SCOPE =
  *
  * - A **production** build is published to
  *   `https://wildflowerhealth.io/medications-app/` and launched through the
- *   `medications-app` *cloud* app row (apps migration
+ *   `medications-app` app row (apps migration
  *   `0005_first_party_apps_to_cloud`), whose client
  *   (`0006_rename_first_party_app_clients`) registers that absolute Pages URL as
  *   its redirect URI.
  * - The **vite dev server** (`vp run -F medications-app dev`, on the port
  *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
- *   `medications-app-dev` *cloud* row (`apps-rust`'s `seed_dev_apps`) and its
+ *   `medications-app-dev` row (`apps-rust`'s `seed_dev_apps`) and its
  *   client (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
  *   dev server's loopback root (`http://localhost:{port}/`) as its redirect.
  *

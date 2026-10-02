@@ -31,14 +31,21 @@ because the wire schemas in this package mirror their rows.
 - `authorizationCodes` — single-use codes issued when a code-flow
   request is approved; consumed at `/oauth/token`.
 - `authorizationCodeGrants` / `deviceGrants` — standing consents, **one
-  table per concrete kind**, each carrying all of its columns:
-  authorization-code grants (keyed `(clientId, redirectUri)`, driving the
-  auto-approve fast path) and device grants (keyed
-  `(clientId, deviceName)`, the durable record of a paired device). A
-  `grants` SQL VIEW (`UNION ALL` of the two, with a `grantType` tag) backs
-  the cross-kind reads; the wire stays one `grantType`-tagged union. See the
-  [Polymorphic Rows Explanation](../../../docs/Persistence/Polymorphic%20Rows%20Explanation.md)
-  for why grants take this shape.
+  table per concrete kind** (`authorization_code_grants`, `device_grants`;
+  gatekeeper migration `0001_gatekeeper_schema`), each carrying all of its
+  columns with its own payload `NOT NULL`: authorization-code grants (keyed
+  `(clientId, redirectUri)`, driving the auto-approve fast path) and device
+  grants (keyed `(clientId, deviceName)`, the durable record of a paired
+  device). Each kind's upsert key is a `UNIQUE` on its own table, so upserts
+  and keyed lookups are single-table statements. Cross-kind reads (the access
+  index, by-id lookups) go through the `grants` SQL VIEW (migration
+  `0002_grants_view`): a `UNION ALL` of the two projecting the shared
+  columns, a `grant_type` tag, and each kind's payload column, NULL for the
+  other kind. Ids are UUIDs, so a by-id read through the view is
+  unambiguous. The domain is one struct per kind (`AuthorizationCodeGrant`,
+  `DeviceGrant`) sharing behaviour through the `CumulativeConsent` trait,
+  with a thin `Grant` enum as the `grantType`-tagged wire union. See
+  `gatekeeper-rust/src/db/grants/` and `gatekeeper-rust/src/domain/grant.rs`.
 - `signingKeys` — RSA keys backing JWS signatures and the JWKS
   endpoint. `isActive: boolean` selects the signing key; verify-side
   iterates all keys for rotation.

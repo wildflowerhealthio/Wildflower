@@ -32,7 +32,7 @@ type HomeScreenPayload = Schema.Schema.Type<typeof Schemas.HomeScreenSchema>
 const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
 
 /** The by-id query key for an app (`GET /apps/{id}`). */
-const appDetailQueryKey = (id: string) => ['apps', 'detail', id] as const
+const appQueryKey = (id: string) => ['apps', 'byId', id] as const
 
 /**
  * Shared `mutationKey` for every `PUT /home-screen` writer. The home screen's
@@ -77,10 +77,10 @@ const appQueryOptions = (
   AppRegistration,
   Error,
   AppRegistration,
-  ReturnType<typeof appDetailQueryKey>
+  ReturnType<typeof appQueryKey>
 > =>
   queryOptions({
-    queryKey: appDetailQueryKey(id),
+    queryKey: appQueryKey(id),
     queryFn: () =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].GetApp({ path: { id } }))
@@ -129,17 +129,13 @@ const useAppReplaceMutation = (): UseMutationResult<
       ),
     onSuccess: async (_result, { id }) => {
       await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
-      await queryClient.invalidateQueries({ queryKey: appDetailQueryKey(id) })
+      await queryClient.invalidateQueries({ queryKey: appQueryKey(id) })
     },
   })
 }
 
 /** Admin `DeleteApp` (DELETE /apps/:id). Invalidates {@link APPS_LIST_QUERY_KEY}. */
-const useAppsAdminDeleteMutation = (): UseMutationResult<
-  unknown,
-  Error,
-  { readonly id: string }
-> => {
+const useAppDeleteMutation = (): UseMutationResult<unknown, Error, { readonly id: string }> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
@@ -181,13 +177,13 @@ export {
   APP_CONTENT_MUTATION_KEY,
   APPS_LIST_QUERY_KEY,
   HOME_SCREEN_MUTATION_KEY,
-  appDetailQueryKey,
+  appQueryKey,
   appQueryOptions,
   appsListQueryOptions,
   useAppCreateMutation,
+  useAppDeleteMutation,
   useAppQuery,
   useAppReplaceMutation,
-  useAppsAdminDeleteMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
 }

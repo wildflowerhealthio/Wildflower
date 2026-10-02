@@ -42,13 +42,13 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  *
  * - A **production** build is published to
  *   `https://wildflowerhealth.io/importer-app/` and launched through the
- *   `importer-app` *cloud* app row (apps migration
+ *   `importer-app` app row (apps migration
  *   `0006_seed_wildflower_importer_app`), whose client
  *   (`0008_seed_wildflower_importer_client`) registers that absolute Pages URL as
  *   a redirect URI.
  * - The **vite dev server** (`vp run -F wildflower-importer dev`, on the port
  *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
- *   `importer-app-dev` *cloud* row (`apps-rust`'s `seed_dev_apps`) and its
+ *   `importer-app-dev` row (`apps-rust`'s `seed_dev_apps`) and its
  *   client (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
  *   dev server's loopback root (`http://localhost:{port}/`) as its redirect.
  *

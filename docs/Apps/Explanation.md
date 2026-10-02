@@ -11,13 +11,12 @@ app is **whether the patient's data can leave the device when it runs**. A set o
 **capability flags** carries the privacy verdict, and the `requires_tunnel` flag
 fixes how a launch reaches the device's FHIR server.
 
-Every app's assets are served from a **remote** origin. Growth Chart, Medication
-Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
+An app's assets are served from its own origin, never the host's. Growth Chart,
+Medication Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
 Medications (`medications-app`), Web Trace (`web-trace-app`), the Server Docs
 console (`web-server-docs`), Importer (`importer-app`), the OHIF imaging viewer
 (`ohif-viewer`) and Lifting (`lifting-app`) — are published to
-<https://wildflowerhealth.io> by `apps/github-pages` and launched from there
-(apps migrations `0005_first_party_apps_to_cloud`, `0006`, `0007` and `0010`).
+<https://wildflowerhealth.io> by `apps/github-pages` and launched from there.
 Serving the deployed copy means a shipped app updates when the site deploys
 rather than when the user installs a new desktop build.
 
@@ -55,10 +54,10 @@ migrations run unconditionally, so a migration-seeded dev row would exist in
 release databases too.
 
 A dev tile launches whatever is serving the port — the vite (or preview) server
-when it is up, nothing when it is down — and the host binds no listener that
-could contend with it. Each SMART dev row has its own OAuth client (gatekeeper's
-`seed_dev_app_clients`) whose id equals the dev app id and whose absolute
-`http://localhost:{port}` redirect URI is what `/authorize` matches.
+when it is up, nothing when it is down. Each SMART dev row has its own OAuth
+client (gatekeeper's `seed_dev_app_clients`) whose id equals the dev app id and
+whose redirect URI, `http://localhost:{port}` plus the app's callback path, is
+what `/authorize` matches.
 
 ## Capabilities (orthogonal flags)
 
@@ -127,14 +126,13 @@ derives `isSmart` from its presence alone and never reads the `clients` table. T
 invariant — every seeded `client_id` corresponds to a seeded gatekeeper client —
 is held by keeping the two slices' seeds in lockstep (the seeded apps'
 `client_id`s in the apps migrations, the matching clients in the gatekeeper
-ones — including the rename of both first-party apps, which moves `id` and
-`client_id` together across `apps` `0005` and `gatekeeper` `0006`), each guarded
-by its own seed test, rather than by the database.
+ones), each guarded by its own seed test, rather than by the database.
 
 A client's redirect URIs are absolute URLs, matched by exact equality at
-`/authorize`. Each first-party client registers its published
-`https://wildflowerhealth.io/<app>/` page; its `<app>-dev` sibling registers the
-loopback dev-server URL.
+`/authorize`. Each first-party client registers its published callback page —
+the app root `https://wildflowerhealth.io/<app>/` for most apps,
+`https://wildflowerhealth.io/ohif-viewer/fhir-viewer` for OHIF; its `<app>-dev`
+sibling registers `http://localhost:{port}` plus the same path.
 
 ## Auth posture and the remote trust boundary
 
@@ -175,13 +173,12 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
 
 The server authenticates by `Authorization: Bearer` alone, so no launch plants
 a session for the app it opens. A SMART app earns its own bearer through its
-OAuth flow. A non-SMART app has no credential of its own: on the device, its
-calls to the loopback API are covered by the host's loopback-provenance owner
-trust, so only a SMART app reaches the API remotely.
+OAuth flow. A non-SMART app has no credential of its own, so only a SMART app
+reaches the API.
 
 ## See also
 
-- [Apps Store and Install Explanation](./Store%20and%20Install%20Explanation.md) —
-  how `apps-rust` persists the registry and the invariants its writes hold.
+- [Apps Store Explanation](./Store%20Explanation.md) — how `apps-rust` persists
+  the registry and the invariants its writes hold.
 - [Origins Explanation](../Origins/Explanation.md) — the served origin `{origin}`
   resolves to.

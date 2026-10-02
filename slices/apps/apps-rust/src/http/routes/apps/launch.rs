@@ -99,13 +99,13 @@ async fn launch(
     };
 
     // The `wildflower/launch` umbrella has already been enforced by the
-    // `Scoped<AppLauncher>` extractor (module docs, step 2) — retiring the former
-    // in-handler loopback owner gate. An under-umbrella caller was `403`d before
-    // this handler ran, so it triggered no lookup or side-effect.
+    // `Scoped<AppLauncher>` extractor (module docs, step 2). An under-umbrella
+    // caller was `403`d before this handler ran, so it triggered no lookup or
+    // side-effect.
 
     // 404 before resolving — an unknown id is never an availability failure.
-    // Inlined `find_app` + `NotFound` (the same shape the admin read capability
-    // inlines — there is no shared read helper).
+    // Inlined `find_app` + `NotFound`, the same shape the admin read capability
+    // inlines.
     let registration = state
         .store
         .find_app(&id)?
