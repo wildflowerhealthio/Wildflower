@@ -1,5 +1,3 @@
 xcuserdata/
 build/
 Externals/
-# Exclude the self-hosted apps from git, they're vendor code hot-swappable at build time
-assets/self-hosted-apps

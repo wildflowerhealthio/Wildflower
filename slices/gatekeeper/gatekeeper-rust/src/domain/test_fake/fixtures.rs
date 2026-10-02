@@ -85,7 +85,7 @@ pub(crate) fn client(client_id: &str, registered_client_scopes: &[&str]) -> Clie
         client_id: client_id.to_owned(),
         name: format!("{client_id} display name"),
         kind: ClientKind::Public,
-        redirect_uris: vec![Url::parse("https://example.com/cb").unwrap().into()],
+        redirect_uris: vec![Url::parse("https://example.com/cb").unwrap()],
         allowed_scopes: registered_client_scopes
             .iter()
             .map(|s| (*s).to_owned())

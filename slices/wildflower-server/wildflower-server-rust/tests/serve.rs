@@ -44,9 +44,6 @@ fn server_config(app_data_dir: PathBuf, loopback_base_url: Url) -> WildflowerSer
             env!("CARGO_MANIFEST_DIR"),
             "/../../emr/emr-rust/assets"
         )),
-        // No vendored apps: a missing source dir syncs nothing.
-        vendored_self_hosted_apps_dir: app_data_dir.join("no-vendored-apps"),
-        overwrite_vendored_self_hosted_apps: false,
         owner_ui_base: OwnerUiBase::parse("https://owner-ui.test/app/").expect("owner UI base"),
         // The owner-defining scopes gatekeeper requires the host owner token to cover.
         host_owner_scopes: gatekeeper_rust::WILDFLOWER_WIDEST_SCOPES

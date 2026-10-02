@@ -6,7 +6,6 @@ use scopes_rust::{Permission, Scope, WildflowerResource};
 use crate::domain::actions::{self, CloudAppPayload};
 use crate::domain::{
     AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
-    SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload,
 };
 
 /// Edit an app's content / home-screen placement — `wildflower/Apps.u`.
@@ -17,8 +16,7 @@ pub(crate) fn apps_editor_scopes() -> Vec<Scope> {
     )]
 }
 
-/// Content + home-screen edits — `PUT /cloud-apps/{id}`, `PUT /self-hosted-apps/{id}`,
-/// `PUT /home-screen`. Gated by `wildflower/Apps.u`. Separate from
+/// Content + home-screen edits — `PUT /cloud-apps/{id}`, `PUT /home-screen`. Gated by `wildflower/Apps.u`. Separate from
 /// [`AppsCreator`](super::AppsCreator) / [`AppsDeleter`](super::AppsDeleter) so an
 /// edit handler structurally can't create or delete.
 pub(crate) struct AppsEditor<S: AppsStore> {
@@ -64,45 +62,6 @@ impl<S: AppsStore> AppsEditor<S> {
             })
     }
 
-    /// Replace a self-hosted app's launch path; a non-self-hosted id is `404`, a
-    /// seeded app `409`. Overlays the new `launch_path` onto the current
-    /// configuration and hands the store the pair.
-    pub(crate) fn update_self_hosted_app(
-        &self,
-        id: &str,
-        launch_path: Option<String>,
-    ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-        let (current_registration, configuration) = self
-            .store
-            .find_app(id)?
-            .ok_or_else(|| AppsError::NotFound { id: id.to_owned() })?;
-        let current_config = match configuration {
-            AppConfiguration::SelfHosted(config) if config.seeded => {
-                // A migration-seeded app (patient-browser) is read-only, same 409
-                // as delete.
-                return Err(AppsError::NotEditable { id: id.to_owned() });
-            }
-            AppConfiguration::SelfHosted(config) => config,
-            _ => return Err(AppsError::NotFound { id: id.to_owned() }),
-        };
-        let launch_path = actions::validate_launch_path(launch_path)?;
-        // The store writes only `launch_path`; carry the immutable `content_folder`
-        // / `subdomain` from the current config to fill the shared payload.
-        let payload = SelfHostedAppConfigurationPayload {
-            content_folder: current_config.content_folder,
-            subdomain: current_config.subdomain,
-            launch_path,
-        };
-        self.store
-            .replace_self_hosted_app(&current_registration, &payload)?
-            .ok_or_else(|| {
-                AppsError::infrastructure(
-                    "self-hosted app vanished between find and replace",
-                    format!("id={id}"),
-                )
-            })
-    }
-
     /// Atomically reorder + enable/disable the whole registry; a non-permutation
     /// body is `400 InvalidHomeScreen`.
     pub(crate) fn update_home_screen(
@@ -120,7 +79,7 @@ impl<S: AppsStore> AppsEditor<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::test_fake::{create_cloud, seeded_self_hosted, system, FakeAppsStore};
+    use crate::domain::test_fake::{create_cloud, system, FakeAppsStore};
 
     #[test]
     fn editor_replaces_content_and_reorders() {
@@ -178,35 +137,6 @@ mod tests {
                 },
             ),
             Err(AppsError::NotFound { .. })
-        ));
-    }
-
-    /// A self-hosted replace gates before editing: a seeded app is `409`, a
-    /// non-self-hosted id is `404`; an editable app rewrites its `launch_path` and
-    /// still rejects a non-origin-relative one as `400 InvalidUrl`.
-    #[test]
-    fn editor_self_hosted_replace_gates_and_edits() {
-        let store = FakeAppsStore::default();
-        seeded_self_hosted(&store, "seeded", true);
-        seeded_self_hosted(&store, "editable", false);
-        create_cloud(&store, "cloud-x").expect("seed cloud");
-        let editor = AppsEditor::new(store);
-
-        assert!(matches!(
-            editor.update_self_hosted_app("seeded", Some("/launch.html".to_owned())),
-            Err(AppsError::NotEditable { .. })
-        ));
-        assert!(matches!(
-            editor.update_self_hosted_app("cloud-x", Some("/launch.html".to_owned())),
-            Err(AppsError::NotFound { .. })
-        ));
-        let (_registration, config) = editor
-            .update_self_hosted_app("editable", Some("/launch.html".to_owned()))
-            .expect("replace");
-        assert_eq!(config.launch_path.as_deref(), Some("/launch.html"));
-        assert!(matches!(
-            editor.update_self_hosted_app("editable", Some("https://evil.example/x".to_owned())),
-            Err(AppsError::InvalidUrl { .. })
         ));
     }
 }

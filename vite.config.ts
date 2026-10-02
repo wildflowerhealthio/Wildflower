@@ -80,7 +80,6 @@ export default defineConfig({
       'global/react-tundraish/vite.config.ts',
       'scripts/vite.config.ts',
       'slices/**/vite.config.ts',
-      '!slices/apps/self-hosted-apps/**',
       '!**/node_modules/**',
     ],
   },
@@ -133,11 +132,6 @@ export default defineConfig({
       // ACL JSON schema next to each plugin's `permissions/` dir on every
       // cargo build. Hand-formatting it would just be re-clobbered.
       '**/permissions/schemas/*.json',
-      // Committed Handlebars templates served by self-hosted-apps-rust
-      // (embedded via `include_dir!`, rendered per request). oxfmt parses
-      // `.hbs` as markup and would mangle both the `{{…}}` expressions and
-      // the json5 payloads they render into — served assets, not source.
-      'slices/apps/self-hosted-apps-rust/templates/**',
     ],
   },
   lint: {

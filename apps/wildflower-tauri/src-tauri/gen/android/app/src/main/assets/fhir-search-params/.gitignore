@@ -3,7 +3,6 @@
 # artifact — never hand-edit it and never commit it. On Android the bundle is
 # read from the binary (embedded via `include_bytes!` in `src/lib.rs`, since the
 # APK's virtual `assets/` path isn't `std::fs`-readable), so this copy is unused
-# at runtime anyway. Mirrors the sibling `self-hosted-apps/` convention: track
-# only this ignore file, ignore everything else.
+# at runtime anyway. Track only this ignore file, ignore everything else.
 /*
 !.gitignore

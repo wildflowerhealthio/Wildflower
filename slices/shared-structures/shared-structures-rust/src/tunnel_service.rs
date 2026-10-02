@@ -67,9 +67,8 @@ pub struct TunnelLiveness {
     pub origin: String,
     /// The configured public host (bare, no scheme or port), normalized so an
     /// empty stored value reads as `None` — independent of the liveness
-    /// `status`. Mirrors [`TunnelService::current_public_host`]; carried on the
-    /// snapshot so a hot-path consumer (the subdomain reverse proxy) reads it
-    /// `O(1)` off the watch.
+    /// `status`. Carried on the snapshot so a consumer that follows it (the
+    /// server's FHIR base-URL follower) reads it off the watch.
     pub public_host: Option<String>,
     /// A human-readable reason for `Misconfigured`/`Unreachable`, else `None`.
     pub error: Option<String>,
@@ -86,26 +85,6 @@ pub trait TunnelService: Send + Sync {
     /// The current most-available origin — the verified public origin while the
     /// tunnel is up, else the loopback fallback. A cheap, synchronous read.
     fn current_origin(&self) -> String;
-
-    /// The configured public host (bare, no scheme or port) the front
-    /// advertises — independent of whether the tunnel is currently `Verified`.
-    /// `None` when no public host is configured, in which case the tunnel
-    /// cannot be brought up at all.
-    ///
-    /// Distinct from [`Self::current_origin`], which conflates "tunnel down"
-    /// with "no public host configured": callers that need the public *name*
-    /// itself (e.g. to match an inbound forwarded request's subdomain against
-    /// the configured host) use this instead. Default returns `None` — only
-    /// the live tunnel slice needs to override it.
-    ///
-    /// The same value also rides on every [`TunnelLiveness`] snapshot
-    /// ([`TunnelLiveness::public_host`]); a hot-path consumer that already holds
-    /// a [`Self::subscribe`] receiver reads it from there `O(1)` rather than
-    /// paying this call's per-invocation cost (which, in the live slice, is a
-    /// locked settings read).
-    fn current_public_host(&self) -> Option<String> {
-        None
-    }
 
     /// Try to bring the tunnel up, returning the verified public origin once a
     /// reachability check confirms it, or a human-readable reason it couldn't.

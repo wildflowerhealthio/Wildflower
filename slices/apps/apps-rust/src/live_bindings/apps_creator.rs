@@ -1,6 +1,5 @@
-//! The [`LiveAppsCreator`] binding — registers a new cloud / self-hosted app
-//! through the concrete `SqliteAppsStore` and the [`SelfHostedAppsService`]
-//! installer. See the [module docs](super) for the binding seam.
+//! The [`LiveAppsCreator`] binding — registers a new cloud app through the
+//! concrete `SqliteAppsStore`. See the [module docs](super) for the binding seam.
 
 use std::sync::Arc;
 
@@ -10,11 +9,9 @@ use scopes_rust::Scope;
 use super::state::AppsState;
 use crate::db::SqliteAppsStore;
 use crate::domain::capabilities::{apps_creator_scopes, AppsCreator};
-use crate::self_hosted_apps_service::SelfHostedAppsService;
 
-/// Register a new cloud / self-hosted app — `Scoped<LiveAppsCreator>` in the
-/// create handlers.
-pub(crate) type LiveAppsCreator = AppsCreator<SqliteAppsStore, SelfHostedAppsService>;
+/// Register a new cloud app — `Scoped<LiveAppsCreator>` in the create handler.
+pub(crate) type LiveAppsCreator = AppsCreator<SqliteAppsStore>;
 
 impl FixedScopeCapability for LiveAppsCreator {
     type State = Arc<AppsState>;
@@ -25,12 +22,6 @@ impl FixedScopeCapability for LiveAppsCreator {
     }
 
     fn build(state: Arc<AppsState>) -> Self {
-        AppsCreator::new(
-            state.store.clone(),
-            Arc::clone(&state.self_hosted),
-            // The host's own loopback port is reserved so an upload never binds
-            // over it — lifted here so the handler never touches the state.
-            state.loopback_base_url.port().into_iter().collect(),
-        )
+        AppsCreator::new(state.store.clone())
     }
 }

@@ -1,7 +1,5 @@
 //! The [`LiveAppsDeleter`] binding — removes an app through the concrete
-//! `SqliteAppsStore` and the [`SelfHostedAppsService`] installer (which discards
-//! a self-hosted app's staged build). See the [module docs](super) for the
-//! binding seam.
+//! `SqliteAppsStore`. See the [module docs](super) for the binding seam.
 
 use std::sync::Arc;
 
@@ -11,10 +9,9 @@ use scopes_rust::Scope;
 use super::state::AppsState;
 use crate::db::SqliteAppsStore;
 use crate::domain::capabilities::{apps_deleter_scopes, AppsDeleter};
-use crate::self_hosted_apps_service::SelfHostedAppsService;
 
 /// Remove an app — `Scoped<LiveAppsDeleter>` in the delete handler.
-pub(crate) type LiveAppsDeleter = AppsDeleter<SqliteAppsStore, SelfHostedAppsService>;
+pub(crate) type LiveAppsDeleter = AppsDeleter<SqliteAppsStore>;
 
 impl FixedScopeCapability for LiveAppsDeleter {
     type State = Arc<AppsState>;
@@ -25,6 +22,6 @@ impl FixedScopeCapability for LiveAppsDeleter {
     }
 
     fn build(state: Arc<AppsState>) -> Self {
-        AppsDeleter::new(state.store.clone(), Arc::clone(&state.self_hosted))
+        AppsDeleter::new(state.store.clone())
     }
 }

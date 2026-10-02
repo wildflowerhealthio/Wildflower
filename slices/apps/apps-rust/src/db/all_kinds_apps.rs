@@ -1,28 +1,26 @@
 //! The query bodies that resolve an app of **any** kind — the ones that import from
-//! the three per-kind files rather than owning a single kind. [`find_app_on`] reads a
+//! the per-kind files rather than owning a single kind. [`find_app_on`] reads a
 //! registration and its one configuration in a **single atomic left join** across the
-//! three configuration tables (composing the `(registration, configuration)` pair the
+//! configuration tables (composing the `(registration, configuration)` pair the
 //! launch / delete seams use); [`delete_app`] removes a registration (its configuration
 //! cascades).
 //!
-//! Because that left join names all four tables in one query, this file owns the
-//! four-way `allow_tables_to_appear_in_same_query!` (the per-kind files keep only their
-//! `joinable!`) — one declaration, so the pairwise permissions exist without the
-//! duplicate impls three separate two-way declarations would produce.
+//! Because that left join names all three tables in one query, this file owns the
+//! three-way `allow_tables_to_appear_in_same_query!` (the per-kind files keep only
+//! their `joinable!`) — one declaration, so the pairwise permissions exist without
+//! the duplicate impls separate two-way declarations would produce.
 
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
 
 use super::app_registration::app_registrations;
 use super::cloud_apps::{cloud_app_configurations, CloudConfigurationRow};
-use super::self_hosted_apps::{self_hosted_app_configurations, SelfHostedConfigurationRow};
 use super::system_apps::{system_app_configurations, SystemConfigurationRow};
 use crate::domain::{AppConfiguration, AppKind, AppRegistration, AppsError};
 
 diesel::allow_tables_to_appear_in_same_query!(
     app_registrations,
     cloud_app_configurations,
-    self_hosted_app_configurations,
     system_app_configurations,
 );
 
@@ -42,7 +40,6 @@ fn missing_configuration(id: &str, kind: AppKind) -> AppsError {
 type JoinedAppRow = (
     AppRegistration,
     Option<CloudConfigurationRow>,
-    Option<SelfHostedConfigurationRow>,
     Option<SystemConfigurationRow>,
 );
 
@@ -52,7 +49,7 @@ type JoinedAppRow = (
 /// delete seams read. `Ok(None)` when no registration has this id; a registration
 /// whose configuration row is missing is a corrupt registry → [`missing_configuration`].
 ///
-/// One statement: a left join to all three configuration tables. So a concurrent
+/// One statement: a left join to every configuration table. So a concurrent
 /// delete can't commit between a registration read and a separate configuration read
 /// and turn a benign 404 into a false corrupt-registry 500 — the whole pair comes
 /// from one atomic snapshot.
@@ -60,21 +57,18 @@ pub(super) fn find_app_on(
     conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<Option<(AppRegistration, AppConfiguration)>, AppsError> {
-    let Some((registration, cloud, self_hosted, system)): Option<JoinedAppRow> =
-        app_registrations::table
-            .left_join(cloud_app_configurations::table)
-            .left_join(self_hosted_app_configurations::table)
-            .left_join(system_app_configurations::table)
-            .filter(app_registrations::id.eq(id))
-            .select((
-                AppRegistration::as_select(),
-                Option::<CloudConfigurationRow>::as_select(),
-                Option::<SelfHostedConfigurationRow>::as_select(),
-                Option::<SystemConfigurationRow>::as_select(),
-            ))
-            .first(conn)
-            .optional()
-            .map_err(|e| AppsError::infrastructure("find app failed", e))?
+    let Some((registration, cloud, system)): Option<JoinedAppRow> = app_registrations::table
+        .left_join(cloud_app_configurations::table)
+        .left_join(system_app_configurations::table)
+        .filter(app_registrations::id.eq(id))
+        .select((
+            AppRegistration::as_select(),
+            Option::<CloudConfigurationRow>::as_select(),
+            Option::<SystemConfigurationRow>::as_select(),
+        ))
+        .first(conn)
+        .optional()
+        .map_err(|e| AppsError::infrastructure("find app failed", e))?
     else {
         return Ok(None);
     };
@@ -93,18 +87,13 @@ pub(super) fn find_app_on(
                 .ok_or_else(|| missing_configuration(id, AppKind::Cloud))?
                 .into(),
         ),
-        AppKind::SelfHosted => AppConfiguration::SelfHosted(
-            self_hosted
-                .ok_or_else(|| missing_configuration(id, AppKind::SelfHosted))?
-                .into(),
-        ),
     };
     Ok(Some((registration, configuration)))
 }
 
 /// Delete an app by id, any kind — one registration delete; the configuration
-/// cascades. Returns `true` when a row was removed. The handlers enforce the
-/// removability policy (kind + seeded) before calling this.
+/// cascades. Returns `true` when a row was removed. The deleter capability enforces
+/// the removability policy (by kind) before calling this.
 ///
 /// # Errors
 ///
@@ -127,7 +116,7 @@ fn delete_app_row(conn: &mut SqliteConnection, id: &str) -> Result<bool, AppsErr
 mod tests {
     use diesel::prelude::*;
 
-    use super::super::test_support::{error_text, insert_upload};
+    use super::super::test_support::{cloud_config, cloud_registration, error_text, external};
     use crate::db::SqliteAppsStore;
     use crate::domain::{AppKind, AppsStore};
 
@@ -145,16 +134,6 @@ mod tests {
         assert!(registration.requires_tunnel);
         let config = configuration.as_cloud().expect("cloud configuration");
         assert!(config.url.to_string().contains("growth-chart-app"));
-
-        let (_registration, configuration) =
-            store.find_app("patient-browser").unwrap().expect("seeded");
-        let config = configuration
-            .as_self_hosted()
-            .expect("self-hosted configuration");
-        assert_eq!(config.port, 8081);
-        assert_eq!(config.content_folder, "patient-browser");
-        assert_eq!(config.subdomain, "patient-browser");
-        assert!(config.seeded);
 
         let (registration, configuration) = store.find_app("api-docs").unwrap().expect("seeded");
         assert_eq!(configuration.kind(), AppKind::System);
@@ -203,14 +182,20 @@ mod tests {
         assert!(store.find_app("growth-chart").is_err());
     }
 
-    /// Delete removes the registration and cascades the configuration, for either
-    /// kind.
+    /// Delete removes the registration and cascades the configuration, for a
+    /// user-created and a seeded app alike.
     #[test]
     fn delete_app_removes_registration_and_cascades_configuration() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
-        let (registration, _config) = insert_upload(&store, "My App", "my-app");
-        assert!(store.delete_app(&registration.id).unwrap());
+        store
+            .insert_cloud_app(
+                &cloud_registration("my-app"),
+                &cloud_config(external("https://example.com/launch")),
+            )
+            .unwrap()
+            .expect("inserted");
+        assert!(store.delete_app("my-app").unwrap());
         assert!(store.find_app("my-app").unwrap().is_none());
         assert!(
             !store.delete_app("my-app").unwrap(),
@@ -230,24 +215,14 @@ mod tests {
         assert!(!store.delete_app("no-such-id").unwrap());
     }
 
-    /// The removability matrix over live rows: cloud + uploaded self-hosted are
-    /// removable; system + seeded self-hosted are not.
+    /// The removability matrix over live rows: cloud is removable; system is not.
     #[test]
-    fn removable_per_kind_and_seeded_on_live_rows() {
+    fn removable_per_kind_on_live_rows() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        insert_upload(&store, "My App", "my-app");
         let by_id = |id: &str| store.find_app(id).unwrap().expect("row").1;
-        assert!(
-            by_id("my-app").is_removable(),
-            "an uploaded app is removable"
-        );
         assert!(
             by_id("growth-chart").is_removable(),
             "a cloud app is removable"
-        );
-        assert!(
-            !by_id("patient-browser").is_removable(),
-            "the seeded self-hosted app is not removable",
         );
         assert!(
             !by_id("api-docs").is_removable(),

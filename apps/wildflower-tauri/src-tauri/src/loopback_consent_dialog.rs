@@ -5,7 +5,7 @@
 //! Gatekeeper decides *when* to ask — only a non-forwarded `/authorize` for that
 //! `client_id` — and applies the answer; this adapter only shows the question.
 //! The slice owns the trait; the dialog plugin is a host dependency; so the
-//! adapter lives here, like the self-hosted redirect resolver.
+//! adapter lives here, like the native webview handle.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

@@ -5,7 +5,6 @@ members = [
   "apps/wildflower-tauri/src-tauri",
   "plugins/tauri-plugin-native-webview",
   "slices/apps/apps-rust",
-  "slices/apps/self-hosted-apps-rust",
   "slices/browser-sniffer/browser-sniffer-tauri-rust",
   "slices/collector/collector-rust",
   "slices/databases/databases-rust",
@@ -19,7 +18,6 @@ members = [
   "slices/scopes/scope-capabilities-rust",
   "slices/scopes/scopes-rust",
   "slices/shared-structures/shared-structures-rust",
-  "slices/shared-structures/shared-structures-server-rust",
   "slices/shared-structures/shared-structures-tauri-rust",
   "slices/tunnel/tunnel-rust",
   "slices/wildflower-server/wildflower-server-rust",
@@ -31,13 +29,8 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1.0.102"
-axum = { version = "0.8", features = ["json", "query", "matched-path", "multipart", "ws"] }
+axum = { version = "0.8", features = ["json", "query", "matched-path", "ws"] }
 base64 = "0.23"
-# Request-time rendering of the committed self-hosted-app templates
-# (`templates/<app-id>/…​.hbs` in self-hosted-apps-rust).
-handlebars = "6"
-# Compile-time embedding of that templates tree.
-include_dir = "0.7"
 # SQLite ORM/query-builder for the collector slice's own connection onto the
 # shared database. Its `sqlite` feature pulls `libsqlite3-sys`; diesel accepts
 # `libsqlite3-sys 0.31`, so Cargo unifies it with rusqlite's

@@ -222,10 +222,6 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// redirect entries on the production ones because adding a plaintext loopback
 /// redirect there would register it on a client that a public website uses.
 ///
-/// Each client also carries the app-relative `"/"` entry, for symmetry with the
-/// production clients. It resolves only through the host's
-/// [`SelfHostedRedirectResolver`](crate::SelfHostedRedirectResolver), which
-/// requires a self-hosted row, so against the cloud dev rows it matches nothing.
 /// The redirect path is the origin root for every app but `ohif-viewer-dev`,
 /// whose launch lands on `/fhir-viewer` — redirect matching is exact-URL.
 ///
@@ -246,8 +242,6 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// Returns an error if the store cannot be opened/migrated or an upsert fails.
 #[cfg(debug_assertions)]
 pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
-    use crate::domain::client::RegisteredRedirectUri;
-
     let store = SqliteGatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
     // Ports come from the shared dev-port file, not literals — see
     // [`DEV_APP_PORTS_JSON`].
@@ -322,10 +316,8 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ]
             .as_slice(),
             ports.ohif_viewer_dev,
-            // NOT the root: the OHIF dev app row is a CLOUD row (see
-            // `apps_rust::dev_seed`), so its app-relative `"/"` entry no longer
-            // resolves and the absolute entry is the only one that can match. It
-            // must therefore be the exact route the launch targets — the FHIR
+            // NOT the root: redirect matching is exact-URL, so the entry must be
+            // the exact route the launch targets — the FHIR
             // Viewer mode, as on the production client (seeded by migration
             // `0009_seed_ohif_viewer_client` and repointed by `0010`), which is
             // where OHIF's data source sends the browser back to and what it
@@ -338,9 +330,8 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // Mirrors the production `fhir-sync-pebble` client (migration
             // `0017_seed_fhir_sync_pebble_client`, widened by `0018`, the `scope` in
             // `apps/fhir-sync-pebble-web/src/config.ts`). Standalone-only, so
-            // there is no `apps_rust::dev_seed` row: the app-relative entry
-            // resolves to nothing and the absolute loopback root carries the
-            // `ConnectMenu`'s redirect.
+            // there is no `apps_rust::dev_seed` row; the loopback root carries
+            // the `ConnectMenu`'s redirect.
             [
                 "openid",
                 "fhirUser",
@@ -386,18 +377,12 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             client_id: client_id.to_string(),
             name: name.to_string(),
             kind: ClientKind::Public,
-            // App-relative: resolves only through the self-hosted resolver, so
-            // against these cloud dev rows it matches nothing and the absolute
-            // entry below carries the launch. The absolute entry's port comes from the
-            // shared `dev-app-ports.json` (above), the same file the apps dev
-            // seed and each `vite.config.ts` read — so it is never a literal
-            // duplicated here, and its path is the route that client's launch
-            // actually lands on (redirect matching is exact-URL).
+            // The port comes from the shared `dev-app-ports.json` (above), the
+            // same file the apps dev seed and each `vite.config.ts` read — so it
+            // is never a literal duplicated here, and the path is the route that
+            // client's launch actually lands on (redirect matching is exact-URL).
             redirect_uris: vec![
-                RegisteredRedirectUri::AppRelative("/".to_string()),
-                RegisteredRedirectUri::Absolute(
-                    Url::parse(&format!("http://localhost:{port}{redirect_path}")).unwrap(),
-                ),
+                Url::parse(&format!("http://localhost:{port}{redirect_path}")).unwrap(),
             ],
             allowed_scopes: scopes.iter().map(|s| (*s).to_string()).collect(),
             allowed_grant_types: vec![
@@ -461,8 +446,6 @@ mod tests {
     /// TS and Rust halves cannot drift apart unnoticed.
     #[test]
     fn seeds_the_health_viewer_dev_client_with_the_apps_own_scopes() {
-        use crate::domain::client::RegisteredRedirectUri;
-
         const HEALTH_VIEWER_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../apps/health-viewer/src/config.ts"
@@ -485,14 +468,11 @@ mod tests {
         assert_eq!(client.allowed_scopes, HEALTH_VIEWER_DEV_SCOPES);
         assert_eq!(
             client.redirect_uris,
-            vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    format!("http://localhost:{}/", ports.health_viewer_app_dev)
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
-            ],
+            vec![url::Url::parse(&format!(
+                "http://localhost:{}/",
+                ports.health_viewer_app_dev
+            ))
+            .expect("a valid absolute redirect")],
         );
     }
 
@@ -501,8 +481,6 @@ mod tests {
     /// `config.ts` itself, as the health viewer's is.
     #[test]
     fn seeds_the_synthetic_data_dev_client_with_the_apps_own_scopes() {
-        use crate::domain::client::RegisteredRedirectUri;
-
         const SYNTHETIC_DATA_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../apps/synthetic-data-app/src/config.ts"
@@ -525,14 +503,11 @@ mod tests {
         assert_eq!(client.allowed_scopes, SYNTHETIC_DATA_DEV_SCOPES);
         assert_eq!(
             client.redirect_uris,
-            vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    format!("http://localhost:{}/", ports.synthetic_data_app_dev)
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
-            ],
+            vec![url::Url::parse(&format!(
+                "http://localhost:{}/",
+                ports.synthetic_data_app_dev
+            ))
+            .expect("a valid absolute redirect")],
         );
     }
 
@@ -544,8 +519,6 @@ mod tests {
     /// drift from it unnoticed.
     #[test]
     fn seeds_the_medications_dev_client_with_the_apps_own_scopes() {
-        use crate::domain::client::RegisteredRedirectUri;
-
         const MEDICATIONS_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../apps/medications-app/src/config.ts"
@@ -569,12 +542,8 @@ mod tests {
         assert_eq!(
             client.redirect_uris,
             vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    format!("http://localhost:{}/", ports.medications_app_dev)
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
+                url::Url::parse(&format!("http://localhost:{}/", ports.medications_app_dev))
+                    .expect("a valid absolute redirect")
             ],
         );
 
@@ -592,8 +561,6 @@ mod tests {
     /// written, so neither client can drift from it unnoticed.
     #[test]
     fn seeds_the_lifting_dev_client_with_the_apps_own_scopes() {
-        use crate::domain::client::RegisteredRedirectUri;
-
         const LIFTING_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../apps/lifting-app/src/config.ts"
@@ -617,12 +584,8 @@ mod tests {
         assert_eq!(
             client.redirect_uris,
             vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    format!("http://localhost:{}/", ports.lifting_app_dev)
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
+                url::Url::parse(&format!("http://localhost:{}/", ports.lifting_app_dev))
+                    .expect("a valid absolute redirect")
             ],
         );
 

@@ -63,8 +63,8 @@ pub fn openapi_spec() -> utoipa::openapi::OpenApi {
 }
 
 /// Build the scope-gated admin routes (`GET /apps`, `DELETE /apps/{id}`,
-/// `PUT /home-screen`, and the per-kind `/cloud-apps` / `/self-hosted-apps` /
-/// `/system-apps` resources), each gated on `wildflower/Apps.{r,c,u,d}`. Carries
+/// `PUT /home-screen`, and the per-kind `/cloud-apps` / `/system-apps`
+/// resources), each gated on `wildflower/Apps.{r,c,u,d}`. Carries
 /// no middleware — the host wraps it with its bearer gate (which inserts the
 /// caller's scope claims).
 pub fn gated_router(state: Arc<AppsState>) -> Router {

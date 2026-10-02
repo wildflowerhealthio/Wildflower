@@ -797,7 +797,7 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
     assert_eq!(registered.kind, ClientKind::Public);
     assert_eq!(
         registered.redirect_uris,
-        vec![Url::parse("https://app.example/cb").unwrap().into()],
+        vec![Url::parse("https://app.example/cb").unwrap()],
     );
     assert_eq!(registered.allowed_scopes, vec!["read".to_string()]);
     assert_eq!(
@@ -866,8 +866,8 @@ async fn approving_a_changed_app_widens_its_registration() {
     assert_eq!(
         after.redirect_uris,
         vec![
-            Url::parse("https://elsewhere.example/cb").unwrap().into(),
-            Url::parse("https://app.example/cb").unwrap().into(),
+            Url::parse("https://elsewhere.example/cb").unwrap(),
+            Url::parse("https://app.example/cb").unwrap(),
         ],
     );
     // `pruned` was requested but not granted, so it is not registered.

@@ -11,19 +11,16 @@ use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 use shared_structures_rust::tunnel_service::{
     OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
 };
-use shared_structures_server_rust::ProxyTable;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
 use crate::domain::{AppRegistration, AppsError};
 use crate::live_bindings::state::AppsState;
 use crate::ports::{AppLaunchScopes, NoAppLaunchScopes};
-use crate::self_hosted_apps_service::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
 /// The loopback base URL clients reach when the tunnel is down. Its origin
-/// (`http://127.0.0.1:8080`) drives `{origin}` substitution and its host
-/// (`127.0.0.1`) the self-hosted launch target.
+/// (`http://127.0.0.1:8080`) drives `{origin}` substitution.
 pub(crate) const LOOPBACK_BASE_URL: &str = "http://127.0.0.1:8080/";
 
 /// Parse the fixed loopback base URL — a hardcoded valid URL.
@@ -33,21 +30,15 @@ pub(crate) fn loopback_base_url() -> Url {
 
 /// A `TunnelService` stub for a tunnel that's up and verified at `origin` — the
 /// success counterpart to the shared [`OfflineTunnel`], which models the
-/// can't-reach case (`try_start` fails, state stays `Off`). `public_host` is
-/// reported through [`TunnelService::current_public_host`] — the self-hosted
-/// launch handler reads it to render the subdomain URL for forwarded callers.
+/// can't-reach case (`try_start` fails, state stays `Off`).
 pub(crate) struct StubTunnel {
     origin: String,
-    public_host: Option<String>,
 }
 
 #[async_trait]
 impl TunnelService for StubTunnel {
     fn current_origin(&self) -> String {
         self.origin.clone()
-    }
-    fn current_public_host(&self) -> Option<String> {
-        self.public_host.clone()
     }
     async fn try_start(&self) -> Result<String, String> {
         Ok(self.origin.clone())
@@ -57,7 +48,7 @@ impl TunnelService for StubTunnel {
             settings_revision: None,
             status: TunnelStatus::Verified,
             origin: self.origin.clone(),
-            public_host: self.public_host.clone(),
+            public_host: None,
             error: None,
             dial_attempts: 0,
         })
@@ -68,37 +59,11 @@ impl TunnelService for StubTunnel {
 pub(crate) fn tunnel_at(origin: &str) -> Arc<dyn TunnelService> {
     Arc::new(StubTunnel {
         origin: origin.to_string(),
-        public_host: None,
-    })
-}
-
-/// `TunnelService` with a configured `public_host` but no `try_start` success —
-/// the live shape that drives the self-hosted launch's subdomain branch
-/// (forwarded caller → `https://<id>.<host>/`) without needing the tunnel up.
-pub(crate) fn tunnel_with_public_host(public_host: &str) -> Arc<dyn TunnelService> {
-    Arc::new(StubTunnel {
-        origin: "http://127.0.0.1:8080".to_owned(),
-        public_host: Some(public_host.to_owned()),
     })
 }
 
 pub(crate) fn tunnel_unavailable() -> Arc<dyn TunnelService> {
     Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"))
-}
-
-/// A `SelfHostedAppsService` over a fresh per-test temp apps dir, a fresh
-/// `ProxyTable`, and the given tunnel — enough for the upload/delete handlers to
-/// stage files and start/stop listeners. The temp dir is unique per call so
-/// parallel tests don't share a staging root; it's left for the OS to reap.
-pub(crate) fn self_hosted_service(tunnel: Arc<dyn TunnelService>) -> Arc<SelfHostedAppsService> {
-    let apps_dir = std::env::temp_dir().join(format!("wf-apps-test-{}", rand::random::<u64>()));
-    std::fs::create_dir_all(&apps_dir).expect("create temp apps dir");
-    Arc::new(SelfHostedAppsService::new(
-        &loopback_base_url(),
-        apps_dir,
-        ProxyTable::new(),
-        tunnel,
-    ))
 }
 
 /// An [`AppLaunchScopes`] fake that requires a fixed scope set for any SMART app —
@@ -133,13 +98,11 @@ pub(crate) fn state_full(
     launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> Arc<AppsState> {
     let store = SqliteAppsStore::open_in_memory().expect("store");
-    let self_hosted = self_hosted_service(Arc::clone(&tunnel));
     Arc::new(AppsState::new(
         store,
         loopback_base_url(),
         tunnel,
         webview_handle,
-        self_hosted,
         launch_scopes,
     ))
 }

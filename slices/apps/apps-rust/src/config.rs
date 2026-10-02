@@ -7,13 +7,11 @@ use url::Url;
 
 /// What [`setup_apps`](crate::setup_apps) needs to stand up the slice: the
 /// loopback base URL clients reach when the tunnel is down. The launch handler
-/// derives both the non-tunnel redirect *origin* and the self-hosted listeners'
-/// *hostname* from it (see [`AppsState`](crate::live_bindings::state::AppsState)'s accessors),
-/// so a single source of truth can't drift between the two.
+/// derives the non-tunnel redirect *origin* from it (see
+/// [`AppsState::loopback_origin`](crate::live_bindings::state::AppsState)).
 #[derive(Debug, Clone)]
 pub struct AppsConfig {
     /// e.g. `http://127.0.0.1:8080/` — the base URL clients reach when the
-    /// tunnel is down. A non-tunnel launch redirects to its origin; the
-    /// self-hosted listeners bind on its host.
+    /// tunnel is down. A non-tunnel launch resolves `{origin}` to its origin.
     pub loopback_base_url: Url,
 }

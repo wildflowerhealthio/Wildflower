@@ -11,7 +11,7 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
 use crate::db::shared::{json_text_column, text_enum_column};
-use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegisteredRedirectUri};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::gatekeeper_error::GatekeeperError;
 
 diesel::table! {
@@ -30,10 +30,9 @@ diesel::table! {
 
 json_text_column!(
     /// A client's `redirect_uris` allowlist as a JSON TEXT column — an array of
-    /// bare strings, each an absolute URL or an app-relative path (see
-    /// [`RegisteredRedirectUri`]).
+    /// absolute URL strings.
     JsonRedirectUris,
-    Vec<RegisteredRedirectUri>
+    Vec<url::Url>
 );
 json_text_column!(
     /// A client's `allowed_grant_types` as a JSON TEXT column (the wire
@@ -121,21 +120,12 @@ mod tests {
     use crate::domain::GatekeeperStore as _;
     use proptest::prelude::*;
 
-    /// A registered redirect entry: an absolute URL or an app-relative path
-    /// (leading `/`, never `//`), so the round-trip covers both stored forms.
-    fn arb_registered_redirect() -> impl Strategy<Value = RegisteredRedirectUri> {
-        prop_oneof![
-            arb_url().prop_map(RegisteredRedirectUri::Absolute),
-            "/[a-z][a-z0-9/_-]{0,15}".prop_map(RegisteredRedirectUri::AppRelative),
-        ]
-    }
-
     fn arb_client() -> impl Strategy<Value = Client> {
         (
             "[a-zA-Z0-9_-]{1,32}",
             "[ -~]{0,48}",
             prop_oneof![Just(ClientKind::Public), Just(ClientKind::Confidential)],
-            prop::collection::vec(arb_registered_redirect(), 1..4),
+            prop::collection::vec(arb_url(), 1..4),
             prop::collection::vec("[a-z][a-z0-9_]{0,15}", 0..5),
             prop::option::of("[0-9a-f]{64}"),
             arb_timestamp(),
@@ -351,10 +341,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            mwa.redirect_uris[0]
-                .absolute()
-                .expect("a seeded absolute redirect")
-                .as_str(),
+            mwa.redirect_uris[0].as_str(),
             "https://mitre.github.io/smart-on-fhir-demo/index.html",
         );
         assert_eq!(
@@ -365,25 +352,18 @@ mod tests {
             ],
         );
 
-        // `web-trace-app` (the Web Trace viewer) pins three decisions across its
-        // seed (`0005`) and the rename (`0006`): the **app-relative** redirect,
-        // kept because a self-hosted origin differs per launch (loopback vs
-        // tunnel) and isn't known at seed time; the **absolute** published-site
-        // redirect the app now actually launches from as a cloud app (a cloud
-        // app has no self-hosted row for the relative form to resolve against);
-        // and a read-only `system/` resource scope, because trace
+        // `web-trace-app` (the Web Trace viewer) pins two decisions across its
+        // seed (`0005`) and the rename (`0006`): the **absolute** published-site
+        // redirect the app launches from as a cloud app, and a read-only
+        // `system/` resource scope, because trace
         // `DocumentReference`s carry no `subject` and so aren't reachable through
         // patient context.
         let web_trace = store.client_by_id("web-trace-app").unwrap().unwrap();
         assert_eq!(
             web_trace.redirect_uris,
             vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    "https://wildflowerhealth.io/web-trace-app/"
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
+                url::Url::parse("https://wildflowerhealth.io/web-trace-app/")
+                    .expect("a valid absolute redirect")
             ],
         );
         assert_eq!(
@@ -409,19 +389,14 @@ mod tests {
             );
         }
 
-        // `medications-app` keeps its app-relative entry (for the debug-only
-        // self-hosted dev row) and gains the absolute published-site redirect it
+        // `medications-app` carries the absolute published-site redirect it
         // launches from as a cloud app.
         let medications = store.client_by_id("medications-app").unwrap().unwrap();
         assert_eq!(
             medications.redirect_uris,
             vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    "https://wildflowerhealth.io/medications-app/"
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
+                url::Url::parse("https://wildflowerhealth.io/medications-app/")
+                    .expect("a valid absolute redirect")
             ],
         );
         // Its scopes are `system/` reads only, with no `launch/patient`: the app
@@ -454,11 +429,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             docs.redirect_uris,
-            vec![RegisteredRedirectUri::Absolute(
-                "https://wildflowerhealth.io/wildflower-server-docs/"
-                    .parse()
-                    .expect("a valid absolute redirect"),
-            )],
+            vec![
+                url::Url::parse("https://wildflowerhealth.io/wildflower-server-docs/")
+                    .expect("a valid absolute redirect")
+            ],
         );
         assert_eq!(
             docs.allowed_scopes,
@@ -512,17 +486,13 @@ mod tests {
         // consent prompt, so this single entry is the published address only.
         assert_eq!(
             web_client.redirect_uris,
-            vec![RegisteredRedirectUri::Absolute(
-                "https://wildflowerhealth.io/app/"
-                    .parse()
-                    .expect("a valid absolute redirect"),
-            )],
+            vec![url::Url::parse("https://wildflowerhealth.io/app/")
+                .expect("a valid absolute redirect")],
         );
 
         // `importer-app` (the Importer) is a cloud client like `medications-app`
-        // and `web-trace-app`: the app-relative `"/"` for the debug-only
-        // self-hosted dev row, plus the absolute published-site redirect it
-        // launches from as a cloud app (seeded by `0008`). It is the one seeded
+        // and `web-trace-app`: the absolute published-site redirect it launches
+        // from as a cloud app (seeded by `0008`). It is the one seeded
         // SMART client whose scopes **carry writes**: importing persists what a
         // captured session contained. The set `0008` seeded was widened by
         // `0009_widen_importer_client_write_scopes` to add `Practitioner`,
@@ -538,14 +508,8 @@ mod tests {
         let importer = store.client_by_id("importer-app").unwrap().unwrap();
         assert_eq!(
             importer.redirect_uris,
-            vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    "https://wildflowerhealth.io/importer-app/"
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
-            ],
+            vec![url::Url::parse("https://wildflowerhealth.io/importer-app/")
+                .expect("a valid absolute redirect")],
         );
         assert_eq!(
             importer.allowed_scopes,
@@ -577,12 +541,8 @@ mod tests {
         assert_eq!(
             ohif.redirect_uris,
             vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    "https://wildflowerhealth.io/ohif-viewer/fhir-viewer"
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
+                url::Url::parse("https://wildflowerhealth.io/ohif-viewer/fhir-viewer")
+                    .expect("a valid absolute redirect")
             ],
         );
         assert_eq!(
@@ -605,11 +565,10 @@ mod tests {
         let pebble = store.client_by_id("fhir-sync-pebble").unwrap().unwrap();
         assert_eq!(
             pebble.redirect_uris,
-            vec![RegisteredRedirectUri::Absolute(
-                "https://wildflowerhealth.io/fhir-sync-pebble/"
-                    .parse()
-                    .expect("a valid absolute redirect"),
-            )],
+            vec![
+                url::Url::parse("https://wildflowerhealth.io/fhir-sync-pebble/")
+                    .expect("a valid absolute redirect")
+            ],
         );
         assert_eq!(
             pebble.allowed_scopes,
@@ -632,14 +591,8 @@ mod tests {
         let lifting = store.client_by_id("lifting-app").unwrap().unwrap();
         assert_eq!(
             lifting.redirect_uris,
-            vec![
-                RegisteredRedirectUri::AppRelative("/".to_owned()),
-                RegisteredRedirectUri::Absolute(
-                    "https://wildflowerhealth.io/lifting-app/"
-                        .parse()
-                        .expect("a valid absolute redirect"),
-                ),
-            ],
+            vec![url::Url::parse("https://wildflowerhealth.io/lifting-app/")
+                .expect("a valid absolute redirect")],
         );
         assert_eq!(
             lifting.allowed_scopes,

@@ -16,20 +16,16 @@
 pub enum AppsError {
     /// 404 — no app has this id.
     NotFound { id: String },
-    /// 409 — the app exists but isn't editable/removable: a system app, or a
-    /// seeded self-hosted app. (A per-kind path given an id of another kind is a
+    /// 409 — the app exists but isn't editable/removable: a system app. (A
+    /// per-kind path given an id of another kind is a
     /// `404` instead — the kind mismatch can't be expressed.)
     NotEditable { id: String },
-    /// 400 — the submitted URL (or self-hosted launch path) failed the write-side
-    /// validator.
+    /// 400 — the submitted URL failed the write-side validator.
     InvalidUrl { message: String },
     /// 400 — the submitted name was empty / unusable.
     InvalidName { message: String },
-    /// 400 — the uploaded bundle couldn't be extracted (not a zip, over the
-    /// size/entry caps, or a path-traversal entry).
-    InvalidZip { message: String },
-    /// 503 — the launch can't resolve a reachable target (forwarded launch with
-    /// no public host, or a `requires_tunnel` app while the tunnel is down).
+    /// 503 — the launch can't resolve a reachable target (a `requires_tunnel` app
+    /// while the tunnel is down).
     Unavailable { reason: String },
     /// 400 — the `PUT /home-screen` body wasn't an exact permutation of the
     /// registry (missing / duplicated / unknown id).
@@ -57,7 +53,6 @@ impl std::fmt::Display for AppsError {
             AppsError::NotEditable { id } => write!(f, "app {id} is not editable"),
             AppsError::InvalidUrl { message } => write!(f, "invalid url: {message}"),
             AppsError::InvalidName { message } => write!(f, "invalid name: {message}"),
-            AppsError::InvalidZip { message } => write!(f, "invalid zip: {message}"),
             AppsError::Unavailable { reason } => write!(f, "launch unavailable: {reason}"),
             AppsError::InvalidHomeScreen { message } => write!(f, "invalid home screen: {message}"),
             AppsError::InsufficientScope { missing_scopes } => {

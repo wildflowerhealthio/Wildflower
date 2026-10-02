@@ -10,9 +10,8 @@
 //! Each capability is the **fixed-scope** flavour: one static
 //! `wildflower/Apps.<perm>` scope gates the whole capability, checked by the
 //! [`Scoped`](scope_capabilities_rust::Scoped) extractor before `build` runs. So the
-//! structs are generic over the store port (and, where they touch the self-hosted
-//! installer, over that port too) and hold their dependencies **lifted from the
-//! state** — never an `Arc<AppsState>` they reach into. The concrete
+//! structs are generic over the store port and hold their dependencies **lifted
+//! from the state** — never an `Arc<AppsState>` they reach into. The concrete
 //! [`FixedScopeCapability`](scope_capabilities_rust::FixedScopeCapability) bindings
 //! that name the `SqliteAppsStore` adapter and build a capability from the router
 //! state live beside the state in [`crate::live_bindings`], so `domain/` stays
@@ -185,7 +184,7 @@ mod tests {
             checked += 1;
         }
         assert!(
-            checked >= 8,
+            checked >= 7,
             "only {checked} handler files enumerated — did src/http/routes move?",
         );
     }

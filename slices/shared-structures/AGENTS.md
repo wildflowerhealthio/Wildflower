@@ -9,7 +9,7 @@ Cross-slice utilities: the phantom-id HttpApi composition helper every slice use
 
 ## Traps
 
-- This slice has the most adapters of any (`-core`, `-react`, `-rust`, `-server-rust`, `-tauri-rust`) — keep the layering rule in mind: adapters import `-core`, never the reverse.
+- This slice has the most adapters of any (`-core`, `-react`, `-rust`, `-tauri-rust`) — keep the layering rule in mind: adapters import `-core`, never the reverse.
 
 ## References
 

@@ -61,7 +61,6 @@ mod source_guards {
             ".store",
             ".revocation_store",
             ".first_party_client_id",
-            ".self_hosted_redirects",
             ".active_pending_consent_sender",
             ".loopback_base_url",
             ".loopback_consent_prompt",

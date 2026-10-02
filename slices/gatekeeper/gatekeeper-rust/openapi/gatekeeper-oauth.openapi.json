@@ -519,7 +519,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Absolute URLs, or app-relative paths (a leading `/`) for self-hosted apps."
+            "description": "Absolute redirect URLs, matched exactly at `/oauth/authorize`."
           },
           "allowedScopes": {
             "type": "array",

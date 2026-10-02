@@ -11,7 +11,7 @@
 //!    (`persistence_rust::DieselPool`) onto the shared database file, and its
 //!    queries.
 //!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
-//!    dials the self-hosted relay.
+//!    dials the Wildflower relay.
 //!  - [`http`] — the `/tunnel` wire contract.
 //!
 //! Settings live in `SQLite` and are API-controlled (`PUT /tunnel`, a

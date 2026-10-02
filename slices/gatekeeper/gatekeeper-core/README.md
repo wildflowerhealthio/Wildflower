@@ -187,9 +187,8 @@ can, because its sign-in is reachable only from that root.
 
 `route` is resolved against the origin first, so a spelling that escapes it —
 `//evil.test/home`, or the `/\evil.test` that `URL` folds into it — yields
-`undefined` rather than a URI pointing elsewhere (the same origin-equality guard
-`gatekeeper-rust` applies to an app-relative allowlist entry) before its path is
-re-rooted under `basePath`. The hosted owner UI (`apps/wildflower-react`'s
+`undefined` rather than a URI pointing elsewhere, before its path is re-rooted
+under `basePath`. The hosted owner UI (`apps/wildflower-react`'s
 `main-web`) is the caller; the server-docs console still uses the directory form.
 
 `insecureTargetReason` in `smart-discovery.ts` states the same scheme rule about
@@ -207,7 +206,7 @@ page drive a desktop host.
 ### Not the other SMART client
 
 This is **not** the fhirclient-based standalone launch in
-`slices/emr/fhir-r4-react/src/smart/*`, which the self-hosted React apps use.
+`slices/emr/fhir-r4-react/src/smart/*`, which the React SMART apps use.
 The two share `normalizeServerUrl` — this package owns the one implementation
 and `fhir-r4-react` re-exports it — but nothing else: the launch here is
 hand-rolled and Effect-native, and the one there delegates to `fhirclient`.

@@ -29,8 +29,8 @@ pub(crate) struct AppNotFoundBody {
 }
 
 /// Wire shape for `AppNotEditable` (409) — the app exists but isn't editable /
-/// removable: a system app, or a seeded self-hosted app. (A per-kind path given an
-/// id of another kind is a `404`, not a `409` — the mismatch can't be expressed.)
+/// removable: a system app. (A per-kind path given an id of another kind is a
+/// `404`, not a `409` — the mismatch can't be expressed.)
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AppNotEditableBody {
     pub(crate) error: &'static str,
@@ -38,9 +38,8 @@ pub(crate) struct AppNotEditableBody {
 }
 
 /// Wire shape for a 400 carrying a discriminant + human-readable reason. Reused
-/// for `InvalidUrl` (a bad app URL / launch path), `InvalidName` (an empty name),
-/// and `InvalidZip` (an unusable uploaded bundle) — all write-side field
-/// validations the client renders inline. The `error` discriminant lets a client
+/// for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name) — both
+/// write-side field validations the client renders inline. The `error` discriminant lets a client
 /// tell them apart.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct InvalidFieldBody {
@@ -90,7 +89,6 @@ impl IntoResponse for AppsError {
                 .into_response(),
             AppsError::InvalidUrl { message } => invalid_field("InvalidUrl", message),
             AppsError::InvalidName { message } => invalid_field("InvalidName", message),
-            AppsError::InvalidZip { message } => invalid_field("InvalidZip", message),
             AppsError::Unavailable { reason } => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(LaunchUnavailableBody {
@@ -117,7 +115,7 @@ impl IntoResponse for AppsError {
     }
 }
 
-/// The shared 400 body render for the three field-validation discriminants.
+/// The shared 400 body render for the field-validation discriminants.
 fn invalid_field(error: &'static str, message: String) -> Response {
     (
         StatusCode::BAD_REQUEST,

@@ -62,13 +62,6 @@ pub mod health_check;
 #[cfg(feature = "served-origin")]
 pub mod served_origin;
 
-/// The `<id>.<public_host>` subdomain shape shared by the launch-redirect
-/// producer and the subdomain-dispatch consumer (see the module and
-/// `docs/Origins/Explanation.md`). Behind the `subdomain-url` feature; pure
-/// string code, no extra deps.
-#[cfg(feature = "subdomain-url")]
-pub mod subdomain_host;
-
 /// The diesel `JsonText` SQLite mapping (a `serde_json::Value` field stored in a
 /// JSON TEXT column), shared by the diesel-backed slices. Behind the
 /// `diesel-json-text` feature so only diesel-persisting `-rust` slices pull

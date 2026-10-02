@@ -56,7 +56,7 @@ pub struct AppRegistration {
     #[schema(rename = "isSmart", value_type = bool)]
     pub client_id: Option<String>,
     /// Whether a launch must bring the tunnel up first (a launch-readiness pill).
-    /// `false` for system / self-hosted; meaningful only for cloud apps.
+    /// `false` for system apps; meaningful only for cloud apps.
     pub requires_tunnel: bool,
 }
 

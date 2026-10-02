@@ -1,5 +1,5 @@
 //! [`CommonAppConfig`] — the interface every concrete per-kind configuration
-//! (`CloudAppConfiguration` / `SelfHostedAppConfiguration` / `SystemAppConfiguration`)
+//! (`CloudAppConfiguration` / `SystemAppConfiguration`)
 //! implements: the two facts that are common across the kinds but computed
 //! differently per kind.
 //!
@@ -8,8 +8,7 @@
 //!    The [`AppConfiguration`](super::AppConfiguration) union's `kind()` reads it off
 //!    the active variant.
 //!  - [`is_removable`](CommonAppConfig::is_removable) — may the owner delete this app
-//!    through the admin surface? Cloud: yes; self-hosted: only when not `seeded`;
-//!    system: no.
+//!    through the admin surface? Cloud: yes; system: no.
 //!
 //! Deliberately narrow: the concrete configs stay plain data read directly at the
 //! wire seam, `is_smart` lives on the shared

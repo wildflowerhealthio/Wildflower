@@ -12,7 +12,6 @@ use crate::domain::capabilities::{ApproveOAuthConsentInput, Scoped};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::ConsentResult;
-use crate::http::ServedOrigin;
 use crate::live_bindings::LiveConsentDecider;
 
 /// Body posted by the Owner UI to approve an authorization-code consent prompt.
@@ -52,7 +51,6 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 
 async fn handle_approve_oauth_consent(
     consents: Scoped<LiveConsentDecider>,
-    origin: ServedOrigin,
     Path(id): Path<String>,
     Json(body): Json<ApproveOAuthConsentBody>,
 ) -> Result<Json<ConsentResult>, GatekeeperError> {
@@ -65,7 +63,6 @@ async fn handle_approve_oauth_consent(
         },
         generate_authorization_code,
         Utc::now(),
-        &origin,
     )?;
     Ok(Json(outcome.into()))
 }

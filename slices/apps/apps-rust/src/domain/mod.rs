@@ -1,8 +1,8 @@
 //! Apps domain types. [`AppRegistration`] is the authoritative `app_registrations`
 //! row (the shared catalogue facts + placement) — both the diesel row and the
 //! uniform `GET /apps` wire item. The per-kind configuration types
-//! ([`CloudAppConfiguration`] / [`SelfHostedAppConfiguration`] /
-//! [`SystemAppConfiguration`]) each hold their table's payload; a whole app is a
+//! ([`CloudAppConfiguration`] / [`SystemAppConfiguration`]) each hold their
+//! table's payload; a whole app is a
 //! `(AppRegistration, …Configuration)` pair, and [`AppConfiguration`] is the
 //! configuration-of-unknown-kind a `find_app` read returns beside its registration.
 //! There is no "combined app" type: the two halves are composed directly as a
@@ -14,7 +14,7 @@
 //! adapter lives in [`crate::db`]) and the scope-gated [`capabilities`] the HTTP
 //! handlers acquire complete the ports-and-adapters seam; each capability owns its
 //! operation's store logic (synthesizing the `(registration, configuration)` a
-//! create/replace persists, gating on kind + seeded, mapping the store's primitive
+//! create/replace persists, gating on kind, mapping the store's primitive
 //! signals onto [`AppsError`]) — including the cross-kind `(registration,
 //! configuration)` read, which each capability inlines as `find_app` + `NotFound`
 //! (the launch route inlines the same shape; there is no shared cross-kind read
@@ -33,10 +33,8 @@ pub(crate) mod capabilities;
 mod cloud_app_configuration;
 mod common_app_config;
 mod kind;
-mod self_hosted_app_configuration;
-mod self_hosted_installer;
 mod system_app_configuration;
-// The in-memory `FakeAppsStore` / `FakeInstaller` shared by the scope-gated
+// The in-memory `FakeAppsStore` shared by the scope-gated
 // capability tests and the residual `actions` validator tests. Lives at the domain
 // root (not under `actions`) since it's reused above that layer — the collector
 // `domain::test_fake` placement.
@@ -56,9 +54,4 @@ pub use capabilities::grantable_apps_scopes;
 pub use cloud_app_configuration::{CloudAppConfiguration, CloudInsertError};
 pub use common_app_config::CommonAppConfig;
 pub use kind::{AppKind, AppKindParseError};
-pub(crate) use self_hosted_app_configuration::{lowest_free_port, MIN_UPLOAD_PORT};
-pub use self_hosted_app_configuration::{
-    SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload,
-};
-pub(crate) use self_hosted_installer::{SelfHostedInstaller, StagedBundle};
 pub use system_app_configuration::SystemAppConfiguration;

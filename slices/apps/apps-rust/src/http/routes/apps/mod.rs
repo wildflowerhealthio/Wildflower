@@ -3,7 +3,6 @@
 //! (`DELETE /apps/{id}` — unified across kinds, kind resolved via the
 //! registration). The per-kind detail/create/replace routes live off the root
 //! under [`cloud_apps`](crate::http::routes::cloud_apps) /
-//! [`self_hosted_apps`](crate::http::routes::self_hosted_apps) /
 //! [`system_apps`](crate::http::routes::system_apps). Each file exposes a
 //! `#[utoipa::path]`-annotated handler; the route table in
 //! [`crate::http::routes`] wires them into the gated + launch routers.

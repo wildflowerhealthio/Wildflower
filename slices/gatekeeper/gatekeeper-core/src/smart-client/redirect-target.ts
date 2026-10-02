@@ -81,10 +81,8 @@ const redirectUriForPage = (href: string): string | undefined => {
  *
  * `route` is first resolved against the **origin**, so a `route` that escapes it
  * (`//evil.test/home`, or a `/\evil.test` that `URL` folds into that form)
- * yields `undefined` rather than a URI pointing somewhere else — the same
- * origin-equality guard `gatekeeper-rust` applies to an app-relative allowlist
- * entry in `domain/client_redirect.rs` — before its path is re-rooted under
- * `basePath`.
+ * yields `undefined` rather than a URI pointing somewhere else, before its path
+ * is re-rooted under `basePath`.
  */
 const redirectUriForRoute = (href: string, route: string, basePath = '/'): string | undefined => {
   const here = returnableUrl(href)

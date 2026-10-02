@@ -31,12 +31,14 @@ use crate::domain::capabilities::access::consents::{
     approve_oauth_consent, deny_oauth_consent, load_pending_code_request, ApprovalContext,
     ApprovalMemory, ApproveOAuthConsentInput, ConsentOutcome,
 };
-use crate::domain::client_registration::{ClientRegistrationVerdict, RegistrationClassifier};
+use crate::domain::client_registration::{
+    classify_registration, ClientRegistrationVerdict, PresentedClientRegistration,
+};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::ports::{
     LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,
-    LoopbackRegistrationNotice, PendingConsentPublisher, SelfHostedRedirectResolver,
+    LoopbackRegistrationNotice, PendingConsentPublisher,
 };
 
 /// The `client_id` the hosted owner UI presents — the one client whose
@@ -80,21 +82,18 @@ pub(crate) struct LoopbackOwnerApprover<S: GatekeeperStore> {
     publisher: Arc<dyn PendingConsentPublisher>,
     prompt: Arc<dyn LoopbackConsentPrompt>,
     host_owner_grant: Grant,
-    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
     first_party_client_id: Arc<str>,
 }
 
 impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
     /// Build the approver over the store, the popup republish port, the host's
-    /// dialog, the host Owner's grant (the approving authority), the
-    /// self-hosted redirect seam, and the first-party `client_id` — all lifted
-    /// from the state.
+    /// dialog, the host Owner's grant (the approving authority), and the
+    /// first-party `client_id` — all lifted from the state.
     pub(crate) fn new(
         store: S,
         publisher: Arc<dyn PendingConsentPublisher>,
         prompt: Arc<dyn LoopbackConsentPrompt>,
         host_owner_grant: Grant,
-        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
         first_party_client_id: Arc<str>,
     ) -> Self {
         LoopbackOwnerApprover {
@@ -102,15 +101,13 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
             publisher,
             prompt,
             host_owner_grant,
-            self_hosted_redirects,
             first_party_client_id,
         }
     }
 
     /// What the dialog shows for the parked request `request_id`, or `None`
     /// when it is no longer a pending code-flow request (decided or expired —
-    /// nothing to ask). `served_origin` is the origin `/authorize` was served
-    /// on, so the registration notice agrees with the Owner UI's.
+    /// nothing to ask).
     ///
     /// # Errors
     ///
@@ -118,7 +115,6 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
     fn consent_request(
         &self,
         request_id: &str,
-        served_origin: &str,
     ) -> Result<Option<LoopbackConsentRequest>, GatekeeperError> {
         let pending_request = match load_pending_code_request(&self.store, request_id) {
             Ok(pending_request) => pending_request,
@@ -128,12 +124,11 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
         let request = pending_request.request();
         let requested_redirect_uri = pending_request.redirect_uri();
         let maybe_existing_client = self.store.client_by_id(&request.client_id)?;
-        let registration_verdict = self.classifier(served_origin).classify(
-            &request.client_id,
-            maybe_existing_client.as_ref(),
-            requested_redirect_uri,
-            &request.requested_scopes,
-        );
+        let registration_verdict = classify_registration(&PresentedClientRegistration {
+            maybe_existing_client: maybe_existing_client.as_ref(),
+            redirect_uri: requested_redirect_uri,
+            scopes: &request.requested_scopes,
+        });
         Ok(Some(LoopbackConsentRequest {
             request_id: request.id.clone(),
             client_id: request.client_id.clone(),
@@ -166,7 +161,6 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
         &self,
         request_id: &str,
         answer: LoopbackConsentAnswer,
-        served_origin: &str,
         generate_code: impl FnOnce() -> String,
         now: DateTime<Utc>,
     ) -> Result<LoopbackDecision, GatekeeperError> {
@@ -176,9 +170,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
                 deny_oauth_consent(&self.store, self.publisher.as_ref(), request_id)
                     .map(|()| LoopbackDecision::Denied)
             }
-            LoopbackConsentAnswer::Approve => {
-                self.approve(request_id, served_origin, generate_code, now)
-            }
+            LoopbackConsentAnswer::Approve => self.approve(request_id, generate_code, now),
         };
         match outcome {
             Err(GatekeeperError::OAuthConsentNotFound { .. }) => {
@@ -192,7 +184,6 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
     fn approve(
         &self,
         request_id: &str,
-        served_origin: &str,
         generate_code: impl FnOnce() -> String,
         now: DateTime<Utc>,
     ) -> Result<LoopbackDecision, GatekeeperError> {
@@ -215,7 +206,6 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
             generate_code,
             &ApprovalContext {
                 approver_grant: &self.host_owner_grant,
-                classifier: &self.classifier(served_origin),
                 first_party_client_id: &self.first_party_client_id,
                 memory: ApprovalMemory::AskEveryTime,
                 now,
@@ -225,13 +215,6 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
             ConsentOutcome::Approved { .. } => LoopbackDecision::Approved,
             ConsentOutcome::Denied => LoopbackDecision::Denied,
         })
-    }
-
-    fn classifier<'a>(&'a self, served_origin: &'a str) -> RegistrationClassifier<'a> {
-        RegistrationClassifier {
-            self_hosted_redirects: self.self_hosted_redirects.as_ref(),
-            served_origin,
-        }
     }
 }
 
@@ -253,12 +236,11 @@ impl<S: GatekeeperStore + Send + Sync + 'static> LoopbackOwnerApprover<S> {
     pub(crate) async fn ask_and_decide(
         self: Arc<Self>,
         request_id: String,
-        served_origin: String,
         generate_code: fn() -> String,
     ) -> Result<LoopbackDecision, GatekeeperError> {
-        let (id, origin) = (request_id.clone(), served_origin.clone());
+        let id = request_id.clone();
         let Some(consent_request) = self
-            .on_blocking_worker(move |approver| approver.consent_request(&id, &origin))
+            .on_blocking_worker(move |approver| approver.consent_request(&id))
             .await??
         else {
             return Ok(LoopbackDecision::AlreadyDecided);
@@ -271,13 +253,7 @@ impl<S: GatekeeperStore + Send + Sync + 'static> LoopbackOwnerApprover<S> {
             .await
             .unwrap_or(Ok(LoopbackConsentAnswer::Reject))?;
         self.on_blocking_worker(move |approver| {
-            approver.decide(
-                &request_id,
-                answer,
-                &served_origin,
-                generate_code,
-                Utc::now(),
-            )
+            approver.decide(&request_id, answer, generate_code, Utc::now())
         })
         .await?
     }
@@ -322,12 +298,7 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
-    use crate::domain::client::RegisteredRedirectUri;
     use crate::domain::test_fake::{client, code_request, FakeGatekeeperStore, RecordingPublisher};
-    use crate::ports::NoSelfHostedRedirects;
-
-    /// The loopback served origin every test decides on.
-    const SERVED_ORIGIN: &str = "http://127.0.0.1";
 
     /// A dialog that always gives the same answer.
     struct FixedAnswer(LoopbackConsentAnswer);
@@ -364,7 +335,6 @@ mod tests {
             Arc::new(RecordingPublisher::default()),
             Arc::new(FixedAnswer(answer)),
             Grant::parse(["wildflower/*.cruds"]),
-            Arc::new(NoSelfHostedRedirects),
             crate::FIRST_PARTY_CLIENT_ID.into(),
         )
     }
@@ -380,13 +350,7 @@ mod tests {
         answer: LoopbackConsentAnswer,
     ) -> LoopbackDecision {
         approver
-            .decide(
-                "req-1",
-                answer,
-                SERVED_ORIGIN,
-                || "the-code".to_owned(),
-                Utc::now(),
-            )
+            .decide("req-1", answer, || "the-code".to_owned(), Utc::now())
             .expect("decides")
     }
 
@@ -464,10 +428,7 @@ mod tests {
         let request = hosted_ui_request("req-1", &["wildflower/*.cruds"]);
         let approver = approver(store_with(&request), LoopbackConsentAnswer::Abstain);
         assert_eq!(
-            approver
-                .consent_request("req-1", SERVED_ORIGIN)
-                .unwrap()
-                .expect("pending"),
+            approver.consent_request("req-1").unwrap().expect("pending"),
             LoopbackConsentRequest {
                 request_id: "req-1".to_owned(),
                 client_id: HOSTED_OWNER_UI_CLIENT_ID.to_owned(),
@@ -479,14 +440,8 @@ mod tests {
         );
 
         approver.store.deny_authorization_request("req-1").unwrap();
-        assert_eq!(
-            approver.consent_request("req-1", SERVED_ORIGIN).unwrap(),
-            None
-        );
-        assert_eq!(
-            approver.consent_request("unknown", SERVED_ORIGIN).unwrap(),
-            None
-        );
+        assert_eq!(approver.consent_request("req-1").unwrap(), None);
+        assert_eq!(approver.consent_request("unknown").unwrap(), None);
     }
 
     /// Approving issues a code for the requested scopes the host owner grant
@@ -528,9 +483,7 @@ mod tests {
             .expect("client registered");
         assert_eq!(
             registered.redirect_uris,
-            [RegisteredRedirectUri::Absolute(
-                Url::parse("https://example.com/cb").unwrap()
-            )]
+            [Url::parse("https://example.com/cb").unwrap()]
         );
         assert!(approver
             .store
@@ -664,10 +617,7 @@ mod tests {
     fn ask_returns_the_dialogs_answer() {
         let request = hosted_ui_request("req-1", &["wildflower/*.cruds"]);
         let approver = approver(store_with(&request), LoopbackConsentAnswer::Reject);
-        let consent_request = approver
-            .consent_request("req-1", SERVED_ORIGIN)
-            .unwrap()
-            .expect("pending");
+        let consent_request = approver.consent_request("req-1").unwrap().expect("pending");
         assert_eq!(
             approver.ask(&consent_request),
             LoopbackConsentAnswer::Reject

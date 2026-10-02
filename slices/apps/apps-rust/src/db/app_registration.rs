@@ -151,7 +151,7 @@ mod tests {
     // The port trait is in scope so the concrete adapter's methods resolve.
     use crate::domain::{AppKind, AppsStore};
 
-    /// The migration seeds the full default set: 12 registrations in display order
+    /// The migrations seed the full default set: 11 registrations in display order
     /// with the right kind.
     #[test]
     fn migration_seeds_the_default_registry() {
@@ -161,7 +161,6 @@ mod tests {
         assert_eq!(
             ids,
             vec![
-                "patient-browser",
                 "api-view",
                 "api-docs",
                 "growth-chart",
@@ -198,13 +197,12 @@ mod tests {
             assert_eq!(reg.kind, AppKind::Cloud);
             assert!(reg.requires_tunnel, "{cloud} requires the tunnel");
         }
-        for local in ["patient-browser", "api-view", "api-docs"] {
+        for local in ["api-view", "api-docs"] {
             let reg = by_id(local);
             assert!(reg.local_only, "{local} must be local-only");
             assert!(!reg.is_smart(), "{local} must not be smart");
             assert!(!reg.requires_tunnel, "{local} must not require the tunnel");
         }
-        assert_eq!(by_id("patient-browser").kind, AppKind::SelfHosted);
         assert_eq!(by_id("api-view").kind, AppKind::System);
     }
 
@@ -220,7 +218,6 @@ mod tests {
             ("growth-chart".to_owned(), true),
             ("api-docs".to_owned(), false),
             ("api-view".to_owned(), true),
-            ("patient-browser".to_owned(), true),
             ("medications-app".to_owned(), true),
             ("web-trace-app".to_owned(), true),
             ("web-server-docs".to_owned(), true),
@@ -275,7 +272,6 @@ mod tests {
         assert!(store.replace_placements(&subset).unwrap().is_none());
 
         let dup = vec![
-            ("patient-browser".to_owned(), true),
             ("api-view".to_owned(), true),
             ("api-docs".to_owned(), true),
             ("growth-chart".to_owned(), true),

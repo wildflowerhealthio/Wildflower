@@ -50,7 +50,7 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// app's client — one migration per app, matching the per-app seed migrations in
 /// the apps slice. `0006` renames those two (`wildflower-medication` →
 /// `medications-app`, `wildflower-web-trace` → `web-trace-app`, keeping the
-/// `client_id == app id` invariant the redirect resolver needs) and adds their
+/// `client_id == app id` invariant) and adds their
 /// published-site redirect URI now that they launch as cloud apps; `0007` seeds
 /// the server-docs API console's client; `0008` the Importer's; `0009` (two
 /// migrations share the prefix) the OHIF imaging viewer's and the widening of
@@ -62,7 +62,8 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// FHIR Sync for Pebble's client and `0018` widens its Observation scope;
 /// `0019` seeds Lifting's; and `0020` drops `launch/patient` from the
 /// Medications and Lifting clients, which pick the patient in the app, giving
-/// Medications `system/Patient.rs` for its picker. Because each migration runs only once
+/// Medications `system/Patient.rs` for its picker; and `0021` strips every path
+/// entry from `redirect_uris`, leaving absolute URLs only. Because each migration runs only once
 /// per database, an upgrade neither re-drops nor re-seeds.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -554,8 +555,12 @@ mod tests {
             "0009 must stay exactly as it shipped — an install that ran it sees no edit",
         );
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0010");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0010"),
+        )
+        .expect("upgrade through 0010");
 
         let upgraded: Vec<Name> =
             diesel::sql_query("SELECT redirect_uris AS name FROM clients WHERE client_id = ?")
@@ -652,8 +657,12 @@ mod tests {
             "the OHIF seed was skipped",
         );
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0016");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0016"),
+        )
+        .expect("upgrade through 0016");
 
         assert_eq!(
             column_for_client(&mut conn, "redirect_uris", "ohif-viewer")[0].name,
@@ -844,6 +853,99 @@ mod tests {
             MEDICATIONS_AT_0019
         );
         assert_eq!(allowed_scopes_of(&mut conn, "lifting-app"), LIFTING_AT_0019);
+    }
+
+    /// An install already at `0020` — each seeded first-party client holding a
+    /// `"/"` path entry ahead of its absolute redirect — is moved by `0021` onto
+    /// absolute entries only: every path entry is gone, the absolute ones keep
+    /// their order, a row with no path entry is left untouched, and every row
+    /// decodes as a [`Client`](crate::domain::client::Client).
+    #[test]
+    fn an_install_already_at_0020_drops_path_entries_from_redirect_uris() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0020"),
+        )
+        .expect("migrate to 0020");
+        let redirect_uris_of = |conn: &mut SqliteConnection, client_id: &str| {
+            column_for_client(conn, "redirect_uris", client_id)[0]
+                .name
+                .clone()
+        };
+        for (client_id, at_0020) in [
+            (
+                "medications-app",
+                r#"["/","https://wildflowerhealth.io/medications-app/"]"#,
+            ),
+            (
+                "web-trace-app",
+                r#"["/","https://wildflowerhealth.io/web-trace-app/"]"#,
+            ),
+            (
+                "importer-app",
+                r#"["/","https://wildflowerhealth.io/importer-app/"]"#,
+            ),
+            (
+                "ohif-viewer",
+                r#"["/","https://wildflowerhealth.io/ohif-viewer/fhir-viewer"]"#,
+            ),
+            (
+                "lifting-app",
+                r#"["/","https://wildflowerhealth.io/lifting-app/"]"#,
+            ),
+        ] {
+            assert_eq!(redirect_uris_of(&mut conn, client_id), at_0020);
+        }
+        // A path entry between two absolute ones, so the rebuilt array must
+        // keep the absolute entries in their original order.
+        diesel::sql_query(
+            "UPDATE clients SET redirect_uris = \
+             '[\"https://b.example/cb\",\"/nested/\",\"https://a.example/cb\"]' \
+             WHERE client_id = 'web-trace-app'",
+        )
+        .execute(&mut conn)
+        .expect("plant an interleaved path entry");
+        let docs_at_0020 = redirect_uris_of(&mut conn, "wildflower-server-docs");
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0021");
+
+        for (client_id, after) in [
+            (
+                "medications-app",
+                r#"["https://wildflowerhealth.io/medications-app/"]"#,
+            ),
+            (
+                "web-trace-app",
+                r#"["https://b.example/cb","https://a.example/cb"]"#,
+            ),
+            (
+                "importer-app",
+                r#"["https://wildflowerhealth.io/importer-app/"]"#,
+            ),
+            (
+                "ohif-viewer",
+                r#"["https://wildflowerhealth.io/ohif-viewer/fhir-viewer"]"#,
+            ),
+            (
+                "lifting-app",
+                r#"["https://wildflowerhealth.io/lifting-app/"]"#,
+            ),
+        ] {
+            assert_eq!(redirect_uris_of(&mut conn, client_id), after);
+        }
+        assert_eq!(
+            redirect_uris_of(&mut conn, "wildflower-server-docs"),
+            docs_at_0020,
+            "a row with no path entry is left untouched",
+        );
+        let clients: Vec<crate::domain::client::Client> = crate::db::clients::clients::table
+            .select(crate::domain::client::Client::as_select())
+            .load(&mut conn)
+            .expect("every migrated row decodes as a Client");
+        assert!(!clients.is_empty());
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced

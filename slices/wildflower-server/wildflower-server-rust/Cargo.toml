@@ -50,10 +50,6 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
   # owner trust.
   "served-origin",
 ] }
-# The reverse proxy that dispatches inbound `<id>.<public-host>` forwarded
-# requests to each self-hosted app's loopback port, plus the static-hosts runner
-# the apps slice drives.
-shared-structures-server-rust = { path = "../../shared-structures/shared-structures-server-rust" }
 # Built once on the shared db and threaded into both gatekeeper and the FHIR
 # server so the auth gate and HFS read one revocation denylist/epoch store (#269).
 token-revocation-rust = { path = "../../gatekeeper/token-revocation-rust" }
