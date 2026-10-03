@@ -18,9 +18,11 @@
 //! fresh `for=<remote_addr>` element for this hop, and the `;host=…;proto=…`
 //! lands on that element. So the host and scheme we trust are always in the
 //! **last** forwarded-element — any client-supplied elements sit to its left.
-//! We read `host` and `proto` from that last element and ignore the rest (`for`
-//! / `by` included; trust is gated at the loopback socket, not derived from the
-//! header). Both `host` and `proto` are load-bearing: a `Forwarded` header
+//! We read `host` and `proto` from that last element and ignore the rest of the
+//! chain (trust is gated at the loopback socket, not derived from the header).
+//! The element's `for` is read too, by [`forwarded_client_address`], as the
+//! visitor's address the request log records; no trust derives from it. Both
+//! `host` and `proto` are load-bearing: a `Forwarded` header
 //! missing (or carrying an invalid) `host` **or** `proto` is rejected (the
 //! caller `500`s), never defaulted — the trusted front always emits both.
 //!
@@ -115,6 +117,25 @@ pub fn served_base_url_for(headers: &HeaderMap, loopback_base_url: &Url) -> Opti
 /// injection). `true` exactly when [`request_provenance`] is not `Some(Loopback)`.
 pub fn is_forwarded(headers: &HeaderMap) -> bool {
     headers.contains_key("forwarded")
+}
+
+/// The visitor's address the trusted front recorded: the `for` of the **last**
+/// forwarded-element, the hop the front appended itself, so it is trusted
+/// exactly as that element's `host` is. Any client-supplied `for` sits in an
+/// element to its left and is ignored.
+///
+/// `None` when the header is absent, the last element has no `for`, or the value
+/// isn't `host[:port]`-shaped (the same character allowlist as [`safe_host`];
+/// RFC 7239's obfuscated identifiers such as `unknown` or `_hidden` pass it). The
+/// quotes around an IPv6 `"[2001:db8::1]:4711"` are stripped.
+pub fn forwarded_client_address(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("forwarded")?
+        .to_str()
+        .ok()
+        .and_then(last_forwarded_element)
+        .and_then(|element| forwarded_param(element, "for"))
+        .and_then(safe_host)
 }
 
 /// The forwarded-element set by the proxy directly in front of us: the last
@@ -418,6 +439,33 @@ mod tests {
             request_provenance(&HeaderMap::new()),
             Some(RequestProvenance::Loopback),
         );
+    }
+
+    #[test]
+    fn the_client_address_is_the_last_element_s_for() {
+        // A client-supplied element to the left can't name the visitor.
+        let h = forwarded(
+            "for=203.0.113.9;host=spoof.example.com, for=192.0.2.1;host=real.example.com;proto=https",
+        );
+        assert_eq!(forwarded_client_address(&h), Some("192.0.2.1"));
+
+        let ipv6 = forwarded("for=\"[2001:db8::1]:4711\";host=demo.example.com;proto=https");
+        assert_eq!(forwarded_client_address(&ipv6), Some("[2001:db8::1]:4711"));
+    }
+
+    #[test]
+    fn the_client_address_is_none_without_a_usable_for() {
+        assert_eq!(forwarded_client_address(&HeaderMap::new()), None);
+        // Only the last element counts: a `for` further left doesn't stand in.
+        let h = forwarded("for=203.0.113.9, host=demo.example.com;proto=https");
+        assert_eq!(forwarded_client_address(&h), None);
+        for bad in ["for=", "for=a@b", "for=a/b", "for=\"a b\""] {
+            assert_eq!(
+                forwarded_client_address(&forwarded(bad)),
+                None,
+                "{bad:?} is not an address",
+            );
+        }
     }
 
     #[test]

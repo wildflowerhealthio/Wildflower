@@ -8,7 +8,8 @@
 //! call site.
 //!
 //! Also holds the canned response shapes the middleware produces directly
-//! (a logged 500 via [`internal_error`], a plain 401 via [`unauthorized`],
+//! (a logged 500 via [`internal_error`], a plain 401 via [`unauthorized`]
+//! stamped with its [`RequestRefusal`],
 //! the [`verify_error_response`] status mapping for token verification), and the
 //! local HTML error pages the `/oauth/authorize` endpoint renders for failures
 //! that may NOT be redirected back to the client (RFC 6749 §4.1.2.1 restricts
@@ -25,6 +26,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
+use shared_structures_rust::request_caller::RequestRefusal;
 use utoipa::ToSchema;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -33,16 +35,18 @@ use crate::domain::token::VerifyError;
 /// Map a token-[`VerifyError`] to its HTTP response, shared by the auth
 /// middlewares. Server-side failures (no keys configured, the key store can't
 /// be read, a configured key's material is corrupt) are operator problems, so
-/// they log and return 500; only a genuinely rejected token is a 401. Written
-/// as an exhaustive match so a new `VerifyError` variant forces a deliberate
-/// status choice rather than silently defaulting to 401.
+/// they log and return 500; only a genuinely rejected or revoked token is a
+/// 401, stamped with the matching [`RequestRefusal`]. Written as an exhaustive
+/// match so a new `VerifyError` variant forces a deliberate status choice
+/// rather than silently defaulting to 401.
 pub(crate) fn verify_error_response(context: &str, err: VerifyError) -> Response {
     match err {
         VerifyError::NoSigningKeysConfigured
         | VerifyError::KeyStoreUnavailable(_)
         | VerifyError::RevocationStoreUnavailable(_)
         | VerifyError::SigningKeyUnreadable(_) => internal_error(context, err),
-        VerifyError::TokenRejected | VerifyError::Revoked => unauthorized(),
+        VerifyError::TokenRejected => unauthorized(RequestRefusal::TokenRejected),
+        VerifyError::Revoked => unauthorized(RequestRefusal::Revoked),
     }
 }
 
@@ -69,9 +73,12 @@ pub(crate) fn internal_error(context: &str, err: impl std::fmt::Display) -> Resp
 pub(crate) use shared_structures_rust::http_errors::InternalError;
 
 /// Plain 401 used by the auth middleware when a request lacks a valid bearer
-/// token.
-pub(crate) fn unauthorized() -> Response {
-    (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
+/// token, stamped with `refusal` (why it lacks one) for the host's
+/// forwarded-request observer (see `shared_structures_rust::request_caller`).
+pub(crate) fn unauthorized(refusal: RequestRefusal) -> Response {
+    let mut response = (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    response.extensions_mut().insert(refusal);
+    response
 }
 
 /// A `403 Forbidden` carrying the rendered scopes the caller lacks. Two callers
@@ -293,6 +300,7 @@ mod tests {
     fn no_signing_keys_configured_maps_to_500() {
         let response = verify_error_response("test", VerifyError::NoSigningKeysConfigured);
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(stamped_refusal(&response), None, "a 500 is not a refusal");
     }
 
     #[test]
@@ -314,10 +322,18 @@ mod tests {
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
+    fn stamped_refusal(response: &Response) -> Option<RequestRefusal> {
+        response.extensions().get::<RequestRefusal>().copied()
+    }
+
     #[test]
     fn token_rejected_maps_to_401() {
         let response = verify_error_response("test", VerifyError::TokenRejected);
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            stamped_refusal(&response),
+            Some(RequestRefusal::TokenRejected)
+        );
     }
 
     #[test]
@@ -326,6 +342,7 @@ mod tests {
         // operator one → 401, same as a plain rejection.
         let response = verify_error_response("test", VerifyError::Revoked);
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(stamped_refusal(&response), Some(RequestRefusal::Revoked));
     }
 
     #[test]

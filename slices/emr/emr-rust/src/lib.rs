@@ -28,7 +28,8 @@ use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 pub use crate::config::EmrConfig;
 pub use crate::swappable_hfs::SwappableHfs;
 
-const FHIR_R4_PATH: &str = "/fhir-r4";
+/// The FHIR R4 base path [`setup_fhir_r4`]'s router mounts HFS under.
+pub const FHIR_R4_PATH: &str = "/fhir-r4";
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
 /// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router, the bare HFS

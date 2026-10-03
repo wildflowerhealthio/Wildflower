@@ -44,7 +44,7 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
   "health-check",
   # `served_base_url_for`: the unmatched-route 404 links back to the request's
   # served origin (see `src/http/not_found.rs`); `is_forwarded` for the loopback
-  # owner trust.
+  # owner trust; the forwarded-request report's client address and served host.
   "served-origin",
 ] }
 # Built once on the shared db and threaded into both gatekeeper and the FHIR
@@ -62,3 +62,5 @@ tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
 # `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.
 tower = { version = "0.5", features = ["util"] }
+# The forwarded-request path reducer's property test.
+proptest = "1"

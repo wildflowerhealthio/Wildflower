@@ -37,9 +37,10 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 - **The host watches the server through `ServerObservers`.** Host-owned senders
   that outlive any one server: the tunnel's liveness, copied by a task on the
   server's runtime, and each request the trusted front relayed through the
-  tunnel, reported by the outermost layer with the `RequestCaller` the
-  gatekeeper bearer gates stamped on the response. A full report channel drops
-  the report; it never delays a response.
+  tunnel, reported by the outermost layer as a `ForwardedRequest` record: the
+  visitor's address, the path reduced to its route, the status, and the
+  `RequestCaller` or `RequestRefusal` the gatekeeper bearer gates stamped on the
+  response. A full report channel drops the report; it never delays a response.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
   listener, not those tasks. `background-server-service` runs each server on a

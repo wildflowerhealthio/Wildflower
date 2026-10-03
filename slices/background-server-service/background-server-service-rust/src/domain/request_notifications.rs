@@ -210,8 +210,21 @@ mod tests {
         })
     }
 
+    /// A forwarded request from `caller`. The coalescer reads only the caller,
+    /// so the rest of the record is fixed.
     fn request(caller: Option<RequestCaller>) -> ForwardedRequest {
-        ForwardedRequest { caller }
+        ForwardedRequest {
+            received_at: std::time::SystemTime::UNIX_EPOCH,
+            client_address: Some("192.0.2.1".to_owned()),
+            served_host: Some("demo.example.com".to_owned()),
+            method: "GET".to_owned(),
+            reduced_path: "/fhir-r4/Patient".to_owned(),
+            status: 200,
+            response_bytes: None,
+            duration: Duration::ZERO,
+            caller,
+            refusal: None,
+        }
     }
 
     #[test]

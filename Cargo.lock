@@ -9186,6 +9186,7 @@ dependencies = [
  "gatekeeper-rust",
  "ohif-server-rust",
  "persistence-rust",
+ "proptest",
  "reqwest 0.12.28",
  "scopes-rust",
  "serde",
