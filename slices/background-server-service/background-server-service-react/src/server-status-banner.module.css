@@ -1,38 +1,119 @@
 /*
  * The strip the app shell renders above every route while the server isn't
- * running. Starting is a calm neutral strip; a stop takes the warning tone the
- * `StatusBadge` and `PartialBanner` share. Colours come from tundra-css and
+ * running, in `PartialBanner`'s idiom: one row of a status dot, a short title
+ * with its detail, and the action at the end. Starting and restarting are a
+ * calm strip on the page's own canvas with a breathing dot; a stop takes the
+ * warning surface the `StatusBadge` and `PartialBanner` share, with a red dot
+ * when it stopped with an error. Colours come from tundra-css and
  * `react-tundraish` tokens.
  */
 .server-status-banner {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+
+  /* The inline edge matches the page shell's padding (react-tundraish's
+   * `--page-padding`), so the banner's text lines up with the page below. */
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-4)) var(--space-9) var(--space-4);
   border-bottom: 1px solid var(--color-divider);
-  background-color: var(--color-background);
+  background-color: var(--color-canvas);
+  color: var(--color-foreground);
 }
 
 .server-status-banner--stopped {
   border-bottom-color: var(--color-warning-border);
   background-color: var(--color-warning-background);
+  color: var(--color-warning-foreground);
 }
 
-.server-status-banner__summary {
+/*
+ * The banner sits at the very top of the app, under the status bar, so it
+ * takes the top safe-area inset itself (above) and zeroes it for the route
+ * that follows; react-tundraish's page header reads `--safe-area-inset-top`
+ * and would otherwise leave a second inset-sized gap below the banner.
+ */
+.server-status-banner ~ * {
+  --safe-area-inset-top: 0px;
+}
+
+/* Centred on the title's first line, not the whole text column. */
+.server-status-banner__dot {
+  flex: none;
+  align-self: flex-start;
+  width: 8px;
+  height: 8px;
+  margin-block-start: calc((var(--font-size-2) * 1.4 - 8px) / 2);
+  border-radius: 999px;
+  background: var(--color-neutral-5);
+  animation: server-status-banner-breathe 1.5s ease-in-out infinite;
+}
+
+.server-status-banner--stopped .server-status-banner__dot {
+  background: var(--color-warning);
+  animation: none;
+}
+
+.server-status-banner--stopped .server-status-banner__dot--error {
+  background: var(--color-red-3);
+}
+
+.server-status-banner__text {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
-.server-status-banner__message {
-  flex: 1 1 12rem;
+.server-status-banner__title,
+.server-status-banner__detail {
   margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-2);
+  line-height: 1.4;
 }
 
-/* The server's own error chain: a machine string, so mono and wrapping. */
+.server-status-banner__title {
+  font-weight: var(--font-weight-3);
+}
+
+.server-status-banner__detail {
+  opacity: 0.85;
+}
+
+/* The server's own error chain: a machine string, so mono, wrapping, and
+ * clamped to three lines; the server page shows it whole. */
 .server-status-banner__error {
-  margin: 0;
-  font-family: var(--font-family-mono);
-  word-break: break-word;
+  display: -webkit-box;
+  margin: var(--space-1) 0 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.server-status-banner__action {
+  flex: none;
+}
+
+@keyframes server-status-banner-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .server-status-banner__dot {
+    animation: none;
+  }
 }

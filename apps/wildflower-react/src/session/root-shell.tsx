@@ -20,10 +20,8 @@ import styles from './root-shell.module.css'
 const RootShell = (): JSX.Element => (
   <>
     <div className={styles['root-shell']}>
-      <div>{usePlatformBanner()}</div>
-      <div className={styles['root-shell__route']}>
-        <Outlet />
-      </div>
+      {usePlatformBanner()}
+      <Outlet />
     </div>
     <PendingConsentModalHost />
   </>

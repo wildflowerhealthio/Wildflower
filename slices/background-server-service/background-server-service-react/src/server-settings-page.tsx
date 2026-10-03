@@ -1,12 +1,14 @@
-import type { ServerServiceState, ServerServiceStatus } from 'background-server-service-core'
-import type { JSX } from 'react'
+import type { ServerServiceStatus } from 'background-server-service-core'
+import type { JSX, ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Field, PageHeader, StatusBadge } from 'react-tundraish'
+import { PageHeader, StatusBadge } from 'react-tundraish'
 
 import { useServerServiceStatus } from './server-service-status-store.ts'
 import {
   NOTIFICATION_PERMISSION_LABEL,
+  type ServerDisplayState,
   SERVER_STATE_LABEL,
+  serverDisplayState,
   serverStatusTone,
   STOP_REASON_DESCRIPTION,
 } from './server-status-text.ts'
@@ -15,50 +17,72 @@ import { useRestartServer } from './use-restart-server.ts'
 import styles from './server-settings-page.module.css'
 
 /** What the Tunnel section says while the server isn't running. */
-const NO_TUNNEL_MESSAGE: Readonly<Record<Exclude<ServerServiceState, 'running'>, string>> = {
+const NO_TUNNEL_MESSAGE: Readonly<Record<Exclude<ServerDisplayState, 'running'>, string>> = {
   starting: 'The tunnel starts once the server is running.',
+  restarting: 'The tunnel starts once the server is running.',
   stopped: 'The tunnel runs inside the server, so there is no tunnel while it is stopped.',
 }
 
-/** Every field of one status snapshot, and the tunnel while the server runs. */
-const ServerStatusDetails = ({ status }: { readonly status: ServerServiceStatus }): JSX.Element => (
-  <>
-    <div className={styles['server-settings-page__fields']}>
-      <Field label="State">
-        <span>
-          <StatusBadge tone={serverStatusTone(status)}>
-            {SERVER_STATE_LABEL[status.state]}
-          </StatusBadge>
-        </span>
-      </Field>
-      <Field label="Last stop reason">
-        <span className="text-body-2">
-          {status.stopReason === null ? 'None yet' : STOP_REASON_DESCRIPTION[status.stopReason]}
-        </span>
-      </Field>
-      <Field label="Last error">
-        {status.lastError === null ? (
-          <span className="text-body-2">None</span>
-        ) : (
-          <p className={cn(styles['server-settings-page__error'], 'text-body-3')}>
-            {status.lastError}
-          </p>
-        )}
-      </Field>
-      <Field label="Notifications">
-        <span className="text-body-2">{NOTIFICATION_PERMISSION_LABEL[status.notifications]}</span>
-      </Field>
-    </div>
-    <section className={styles['server-settings-page__tunnel']} aria-label="Tunnel">
-      <h2 className="text-heading-3">Tunnel</h2>
-      {status.state === 'running' ? (
-        <ServerTunnelStatus />
-      ) : (
-        <p className="text-body-2">{NO_TUNNEL_MESSAGE[status.state]}</p>
-      )}
-    </section>
-  </>
+/** One label/value row of the status card. */
+const StatusRow = ({
+  label,
+  stacked = false,
+  children,
+}: {
+  readonly label: string
+  readonly stacked?: boolean
+  readonly children: ReactNode
+}): JSX.Element => (
+  <div
+    className={cn(
+      styles['server-settings-page__row'],
+      stacked ? styles['server-settings-page__row--stacked'] : null
+    )}
+  >
+    <dt className={styles['server-settings-page__label']}>{label}</dt>
+    <dd className={styles['server-settings-page__value']}>{children}</dd>
+  </div>
 )
+
+/** Every field of one status snapshot, and the tunnel while the server runs. */
+const ServerStatusDetails = ({ status }: { readonly status: ServerServiceStatus }): JSX.Element => {
+  const displayState = serverDisplayState(status)
+  return (
+    <>
+      <section className={styles['server-settings-page__section']} aria-label="Status">
+        <h2 className={styles['server-settings-page__heading']}>Status</h2>
+        <dl className={styles['server-settings-page__card']}>
+          <StatusRow label="State">
+            <StatusBadge tone={serverStatusTone(status)}>
+              {SERVER_STATE_LABEL[displayState]}
+            </StatusBadge>
+          </StatusRow>
+          <StatusRow label="Notifications">
+            {NOTIFICATION_PERMISSION_LABEL[status.notifications]}
+          </StatusRow>
+          <StatusRow label="Last stop reason" stacked>
+            {status.stopReason === null ? 'None yet' : STOP_REASON_DESCRIPTION[status.stopReason]}
+          </StatusRow>
+          <StatusRow label="Last error" stacked>
+            {status.lastError === null ? (
+              'None'
+            ) : (
+              <span className={styles['server-settings-page__error']}>{status.lastError}</span>
+            )}
+          </StatusRow>
+        </dl>
+      </section>
+      <section className={styles['server-settings-page__section']} aria-label="Tunnel">
+        <h2 className={styles['server-settings-page__heading']}>Tunnel</h2>
+        {displayState === 'running' ? (
+          <ServerTunnelStatus />
+        ) : (
+          <p className={styles['server-settings-page__note']}>{NO_TUNNEL_MESSAGE[displayState]}</p>
+        )}
+      </section>
+    </>
+  )
+}
 
 /**
  * The `/settings/server` page: the Wildflower server's state, why it last
@@ -67,8 +91,9 @@ const ServerStatusDetails = ({ status }: { readonly status: ServerServiceStatus 
  *
  * @remarks
  * Renders the host's latest status snapshot and nothing else; before the first
- * one arrives it says it is waiting. Restart is offered in every state. The
- * Tauri entry contributes the Settings row that links here.
+ * one arrives it says it is waiting. Restart is offered in every state.
+ * `backgroundServerServiceSettingsItemsFragment` is the Settings row that links
+ * here.
  */
 const ServerSettingsPage = (): JSX.Element => {
   const status = useServerServiceStatus()

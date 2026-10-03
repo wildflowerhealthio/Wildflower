@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ServerServiceStatus } from 'background-server-service-core'
@@ -20,17 +27,34 @@ const STOPPED_WITH_BIND_ERROR: ServerServiceStatus = {
   notifications: 'granted',
 }
 
-const renderBanner = (
-  status: ServerServiceStatus | null
-): ReturnType<typeof makeRecordingSender> &
-  ReturnType<typeof render> & { readonly store: ReturnType<typeof storeHolding> } => {
+/**
+ * Render the banner under a memory router at `path`, as the app shell does,
+ * and wait for the router's first load.
+ */
+const renderBanner = async (
+  status: ServerServiceStatus | null,
+  path = '/'
+): Promise<
+  ReturnType<typeof makeRecordingSender> &
+    ReturnType<typeof render> & { readonly store: ReturnType<typeof storeHolding> }
+> => {
   const store = storeHolding(status)
   const sender = makeRecordingSender()
+  const rootRoute = createRootRoute({ component: ServerStatusBanner })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren(
+      ['/', '/settings/server'].map((routePath) =>
+        createRoute({ getParentRoute: () => rootRoute, path: routePath })
+      )
+    ),
+    history: createMemoryHistory({ initialEntries: [path] }),
+  })
   const rendered = render(
     <ServerServiceTestProviders store={store} send={sender.send}>
-      <ServerStatusBanner />
+      <RouterProvider router={router} />
     </ServerServiceTestProviders>
   )
+  await act(() => router.load())
   return { ...sender, ...rendered, store }
 }
 
@@ -39,21 +63,21 @@ afterEach(() => {
 })
 
 describe('ServerStatusBanner', () => {
-  it('should render nothing before the first snapshot arrives', () => {
+  it('should render nothing before the first snapshot arrives', async () => {
     // Act
-    const { container } = renderBanner(null)
+    const { container } = await renderBanner(null)
 
     // Assert
     expect(container.innerHTML).toBe('')
   })
 
-  it('should render nothing for any running status', () => {
-    fc.assert(
-      fc.property(
+  it('should render nothing for any running status', async () => {
+    await fc.assert(
+      fc.asyncProperty(
         arbitraryStatus.map((status) => ({ ...status, state: 'running' as const })),
-        (status) => {
+        async (status) => {
           // Act
-          const { container, unmount } = renderBanner(status)
+          const { container, unmount } = await renderBanner(status)
 
           // Assert
           expect(container.innerHTML).toBe('')
@@ -64,23 +88,22 @@ describe('ServerStatusBanner', () => {
     )
   })
 
-  it('should show a stopped server’s stop reason and error', () => {
+  it('should show a stopped server’s stop reason and error, with Restart', async () => {
     // Act
-    renderBanner(STOPPED_WITH_BIND_ERROR)
+    await renderBanner(STOPPED_WITH_BIND_ERROR)
 
     // Assert
-    expect(screen.getByText('Stopped')).toBeDefined()
-    expect(
-      screen.getByText("The Wildflower server isn't running. iOS ended the background window.")
-    ).toBeDefined()
+    expect(screen.getByText('Server stopped')).toBeDefined()
+    expect(screen.getByText('iOS ended the background window.')).toBeDefined()
     expect(screen.getByRole('alert').textContent).toBe(
       'failed to bind to 127.0.0.1:8080: Address already in use'
     )
+    expect(screen.getByRole('button', { name: 'Restart' })).toBeDefined()
   })
 
-  it('should show a starting server calmly, without an error or the previous run’s stop reason', () => {
+  it('should show a starting server calmly, without a reason, an error or Restart', async () => {
     // Act — a restart's starting run still carries its own `appStop`.
-    renderBanner({
+    await renderBanner({
       _tag: 'ServerServiceStatus',
       state: 'starting',
       stopReason: 'appStop',
@@ -89,14 +112,40 @@ describe('ServerStatusBanner', () => {
     })
 
     // Assert
-    expect(screen.getByText('The Wildflower server is starting.')).toBeDefined()
+    expect(screen.getByText('Server starting…')).toBeDefined()
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByText(/restart\./i)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
+  })
+
+  it('should show the stop half of a restart calmly, as restarting', async () => {
+    // Act — the old run has stopped with `appStop`; the new one hasn't started.
+    await renderBanner({
+      _tag: 'ServerServiceStatus',
+      state: 'stopped',
+      stopReason: 'appStop',
+      lastError: null,
+      notifications: 'granted',
+    })
+
+    // Assert
+    expect(screen.getByText('Server restarting…')).toBeDefined()
+    expect(screen.queryByText('Server stopped')).toBeNull()
+    expect(screen.queryByText(/restart\./i)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
+  })
+
+  it('should render nothing on the server page, which shows the same status in full', async () => {
+    // Act
+    const { container } = await renderBanner(STOPPED_WITH_BIND_ERROR, '/settings/server')
+
+    // Assert
+    expect(container.innerHTML).toBe('')
   })
 
   it('should send RestartServer when Restart is pressed', async () => {
     // Arrange
-    const { sent } = renderBanner(STOPPED_WITH_BIND_ERROR)
+    const { sent } = await renderBanner(STOPPED_WITH_BIND_ERROR)
 
     // Act
     await userEvent.click(screen.getByRole('button', { name: 'Restart' }))
@@ -107,7 +156,7 @@ describe('ServerStatusBanner', () => {
 
   it('should disappear when the next snapshot says the server is running', async () => {
     // Arrange
-    const { container, store } = renderBanner(STOPPED_WITH_BIND_ERROR)
+    const { container, store } = await renderBanner(STOPPED_WITH_BIND_ERROR)
 
     // Act
     act(() => {

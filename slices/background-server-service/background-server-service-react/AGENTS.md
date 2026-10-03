@@ -18,16 +18,21 @@ page. Both render the host's latest `ServerServiceStatus` and send
   `src/use-background-server-service-sender.ts` — the `RestartServer` sender,
   fed by the app's `BackgroundServerServiceSenderForwarder`;
   `src/use-restart-server.ts` turns it into a click handler.
-- `src/server-status-banner.tsx` — **`ServerStatusBanner`**: nothing before
-  the first snapshot or while running; `starting` calmly; `stopped` with the
-  stop reason, the error and Restart.
-- `src/server-settings-page.tsx` — the page: state, last stop reason, last
-  error, notifications, Restart in every state, and the Tunnel section.
+- `src/server-status-banner.tsx` — **`ServerStatusBanner`**: one row under
+  the status bar. Nothing before the first snapshot, while running, or on
+  `/settings/server`; `starting` and `restarting` calmly, without a reason or
+  Restart; `stopped` on the warning surface with the stop reason, the error and
+  Restart. It takes the top safe-area inset and zeroes `--safe-area-inset-top`
+  for the route below, so the page header doesn't add a second one.
+- `src/server-settings-page.tsx` — the page: a Status card (state,
+  notifications, last stop reason, last error) on the Settings list's card
+  surface, Restart in every state, and the Tunnel section.
   `src/server-tunnel-status.tsx` reads the tunnel through `tunnel-react`'s
   `tunnelStateQueryOptions` and draws it with its `TunnelStatusHero`, mounted
   only while the server runs.
 - `src/server-status-text.ts` — the labels and sentences for states, stop
-  reasons and notification permissions.
+  reasons and notification permissions, and `serverDisplayState`, which shows a
+  clean `appStop` stop (the stop half of a restart) as `restarting`.
 - `src/settings-fragments.ts` — **`backgroundServerServiceSettingsItemsFragment`**,
   the Settings row for `/settings/server`, which `main-tauri` passes as its
   `platformSettingsItems`.
@@ -53,19 +58,22 @@ page. Both render the host's latest `ServerServiceStatus` and send
 
 - **No client-side state machine.** Derive everything from the snapshot; don't
   remember a previous state to decide what to show.
-- **The tunnel query refetches on mount.** The app warms the tunnel cache at
-  boot, and a restart starts a new tunnel, so a cached value can be a previous
-  run's.
+- **The tunnel query refetches on mount and shows loading until that fetch
+  lands.** The app warms the tunnel cache at boot, and a restart starts a new
+  tunnel, so a cached value can be a previous run's.
 
 ## Testing
 
-- `src/server-status-banner.test.tsx` — hidden before the first snapshot and
-  for any running status, `stopped` shows its reason and error, `starting`
-  shows neither, Restart sends `RestartServer`, and a running snapshot hides it.
+- `src/server-status-banner.test.tsx` — under a memory router: hidden before
+  the first snapshot, for any running status and on `/settings/server`;
+  `stopped` shows its reason, error and Restart; `starting` and the stop half of
+  a restart show none of them; Restart sends `RestartServer`; a running
+  snapshot hides it.
 - `src/server-settings-page.test.tsx` — through the slice's route tree, with
   the real tunnel client over a stub `HttpClient`: waiting before the first
   snapshot, each state with Restart, a stopped server's fields and no tunnel
-  request, and the tunnel's host while running.
+  request, the stop half of a restart as restarting, the tunnel's host while
+  running, and loading rather than a previous run's cached tunnel.
 - `src/web-bridge.test.ts` — each snapshot replaces the store's.
 - `src/routes.test.tsx` — the route tree is `/settings/server/` alone.
 - `src/settings-fragments.test.ts` — the one Settings row links to

@@ -17,17 +17,21 @@ const useRunAuthed = (): RunAuthed =>
  *
  * @remarks
  * Mounted only while the server runs: the tunnel lives inside the server, so
- * there is nothing to ask while it is stopped. `refetchOnMount: 'always'`
- * because the shared cache can hold a previous run's tunnel: the app warms it
- * at boot, and a restart starts a new tunnel. The Run-tunnel switch stays on
- * the Tunnel settings page, which this links to.
+ * there is nothing to ask while it is stopped. The shared cache can hold a
+ * previous run's tunnel (the app warms it at boot, and a restart starts a new
+ * tunnel), so every mount refetches (`refetchOnMount: 'always'`) and shows
+ * loading until that fetch settles (`isFetchedAfterMount`) rather than the
+ * cached data. Later background refetches, such as on window focus, keep
+ * showing the data they replace. The Run-tunnel switch stays on the Tunnel
+ * settings page, which this links to.
  */
 const ServerTunnelStatus = (): JSX.Element => {
   const tunnelStateQuery = useQuery({
     ...tunnelStateQueryOptions(useRunAuthed()),
     refetchOnMount: 'always',
   })
-  if (tunnelStateQuery.isPending) return <PageLoading message="Loading the tunnel…" />
+  if (tunnelStateQuery.isPending || !tunnelStateQuery.isFetchedAfterMount)
+    return <PageLoading message="Loading the tunnel…" />
   if (tunnelStateQuery.isError) return <ErrorBanner error={tunnelStateQuery.error} />
   return (
     <>

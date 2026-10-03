@@ -6,9 +6,28 @@ import type {
 } from 'background-server-service-core'
 import type { StatusTone } from 'react-tundraish'
 
-/** The badge label for each server state. */
-const SERVER_STATE_LABEL: Readonly<Record<ServerServiceState, string>> = {
+/**
+ * The state the page shows a status as: the host's own state, plus
+ * `restarting` for the gap between a restart's stop and its new run.
+ */
+type ServerDisplayState = ServerServiceState | 'restarting'
+
+/**
+ * The state to show `status` as. A clean `appStop` stop is the stop half of a
+ * restart (the host stops with it only to restart, and posts no notification
+ * for it), so it shows as `restarting` rather than as a stop: the next snapshot
+ * is the new run's `starting`. Should that start fail, the host reports it with
+ * its native dialog and failure notification.
+ */
+const serverDisplayState = (status: ServerServiceStatus): ServerDisplayState =>
+  status.state === 'stopped' && status.stopReason === 'appStop' && status.lastError === null
+    ? 'restarting'
+    : status.state
+
+/** The badge label for each displayed state. */
+const SERVER_STATE_LABEL: Readonly<Record<ServerDisplayState, string>> = {
   starting: 'Starting',
+  restarting: 'Restarting',
   running: 'Running',
   stopped: 'Stopped',
 }
@@ -37,25 +56,29 @@ const NOTIFICATION_PERMISSION_LABEL: Readonly<Record<NotificationPermission, str
   unknown: 'Not decided yet',
 }
 
-/** The badge tone for a status that isn't a stop. */
-const NOT_STOPPED_TONE: Readonly<Record<Exclude<ServerServiceState, 'stopped'>, StatusTone>> = {
+/** The badge tone for a displayed state that isn't a stop. */
+const NOT_STOPPED_TONE: Readonly<Record<Exclude<ServerDisplayState, 'stopped'>, StatusTone>> = {
   starting: 'info',
+  restarting: 'info',
   running: 'success',
 }
 
 /**
- * The badge tone for a status: calm (`info`) while starting, `success` while
- * running, and for a stop `danger` when it stopped with an error, `warning`
- * otherwise.
+ * The badge tone for a status: calm (`info`) while starting or restarting,
+ * `success` while running, and for a stop `danger` when it stopped with an
+ * error, `warning` otherwise.
  */
 const serverStatusTone = (status: ServerServiceStatus): StatusTone => {
-  if (status.state !== 'stopped') return NOT_STOPPED_TONE[status.state]
+  const displayState = serverDisplayState(status)
+  if (displayState !== 'stopped') return NOT_STOPPED_TONE[displayState]
   return status.lastError === null ? 'warning' : 'danger'
 }
 
+export type { ServerDisplayState }
 export {
   NOTIFICATION_PERMISSION_LABEL,
   SERVER_STATE_LABEL,
+  serverDisplayState,
   serverStatusTone,
   STOP_REASON_DESCRIPTION,
 }

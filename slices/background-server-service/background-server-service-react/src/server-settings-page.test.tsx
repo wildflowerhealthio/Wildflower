@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import type { ServerServiceStatus } from 'background-server-service-core'
 import { Effect, Layer, pipe } from 'effect'
 import { Tunnel } from 'tunnel-core/http-api-definition'
-import { TunnelRouterContext } from 'tunnel-react'
+import { TunnelRouterContext, tunnelStateQueryOptions } from 'tunnel-react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import type { RouterContext, RunAuthed } from './router-context.ts'
@@ -38,25 +38,29 @@ const statusIn = (
 
 /**
  * A `runAuthed` over the real tunnel client, whose `HttpClient` answers every
- * request with `tunnelState` and counts the requests it saw.
+ * request with `tunnelState`, once `responseGate` resolves, and counts the
+ * requests it saw.
  */
 const runAuthedServing = (
-  tunnelState: TunnelState
+  tunnelState: TunnelState,
+  responseGate: Promise<void>
 ): { readonly runAuthed: RunAuthed; readonly requests: () => number } => {
   let requestCount = 0
   const httpClientLayer = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) =>
-      Effect.sync(() => {
-        requestCount += 1
-        return HttpClientResponse.fromWeb(
-          request,
-          new Response(JSON.stringify(tunnelState), {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-          })
-        )
-      })
+      Effect.promise(() => responseGate).pipe(
+        Effect.map(() => {
+          requestCount += 1
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(JSON.stringify(tunnelState), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            })
+          )
+        })
+      )
     )
   )
   const runtimeLayer = pipe(
@@ -70,12 +74,23 @@ const runAuthedServing = (
   }
 }
 
-/** Render `/settings/server` through the slice's own route tree. */
+/**
+ * Render `/settings/server` through the slice's own route tree. `cachedTunnel`
+ * seeds the query cache as the app's boot warm-up would; `tunnelResponseGate`
+ * holds the tunnel request's response until it resolves.
+ */
 const renderServerSettings = (
-  status: ServerServiceStatus | null
+  status: ServerServiceStatus | null,
+  {
+    cachedTunnel,
+    tunnelResponseGate = Promise.resolve(),
+  }: { readonly cachedTunnel?: TunnelState; readonly tunnelResponseGate?: Promise<void> } = {}
 ): ReturnType<typeof makeRecordingSender> & { readonly tunnelRequests: () => number } => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const { runAuthed, requests } = runAuthedServing(ONLINE_TUNNEL)
+  const { runAuthed, requests } = runAuthedServing(ONLINE_TUNNEL, tunnelResponseGate)
+  if (cachedTunnel !== undefined) {
+    queryClient.setQueryData(tunnelStateQueryOptions(runAuthed).queryKey, cachedTunnel)
+  }
   const context: RouterContext = {
     queryClient,
     runAuthed,
@@ -171,5 +186,40 @@ describe('/settings/server', () => {
     expect(screen.getByText('Online')).toBeDefined()
     expect(screen.getByText('None yet')).toBeDefined()
     expect(tunnelRequests()).toBe(1)
+  })
+
+  it('should show the stop half of a restart as restarting, not as a stop', async () => {
+    // Act
+    const { tunnelRequests } = renderServerSettings(statusIn('stopped', { stopReason: 'appStop' }))
+
+    // Assert
+    expect(await screen.findByText('Restarting')).toBeDefined()
+    expect(screen.queryByText('Stopped')).toBeNull()
+    expect(screen.getByText('The tunnel starts once the server is running.')).toBeDefined()
+    expect(tunnelRequests()).toBe(0)
+  })
+
+  it('should show loading rather than a previous run’s cached tunnel until its own fetch returns', async () => {
+    // Arrange — the cache holds the previous run's tunnel; this run's fetch
+    // hasn't answered yet.
+    let answerTunnelRequest: () => void = () => {}
+    const tunnelResponseGate = new Promise<void>((resolve) => {
+      answerTunnelRequest = resolve
+    })
+    renderServerSettings(statusIn('running'), {
+      cachedTunnel: { ...ONLINE_TUNNEL, publicHost: 'previous-run.wildflowerhealth.io' },
+      tunnelResponseGate,
+    })
+
+    // Assert — loading while the fetch is out
+    expect(await screen.findByText('Loading the tunnel…')).toBeDefined()
+    expect(screen.queryByText('previous-run.wildflowerhealth.io')).toBeNull()
+
+    // Act
+    answerTunnelRequest()
+
+    // Assert — this run's tunnel once it answers
+    expect(await screen.findByText('ruth.wildflowerhealth.io')).toBeDefined()
+    expect(screen.queryByText('previous-run.wildflowerhealth.io')).toBeNull()
   })
 })

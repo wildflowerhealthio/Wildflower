@@ -1,16 +1,13 @@
 /*
- * The root of every route: the entry's platform banner above the matched
- * route. The banner's row collapses to nothing when there is no banner or it
- * has nothing to say. A grid rather than a flex column so the route's row has
- * a definite height, which the authed tab shell's `height: 100%` resolves
- * against.
+ * The root of every route: the entry's platform banner (when it has something
+ * to say) above the matched route. A flex column rather than a grid: a flex
+ * column stretches its children to its own width, where a grid's implicit
+ * column grows to fit the widest child and pushes wide routes off-screen. The
+ * route's root (the authed tab shell's `height: 100%` + `min-height: 0`)
+ * shrinks to the height the banner leaves.
  */
 .root-shell {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   height: 100%;
-}
-
-.root-shell__route {
-  min-height: 0;
 }
