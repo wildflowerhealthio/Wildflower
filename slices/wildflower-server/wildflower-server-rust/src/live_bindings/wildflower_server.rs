@@ -23,7 +23,7 @@ use super::hfs_base_url;
 use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
 use crate::http::middleware::cors::api_cors_layer;
-use crate::http::middleware::forwarded_request_layer;
+use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSenders};
 use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
@@ -409,9 +409,13 @@ pub async fn set_up(
         .layer(api_cors_layer());
 
     // Outermost: every request the front relayed through the tunnel is
-    // reported to the host once its response is ready.
+    // reported to the host and to the tunnel's request log once its response
+    // is ready.
     let router = api_router.layer(axum::middleware::from_fn_with_state(
-        observers.forwarded_request_sender,
+        ForwardedRequestSenders {
+            host_sender: observers.forwarded_request_sender,
+            request_log_sender: tunnel.request_log_sender,
+        },
         forwarded_request_layer::report_forwarded_request,
     ));
 

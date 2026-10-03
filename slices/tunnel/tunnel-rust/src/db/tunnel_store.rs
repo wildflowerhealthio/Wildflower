@@ -3,16 +3,21 @@
 //! pool of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the
 //! shared database file, applies the embedded tunnel migrations once on
 //! construction, and implements the port by delegating to the per-concern query
-//! bodies (`tunnel_settings`, `seed_tunnel_settings`). Mirrors
+//! bodies (`tunnel_settings`, `seed_tunnel_settings`). It implements the
+//! [`RequestLogStore`] port the same way, over `tunnel_requests`. Mirrors
 //! `collector-rust`'s `RemotesStore`.
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 
-use crate::db::{seed_tunnel_settings, tunnel_settings};
+use chrono::{DateTime, Utc};
+use shared_structures_rust::request_caller::ForwardedRequest;
+
+use crate::db::{seed_tunnel_settings, tunnel_requests, tunnel_settings};
 use crate::domain::{
-    RelaySettings, SettingsSeed, SettingsUpdateOutcome, TunnelError, TunnelSettings, TunnelStore,
+    CallerClass, RelaySettings, RequestLogStore, SettingsSeed, SettingsUpdateOutcome, TunnelError,
+    TunnelSettings, TunnelStore,
 };
 
 /// This slice's migration namespace in the shared database. Applied versions are
@@ -74,7 +79,7 @@ impl SqliteTunnelStore {
     }
 
     /// Check out a connection from the pool.
-    fn connection(&self) -> Result<PooledDieselConnection, TunnelError> {
+    pub(super) fn connection(&self) -> Result<PooledDieselConnection, TunnelError> {
         self.pool
             .get()
             .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))
@@ -123,6 +128,26 @@ impl TunnelStore for SqliteTunnelStore {
 
     fn seed_if_absent(&self, seed: &SettingsSeed) -> Result<(), TunnelError> {
         seed_tunnel_settings::seed_if_absent(&mut self.connection()?, seed)
+    }
+}
+
+/// The request-log half of the store, delegating to the `tunnel_requests`
+/// query bodies the same way.
+impl RequestLogStore for SqliteTunnelStore {
+    fn insert_requests(&self, requests: &[ForwardedRequest]) -> Result<(), TunnelError> {
+        tunnel_requests::insert_requests(&mut self.connection()?, requests)
+    }
+
+    fn delete_requests_beyond_cap(
+        &self,
+        caller_class: CallerClass,
+        row_cap: i64,
+    ) -> Result<usize, TunnelError> {
+        tunnel_requests::delete_requests_beyond_cap(&mut self.connection()?, caller_class, row_cap)
+    }
+
+    fn delete_requests_received_before(&self, cutoff: DateTime<Utc>) -> Result<usize, TunnelError> {
+        tunnel_requests::delete_requests_received_before(&mut self.connection()?, cutoff)
     }
 }
 
