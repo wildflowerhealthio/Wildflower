@@ -1,5 +1,6 @@
-//! HTTP routes for the tunnel slice — the `/tunnel` GET + PUT surface, gathered
-//! into one [`openapi_router`]. The served routes and the OpenAPI spec come from
+//! HTTP routes for the tunnel slice — the `/tunnel` GET + PUT surface and the
+//! request log's `/tunnel/activity` and `/tunnel/requests`, gathered into one
+//! [`openapi_router`]. The served routes and the OpenAPI spec come from
 //! the same `#[utoipa::path]`-annotated handlers.
 
 use std::sync::Arc;

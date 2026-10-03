@@ -1,14 +1,17 @@
 //! The request log: what the trusted front relayed through the tunnel, kept on
-//! the device. The [`RequestLogStore`] port, the row caps that bound it, and
-//! [`record_requests`], the action the request-log writer runs on each batch.
-//! Its time-based retention is [`crate::domain::retention`].
+//! the device. The [`RequestLogStore`] port, the row caps that bound it,
+//! [`record_requests`], the action the request-log writer runs on each batch,
+//! and the shapes the log is read back in: a page of [`LoggedRequest`]s and the
+//! [`RequestActivity`] feed. Its time-based retention is
+//! [`crate::domain::retention`].
 //!
 //! Each row is a [`ForwardedRequest`] the server's forwarded-request layer
 //! reported. The record holds no record identifiers (its path is reduced to the
 //! route), and the client's display name is not stored: readers resolve it from
 //! the `client_id` through gatekeeper.
 
-use shared_structures_rust::request_caller::ForwardedRequest;
+use chrono::{DateTime, Utc};
+use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, RequestRefusal};
 
 use crate::domain::TunnelError;
 
@@ -19,6 +22,63 @@ pub const VERIFIED_CALLER_ROW_CAP: i64 = 100_000;
 /// with a `401`. Separate from [`VERIFIED_CALLER_ROW_CAP`] so a flood of
 /// refused requests only evicts other refused requests.
 pub const UNVERIFIED_CALLER_ROW_CAP: i64 = 20_000;
+
+/// The most requests one page of the log holds.
+pub const REQUEST_LOG_PAGE_SIZE: i64 = 100;
+
+/// The response statuses that count a request as refused: a bearer gate's
+/// `401`, or a `403` for a token too narrow for the route.
+pub const REFUSED_STATUSES: [u16; 2] = [401, 403];
+
+/// One request in the log, under the id that orders it (a higher id is newer).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoggedRequest {
+    pub id: i64,
+    pub request: ForwardedRequest,
+}
+
+/// Which logged requests a page reads, newest first. Every filter that is set
+/// must match.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RequestLogFilter {
+    /// Only requests older than this id: the previous page's
+    /// [`RequestLogPage::next_cursor`].
+    pub before_id: Option<i64>,
+    /// Only requests whose verified caller is this client.
+    pub client_id: Option<String>,
+    /// Only requests from this client address.
+    pub client_address: Option<String>,
+    /// Only refused requests (`true`, see [`REFUSED_STATUSES`]) or only the
+    /// rest (`false`).
+    pub refused: Option<bool>,
+}
+
+/// One page of the log, newest first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestLogPage {
+    /// At most [`REQUEST_LOG_PAGE_SIZE`] requests.
+    pub requests: Vec<LoggedRequest>,
+    /// The `before_id` that reads the next page, or `None` on the last one.
+    pub next_cursor: Option<i64>,
+}
+
+/// What the log holds for one (caller, client address) pair: the activity
+/// feed's row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestActivity {
+    /// The verified caller, or `None` for the requests no bearer gate verified.
+    pub caller: Option<RequestCaller>,
+    pub client_address: Option<String>,
+    pub first_seen: DateTime<Utc>,
+    pub last_seen: DateTime<Utc>,
+    pub request_count: i64,
+    /// How many of them were refused (see [`REFUSED_STATUSES`]).
+    pub refused_count: i64,
+    /// The newest request's status.
+    pub last_status: u16,
+    /// The newest request's refusal, if a bearer gate refused it.
+    pub last_refusal: Option<RequestRefusal>,
+}
 
 /// Which row cap a logged request counts against: whether a bearer gate
 /// verified its caller.
@@ -75,6 +135,24 @@ pub trait RequestLogStore {
         caller_class: CallerClass,
         row_cap: i64,
     ) -> Result<usize, TunnelError>;
+
+    /// The page of the log `filter` selects: at most [`REQUEST_LOG_PAGE_SIZE`]
+    /// requests, newest first.
+    ///
+    /// # Errors
+    ///
+    /// [`TunnelError::Infrastructure`] on a checkout / read failure, or a row
+    /// the log could not have written.
+    fn requests_page(&self, filter: &RequestLogFilter) -> Result<RequestLogPage, TunnelError>;
+
+    /// The log grouped by (caller, client address), the group with the newest
+    /// request first.
+    ///
+    /// # Errors
+    ///
+    /// [`TunnelError::Infrastructure`] on a checkout / read failure, or a row
+    /// the log could not have written.
+    fn request_activity(&self) -> Result<Vec<RequestActivity>, TunnelError>;
 
     /// Delete every row received before `cutoff`, returning how many went.
     ///

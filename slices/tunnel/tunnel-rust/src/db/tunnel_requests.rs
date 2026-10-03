@@ -1,15 +1,23 @@
 //! `tunnel_requests` queries — the `SQLite` adapter bodies behind
 //! `SqliteTunnelStore`'s [`RequestLogStore`](crate::domain::RequestLogStore)
 //! impl. A [`ForwardedRequest`] is flattened into a [`NewTunnelRequestRow`] on
-//! the way in.
+//! the way in, and a [`TunnelRequestRow`] is folded back into a
+//! [`LoggedRequest`] on the way out.
+
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use diesel::dsl::max;
 use diesel::prelude::*;
+use diesel::sql_types::{BigInt, Integer, Nullable, Text, TimestamptzSqlite};
 use persistence_rust::PooledDieselConnection;
-use shared_structures_rust::request_caller::{ForwardedRequest, RequestRefusal};
+use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, RequestRefusal};
 
 use crate::db::schema::tunnel_requests;
+use crate::domain::request_log::{
+    LoggedRequest, RequestActivity, RequestLogFilter, RequestLogPage, REFUSED_STATUSES,
+    REQUEST_LOG_PAGE_SIZE,
+};
 use crate::domain::{CallerClass, TunnelError};
 
 /// A [`ForwardedRequest`] as one `tunnel_requests` row, ready to insert.
@@ -67,6 +75,131 @@ fn refusal_column(refusal: RequestRefusal) -> &'static str {
         RequestRefusal::MissingToken => "missing_token",
         RequestRefusal::TokenRejected => "token_rejected",
         RequestRefusal::Revoked => "revoked",
+    }
+}
+
+/// The [`RequestRefusal`] a `refusal` column value names; the inverse of
+/// [`refusal_column`].
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] for a value the column's `CHECK` forbids.
+fn refusal_from_column(column: &str) -> Result<RequestRefusal, TunnelError> {
+    match column {
+        "missing_token" => Ok(RequestRefusal::MissingToken),
+        "token_rejected" => Ok(RequestRefusal::TokenRejected),
+        "revoked" => Ok(RequestRefusal::Revoked),
+        unknown => Err(TunnelError::infrastructure(
+            "unknown refusal in the request log",
+            unknown,
+        )),
+    }
+}
+
+/// A `tunnel_requests` status as the `u16` it was written from.
+fn status_from_column(status: i32) -> Result<u16, TunnelError> {
+    u16::try_from(status)
+        .map_err(|e| TunnelError::infrastructure("status out of range in the request log", e))
+}
+
+/// A `tunnel_requests` row as diesel loads it, before it's folded into a
+/// [`LoggedRequest`].
+#[derive(Debug, Queryable, Selectable)]
+#[diesel(table_name = tunnel_requests)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+struct TunnelRequestRow {
+    id: i64,
+    received_at: DateTime<Utc>,
+    client_id: Option<String>,
+    address: Option<String>,
+    served_host: Option<String>,
+    method: String,
+    path: String,
+    status: i32,
+    response_bytes: Option<i64>,
+    duration_ms: i64,
+    refusal: Option<String>,
+}
+
+impl TryFrom<TunnelRequestRow> for LoggedRequest {
+    type Error = TunnelError;
+
+    fn try_from(row: TunnelRequestRow) -> Result<Self, TunnelError> {
+        Ok(LoggedRequest {
+            id: row.id,
+            request: ForwardedRequest {
+                received_at: row.received_at.into(),
+                client_address: row.address,
+                served_host: row.served_host,
+                method: row.method,
+                reduced_path: row.path,
+                status: status_from_column(row.status)?,
+                response_bytes: row
+                    .response_bytes
+                    .map(u64::try_from)
+                    .transpose()
+                    .map_err(|e| {
+                        TunnelError::infrastructure(
+                            "response size out of range in the request log",
+                            e,
+                        )
+                    })?,
+                duration: u64::try_from(row.duration_ms)
+                    .map(Duration::from_millis)
+                    .map_err(|e| {
+                        TunnelError::infrastructure("duration out of range in the request log", e)
+                    })?,
+                caller: row.client_id.map(|client_id| RequestCaller { client_id }),
+                refusal: row
+                    .refusal
+                    .as_deref()
+                    .map(refusal_from_column)
+                    .transpose()?,
+            },
+        })
+    }
+}
+
+/// One (caller, client address) group as the activity query returns it,
+/// before it's folded into a [`RequestActivity`].
+#[derive(Debug, QueryableByName)]
+struct RequestActivityRow {
+    #[diesel(sql_type = Nullable<Text>)]
+    client_id: Option<String>,
+    #[diesel(sql_type = Nullable<Text>)]
+    address: Option<String>,
+    #[diesel(sql_type = TimestamptzSqlite)]
+    first_seen: DateTime<Utc>,
+    #[diesel(sql_type = TimestamptzSqlite)]
+    last_seen: DateTime<Utc>,
+    #[diesel(sql_type = BigInt)]
+    request_count: i64,
+    #[diesel(sql_type = BigInt)]
+    refused_count: i64,
+    #[diesel(sql_type = Integer)]
+    last_status: i32,
+    #[diesel(sql_type = Nullable<Text>)]
+    last_refusal: Option<String>,
+}
+
+impl TryFrom<RequestActivityRow> for RequestActivity {
+    type Error = TunnelError;
+
+    fn try_from(row: RequestActivityRow) -> Result<Self, TunnelError> {
+        Ok(RequestActivity {
+            caller: row.client_id.map(|client_id| RequestCaller { client_id }),
+            client_address: row.address,
+            first_seen: row.first_seen,
+            last_seen: row.last_seen,
+            request_count: row.request_count,
+            refused_count: row.refused_count,
+            last_status: status_from_column(row.last_status)?,
+            last_refusal: row
+                .last_refusal
+                .as_deref()
+                .map(refusal_from_column)
+                .transpose()?,
+        })
     }
 }
 
@@ -140,6 +273,82 @@ pub(super) fn delete_requests_beyond_cap(
         }
     })
     .map_err(|e| TunnelError::infrastructure("trim tunnel requests to their cap failed", e))
+}
+
+/// The page `filter` selects, newest first, keyset-paged on `id`. Reads one row
+/// past the page to learn whether another follows. Backs
+/// [`SqliteTunnelStore::requests_page`](crate::db::SqliteTunnelStore).
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] on a read failure, or a row the log could
+/// not have written.
+pub(super) fn requests_page(
+    conn: &mut PooledDieselConnection,
+    filter: &RequestLogFilter,
+) -> Result<RequestLogPage, TunnelError> {
+    let refused_statuses = REFUSED_STATUSES.map(i32::from);
+    let mut query = tunnel_requests::table
+        .select(TunnelRequestRow::as_select())
+        .order(tunnel_requests::id.desc())
+        .limit(REQUEST_LOG_PAGE_SIZE + 1)
+        .into_boxed();
+    if let Some(before_id) = filter.before_id {
+        query = query.filter(tunnel_requests::id.lt(before_id));
+    }
+    if let Some(client_id) = &filter.client_id {
+        query = query.filter(tunnel_requests::client_id.eq(client_id));
+    }
+    if let Some(client_address) = &filter.client_address {
+        query = query.filter(tunnel_requests::address.eq(client_address));
+    }
+    match filter.refused {
+        Some(true) => query = query.filter(tunnel_requests::status.eq_any(refused_statuses)),
+        Some(false) => query = query.filter(tunnel_requests::status.ne_all(refused_statuses)),
+        None => {}
+    }
+    let mut requests = query
+        .load(conn)
+        .map_err(|e| TunnelError::infrastructure("read tunnel requests failed", e))?
+        .into_iter()
+        .map(LoggedRequest::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
+    let page_size = usize::try_from(REQUEST_LOG_PAGE_SIZE).expect("the page size fits a usize");
+    let next_cursor = if requests.len() > page_size {
+        requests.truncate(page_size);
+        requests.last().map(|last| last.id)
+    } else {
+        None
+    };
+    Ok(RequestLogPage {
+        requests,
+        next_cursor,
+    })
+}
+
+/// The log grouped by (`client_id`, `address`) over their index, each group's
+/// newest row joined back for its last outcome, the group with the newest
+/// request first. Backs
+/// [`SqliteTunnelStore::request_activity`](crate::db::SqliteTunnelStore).
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] on a read failure, or a row the log could
+/// not have written.
+pub(super) fn request_activity(
+    conn: &mut PooledDieselConnection,
+) -> Result<Vec<RequestActivity>, TunnelError> {
+    let [refused_401, refused_403] = REFUSED_STATUSES.map(i32::from);
+    diesel::sql_query(
+        "WITH activity AS (              SELECT client_id, address,                     MIN(received_at) AS first_seen,                     MAX(received_at) AS last_seen,                     COUNT(*) AS request_count,                     SUM(status IN (?, ?)) AS refused_count,                     MAX(id) AS last_id              FROM tunnel_requests              GROUP BY client_id, address          )          SELECT activity.client_id, activity.address, activity.first_seen,                 activity.last_seen, activity.request_count, activity.refused_count,                 last.status AS last_status, last.refusal AS last_refusal          FROM activity JOIN tunnel_requests AS last ON last.id = activity.last_id          ORDER BY activity.last_id DESC",
+    )
+    .bind::<Integer, _>(refused_401)
+    .bind::<Integer, _>(refused_403)
+    .load::<RequestActivityRow>(conn)
+    .map_err(|e| TunnelError::infrastructure("read tunnel request activity failed", e))?
+    .into_iter()
+    .map(RequestActivity::try_from)
+    .collect()
 }
 
 /// Delete every row received before `cutoff`, through the `received_at` index.
@@ -298,6 +507,231 @@ mod tests {
         assert_eq!(
             rows(&store).iter().map(|(id, _)| *id).collect::<Vec<_>>(),
             vec![2, 5, 6, 7]
+        );
+    }
+
+    /// A request from `client_id` at `address` that arrived `seconds` after a
+    /// fixed instant, answered `status` (with `refusal`).
+    fn request_at(
+        client_id: Option<&str>,
+        address: &str,
+        seconds: i64,
+        status: u16,
+        refusal: Option<RequestRefusal>,
+    ) -> ForwardedRequest {
+        let start = DateTime::parse_from_rfc3339("2026-07-01T12:00:00Z")
+            .expect("fixed instant")
+            .with_timezone(&Utc);
+        ForwardedRequest {
+            client_address: Some(address.to_owned()),
+            status,
+            refusal,
+            ..forwarded_request(
+                client_id,
+                (start + chrono::Duration::seconds(seconds)).into(),
+            )
+        }
+    }
+
+    fn at(seconds: i64) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-07-01T12:00:00Z")
+            .expect("fixed instant")
+            .with_timezone(&Utc)
+            + chrono::Duration::seconds(seconds)
+    }
+
+    #[test]
+    fn a_page_reads_back_what_was_logged_newest_first() {
+        let store = store();
+        let refused = request_at(
+            None,
+            "203.0.113.9",
+            1,
+            401,
+            Some(RequestRefusal::MissingToken),
+        );
+        let served = request_at(Some("lifting"), "192.0.2.1", 2, 200, None);
+        store
+            .insert_requests(&[refused.clone(), served.clone()])
+            .expect("insert");
+
+        let page = store
+            .requests_page(&RequestLogFilter::default())
+            .expect("page");
+
+        assert_eq!(
+            page,
+            RequestLogPage {
+                requests: vec![
+                    LoggedRequest {
+                        id: 2,
+                        request: served
+                    },
+                    LoggedRequest {
+                        id: 1,
+                        request: refused
+                    },
+                ],
+                next_cursor: None,
+            }
+        );
+    }
+
+    /// Pages follow the cursor without gaps or repeats, and the last page has
+    /// no cursor.
+    #[test]
+    fn pages_follow_the_cursor_to_the_oldest_request() {
+        let store = store();
+        let page_size = usize::try_from(REQUEST_LOG_PAGE_SIZE).expect("fits");
+        let requests: Vec<ForwardedRequest> = (0..page_size + 5)
+            .map(|_| forwarded_request(Some("lifting"), SystemTime::now()))
+            .collect();
+        store.insert_requests(&requests).expect("insert");
+
+        let first = store
+            .requests_page(&RequestLogFilter::default())
+            .expect("first page");
+        assert_eq!(first.requests.len(), page_size);
+        assert_eq!(first.requests[0].id, 105);
+        assert_eq!(first.next_cursor, Some(6));
+
+        let second = store
+            .requests_page(&RequestLogFilter {
+                before_id: first.next_cursor,
+                ..RequestLogFilter::default()
+            })
+            .expect("second page");
+        assert_eq!(
+            second
+                .requests
+                .iter()
+                .map(|logged| logged.id)
+                .collect::<Vec<_>>(),
+            vec![5, 4, 3, 2, 1]
+        );
+        assert_eq!(second.next_cursor, None);
+    }
+
+    #[test]
+    fn a_page_honours_every_filter() {
+        let store = store();
+        store
+            .insert_requests(&[
+                request_at(Some("lifting"), "192.0.2.1", 1, 200, None),
+                request_at(Some("lifting"), "192.0.2.1", 2, 403, None),
+                request_at(Some("lifting"), "192.0.2.2", 3, 200, None),
+                request_at(
+                    None,
+                    "192.0.2.1",
+                    4,
+                    401,
+                    Some(RequestRefusal::TokenRejected),
+                ),
+            ])
+            .expect("insert");
+        let ids = |filter: RequestLogFilter| {
+            store
+                .requests_page(&filter)
+                .expect("page")
+                .requests
+                .iter()
+                .map(|logged| logged.id)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            ids(RequestLogFilter {
+                client_id: Some("lifting".to_owned()),
+                ..RequestLogFilter::default()
+            }),
+            vec![3, 2, 1]
+        );
+        assert_eq!(
+            ids(RequestLogFilter {
+                client_address: Some("192.0.2.1".to_owned()),
+                ..RequestLogFilter::default()
+            }),
+            vec![4, 2, 1]
+        );
+        assert_eq!(
+            ids(RequestLogFilter {
+                refused: Some(true),
+                ..RequestLogFilter::default()
+            }),
+            vec![4, 2]
+        );
+        assert_eq!(
+            ids(RequestLogFilter {
+                client_id: Some("lifting".to_owned()),
+                client_address: Some("192.0.2.1".to_owned()),
+                refused: Some(false),
+                before_id: Some(4),
+            }),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn activity_groups_by_caller_and_address_and_counts_refusals() {
+        let store = store();
+        store
+            .insert_requests(&[
+                request_at(Some("lifting"), "192.0.2.1", 10, 200, None),
+                request_at(
+                    None,
+                    "203.0.113.9",
+                    20,
+                    401,
+                    Some(RequestRefusal::MissingToken),
+                ),
+                request_at(Some("lifting"), "192.0.2.1", 30, 403, None),
+                request_at(Some("lifting"), "192.0.2.1", 40, 200, None),
+                request_at(None, "203.0.113.9", 50, 401, Some(RequestRefusal::Revoked)),
+                request_at(Some("lifting"), "192.0.2.2", 5, 200, None),
+            ])
+            .expect("insert");
+
+        let activity = store.request_activity().expect("activity");
+
+        assert_eq!(
+            activity,
+            vec![
+                RequestActivity {
+                    caller: Some(RequestCaller {
+                        client_id: "lifting".to_owned()
+                    }),
+                    client_address: Some("192.0.2.2".to_owned()),
+                    first_seen: at(5),
+                    last_seen: at(5),
+                    request_count: 1,
+                    refused_count: 0,
+                    last_status: 200,
+                    last_refusal: None,
+                },
+                RequestActivity {
+                    caller: None,
+                    client_address: Some("203.0.113.9".to_owned()),
+                    first_seen: at(20),
+                    last_seen: at(50),
+                    request_count: 2,
+                    refused_count: 2,
+                    last_status: 401,
+                    last_refusal: Some(RequestRefusal::Revoked),
+                },
+                RequestActivity {
+                    caller: Some(RequestCaller {
+                        client_id: "lifting".to_owned()
+                    }),
+                    client_address: Some("192.0.2.1".to_owned()),
+                    first_seen: at(10),
+                    last_seen: at(40),
+                    request_count: 3,
+                    refused_count: 1,
+                    last_status: 200,
+                    last_refusal: None,
+                },
+            ],
+            "the group with the newest row first"
         );
     }
 

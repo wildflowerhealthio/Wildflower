@@ -95,6 +95,110 @@
           }
         }
       }
+    },
+    "/tunnel/activity": {
+      "get": {
+        "tags": [
+          "Request log"
+        ],
+        "summary": "`GET /tunnel/activity` — who reached the server through the tunnel: one row\nper (caller, client address), the group with the newest request first.\nGated by [`Scoped<LiveRequestLogReader>`] (`wildflower/TunnelSettings.r`).",
+        "operationId": "handle_get_activity",
+        "responses": {
+          "200": {
+            "description": "The request log grouped by caller and client address, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RequestActivityBody"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/TunnelSettings.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tunnel/requests": {
+      "get": {
+        "tags": [
+          "Request log"
+        ],
+        "summary": "`GET /tunnel/requests` — one page of the request log, newest first, with the\ncursor for the next. Gated by [`Scoped<LiveRequestLogReader>`]\n(`wildflower/TunnelSettings.r`).",
+        "operationId": "handle_list_requests",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The previous page's `nextCursor`: only requests older than it.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "client",
+            "in": "query",
+            "description": "Only requests whose verified caller is this OAuth client.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "description": "Only requests from this client address.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "refused",
+            "in": "query",
+            "description": "`true` for only refused requests (a bearer gate's `401` or a scope\n`403`), `false` for only the rest.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of the request log, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestLogPageBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/TunnelSettings.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -133,6 +237,88 @@
           },
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "LoggedRequestBody": {
+        "type": "object",
+        "description": "One request in the log — an element of `GET /tunnel/requests`. `path` is\nthe route the request was reduced to: no ids and no query string.",
+        "required": [
+          "id",
+          "receivedAt",
+          "clientId",
+          "address",
+          "servedHost",
+          "method",
+          "path",
+          "status",
+          "responseBytes",
+          "durationMs",
+          "refusal"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The request's place in the log; a higher id is newer."
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "servedHost": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The public `host[:port]` the visitor addressed."
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "responseBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The response body's length, or `null` when it wasn't known up front.",
+            "minimum": 0
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "refusal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestRefusalBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -213,6 +399,103 @@
             ]
           }
         }
+      },
+      "RequestActivityBody": {
+        "type": "object",
+        "description": "What the request log holds for one (caller, client address) pair — a row of\n`GET /tunnel/activity`. The client's display name is not included; resolve\n`clientId` through gatekeeper's client list.",
+        "required": [
+          "clientId",
+          "address",
+          "firstSeen",
+          "lastSeen",
+          "requestCount",
+          "refusedCount",
+          "lastStatus",
+          "lastRefusal"
+        ],
+        "properties": {
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The verified caller's OAuth client, or `null` for the requests no\nbearer gate verified."
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The visitor's address the trusted front recorded, or `null` when it\nrecorded none."
+          },
+          "firstSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "refusedCount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many were refused: a bearer gate's `401` or a scope `403`."
+          },
+          "lastStatus": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The newest request's response status.",
+            "minimum": 0
+          },
+          "lastRefusal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestRefusalBody",
+                "description": "The newest request's refusal, or `null` when no bearer gate refused it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RequestLogPageBody": {
+        "type": "object",
+        "description": "One page of `GET /tunnel/requests`, newest first.",
+        "required": [
+          "requests",
+          "nextCursor"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LoggedRequestBody"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The `cursor` that reads the next page, or `null` on the last one."
+          }
+        }
+      },
+      "RequestRefusalBody": {
+        "type": "string",
+        "description": "Why a bearer gate refused a logged request with a `401`. Mirrors\n[`RequestRefusal`].",
+        "enum": [
+          "missingToken",
+          "tokenRejected",
+          "revoked"
+        ]
       },
       "TunnelStateResponse": {
         "type": "object",

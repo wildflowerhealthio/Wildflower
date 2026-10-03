@@ -9,15 +9,16 @@
 //!
 //! Each capability lives in its own submodule — [`TunnelSettingsReader`] in
 //! [`tunnel_settings_reader`], [`TunnelSettingsEditor`] in
-//! [`tunnel_settings_editor`] — holding the struct, its `*_scopes()` mapping, and
-//! its store-focused test. This module aggregates them into
+//! [`tunnel_settings_editor`], [`RequestLogReader`] in [`request_log_reader`] —
+//! holding the struct, its `*_scopes()` mapping, and its store-focused test. This module aggregates them into
 //! [`grantable_tunnel_scopes`], re-exports the surface the bindings and handlers
 //! use, and carries the cross-cutting guard tests.
 //!
 //! `TunnelSettings` is a **singleton** (no id), so — like gatekeeper's `/access`
-//! surface, unlike databases' per-resource gate — both capabilities are the
+//! surface, unlike databases' per-resource gate — every capability is the
 //! **fixed-scope** flavour: the whole capability is gated by one static scope
-//! (`wildflower/TunnelSettings.r` to read, `.u` to replace), checked by the
+//! (`wildflower/TunnelSettings.r` to read the settings or the request log, `.u`
+//! to replace the settings), checked by the
 //! [`Scoped`] extractor before `build` runs. The concrete
 //! [`FixedScopeCapability`](scope_capabilities_rust::FixedScopeCapability)
 //! bindings that name `SqliteTunnelStore` live beside the router state
@@ -31,9 +32,11 @@ use scopes_rust::Scope;
 
 pub(crate) use scope_capabilities_rust::Scoped;
 
+mod request_log_reader;
 mod tunnel_settings_editor;
 mod tunnel_settings_reader;
 
+pub(crate) use request_log_reader::{request_log_reader_scopes, RequestLogReader};
 pub(crate) use tunnel_settings_editor::{tunnel_settings_editor_scopes, TunnelSettingsEditor};
 pub(crate) use tunnel_settings_reader::{tunnel_settings_reader_scopes, TunnelSettingsReader};
 
@@ -47,6 +50,7 @@ pub fn grantable_tunnel_scopes() -> Vec<Scope> {
     let declared = [
         tunnel_settings_reader_scopes(),
         tunnel_settings_editor_scopes(),
+        request_log_reader_scopes(),
     ];
     let mut seen = std::collections::HashSet::new();
     declared
@@ -143,7 +147,7 @@ mod tests {
             .count();
         // One `declared` entry per capability's scope function. Update BOTH when
         // adding a capability: its `*_scopes()` fn and the `declared` array.
-        let declared_entries = 2;
+        let declared_entries = 3;
         assert_eq!(
             scope_fns, declared_entries,
             "found {scope_fns} capability scope functions but grantable_tunnel_scopes() declares \
