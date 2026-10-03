@@ -1,7 +1,8 @@
 /**
  * The background server service's browser surface: the `ServerStatusBanner`
- * the Tauri entry mounts in the app shell, the status store and the
- * boot-stable bridge handler that fills it, the `RestartServer` sender, and —
+ * the Tauri entry mounts in the app shell and the Settings row it adds, the
+ * status store and the boot-stable bridge handler that fills it, the
+ * `RestartServer` sender, and —
  * mounted through the app's `routes.config.ts`, not through this entry — the
  * `/settings/server` page under `src/routes`.
  *
@@ -25,4 +26,5 @@ export {
   type ServerServiceStatusStore,
 } from './server-service-status-store.ts'
 export { ServerStatusBanner } from './server-status-banner.tsx'
+export { backgroundServerServiceSettingsItemsFragment } from './settings-fragments.ts'
 export { makeBackgroundServerServiceWebHandlers } from './web-bridge.ts'

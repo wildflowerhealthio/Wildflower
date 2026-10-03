@@ -1,4 +1,4 @@
-import { useContext } from 'react'
+import { useContextOrThrow } from 'react-kitchen-sink'
 
 import {
   BackgroundServerServiceSenderContext,
@@ -8,17 +8,11 @@ import {
 /**
  * Returns the `BackgroundServerServiceBridge` Web→Host sender.
  *
- * @throws When no `<BackgroundServerServiceSenderProvider>` is in the tree —
- *   the app's `BackgroundServerServiceSenderForwarder` always provides one.
+ * @throws `NoContextException` when no `<BackgroundServerServiceSenderProvider>`
+ *   is in the tree — the app's `BackgroundServerServiceSenderForwarder` always
+ *   provides one.
  */
-const useBackgroundServerServiceSender = (): BackgroundServerServiceSender => {
-  const sender = useContext(BackgroundServerServiceSenderContext)
-  if (sender === null) {
-    throw new Error(
-      'useBackgroundServerServiceSender must be used inside <BackgroundServerServiceSenderProvider>'
-    )
-  }
-  return sender
-}
+const useBackgroundServerServiceSender = (): BackgroundServerServiceSender =>
+  useContextOrThrow(BackgroundServerServiceSenderContext)
 
 export { useBackgroundServerServiceSender }

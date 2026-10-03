@@ -117,10 +117,14 @@ mod tests {
         "/../bridge-wire-golden.json"
     ));
 
+    /// The shared golden file, parsed.
+    fn golden_file() -> Value {
+        serde_json::from_str(GOLDEN).expect("bridge-wire-golden.json parses")
+    }
+
     /// The string at `pointer` (a JSON pointer) in the shared golden file.
     fn golden(pointer: &str) -> String {
-        let golden: Value = serde_json::from_str(GOLDEN).expect("bridge-wire-golden.json parses");
-        golden
+        golden_file()
             .pointer(pointer)
             .and_then(Value::as_str)
             .unwrap_or_else(|| panic!("bridge-wire-golden.json has a string at {pointer}"))
@@ -221,7 +225,7 @@ mod tests {
     /// list the TS side's `ServiceStopReason` literals are checked against.
     #[test]
     fn stop_reasons_serialize_to_the_plugin_names() {
-        let golden: Value = serde_json::from_str(GOLDEN).expect("bridge-wire-golden.json parses");
+        let golden = golden_file();
         let golden_reasons: Vec<&str> = golden["stopReasons"]
             .as_array()
             .expect("stopReasons")

@@ -28,6 +28,9 @@ page. Both render the host's latest `ServerServiceStatus` and send
   only while the server runs.
 - `src/server-status-text.ts` — the labels and sentences for states, stop
   reasons and notification permissions.
+- `src/settings-fragments.ts` — **`backgroundServerServiceSettingsItemsFragment`**,
+  the Settings row for `/settings/server`, which `main-tauri` passes as its
+  `platformSettingsItems`.
 - `src/routes/settings/server/index.tsx` — the route, mounted into
   `apps/wildflower-react` by its `routes.config.ts`; `src/routes/__root.tsx`
   exists only so the slice's own route generator has an anchor, with a
@@ -65,6 +68,8 @@ page. Both render the host's latest `ServerServiceStatus` and send
   request, and the tunnel's host while running.
 - `src/web-bridge.test.ts` — each snapshot replaces the store's.
 - `src/routes.test.tsx` — the route tree is `/settings/server/` alone.
+- `src/settings-fragments.test.ts` — the one Settings row links to
+  `/settings/server`.
 
 ## References
 

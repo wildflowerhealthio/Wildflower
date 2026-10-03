@@ -2,6 +2,7 @@
 import { createBrowserHistory } from '@tanstack/react-router'
 import { BackgroundServerServiceBridge } from 'background-server-service-core'
 import {
+  backgroundServerServiceSettingsItemsFragment,
   makeBackgroundServerServiceWebHandlers,
   ServerStatusBanner,
 } from 'background-server-service-react'
@@ -85,14 +86,7 @@ renderApp({
   // session is the host's loopback-owner trust, re-authenticated per request,
   // so the page holds nothing to forget or revoke). The entry, not the
   // settings route, encodes both.
-  platformSettingsItems: [
-    {
-      id: 'server',
-      title: 'Server',
-      subtitle: 'The Wildflower server running on this device',
-      href: '/settings/server',
-    },
-  ],
+  platformSettingsItems: backgroundServerServiceSettingsItemsFragment,
   // Desktop-only: the recorder drives the native sniffer webview and the host
   // writes the `.har` into `saved_data`, neither of which a browser tab has.
   platformTabs: [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }],
