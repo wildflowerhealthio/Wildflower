@@ -28,7 +28,9 @@ pub type GatekeeperAuthMiddleware =
 /// token, except `exempt_paths` which pass through (pass `&[]` to gate every
 /// path). Inserts `ScopeClaims` for downstream `Scoped<…>` capabilities, and
 /// stamps the response with the verified [`RequestCaller`] (an
-/// exempt path's response carries none).
+/// exempt path's response carries none; a `401` carries the
+/// [`RequestRefusal`](shared_structures_rust::request_caller::RequestRefusal)
+/// [`verify_request_claims`] stamped instead).
 /// `Clone` — build once, clone per router. See
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`.
 pub fn gatekeeper_auth_middleware(

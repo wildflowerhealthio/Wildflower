@@ -5,7 +5,7 @@ use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
-use shared_structures_rust::request_caller::RequestCaller;
+use shared_structures_rust::request_caller::{RequestCaller, RequestRefusal};
 
 use crate::domain::token::VerifiedClaims;
 use crate::http::errors;
@@ -36,7 +36,8 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 ///
 /// Both also stamp the verified OAuth client on the response as a
 /// [`RequestCaller`] extension, so the host can say which app is
-/// using the server over the tunnel.
+/// using the server over the tunnel. The `401`s [`verify_request_claims`]
+/// answers instead carry a [`RequestRefusal`] saying why.
 pub async fn require_valid_session(
     State(state): State<Arc<GatekeeperState>>,
     headers: HeaderMap,
@@ -66,9 +67,10 @@ pub async fn require_valid_session(
 /// origin, verify the token against it through the
 /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier)
 /// (signature, issuer/audience, revocation), and map each failure to its
-/// response — a missing token is a `401`, an
-/// unresolvable origin a `500`, a verify failure whatever
-/// [`errors::verify_error_response`] maps it to. Extracted so
+/// response — a missing token is a `401` stamped
+/// [`RequestRefusal::MissingToken`], an unresolvable origin a `500`, a verify
+/// failure whatever [`errors::verify_error_response`] maps it to (a rejected
+/// or revoked token's `401` stamped with that refusal). Extracted so
 /// [`require_valid_session`] and
 /// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
 /// cannot drift in how a token becomes claims; they differ only in the extension
@@ -82,7 +84,7 @@ pub(crate) fn verify_request_claims(
     log_context: &'static str,
 ) -> Result<VerifiedClaims, Box<Response>> {
     let Some(token) = try_bearer_token_from_headers(headers) else {
-        return Err(Box::new(errors::unauthorized()));
+        return Err(Box::new(errors::unauthorized(RequestRefusal::MissingToken)));
     };
     // Verify against the request's served origin (loopback for a direct hit,
     // the forwarded public origin via the tunnel) so the token's `iss`/`aud`

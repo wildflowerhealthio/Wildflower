@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use gatekeeper_rust::{NoLoopbackConsentPrompt, PendingConsentHead};
 use shared_structures_rust::owner_ui::OwnerUiBase;
-use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -132,11 +131,18 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         .await
         .expect("a forwarded GET /health reaches the server");
     assert_eq!(forwarded_health.status(), reqwest::StatusCode::OK);
+    let forwarded_request = tokio::time::timeout(LIFECYCLE_TIMEOUT, forwarded_requests.recv())
+        .await
+        .expect("the forwarded request is reported in time")
+        .expect("the test holds the report sender");
     assert_eq!(
-        tokio::time::timeout(LIFECYCLE_TIMEOUT, forwarded_requests.recv())
-            .await
-            .expect("the forwarded request is reported in time"),
-        Some(ForwardedRequest { caller: None })
+        (
+            forwarded_request.reduced_path.as_str(),
+            forwarded_request.status,
+            forwarded_request.client_address.as_deref(),
+            forwarded_request.caller,
+        ),
+        ("/health", 200, Some("192.0.2.1"), None)
     );
     assert!(
         forwarded_requests.try_recv().is_err(),
