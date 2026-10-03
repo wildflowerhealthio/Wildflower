@@ -759,15 +759,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "background-server-service-android-rust"
-version = "0.0.0"
-dependencies = [
- "jni",
- "serde_json",
- "toml 0.9.6",
-]
-
-[[package]]
 name = "background-server-service-rust"
 version = "0.0.0"
 dependencies = [
@@ -3841,7 +3832,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -7872,8 +7863,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-background-service"
 version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14ef602c2f0f91b628c331357cf01ae9bb8ebfdddcd10844784e56bc65242327"
+source = "git+https://github.com/wildflowerhealthio/tauri-background-service?branch=fix%2Fios-background-grace-window#6cc8fb1d75f5dde9cf7b66b932fd3171957304ee"
 dependencies = [
  "async-trait",
  "libc",
@@ -9218,7 +9208,6 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "apps-rust",
- "background-server-service-android-rust",
  "background-server-service-rust",
  "background-server-service-tauri-rust",
  "browser-sniffer-tauri-rust",
@@ -9227,6 +9216,7 @@ dependencies = [
  "gatekeeper-rust",
  "har-recorder-tauri-rust",
  "openssl",
+ "roxmltree",
  "serde",
  "serde_json",
  "shared-structures-rust",
@@ -9241,7 +9231,6 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tokio",
- "toml 0.9.6",
  "tunnel-rust",
  "url",
  "wildflower-server-rust",

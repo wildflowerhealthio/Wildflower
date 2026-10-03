@@ -93,6 +93,9 @@ catalog:
   qrcode-generator: 2.0.4
   react: 19.3.0
   react-dom: 19.3.0
+  # The background-service plugin's JS bindings, held to the exact version of
+  # the `tauri-plugin-background-service` crate the host pins (`=1.0.1`).
+  tauri-plugin-background-service: 1.0.1
   tundra-css: ^0.14.0
 
   # Two TypeScripts; docs/TypeScript/Versions Reference.md lists

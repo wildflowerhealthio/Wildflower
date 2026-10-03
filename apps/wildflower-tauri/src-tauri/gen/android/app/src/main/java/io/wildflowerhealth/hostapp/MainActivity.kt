@@ -1,4 +1,4 @@
-package com.wildflower_tauri.app
+package io.wildflowerhealth.hostapp
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
