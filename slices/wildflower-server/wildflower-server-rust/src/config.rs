@@ -69,6 +69,7 @@ pub struct ServerObservers {
     /// Each request the trusted front relayed through the tunnel, reported by
     /// the outermost layer after its response is ready (see
     /// `forwarded_request_layer`). A full channel drops the report rather than
-    /// delaying the response.
+    /// delaying the response. The same layer sends each record to the tunnel
+    /// slice's request log, over a channel the server wires itself.
     pub forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
 }

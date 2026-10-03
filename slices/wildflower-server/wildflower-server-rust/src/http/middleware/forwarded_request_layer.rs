@@ -1,6 +1,6 @@
 //! The outermost layer of the served stack: after each request the trusted
 //! front relayed through the tunnel, report what it was and who made it to the
-//! host.
+//! host and to the tunnel slice's request log.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
 //! bearer gate's `401` off its [`RequestRefusal`] one; the gatekeeper bearer
@@ -23,8 +23,18 @@ use tokio::sync::mpsc;
 
 use reduced_path::reduced_path;
 
-/// Report a [`ForwardedRequest`] on `forwarded_request_sender` once the
-/// response to a forwarded request is ready. A loopback request is not
+/// Where [`report_forwarded_request`] sends each record: the host, which
+/// turns them into notifications, and the tunnel slice's request-log writer.
+#[derive(Clone)]
+pub(crate) struct ForwardedRequestSenders {
+    /// The host's channel (`ServerObservers::forwarded_request_sender`).
+    pub(crate) host_sender: mpsc::Sender<ForwardedRequest>,
+    /// The request-log writer's channel (`tunnel_rust::Tunnel::request_log_sender`).
+    pub(crate) request_log_sender: mpsc::Sender<ForwardedRequest>,
+}
+
+/// Report a [`ForwardedRequest`] on both of `forwarded_request_senders` once
+/// the response to a forwarded request is ready. A loopback request is not
 /// reported.
 ///
 /// The forwarded test is [`is_forwarded`], the same presence-only predicate the
@@ -33,14 +43,15 @@ use reduced_path::reduced_path;
 ///
 /// # Remarks
 ///
-/// The report uses `try_send`, and a full channel drops it with a debug log.
+/// Each report uses `try_send`, and a full channel drops it with a debug log.
 /// This is the one place a dropped value is the right outcome: the report is an
-/// observation feeding a best-effort notification count, and the alternative,
-/// awaiting room in the channel, would hold a patient's FHIR response hostage to
-/// how fast the host drains notifications. A closed channel (the host stopped
-/// listening) is dropped the same way, since there is nobody left to tell.
+/// observation feeding a best-effort notification count and log, and the
+/// alternative, awaiting room in a channel, would hold a patient's FHIR response
+/// hostage to how fast the host drains notifications or the log writes. A
+/// closed channel (its reader stopped listening) is dropped the same way, since
+/// there is nobody left to tell.
 pub(crate) async fn report_forwarded_request(
-    State(forwarded_request_sender): State<mpsc::Sender<ForwardedRequest>>,
+    State(forwarded_request_senders): State<ForwardedRequestSenders>,
     request: Request,
     next: Next,
 ) -> Response {
@@ -71,8 +82,17 @@ pub(crate) async fn report_forwarded_request(
         caller: response.extensions().get::<RequestCaller>().cloned(),
         refusal: response.extensions().get::<RequestRefusal>().copied(),
     };
-    if let Err(error) = forwarded_request_sender.try_send(forwarded_request) {
-        tracing::debug!("forwarded-request report dropped: {error}");
+    if let Err(error) = forwarded_request_senders
+        .host_sender
+        .try_send(forwarded_request.clone())
+    {
+        tracing::debug!("forwarded-request report to the host dropped: {error}");
+    }
+    if let Err(error) = forwarded_request_senders
+        .request_log_sender
+        .try_send(forwarded_request)
+    {
+        tracing::debug!("forwarded-request report to the request log dropped: {error}");
     }
     response
 }
@@ -114,7 +134,7 @@ mod tests {
     /// slices do: `/fhir-r4/Patient/{id}` a `200` to the `lifting` client,
     /// `/access/grants` a scope `403` to it, `/refused/{refusal}` each bearer
     /// gate `401`, and `/anonymous` an ungated `200`.
-    fn reporting_router(forwarded_request_sender: mpsc::Sender<ForwardedRequest>) -> Router {
+    fn reporting_router(forwarded_request_senders: ForwardedRequestSenders) -> Router {
         Router::new()
             .route(
                 "/fhir-r4/Patient/{id}",
@@ -156,7 +176,7 @@ mod tests {
             )
             .route("/anonymous", get(|| async { "anonymous" }))
             .layer(axum::middleware::from_fn_with_state(
-                forwarded_request_sender,
+                forwarded_request_senders,
                 report_forwarded_request,
             ))
     }
@@ -171,19 +191,49 @@ mod tests {
             .expect("request")
     }
 
-    /// Send `request` through the layer and return the one record it reported.
-    async fn reported(request: Request) -> ForwardedRequest {
-        let (sender, mut receiver) = mpsc::channel(4);
-        reporting_router(sender)
-            .oneshot(request)
-            .await
-            .expect("oneshot");
+    /// The layer's senders over channels of `capacity`, and the host's and
+    /// the request log's receivers.
+    fn senders(
+        capacity: usize,
+    ) -> (
+        ForwardedRequestSenders,
+        mpsc::Receiver<ForwardedRequest>,
+        mpsc::Receiver<ForwardedRequest>,
+    ) {
+        let (host_sender, host_receiver) = mpsc::channel(capacity);
+        let (request_log_sender, request_log_receiver) = mpsc::channel(capacity);
+        (
+            ForwardedRequestSenders {
+                host_sender,
+                request_log_sender,
+            },
+            host_receiver,
+            request_log_receiver,
+        )
+    }
+
+    /// The one record `receiver` got, checking its sender is gone with nothing
+    /// more queued.
+    fn only_record(receiver: &mut mpsc::Receiver<ForwardedRequest>) -> ForwardedRequest {
         let forwarded_request = receiver.try_recv().expect("one record reported");
         assert_eq!(
             receiver.try_recv(),
             Err(mpsc::error::TryRecvError::Disconnected),
             "exactly one record per request"
         );
+        forwarded_request
+    }
+
+    /// Send `request` through the layer and return the one record it reported,
+    /// which the host and the request log both got.
+    async fn reported(request: Request) -> ForwardedRequest {
+        let (senders, mut host_receiver, mut request_log_receiver) = senders(4);
+        reporting_router(senders)
+            .oneshot(request)
+            .await
+            .expect("oneshot");
+        let forwarded_request = only_record(&mut host_receiver);
+        assert_eq!(only_record(&mut request_log_receiver), forwarded_request);
         forwarded_request
     }
 
@@ -260,28 +310,30 @@ mod tests {
 
     #[tokio::test]
     async fn a_loopback_request_is_not_reported() {
-        let (sender, mut receiver) = mpsc::channel(4);
+        let (senders, mut host_receiver, mut request_log_receiver) = senders(4);
         let request = Request::get("/fhir-r4/Patient/123")
             .body(Body::empty())
             .expect("request");
-        // Held, so the sender outlives the request and an empty channel reads
+        // Held, so the senders outlive the request and an empty channel reads
         // as "nothing reported", not "nobody left to report".
-        let router = reporting_router(sender);
+        let router = reporting_router(senders);
         router.clone().oneshot(request).await.expect("oneshot");
 
-        assert_eq!(
-            receiver.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty),
-            "a loopback request must not be reported"
-        );
+        for receiver in [&mut host_receiver, &mut request_log_receiver] {
+            assert_eq!(
+                receiver.try_recv(),
+                Err(mpsc::error::TryRecvError::Empty),
+                "a loopback request must not be reported"
+            );
+        }
     }
 
-    /// A host that falls behind never slows the API: with the channel full the
-    /// request is still answered, and the report is dropped.
+    /// A host or log writer that falls behind never slows the API: with the
+    /// channels full the request is still answered, and the report is dropped.
     #[tokio::test]
     async fn a_full_channel_drops_the_report_and_still_answers() {
-        let (sender, mut receiver) = mpsc::channel(1);
-        let router = reporting_router(sender);
+        let (senders, mut receiver, _request_log_receiver) = senders(1);
+        let router = reporting_router(senders);
         for _ in 0..2 {
             let response = router
                 .clone()
