@@ -7,7 +7,8 @@
 //! [`crate::config`]), [`FrontSettings`] configures the TLS front, which
 //! rathole's file has no place for, and [`AcmeSettings`] how the relay's own
 //! site gets its certificate. [`RelaySettings::public_rathole_settings`] is
-//! what the site serves at `GET /rathole`. The state directory holds only
+//! what the site serves at `GET /rathole`. The admin key signs requests as
+//! `keyid="admin"` (see [`crate::site::signature`]). The state directory holds only
 //! caches the relay can rebuild, such as that certificate and its ACME
 //! account.
 //!
@@ -27,6 +28,7 @@
 //! | `WILDFLOWER_RELAY_STATE_DIR` | `relay-state` (the systemd unit sets `/var/lib/wildflower-relay`) |
 //! | `WILDFLOWER_RELAY_ACME_STAGING` | `false` |
 //! | `WILDFLOWER_RELAY_ACME_CONTACT` | none (a `mailto:` address) |
+//! | `WILDFLOWER_RELAY_ADMIN_KEY` | none (no request can sign as `admin`) |
 
 use std::fmt::{self, Debug, Display};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -42,6 +44,7 @@ use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport};
 
 use crate::front::Limits;
 use crate::route::is_dns_label;
+use crate::site::signature::ADMIN_KEY_ID;
 
 /// A secret read from the environment. `Debug` never prints it, so settings
 /// can be logged or put in error context safely.
@@ -74,10 +77,16 @@ pub struct RelaySettings {
     pub acme: AcmeSettings,
     /// Where the relay keeps its caches, e.g. the site's certificate.
     pub state_dir: PathBuf,
+    /// The key for requests signed with `keyid="admin"`. `None` means no
+    /// request can sign as admin.
+    pub admin_key: Option<Secret>,
 }
 
 impl RelaySettings {
     pub const STATE_DIR_VAR: &'static str = "WILDFLOWER_RELAY_STATE_DIR";
+    pub const ADMIN_KEY_VAR: &'static str = "WILDFLOWER_RELAY_ADMIN_KEY";
+    /// The shortest admin key accepted, in bytes.
+    pub const ADMIN_KEY_MIN_LEN: usize = 32;
 
     /// Read the settings from the process environment.
     ///
@@ -93,13 +102,27 @@ impl RelaySettings {
     /// # Errors
     ///
     /// Returns an error naming the variable if a required one is unset or
-    /// empty, or one that is set does not parse.
+    /// empty, one that is set does not parse, or the admin key is shorter
+    /// than [`Self::ADMIN_KEY_MIN_LEN`].
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
+        let admin_key = lookup(Self::ADMIN_KEY_VAR)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+            .map(Secret);
+        if let Some(admin_key) = &admin_key {
+            anyhow::ensure!(
+                admin_key.expose().len() >= Self::ADMIN_KEY_MIN_LEN,
+                "{} is too short: use at least {} bytes, e.g. `openssl rand -base64 32`",
+                Self::ADMIN_KEY_VAR,
+                Self::ADMIN_KEY_MIN_LEN
+            );
+        }
         Ok(Self {
             control: ControlSettings::from_lookup(&lookup)?,
             front: FrontSettings::from_lookup(&lookup)?,
             acme: AcmeSettings::from_lookup(&lookup)?,
             state_dir: parsed(&lookup, Self::STATE_DIR_VAR, PathBuf::from("relay-state"))?,
+            admin_key,
         })
     }
 
@@ -261,7 +284,8 @@ fn parse_public_addr(raw: &str) -> anyhow::Result<String> {
 }
 
 /// Parse `name=token,name=token` (whitespace trimmed, blank entries
-/// ignored) into tunnels sorted by name. Errors name the entry by position
+/// ignored) into tunnels sorted by name. `admin` is reserved: it is the
+/// `keyid` of the admin key. Errors name the entry by position
 /// and tunnel name, never the token.
 fn parse_tunnels(raw: &Secret) -> anyhow::Result<Vec<Tunnel>> {
     let mut tunnels: Vec<Tunnel> = Vec::new();
@@ -280,6 +304,10 @@ fn parse_tunnels(raw: &Secret) -> anyhow::Result<Vec<Tunnel>> {
         anyhow::ensure!(
             is_dns_label(name),
             "entry {position}: tunnel name {name:?} is not a lowercase DNS label"
+        );
+        anyhow::ensure!(
+            name != ADMIN_KEY_ID,
+            "entry {position}: tunnel name {name:?} is reserved"
         );
         anyhow::ensure!(
             !token.is_empty(),
@@ -467,6 +495,7 @@ mod tests {
                     contact: None,
                 },
                 state_dir: PathBuf::from("relay-state"),
+                admin_key: None,
             }
         );
         assert_eq!(settings.front.local_hostnames(), ["relay.example.com"]);
@@ -603,6 +632,7 @@ mod tests {
             ("a.b=secret-token", "\"a.b\" is not a lowercase DNS label"),
             ("=secret-token", "\"\" is not a lowercase DNS label"),
             ("alice=  ", "\"alice\" has an empty token"),
+            ("admin=secret-token", "\"admin\" is reserved"),
             (
                 "alice=secret-token,alice=secret-token2",
                 "entry 2: tunnel name \"alice\" is listed twice",
@@ -661,12 +691,40 @@ mod tests {
     }
 
     #[test]
+    fn admin_key_is_optional_trimmed_and_at_least_32_bytes() {
+        let key = "an-admin-key-of-thirty-two-bytes";
+        let mut pairs = REQUIRED.to_vec();
+        pairs.push((
+            RelaySettings::ADMIN_KEY_VAR,
+            " an-admin-key-of-thirty-two-bytes ",
+        ));
+        let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
+        assert_eq!(settings.admin_key, Some(Secret::new(key)));
+
+        let mut pairs = REQUIRED.to_vec();
+        pairs.push((RelaySettings::ADMIN_KEY_VAR, "  "));
+        let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
+        assert_eq!(settings.admin_key, None);
+
+        let mut pairs = REQUIRED.to_vec();
+        pairs.push((RelaySettings::ADMIN_KEY_VAR, "secret-but-too-short"));
+        let err = format!("{:#}", RelaySettings::from_lookup(env(&pairs)).unwrap_err());
+        assert!(err.contains(RelaySettings::ADMIN_KEY_VAR), "{err}");
+        assert!(!err.contains("secret"), "{err}");
+    }
+
+    #[test]
     fn debug_output_never_contains_secrets() {
         let mut pairs = REQUIRED.to_vec();
         pairs.push((ControlSettings::TUNNELS_VAR, "alice=tunnel-token"));
+        pairs.push((
+            RelaySettings::ADMIN_KEY_VAR,
+            "the-admin-key-of-thirty-two-byte",
+        ));
         let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
         let debug = format!("{settings:?}");
         assert!(!debug.contains("tunnel-token"), "{debug}");
+        assert!(!debug.contains("the-admin-key"), "{debug}");
         assert!(!debug.contains(GENKEY_PRIVATE_KEY), "{debug}");
     }
 
