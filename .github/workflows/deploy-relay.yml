@@ -18,7 +18,9 @@ name: Deploy Relay
 # apps/wildflower-relay/deploy/sudoers as root, which don't include
 # installing the systemd unit.
 #
-# A restart drops open connections; devices reconnect their tunnels.
+# A restart drops open connections; devices reconnect their tunnels. A run
+# whose binary and environment file match what the host already runs (an
+# unrelated Cargo.lock bump, say) leaves the relay running.
 on:
   push:
     branches: [main]
@@ -68,6 +70,9 @@ jobs:
   deploy:
     name: Deploy
     needs: build
+    # The `relay` environment is limited to main as well; this keeps a
+    # dispatch from another branch away from its secrets either way.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment: relay
     env:
@@ -110,11 +115,18 @@ jobs:
             fi
           done
           umask 077
+          # systemd reads quotes, backslashes and surrounding whitespace in an
+          # environment file specially, and a newline would start a new
+          # setting; no relay setting needs any of them.
           for name in \
             WILDFLOWER_RELAY_DOMAIN WILDFLOWER_RELAY_NOISE_PRIVATE_KEY WILDFLOWER_RELAY_TUNNELS \
             WILDFLOWER_RELAY_TUNNEL_PORT_BASE WILDFLOWER_RELAY_CONTROL_ADDR \
             WILDFLOWER_RELAY_HTTPS_ADDR WILDFLOWER_RELAY_HTTP_ADDR \
             WILDFLOWER_RELAY_MAX_CONNECTIONS WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS RUST_LOG; do
+            if [[ "${!name}" == *[[:space:]\"\'\\]* ]]; then
+              echo "::error::$name contains whitespace, a quote or a backslash"
+              exit 1
+            fi
             if [[ -n "${!name}" ]]; then
               printf '%s=%s\n' "$name" "${!name}"
             fi
@@ -146,8 +158,8 @@ jobs:
           set -euo pipefail
           cp apps/wildflower-relay/deploy/install.sh apps/wildflower-relay/wildflower-relay.service "$RUNNER_TEMP/upload/"
           dir="$(ssh relay mktemp -d)"
-          scp -q "$RUNNER_TEMP"/upload/* "relay:$dir/"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          scp -q "$RUNNER_TEMP"/upload/* "relay:$dir/"
 
       # Installs the binary and environment file, restarts the relay and
       # checks it answers; on failure it restores the previous binary and
@@ -157,3 +169,11 @@ jobs:
         env:
           UPLOAD_DIR: ${{ steps.upload.outputs.dir }}
         run: ssh relay bash "$UPLOAD_DIR/install.sh" "$UPLOAD_DIR"
+
+      # install.sh removes the upload (which holds the environment file) when
+      # it exits; this covers a run that failed before or while it ran.
+      - name: Remove upload
+        if: always() && steps.upload.outputs.dir != ''
+        env:
+          UPLOAD_DIR: ${{ steps.upload.outputs.dir }}
+        run: ssh relay rm -rf "$UPLOAD_DIR"

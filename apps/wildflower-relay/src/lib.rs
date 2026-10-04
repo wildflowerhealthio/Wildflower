@@ -61,14 +61,17 @@
 //! variables (any other setting, left out when unset). It copies the binary,
 //! environment file and unit to the host over SSH as the `deploy` user
 //! (secrets `RELAY_HOST`, `RELAY_SSH_KEY`, `RELAY_SSH_KNOWN_HOSTS`) and runs
-//! `deploy/install.sh` there. That script keeps the running binary and
-//! environment file as `.prev`, installs the new ones, restarts the relay
-//! and checks it is active and answers `:80` with a 404. If either check
-//! fails it restores the `.prev` files, restarts again and fails the job.
+//! `deploy/install.sh` there. If the binary and environment file match what
+//! is already running, the script leaves the relay alone. Otherwise it keeps
+//! the running ones as `.prev`, installs the new ones, restarts the relay and
+//! checks that it is active, answers `:80` with a 404 and accepts
+//! connections on `:443` and the control port. If any of that fails it
+//! restores the `.prev` files, restarts again and fails the job.
 //! `deploy/sudoers` lets `deploy` run exactly those commands as root. The
 //! unit is installed by hand, because writing one is as good as root; the
 //! deploy stops before changing anything if the installed unit differs from
-//! this crate's.
+//! this crate's. The binary lives in `/opt/wildflower-relay`, off root's
+//! `PATH`, since `deploy` decides its contents.
 //! A restart drops open connections; devices reconnect their tunnels.
 
 pub mod config;
