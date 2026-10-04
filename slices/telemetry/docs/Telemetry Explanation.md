@@ -56,7 +56,7 @@ Every event carries tags set on the SDK's global scope: `app` (the app's id); in
 
 The SMART apps get all of this from `smart-app-react`'s `SmartAppRoot`, which takes the app's DSN and id as its `telemetry` prop. The gate wraps both of its branches, so the consent dialog comes before the connect page and before the launched app. On an answer it starts telemetry through `useConsentedTelemetryStart`; once Sentry runs it tags the FHIR server's host when the app's SMART handshake completes, and reports the launch failure the page arrived with (`source: launch-error`) from the hook's `onFirstStart`, so once. A `CrashReportingBoundary` around the launched app and another around the connect menu report render crashes, and the query cache of the page's one `QueryClient` reports failed reads (`source: query`), through `Sentry.captureException`, which does nothing while the SDK has not been initialized. A failed SMART handshake is not reported as a failed read: the app sends it back to the connect page, where it is reported as the launch failure the page arrived with. A FHIR server URL that does not parse is reported (`source: fhir-server-host`) instead of tagged. The status control sits at the end of the brand bar in the launched app and above the footer on the connect page.
 
-The apps keep the plain `FetchHttpClient.layer`. `telemetry-web`'s `webTelemetryLayerFromEnv` and `initWebTelemetryFromEnv` start telemetry from the build's env without asking, so a consenting app never provides or calls them.
+The apps keep the plain `FetchHttpClient.layer`.
 
 ## The owner UI
 

@@ -1,8 +1,7 @@
 import { context, createContextKey, ROOT_CONTEXT } from '@opentelemetry/api'
-import { Layer } from 'effect'
 import { configFromEnv } from 'telemetry-core'
 import { describe, expect, test } from 'vite-plus/test'
-import { initWebTelemetry, makeWebTelemetryLayer } from './layer.ts'
+import { initWebTelemetry } from './layer.ts'
 
 const probeKey = createContextKey('telemetry-web/layer.test')
 
@@ -20,11 +19,5 @@ describe('initWebTelemetry', () => {
     // property `@effect/opentelemetry`'s per-fiber-step bridge depends on.
     const scoped = ROOT_CONTEXT.setValue(probeKey, 'scoped')
     expect(context.with(scoped, () => context.active().getValue(probeKey))).toBe('scoped')
-  })
-})
-
-describe('makeWebTelemetryLayer', () => {
-  test('returns Layer.empty when telemetry is fully disabled', () => {
-    expect(makeWebTelemetryLayer(configFromEnv({}))).toBe(Layer.empty)
   })
 })

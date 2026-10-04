@@ -4,7 +4,7 @@ import {
   type TelemetryConfig,
   type TelemetryConfigOverrides,
 } from 'telemetry-core'
-import { getGlobalTracer, initWebTelemetry, makeWebTelemetryLayer } from './layer.ts'
+import { getGlobalTracer, initWebTelemetry } from './layer.ts'
 
 /**
  * Read VITE_*-prefixed env vars from `import.meta.env` (inlined by Vite at
@@ -17,27 +17,7 @@ import { getGlobalTracer, initWebTelemetry, makeWebTelemetryLayer } from './laye
 const configFromViteEnv = (overrides?: TelemetryConfigOverrides): TelemetryConfig =>
   mergeConfig(configFromEnv(import.meta.env, 'VITE_'), overrides)
 
-/**
- * Convenience: eagerly initialize telemetry from `import.meta.env` (VITE_*
- * prefix). Call this at the very top of the app entry, before launching the
- * Effect runtime.
- */
-const initWebTelemetryFromEnv = (
-  overrides?: TelemetryConfigOverrides
-): ReturnType<typeof initWebTelemetry> => initWebTelemetry(configFromViteEnv(overrides))
-
-const webTelemetryLayerFromEnv = (
-  overrides?: TelemetryConfigOverrides
-): ReturnType<typeof makeWebTelemetryLayer> => makeWebTelemetryLayer(configFromViteEnv(overrides))
-
-export {
-  configFromViteEnv,
-  getGlobalTracer,
-  initWebTelemetry,
-  initWebTelemetryFromEnv,
-  makeWebTelemetryLayer,
-  webTelemetryLayerFromEnv,
-}
+export { configFromViteEnv, getGlobalTracer, initWebTelemetry }
 export type { InitConsentedTelemetryOptions, TelemetryTags } from './consented.ts'
 export { consentedTelemetryLayer, initConsentedTelemetry, setFhirServerHost } from './consented.ts'
 export type { InitSentryWebOptions } from './sentry.ts'

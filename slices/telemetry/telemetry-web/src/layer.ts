@@ -2,7 +2,6 @@ import { StackContextManager } from '@opentelemetry/sdk-trace-web'
 import {
   getGlobalTracer,
   initClientTelemetry,
-  makeClientTelemetryLayer,
   type SentryAdapter,
   type TelemetryConfig,
 } from 'telemetry-core'
@@ -39,9 +38,4 @@ const initWebTelemetry = (
 ): ReturnType<typeof initClientTelemetry> =>
   initClientTelemetry(config, sentryAdapterWith(sentryOptions), createWebContextManager)
 
-const makeWebTelemetryLayer = (
-  config: TelemetryConfig
-): ReturnType<typeof makeClientTelemetryLayer> =>
-  makeClientTelemetryLayer(config, sentryAdapterWith({}), createWebContextManager)
-
-export { getGlobalTracer, initWebTelemetry, makeWebTelemetryLayer }
+export { getGlobalTracer, initWebTelemetry }

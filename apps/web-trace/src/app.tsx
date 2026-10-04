@@ -160,13 +160,11 @@ const App = (): JSX.Element => {
   // Memoised on the (stable) resolved client so a re-render neither rebuilds the
   // context nor, through `TraceApp`'s own memo, the router beneath it.
   //
-  // Plain `FetchHttpClient.layer`, with no `telemetry-web`
-  // `webTelemetryLayerFromEnv`: the app's only outbound traffic is the FHIR
-  // server and, once the visitor consents in `SmartAppRoot`'s dialog, Sentry;
-  // that layer would start reporting from the build's env without asking. The handshake's `serverUrl`
-  // is the FHIR base verbatim — the typed client emits base-relative paths, so
-  // there is no prefix to reconcile and no failure arm here beyond the
-  // handshake's own.
+  // Plain `FetchHttpClient.layer`: the app's only outbound traffic is the FHIR
+  // server and, once the visitor consents in `SmartAppRoot`'s dialog, Sentry.
+  // The handshake's `serverUrl` is the FHIR base verbatim — the typed client
+  // emits base-relative paths, so there is no prefix to reconcile and no
+  // failure arm here beyond the handshake's own.
   const client = handshake.kind === 'ready' ? handshake.client : undefined
   const context = useMemo<RouterContext | undefined>(
     () =>

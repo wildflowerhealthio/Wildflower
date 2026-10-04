@@ -137,13 +137,10 @@ accepts the writes and the set has room to grow.
   so its real URL carries `?code=…&state=…`. A browser history would try to
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
-- **Plain `FetchHttpClient.layer`, with no `telemetry-web`
-  `webTelemetryLayerFromEnv`.** The importer's assets are served from
+- **Plain `FetchHttpClient.layer`.** The importer's assets are served from
   wildflowerhealth.io and it writes to the FHIR base the handshake named; its
   only outbound traffic is that FHIR server and, once the visitor says yes in
-  `SmartAppRoot`'s consent dialog, Sentry; that layer would start
-  reporting from the build's env without asking, in a bundle whose whole job is
-  moving the user's records between two places they chose. `app.tsx` is
+  `SmartAppRoot`'s consent dialog, Sentry. `app.tsx` is
   the only file that names the real transport; `buildSmartRouterContext` keeps it
   a parameter so `app.test.tsx` can drive a stub.
 - **`build` is `vp build`, with no `tsc` step.** The tsconfig sets

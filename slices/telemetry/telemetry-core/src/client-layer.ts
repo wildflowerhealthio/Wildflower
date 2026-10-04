@@ -137,9 +137,8 @@ const initClientTelemetry = (
 /**
  * Effect Layer that binds Effect's tracing to the globally registered tracer
  * provider, naming the service after `config.otel`. Registers nothing itself:
- * {@link makeClientTelemetryLayer} pairs it with {@link initClientTelemetry},
- * and `telemetry-web`'s consented layer provides it only once a consent has
- * registered the provider.
+ * `telemetry-web`'s consented layer provides it only once a consent has
+ * registered the provider through {@link initClientTelemetry}.
  */
 const makeEffectTracerLayer = (
   config: TelemetryConfig
@@ -152,27 +151,8 @@ const makeEffectTracerLayer = (
     })
   )
 
-/**
- * Effect Layer that binds Effect's tracing to whatever tracer provider is
- * registered globally (see {@link initClientTelemetry}). The layer is a no-op
- * when telemetry is disabled so callers can provide it unconditionally.
- *
- * @param createContextManager - Builds the platform's synchronous `ContextManager`
- */
-const makeClientTelemetryLayer = (
-  config: TelemetryConfig,
-  sentry: SentryAdapter,
-  createContextManager: ContextManagerFactory
-):
-  | Layer.Layer<OtelEffectTracer.OtelTracer | Resource.Resource, never, never>
-  | Layer.Layer<never, never, never> => {
-  const provider = initClientTelemetry(config, sentry, createContextManager)
-  if (provider === undefined) return Layer.empty
-  return makeEffectTracerLayer(config)
-}
-
 /** Returns the globally registered tracer, or a no-op tracer if unset. */
 const getGlobalTracer = (name: string): Tracer => trace.getTracer(name)
 
 export type { ContextManagerFactory, SentryAdapter, SentryClient }
-export { getGlobalTracer, initClientTelemetry, makeClientTelemetryLayer, makeEffectTracerLayer }
+export { getGlobalTracer, initClientTelemetry, makeEffectTracerLayer }
