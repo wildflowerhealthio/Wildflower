@@ -1,0 +1,35 @@
+# sudoers rules for the `deploy` user on the relay host, installed as
+# /etc/sudoers.d/wildflower-relay:
+#
+#   sudo visudo -cf sudoers && sudo install -m 0440 sudoers /etc/sudoers.d/wildflower-relay
+#
+# They allow exactly the commands install.sh runs for
+# .github/workflows/deploy-relay.yml, with these arguments and no others.
+# New files are written through /dev/stdin, so root never reads a path the
+# deploy user controls.
+#
+# Installing the unit file is equivalent to root: a unit can run any command
+# as root. Drop WILDFLOWER_RELAY_UNIT from the last line to install the unit
+# by hand instead; install.sh then stops, before changing anything, whenever
+# the unit in the repository differs from the installed one.
+
+Cmnd_Alias WILDFLOWER_RELAY_FILES = \
+  /usr/bin/install -d -m 0755 -o root -g root /etc/wildflower-relay, \
+  /usr/bin/install -m 0600 -o root -g root /dev/stdin /etc/wildflower-relay/env, \
+  /usr/bin/install -m 0755 -o root -g root /dev/stdin /usr/local/bin/wildflower-relay.new, \
+  /usr/bin/mv -f /usr/local/bin/wildflower-relay.new /usr/local/bin/wildflower-relay, \
+  /usr/bin/install -m 0755 -o root -g root /usr/local/bin/wildflower-relay /usr/local/bin/wildflower-relay.prev, \
+  /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env /etc/wildflower-relay/env.prev, \
+  /usr/bin/install -m 0755 -o root -g root /usr/local/bin/wildflower-relay.prev /usr/local/bin/wildflower-relay, \
+  /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env.prev /etc/wildflower-relay/env
+
+Cmnd_Alias WILDFLOWER_RELAY_UNIT = \
+  /usr/bin/install -m 0644 -o root -g root /dev/stdin /etc/systemd/system/wildflower-relay.service
+
+Cmnd_Alias WILDFLOWER_RELAY_SERVICE = \
+  /usr/bin/systemctl daemon-reload, \
+  /usr/bin/systemctl enable wildflower-relay, \
+  /usr/bin/systemctl restart wildflower-relay, \
+  /usr/bin/journalctl -u wildflower-relay -n 50 --no-pager
+
+deploy ALL=(root) NOPASSWD: WILDFLOWER_RELAY_FILES, WILDFLOWER_RELAY_UNIT, WILDFLOWER_RELAY_SERVICE

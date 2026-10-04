@@ -40,6 +40,7 @@ by hand:
 | `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)        | Release profile, rustflags add `-C link-arg=advapi32.lib`              |
 | `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)          | Release profile, `ubuntu-22.04` — a different image from CI's          |
 | `release-ios`         | `tauri-release-publish.yml` → `build-ios`              | Release profile, `aarch64-apple-ios`                                   |
+| `release-relay`       | `deploy-relay.yml` → `build`                           | Release profile, `wildflower-relay` only, `ubuntu-24.04`               |
 | `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                | No compile at all; `cache-targets: false`, registry and git only       |
 
 Every one of them pins `cache-on-failure: true` — also the action's own default,

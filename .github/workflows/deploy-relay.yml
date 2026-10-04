@@ -1,0 +1,157 @@
+name: Deploy Relay
+
+# Builds wildflower-relay and deploys it to its droplet, where it runs under
+# apps/wildflower-relay/wildflower-relay.service. The relay has to own public
+# :443 and :80 and see raw TCP (it routes ciphertext by SNI and puts the
+# visitor's address in a PROXY header), so it runs alone on the host rather
+# than behind a platform's proxy.
+#
+# The `build` job holds no secrets. `deploy` runs in the `relay` environment,
+# which carries them:
+#   - secrets RELAY_HOST, RELAY_SSH_KEY (the `deploy` user's private key) and
+#     RELAY_SSH_KNOWN_HOSTS (the host's pinned key lines);
+#   - secrets WILDFLOWER_RELAY_DOMAIN, WILDFLOWER_RELAY_NOISE_PRIVATE_KEY and
+#     WILDFLOWER_RELAY_TUNNELS;
+#   - optionally, variables for the other settings in relay.example.env;
+#     those left unset keep the relay's defaults.
+# The host's `deploy` user may run only the commands in
+# apps/wildflower-relay/deploy/sudoers as root.
+#
+# A restart drops open connections; devices reconnect their tunnels.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/wildflower-relay/**'
+      - 'Cargo.lock'
+      - '.github/workflows/deploy-relay.yml'
+  # Redeploy by hand, e.g. after a secret or variable changes.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One relay: let an in-flight deploy finish instead of cancelling it halfway.
+concurrency:
+  group: relay
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    # The droplet runs Ubuntu 24.04; building on the same image links against
+    # the same glibc.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          # Release profile on its own image — see
+          # docs/Rust/CI Build Cache Explanation.md.
+          cache-shared-key: release-relay
+          cache-on-failure: true
+
+      - name: Build wildflower-relay
+        run: cargo build --release --locked -p wildflower-relay
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: wildflower-relay
+          path: target/release/wildflower-relay
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: relay
+    env:
+      RELAY_HOST: ${{ secrets.RELAY_HOST }}
+    steps:
+      - name: Checkout deploy files
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            apps/wildflower-relay/deploy/install.sh
+            apps/wildflower-relay/wildflower-relay.service
+          sparse-checkout-cone-mode: false
+
+      - name: Download binary
+        uses: actions/download-artifact@v8
+        with:
+          name: wildflower-relay
+          path: ${{ runner.temp }}/upload
+
+      # The environment file, from the environment's secrets and variables.
+      # Unset optional settings are left out, so the relay's defaults apply.
+      - name: Write environment file
+        env:
+          WILDFLOWER_RELAY_DOMAIN: ${{ secrets.WILDFLOWER_RELAY_DOMAIN }}
+          WILDFLOWER_RELAY_NOISE_PRIVATE_KEY: ${{ secrets.WILDFLOWER_RELAY_NOISE_PRIVATE_KEY }}
+          WILDFLOWER_RELAY_TUNNELS: ${{ secrets.WILDFLOWER_RELAY_TUNNELS }}
+          WILDFLOWER_RELAY_TUNNEL_PORT_BASE: ${{ vars.WILDFLOWER_RELAY_TUNNEL_PORT_BASE }}
+          WILDFLOWER_RELAY_CONTROL_ADDR: ${{ vars.WILDFLOWER_RELAY_CONTROL_ADDR }}
+          WILDFLOWER_RELAY_HTTPS_ADDR: ${{ vars.WILDFLOWER_RELAY_HTTPS_ADDR }}
+          WILDFLOWER_RELAY_HTTP_ADDR: ${{ vars.WILDFLOWER_RELAY_HTTP_ADDR }}
+          WILDFLOWER_RELAY_MAX_CONNECTIONS: ${{ vars.WILDFLOWER_RELAY_MAX_CONNECTIONS }}
+          WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS: ${{ vars.WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS }}
+          RUST_LOG: ${{ vars.RUST_LOG }}
+        run: |
+          set -euo pipefail
+          for name in RELAY_HOST WILDFLOWER_RELAY_DOMAIN WILDFLOWER_RELAY_NOISE_PRIVATE_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::The relay environment has no $name secret"
+              exit 1
+            fi
+          done
+          umask 077
+          for name in \
+            WILDFLOWER_RELAY_DOMAIN WILDFLOWER_RELAY_NOISE_PRIVATE_KEY WILDFLOWER_RELAY_TUNNELS \
+            WILDFLOWER_RELAY_TUNNEL_PORT_BASE WILDFLOWER_RELAY_CONTROL_ADDR \
+            WILDFLOWER_RELAY_HTTPS_ADDR WILDFLOWER_RELAY_HTTP_ADDR \
+            WILDFLOWER_RELAY_MAX_CONNECTIONS WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS RUST_LOG; do
+            if [[ -n "${!name}" ]]; then
+              printf '%s=%s\n' "$name" "${!name}"
+            fi
+          done > "$RUNNER_TEMP/upload/env"
+
+      - name: Configure SSH
+        env:
+          RELAY_SSH_KEY: ${{ secrets.RELAY_SSH_KEY }}
+          RELAY_SSH_KNOWN_HOSTS: ${{ secrets.RELAY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 ~/.ssh
+          umask 077
+          printf '%s\n' "$RELAY_SSH_KEY" > ~/.ssh/relay
+          printf '%s\n' "$RELAY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host relay
+            HostName $RELAY_HOST
+            User deploy
+            IdentityFile ~/.ssh/relay
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            BatchMode yes
+          EOF
+
+      - name: Upload
+        id: upload
+        run: |
+          set -euo pipefail
+          cp apps/wildflower-relay/deploy/install.sh apps/wildflower-relay/wildflower-relay.service "$RUNNER_TEMP/upload/"
+          dir="$(ssh relay mktemp -d)"
+          scp -q "$RUNNER_TEMP"/upload/* "relay:$dir/"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      # Installs the binary, environment file and unit, restarts the relay
+      # and checks it answers; on failure it restores the previous binary and
+      # environment file, and this step fails.
+      - name: Install and restart
+        env:
+          UPLOAD_DIR: ${{ steps.upload.outputs.dir }}
+        run: ssh relay bash "$UPLOAD_DIR/install.sh" "$UPLOAD_DIR"
