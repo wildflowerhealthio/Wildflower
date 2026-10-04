@@ -37,6 +37,4 @@ ENV WILDFLOWER_RELAY_CONFIG=/etc/wildflower-relay/relay.toml
 VOLUME ["/etc/wildflower-relay"]
 # 443: TLS front (routes by SNI), 80: redirect to https, 2333: rathole control.
 EXPOSE 443 80 2333
-# The relay drains on SIGINT.
-STOPSIGNAL SIGINT
 ENTRYPOINT ["wildflower-relay"]

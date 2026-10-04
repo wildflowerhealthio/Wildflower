@@ -20,6 +20,36 @@ fn resolve_config_path() -> PathBuf {
     PathBuf::from("relay.toml")
 }
 
+/// Resolve on SIGINT or (on unix) SIGTERM. A signal that cannot be listened
+/// for is logged and never fires, rather than stopping the relay at once.
+async fn shutdown_signal() {
+    let sigint = async {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::warn!("cannot listen for SIGINT: {e}");
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(unix)]
+    let sigterm = async {
+        use tokio::signal::unix::{signal, SignalKind};
+        match signal(SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                sigterm.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!("cannot listen for SIGTERM: {e}");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let sigterm = std::future::pending::<()>();
+    tokio::select! {
+        () = sigint => {}
+        () = sigterm => {}
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // `RUST_LOG`-driven, mirroring the convention in the other Rust crates.
@@ -37,15 +67,15 @@ async fn main() -> anyhow::Result<()> {
     // writes the rathole `[server]` keys into the TOML before starting.
     let settings = RelaySettings::from_env()?;
 
-    // rathole and the front shut down when it receives `true` on this broadcast channel.
-    // We translate Ctrl-C into that so the relay drains cleanly instead of
-    // being killed mid-connection.
+    // rathole and the front shut down when `true` arrives on this broadcast
+    // channel. Ctrl-C (SIGINT) and SIGTERM (systemd, `docker stop`) are
+    // translated into that so the relay stops cleanly instead of being
+    // killed mid-connection.
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
     tokio::spawn(async move {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            tracing::info!("shutdown signal received, stopping relay");
-            let _ = shutdown_tx.send(true);
-        }
+        shutdown_signal().await;
+        tracing::info!("shutdown signal received, stopping relay");
+        let _ = shutdown_tx.send(true);
     });
 
     tracing::info!(config = %config_path.display(), "starting wildflower-relay");

@@ -47,6 +47,16 @@
 //! `token`.
 //! The front's own settings (domain suffix, listen addresses, limits) stay
 //! out of the file because rathole rejects unknown keys in it.
+//!
+//! ## Deploying
+//!
+//! The relay stops cleanly on SIGINT or SIGTERM. It ships two ways, both in
+//! this crate's directory: a `Dockerfile` with a `compose.yaml` (config in a
+//! volume at `/etc/wildflower-relay`), and `wildflower-relay.service`, a
+//! systemd unit for a plain host that reads its settings from
+//! `/etc/wildflower-relay/env` and keeps the rathole TOML in
+//! `/var/lib/wildflower-relay`, running as a dynamic user allowed only to
+//! bind ports 443 and 80.
 
 pub mod config;
 pub mod front;
