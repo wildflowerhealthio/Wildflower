@@ -1,30 +1,72 @@
 //! `wildflower-relay` — the self-hostable tunnel relay.
 //!
-//! This crate is a thin wrapper over the [`rathole`] library in *server*
-//! mode. It deliberately implements no tunneling protocol of its own: it
-//! loads a rathole server config, runs the relay, and translates a shutdown
-//! signal into rathole's broadcast shutdown channel.
+//! One process runs two things side by side on one shutdown broadcast:
+//!
+//! - the [`rathole`] library in *server* mode, which holds a noise-encrypted
+//!   tunnel per device and implements no protocol of our own; and
+//! - a small TCP [`front`] on `:443` and `:80` that routes each visitor to a
+//!   device's tunnel by the server name in the TLS ClientHello.
 //!
 //! ## Where it sits
 //!
 //! ```text
-//!   Tauri host (rathole CLIENT)  ──noise──►  wildflower-relay (rathole SERVER)
-//!                                                     │  forwards a control
-//!                                                     │  port per device
-//!                                                     ▼
-//!                                            reverse-proxy edge (Caddy/Traefik)
-//!                                            terminates TLS, routes
-//!                                            https://{sub}.{root} → device port
+//!   browser ──TLS──► front :443 ── reads SNI only ──► 127.0.0.1:<port>
+//!                    (wildflower-relay)                (rathole service <tunnel name>)
+//!                                                             │ noise tunnel
+//!                                                             ▼
+//!                                       device: rathole CLIENT ──► TLS listener
+//!                                       (holds the certificate for <tunnel name>.<domain>)
 //! ```
 //!
-//! rathole forwards raw TCP/UDP only — it has no HTTP virtual-host routing —
-//! so subdomain + TLS for the public surface are the edge proxy's job. Keeping
-//! that split is intentional: the relay stays a small, audited binary and the
-//! battle-tested proxy owns certificates and host routing.
+//! Each device has a *tunnel*, named by the subdomain it is reached at. A
+//! tunnel is a rathole service of the same name, `[server.services.<tunnel
+//! name>]`; "service" below means only that rathole table.
+//!
+//! TLS for `https://<tunnel name>.<domain>` is terminated on the device. The
+//! relay routes ciphertext: it reads the ClientHello's server name, maps
+//! `<tunnel name>.<domain>` to that tunnel's loopback port, writes a PROXY protocol v2 header carrying the visitor's address, replays
+//! the hello and then copies bytes both ways. It holds no certificates or keys
+//! for the public surface, and a hostname it cannot route is closed without a
+//! byte written rather than answered with a certificate of its own. `:80`
+//! only redirects to `https://`.
+//!
+//! Every tunnel's port is on loopback, so nothing but the front reaches it,
+//! and rathole binds it only while that device is connected: a refused
+//! connect is how the front knows a device is offline.
+//!
+//! ## Configuration
+//!
+//! The environment is the only source of configuration: every setting is a
+//! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
+//! for a commented list). Tunnels come from `WILDFLOWER_RELAY_TUNNELS`, one
+//! `name=token` each, with no shared token. On every start the relay
+//! renders a fresh rathole TOML from the environment to
+//! `WILDFLOWER_RELAY_CONFIG` (see [`config`]) and never reads it back; the
+//! front's routes are built from the same tunnel list.
+//!
+//! ## Deploying
+//!
+//! `wildflower-relay.service` is a systemd unit for a plain host. It reads
+//! the environment from `/etc/wildflower-relay/env` and writes the rathole
+//! TOML to `/run/wildflower-relay/relay.toml`, running as a dynamic user
+//! allowed only to bind ports 443 and 80. The relay stops cleanly on SIGINT
+//! or SIGTERM.
+
+pub mod config;
+pub mod front;
+pub mod route;
+pub mod settings;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use anyhow::Context;
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+
+pub use front::{Front, Limits};
+pub use route::{Route, RouteTable, Router};
+pub use settings::{ControlSettings, FrontSettings, RelaySettings, Secret};
 
 /// Build the [`rathole::Cli`] that runs the relay in server mode against the
 /// config at `config_path`.
@@ -43,18 +85,39 @@ pub fn build_server_cli(config_path: PathBuf) -> rathole::Cli {
     }
 }
 
-/// Run the relay until `shutdown_rx` receives `true` (or the underlying
-/// rathole instance exits on its own).
+/// Write the rathole TOML from `settings`, then run the relay — rathole and
+/// the `:443`/`:80` front — until `shutdown_rx` receives `true`.
 ///
 /// # Errors
 ///
-/// Returns an error if rathole fails to load the config, bind its control
-/// port, or exits with a transport error.
+/// Returns an error if the config cannot be written, a front listener cannot
+/// bind, or rathole exits with an error.
 pub async fn run_relay(
     config_path: PathBuf,
+    settings: RelaySettings,
     shutdown_rx: broadcast::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    rathole::run(build_server_cli(config_path), shutdown_rx).await
+    config::write_config(&config_path, &settings.control).await?;
+    let routes = RouteTable::from_addrs(settings.control.tunnel_addrs());
+    let settings = settings.front;
+    tracing::info!(domain = %settings.domain, routes = routes.len(), "routes built");
+    let router = Arc::new(Router::new(&settings.domain, routes));
+    let front = Front::new(router, settings.limits);
+
+    let https = TcpListener::bind(settings.https_addr)
+        .await
+        .with_context(|| format!("binding the TLS front on {}", settings.https_addr))?;
+    let http = TcpListener::bind(settings.http_addr)
+        .await
+        .with_context(|| format!("binding the HTTP redirect on {}", settings.http_addr))?;
+    tracing::info!(https = %settings.https_addr, http = %settings.http_addr, "front listening");
+
+    tokio::try_join!(
+        Arc::clone(&front).serve_https(https, shutdown_rx.resubscribe()),
+        front.serve_http(http, shutdown_rx.resubscribe()),
+        rathole::run(build_server_cli(config_path), shutdown_rx),
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -66,36 +129,13 @@ mod tests {
     /// listen) and never `genkey` (which would print a key and exit).
     #[test]
     fn build_server_cli_is_server_mode_with_config() {
-        let cli = build_server_cli(PathBuf::from("/etc/wildflower/relay.toml"));
+        let cli = build_server_cli(PathBuf::from("/run/wildflower-relay/relay.toml"));
         assert!(cli.server, "relay must run in server mode");
         assert!(!cli.client, "relay must not run in client mode");
         assert!(cli.genkey.is_none(), "relay must not be in genkey mode");
         assert_eq!(
             cli.config_path.as_deref(),
-            Some(std::path::Path::new("/etc/wildflower/relay.toml"))
-        );
-    }
-
-    /// Golden check that the shipped example config is a valid rathole server
-    /// config — catches drift between the example and rathole's schema before
-    /// it bites an operator at deploy time. rathole only exposes the async
-    /// `Config::from_file`, so the example is written to a temp file and parsed
-    /// through the same path an operator's deploy would take.
-    #[tokio::test]
-    async fn example_config_is_a_valid_rathole_server_config() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("relay.toml");
-        std::fs::write(&path, include_str!("../relay.example.toml")).expect("write example config");
-        let config = rathole::Config::from_file(&path)
-            .await
-            .expect("example config must parse");
-        assert!(
-            config.server.is_some(),
-            "example must define a [server] section"
-        );
-        assert!(
-            config.client.is_none(),
-            "relay example must not define a [client] section"
+            Some(std::path::Path::new("/run/wildflower-relay/relay.toml"))
         );
     }
 }
