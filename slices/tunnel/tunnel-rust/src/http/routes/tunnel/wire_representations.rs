@@ -5,13 +5,13 @@
 //! sibling modules and pull what they need from here.
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use shared_structures_rust::request_caller::RequestRefusal;
 use shared_structures_rust::tunnel_service::TunnelStatus;
 
-use crate::domain::request_log::{CallerSummary, LoggedRequest, RequestLogPage};
+use crate::domain::request_log::{CallerSummary, LoggedRequest, RequestAuth, RequestLogPage};
 use crate::domain::TunnelSettings;
 use crate::TunnelDaemon;
 
@@ -141,6 +141,29 @@ impl From<RequestRefusal> for RequestRefusalBody {
             RequestRefusal::MissingToken => Self::MissingToken,
             RequestRefusal::TokenRejected => Self::TokenRejected,
             RequestRefusal::Revoked => Self::Revoked,
+        }
+    }
+}
+
+/// The `auth` filter `GET /tunnel/requests` accepts: how a logged request fared
+/// against auth. Mirrors [`RequestAuth`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum RequestAuthParam {
+    /// It needed auth and its token was valid: a verified caller, not refused.
+    Authorized,
+    /// It didn't need auth: no verified caller, not refused.
+    Public,
+    /// It failed auth: a bearer gate's `401` or a scope `403`.
+    Refused,
+}
+
+impl From<RequestAuthParam> for RequestAuth {
+    fn from(auth: RequestAuthParam) -> Self {
+        match auth {
+            RequestAuthParam::Authorized => Self::Authorized,
+            RequestAuthParam::Public => Self::Public,
+            RequestAuthParam::Refused => Self::Refused,
         }
     }
 }

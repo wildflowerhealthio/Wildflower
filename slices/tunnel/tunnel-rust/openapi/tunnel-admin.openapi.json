@@ -133,12 +133,18 @@
             }
           },
           {
-            "name": "refused",
+            "name": "auth",
             "in": "query",
-            "description": "`true` for only refused requests (a bearer gate's `401` or a scope\n`403`), `false` for only the rest.",
+            "description": "Only requests in this auth case: `authorized` (a verified caller, not\nrefused), `public` (no verified caller, not refused) or `refused` (a\nbearer gate's `401` or a scope `403`).",
             "required": false,
             "schema": {
-              "type": "boolean"
+              "type": "string",
+              "description": "The `auth` filter `GET /tunnel/requests` accepts: how a logged request fared\nagainst auth. Mirrors [`RequestAuth`].",
+              "enum": [
+                "authorized",
+                "public",
+                "refused"
+              ]
             }
           }
         ],

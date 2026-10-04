@@ -15,7 +15,7 @@ use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, Re
 
 use crate::db::schema::tunnel_requests;
 use crate::domain::request_log::{
-    CallerSummary, LoggedRequest, RequestLogFilter, RequestLogPage, REFUSED_STATUSES,
+    CallerSummary, LoggedRequest, RequestAuth, RequestLogFilter, RequestLogPage, REFUSED_STATUSES,
     REQUEST_LOG_PAGE_SIZE,
 };
 use crate::domain::{CallerClass, TunnelError};
@@ -302,9 +302,20 @@ pub(super) fn requests_page(
     if let Some(client_address) = &filter.client_address {
         query = query.filter(tunnel_requests::address.eq(client_address));
     }
-    match filter.refused {
-        Some(true) => query = query.filter(tunnel_requests::status.eq_any(refused_statuses)),
-        Some(false) => query = query.filter(tunnel_requests::status.ne_all(refused_statuses)),
+    match filter.auth {
+        Some(RequestAuth::Authorized) => {
+            query = query
+                .filter(tunnel_requests::client_id.is_not_null())
+                .filter(tunnel_requests::status.ne_all(refused_statuses));
+        }
+        Some(RequestAuth::Public) => {
+            query = query
+                .filter(tunnel_requests::client_id.is_null())
+                .filter(tunnel_requests::status.ne_all(refused_statuses));
+        }
+        Some(RequestAuth::Refused) => {
+            query = query.filter(tunnel_requests::status.eq_any(refused_statuses));
+        }
         None => {}
     }
     let mut requests = query
@@ -627,6 +638,7 @@ mod tests {
                     401,
                     Some(RequestRefusal::TokenRejected),
                 ),
+                request_at(None, "192.0.2.1", 5, 200, None),
             ])
             .expect("insert");
         let ids = |filter: RequestLogFilter| {
@@ -651,11 +663,25 @@ mod tests {
                 client_address: Some("192.0.2.1".to_owned()),
                 ..RequestLogFilter::default()
             }),
-            vec![4, 2, 1]
+            vec![5, 4, 2, 1]
         );
         assert_eq!(
             ids(RequestLogFilter {
-                refused: Some(true),
+                auth: Some(RequestAuth::Authorized),
+                ..RequestLogFilter::default()
+            }),
+            vec![3, 1]
+        );
+        assert_eq!(
+            ids(RequestLogFilter {
+                auth: Some(RequestAuth::Public),
+                ..RequestLogFilter::default()
+            }),
+            vec![5]
+        );
+        assert_eq!(
+            ids(RequestLogFilter {
+                auth: Some(RequestAuth::Refused),
                 ..RequestLogFilter::default()
             }),
             vec![4, 2]
@@ -664,7 +690,7 @@ mod tests {
             ids(RequestLogFilter {
                 client_id: Some("lifting".to_owned()),
                 client_address: Some("192.0.2.1".to_owned()),
-                refused: Some(false),
+                auth: Some(RequestAuth::Authorized),
                 before_id: Some(4),
             }),
             vec![1]
