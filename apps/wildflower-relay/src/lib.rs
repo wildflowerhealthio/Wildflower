@@ -11,35 +11,38 @@
 //!
 //! ```text
 //!   browser ──TLS──► front :443 ── reads SNI only ──► 127.0.0.1:<port>
-//!                    (wildflower-relay)                (rathole service <label>)
+//!                    (wildflower-relay)                (rathole service <tunnel name>)
 //!                                                             │ noise tunnel
 //!                                                             ▼
 //!                                       device: rathole CLIENT ──► TLS listener
-//!                                       (holds the certificate for <label>.<domain>)
+//!                                       (holds the certificate for <tunnel name>.<domain>)
 //! ```
 //!
-//! TLS for `https://<label>.<domain>` is terminated on the device. The relay
-//! routes ciphertext: it reads the ClientHello's server name, maps
-//! `<label>.<domain>` to the rathole service `[server.services.<label>]`,
-//! writes a PROXY protocol v2 header carrying the visitor's address, replays
+//! Each device has a *tunnel*, named by the subdomain it is reached at. A
+//! tunnel is a rathole service of the same name, `[server.services.<tunnel
+//! name>]`; "service" below means only that rathole table.
+//!
+//! TLS for `https://<tunnel name>.<domain>` is terminated on the device. The
+//! relay routes ciphertext: it reads the ClientHello's server name, maps
+//! `<tunnel name>.<domain>` to that tunnel's loopback port, writes a PROXY protocol v2 header carrying the visitor's address, replays
 //! the hello and then copies bytes both ways. It holds no certificates or keys
 //! for the public surface, and a hostname it cannot route is closed without a
 //! byte written rather than answered with a certificate of its own. `:80`
 //! only redirects to `https://`.
 //!
-//! Every service binds a loopback address, so nothing but the front reaches
-//! a tunnel, and rathole binds it only while that device is connected: a
-//! refused connect is how the front knows a device is offline.
+//! Every tunnel's port is on loopback, so nothing but the front reaches it,
+//! and rathole binds it only while that device is connected: a refused
+//! connect is how the front knows a device is offline.
 //!
 //! ## Configuration
 //!
 //! The environment is the only source of configuration: every setting is a
 //! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
-//! for a commented list). Devices come from `WILDFLOWER_RELAY_SERVICES`, one
-//! `label=token` each, with no shared token. On every start the relay
+//! for a commented list). Tunnels come from `WILDFLOWER_RELAY_TUNNELS`, one
+//! `name=token` each, with no shared token. On every start the relay
 //! renders a fresh rathole TOML from the environment to
 //! `WILDFLOWER_RELAY_CONFIG` (see [`config`]) and never reads it back; the
-//! front's routes are built from the same service list.
+//! front's routes are built from the same tunnel list.
 //!
 //! ## Deploying
 //!
@@ -95,7 +98,7 @@ pub async fn run_relay(
     shutdown_rx: broadcast::Receiver<bool>,
 ) -> anyhow::Result<()> {
     config::write_config(&config_path, &settings.control).await?;
-    let routes = RouteTable::from_addrs(settings.control.service_addrs());
+    let routes = RouteTable::from_addrs(settings.control.tunnel_addrs());
     let settings = settings.front;
     tracing::info!(domain = %settings.domain, routes = routes.len(), "routes built");
     let router = Arc::new(Router::new(&settings.domain, routes));

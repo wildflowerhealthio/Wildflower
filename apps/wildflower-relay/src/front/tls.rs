@@ -36,7 +36,7 @@ impl Front {
             return;
         };
         let Some(route) = self.router.resolve(&server_name) else {
-            tracing::debug!(%server_name, "refused: unknown label");
+            tracing::debug!(%server_name, "refused: unknown tunnel");
             return;
         };
         let Some(mut backend) = self.connect_to_tunnel(&route).await else {
@@ -74,16 +74,16 @@ impl Front {
         }
     }
 
-    /// Connect to the device's rathole service port. rathole binds that port
-    /// only while the device's tunnel is up, so a refused connect means the
-    /// device is offline. This is where a known label meets a down tunnel,
-    /// should the relay ever need to tell the device (wake-up push, #918).
+    /// Connect to the tunnel's loopback port. rathole binds it only while the
+    /// device is connected, so a refused connect means the tunnel is down.
+    /// This is where a known tunnel meets a down one, should the relay ever
+    /// need to tell the device (wake-up push, #918).
     async fn connect_to_tunnel(&self, route: &Route) -> Option<TcpStream> {
         let connect = TcpStream::connect(route.addr);
         match tokio::time::timeout(self.limits.hello_timeout, connect).await {
             Ok(Ok(backend)) => Some(backend),
             _ => {
-                tracing::info!(label = %route.label, "refused: no live tunnel for label");
+                tracing::info!(tunnel = %route.tunnel_name, "refused: tunnel is down");
                 None
             }
         }
@@ -101,7 +101,7 @@ impl Front {
         tokio::select! {
             result = tokio::io::copy_bidirectional(&mut client, &mut backend) => {
                 if let Err(e) = result {
-                    tracing::debug!(label = %route.label, "pipe ended: {e}");
+                    tracing::debug!(tunnel = %route.tunnel_name, "pipe ended: {e}");
                 }
             }
             _ = shutdown_rx.recv() => {}
@@ -152,7 +152,7 @@ async fn send_preface(
     match backend.write_all(&preface).await {
         Ok(()) => true,
         Err(e) => {
-            tracing::debug!(label = %route.label, "tunnel closed before the hello was sent: {e}");
+            tracing::debug!(tunnel = %route.tunnel_name, "tunnel closed before the hello was sent: {e}");
             false
         }
     }

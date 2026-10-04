@@ -1,4 +1,4 @@
-//! One `:80` request: redirect a known label to `https://`, 404 the rest.
+//! One `:80` request: redirect a known tunnel to `https://`, 404 the rest.
 //!
 //! Only the request line and the `Host` header are read (the head is capped
 //! at 8 KiB and must arrive within the hello deadline). Nothing is ever
@@ -35,14 +35,14 @@ impl Front {
         let _ = stream.shutdown().await;
     }
 
-    /// `https://<label>.<domain><path>` if the request's host is a known
-    /// label. The URL is rebuilt from the route rather than echoing `Host`.
+    /// `https://<tunnel name>.<domain><path>` if the request's host names a
+    /// known tunnel. The URL is rebuilt from the route rather than echoing `Host`.
     fn redirect_location(&self, head: &[u8]) -> Option<String> {
         let (host, path) = parse_http_head(head)?;
         let route = self.router.resolve(&host)?;
         Some(format!(
             "https://{}.{}{path}",
-            route.label,
+            route.tunnel_name,
             self.router.domain()
         ))
     }

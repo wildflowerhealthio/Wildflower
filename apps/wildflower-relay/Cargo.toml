@@ -7,7 +7,7 @@ publish.workspace = true
 # Two parts in one process: the `rathole` library in server mode, which owns
 # the noise-encrypted tunnels to devices, and a small TCP front on :443/:80
 # that routes visitors to those tunnels by the TLS ClientHello's server name.
-# The relay never terminates TLS for the public `https://<label>.<domain>`
+# The relay never terminates TLS for the public `https://<tunnel name>.<domain>`
 # surface: it holds no certificates or keys for it and forwards ciphertext.
 # The `noise` transport is selected (and TLS/websocket default features
 # dropped) so the tunnel side needs no system OpenSSL either.

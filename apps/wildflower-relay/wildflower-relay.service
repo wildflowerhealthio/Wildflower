@@ -10,7 +10,7 @@
 #        sudo install -m 0600 apps/wildflower-relay/relay.example.env /etc/wildflower-relay/env
 #        sudoedit /etc/wildflower-relay/env
 #      Set WILDFLOWER_RELAY_DOMAIN, WILDFLOWER_RELAY_NOISE_PRIVATE_KEY and one
-#      WILDFLOWER_RELAY_SERVICES entry per device. After changing it:
+#      WILDFLOWER_RELAY_TUNNELS entry per device. After changing it:
 #        sudo systemctl restart wildflower-relay
 #   3. Install and start the unit:
 #        sudo install -m 0644 apps/wildflower-relay/wildflower-relay.service /etc/systemd/system/

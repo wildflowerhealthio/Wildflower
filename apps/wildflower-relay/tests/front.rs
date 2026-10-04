@@ -1,5 +1,5 @@
 //! End-to-end tests of the front over real sockets: a rustls client's hello
-//! goes in on one side, a fake backend stands in for a rathole service port
+//! goes in on one side, a fake backend stands in for a tunnel's rathole port
 //! on the other.
 
 use std::net::SocketAddr;
@@ -161,7 +161,7 @@ async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
 }
 
 #[tokio::test]
-async fn unknown_label_is_closed_without_a_byte_written() {
+async fn unknown_tunnel_is_closed_without_a_byte_written() {
     let router = Arc::new(Router::new(DOMAIN, RouteTable::default()));
     let harness = start_front(router).await;
 
@@ -184,7 +184,7 @@ async fn unknown_label_is_closed_without_a_byte_written() {
 }
 
 #[tokio::test]
-async fn known_label_without_a_live_tunnel_is_closed_silently() {
+async fn known_tunnel_that_is_down_is_closed_silently() {
     // Bind then drop, so the port is (almost certainly) not listening: what
     // rathole looks like while the device is offline.
     let offline = TcpListener::bind("127.0.0.1:0")
@@ -227,7 +227,7 @@ async fn http_get(addr: SocketAddr, request: &str) -> String {
 }
 
 #[tokio::test]
-async fn http_redirects_known_labels_and_404s_the_rest() {
+async fn http_redirects_known_tunnels_and_404s_the_rest() {
     let router = Arc::new(Router::new(
         DOMAIN,
         RouteTable::from_addrs([("abc".to_owned(), "127.0.0.1:1".parse().unwrap())]),

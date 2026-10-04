@@ -1,33 +1,33 @@
 //! Hostname → tunnel routing for the front.
 //!
-//! A public hostname `<label>.<domain>` names the device service `<label>`
-//! from `WILDFLOWER_RELAY_SERVICES`. Its loopback address is where rathole
-//! listens for that device, and only while the device's tunnel is up, so the
-//! front connects there and lets a refused connection mean "device offline".
-//! The [`RouteTable`] is built from the same service list that the rathole
-//! TOML is rendered from, and [`Router::replace`] swaps in a new one whole.
+//! A public hostname `<tunnel name>.<domain>` names a tunnel from
+//! `WILDFLOWER_RELAY_TUNNELS`. Its loopback address is where rathole listens
+//! for that device, and only while the device's tunnel is up, so the front
+//! connects there and lets a refused connection mean "device offline". The
+//! [`RouteTable`] is built from the same tunnel list that the rathole TOML is
+//! rendered from, and [`Router::replace`] swaps in a new one whole.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, PoisonError, RwLock};
 
-/// One routable device: the label it answers to and the loopback address its
-/// rathole service binds.
+/// One routable tunnel: its name and the loopback address rathole binds for
+/// it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Route {
-    pub label: String,
+    pub tunnel_name: String,
     pub addr: SocketAddr,
 }
 
-/// Label → loopback address of that device's rathole service.
+/// Tunnel name → loopback address rathole binds for that tunnel.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RouteTable {
     addrs: HashMap<String, SocketAddr>,
 }
 
 impl RouteTable {
-    /// Build a table from `(label, loopback addr)` pairs, e.g.
-    /// [`crate::ControlSettings::service_addrs`].
+    /// Build a table from `(tunnel name, loopback addr)` pairs, e.g.
+    /// [`crate::ControlSettings::tunnel_addrs`].
     #[must_use]
     pub fn from_addrs(addrs: impl IntoIterator<Item = (String, SocketAddr)>) -> Self {
         Self {
@@ -85,24 +85,25 @@ impl Router {
     }
 
     /// Resolve a public hostname (SNI or HTTP `Host`, without port) to its
-    /// route, or `None` if it is outside the domain or names no service.
+    /// route, or `None` if it is outside the domain or names no tunnel.
     #[must_use]
     pub fn resolve(&self, host: &str) -> Option<Route> {
-        let label = label_for_host(host, &self.domain)?;
-        let addr = *self.table().addrs.get(&label)?;
-        Some(Route { label, addr })
+        let tunnel_name = tunnel_name_for_host(host, &self.domain)?;
+        let addr = *self.table().addrs.get(&tunnel_name)?;
+        Some(Route { tunnel_name, addr })
     }
 }
 
-/// Map `<label>.<domain>` to `label`, case-folded. Anything else (a host
-/// outside the suffix, the bare domain, or more than one label in front of
-/// it) is `None`. A single trailing dot (`host.` FQDN form) is accepted.
+/// Map `<tunnel name>.<domain>` to the tunnel name, case-folded. The name is
+/// exactly one DNS label; anything else (a host outside the suffix, the bare
+/// domain, or more than one label in front of it) is `None`. A single
+/// trailing dot (`host.` FQDN form) is accepted.
 #[must_use]
-pub fn label_for_host(host: &str, domain: &str) -> Option<String> {
+pub fn tunnel_name_for_host(host: &str, domain: &str) -> Option<String> {
     let host = host.strip_suffix('.').unwrap_or(host).to_ascii_lowercase();
     let domain = domain.trim_matches('.').to_ascii_lowercase();
-    let label = host.strip_suffix(&domain)?.strip_suffix('.')?;
-    is_dns_label(label).then(|| label.to_owned())
+    let name = host.strip_suffix(&domain)?.strip_suffix('.')?;
+    is_dns_label(name).then(|| name.to_owned())
 }
 
 /// A lowercase LDH label: 1–63 of `[a-z0-9-]`, not starting or ending in `-`.
@@ -122,31 +123,31 @@ mod tests {
     const DOMAIN: &str = "relay.example.com";
 
     #[test]
-    fn label_for_host_accepts_one_label_under_the_domain() {
+    fn tunnel_name_for_host_accepts_one_name_under_the_domain() {
         assert_eq!(
-            label_for_host("abc123.relay.example.com", DOMAIN).as_deref(),
+            tunnel_name_for_host("abc123.relay.example.com", DOMAIN).as_deref(),
             Some("abc123")
         );
         assert_eq!(
-            label_for_host("abc-123.relay.example.com.", DOMAIN).as_deref(),
+            tunnel_name_for_host("abc-123.relay.example.com.", DOMAIN).as_deref(),
             Some("abc-123")
         );
     }
 
     #[test]
-    fn label_for_host_case_folds_host_and_domain() {
+    fn tunnel_name_for_host_case_folds_host_and_domain() {
         assert_eq!(
-            label_for_host("ABC.Relay.Example.COM", DOMAIN).as_deref(),
+            tunnel_name_for_host("ABC.Relay.Example.COM", DOMAIN).as_deref(),
             Some("abc")
         );
         assert_eq!(
-            label_for_host("abc.relay.example.com", ".RELAY.example.com.").as_deref(),
+            tunnel_name_for_host("abc.relay.example.com", ".RELAY.example.com.").as_deref(),
             Some("abc")
         );
     }
 
     #[test]
-    fn label_for_host_rejects_names_outside_the_suffix() {
+    fn tunnel_name_for_host_rejects_names_outside_the_suffix() {
         for host in [
             "abc.example.com",
             "abc.relay.example.org",
@@ -156,12 +157,12 @@ mod tests {
             ".relay.example.com",
             "",
         ] {
-            assert_eq!(label_for_host(host, DOMAIN), None, "{host:?}");
+            assert_eq!(tunnel_name_for_host(host, DOMAIN), None, "{host:?}");
         }
     }
 
     #[test]
-    fn label_for_host_rejects_multi_label_and_malformed_labels() {
+    fn tunnel_name_for_host_rejects_multi_label_hosts_and_malformed_names() {
         for host in [
             "a.b.relay.example.com",
             "-abc.relay.example.com",
@@ -170,7 +171,7 @@ mod tests {
             "a b.relay.example.com",
             &format!("{}.relay.example.com", "a".repeat(64)),
         ] {
-            assert_eq!(label_for_host(host, DOMAIN), None, "{host:?}");
+            assert_eq!(tunnel_name_for_host(host, DOMAIN), None, "{host:?}");
         }
     }
 
@@ -179,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn router_resolves_known_labels_and_sees_replacements() {
+    fn router_resolves_known_tunnels_and_sees_replacements() {
         let a = addr("127.0.0.1:1");
         let b = addr("127.0.0.1:2");
         let router = Router::new(DOMAIN, RouteTable::from_addrs([("a".to_owned(), a)]));

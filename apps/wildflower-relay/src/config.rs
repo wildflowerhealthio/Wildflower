@@ -1,9 +1,10 @@
 //! Writes the rathole TOML from the environment on every start.
 //!
 //! The file is generated, never read back: the control address, the noise
-//! transport and key, and one `[server.services.<label>]` per entry of
-//! `WILDFLOWER_RELAY_SERVICES`, each a loopback TCP service with its own
-//! `token` on the port [`ControlSettings::service_addrs`] gives it. There is
+//! transport and key, and for each tunnel in `WILDFLOWER_RELAY_TUNNELS` a
+//! rathole service `[server.services.<tunnel name>]`: loopback TCP with the
+//! tunnel's own `token`, on the port [`ControlSettings::tunnel_addrs`] gives
+//! it. There is
 //! no `default_token`, so a device needs its own token to connect.
 
 use std::path::{Path, PathBuf};
@@ -20,15 +21,15 @@ use crate::settings::ControlSettings;
 /// Returns an error if the table cannot be serialised as TOML.
 pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
     let mut services = Table::new();
-    for ((label, addr), service) in control.service_addrs().into_iter().zip(&control.services) {
+    for ((name, addr), tunnel) in control.tunnel_addrs().into_iter().zip(&control.tunnels) {
         let mut entry = Table::new();
         entry.insert("type".into(), Value::String("tcp".into()));
         entry.insert("bind_addr".into(), Value::String(addr.to_string()));
         entry.insert(
             "token".into(),
-            Value::String(service.token.expose().to_owned()),
+            Value::String(tunnel.token.expose().to_owned()),
         );
-        services.insert(label, Value::Table(entry));
+        services.insert(name, Value::Table(entry));
     }
 
     let mut noise = Table::new();
@@ -46,7 +47,7 @@ pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
         Value::String(control.control_addr.to_string()),
     );
     server.insert("transport".into(), Value::Table(transport));
-    // rathole requires the table even when there are no services.
+    // rathole requires the table even when there are no tunnels.
     server.insert("services".into(), Value::Table(services));
 
     let mut root = Table::new();
@@ -80,7 +81,7 @@ pub async fn write_config(path: &Path, control: &ControlSettings) -> anyhow::Res
     renamed.context("the rendered relay config was rejected")?;
     tracing::info!(
         config = %path.display(),
-        services = control.services.len(),
+        tunnels = control.tunnels.len(),
         "relay config written from the environment"
     );
     Ok(())
@@ -98,7 +99,7 @@ fn temp_path(path: &Path) -> anyhow::Result<PathBuf> {
 }
 
 /// Create (or truncate) `path` readable by the owner only: it holds the
-/// service tokens and the private key.
+/// tunnel tokens and the private key.
 fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
     use std::io::Write;
     let mut options = std::fs::OpenOptions::new();
@@ -167,16 +168,16 @@ mod tests {
             .server
             .expect("[server]");
         assert!(server.default_token.is_none());
-        assert!(!server.services.is_empty(), "the example lists a service");
-        for (label, addr) in example.control.service_addrs() {
-            let service = &server.services[&label];
+        assert!(!server.services.is_empty(), "the example lists a tunnel");
+        for (name, addr) in example.control.tunnel_addrs() {
+            let service = &server.services[&name];
             assert_eq!(service.bind_addr, addr.to_string());
             assert!(service.token.is_some());
         }
     }
 
     #[tokio::test]
-    async fn render_writes_env_services_with_their_tokens_and_ports() {
+    async fn render_writes_each_tunnel_as_a_service_with_its_token_and_port() {
         let env = HashMap::from([
             (
                 "WILDFLOWER_RELAY_DOMAIN".to_owned(),
@@ -187,7 +188,7 @@ mod tests {
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
             ),
             (
-                "WILDFLOWER_RELAY_SERVICES".to_owned(),
+                "WILDFLOWER_RELAY_TUNNELS".to_owned(),
                 "bob=t2,alice=t1".to_owned(),
             ),
         ]);
@@ -205,10 +206,10 @@ mod tests {
         let noise = server.transport.noise.expect("[server.transport.noise]");
         assert!(noise.local_private_key.is_some());
 
-        // The front routes the same labels to the same ports.
+        // The front routes the same tunnel names to the same ports.
         let router = Router::new(
             "relay.example.com",
-            RouteTable::from_addrs(control.service_addrs()),
+            RouteTable::from_addrs(control.tunnel_addrs()),
         );
         assert_eq!(
             router
@@ -219,7 +220,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn render_with_no_services_is_still_valid() {
+    async fn render_with_no_tunnels_is_still_valid() {
         let env = HashMap::from([
             (
                 "WILDFLOWER_RELAY_DOMAIN".to_owned(),
