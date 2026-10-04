@@ -7,8 +7,18 @@
 //!
 //! ## The contract
 //!
-//! The trusted front (nginx) appends its hop to any inbound `Forwarded` chain
-//! and tacks the public `host`/`proto` onto that trailing element:
+//! A trusted front is whatever writes the `Forwarded` header ahead of the
+//! loopback socket. There are two:
+//!
+//! - **The server's tunnel listener.** Every tunnel connection arrives on its
+//!   own loopback listener, which discards any inbound `Forwarded` and writes a
+//!   single element, `for=<visitor>;host="<public host>";proto=https`, once the
+//!   request's `Host` matches the tunnel's public host (see
+//!   `wildflower-server-rust`'s `tunnel_provenance`).
+//! - **A front a person runs themselves** on the local listener, such as nginx.
+//!
+//! nginx appends its hop to any inbound `Forwarded` chain and tacks the public
+//! `host`/`proto` onto that trailing element:
 //!
 //! ```nginx
 //! proxy_set_header Forwarded "$proxy_add_forwarded;host=$http_host;proto=$scheme";
@@ -28,11 +38,12 @@
 //!
 //! ## Validation
 //!
-//! `host` is the client's `Host` header (nginx `$http_host` — the raw value, so
-//! it may carry a `:port` and isn't normalized), making it attacker-influenced,
-//! and it lands directly in a `Location` the browser follows. As
-//! defense-in-depth, [`safe_host`] / [`safe_scheme`] reject the characters and
-//! schemes that could redirect to a different authority.
+//! Behind nginx, `host` is the client's `Host` header (`$http_host` — the raw
+//! value, so it may carry a `:port` and isn't normalized), making it
+//! attacker-influenced, and it lands directly in a `Location` the browser
+//! follows. As defense-in-depth, [`safe_host`] / [`safe_scheme`] reject the
+//! characters and schemes that could redirect to a different authority. The
+//! tunnel listener writes only a host it has matched to the public host.
 //!
 //! A `Forwarded` header that fails validation is **not** treated as unforwarded.
 //! Only the *absence* of the header reads as loopback: the trusted front sets a
@@ -40,8 +51,8 @@
 //! means the request came through the front, and a malformed one is *rejected*
 //! ([`request_provenance`] returns `None`, the caller `500`s) rather than
 //! collapsed to loopback. Collapsing a malformed forwarded request to loopback
-//! would let a tunnel-relayed remote caller be mistaken for a direct-local one —
-//! e.g. handed the host owner token (`is_forwarded` gates that trust). See
+//! would let a relayed remote caller be mistaken for a direct-local one — e.g.
+//! handed the host owner token (`is_forwarded` gates that trust). See
 //! `docs/Origins/Explanation.md`.
 
 use axum::http::HeaderMap;

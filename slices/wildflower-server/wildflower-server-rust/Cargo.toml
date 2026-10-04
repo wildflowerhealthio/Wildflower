@@ -14,9 +14,16 @@ anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
 tower-http.workspace = true
-# `net` binds the loopback listener; `sync` carries the host's owner-token and
-# pending-consent `watch` channels.
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
+# `net` binds the loopback listeners; `sync` carries the host's owner-token and
+# pending-consent `watch` channels; `io-util`, `time` and `macros` read a tunnel
+# connection's PROXY header under a timeout and serve both listeners together.
+tokio = { workspace = true, features = ["net", "rt", "sync", "io-util", "time", "macros"] }
+# The tunnel listener's PROXY protocol v2 header (see
+# `src/live_bindings/tunnel_listener.rs`).
+ppp.workspace = true
+# `Service`, implemented by the make-service that tags each connection with the
+# listener it arrived on.
+tower.workspace = true
 # `CancellationToken`, the shutdown signal `serve` takes.
 tokio-util = "0.7"
 tracing = "0.1"
@@ -62,5 +69,6 @@ tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
 # `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.
 tower = { version = "0.5", features = ["util"] }
-# The forwarded-request path reducer's property test.
+# The forwarded-request path reducer's and the PROXY header reader's property
+# tests.
 proptest = "1"

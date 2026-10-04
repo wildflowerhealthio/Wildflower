@@ -1,6 +1,9 @@
-//! The outermost layer of the served stack: after each request the trusted
-//! front relayed through the tunnel, report what it was and who made it to the
-//! host and to the tunnel slice's request log.
+//! After each forwarded request, report what it was and who made it to the
+//! host and to the tunnel slice's request log. A tunnel request is forwarded
+//! because the tunnel listener writes its `Forwarded` header (see
+//! [`tunnel_provenance`](super::tunnel_provenance)), which carries the
+//! visitor's PROXY address when the relay sent one; a request relayed by a
+//! front a person runs on the local listener is reported too.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
 //! bearer gate's `401` off its [`RequestRefusal`] one; the gatekeeper bearer

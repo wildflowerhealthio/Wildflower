@@ -7,7 +7,7 @@ publish.workspace = true
 # The Tauri-side tunnel slice: SQLite-backed settings (via Diesel over the
 # app-wide connection pool), the `/tunnel` HTTP surface the tunnel-react UI
 # speaks, and an embedded `rathole` client (noise transport, no TLS/openssl)
-# that dials the wildflower-relay and forwards the loopback server
+# that dials the wildflower-relay and forwards the server's tunnel listener
 # through it. Layered like collector-rust: pure `domain`, `db`, and `http`.
 #
 # Persistence is Diesel over the host-owned `persistence_rust::DieselPool` (see

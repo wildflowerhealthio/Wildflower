@@ -1,8 +1,9 @@
 //! The server's composition: [`set_up`] opens the host's databases, sets up
 //! every server slice, joins them through [`crate::adapters`], wraps them in
-//! the [`crate::http`] layers and binds the loopback port; [`WildflowerServer`]
-//! serves the result.
+//! the [`crate::http`] layers and binds the loopback port and the tunnel
+//! listener; [`WildflowerServer`] serves the result on both.
 
+use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -20,6 +21,8 @@ use tokio_util::sync::CancellationToken;
 use tunnel_rust::TunnelLiveness;
 
 use super::hfs_base_url;
+use super::make_service::MakeServiceWithListenerIdentity;
+use super::tunnel_listener::TunnelListener;
 use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
 use crate::http::middleware::cors::api_cors_layer;
@@ -27,6 +30,7 @@ use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSen
 use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
+use crate::http::middleware::tunnel_provenance::stamp_tunnel_provenance;
 use crate::http::not_found;
 use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 
@@ -38,35 +42,56 @@ use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 const HEALTH_DATA_DB: &str = "health-data.sqlite";
 const WILDFLOWER_DB: &str = "wildflower.sqlite";
 
-/// A composed server bound to the loopback port, ready to
-/// [`serve`](Self::serve).
+/// A composed server bound to the loopback port and the tunnel listener, ready
+/// to [`serve`](Self::serve).
 pub struct WildflowerServer {
-    listener: TcpListener,
+    /// The loopback API port local clients use.
+    local_listener: TcpListener,
+    /// The loopback port rathole forwards each tunnel connection to.
+    tunnel_listener: TcpListener,
     router: Router,
 }
 
 impl WildflowerServer {
-    /// Serve the composed API on the bound loopback port until `shutdown` is
-    /// cancelled. Cancelling stops accepting connections, and the call returns
-    /// `Ok` once the open ones close.
+    /// The address of the tunnel listener, the `127.0.0.1` port rathole
+    /// forwards each tunnel connection to.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the listener's address can't be read.
+    pub fn tunnel_listener_addr(&self) -> std::io::Result<SocketAddr> {
+        self.tunnel_listener.local_addr()
+    }
+
+    /// Serve the composed API on the bound loopback port and the tunnel
+    /// listener until `shutdown` is cancelled. Cancelling stops both accepting
+    /// connections, and the call returns `Ok` once the open ones on both close.
     ///
     /// # Errors
     ///
     /// Returns an error if serving fails.
+    ///
+    /// # Remarks
+    ///
+    /// Both listeners serve the one router. Each connection's requests carry
+    /// the [`ListenerIdentity`](crate::http::listener_identity::ListenerIdentity)
+    /// of the listener it arrived on, so the layers can hold a tunnel
+    /// connection to the tunnel's public host and never trust it as local,
+    /// though its peer is the rathole client on loopback.
     pub async fn serve(self, shutdown: CancellationToken) -> anyhow::Result<()> {
-        axum::serve(
-            self.listener,
-            self.router
-                .into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .with_graceful_shutdown(shutdown.cancelled_owned())
-        .await?;
+        let make_service = MakeServiceWithListenerIdentity::new(self.router);
+        let local = axum::serve(self.local_listener, make_service.clone())
+            .with_graceful_shutdown(shutdown.clone().cancelled_owned());
+        let tunnel = axum::serve(TunnelListener::new(self.tunnel_listener)?, make_service)
+            .with_graceful_shutdown(shutdown.cancelled_owned());
+        tokio::try_join!(local.into_future(), tunnel.into_future())?;
         Ok(())
     }
 }
 
 /// Set up every server slice over the host's databases and bind the API to the
-/// loopback port, ready to [`serve`](WildflowerServer::serve).
+/// loopback port and the tunnel listener, ready to
+/// [`serve`](WildflowerServer::serve).
 ///
 /// `config` is what the host derived at build time or from its paths; `host`
 /// carries its native adapters and its bridge's channels; `observers` carries
@@ -75,7 +100,7 @@ impl WildflowerServer {
 /// # Errors
 ///
 /// Returns an error if a scheduled database deletion can't be applied, a
-/// database or store can't be opened, the loopback port can't be bound, a
+/// database or store can't be opened, either loopback port can't be bound, a
 /// slice's setup fails, or the tunnel's stored public host can't be FHIR's base
 /// URL.
 ///
@@ -153,9 +178,21 @@ pub async fn set_up(
     // full-Owner bearer while a *foreign* process owns `127.0.0.1:<port>`.
     // Binding first guarantees the token is only ever minted once this
     // process owns the port.
-    let listener = TcpListener::bind(&loopback_host)
+    let local_listener = TcpListener::bind(&loopback_host)
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
+    // The tunnel listener, on a port of its own so a tunnel connection is told
+    // from a local one by where it arrived (its peer is the rathole client, on
+    // loopback too). Bound before the tunnel slice is set up, which forwards
+    // to it as soon as the tunnel resumes. Any free port does; the slice is
+    // handed the one bound.
+    let tunnel_listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .context("failed to bind the tunnel listener")?;
+    let tunnel_listener_port = tunnel_listener
+        .local_addr()
+        .context("failed to read the tunnel listener's address")?
+        .port();
 
     let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
@@ -239,6 +276,7 @@ pub async fn set_up(
     // `tunnel_rust::SqliteTunnelStore::seed_if_absent`).
     let tunnel_config = tunnel_rust::TunnelConfig {
         loopback_base_url: runtime.loopback_base_url(),
+        tunnel_listener_port,
         seed: tunnel_seed,
     };
     // `setup_tunnel` hands back the `/tunnel` router plus the in-process
@@ -395,9 +433,10 @@ pub async fn set_up(
         ));
 
     // Defense-in-depth: gate the entire API surface on a loopback peer address.
-    // Every endpoint here is meant to be reached only over the loopback socket —
-    // directly, or relayed by the trusted front, which proxies remote callers
-    // from loopback (and is distinguished downstream by the `Forwarded` header).
+    // Every endpoint here is meant to be reached only over a loopback socket —
+    // directly, through the tunnel listener (whose peer is the rathole client),
+    // or relayed by a front run on this machine; the latter two are
+    // distinguished downstream by the `Forwarded` header.
     // A genuinely non-loopback peer is rejected with `403` before any handler
     // runs, so even a bearer-gated, CORS-permissive endpoint like
     // `POST /apps/{id}` (which can open a native popup on the owner's device) can't
@@ -408,9 +447,8 @@ pub async fn set_up(
         .layer(require_loopback_peer_middleware())
         .layer(api_cors_layer());
 
-    // Outermost: every request the front relayed through the tunnel is
-    // reported to the host and to the tunnel's request log once its response
-    // is ready.
+    // Every forwarded request is reported to the host and to the tunnel's
+    // request log once its response is ready.
     let router = api_router.layer(axum::middleware::from_fn_with_state(
         ForwardedRequestSenders {
             host_sender: observers.forwarded_request_sender,
@@ -419,7 +457,20 @@ pub async fn set_up(
         forwarded_request_layer::report_forwarded_request,
     ));
 
-    Ok(WildflowerServer { listener, router })
+    // Outermost: a request on the tunnel listener is held to the tunnel's
+    // public host and its `Forwarded` header written here, so every layer and
+    // handler above reads it as a forwarded request (see
+    // `stamp_tunnel_provenance`).
+    let router = router.layer(axum::middleware::from_fn_with_state(
+        tunnel_service.subscribe(),
+        stamp_tunnel_provenance,
+    ));
+
+    Ok(WildflowerServer {
+        local_listener,
+        tunnel_listener,
+        router,
+    })
 }
 
 /// Copy each tunnel liveness snapshot onto the host's channel until the tunnel

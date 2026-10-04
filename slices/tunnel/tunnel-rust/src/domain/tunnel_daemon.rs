@@ -140,7 +140,9 @@ pub struct TunnelDaemon {
     /// The `/health` probe adapter the supervisor uses to confirm reachability.
     probe: Arc<dyn HealthProbe>,
     loopback_origin: String,
-    local_port: u16,
+    /// The server's tunnel listener port on `127.0.0.1`: the `local_addr` each
+    /// dial forwards to.
+    tunnel_listener_port: u16,
     state_tx: watch::Sender<TunnelLiveness>,
     state_rx: watch::Receiver<TunnelLiveness>,
     /// The live supervisor's cancel token + join handle. Taken and replaced on
@@ -176,13 +178,13 @@ impl TunnelDaemon {
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
         loopback_origin: impl Into<String>,
-        local_port: u16,
+        tunnel_listener_port: u16,
     ) -> Self {
         Self::with_tuning(
             client,
             probe,
             loopback_origin,
-            local_port,
+            tunnel_listener_port,
             Backoff::default(),
             ProbeTiming::default(),
         )
@@ -192,7 +194,7 @@ impl TunnelDaemon {
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
         loopback_origin: impl Into<String>,
-        local_port: u16,
+        tunnel_listener_port: u16,
         backoff: Backoff,
         probe_timing: ProbeTiming,
     ) -> Self {
@@ -209,7 +211,7 @@ impl TunnelDaemon {
             client,
             probe,
             loopback_origin,
-            local_port,
+            tunnel_listener_port,
             state_tx,
             state_rx,
             supervisor: Mutex::new(None),
@@ -377,7 +379,7 @@ impl TunnelDaemon {
                 state: self.state_tx.clone(),
                 client: Arc::clone(&self.client),
                 probe: Arc::clone(&self.probe),
-                local_addr: format!("127.0.0.1:{}", self.local_port),
+                local_addr: format!("127.0.0.1:{}", self.tunnel_listener_port),
                 public_origin: public.expect("Dialing implies a public origin"),
                 loopback_origin: self.loopback_origin.clone(),
                 settings: settings.clone(),
@@ -675,13 +677,13 @@ impl TunnelDaemon {
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
         loopback_origin: impl Into<String>,
-        local_port: u16,
+        tunnel_listener_port: u16,
     ) -> Self {
         Self::with_tuning(
             client,
             probe,
             loopback_origin,
-            local_port,
+            tunnel_listener_port,
             Backoff {
                 initial: Duration::from_millis(1),
                 max: Duration::from_millis(1),

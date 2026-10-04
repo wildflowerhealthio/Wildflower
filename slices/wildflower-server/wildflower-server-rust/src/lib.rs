@@ -4,9 +4,10 @@
 //! [`set_up`] opens the host's databases, sets up each server slice
 //! (gatekeeper, FHIR R4, OHIF, collector, tunnel, apps, databases), gates them,
 //! wraps them in the loopback owner trust, the loopback-peer gate, the CORS
-//! policy and the forwarded-request observer, and binds the loopback port.
-//! [`WildflowerServer::serve`] then serves the result until its shutdown token
-//! is cancelled.
+//! policy, the forwarded-request observer and the tunnel provenance, and binds
+//! two loopback listeners: the API port local clients use and the tunnel
+//! listener rathole forwards to. [`WildflowerServer::serve`] then serves the
+//! result on both until its shutdown token is cancelled.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's
@@ -22,9 +23,11 @@
 //!    in reach: apps' `AppLaunchScopes` from gatekeeper's OAuth clients, and
 //!    the tunnel's `HealthProbe` over `reqwest`.
 //!  - `http` — the server's own middleware (CORS, the loopback owner trust,
-//!    the forwarded-request report) and the unmatched-route `404`.
-//!  - `live_bindings` — [`set_up`] and [`WildflowerServer`], and HFS's base URL
-//!    following the tunnel's public host.
+//!    the forwarded-request report, the tunnel provenance), the listener
+//!    identity each request carries, and the unmatched-route `404`.
+//!  - `live_bindings` — [`set_up`] and [`WildflowerServer`], the tunnel
+//!    listener and its PROXY header, and HFS's base URL following the tunnel's
+//!    public host.
 
 mod adapters;
 mod config;

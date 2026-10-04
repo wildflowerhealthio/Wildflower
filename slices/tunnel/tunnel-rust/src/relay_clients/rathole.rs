@@ -170,7 +170,7 @@ mod tests {
             public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into(),
             service_name: "wildflower-device-1".into(),
         };
-        let rendered = render_client_toml(&relay, "127.0.0.1:8080").expect("render");
+        let rendered = render_client_toml(&relay, "127.0.0.1:9090").expect("render");
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("client.toml");
         std::fs::write(&path, &rendered).expect("write client toml");
@@ -182,7 +182,15 @@ mod tests {
             config.server.is_none(),
             "client config must not be a server"
         );
-        assert!(client.services.contains_key("wildflower-device-1"));
+        // The service forwards to the `local_addr` it was given: the server's
+        // tunnel listener.
+        assert_eq!(
+            client
+                .services
+                .get("wildflower-device-1")
+                .map(|service| service.local_addr.as_str()),
+            Some("127.0.0.1:9090")
+        );
     }
 
     /// A device that has only its tunnel name and token gets a working client

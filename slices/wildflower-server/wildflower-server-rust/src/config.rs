@@ -66,8 +66,8 @@ pub struct ServerObservers {
     /// when that runtime does, so the host resets it to `None` once a server
     /// is gone.
     pub tunnel_liveness_sender: watch::Sender<Option<TunnelLiveness>>,
-    /// Each request the trusted front relayed through the tunnel, reported by
-    /// the outermost layer after its response is ready (see
+    /// Each forwarded request, a tunnel request among them, reported by the
+    /// forwarded-request layer after its response is ready (see
     /// `forwarded_request_layer`). A full channel drops the report rather than
     /// delaying the response. The same layer sends each record to the tunnel
     /// slice's request log, over a channel the server wires itself.

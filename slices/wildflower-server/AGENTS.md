@@ -8,10 +8,10 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 - **`wildflower-server-rust`** — `set_up(config, host, observers)` opens the
   host's databases, sets up every server slice (gatekeeper, emr, OHIF, collector,
   tunnel, apps, databases), gates them, wraps them in the loopback owner trust,
-  the loopback-peer gate, the CORS policy and the forwarded-request observer,
-  and binds the loopback port;
-  `WildflowerServer::serve(shutdown)` serves the result until `shutdown` is
-  cancelled. It also holds the server-side adapters that join two slices: the
+  the loopback-peer gate, the CORS policy, the forwarded-request observer and
+  the tunnel provenance, and binds the loopback port and the tunnel listener
+  rathole forwards to; `WildflowerServer::serve(shutdown)` serves the result on
+  both until `shutdown` is cancelled. It also holds the server-side adapters that join two slices: the
   gatekeeper-backed `AppLaunchScopes` for apps, the reqwest `HealthProbe` for the
   tunnel, and HFS's base URL following the tunnel's public host. The
   unmatched-route `404` is here too.
@@ -19,9 +19,10 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
     (`WildflowerServerConfig`, `HostPorts`, `ServerObservers`); `adapters/`
     other slices' ports implemented here (apps' `AppLaunchScopes`, the tunnel's
     `HealthProbe`); `http/` the server's own middleware (CORS, the loopback
-    owner trust, the forwarded-request report) and the `404`; `live_bindings/`
-    `set_up`, `WildflowerServer`, the database catalogue and HFS's base URL
-    following the tunnel.
+    owner trust, the forwarded-request report, the tunnel provenance), the
+    listener identity each request carries, and the `404`; `live_bindings/`
+    `set_up`, `WildflowerServer`, the database catalogue, the tunnel listener
+    and its PROXY header, and HFS's base URL following the tunnel.
 
 ## Layering
 
@@ -36,15 +37,15 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   configuration or platform paths itself.
 - **The host watches the server through `ServerObservers`.** Host-owned senders
   that outlive any one server: the tunnel's liveness, copied by a task on the
-  server's runtime, and each request the trusted front relayed through the
-  tunnel, reported by the outermost layer as a `ForwardedRequest` record: the
+  server's runtime, and each forwarded request (every tunnel request among
+  them), reported by the forwarded-request layer as a `ForwardedRequest` record: the
   visitor's address, the path reduced to its route, the status, and the
   `RequestCaller` or `RequestRefusal` the gatekeeper bearer gates stamped on the
   response. The layer sends the same record to the tunnel slice's request log.
   A full report channel drops the report; it never delays a response.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
-  listener, not those tasks. `background-server-service` runs each server on a
+  listeners, not those tasks. `background-server-service` runs each server on a
   dedicated runtime it shuts down when the server stops, which is what ends
   them.
 
