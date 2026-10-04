@@ -161,15 +161,24 @@ const RequestLogPageSchema = Schema.Struct({
 })
 
 /**
+ * How a logged request fared against auth — the `auth` filter of
+ * `GET /tunnel/requests`, mirroring the Rust `RequestAuthParam`: `authorized`
+ * needed auth and carried a valid token (a verified caller, not refused),
+ * `public` didn't need auth (no verified caller, not refused), and `refused`
+ * failed auth (a bearer gate's `401` or a scope `403`).
+ */
+const RequestAuthSchema = Schema.Literal('authorized', 'public', 'refused')
+
+/**
  * `GET /tunnel/requests` query — mirrors the Rust `ListRequestsParams`. Every
  * parameter is optional, and every one given must match: `cursor` is the
  * previous page's `nextCursor`, `client` a verified caller's OAuth client,
- * `address` a client address, and `refused` keeps only the refused requests
- * (`true`) or only the rest (`false`).
+ * `address` a client address, and `auth` an auth case (see
+ * `RequestAuthSchema`).
  *
- * A query string carries every value as text, so `cursor` and `refused` decode
- * from strings; their `jsonSchema` annotations document the value each string
- * holds, as the server's spec does (`integer`, `boolean`).
+ * A query string carries every value as text, so `cursor` decodes from a
+ * string; its `jsonSchema` annotation documents the value the string holds, as
+ * the server's spec does (`integer`).
  */
 const ListRequestsUrlParamsSchema = Schema.Struct({
   cursor: Schema.optional(
@@ -179,9 +188,7 @@ const ListRequestsUrlParamsSchema = Schema.Struct({
   ),
   client: Schema.optional(Schema.String),
   address: Schema.optional(Schema.String),
-  refused: Schema.optional(
-    Schema.BooleanFromString.annotations({ jsonSchema: { type: 'boolean' } })
-  ),
+  auth: Schema.optional(RequestAuthSchema),
 })
 
 /**
@@ -265,6 +272,7 @@ export {
   RelayViewSchema,
   ReplaceTunnelRequestBodySchema,
   CallerSummarySchema,
+  RequestAuthSchema,
   RequestLogPageSchema,
   RequestRefusalSchema,
   TunnelStateViewSchema,

@@ -227,14 +227,21 @@ describe('RequestLogPageSchema', () => {
 })
 
 describe('ListRequestsUrlParamsSchema', () => {
-  it('encodes the cursor and refusal filter as query text', () => {
+  it('encodes the cursor and auth filter as query text', () => {
     expect(
       Schema.encodeSync(ListRequestsUrlParamsSchema)({
         cursor: 6,
-        refused: true,
+        auth: 'refused',
         client: 'lifting',
       })
-    ).toEqual({ cursor: '6', refused: 'true', client: 'lifting' })
+    ).toEqual({ cursor: '6', auth: 'refused', client: 'lifting' })
+  })
+
+  it('rejects an auth case it does not know', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(ListRequestsUrlParamsSchema)({ auth: 'verified' }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
   })
 
   it('rejects a cursor that is not a whole number', () => {

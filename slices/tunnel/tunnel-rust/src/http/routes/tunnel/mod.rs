@@ -614,10 +614,24 @@ mod tests {
 
         let (_, refused) = send(
             &st,
-            get_uri_as("/tunnel/requests?refused=true", OWNER_SCOPES),
+            get_uri_as("/tunnel/requests?auth=refused", OWNER_SCOPES),
         )
         .await;
         assert_eq!(refused["requests"].as_array().map(Vec::len), Some(1));
+        assert_eq!(refused["requests"][0]["id"], 2);
+        let (_, authorized) = send(
+            &st,
+            get_uri_as("/tunnel/requests?auth=authorized", OWNER_SCOPES),
+        )
+        .await;
+        assert_eq!(authorized["requests"].as_array().map(Vec::len), Some(1));
+        assert_eq!(authorized["requests"][0]["id"], 1);
+        let (_, public) = send(
+            &st,
+            get_uri_as("/tunnel/requests?auth=public", OWNER_SCOPES),
+        )
+        .await;
+        assert_eq!(public["requests"].as_array().map(Vec::len), Some(0));
         let (_, lifting) = send(
             &st,
             get_uri_as("/tunnel/requests?client=lifting&cursor=2", OWNER_SCOPES),

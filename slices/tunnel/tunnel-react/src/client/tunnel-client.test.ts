@@ -199,7 +199,7 @@ describe('buildTunnelAdminClientLayer', () => {
     const program = Effect.gen(function* () {
       const client = yield* TunnelAdminHttpApiClient
       return yield* client.tunnel.ListRequests({
-        urlParams: { cursor: 7, client: 'lifting', refused: true },
+        urlParams: { cursor: 7, client: 'lifting', auth: 'authorized' },
       })
     })
 
@@ -209,6 +209,6 @@ describe('buildTunnelAdminClientLayer', () => {
 
     expect(result.requests.map((request) => request.id)).toEqual([6])
     expect(result.nextCursor).toBeNull()
-    expect(seenQueries).toEqual(['cursor=7&client=lifting&refused=true'])
+    expect(seenQueries).toEqual(['cursor=7&client=lifting&auth=authorized'])
   })
 })

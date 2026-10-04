@@ -7,9 +7,9 @@ use utoipa::IntoParams;
 
 use scope_capabilities_rust::InsufficientScopeBody;
 
-use super::wire_representations::RequestLogPageBody;
+use super::wire_representations::{RequestAuthParam, RequestLogPageBody};
 use crate::domain::capabilities::Scoped;
-use crate::domain::request_log::RequestLogFilter;
+use crate::domain::request_log::{RequestAuth, RequestLogFilter};
 use crate::domain::TunnelError;
 use crate::live_bindings::LiveRequestLogReader;
 
@@ -24,9 +24,11 @@ pub(super) struct ListRequestsParams {
     client: Option<String>,
     /// Only requests from this client address.
     address: Option<String>,
-    /// `true` for only refused requests (a bearer gate's `401` or a scope
-    /// `403`), `false` for only the rest.
-    refused: Option<bool>,
+    /// Only requests in this auth case: `authorized` (a verified caller, not
+    /// refused), `public` (no verified caller, not refused) or `refused` (a
+    /// bearer gate's `401` or a scope `403`).
+    #[param(inline)]
+    auth: Option<RequestAuthParam>,
 }
 
 impl From<ListRequestsParams> for RequestLogFilter {
@@ -35,7 +37,7 @@ impl From<ListRequestsParams> for RequestLogFilter {
             before_id: params.cursor,
             client_id: params.client,
             client_address: params.address,
-            refused: params.refused,
+            auth: params.auth.map(RequestAuth::from),
         }
     }
 }

@@ -48,9 +48,22 @@ pub struct RequestLogFilter {
     pub client_id: Option<String>,
     /// Only requests from this client address.
     pub client_address: Option<String>,
-    /// Only refused requests (`true`, see [`REFUSED_STATUSES`]) or only the
-    /// rest (`false`).
-    pub refused: Option<bool>,
+    /// Only requests in this auth case.
+    pub auth: Option<RequestAuth>,
+}
+
+/// How a logged request fared against auth, from its verified caller and
+/// status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestAuth {
+    /// It needed auth and its token was valid: a verified caller, and a status
+    /// outside [`REFUSED_STATUSES`].
+    Authorized,
+    /// It didn't need auth: no verified caller, and a status outside
+    /// [`REFUSED_STATUSES`].
+    Public,
+    /// It failed auth: a status in [`REFUSED_STATUSES`].
+    Refused,
 }
 
 /// One page of the log, newest first.
