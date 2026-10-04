@@ -12,8 +12,8 @@ use rathole_settings_rust::PublicRatholeSettings;
 use shared_structures_rust::health_check::{health_router, AlwaysHealthy};
 
 /// `GET /rathole` changes only when the relay restarts with a new
-/// environment, so clients may reuse it for a few minutes.
-const RATHOLE_CACHE_CONTROL: &str = "public, max-age=300";
+/// environment, so clients may reuse it for a minute.
+const RATHOLE_CACHE_CONTROL: &str = "public, max-age=60";
 
 /// - `GET /health`: `200 {"status":"pass"}` while the relay is up to answer.
 /// - `GET /rathole`: `rathole_settings` as JSON, without authentication.
