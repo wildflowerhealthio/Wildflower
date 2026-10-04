@@ -21,6 +21,7 @@ members = [
   "slices/scopes/scopes-rust",
   "slices/shared-structures/shared-structures-rust",
   "slices/shared-structures/shared-structures-tauri-rust",
+  "slices/tunnel/rathole-settings-rust",
   "slices/tunnel/tunnel-rust",
   "slices/wildflower-server/wildflower-server-rust",
 ]

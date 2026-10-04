@@ -36,9 +36,11 @@
 //! The one exception is the relay's own hostname, `<domain>` itself. There
 //! the front hands the connection to the [`site`], which terminates TLS with
 //! the relay's own certificate and serves `GET /health` (`200
-//! {"status":"pass"}`). The certificate comes from Let's Encrypt over
-//! TLS-ALPN-01, whose validation handshakes reach the site through the same
-//! routing, and is cached in the state directory
+//! {"status":"pass"}`) and `GET /rathole`, the public settings a rathole
+//! client needs to dial the relay (see
+//! [`RelaySettings::public_rathole_settings`]). The certificate comes from
+//! Let's Encrypt over TLS-ALPN-01, whose validation handshakes reach the
+//! site through the same routing, and is cached in the state directory
 //! (`WILDFLOWER_RELAY_STATE_DIR`), so a restart reuses it instead of
 //! ordering again. Until the first certificate is issued, TLS handshakes for
 //! the relay's hostname fail. `WILDFLOWER_RELAY_ACME_STAGING=true` orders
@@ -68,9 +70,10 @@
 //! bind ports 443 and 80. The relay stops cleanly on SIGINT or SIGTERM.
 //!
 //! `.github/workflows/deploy-relay.yml` deploys it to an Ubuntu 24.04
-//! droplet on every push to `main` that touches this crate or `Cargo.lock`,
-//! and on manual dispatch. It builds the release binary on `ubuntu-24.04`,
-//! then, in the `relay` GitHub environment, writes the environment file from
+//! droplet on every push to `main` that touches this crate,
+//! `rathole-settings-rust` or `Cargo.lock`, and on manual dispatch. It
+//! builds the release binary on `ubuntu-24.04`, then, in the `relay` GitHub
+//! environment, writes the environment file from
 //! that environment's secrets (`WILDFLOWER_RELAY_DOMAIN`,
 //! `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`, `WILDFLOWER_RELAY_TUNNELS`) and
 //! variables (any other setting, left out when unset). It copies the binary,
@@ -146,7 +149,7 @@ pub async fn run_relay(
         .with_context(|| format!("creating {}", settings.state_dir.display()))?;
     let local_hostnames = settings.front.local_hostnames();
     let acme = site::acme::state(&local_hostnames, &settings.acme, &settings.state_dir);
-    let site = Site::new(acme.resolver());
+    let site = Site::new(acme.resolver(), settings.public_rathole_settings());
     let settings = settings.front;
     tracing::info!(domain = %settings.domain, routes = routes.len(), "routes built");
     let router = Arc::new(Router::new(&settings.domain, local_hostnames, routes));

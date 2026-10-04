@@ -6421,6 +6421,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rathole-settings-rust"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "raw-cpuid"
 version = "11.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8860,6 +8868,7 @@ dependencies = [
  "proptest",
  "rand 0.10.3",
  "rathole",
+ "rathole-settings-rust",
  "scope-capabilities-rust",
  "scopes-rust",
  "serde",
@@ -9365,20 +9374,26 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.23.1",
+ "curve25519-dalek",
  "futures-util",
+ "http-body-util",
  "hyper",
  "hyper-util",
  "ppp",
  "rathole",
+ "rathole-settings-rust",
  "rcgen",
  "rustls",
  "rustls-acme",
+ "serde_json",
  "shared-structures-rust",
  "socket2 0.6.5",
  "tempfile",
  "tokio",
  "tokio-rustls",
  "toml 0.9.6",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

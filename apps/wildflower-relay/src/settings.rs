@@ -6,13 +6,16 @@
 //! token) is rendered into a fresh rathole TOML on each start (see
 //! [`crate::config`]), [`FrontSettings`] configures the TLS front, which
 //! rathole's file has no place for, and [`AcmeSettings`] how the relay's own
-//! site gets its certificate. The state directory holds only caches the
-//! relay can rebuild, such as that certificate and its ACME account.
+//! site gets its certificate. [`RelaySettings::public_rathole_settings`] is
+//! what the site serves at `GET /rathole`. The state directory holds only
+//! caches the relay can rebuild, such as that certificate and its ACME
+//! account.
 //!
 //! | Variable | Default |
 //! |---|---|
 //! | `WILDFLOWER_RELAY_CONFIG` | `relay.toml` (where the rathole TOML is written; read by `main`) |
 //! | `WILDFLOWER_RELAY_CONTROL_ADDR` | `0.0.0.0:2333` |
+//! | `WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR` | `<domain>:<port of WILDFLOWER_RELAY_CONTROL_ADDR>` |
 //! | `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY` | required |
 //! | `WILDFLOWER_RELAY_TUNNELS` | none (`name=token,name=token`) |
 //! | `WILDFLOWER_RELAY_TUNNEL_PORT_BASE` | `5201` |
@@ -26,12 +29,16 @@
 //! | `WILDFLOWER_RELAY_ACME_CONTACT` | none (a `mailto:` address) |
 
 use std::fmt::{self, Debug, Display};
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::Context;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
+use curve25519_dalek::MontgomeryPoint;
+use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport};
 
 use crate::front::Limits;
 use crate::route::is_dns_label;
@@ -95,6 +102,24 @@ impl RelaySettings {
             state_dir: parsed(&lookup, Self::STATE_DIR_VAR, PathBuf::from("relay-state"))?,
         })
     }
+
+    /// What the site serves at `GET /rathole`: the public half of the
+    /// rathole settings, for devices' rathole clients. `remote_addr` is
+    /// `WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR`, or the domain at the control
+    /// address's port.
+    #[must_use]
+    pub fn public_rathole_settings(&self) -> PublicRatholeSettings {
+        let remote_addr = self.control.public_control_addr.clone().unwrap_or_else(|| {
+            format!("{}:{}", self.front.domain, self.control.control_addr.port())
+        });
+        PublicRatholeSettings {
+            remote_addr,
+            transport: ControlSettings::TRANSPORT,
+            noise_pattern: ControlSettings::NOISE_PATTERN,
+            public_key: self.control.noise_public_key.clone(),
+            domain: self.front.domain.clone(),
+        }
+    }
 }
 
 /// The rathole keys the relay owns and writes into the TOML.
@@ -102,8 +127,14 @@ impl RelaySettings {
 pub struct ControlSettings {
     /// `[server] bind_addr`: where devices' rathole clients connect.
     pub control_addr: SocketAddr,
+    /// The `host:port` devices' rathole clients dial, when it is not the
+    /// domain at [`Self::control_addr`]'s port (e.g. behind port forwarding).
+    pub public_control_addr: Option<String>,
     /// `[server.transport.noise] local_private_key` (`rathole --genkey`).
     pub noise_private_key: Secret,
+    /// The X25519 public key of [`Self::noise_private_key`], base64: the
+    /// `remote_public_key` of every device's rathole client.
+    pub noise_public_key: String,
     /// Every tunnel, sorted by name. Each becomes the rathole service
     /// `[server.services.<name>]`.
     pub tunnels: Vec<Tunnel>,
@@ -121,16 +152,22 @@ pub struct Tunnel {
 }
 
 impl ControlSettings {
+    /// `[server.transport] type`.
+    pub const TRANSPORT: Transport = Transport::Noise;
+    /// `[server.transport.noise] pattern`.
+    pub const NOISE_PATTERN: NoisePattern = NoisePattern::Nk25519ChaChaPolyBlake2s;
+
     pub const CONTROL_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_CONTROL_ADDR";
+    pub const PUBLIC_CONTROL_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR";
     pub const NOISE_PRIVATE_KEY_VAR: &'static str = "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY";
     pub const TUNNELS_VAR: &'static str = "WILDFLOWER_RELAY_TUNNELS";
     pub const TUNNEL_PORT_BASE_VAR: &'static str = "WILDFLOWER_RELAY_TUNNEL_PORT_BASE";
 
     /// # Errors
     ///
-    /// Returns an error naming the variable if the private key is unset or
-    /// empty, a tunnel entry is malformed, or a number or address does not
-    /// parse.
+    /// Returns an error naming the variable if the private key is unset,
+    /// empty or not a base64 X25519 key, a tunnel entry is malformed, or a
+    /// number or address does not parse.
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
         let tunnels = lookup(Self::TUNNELS_VAR)
             .map(|raw| parse_tunnels(&Secret(raw)))
@@ -144,14 +181,31 @@ impl ControlSettings {
             Self::TUNNEL_PORT_BASE_VAR,
             tunnels.len()
         );
+        let public_control_addr = lookup(Self::PUBLIC_CONTROL_ADDR_VAR)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+            .map(|value| {
+                parse_public_addr(&value).map_err(|e| {
+                    anyhow::anyhow!(
+                        "{}={value:?} is invalid: {e}",
+                        Self::PUBLIC_CONTROL_ADDR_VAR
+                    )
+                })
+            })
+            .transpose()?;
+        let noise_private_key = required(
+            &lookup,
+            Self::NOISE_PRIVATE_KEY_VAR,
+            "the noise private key from `rathole --genkey`",
+        )
+        .map(Secret)?;
+        let noise_public_key = noise_public_key(&noise_private_key)
+            .with_context(|| format!("{} is invalid", Self::NOISE_PRIVATE_KEY_VAR))?;
         Ok(Self {
             control_addr: parsed(&lookup, Self::CONTROL_ADDR_VAR, ([0, 0, 0, 0], 2333).into())?,
-            noise_private_key: required(
-                &lookup,
-                Self::NOISE_PRIVATE_KEY_VAR,
-                "the noise private key from `rathole --genkey`",
-            )
-            .map(Secret)?,
+            public_control_addr,
+            noise_private_key,
+            noise_public_key,
             tunnels,
             tunnel_port_base,
         })
@@ -171,6 +225,39 @@ impl ControlSettings {
             })
             .collect()
     }
+}
+
+/// The X25519 public key, base64, for a base64 private key from `rathole
+/// --genkey`: the base point times the clamped private scalar, as snow
+/// derives it when rathole generates the pair. Errors never contain the key.
+fn noise_public_key(private_key: &Secret) -> anyhow::Result<String> {
+    let bytes = BASE64
+        .decode(private_key.expose())
+        .ok()
+        .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
+        .context("expected 32 bytes of base64, as `rathole --genkey` prints")?;
+    Ok(BASE64.encode(MontgomeryPoint::mul_base_clamped(bytes).to_bytes()))
+}
+
+/// Validate a `host:port` for clients to dial and case-fold it. The host is
+/// lowercase DNS labels (which covers an IPv4 address) or a bracketed IPv6
+/// address; the port is 1–65535.
+fn parse_public_addr(raw: &str) -> anyhow::Result<String> {
+    let addr = raw.to_ascii_lowercase();
+    let (host, port) = addr.rsplit_once(':').context("expected `host:port`")?;
+    anyhow::ensure!(
+        port.parse::<u16>().is_ok_and(|port| port != 0),
+        "port {port:?} is not 1–65535"
+    );
+    let host_is_valid = match host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        Some(ipv6) => ipv6.parse::<Ipv6Addr>().is_ok(),
+        None => host.split('.').all(is_dns_label),
+    };
+    anyhow::ensure!(
+        host_is_valid,
+        "host {host:?} is not a DNS name or IP address"
+    );
+    Ok(addr)
 }
 
 /// Parse `name=token,name=token` (whitespace trimmed, blank entries
@@ -346,9 +433,13 @@ mod tests {
         move |name| map.get(name).map(|v| (*v).to_owned())
     }
 
+    /// A key pair printed by `rathole --genkey` (rathole 0.5.0).
+    const GENKEY_PRIVATE_KEY: &str = "HY1kqeX1WAAysgpriYop7NW/Yw7KAO//EdEBs8qxv7I=";
+    const GENKEY_PUBLIC_KEY: &str = "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=";
+
     const REQUIRED: [(&str, &str); 2] = [
         (FrontSettings::DOMAIN_VAR, ".Relay.Example.com."),
-        (ControlSettings::NOISE_PRIVATE_KEY_VAR, "key-value"),
+        (ControlSettings::NOISE_PRIVATE_KEY_VAR, GENKEY_PRIVATE_KEY),
     ];
 
     #[test]
@@ -359,7 +450,9 @@ mod tests {
             RelaySettings {
                 control: ControlSettings {
                     control_addr: "0.0.0.0:2333".parse().unwrap(),
-                    noise_private_key: Secret::new("key-value"),
+                    public_control_addr: None,
+                    noise_private_key: Secret::new(GENKEY_PRIVATE_KEY),
+                    noise_public_key: GENKEY_PUBLIC_KEY.to_owned(),
                     tunnels: Vec::new(),
                     tunnel_port_base: 5201,
                 },
@@ -442,6 +535,28 @@ mod tests {
             pairs.push(bad);
             let err = RelaySettings::from_lookup(env(&pairs)).unwrap_err();
             assert!(format!("{err:#}").contains(bad.0), "{bad:?}: {err:#}");
+        }
+    }
+
+    #[test]
+    fn bad_public_control_addrs_are_rejected() {
+        for bad in [
+            "relay.example.com",
+            "relay.example.com:0",
+            "relay.example.com:http",
+            ":2333",
+            "relay..example.com:2333",
+            "user@relay.example.com:2333",
+            "[relay.example.com]:2333",
+            "::1:2333",
+        ] {
+            let mut pairs = REQUIRED.to_vec();
+            pairs.push((ControlSettings::PUBLIC_CONTROL_ADDR_VAR, bad));
+            let err = RelaySettings::from_lookup(env(&pairs)).unwrap_err();
+            assert!(
+                format!("{err:#}").contains(ControlSettings::PUBLIC_CONTROL_ADDR_VAR),
+                "{bad:?}: {err:#}"
+            );
         }
     }
 
@@ -552,6 +667,75 @@ mod tests {
         let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
         let debug = format!("{settings:?}");
         assert!(!debug.contains("tunnel-token"), "{debug}");
-        assert!(!debug.contains("key-value"), "{debug}");
+        assert!(!debug.contains(GENKEY_PRIVATE_KEY), "{debug}");
+    }
+
+    #[test]
+    fn noise_public_key_matches_rathole_genkey() {
+        assert_eq!(
+            noise_public_key(&Secret::new(GENKEY_PRIVATE_KEY)).unwrap(),
+            GENKEY_PUBLIC_KEY
+        );
+    }
+
+    #[test]
+    fn a_noise_private_key_that_is_not_32_bytes_of_base64_is_rejected_unprinted() {
+        for bad in ["secret-not-base64!", "c2VjcmV0LXRvby1zaG9ydA=="] {
+            let mut pairs = REQUIRED.to_vec();
+            pairs.retain(|&(name, _)| name != ControlSettings::NOISE_PRIVATE_KEY_VAR);
+            pairs.push((ControlSettings::NOISE_PRIVATE_KEY_VAR, bad));
+            let err = format!("{:#}", RelaySettings::from_lookup(env(&pairs)).unwrap_err());
+            assert!(
+                err.contains(ControlSettings::NOISE_PRIVATE_KEY_VAR),
+                "{bad:?}: {err}"
+            );
+            assert!(!err.contains(bad), "{bad:?}: {err}");
+        }
+    }
+
+    #[test]
+    fn public_rathole_settings_default_to_the_domain_at_the_control_port() {
+        let mut pairs = REQUIRED.to_vec();
+        pairs.push((ControlSettings::CONTROL_ADDR_VAR, "0.0.0.0:7000"));
+        let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
+        assert_eq!(
+            settings.public_rathole_settings(),
+            PublicRatholeSettings {
+                remote_addr: "relay.example.com:7000".to_owned(),
+                transport: Transport::Noise,
+                noise_pattern: NoisePattern::Nk25519ChaChaPolyBlake2s,
+                public_key: GENKEY_PUBLIC_KEY.to_owned(),
+                domain: "relay.example.com".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn public_control_addr_overrides_the_default_remote_addr() {
+        for (raw, expected) in [
+            (" Tunnels.Example.com:443 ", "tunnels.example.com:443"),
+            ("203.0.113.7:2333", "203.0.113.7:2333"),
+            ("[2001:db8::1]:2333", "[2001:db8::1]:2333"),
+        ] {
+            let mut pairs = REQUIRED.to_vec();
+            pairs.extend([
+                (ControlSettings::CONTROL_ADDR_VAR, "0.0.0.0:7000"),
+                (ControlSettings::PUBLIC_CONTROL_ADDR_VAR, raw),
+            ]);
+            let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
+            assert_eq!(
+                settings.public_rathole_settings().remote_addr,
+                expected,
+                "{raw:?}"
+            );
+        }
+
+        let mut pairs = REQUIRED.to_vec();
+        pairs.push((ControlSettings::PUBLIC_CONTROL_ADDR_VAR, "  "));
+        let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
+        assert_eq!(
+            settings.public_rathole_settings().remote_addr,
+            "relay.example.com:2333"
+        );
     }
 }
