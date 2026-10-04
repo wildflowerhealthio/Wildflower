@@ -12,7 +12,9 @@
 #        sudo install -m 0600 apps/wildflower-relay/relay.example.env /etc/wildflower-relay/env
 #        sudoedit /etc/wildflower-relay/env
 #      Set WILDFLOWER_RELAY_DOMAIN, WILDFLOWER_RELAY_NOISE_PRIVATE_KEY and one
-#      WILDFLOWER_RELAY_TUNNELS entry per device. After changing it:
+#      WILDFLOWER_RELAY_TUNNELS entry per device. The domain must resolve to
+#      this host: Let's Encrypt validates the relay's certificate for it on
+#      :443. After changing it:
 #        sudo systemctl restart wildflower-relay
 #   3. Install and start the unit:
 #        sudo install -m 0644 apps/wildflower-relay/wildflower-relay.service /etc/systemd/system/
@@ -22,6 +24,8 @@
 # The environment file is the relay's only configuration (see
 # relay.example.env). On each start the relay renders a fresh rathole TOML to
 # /run/wildflower-relay/relay.toml, which systemd removes when it stops.
+# /var/lib/wildflower-relay keeps the relay's caches across restarts, such as
+# the certificate for its own hostname.
 
 [Unit]
 Description=Wildflower relay (rathole tunnels and SNI front)
@@ -34,6 +38,7 @@ Type=exec
 ExecStart=/opt/wildflower-relay/wildflower-relay
 EnvironmentFile=/etc/wildflower-relay/env
 Environment=WILDFLOWER_RELAY_CONFIG=/run/wildflower-relay/relay.toml
+Environment=WILDFLOWER_RELAY_STATE_DIR=/var/lib/wildflower-relay
 Restart=on-failure
 RestartSec=2
 
@@ -41,6 +46,10 @@ RestartSec=2
 DynamicUser=yes
 RuntimeDirectory=wildflower-relay
 RuntimeDirectoryMode=0700
+# Writable despite ProtectSystem=strict. With DynamicUser it lives in
+# /var/lib/private/wildflower-relay, linked from /var/lib/wildflower-relay.
+StateDirectory=wildflower-relay
+StateDirectoryMode=0700
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 LimitNOFILE=65536

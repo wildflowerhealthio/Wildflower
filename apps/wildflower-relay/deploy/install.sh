@@ -46,6 +46,18 @@ http_url_host="$http_host"
 if [[ "$http_host" == *:* ]]; then
   http_url_host="[$http_host]"
 fi
+https_url_host="$https_host"
+if [[ "$https_host" == *:* ]]; then
+  https_url_host="[$https_host]"
+fi
+
+# The relay's own hostname, which it serves /health on. A certificate from
+# Let's Encrypt's staging directory is not one curl trusts.
+domain="$(sed -n 's/^WILDFLOWER_RELAY_DOMAIN=//p' "$upload/env")"
+curl_tls=()
+if [[ "$(sed -n 's/^WILDFLOWER_RELAY_ACME_STAGING=//p' "$upload/env")" == true ]]; then
+  curl_tls=(--insecure)
+fi
 
 listening() {
   timeout 5 bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$1" "$2" 2>/dev/null
@@ -59,22 +71,29 @@ healthy() {
     -H 'Host: deploy-check.invalid' "http://$http_url_host:$http_port/")" || return 1
   [[ "$status" == 404 ]] || return 1
   # The TLS front and the tunnels' control port take connections.
-  listening "$https_host" "$https_port" && listening "$control_host" "$control_port"
+  listening "$https_host" "$https_port" || return 1
+  listening "$control_host" "$control_port" || return 1
+  # The relay's own site answers https://<domain>/health, reached at the
+  # front's address with a certificate valid for the domain.
+  curl -fs -o /dev/null --max-time 5 "${curl_tls[@]}" \
+    --resolve "$domain:$https_port:$https_url_host" "https://$domain:$https_port/health"
 }
 
 # Give a build that dies at startup time to fail (the unit restarts it after
-# 2 s), then wait up to 15 s more for it to answer.
+# 2 s), then wait up to 2 minutes more for it to answer. The first start on a
+# host orders the certificate for the relay's own hostname, and /health only
+# answers once it is issued; later starts load it from the state directory.
 wait_healthy() {
   sleep 3
-  local attempt
-  for attempt in $(seq 15); do
-    if healthy; then
-      return 0
+  local attempt=1 deadline=$((SECONDS + 120))
+  until healthy; do
+    if ((SECONDS >= deadline)); then
+      return 1
     fi
     echo "not healthy yet (attempt $attempt)"
-    sleep 1
+    attempt=$((attempt + 1))
+    sleep 2
   done
-  return 1
 }
 
 # A build that crash-looped leaves the unit at its start limit, which a plain
@@ -136,8 +155,9 @@ if [[ "$had_prev" == true ]]; then
   if [[ -e "$env.prev" ]]; then
     sudo -n /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env.prev /etc/wildflower-relay/env
   fi
-  # The checks probe the new environment file's addresses, so a rollback
-  # across a change of listen address reports failure either way.
+  # The checks probe the new environment file's addresses and domain, and
+  # /health, so a rollback across a change of listen address or domain, or to
+  # a build that does not serve /health, reports failure either way.
   if restart && wait_healthy; then
     echo "the previous build is back up"
   else

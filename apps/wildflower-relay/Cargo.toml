@@ -9,10 +9,21 @@ publish.workspace = true
 # that routes visitors to those tunnels by the TLS ClientHello's server name.
 # The relay never terminates TLS for the public `https://<tunnel name>.<domain>`
 # surface: it holds no certificates or keys for it and forwards ciphertext.
+# It terminates TLS only for its own hostname, with a certificate from
+# rustls-acme, and serves a small axum site there.
 # The `noise` transport is selected (and TLS/websocket default features
 # dropped) so the tunnel side needs no system OpenSSL either.
 [dependencies]
 anyhow.workspace = true
+# The router of the relay's own site.
+axum.workspace = true
+# Polls the `AcmeState` stream (`StreamExt::next`).
+futures-util = { version = "0.3", default-features = false }
+# Serves the site's router over each TLS connection; `axum::serve` only takes
+# listeners, and the front hands over connections one at a time. Both are
+# already in the tree through axum.
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "service"] }
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
 ppp = "2.3"
@@ -23,9 +34,25 @@ rathole = { version = "0.5", default-features = false, features = [
   "noise",
   "hot-reload",
 ] }
-# Only `rustls::server::Acceptor`, to read the ClientHello's server name. No
-# crypto provider: the front never completes a handshake.
-rustls = { version = "0.23", default-features = false, features = ["std"] }
+# `rustls::server::Acceptor` reads the ClientHello's server name for routing.
+# `ring` is the provider for the site's TLS, the same one rustls-acme uses;
+# aws-lc-rs would need cmake to build.
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "ring",
+] }
+# The site's certificate for the relay's own hostname, ordered from Let's
+# Encrypt over TLS-ALPN-01 and cached on disk. `ring` instead of the default
+# aws-lc-rs (see `rustls`); `webpki-roots` so the ACME client trusts Let's
+# Encrypt's API.
+rustls-acme = { version = "0.15", default-features = false, features = [
+  "ring",
+  "webpki-roots",
+] }
+# `GET /health` on the site.
+shared-structures-rust = { path = "../../slices/shared-structures/shared-structures-rust", features = [
+  "health-check",
+] }
 # TCP keepalive on piped sockets (tokio has no setter); already in the tree
 # through tokio.
 socket2 = "0.6"
@@ -40,6 +67,9 @@ tokio = { workspace = true, features = [
   "signal",
   "sync",
 ] }
+# TLS for the site over tokio sockets. No default features: the provider is
+# `rustls`'s `ring`.
+tokio-rustls = { version = "0.26", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
@@ -57,3 +87,5 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 tempfile = "3"
+# A self-signed certificate stands in for the ACME one in the site's tests.
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }

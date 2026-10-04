@@ -1,2 +1,4 @@
 # The actual config file, edited for local testing.
 relay.toml
+# State written by a local run (WILDFLOWER_RELAY_STATE_DIR default).
+relay-state/

@@ -1,17 +1,21 @@
 //! End-to-end tests of the front over real sockets: a rustls client's hello
 //! goes in on one side, a fake backend stands in for a tunnel's rathole port
-//! on the other.
+//! on the other. The relay's own site is served with a self-signed
+//! certificate in place of the ACME one.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rustls::pki_types::ServerName;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
+use rustls::sign::{CertifiedKey, SingleCertAndKey};
 use rustls::{ClientConfig, ClientConnection, RootCertStore};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
-use wildflower_relay::{Front, Limits, RouteTable, Router};
+use tokio_rustls::client::TlsStream;
+use tokio_rustls::TlsConnector;
+use wildflower_relay::{Front, Limits, RouteTable, Router, Site};
 
 const DOMAIN: &str = "relay.example.com";
 const WAIT: Duration = Duration::from_secs(5);
@@ -33,11 +37,33 @@ fn client_hello(host: &str) -> Vec<u8> {
     hello
 }
 
+/// A router with the relay's domain as its one local hostname.
+fn router(routes: RouteTable) -> Arc<Router> {
+    Arc::new(Router::new(DOMAIN, [DOMAIN.to_owned()], routes))
+}
+
+/// The relay's site with a self-signed certificate for [`DOMAIN`], and that
+/// certificate for clients to trust.
+fn self_signed_site() -> (Site, CertificateDer<'static>) {
+    let rcgen::CertifiedKey { cert, key_pair } =
+        rcgen::generate_simple_self_signed(vec![DOMAIN.to_owned()]).expect("self-signed cert");
+    let cert = cert.der().clone();
+    let key = CertifiedKey::from_der(
+        vec![cert.clone()],
+        PrivateKeyDer::Pkcs8(key_pair.serialize_der().into()),
+        &rustls::crypto::ring::default_provider(),
+    )
+    .expect("certified key");
+    (Site::new(Arc::new(SingleCertAndKey::from(key))), cert)
+}
+
 /// A running front on ephemeral ports. Dropping it leaves the tasks to end
 /// with the test runtime.
 struct Harness {
     https: SocketAddr,
     http: SocketAddr,
+    /// The site's certificate.
+    site_cert: CertificateDer<'static>,
     shutdown_tx: broadcast::Sender<bool>,
 }
 
@@ -45,13 +71,16 @@ async fn start_front(router: Arc<Router>) -> Harness {
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
     let https = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let http = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let (site, site_cert) = self_signed_site();
     let harness = Harness {
         https: https.local_addr().unwrap(),
         http: http.local_addr().unwrap(),
+        site_cert,
         shutdown_tx,
     };
     let front = Front::new(
         router,
+        site,
         Limits {
             hello_timeout: Duration::from_secs(2),
             ..Limits::default()
@@ -135,10 +164,10 @@ async fn pipe_through(
 #[tokio::test]
 async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
     let backend = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let router = Arc::new(Router::new(
-        DOMAIN,
-        RouteTable::from_addrs([("abc".to_owned(), backend.local_addr().unwrap())]),
-    ));
+    let router = router(RouteTable::from_addrs([(
+        "abc".to_owned(),
+        backend.local_addr().unwrap(),
+    )]));
     let harness = start_front(router).await;
 
     let (mut client, mut upstream) =
@@ -162,8 +191,7 @@ async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
 
 #[tokio::test]
 async fn unknown_tunnel_is_closed_without_a_byte_written() {
-    let router = Arc::new(Router::new(DOMAIN, RouteTable::default()));
-    let harness = start_front(router).await;
+    let harness = start_front(router(RouteTable::default())).await;
 
     for host in [
         "nobody.relay.example.com",
@@ -192,11 +220,11 @@ async fn known_tunnel_that_is_down_is_closed_silently() {
         .unwrap()
         .local_addr()
         .unwrap();
-    let router = Arc::new(Router::new(
-        DOMAIN,
-        RouteTable::from_addrs([("abc".to_owned(), offline)]),
-    ));
-    let harness = start_front(router).await;
+    let harness = start_front(router(RouteTable::from_addrs([(
+        "abc".to_owned(),
+        offline,
+    )])))
+    .await;
 
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     client
@@ -208,8 +236,7 @@ async fn known_tunnel_that_is_down_is_closed_silently() {
 
 #[tokio::test]
 async fn silent_client_is_dropped_after_the_hello_deadline() {
-    let router = Arc::new(Router::new(DOMAIN, RouteTable::default()));
-    let harness = start_front(router).await;
+    let harness = start_front(router(RouteTable::default())).await;
     // Connect and send nothing; the 2 s test deadline closes it.
     let client = TcpStream::connect(harness.https).await.unwrap();
     assert_closed_silently(client).await;
@@ -228,11 +255,11 @@ async fn http_get(addr: SocketAddr, request: &str) -> String {
 
 #[tokio::test]
 async fn http_redirects_known_tunnels_and_404s_the_rest() {
-    let router = Arc::new(Router::new(
-        DOMAIN,
-        RouteTable::from_addrs([("abc".to_owned(), "127.0.0.1:1".parse().unwrap())]),
-    ));
-    let harness = start_front(router).await;
+    let harness = start_front(router(RouteTable::from_addrs([(
+        "abc".to_owned(),
+        "127.0.0.1:1".parse().unwrap(),
+    )])))
+    .await;
 
     let response = http_get(
         harness.http,
@@ -248,6 +275,17 @@ async fn http_redirects_known_tunnels_and_404s_the_rest() {
         "unexpected response: {response}"
     );
 
+    let response = http_get(
+        harness.http,
+        "GET /health HTTP/1.1\r\nHost: Relay.Example.com\r\n\r\n",
+    )
+    .await;
+    assert!(
+        response.starts_with("HTTP/1.1 308 ")
+            && response.contains("\r\nLocation: https://relay.example.com/health\r\n"),
+        "unexpected response: {response}"
+    );
+
     for request in [
         "GET / HTTP/1.1\r\nHost: nobody.relay.example.com\r\n\r\n",
         "GET / HTTP/1.1\r\nHost: abc.example.org\r\n\r\n",
@@ -259,4 +297,75 @@ async fn http_redirects_known_tunnels_and_404s_the_rest() {
             "unexpected response to {request:?}: {response}"
         );
     }
+}
+
+/// Complete a TLS handshake through the front for `host`, offering `alpn`
+/// and trusting only the site's certificate.
+async fn tls_connect(harness: &Harness, host: &str, alpn: &[&[u8]]) -> TlsStream<TcpStream> {
+    let mut roots = RootCertStore::empty();
+    roots.add(harness.site_cert.clone()).expect("site cert");
+    let mut config =
+        ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()
+            .expect("protocol versions")
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+    config.alpn_protocols = alpn.iter().map(|protocol| protocol.to_vec()).collect();
+    let tcp = TcpStream::connect(harness.https).await.unwrap();
+    let name = ServerName::try_from(host.to_owned()).expect("dns name");
+    tokio::time::timeout(
+        WAIT,
+        TlsConnector::from(Arc::new(config)).connect(name, tcp),
+    )
+    .await
+    .expect("TLS handshake timed out")
+    .expect("TLS handshake with the site")
+}
+
+#[tokio::test]
+async fn own_hostname_is_served_by_the_site_over_tls() {
+    // A tunnel is routable too, so the site is chosen by name, not by default.
+    let backend = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let harness = start_front(router(RouteTable::from_addrs([(
+        "abc".to_owned(),
+        backend.local_addr().unwrap(),
+    )])))
+    .await;
+
+    let mut tls = tls_connect(&harness, "Relay.Example.com", &[b"h2", b"http/1.1"]).await;
+    assert_eq!(tls.get_ref().1.alpn_protocol(), Some(&b"http/1.1"[..]));
+    tls.write_all(b"GET /health HTTP/1.1\r\nHost: relay.example.com\r\nConnection: close\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = String::new();
+    tokio::time::timeout(WAIT, tls.read_to_string(&mut response))
+        .await
+        .expect("site response")
+        .unwrap();
+    assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
+    assert!(
+        response.contains("content-type: application/health+json\r\n"),
+        "{response}"
+    );
+    assert!(response.ends_with(r#"{"status":"pass"}"#), "{response}");
+
+    // The tunnel still routes to its port alongside the site.
+    let (_client, _upstream) = pipe_through(&harness, &backend, "abc.relay.example.com", b"").await;
+    let _ = harness.shutdown_tx.send(true);
+}
+
+#[tokio::test]
+async fn acme_tls_alpn_handshake_for_own_hostname_reaches_the_site() {
+    let harness = start_front(router(RouteTable::default())).await;
+
+    let mut tls = tls_connect(&harness, DOMAIN, &[b"acme-tls/1"]).await;
+    assert_eq!(tls.get_ref().1.alpn_protocol(), Some(&b"acme-tls/1"[..]));
+    // A validation handshake is closed once it completes, without HTTP.
+    let mut rest = Vec::new();
+    tokio::time::timeout(WAIT, tls.read_to_end(&mut rest))
+        .await
+        .expect("site should close a validation handshake")
+        .unwrap();
+    assert!(rest.is_empty());
+    let _ = harness.shutdown_tx.send(true);
 }

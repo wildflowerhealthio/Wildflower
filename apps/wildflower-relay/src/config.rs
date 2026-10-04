@@ -116,7 +116,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::route::{RouteTable, Router};
+    use crate::route::{Destination, RouteTable, Router};
     use crate::settings::RelaySettings;
 
     /// The `KEY=value` lines of `relay.example.env`, optionally including
@@ -209,14 +209,13 @@ mod tests {
         // The front routes the same tunnel names to the same ports.
         let router = Router::new(
             "relay.example.com",
+            ["relay.example.com".to_owned()],
             RouteTable::from_addrs(control.tunnel_addrs()),
         );
-        assert_eq!(
-            router
-                .resolve("bob.relay.example.com")
-                .map(|route| route.addr.to_string()),
-            Some(server.services["bob"].bind_addr.clone())
-        );
+        let Some(Destination::Tunnel(route)) = router.resolve("bob.relay.example.com") else {
+            panic!("bob routes to a tunnel");
+        };
+        assert_eq!(route.addr.to_string(), server.services["bob"].bind_addr);
     }
 
     #[tokio::test]
