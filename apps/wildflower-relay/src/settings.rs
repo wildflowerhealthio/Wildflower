@@ -18,9 +18,7 @@
 //! | `WILDFLOWER_RELAY_HTTPS_ADDR` | `0.0.0.0:443` |
 //! | `WILDFLOWER_RELAY_HTTP_ADDR` | `0.0.0.0:80` |
 //! | `WILDFLOWER_RELAY_MAX_CONNECTIONS` | `4096` |
-//! | `WILDFLOWER_RELAY_MAX_CONNECTIONS_PER_LABEL` | `256` |
 //! | `WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS` | `5` |
-//! | `WILDFLOWER_RELAY_IDLE_TIMEOUT_SECS` | `300` |
 
 use std::fmt::{self, Debug, Display};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -215,10 +213,7 @@ impl FrontSettings {
     pub const HTTPS_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_HTTPS_ADDR";
     pub const HTTP_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_HTTP_ADDR";
     pub const MAX_CONNECTIONS_VAR: &'static str = "WILDFLOWER_RELAY_MAX_CONNECTIONS";
-    pub const MAX_CONNECTIONS_PER_LABEL_VAR: &'static str =
-        "WILDFLOWER_RELAY_MAX_CONNECTIONS_PER_LABEL";
     pub const HELLO_TIMEOUT_VAR: &'static str = "WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS";
-    pub const IDLE_TIMEOUT_VAR: &'static str = "WILDFLOWER_RELAY_IDLE_TIMEOUT_SECS";
 
     /// Only the domain is required; everything else has a default.
     ///
@@ -248,13 +243,7 @@ impl FrontSettings {
                     Self::MAX_CONNECTIONS_VAR,
                     defaults.max_connections,
                 )?,
-                max_connections_per_label: parsed(
-                    &lookup,
-                    Self::MAX_CONNECTIONS_PER_LABEL_VAR,
-                    defaults.max_connections_per_label,
-                )?,
                 hello_timeout: secs(Self::HELLO_TIMEOUT_VAR, defaults.hello_timeout)?,
-                idle_timeout: secs(Self::IDLE_TIMEOUT_VAR, defaults.idle_timeout)?,
             },
         })
     }
@@ -332,8 +321,7 @@ mod tests {
         pairs.extend([
             (ControlSettings::CONTROL_ADDR_VAR, "127.0.0.1:7000"),
             (FrontSettings::HTTPS_ADDR_VAR, "[::]:8443"),
-            (FrontSettings::IDLE_TIMEOUT_VAR, " 60 "),
-            (FrontSettings::MAX_CONNECTIONS_PER_LABEL_VAR, "8"),
+            (FrontSettings::HELLO_TIMEOUT_VAR, " 7 "),
         ]);
         let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
         assert_eq!(
@@ -341,8 +329,7 @@ mod tests {
             "127.0.0.1:7000".parse().unwrap()
         );
         assert_eq!(settings.front.https_addr, "[::]:8443".parse().unwrap());
-        assert_eq!(settings.front.limits.idle_timeout, Duration::from_secs(60));
-        assert_eq!(settings.front.limits.max_connections_per_label, 8);
+        assert_eq!(settings.front.limits.hello_timeout, Duration::from_secs(7));
     }
 
     #[test]

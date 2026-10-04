@@ -9178,6 +9178,7 @@ dependencies = [
  "ppp",
  "rathole",
  "rustls",
+ "socket2 0.6.5",
  "tempfile",
  "tokio",
  "toml 0.9.6",

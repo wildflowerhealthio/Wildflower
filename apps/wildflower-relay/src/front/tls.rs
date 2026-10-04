@@ -2,19 +2,22 @@
 //!
 //! Read the ClientHello and take its server name, look up the device's
 //! tunnel port, connect to it, send a PROXY header and the hello bytes, then
-//! copy bytes both ways until either side closes or the pipe goes idle. The
+//! copy bytes both ways until either side closes. TCP keepalive on both
+//! sockets clears out a peer that vanished without closing; an idle but
+//! live connection is the device's HTTP server's to close. The
 //! front never decrypts anything. Every step that fails logs why and drops
 //! the visitor's socket, which closes it without a byte written.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::time::Duration;
+
+use socket2::{SockRef, TcpKeepalive};
 
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
 use super::hello::{read_client_hello, ClientHello};
-use super::idle::{Activity, Tracked};
 use super::proxy_header::proxy_header;
 use super::Front;
 use crate::route::Route;
@@ -36,15 +39,11 @@ impl Front {
             tracing::debug!(%server_name, "refused: unknown label");
             return;
         };
-        let Some(_label_permit) = self.try_acquire_label(&route.label) else {
-            tracing::warn!(label = %route.label, "refused: label at its connection limit");
-            return;
-        };
         let Some(mut backend) = self.connect_to_tunnel(&route).await else {
             return;
         };
-        let _ = client.set_nodelay(true);
-        let _ = backend.set_nodelay(true);
+        tune(&client);
+        tune(&backend);
         if !send_preface(&mut backend, visitor, relay, &hello_bytes, &route).await {
             return;
         }
@@ -90,30 +89,47 @@ impl Front {
         }
     }
 
-    /// Copy bytes both ways until either side closes, nothing moves for the
-    /// idle timeout, or the relay shuts down.
+    /// Copy bytes both ways until either side closes or the relay shuts
+    /// down.
     async fn pipe(
         &self,
-        client: TcpStream,
-        backend: TcpStream,
+        mut client: TcpStream,
+        mut backend: TcpStream,
         route: &Route,
         mut shutdown_rx: broadcast::Receiver<bool>,
     ) {
-        let activity = Arc::new(Activity::new());
-        let mut client = Tracked::new(client, Arc::clone(&activity));
-        let mut backend = Tracked::new(backend, Arc::clone(&activity));
         tokio::select! {
             result = tokio::io::copy_bidirectional(&mut client, &mut backend) => {
                 if let Err(e) = result {
                     tracing::debug!(label = %route.label, "pipe ended: {e}");
                 }
             }
-            () = activity.idle(self.limits.idle_timeout) => {
-                tracing::debug!(label = %route.label, "pipe idle, closing");
-            }
             _ = shutdown_rx.recv() => {}
         }
     }
+}
+
+/// First keepalive probe after this long with nothing received.
+const KEEPALIVE_TIME: Duration = Duration::from_secs(60);
+/// Gap between unanswered probes.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
+/// Unanswered probes before the kernel drops the connection, so a vanished
+/// peer is noticed after about two minutes.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const KEEPALIVE_RETRIES: u32 = 6;
+
+/// Set TCP_NODELAY (the bytes are TLS records, already framed) and TCP
+/// keepalive on a piped socket. Failures are ignored: neither is needed for
+/// correctness.
+fn tune(stream: &TcpStream) {
+    let _ = stream.set_nodelay(true);
+    let keepalive = TcpKeepalive::new().with_time(KEEPALIVE_TIME);
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let keepalive = keepalive
+        .with_interval(KEEPALIVE_INTERVAL)
+        .with_retries(KEEPALIVE_RETRIES);
+    let _ = SockRef::from(stream).set_tcp_keepalive(&keepalive);
 }
 
 /// Write the PROXY header and then the visitor's hello bytes to the tunnel,

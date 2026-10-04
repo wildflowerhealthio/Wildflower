@@ -8,17 +8,14 @@
 //! - `tls`: one `:443` connection, from ClientHello to byte pipe.
 //! - `hello`: reading the ClientHello and taking its server name.
 //! - `proxy_header`: the PROXY protocol v2 header sent ahead of the hello.
-//! - `idle`: the idle timeout for a piped connection.
 //! - `http`: one `:80` request, answered with a redirect or a 404.
 
 mod hello;
 mod http;
-mod idle;
 mod proxy_header;
 mod tls;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::net::{TcpListener, TcpStream};
@@ -35,34 +32,26 @@ const ACCEPT_BACKOFF: Duration = Duration::from_millis(50);
 pub struct Limits {
     /// Concurrent connections across `:443` and `:80` together.
     pub max_connections: usize,
-    /// Concurrent piped connections to any one label.
-    pub max_connections_per_label: usize,
     /// Deadline for a complete ClientHello (or HTTP request head).
     pub hello_timeout: Duration,
-    /// A piped connection with no bytes in either direction for this long is
-    /// closed.
-    pub idle_timeout: Duration,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self {
             max_connections: 4096,
-            max_connections_per_label: 256,
             hello_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(300),
         }
     }
 }
 
 /// The shared state behind both listeners: routes, limits and the
-/// semaphores that enforce them.
+/// semaphore that enforces the connection limit.
 #[derive(Debug)]
 pub struct Front {
     router: Arc<Router>,
     limits: Limits,
     connections: Arc<Semaphore>,
-    per_label: Mutex<HashMap<String, Arc<Semaphore>>>,
 }
 
 impl Front {
@@ -72,7 +61,6 @@ impl Front {
             router,
             limits,
             connections: Arc::new(Semaphore::new(limits.max_connections)),
-            per_label: Mutex::new(HashMap::new()),
         })
     }
 
@@ -147,20 +135,5 @@ impl Front {
             return None;
         };
         Some((stream, permit))
-    }
-
-    /// Take a slot from `label`'s own limit, or `None` if it is full.
-    fn try_acquire_label(&self, label: &str) -> Option<OwnedSemaphorePermit> {
-        let semaphore = {
-            let mut per_label = self
-                .per_label
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            let semaphore = per_label
-                .entry(label.to_owned())
-                .or_insert_with(|| Arc::new(Semaphore::new(self.limits.max_connections_per_label)));
-            Arc::clone(semaphore)
-        };
-        semaphore.try_acquire_owned().ok()
     }
 }
