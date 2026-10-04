@@ -1,8 +1,8 @@
-import { Array as Arr, Data, Effect } from 'effect'
+import { Array as Arr, Data, Effect, Schema } from 'effect'
 import { unknownErrorToString } from 'kitchen-sink'
 
 import type * as Bundle from '../data-types/resources/bundle.ts'
-import type { FhirResource } from '../resources/index.ts'
+import { type FhirResource, FhirResourceSchema } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import { describeResource, type ResourceWriteTarget } from './persist-resources.ts'
@@ -26,8 +26,12 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * all-or-nothing — is a different bundle `type` and a different failure
  * model, and is *not* implemented here.)
  *
- * If the whole `POST /` fails (a transport error, a non-2xx on the bundle
- * itself, or a decode error on the response bundle), every entry in the
+ * Each resource is encoded through {@link FhirResourceSchema} before it goes
+ * in the bundle, since the endpoint's loose entry type encodes nothing.
+ *
+ * If the whole `POST /` fails (a resource that does not encode, a transport
+ * error, a non-2xx on the bundle itself, or a decode error on the response
+ * bundle), every entry in the
  * submitted set is reported as failed against that one cause — one bad server
  * response cannot silently drop the batch. A null-id resource is skipped
  * defensively (a PUT needs an id, mirroring {@link upsertResource}).
@@ -123,10 +127,13 @@ const persistBatchBundle = (
 
     const client = yield* FhirR4ResourcesHttpApiClient
     // The endpoint carries `entry.resource: Schema.Any` (see http-api-definition/
-    // bundle.ts for why the entry-body type is deliberately loose). The
-    // resources spread into `resource` at runtime are the typed `FhirResource`s
-    // the caller handed in; they encode through their own schemas at wire time.
-    const payload: Bundle.BundleValue<unknown> = {
+    // bundle.ts for why the entry-body type is deliberately loose), so nothing
+    // encodes an entry's resource on the way out: each is encoded here, into
+    // its wire form. A decoded resource keeps every unset choice slot as
+    // `null` (`effectiveDateTime: null` beside an `effectivePeriod`), which is
+    // not FHIR JSON — and HFS reads such an `Observation.effective` as the null,
+    // indexing no `date` for it.
+    const payloadOf = (encoded: ReadonlyArray<unknown>): Bundle.BundleValue<unknown> => ({
       resourceType: 'Bundle' as const,
       type: 'batch' as const,
       id: null,
@@ -138,7 +145,7 @@ const persistBatchBundle = (
       signature: null,
       timestamp: null,
       total: null,
-      entry: writable.map((resource) => ({
+      entry: Arr.zip(writable, encoded).map(([resource, wire]) => ({
         id: null,
         extension: [],
         modifierExtension: [],
@@ -155,17 +162,21 @@ const persistBatchBundle = (
           ifMatch: null,
           ifNoneExist: null,
         },
-        resource,
+        resource: wire,
         response: null,
         search: null,
       })),
-    }
+    })
 
-    const result = yield* client.Bundle.Submit({ payload }).pipe(
+    const result = yield* Effect.forEach(writable, (resource) =>
+      Schema.encode(FhirResourceSchema)(resource)
+    ).pipe(
+      Effect.flatMap((encoded) => client.Bundle.Submit({ payload: payloadOf(encoded) })),
       // Every entry inherits the whole-bundle failure so a submission-level
       // failure cannot silently drop the batch. `matchEffect` catches on the
-      // unknown error channel — a decode error on the response bundle counts,
-      // as does a 5xx and a transport failure.
+      // unknown error channel — a resource that does not encode counts, as
+      // does a decode error on the response bundle, a 5xx and a transport
+      // failure.
       Effect.matchEffect({
         onSuccess: (response) => Effect.succeed({ _tag: 'ok' as const, response }),
         onFailure: (cause: unknown) => Effect.succeed({ _tag: 'failed' as const, cause }),
