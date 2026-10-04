@@ -4,11 +4,11 @@ import {
   HttpClientRequest,
   HttpClientResponse,
 } from '@effect/platform'
-import { Arbitrary, Effect, Either, FastCheck as fc, Layer, type Schema } from 'effect'
+import { Arbitrary, Effect, Either, FastCheck as fc, Layer, Schema } from 'effect'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Patient, Observation, type FhirResource } from '../resources/index.ts'
+import { FhirResourceSchema, Patient, Observation, type FhirResource } from '../resources/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import {
   BatchEntriesRejected,
@@ -47,6 +47,29 @@ describe('persistBatchBundle', () => {
     expect(request?.body.entry?.[0]?.request?.method).toBe('PUT')
     expect(request?.body.entry?.[0]?.request?.url).toBe('Patient/patient-1')
     expect(request?.body.entry?.[1]?.request?.url).toBe('Observation/obs-1')
+  })
+
+  it('posts each resource in its encoded wire form, with no null choice slots', async () => {
+    // A decoded Observation holds every unset `effective[x]` as `null`; posted
+    // as is, HFS reads `Observation.effective` as the null `effectiveDateTime`
+    // and indexes no `date` for the period.
+    const observation = Schema.decodeUnknownSync(Observation.Schema)({
+      resourceType: 'Observation',
+      id: 'hr-1',
+      status: 'final',
+      code: { coding: [{ system: 'http://loinc.org', code: '8867-4' }] },
+      effectivePeriod: { start: '2026-09-10T14:00:00.000Z', end: '2026-09-10T15:00:00.000Z' },
+    })
+    const captured = await runWith([observation], allOk)
+
+    const posted = captured.requests[0]?.body.entry?.[0]?.resource
+    expect(posted).toEqual(
+      JSON.parse(JSON.stringify(Schema.encodeSync(FhirResourceSchema)(observation)))
+    )
+    expect(posted).toMatchObject({
+      effectivePeriod: { start: '2026-09-10T14:00:00.000Z', end: '2026-09-10T15:00:00.000Z' },
+    })
+    expect(posted).not.toHaveProperty('effectiveDateTime')
   })
 
   it('reports one outcome per resource with its echoed status, in submit order', async () => {
@@ -292,6 +315,7 @@ interface RecordedBundle {
   readonly entry?: readonly {
     readonly fullUrl?: string | null
     readonly request?: { readonly method?: string; readonly url?: string } | null
+    readonly resource?: unknown
   }[]
 }
 

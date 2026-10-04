@@ -25,7 +25,10 @@ import * as Bundle from '../data-types/resources/bundle.ts'
  * (`persistBatchBundle`, `classifyAgainstServer`) inspects the response by
  * `entry.response.status` and decodes any returned `entry.resource` through
  * {@link FhirResourceSchema} separately when it needs the typed shape, so the
- * loose entry-body type never reaches the caller as truth.
+ * loose entry-body type never reaches the caller as truth. The same looseness
+ * holds on the way out: `Schema.Any` passes an entry's `resource` through as
+ * it is, so a caller submitting resources encodes them itself
+ * (`persistBatchBundle` does) — a decoded resource is not its wire form.
  *
  * The server (HFS) processes the bundle and answers with the response bundle;
  * per-entry statuses (`"201 Created"`, `"200 OK"`, `"404 Not Found"`) are what
