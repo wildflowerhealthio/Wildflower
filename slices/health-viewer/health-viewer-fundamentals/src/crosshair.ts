@@ -1,29 +1,37 @@
+import type * as Buckets from './buckets.ts'
 import * as Series from './series.ts'
 import * as TimeDomain from './time-domain.ts'
 
 /**
- * Every instant the crosshair can rest on: each level boundary of each
- * series — a start, and a stated end — inside `window`. Sorted, deduplicated,
- * in epoch milliseconds.
+ * Every instant the crosshair can rest on inside `window`: each level boundary
+ * of each series — a start, and a stated end — or, for a series drawn as
+ * buckets, each bucket's middle. Sorted, deduplicated, in epoch milliseconds.
+ *
+ * @param bucketsBySeriesId - The series drawn as buckets, from
+ *   `Buckets.ofDenseSeries` — the same map the chart draws them from
  *
  * @remarks
  * Snapping to these rather than to the raw pointer time means the crosshair
  * always sits where some series changes, so the readout it lists
  * (`Series.levelAt`) is never a stale value picked between two changes. A
  * point series' levels begin at its readings and end at the next one, so its
- * stops are exactly its reading times.
+ * stops are exactly its reading times; a bucketed series stops once per bucket,
+ * where its readout (`Buckets.at`) names that bucket.
  */
 const stops = (
   plotted: readonly Series.Series[],
-  window: TimeDomain.TimeDomain
+  window: TimeDomain.TimeDomain,
+  bucketsBySeriesId: ReadonlyMap<string, readonly Buckets.Bucket[]>
 ): readonly number[] => {
-  const boundaries = plotted.flatMap((series) =>
-    Series.levelsOf(series).flatMap((level) =>
+  const boundaries = plotted.flatMap((series) => {
+    const buckets = bucketsBySeriesId.get(series.id)
+    if (buckets !== undefined) return buckets.map((bucket) => bucket.time.epochMillis)
+    return Series.levelsOf(series).flatMap((level) =>
       level.end === null
         ? [level.start.epochMillis]
         : [level.start.epochMillis, level.end.epochMillis]
     )
-  )
+  })
   return [...new Set(boundaries)]
     .filter((boundary) => TimeDomain.contains(window, boundary))
     .toSorted((left, right) => left - right)

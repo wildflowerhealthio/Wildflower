@@ -41,9 +41,20 @@ time)` is the one lookup every crosshair read goes through: the
   (sides alternate in selection order, `CAP` = 4 axes), `domainFor` (fitted as
   the series' `valueScale` says), `niceDomain`, `ticksFor` (never `-0`),
   `normalise` / `denormalise`.
-- **`Crosshair`** (`src/crosshair.ts`) — `stops(series, window)`: every level
-  boundary inside the window, sorted and distinct, so a point series' stops are
-  its reading times; `nearestStop` snaps the pointer to one.
+- **`Buckets`** (`src/buckets.ts`) — a dense point series summarised for
+  drawing: `of(points, xDomain, bucketCount)` splits the domain into
+  fixed-width, half-open slices (`start`, `end`) and keeps each slice holding
+  a reading as a `Bucket` with its middle `time`, `mean`, `min`, `max` and
+  `count`; empty slices are left out, so gaps stay gaps. `at(buckets, time)`
+  is the bucket whose slice holds `time` (binary search, `null` in a gap).
+  `ofDenseSeries(series, xDomain, bucketCount)` decides which series are drawn
+  as buckets — point series with more readings in the domain than buckets —
+  and returns their buckets by series id; level series never are.
+- **`Crosshair`** (`src/crosshair.ts`) —
+  `stops(series, window, bucketsBySeriesId)`: every level boundary inside the
+  window, sorted and distinct, so a point series' stops are its reading times
+  — and a bucketed series' are its bucket middles; `nearestStop` snaps the
+  pointer to one.
 - **`ColourSlots`** (`src/colour-slots.ts`) — `assign(previous, selectedIds)`:
   a series keeps its colour while it stays selected; newcomers take the lowest
   free slot; throws past `ValueAxis.CAP`.

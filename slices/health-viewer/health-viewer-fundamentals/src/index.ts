@@ -10,6 +10,7 @@
  *
  * @packageDocumentation
  */
+export * as Buckets from './buckets.ts'
 export * as ColourSlots from './colour-slots.ts'
 export * as Crosshair from './crosshair.ts'
 export * as Level from './level.ts'

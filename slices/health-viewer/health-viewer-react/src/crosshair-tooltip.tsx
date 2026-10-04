@@ -1,7 +1,7 @@
 import type { DateTime } from 'effect'
 import type { JSX } from 'react'
 
-import { type Level, Series, type ValueAxis } from 'health-viewer-fundamentals'
+import { Buckets, type Level, Series, type ValueAxis } from 'health-viewer-fundamentals'
 
 import { seriesColors } from './series-colors.ts'
 import { formatDate, formatReading } from './value-format.ts'
@@ -12,6 +12,12 @@ interface CrosshairTooltipProps {
   readonly axes: readonly ValueAxis.ValueAxis[]
   /** Each axis' palette index, parallel to `axes`. */
   readonly colours: readonly number[]
+  /**
+   * The series drawn as buckets, from `Buckets.ofDenseSeries` — the map the
+   * figure and the crosshair's stops were built from. Their rows read the
+   * bucket under the crosshair rather than a reading.
+   */
+  readonly bucketsBySeriesId: ReadonlyMap<string, readonly Buckets.Bucket[]>
   /** The instant the crosshair sits on. */
   readonly time: DateTime.Utc
   /** The crosshair's horizontal position inside the figure, in pixels. */
@@ -54,6 +60,25 @@ const readoutText = (series: Series.Series, level: Level.Level | null): ReadoutT
 }
 
 /**
+ * What one row says for a bucketed `series` at the crosshair, given the bucket
+ * `Buckets.at` found there: the bucket's mean in the series' unit, and a
+ * detail line saying it is a mean, of how many readings, and their range.
+ *
+ * @remarks
+ * `null` is a gap — no reading fell in the slice under the crosshair — and
+ * reads as one. A bucket of one reading is that reading, so it says only that.
+ */
+const bucketReadoutText = (series: Series.Series, bucket: Buckets.Bucket | null): ReadoutText => {
+  if (bucket === null) return { value: '—', detail: null }
+  const value = [formatReading(bucket.mean), series.unit].filter((part) => part !== null).join(' ')
+  const detail =
+    bucket.count === 1
+      ? '1 reading'
+      : `mean of ${bucket.count} readings, ${formatReading(bucket.min)}–${formatReading(bucket.max)}`
+  return { value, detail }
+}
+
+/**
  * The crosshair's readout: every axis' series read at `time`, one row each,
  * in axis order.
  *
@@ -61,11 +86,13 @@ const readoutText = (series: Series.Series, level: Level.Level | null): ReadoutT
  * HTML rather than `Plot.tip`, which describes a single datum; this lists every
  * series whether or not the pointer is on its line. Each row leads with the
  * value, keys its series with a short stroke of its colour, and says when the
- * value it shows took effect (see {@link readoutText}).
+ * value it shows took effect (see {@link readoutText}) — or, for a bucketed
+ * series, what the bucket's mean summarises (see {@link bucketReadoutText}).
  */
 const CrosshairTooltip = ({
   axes,
   colours,
+  bucketsBySeriesId,
   time,
   left,
   flip,
@@ -79,7 +106,11 @@ const CrosshairTooltip = ({
     <p className={styles.time}>{formatDate(time)}</p>
     <ul className={styles.rows}>
       {axes.map((axis, position) => {
-        const text = readoutText(axis.series, Series.levelAt(axis.series, time))
+        const buckets = bucketsBySeriesId.get(axis.series.id)
+        const text =
+          buckets === undefined
+            ? readoutText(axis.series, Series.levelAt(axis.series, time))
+            : bucketReadoutText(axis.series, Buckets.at(buckets, time))
         return (
           <li key={axis.series.id} className={styles.row} data-testid="crosshair-row">
             <span

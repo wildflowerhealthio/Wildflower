@@ -1,10 +1,12 @@
 import * as Plot from '@observablehq/plot'
-import { type RenderResult, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { type RenderResult, act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { DateTime } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
+  Buckets,
   type LevelSeries,
   type PointSeries,
   Series,
@@ -12,7 +14,7 @@ import {
   ValueAxis,
 } from 'health-viewer-fundamentals'
 
-import { chartOptions, levelRuns } from './chart-marks.ts'
+import { bucketCountFor, bucketVertices, chartOptions, levelRuns } from './chart-marks.ts'
 import { MultiAxisChart } from './multi-axis-chart.tsx'
 import {
   WINDOW_DAYS,
@@ -23,6 +25,7 @@ import {
   testWindow,
 } from './series-arbitraries.test-helpers.ts'
 import { seriesColors } from './series-colors.ts'
+import { FALLBACK_WIDTH } from './use-plot.ts'
 import { formatAxisValue, formatReading, tickDecimals } from './value-format.ts'
 
 // Each run mounts a full Plot figure in jsdom, so the rendering properties run
@@ -31,7 +34,10 @@ const RENDER_RUNS = numRunsFor({ base: 15 })
 const RENDER_TIMEOUT = 30_000
 const PURE_RUNS = numRunsFor({ base: 200 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 const readings: PointSeries.PointSeries = {
   kind: 'points',
@@ -156,7 +162,12 @@ describe('MultiAxisChart axes', () => {
 
 describe('MultiAxisChart time axis', () => {
   test('draws a grid line at every labelled time tick and nowhere else, at any width', () => {
-    const options = chartOptions(ValueAxis.assign([readings, levels]), testWindow, [0, 1])
+    const options = chartOptions(
+      ValueAxis.assign([readings, levels]),
+      testWindow,
+      [0, 1],
+      new Map()
+    )
     if (options === null) throw new Error('a non-empty selection has a figure')
     fc.assert(
       fc.property(fc.integer({ min: 320, max: 2400 }), (width) => {
@@ -543,5 +554,175 @@ describe('MultiAxisChart empty state', () => {
     const { container } = renderChart([])
     expect(screen.getByText('Pick up to four series')).toBeDefined()
     expect(container.querySelector('svg')).toBeNull()
+  })
+})
+
+/**
+ * A point series of `count` readings spread evenly across {@link testWindow},
+ * wandering between 50 and 110.
+ */
+const evenlySpread = (id: string, count: number): PointSeries.PointSeries => {
+  const start = testWindow[0].epochMillis
+  const span = testWindow[1].epochMillis - start
+  return {
+    kind: 'points',
+    id,
+    label: 'Heart rate',
+    unit: 'beats/min',
+    valueScale: 'fitted',
+    interpolation: 'linear',
+    points: Array.from({ length: count }, (_, index) => ({
+      time: DateTime.unsafeMake(start + Math.floor((index * span) / count)),
+      value: 80 + 30 * Math.sin(index / 40),
+    })),
+  }
+}
+
+describe('MultiAxisChart dense series', () => {
+  test('draws a 10 000-reading series as a mean line over one envelope, without dots', () => {
+    const dense = evenlySpread('p:dense', 10_000)
+    const { container } = renderChart(ValueAxis.assign([dense]))
+    expect(container.querySelectorAll('circle')).toHaveLength(0)
+    const areas = container.querySelectorAll('svg > g[aria-label="area"]')
+    expect(areas).toHaveLength(1)
+    expect(areas[0].querySelectorAll('path')).toHaveLength(1)
+    expect(markFills(container, 'area')).toEqual([seriesColors(0).band])
+    expect(markStrokes(container, 'line')).toEqual([seriesColors(0).mark])
+  })
+
+  test('still draws a 20-reading series reading by reading, with its dots', () => {
+    const { container } = renderChart(ValueAxis.assign([evenlySpread('p:sparse', 20)]))
+    expect(container.querySelectorAll('svg > g[aria-label="dot"] circle')).toHaveLength(20)
+    expect(container.querySelectorAll('svg > g[aria-label="area"]')).toHaveLength(0)
+  })
+
+  test('decides again at a new width: dots once the frame has room for every reading', () => {
+    const observers: {
+      readonly callback: ResizeObserverCallback
+      readonly observer: ResizeObserver
+    }[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          observers.push({ callback, observer: this })
+        }
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      }
+    )
+    const reportWidth = (width: number): void =>
+      act(() => {
+        for (const { callback, observer } of observers) {
+          const entry: ResizeObserverEntry = {
+            target: document.body,
+            contentRect: DOMRectReadOnly.fromRect({ width, height: 0 }),
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          }
+          callback([entry], observer)
+        }
+      })
+
+    const axes = ValueAxis.assign([evenlySpread('p:hundred', 100)])
+    const { container } = renderChart(axes)
+    // At the fallback width the frame holds fewer buckets than readings.
+    expect(bucketCountFor(axes, FALLBACK_WIDTH)).toBeLessThan(100)
+    expect(container.querySelectorAll('circle')).toHaveLength(0)
+
+    reportWidth(2000)
+    expect(bucketCountFor(axes, 2000)).toBeGreaterThanOrEqual(100)
+    expect(container.querySelectorAll('svg > g[aria-label="dot"] circle')).toHaveLength(100)
+  })
+
+  test('the crosshair snaps to a bucket middle and reads its mean, count and range', () => {
+    const dense = evenlySpread('p:dense', 10_000)
+    const axes = ValueAxis.assign([dense, levels])
+    const onHover = vi.fn()
+    const { container } = render(
+      <MultiAxisChart axes={axes} xDomain={testWindow} onHover={onHover} />
+    )
+    const frame = frameOf(container)
+    fireEvent.pointerMove(plotAreaOf(container), {
+      clientX: frame.x + (100 / WINDOW_DAYS) * frame.width,
+    })
+
+    const buckets = Buckets.of(dense.points, testWindow, bucketCountFor(axes, FALLBACK_WIDTH))
+    const snapped: unknown = onHover.mock.lastCall?.[0]
+    if (!DateTime.isDateTime(snapped)) throw new Error('the crosshair did not land')
+    const bucket = Buckets.at(buckets, DateTime.toUtc(snapped))
+    if (bucket === null) throw new Error('the crosshair landed outside every bucket')
+    expect(bucket.time.epochMillis).toBe(snapped.epochMillis)
+
+    const [denseRow] = screen.getAllByTestId('crosshair-row')
+    expect(denseRow.textContent).toContain(`${formatReading(bucket.mean)} beats/min`)
+    expect(denseRow.textContent).toContain(
+      `mean of ${bucket.count} readings, ${formatReading(bucket.min)}–${formatReading(bucket.max)}`
+    )
+  })
+})
+
+describe('bucketVertices', () => {
+  const axis = ValueAxis.assign([readings])[0]
+
+  /** Buckets over a 1000ms window from readings at any of its instants. */
+  const bucketsArb = fc
+    .tuple(
+      fc.array(fc.record({ millis: fc.integer({ min: 0, max: 999 }), value: fc.integer() }), {
+        maxLength: 60,
+      }),
+      fc.integer({ min: 1, max: 40 })
+    )
+    .map(([drafts, bucketCount]) =>
+      Buckets.of(
+        drafts.map(({ millis, value }) => ({ time: DateTime.unsafeMake(millis), value })),
+        [DateTime.unsafeMake(0), DateTime.unsafeMake(999)],
+        bucketCount
+      )
+    )
+
+  test('passes through every bucket middle at its mean, in time order', () => {
+    fc.assert(
+      fc.property(bucketsArb, (buckets) => {
+        const vertices = bucketVertices(axis, buckets)
+        const times = vertices.map((vertex) => vertex.time.getTime())
+        expect(times).toEqual(times.toSorted((left, right) => left - right))
+        for (const bucket of buckets) {
+          expect(
+            vertices.some(
+              (vertex) =>
+                vertex.time.getTime() === bucket.time.epochMillis &&
+                vertex.mean === ValueAxis.normalise(bucket.mean, axis.domain)
+            )
+          ).toBe(true)
+        }
+      }),
+      { numRuns: PURE_RUNS }
+    )
+  })
+
+  test('breaks across a left-out slice and nowhere else', () => {
+    fc.assert(
+      fc.property(bucketsArb, (buckets) => {
+        const vertices = bucketVertices(axis, buckets)
+        const breaks = vertices.filter((vertex) => Number.isNaN(vertex.mean)).length
+        const gaps = buckets.filter(
+          (bucket, index) =>
+            index > 0 && buckets[index - 1].end.epochMillis !== bucket.start.epochMillis
+        ).length
+        expect(breaks).toBe(gaps)
+        // Every run, even one bucket alone, spans its slices with at least two vertices.
+        const runs = vertices
+          .map((vertex) => (Number.isNaN(vertex.mean) ? '|' : '.'))
+          .join('')
+          .split('|')
+          .filter((run) => run.length > 0)
+        expect(runs).toHaveLength(buckets.length === 0 ? 0 : gaps + 1)
+        for (const run of runs) expect(run.length).toBeGreaterThanOrEqual(2)
+      }),
+      { numRuns: PURE_RUNS }
+    )
   })
 })

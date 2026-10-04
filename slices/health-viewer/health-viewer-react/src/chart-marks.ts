@@ -2,6 +2,7 @@ import * as Plot from '@observablehq/plot'
 import type { DateTime } from 'effect'
 
 import {
+  type Buckets,
   type Level,
   type LevelSeries,
   type PointSeries,
@@ -39,6 +40,13 @@ const FRAME_HEIGHT = CHART_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM
 /** Pixels between time ticks — shared by the grid and the axis so every grid line has a label. */
 const X_TICK_SPACING = 96
 
+/**
+ * How wide one bucket of a dense point series is drawn, in pixels — about one
+ * dot across (`r: 4` plus its 2px ring), so a series with more readings in
+ * the window than {@link bucketCountFor} buckets would draw dots that touch.
+ */
+const BUCKET_WIDTH = 10
+
 /** Where a figure hangs its value axes: its left and right margins, in pixels. */
 const sideMargin = (
   axes: readonly ValueAxis.ValueAxis[],
@@ -55,6 +63,16 @@ const sideMargin = (
 const axisOffset = (axis: ValueAxis.ValueAxis): number =>
   (axis.side === 'left' ? -1 : 1) * axis.index * AXIS_GUTTER
 
+/**
+ * How many buckets a dense point series is drawn in across a figure
+ * `figureWidth` pixels wide: one per {@link BUCKET_WIDTH} of the plot frame,
+ * the gutters aside, and at least one.
+ */
+const bucketCountFor = (axes: readonly ValueAxis.ValueAxis[], figureWidth: number): number => {
+  const frameWidth = figureWidth - sideMargin(axes, 'left') - sideMargin(axes, 'right')
+  return Math.max(1, Math.floor(frameWidth / BUCKET_WIDTH))
+}
+
 /** A vertex of a drawn line, on the shared `0..1` value scale. */
 interface PlottedVertex {
   readonly time: Date
@@ -69,6 +87,17 @@ interface PointBandVertex {
   readonly time: Date
   readonly low: number
   readonly high: number
+}
+
+/**
+ * A vertex of a bucketed series' mean line and min–max envelope, on the `0..1`
+ * scale; all three `NaN` where the line and envelope break.
+ */
+interface BucketVertex {
+  readonly time: Date
+  readonly mean: number
+  readonly min: number
+  readonly max: number
 }
 
 /** One level's band: the level's span by its `low` / `high`, on the `0..1` scale. */
@@ -129,6 +158,66 @@ const pointBandMarks = (
 }
 
 /**
+ * The vertices a bucketed series is drawn through: each bucket's middle, the
+ * buckets in runs of adjacent slices, with a `NaN` vertex between runs so the
+ * line and envelope break across a left-out slice rather than bridging it.
+ *
+ * @remarks
+ * Each run also opens at its first slice's start and closes at its last
+ * slice's end, holding that bucket's values: a run of one bucket would
+ * otherwise be a single vertex, which a line or area draws as nothing.
+ */
+const bucketVertices = (
+  axis: ValueAxis.ValueAxis,
+  buckets: readonly Buckets.Bucket[]
+): readonly BucketVertex[] => {
+  const vertexAt = (time: DateTime.Utc, bucket: Buckets.Bucket): BucketVertex => ({
+    time: toDate(time),
+    mean: ValueAxis.normalise(bucket.mean, axis.domain),
+    min: ValueAxis.normalise(bucket.min, axis.domain),
+    max: ValueAxis.normalise(bucket.max, axis.domain),
+  })
+  return buckets.flatMap((bucket, index) => {
+    const previous = buckets[index - 1]
+    const next = buckets[index + 1]
+    const opensRun = previous?.end.epochMillis !== bucket.start.epochMillis
+    const closesRun = next?.start.epochMillis !== bucket.end.epochMillis
+    const breakBefore: readonly BucketVertex[] =
+      opensRun && previous !== undefined
+        ? [{ time: toDate(bucket.start), mean: Number.NaN, min: Number.NaN, max: Number.NaN }]
+        : []
+    return [
+      ...breakBefore,
+      ...(opensRun ? [vertexAt(bucket.start, bucket)] : []),
+      vertexAt(bucket.time, bucket),
+      ...(closesRun ? [vertexAt(bucket.end, bucket)] : []),
+    ]
+  })
+}
+
+/**
+ * The envelope behind a bucketed series — an area from each bucket's `min` to
+ * its `max` — in place of its readings' own band, which a bucket does not
+ * summarise.
+ */
+const bucketEnvelopeMarks = (
+  axis: ValueAxis.ValueAxis,
+  series: PointSeries.PointSeries,
+  buckets: readonly Buckets.Bucket[],
+  colour: number
+): readonly Plot.Markish[] => [
+  Plot.areaY(bucketVertices(axis, buckets), {
+    x: 'time',
+    y1: 'min',
+    y2: 'max',
+    fill: seriesColors(colour).band,
+    fillOpacity: BAND_OPACITY,
+    curve: curveFor(series.interpolation),
+    clip: true,
+  }),
+]
+
+/**
  * The band behind a level series — one rectangle per level carrying both
  * `low` and `high`, over that level's span — or nothing when none does.
  *
@@ -171,18 +260,23 @@ const levelBandMarks = (
 }
 
 /**
- * The band behind an axis' series, whichever kind it is. The chart draws every
- * band in a layer beneath every line, so one series' band never washes over
- * another's line.
+ * The band behind an axis' series, whichever kind it is — for a bucketed
+ * series, its envelope. The chart draws every band in a layer beneath every
+ * line, so one series' band never washes over another's line.
+ *
+ * @param buckets - The series' buckets when it is drawn as them
  */
 const seriesBandMarks = (
   axis: ValueAxis.ValueAxis,
   colour: number,
-  domainEnd: DateTime.Utc
-): readonly Plot.Markish[] =>
-  axis.series.kind === 'points'
+  domainEnd: DateTime.Utc,
+  buckets: readonly Buckets.Bucket[] | undefined
+): readonly Plot.Markish[] => {
+  if (axis.series.kind === 'levels') return levelBandMarks(axis, axis.series, colour, domainEnd)
+  return buckets === undefined
     ? pointBandMarks(axis, axis.series, colour)
-    : levelBandMarks(axis, axis.series, colour, domainEnd)
+    : bucketEnvelopeMarks(axis, axis.series, buckets, colour)
+}
 
 /**
  * The marks for a point series: its line, curved as its interpolation says,
@@ -219,6 +313,27 @@ const pointSeriesMarks = (
     }),
   ]
 }
+
+/**
+ * The marks for a bucketed series: a line through each bucket's mean, curved
+ * as the series' interpolation says, and no dots — a dot per bucket would
+ * touch its neighbours, which is why the series is bucketed.
+ */
+const bucketMeanMarks = (
+  axis: ValueAxis.ValueAxis,
+  series: PointSeries.PointSeries,
+  buckets: readonly Buckets.Bucket[],
+  colour: number
+): readonly Plot.Markish[] => [
+  Plot.line(bucketVertices(axis, buckets), {
+    x: 'time',
+    y: 'mean',
+    stroke: seriesColors(colour).mark,
+    strokeWidth: 2,
+    curve: curveFor(series.interpolation),
+    clip: true,
+  }),
+]
 
 /**
  * One unbroken stretch of a level series' step line, all in one line style.
@@ -308,15 +423,22 @@ const levelSeriesMarks = (
   })
 }
 
-/** The marks that draw an axis' series itself, whichever kind it is. */
+/**
+ * The marks that draw an axis' series itself, whichever kind it is.
+ *
+ * @param buckets - The series' buckets when it is drawn as them
+ */
 const seriesLineMarks = (
   axis: ValueAxis.ValueAxis,
   colour: number,
-  domainEnd: DateTime.Utc
-): readonly Plot.Markish[] =>
-  axis.series.kind === 'points'
+  domainEnd: DateTime.Utc,
+  buckets: readonly Buckets.Bucket[] | undefined
+): readonly Plot.Markish[] => {
+  if (axis.series.kind === 'levels') return levelSeriesMarks(axis, axis.series, colour, domainEnd)
+  return buckets === undefined
     ? pointSeriesMarks(axis, axis.series, colour)
-    : levelSeriesMarks(axis, axis.series, colour, domainEnd)
+    : bucketMeanMarks(axis, axis.series, buckets, colour)
+}
 
 /**
  * A value axis' own marks: a series-coloured axis line and tick marks at its
@@ -363,6 +485,8 @@ const valueAxisMarks = (
  * @param colours - Each axis' palette index, parallel to `axes` — from
  *   `ColourSlots.assign`, so a series keeps its colour when an earlier one is
  *   removed
+ * @param bucketsBySeriesId - The series drawn as buckets, from
+ *   `Buckets.ofDenseSeries`: a mean line over a min–max envelope, no dots
  *
  * @returns `null` for an empty selection — there is nothing to draw
  *
@@ -374,7 +498,8 @@ const valueAxisMarks = (
 const chartOptions = (
   axes: readonly ValueAxis.ValueAxis[],
   xDomain: TimeDomain.TimeDomain,
-  colours: readonly number[]
+  colours: readonly number[],
+  bucketsBySeriesId: ReadonlyMap<string, readonly Buckets.Bucket[]>
 ): Plot.PlotOptions | null => {
   if (axes.length === 0) return null
   const domainEnd = xDomain[1]
@@ -382,8 +507,12 @@ const chartOptions = (
     Plot.gridX({ strokeOpacity: 0.08, tickSpacing: X_TICK_SPACING }),
     Plot.axisX({ label: null, tickSpacing: X_TICK_SPACING }),
     ...axes.flatMap((axis, position) => valueAxisMarks(axis, colours[position], xDomain)),
-    ...axes.flatMap((axis, position) => seriesBandMarks(axis, colours[position], domainEnd)),
-    ...axes.flatMap((axis, position) => seriesLineMarks(axis, colours[position], domainEnd)),
+    ...axes.flatMap((axis, position) =>
+      seriesBandMarks(axis, colours[position], domainEnd, bucketsBySeriesId.get(axis.series.id))
+    ),
+    ...axes.flatMap((axis, position) =>
+      seriesLineMarks(axis, colours[position], domainEnd, bucketsBySeriesId.get(axis.series.id))
+    ),
   ]
   return {
     height: CHART_HEIGHT,
@@ -397,5 +526,13 @@ const chartOptions = (
   }
 }
 
-export type { LevelRun, PlottedVertex }
-export { FRAME_HEIGHT, MARGIN_TOP, chartOptions, levelRuns }
+export type { BucketVertex, LevelRun, PlottedVertex }
+export {
+  BUCKET_WIDTH,
+  FRAME_HEIGHT,
+  MARGIN_TOP,
+  bucketCountFor,
+  bucketVertices,
+  chartOptions,
+  levelRuns,
+}

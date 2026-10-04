@@ -22,7 +22,8 @@ health-viewer-react          the Plot chart, series panel, range presets and pag
 
 - **`health-viewer-fundamentals`** — the plot vocabulary, as `effect`-style
   namespaces from one flat entry: `Level`, `PointSeries`, `LevelSeries`,
-  `Series`, `ValueAxis` (domains, ticks, axis assignment), `Crosshair`,
+  `Series`, `ValueAxis` (domains, ticks, axis assignment), `Buckets` (a dense
+  series summarised per time slice), `Crosshair`,
   `ColourSlots`, `TimeDomain`, `SeriesId` (the escaped field grammar ids are
   written in) and `SeriesSource` (a domain source as one value). See its
   [AGENTS.md](./health-viewer-fundamentals/AGENTS.md).
@@ -42,7 +43,8 @@ health-viewer-react          the Plot chart, series panel, range presets and pag
   [AGENTS.md](./health-viewer-core/AGENTS.md).
 - **`health-viewer-react`** — the browser layer: `MultiAxisChart` draws the
   axes `ValueAxis.assign` returns as one Observable Plot figure — a
-  colour-matched value axis per series, point series as lines with dots, level
+  colour-matched value axis per series, point series as lines with dots (or,
+  too dense for dots, a bucket-mean line over a min–max envelope), level
   series as step lines broken at gaps and dashed where the domain says, `low` /
   `high` bands, a legend, and a crosshair readout of `Series.levelAt` per
   series. `SeriesPanel` lays out `groupForPanel`'s catalogue as searchable,
