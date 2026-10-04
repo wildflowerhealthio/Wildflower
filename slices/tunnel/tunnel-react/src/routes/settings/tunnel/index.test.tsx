@@ -148,7 +148,7 @@ describe('/settings/tunnel activity card', () => {
     expect(await screen.findByText('Lifting app')).toBeTruthy()
     expect(await screen.findByText('192.0.2.1 · Signed in')).toBeTruthy()
     expect(await screen.findByText('unnamed-client')).toBeTruthy()
-    expect(await screen.findByText('Unauthenticated')).toBeTruthy()
+    expect(await screen.findByText('No client')).toBeTruthy()
     expect(
       await screen.findByText('47 requests · 34 signed in · 0 no sign-in needed · 13 refused')
     ).toBeTruthy()

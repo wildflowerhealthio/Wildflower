@@ -230,8 +230,8 @@ interface RequestRowProps {
  * value, keeping the rest of the filter.
  */
 const RequestRow = ({ request, search, names }: RequestRowProps): JSX.Element => {
-  const name = callerNameOf(request.clientId, names)
   const access = requestAccessOf(request)
+  const name = callerNameOf(access, names)
   return (
     <tr
       className={cn(

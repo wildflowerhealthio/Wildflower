@@ -30,13 +30,13 @@ const ENTRIES: readonly ActivityEntry[] = [
     access: { auth: 'authorized', clientId: 'collector' },
   },
   {
-    name: 'Unauthenticated',
+    name: 'Open',
     location: '198.51.100.24',
     lastConnectionAt: dt(2 * 60 * 1000),
     access: { auth: 'public' },
   },
   {
-    name: 'Unauthenticated',
+    name: 'No client',
     location: '203.0.113.9',
     lastConnectionAt: dt(60 * 60 * 1000),
     access: { auth: 'refused', clientId: Option.none(), reason: 'token rejected' },

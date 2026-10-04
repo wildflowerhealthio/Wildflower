@@ -21,16 +21,19 @@ const UNKNOWN_ADDRESS = 'Unknown address'
 const activityEntryOf = (
   caller: CallerSummary,
   names: ReadonlyMap<string, string>
-): ActivityEntry => ({
-  name: callerNameOf(caller.clientId, names),
-  location: Option.getOrElse(caller.address, () => UNKNOWN_ADDRESS),
-  lastConnectionAt: caller.lastSeen,
-  access: requestAccessOf({
+): ActivityEntry => {
+  const access = requestAccessOf({
     clientId: caller.clientId,
     status: caller.lastStatus,
     refusal: caller.lastRefusal,
-  }),
-})
+  })
+  return {
+    name: callerNameOf(access, names),
+    location: Option.getOrElse(caller.address, () => UNKNOWN_ADDRESS),
+    lastConnectionAt: caller.lastSeen,
+    access,
+  }
+}
 
 /**
  * Count the log's requests by `auth` case. A caller's refused requests are its

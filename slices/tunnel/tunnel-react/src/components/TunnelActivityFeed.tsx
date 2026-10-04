@@ -12,7 +12,8 @@ import styles from './TunnelActivityFeed.module.css'
 /**
  * One caller the activity feed renders as a row.
  *
- *   - `name` — who called: the client's name, its id, or "Unauthenticated".
+ *   - `name` — who called: the client's name, its id, "Open" when no sign-in
+ *     was needed, or "No client" when refused before a client was verified.
  *   - `location` — the address it called from.
  *   - `lastConnectionAt` — its latest request, shown as a relative time on the
  *     row's right edge ("now", "2 min ago").

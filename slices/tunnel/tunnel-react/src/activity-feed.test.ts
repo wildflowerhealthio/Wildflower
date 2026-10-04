@@ -55,12 +55,15 @@ describe('activityEntryOf', () => {
     })
   })
 
-  test('falls back to the client id, then Unauthenticated, for the name', () => {
+  test('falls back to the client id, then Open or No client, for the name', () => {
     expect(activityEntryOf(caller({ clientId: Option.some('other') }), NAMES).name).toBe('other')
     expect(activityEntryOf(caller({ clientId: Option.none() }), NAMES)).toMatchObject({
-      name: 'Unauthenticated',
+      name: 'Open',
       access: { auth: 'public' },
     })
+    expect(
+      activityEntryOf(caller({ clientId: Option.none(), lastStatus: 401 }), NAMES)
+    ).toMatchObject({ name: 'No client', access: { auth: 'refused' } })
   })
 
   test('a caller whose last request was refused is a refused row with the reason', () => {
