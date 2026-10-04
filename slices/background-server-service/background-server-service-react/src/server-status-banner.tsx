@@ -1,18 +1,23 @@
 import { useMatchRoute } from '@tanstack/react-router'
+import { Array as Arr, Option } from 'effect'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 
 import { useServerServiceStatus } from './server-service-status-store.ts'
+import type { ServerDisplayState } from './server-status-text.ts'
 import { serverDisplayState, STOP_REASON_DESCRIPTION } from './server-status-text.ts'
 import { useRestartServer } from './use-restart-server.ts'
 import styles from './server-status-banner.module.css'
 
+/** The displayed states the banner shows: every one but `running`. */
+type BannerState = Exclude<ServerDisplayState, 'running'>
+
 /** The banner's headline for each state it shows. */
-const BANNER_TITLE = {
+const BANNER_TITLE: Readonly<Record<BannerState, string>> = {
   starting: 'Server starting…',
   restarting: 'Server restarting…',
   stopped: 'Server stopped',
-} as const
+}
 
 /**
  * A strip across the top of the app while the Wildflower server isn't running:
@@ -39,53 +44,54 @@ const BANNER_TITLE = {
  * itself holds no live region, so nothing is announced twice.
  */
 const ServerStatusBanner = (): JSX.Element => {
-  const status = useServerServiceStatus()
+  const status = Option.fromNullable(useServerServiceStatus())
   const restartServer = useRestartServer()
   const isOnServerPage = useMatchRoute()({ to: '/settings/server' }) !== false
-  const displayState = status === null || isOnServerPage ? null : serverDisplayState(status)
-  const stopped = displayState === 'stopped' ? status : null
-  const isStopped = stopped !== null
-  const title =
-    displayState === null || displayState === 'running' ? null : BANNER_TITLE[displayState]
-  const reason =
-    stopped === null || stopped.stopReason === null
-      ? null
-      : STOP_REASON_DESCRIPTION[stopped.stopReason]
-  const lastError = stopped === null ? null : stopped.lastError
+  const bannerState = status.pipe(
+    Option.filter(() => !isOnServerPage),
+    Option.map(serverDisplayState),
+    Option.filter((state): state is BannerState => state !== 'running')
+  )
+  const title = Option.map(bannerState, (state) => BANNER_TITLE[state])
+  const stopped = Option.filter(status, () => Option.contains(bannerState, 'stopped'))
+  const reason = stopped.pipe(
+    Option.flatMapNullable((stoppedStatus) => stoppedStatus.stopReason),
+    Option.map((stopReason) => STOP_REASON_DESCRIPTION[stopReason])
+  )
+  const lastError = Option.flatMapNullable(stopped, (stoppedStatus) => stoppedStatus.lastError)
+  const announcement = Option.isSome(stopped)
+    ? Arr.getSomes([Option.some(`${BANNER_TITLE.stopped}.`), reason, lastError]).join(' ')
+    : Option.getOrNull(title)
   return (
     <>
       <p className="sr-only" role="status">
-        {stopped === null
-          ? title
-          : [`${BANNER_TITLE.stopped}.`, reason, lastError]
-              .filter((part) => part !== null)
-              .join(' ')}
+        {announcement}
       </p>
-      {title === null ? null : (
+      {Option.isSome(title) ? (
         <section
           aria-label="Wildflower server"
           className={cn(
             styles['server-status-banner'],
-            isStopped ? styles['server-status-banner--stopped'] : null
+            Option.isSome(stopped) ? styles['server-status-banner--stopped'] : null
           )}
         >
           <span
             aria-hidden="true"
             className={cn(
               styles['server-status-banner__dot'],
-              lastError === null ? null : styles['server-status-banner__dot--error']
+              Option.isSome(lastError) ? styles['server-status-banner__dot--error'] : null
             )}
           />
           <div className={styles['server-status-banner__text']}>
-            <p className={styles['server-status-banner__title']}>{title}</p>
-            {reason === null ? null : (
-              <p className={styles['server-status-banner__detail']}>{reason}</p>
-            )}
-            {lastError === null ? null : (
-              <p className={styles['server-status-banner__error']}>{lastError}</p>
-            )}
+            <p className={styles['server-status-banner__title']}>{title.value}</p>
+            {Option.isSome(reason) ? (
+              <p className={styles['server-status-banner__detail']}>{reason.value}</p>
+            ) : null}
+            {Option.isSome(lastError) ? (
+              <p className={styles['server-status-banner__error']}>{lastError.value}</p>
+            ) : null}
           </div>
-          {isStopped ? (
+          {Option.isSome(stopped) ? (
             <button
               type="button"
               className={cn('button-3 outline', styles['server-status-banner__action'])}
@@ -95,7 +101,7 @@ const ServerStatusBanner = (): JSX.Element => {
             </button>
           ) : null}
         </section>
-      )}
+      ) : null}
     </>
   )
 }
