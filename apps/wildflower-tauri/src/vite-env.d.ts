@@ -1,5 +1,14 @@
 /// <reference types="vite-plus/client" />
 
+interface ImportMetaEnv {
+  /**
+   * The DSN of the owner UI's Sentry project, read by `wildflower-react`'s
+   * `ConsentedEntryRoot` once the user answers the consent dialog; unset, the
+   * app reports nothing whatever the answer.
+   */
+  readonly VITE_SENTRY_DSN_WILDFLOWER_REACT?: string
+}
+
 // Injected by Vite's `define` (see `vite.config.ts`), sourced from the
 // shared `tauri-shared-config.json` so the loopback API origin matches the
 // Rust server's binding. Absolute origin, e.g. `http://127.0.0.1:8080`.

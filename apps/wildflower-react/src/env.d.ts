@@ -2,10 +2,9 @@
 
 interface ImportMetaEnv {
   /**
-   * The DSN of the owner UI's Sentry project, set by the deploy build and read
-   * by the web entry (`main-web`); unset, the web entry reports nothing
-   * whatever the visitor answers. The Tauri entry reads the shared
-   * `VITE_SENTRY_DSN` instead.
+   * The DSN of the owner UI's Sentry project, read by both entries
+   * (`session/consented-entry-root.tsx`); unset, the entry reports nothing
+   * whatever the user answers.
    */
   readonly VITE_SENTRY_DSN_WILDFLOWER_REACT?: string
 }

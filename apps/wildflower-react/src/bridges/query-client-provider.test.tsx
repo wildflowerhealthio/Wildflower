@@ -8,7 +8,7 @@ import { type AuthState, Unauthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
- * Pins that `renderApp` provides ONE shared in-memory `QueryClient` to
+ * Pins that `buildAppTree` provides ONE shared in-memory `QueryClient` to
  * the whole tree — no persister.
  */
 
@@ -30,7 +30,7 @@ const { Passthrough } = vi.hoisted(() => ({
 // `router-context.ts`'s layer composition). The `AuthStateStore` the
 // test renders with is constructed inline in the test body below.
 // `ActivePendingConsentProvider` is mocked as a passthrough so the
-// modal-host wrapping in `renderApp` doesn't blow up the tree, and
+// modal-host wrapping in `buildAppTree` doesn't blow up the tree, and
 // `makeActivePendingConsentStore` returns a no-op store —
 // `PendingConsentModalHost` is stubbed to nothing for the same reason.
 vi.mock('gatekeeper-react', async (importOriginal) => {
@@ -54,7 +54,7 @@ vi.mock('react-kitchen-sink', () => ({
   // The test seeds the store with `Unauthed()`; the mock only needs a value the
   // `SubscriptionRef` can hold (nothing asserts on it).
   Unauthed: () => ({ _tag: 'Unauthed' }),
-  // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
+  // Mirror the real `cn` helper so the ErrorBoundary in `buildAppTree`'s
   // tree (`react-tundraish` reads `cn` via this re-export) doesn't
   // crash if the rendered subtree throws. Same identity-on-truthy
   // shape as the production export.
@@ -91,7 +91,7 @@ vi.mock('./har-recorder-sender-forwarder.tsx', () => ({
 vi.mock('./background-server-service-sender-forwarder.tsx', () => ({
   BackgroundServerServiceSenderForwarder: Passthrough,
 }))
-// `renderApp` builds the server status store through the real
+// `buildAppTree` builds the server status store through the real
 // `react-kitchen-sink` store plumbing, which this harness mocks away; the
 // provider is a passthrough and the store a no-op, as for the pending-consent
 // store above.
@@ -138,7 +138,7 @@ describe('in-memory QueryClientProvider', () => {
   })
 
   test('provides a single shared QueryClient to the whole tree', async () => {
-    const { renderApp } = await import('../app-root.tsx')
+    const { buildAppTree, mountAtRoot } = await import('../app-root.tsx')
 
     const { stubTransport } = await import('./transport-context.ts')
     // Minimal in-memory `AuthStateStore` — this test only pins the
@@ -152,20 +152,22 @@ describe('in-memory QueryClientProvider', () => {
       setAuthState: (s: AuthState): void => Effect.runSync(SubscriptionRef.set(tokenRef, s)),
     }
     await act(async () => {
-      renderApp({
-        history: createMemoryHistory({ initialEntries: ['/'] }),
-        entry: 'main-web',
-        tokenStore,
-        awaitAuthReady: () => () => Promise.resolve(),
-        makeTransport: () => Promise.resolve(stubTransport),
-        effectTelemetryLayer: Layer.empty,
-        externalLinkRoot: () => 'https://example.test',
-        platformSettingsItems: [],
-        platformTabs: [],
-        platformBanner: null,
-        redirectToDeviceLoginOnUnauthorized: false,
-        serverKind: ServerKind.Wildflower(),
-      })
+      mountAtRoot(
+        buildAppTree({
+          history: createMemoryHistory({ initialEntries: ['/'] }),
+          entry: 'main-web',
+          tokenStore,
+          awaitAuthReady: () => () => Promise.resolve(),
+          makeTransport: () => Promise.resolve(stubTransport),
+          effectTelemetryLayer: Layer.empty,
+          externalLinkRoot: () => 'https://example.test',
+          platformSettingsItems: [],
+          platformTabs: [],
+          platformBanner: null,
+          redirectToDeviceLoginOnUnauthorized: false,
+          serverKind: ServerKind.Wildflower(),
+        })
+      )
     })
 
     await waitFor(() => {

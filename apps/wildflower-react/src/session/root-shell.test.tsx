@@ -68,7 +68,7 @@ vi.mock('react-kitchen-sink', () => ({
   // The test seeds the store with `Unauthed()`; the mock only needs a value the
   // `SubscriptionRef` can hold (nothing asserts on it).
   Unauthed: () => ({ _tag: 'Unauthed' }),
-  // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
+  // Mirror the real `cn` helper so the ErrorBoundary in `buildAppTree`'s
   // tree (`react-tundraish` reads `cn` via this re-export) doesn't
   // crash if the rendered subtree throws.
   cn: (
@@ -127,7 +127,7 @@ vi.mock('../bridges/har-recorder-sender-forwarder.tsx', () => ({
 vi.mock('../bridges/background-server-service-sender-forwarder.tsx', () => ({
   BackgroundServerServiceSenderForwarder: makePassthrough('BackgroundServerServiceSenderForwarder'),
 }))
-// `renderApp` builds the server status store through the real
+// `buildAppTree` builds the server status store through the real
 // `react-kitchen-sink` store plumbing, which this harness mocks away; the
 // provider is a passthrough and the store a no-op, as for the pending-consent
 // store above.
@@ -141,7 +141,7 @@ vi.mock('background-server-service-react', () => ({
     setStatus: () => {},
   }),
 }))
-// `renderApp` wraps the tree in `telemetry-web`'s `<ErrorBoundary>` and
+// `buildAppTree` wraps the tree in `telemetry-web`'s `<ErrorBoundary>` and
 // reports to `Sentry`. Neither is the thing under test, and the real
 // `ErrorBoundary` would mask assertion failures by swallowing them into
 // Sentry — so reduce the boundary to a passthrough and `Sentry` to a
@@ -150,15 +150,15 @@ vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
 }))
-// `renderApp` imports the real `routeTree.gen.ts`, whose top-level
+// `buildAppTree` imports the real `routeTree.gen.ts`, whose top-level
 // imports eagerly pull in every slice's route screens (Effect HttpApi
 // clients, CSS modules, sync runners). Those modules are incidental to
-// the `InnerWrap` wiring the "renderApp InnerWrap lifecycle" block
+// the `InnerWrap` wiring the "buildAppTree InnerWrap lifecycle" block
 // pins, and would drag network/Effect machinery into the harness — so
 // swap the generated tree for a minimal one built from the real
 // `__root` route (`RootShell`, already mocked down to passthroughs)
 // plus two leaf routes. The router still mounts through the real
-// `renderApp` + `InnerWrap`, which is the thing being pinned.
+// `buildAppTree` + `InnerWrap`, which is the thing being pinned.
 //
 // `@tanstack/react-router` is not mocked, so the `createRootRoute` /
 // `createRoute` imported at the top of this file are the real builders.
@@ -174,7 +174,7 @@ vi.mock('../routeTree.gen.ts', () => {
 })
 
 // Imported AFTER the vi.mock calls so the mocks intercept the
-// transitive imports of `RootShell` and `renderApp`. (Vitest hoists
+// transitive imports of `RootShell` and `buildAppTree`. (Vitest hoists
 // `vi.mock` above this line at compile time, so the static `import`
 // order here is just for human readers.)
 import { RootShell } from './root-shell.tsx'
@@ -188,7 +188,7 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
     .filter(([, providerName]) => providerName === name)
     .map(([event]) => event)
 
-describe('renderApp InnerWrap lifecycle', () => {
+describe('buildAppTree InnerWrap lifecycle', () => {
   // The providers that live around the router above its matched routes:
   // `AuthStateProvider` (just above `<RouterProvider>`) and the
   // `CollectorSenderForwarder` slice sender that nests inside `InnerWrap`.
@@ -201,7 +201,7 @@ describe('renderApp InnerWrap lifecycle', () => {
     'BackgroundServerServiceSenderForwarder',
   ] as const
 
-  // `renderApp` mounts into `document.getElementById('root')` via
+  // `mountAtRoot` mounts into `document.getElementById('root')` via
   // `createRoot`, so the container must exist before each render and be
   // torn down (with its React root) afterwards — otherwise a second
   // `createRoot` on the same node warns and the prior tree's elements
@@ -220,7 +220,7 @@ describe('renderApp InnerWrap lifecycle', () => {
   })
 
   test('the relocated auth/runtime/transport stack mounts once and survives navigation', async () => {
-    const { renderApp } = await import('../app-root.tsx')
+    const { buildAppTree, mountAtRoot } = await import('../app-root.tsx')
     const history = createMemoryHistory({ initialEntries: ['/a'] })
 
     const { stubTransport } = await import('../bridges/transport-context.ts')
@@ -232,27 +232,29 @@ describe('renderApp InnerWrap lifecycle', () => {
       setAuthState: (s: AuthState): void => Effect.runSync(SubscriptionRef.set(tokenRef, s)),
     }
     await act(async () => {
-      renderApp({
-        history,
-        entry: 'main-web',
-        tokenStore,
-        awaitAuthReady: () => () => Promise.resolve(),
-        makeTransport: () => Promise.resolve(stubTransport),
-        effectTelemetryLayer: Layer.empty,
-        externalLinkRoot: () => 'https://example.test',
-        platformSettingsItems: [],
-        platformTabs: [],
-        platformBanner: null,
-        redirectToDeviceLoginOnUnauthorized: false,
-        serverKind: ServerKind.Wildflower(),
-      })
+      mountAtRoot(
+        buildAppTree({
+          history,
+          entry: 'main-web',
+          tokenStore,
+          awaitAuthReady: () => () => Promise.resolve(),
+          makeTransport: () => Promise.resolve(stubTransport),
+          effectTelemetryLayer: Layer.empty,
+          externalLinkRoot: () => 'https://example.test',
+          platformSettingsItems: [],
+          platformTabs: [],
+          platformBanner: null,
+          redirectToDeviceLoginOnUnauthorized: false,
+          serverKind: ServerKind.Wildflower(),
+        })
+      )
     })
 
     await waitFor(() => {
       expect(screen.getByTestId('leaf-a')).toBeDefined()
     })
 
-    // `renderApp` wraps in `<StrictMode>`, which double-invokes mount
+    // `mountAtRoot` wraps in `<StrictMode>`, which double-invokes mount
     // effects on the initial commit — so each provider's initial log is
     // `['mount', 'unmount', 'mount']`, not `['mount']`. The invariant
     // under test is NOT "exactly one mount" (that's StrictMode's call)

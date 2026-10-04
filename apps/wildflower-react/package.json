@@ -14,16 +14,14 @@
       "types": "./dist/web-entry.d.ts",
       "default": "./dist/web-entry.js"
     },
-    "./instrument": {
-      "source": "./src/instrument.ts",
-      "types": "./dist/instrument.d.ts",
-      "default": "./dist/instrument.js"
-    },
     "./web-assets": {
       "source": "./src/web-assets.ts"
     },
     "./bridges": {
       "source": "./src/bridges/bridges.ts"
+    },
+    "./consented-entry-root": {
+      "source": "./src/session/consented-entry-root.tsx"
     },
     "./server-kind": {
       "source": "./src/session/server-kind.ts"

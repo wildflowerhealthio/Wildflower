@@ -23,7 +23,7 @@ import { forkTokenRotationInvalidator } from './app-root.tsx'
  *     exactly once, so 401-pinned entries from the previous bearer
  *     refetch under the new one.
  *
- * The helper was extracted from `renderApp` (which builds its own
+ * The helper was extracted from `buildAppTree` (which builds its own
  * `QueryClient`) precisely so this contract is testable against a real
  * `Subscribable`-backed store and a spy-able `QueryClient` without
  * mounting the whole app.
@@ -35,7 +35,7 @@ import { forkTokenRotationInvalidator } from './app-root.tsx'
  * `SubscriptionRef<AuthState>` seeded `Unauthed` plus a synchronous setter
  * that writes through it. The invalidator is forked against
  * `store.subscribable` — the same read surface the production wiring
- * (`renderApp`) passes in.
+ * (`buildAppTree`) passes in.
  */
 const makeInMemoryTokenStore = (): AuthStateStore => {
   const ref = Effect.runSync(SubscriptionRef.make<AuthState>(Unauthed()))

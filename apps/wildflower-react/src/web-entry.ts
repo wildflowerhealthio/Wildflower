@@ -90,7 +90,7 @@ const underBasepath = (basepath: string, route: string): string =>
   `${basepath.replace(/\/$/, '')}${route}`
 
 /**
- * `renderApp` wiring for `main-web` — the build served from static hosting,
+ * `buildAppTree` wiring for `main-web` — the build served from static hosting,
  * which runs **cross-origin** to whichever API server `?server=` names.
  *
  * Cross-origin means no host authenticates on this page's behalf, so this entry

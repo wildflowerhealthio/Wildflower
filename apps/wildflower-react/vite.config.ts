@@ -21,7 +21,6 @@ export default defineConfig({
     entry: {
       'app-root': 'src/app-root.tsx',
       'web-entry': 'src/web-entry.ts',
-      instrument: 'src/instrument.ts',
     },
   },
   test: {

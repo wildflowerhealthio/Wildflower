@@ -24,7 +24,9 @@ the homepage and absolute from an app.
   preview's `/staging/pr-<n>/`, or the canonical site). The owner UI's Home on
   a plain SMART server lists its apps from these. Beside it, `TELEMETRY_CONSENT_COPY` is the telemetry consent
   dialog's words and the copy version a visitor's answer is stored with
-  (`telemetry-react` renders it; raising the version asks everyone again).
+  (`telemetry-react` renders it; raising the version asks everyone again), and
+  `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY` the same dialog worded for the
+  Tauri host, with the same switch labels.
   It also owns `restoreRedirectedUrl` — the app half of the GitHub
   Pages 404 contract (see "The 404 redirect" below).
 - **`branding-react`** — the browser UI adapter: `SiteHeader`, `SiteFooter`,

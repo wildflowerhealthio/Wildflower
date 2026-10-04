@@ -23,7 +23,7 @@ type TelemetryConsentGateProps = {
 
 /**
  * Holds an app behind the telemetry consent dialog until the visitor answers
- * it, then renders the app with the answer and a way to change it in
+ * it, then renders the app with the answer, `copy` and a way to change it in
  * {@link TelemetryConsentContext}. The answer is kept in `storage`.
  *
  * @remarks
@@ -48,8 +48,8 @@ const TelemetryConsentGate = ({
     onDecided,
   })
   const controls = useMemo(
-    () => (consent === undefined ? undefined : { consent, reopen }),
-    [consent, reopen]
+    () => (consent === undefined ? undefined : { consent, copy, reopen }),
+    [consent, copy, reopen]
   )
   return (
     <>

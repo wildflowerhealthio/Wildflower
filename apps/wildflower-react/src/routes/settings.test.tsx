@@ -6,7 +6,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { TELEMETRY_CONSENT_COPY } from 'branding-core'
+import { TELEMETRY_CONSENT_COPY, WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
 import { gatekeeperLogoutSettingsItem, makeBearerAuthStateStore } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import type { SettingsItem } from 'shared-structures-react'
@@ -154,7 +154,7 @@ describe('SettingsScreen', () => {
 describe('the settings route’s Telemetry row', () => {
   /**
    * Mount the `/settings` layout over the real route binding, which reads the
-   * entry's rows, optionally inside the consent gate `main-web` mounts.
+   * entry's rows, optionally inside the consent gate both entries mount.
    */
   const renderSettingsRoute = (wrap: (screenTree: JSX.Element) => JSX.Element): void => {
     const rootRoute = createRootRoute({ component: SettingsLayout })
@@ -175,7 +175,7 @@ describe('the settings route’s Telemetry row', () => {
     restoreDialogModality()
   })
 
-  test('shows the answer inside the web entry’s consent gate, and reopens the dialog', async () => {
+  test('shows the answer inside the consent gate, and reopens the dialog', async () => {
     // Arrange
     stubDialogModality()
     storeConsent({ crashReports: true, performance: false })
@@ -198,7 +198,33 @@ describe('the settings route’s Telemetry row', () => {
     expect(openDialog()).not.toBeNull()
   })
 
-  test('is absent outside a consent gate, as on the Tauri entry', async () => {
+  test('reads the answer by the switch labels of the copy its gate shows', async () => {
+    // Arrange — the host's copy, its labels changed so only it can name them
+    const hostCopy = {
+      ...WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
+      crashReports: { ...WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY.crashReports, label: 'Errors' },
+      performance: { ...WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY.performance, label: 'Timings' },
+    }
+    storeConsent({ crashReports: false, performance: true })
+
+    // Act
+    renderSettingsRoute((screenTree) => (
+      <TelemetryConsentGate copy={hostCopy} onDecided={vi.fn()}>
+        {screenTree}
+      </TelemetryConsentGate>
+    ))
+
+    // Assert
+    expect(
+      await screen.findByRole('button', {
+        name: (accessibleName) =>
+          accessibleName.startsWith('Telemetry') &&
+          accessibleName.endsWith('Errors off · Timings on'),
+      })
+    ).toBeDefined()
+  })
+
+  test('is absent outside a consent gate', async () => {
     // Arrange / Act
     renderSettingsRoute((screenTree) => screenTree)
 
