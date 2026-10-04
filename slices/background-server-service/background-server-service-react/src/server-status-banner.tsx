@@ -59,49 +59,63 @@ const ServerStatusBanner = (): JSX.Element => {
     Option.map((stopReason) => STOP_REASON_DESCRIPTION[stopReason])
   )
   const lastError = Option.flatMapNullable(stopped, (stoppedStatus) => stoppedStatus.lastError)
-  const announcement = Option.isSome(stopped)
-    ? Arr.getSomes([Option.some(`${BANNER_TITLE.stopped}.`), reason, lastError]).join(' ')
-    : Option.getOrNull(title)
+  const announcement = stopped.pipe(
+    Option.map(() =>
+      Arr.getSomes([Option.some(`${BANNER_TITLE.stopped}.`), reason, lastError]).join(' ')
+    ),
+    Option.orElse(() => title),
+    Option.getOrNull
+  )
   return (
     <>
       <p className="sr-only" role="status">
         {announcement}
       </p>
-      {Option.isSome(title) ? (
-        <section
-          aria-label="Wildflower server"
-          className={cn(
-            styles['server-status-banner'],
-            Option.isSome(stopped) ? styles['server-status-banner--stopped'] : null
-          )}
-        >
-          <span
-            aria-hidden="true"
+      {Option.getOrNull(
+        Option.map(title, (bannerTitle) => (
+          <section
+            aria-label="Wildflower server"
             className={cn(
-              styles['server-status-banner__dot'],
-              Option.isSome(lastError) ? styles['server-status-banner__dot--error'] : null
+              styles['server-status-banner'],
+              Option.getOrNull(Option.map(stopped, () => styles['server-status-banner--stopped']))
             )}
-          />
-          <div className={styles['server-status-banner__text']}>
-            <p className={styles['server-status-banner__title']}>{title.value}</p>
-            {Option.isSome(reason) ? (
-              <p className={styles['server-status-banner__detail']}>{reason.value}</p>
-            ) : null}
-            {Option.isSome(lastError) ? (
-              <p className={styles['server-status-banner__error']}>{lastError.value}</p>
-            ) : null}
-          </div>
-          {Option.isSome(stopped) ? (
-            <button
-              type="button"
-              className={cn('button-3 outline', styles['server-status-banner__action'])}
-              onClick={restartServer}
-            >
-              Restart
-            </button>
-          ) : null}
-        </section>
-      ) : null}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                styles['server-status-banner__dot'],
+                Option.getOrNull(
+                  Option.map(lastError, () => styles['server-status-banner__dot--error'])
+                )
+              )}
+            />
+            <div className={styles['server-status-banner__text']}>
+              <p className={styles['server-status-banner__title']}>{bannerTitle}</p>
+              {Option.getOrNull(
+                Option.map(reason, (description) => (
+                  <p className={styles['server-status-banner__detail']}>{description}</p>
+                ))
+              )}
+              {Option.getOrNull(
+                Option.map(lastError, (error) => (
+                  <p className={styles['server-status-banner__error']}>{error}</p>
+                ))
+              )}
+            </div>
+            {Option.getOrNull(
+              Option.map(stopped, () => (
+                <button
+                  type="button"
+                  className={cn('button-3 outline', styles['server-status-banner__action'])}
+                  onClick={restartServer}
+                >
+                  Restart
+                </button>
+              ))
+            )}
+          </section>
+        ))
+      )}
     </>
   )
 }
