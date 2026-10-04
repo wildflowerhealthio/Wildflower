@@ -2,9 +2,11 @@
 #
 #   docker compose up -d --build
 #
-# Secrets come from the shell or a `.env` file beside this file; compose refuses
-# to start without them. Generate the noise keypair with `rathole --genkey` and
-# give the public half to devices as `remote_public_key`.
+# The domain and the noise private key come from the shell or a `.env` file
+# beside this file; compose refuses to start without them. Generate the noise
+# keypair with `rathole --genkey` and give the public half to devices as
+# `remote_public_key`. There is no shared token: enrolment writes a `token` into
+# each device's service in the config volume.
 services:
   wildflower-relay:
     build:
@@ -14,7 +16,6 @@ services:
     restart: unless-stopped
     environment:
       WILDFLOWER_RELAY_DOMAIN: ${WILDFLOWER_RELAY_DOMAIN:?the public domain suffix, e.g. relay.example.com}
-      WILDFLOWER_RELAY_DEFAULT_TOKEN: ${WILDFLOWER_RELAY_DEFAULT_TOKEN:?the shared rathole token}
       WILDFLOWER_RELAY_NOISE_PRIVATE_KEY: ${WILDFLOWER_RELAY_NOISE_PRIVATE_KEY:?the noise private key from rathole --genkey}
       WILDFLOWER_RELAY_CONFIG: /etc/wildflower-relay/relay.toml
       WILDFLOWER_RELAY_CONTROL_ADDR: 0.0.0.0:2333
@@ -35,7 +36,8 @@ services:
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     volumes:
-      # The rathole TOML. Enrolled devices' services live here across restarts.
+      # The rathole TOML. Enrolled devices' services, each with its own token,
+      # live here across restarts.
       - relay-config:/etc/wildflower-relay
 
 volumes:

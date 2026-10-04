@@ -37,9 +37,10 @@
 //!
 //! Everything is set through `WILDFLOWER_RELAY_*` environment variables (the
 //! full list is in [`settings`]). At startup the relay writes the rathole
-//! `[server]` keys (control address, default token, noise key) into the TOML
-//! at `WILDFLOWER_RELAY_CONFIG`, creating it if needed and keeping its
+//! `[server]` keys (control address, noise key) into the TOML at
+//! `WILDFLOWER_RELAY_CONFIG`, creating it if needed and keeping its
 //! `[server.services.*]` tables, which enrolment appends to (see [`config`]).
+//! There is no default token: each service carries its own `token`.
 //! The front's own settings (domain suffix, listen addresses, limits) stay
 //! out of the file because rathole rejects unknown keys in it.
 

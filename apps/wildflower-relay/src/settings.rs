@@ -4,13 +4,13 @@
 //! rathole `[server]` keys ([`ControlSettings`]) are written into the rathole
 //! TOML at startup (see [`crate::config`]); the front's own settings
 //! ([`FrontSettings`]) never touch that file, because rathole parses it
-//! itself and rejects unknown keys.
+//! itself and rejects unknown keys. There is no shared token: every service
+//! carries its own `token`, written by enrolment.
 //!
 //! | Variable | Default |
 //! |---|---|
 //! | `WILDFLOWER_RELAY_CONFIG` | `relay.toml` (path of the rathole TOML; read by `main`) |
 //! | `WILDFLOWER_RELAY_CONTROL_ADDR` | `0.0.0.0:2333` |
-//! | `WILDFLOWER_RELAY_DEFAULT_TOKEN` | required |
 //! | `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY` | required |
 //! | `WILDFLOWER_RELAY_DOMAIN` | required |
 //! | `WILDFLOWER_RELAY_HTTPS_ADDR` | `0.0.0.0:443` |
@@ -88,26 +88,21 @@ impl RelaySettings {
 pub struct ControlSettings {
     /// `[server] bind_addr`: where devices' rathole clients connect.
     pub control_addr: SocketAddr,
-    /// `[server] default_token`: the token for services without their own.
-    pub default_token: Secret,
     /// `[server.transport.noise] local_private_key` (`rathole --genkey`).
     pub noise_private_key: Secret,
 }
 
 impl ControlSettings {
     pub const CONTROL_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_CONTROL_ADDR";
-    pub const DEFAULT_TOKEN_VAR: &'static str = "WILDFLOWER_RELAY_DEFAULT_TOKEN";
     pub const NOISE_PRIVATE_KEY_VAR: &'static str = "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY";
 
     /// # Errors
     ///
-    /// Returns an error naming the variable if a secret is unset or empty, or
-    /// the control address does not parse.
+    /// Returns an error naming the variable if the private key is unset or
+    /// empty, or the control address does not parse.
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
         Ok(Self {
             control_addr: parsed(&lookup, Self::CONTROL_ADDR_VAR, ([0, 0, 0, 0], 2333).into())?,
-            default_token: required(&lookup, Self::DEFAULT_TOKEN_VAR, "the shared rathole token")
-                .map(Secret)?,
             noise_private_key: required(
                 &lookup,
                 Self::NOISE_PRIVATE_KEY_VAR,
@@ -217,9 +212,8 @@ mod tests {
         move |name| map.get(name).map(|v| (*v).to_owned())
     }
 
-    const REQUIRED: [(&str, &str); 3] = [
+    const REQUIRED: [(&str, &str); 2] = [
         (FrontSettings::DOMAIN_VAR, ".Relay.Example.com."),
-        (ControlSettings::DEFAULT_TOKEN_VAR, "token-value"),
         (ControlSettings::NOISE_PRIVATE_KEY_VAR, "key-value"),
     ];
 
@@ -231,7 +225,6 @@ mod tests {
             RelaySettings {
                 control: ControlSettings {
                     control_addr: "0.0.0.0:2333".parse().unwrap(),
-                    default_token: Secret::new("token-value"),
                     noise_private_key: Secret::new("key-value"),
                 },
                 front: FrontSettings {
@@ -294,7 +287,6 @@ mod tests {
     fn debug_output_never_contains_secrets() {
         let settings = RelaySettings::from_lookup(env(&REQUIRED)).unwrap();
         let debug = format!("{settings:?}");
-        assert!(!debug.contains("token-value"), "{debug}");
         assert!(!debug.contains("key-value"), "{debug}");
     }
 }

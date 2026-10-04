@@ -12,8 +12,8 @@
 # The container is configured entirely by `WILDFLOWER_RELAY_*` environment
 # variables (see src/settings.rs and compose.yaml). At startup the relay writes
 # the rathole TOML at WILDFLOWER_RELAY_CONFIG from them, keeping the enrolled
-# `[server.services.*]` tables, so mount a volume at /etc/wildflower-relay for
-# those to persist. Mount the directory rather than the single file: the relay
+# `[server.services.*]` tables (each with its own `token`; there is no shared
+# token), so mount a volume at /etc/wildflower-relay for those to persist. Mount the directory rather than the single file: the relay
 # replaces the file by rename.
 
 # Keep in step with rust-toolchain.toml (left out of the context so rustup

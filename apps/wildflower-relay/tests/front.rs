@@ -217,12 +217,10 @@ async fn silent_client_is_dropped_after_the_hello_deadline() {
 }
 
 async fn write_config(path: &Path, services: &[(&str, SocketAddr)]) {
-    let mut text = String::from(
-        "[server]\nbind_addr = \"127.0.0.1:0\"\ndefault_token = \"t\"\n\n[server.services]\n",
-    );
+    let mut text = String::from("[server]\nbind_addr = \"127.0.0.1:0\"\n\n[server.services]\n");
     for (name, addr) in services {
         text.push_str(&format!(
-            "\n[server.services.{name}]\nbind_addr = \"{addr}\"\n"
+            "\n[server.services.{name}]\nbind_addr = \"{addr}\"\ntoken = \"t\"\n"
         ));
     }
     // Write-then-rename, as enrolment does.

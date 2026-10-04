@@ -1,10 +1,17 @@
 //! Writes the rathole TOML from the environment at startup.
 //!
-//! The file has two owners. The `[server]` base keys (control address,
-//! default token, noise transport and key) come from [`ControlSettings`] and
-//! are rewritten on every start. The `[server.services.*]` tables belong to
-//! enrolment, which appends a service per device, and are kept as they are,
-//! along with any other key the environment does not own. The relay rewrites
+//! The file has two owners. The `[server]` base keys (control address, noise
+//! transport and key) come from [`ControlSettings`] and are rewritten on every
+//! start; `default_token` is the relay's too and is always removed, so no
+//! service can connect without a token of its own. The `[server.services.*]`
+//! tables belong to enrolment, which appends a service per device with its
+//! own `token`, and are kept as they are, along with any other key the
+//! environment does not own.
+//!
+//! rathole rejects the whole file if any service has no `token` (and there is
+//! no `default_token` to fall back on). At startup that is an error naming
+//! the services, rather than dropping them; on a later reload rathole and the
+//! route watcher both keep their previous config and log the error. The relay rewrites
 //! the file only here, before rathole and the route watcher start: changing
 //! the base keys under a running rathole would make it restart every tunnel.
 //! The file is machine-owned, so comments in it are not preserved.
@@ -21,8 +28,9 @@ use crate::settings::ControlSettings;
 ///
 /// # Errors
 ///
-/// Returns an error if `existing` is not TOML or has a non-table where a
-/// table is expected (`[server]`, `[server.transport]`, ...).
+/// Returns an error if `existing` is not TOML, has a non-table where a table
+/// is expected (`[server]`, `[server.transport]`, ...), or has a service
+/// without its own `token`.
 pub fn render(existing: Option<&str>, control: &ControlSettings) -> anyhow::Result<String> {
     let mut root: Table = match existing {
         Some(text) => text
@@ -35,12 +43,24 @@ pub fn render(existing: Option<&str>, control: &ControlSettings) -> anyhow::Resu
         "bind_addr".to_owned(),
         Value::String(control.control_addr.to_string()),
     );
-    server.insert(
-        "default_token".to_owned(),
-        Value::String(control.default_token.expose().to_owned()),
-    );
+    server.remove("default_token");
     // rathole requires the table even when no device is enrolled yet.
-    table_at(server, "services")?;
+    let tokenless: Vec<&str> = table_at(server, "services")?
+        .iter()
+        .filter(|(_, service)| {
+            service
+                .get("token")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+        })
+        .map(|(name, _)| name.as_str())
+        .collect();
+    anyhow::ensure!(
+        tokenless.is_empty(),
+        "services without their own `token`: {} (there is no default token; \
+         enrolment writes one per service)",
+        tokenless.join(", ")
+    );
     let transport = table_at(server, "transport")?;
     transport.insert("type".to_owned(), Value::String("noise".to_owned()));
     table_at(transport, "noise")?.insert(
@@ -109,7 +129,7 @@ fn temp_path(path: &Path) -> anyhow::Result<PathBuf> {
 }
 
 /// Create (or truncate) `path` readable by the owner only: it holds the
-/// token and the private key.
+/// service tokens and the private key.
 fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
     use std::io::Write;
     let mut options = std::fs::OpenOptions::new();
@@ -129,7 +149,6 @@ mod tests {
     fn control() -> ControlSettings {
         ControlSettings {
             control_addr: "0.0.0.0:2333".parse().unwrap(),
-            default_token: Secret::new("env-token"),
             // 32 zero bytes, valid base64; any key parses.
             noise_private_key: Secret::new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
         }
@@ -149,7 +168,7 @@ mod tests {
         let text = render(None, &control()).unwrap();
         let server = parse(&text).await.server.expect("[server]");
         assert_eq!(server.bind_addr, "0.0.0.0:2333");
-        assert_eq!(server.default_token.as_deref(), Some("env-token"));
+        assert_eq!(server.default_token, None);
         assert!(server.services.is_empty());
         let noise = server.transport.noise.expect("[server.transport.noise]");
         assert_eq!(
@@ -176,12 +195,13 @@ token = "device-token"
 [server.services.def]
 type = "tcp"
 bind_addr = "127.0.0.1:5202"
+token = "other-token"
 "#;
         let text = render(Some(existing), &control()).unwrap();
-        assert!(!text.contains("old-token"));
+        assert!(!text.contains("old-token"), "default_token is removed");
         let server = parse(&text).await.server.expect("[server]");
         assert_eq!(server.bind_addr, "0.0.0.0:2333");
-        assert_eq!(server.default_token.as_deref(), Some("env-token"));
+        assert_eq!(server.default_token, None);
         assert_eq!(
             server.heartbeat_interval, 10,
             "keys the env does not own stay"
@@ -192,11 +212,30 @@ bind_addr = "127.0.0.1:5202"
             server.services["abc"].token.as_deref(),
             Some("device-token")
         );
-        // rathole fills a missing service token from `default_token` when it
-        // parses; the file itself must keep it absent so the default still
-        // applies after the next token change.
-        let table: Table = text.parse().unwrap();
-        assert!(table["server"]["services"]["def"].get("token").is_none());
+        assert_eq!(server.services["def"].token.as_deref(), Some("other-token"));
+    }
+
+    #[test]
+    fn render_names_services_without_a_token() {
+        let existing = r#"
+[server]
+bind_addr = "0.0.0.0:2333"
+default_token = "old-token"
+
+[server.services.has]
+bind_addr = "127.0.0.1:5201"
+token = "t"
+
+[server.services.missing]
+bind_addr = "127.0.0.1:5202"
+
+[server.services.empty]
+bind_addr = "127.0.0.1:5203"
+token = ""
+"#;
+        let err = format!("{:#}", render(Some(existing), &control()).unwrap_err());
+        assert!(err.contains("empty, missing"), "{err}");
+        assert!(!err.contains("has"), "{err}");
     }
 
     #[tokio::test]
@@ -224,27 +263,32 @@ bind_addr = "127.0.0.1:5202"
         let first = std::fs::read_to_string(&path).unwrap();
         assert!(parse(&first).await.server.unwrap().services.is_empty());
 
-        // Enrolment appends a service; a restart with a new token keeps it.
+        // Enrolment appends a service; a restart with a new control address
+        // keeps it.
         let mut table: Table = first.parse().unwrap();
         let mut service = Table::new();
         service.insert("bind_addr".into(), Value::String("127.0.0.1:5201".into()));
+        service.insert("token".into(), Value::String("device-token".into()));
         table["server"]["services"]
             .as_table_mut()
             .unwrap()
             .insert("abc".into(), Value::Table(service));
         std::fs::write(&path, toml::to_string(&table).unwrap()).unwrap();
 
-        let rotated = ControlSettings {
-            default_token: Secret::new("rotated"),
+        let moved = ControlSettings {
+            control_addr: "0.0.0.0:2444".parse().unwrap(),
             ..control()
         };
-        write_config(&path, &rotated).await.unwrap();
+        write_config(&path, &moved).await.unwrap();
         let server = parse(&std::fs::read_to_string(&path).unwrap())
             .await
             .server
             .unwrap();
-        assert_eq!(server.default_token.as_deref(), Some("rotated"));
-        assert!(server.services.contains_key("abc"));
+        assert_eq!(server.bind_addr, "0.0.0.0:2444");
+        assert_eq!(
+            server.services["abc"].token.as_deref(),
+            Some("device-token")
+        );
         assert!(
             !temp_path(&path).unwrap().exists(),
             "temp file is renamed away"

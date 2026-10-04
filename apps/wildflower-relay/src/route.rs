@@ -234,30 +234,36 @@ mod tests {
             r#"
 [server]
 bind_addr = "0.0.0.0:2333"
-default_token = "t"
 
 [server.services.good]
 bind_addr = "127.0.0.1:5201"
+token = "t"
 
 [server.services.good-v6]
 type = "tcp"
 bind_addr = "[::1]:5202"
+token = "t"
 
 [server.services.udp]
 type = "udp"
 bind_addr = "127.0.0.1:5203"
+token = "t"
 
 [server.services.public]
 bind_addr = "0.0.0.0:5204"
+token = "t"
 
 [server.services.hostname]
 bind_addr = "localhost:5205"
+token = "t"
 
 [server.services.Upper]
 bind_addr = "127.0.0.1:5206"
+token = "t"
 
 [server.services."dotted.name"]
 bind_addr = "127.0.0.1:5207"
+token = "t"
 "#,
         )
         .await;

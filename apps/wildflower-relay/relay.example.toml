@@ -5,21 +5,22 @@
 # missing (see `src/settings.rs` for every variable):
 #
 #   bind_addr          <- WILDFLOWER_RELAY_CONTROL_ADDR (default 0.0.0.0:2333)
-#   default_token      <- WILDFLOWER_RELAY_DEFAULT_TOKEN
 #   local_private_key  <- WILDFLOWER_RELAY_NOISE_PRIVATE_KEY (`rathole --genkey`;
 #                         the matching public key goes into each device's
 #                         rathole client config as `remote_public_key`)
 #
-# The `[server.services.*]` tables are kept across restarts: enrolment adds one
-# per device, and both rathole and the relay's TLS front reload them on change.
+# There is no `default_token`; the relay removes one if present. The
+# `[server.services.*]` tables are kept across restarts: enrolment adds one per
+# device, with its own `token`, and both rathole and the relay's TLS front
+# reload them on change. rathole rejects the whole file if any service lacks a
+# token, so the relay refuses to start and a reload is ignored until it is
+# fixed.
 # The relay rewrites the file as a whole, so comments are not kept.
 
 [server]
 # Control-channel port the devices' rathole clients dial. Only the noise
-# handshake and the token gate it.
+# handshake and each service's token gate it.
 bind_addr = "0.0.0.0:2333"
-# Token for services that do not set their own.
-default_token = "CHANGE_ME_shared_secret"
 
 [server.transport]
 type = "noise"
@@ -37,4 +38,6 @@ local_private_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 [server.services.wildflower-device-1]
 type = "tcp"
 bind_addr = "127.0.0.1:5201"
-# token = "per-device-secret"   # falls back to default_token when omitted
+# Per-device secret, written by enrolment; the device's rathole client presents
+# it for this service.
+token = "CHANGE_ME_per_device_secret"
