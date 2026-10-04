@@ -8,9 +8,9 @@
 //! rathole's file has no place for, and [`AcmeSettings`] how the relay's own
 //! site gets its certificate. [`RelaySettings::public_rathole_settings`] is
 //! what the site serves at `GET /rathole`. The admin key signs requests as
-//! `keyid="admin"` (see [`crate::site::signature`]). The state directory holds only
-//! caches the relay can rebuild, such as that certificate and its ACME
-//! account.
+//! `keyid="admin"` (see [`crate::site::signature`]). The state directory
+//! holds only caches the relay can rebuild, such as that certificate and its
+//! ACME account.
 //!
 //! | Variable | Default |
 //! |---|---|

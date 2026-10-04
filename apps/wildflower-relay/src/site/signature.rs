@@ -64,11 +64,11 @@ const MAX_BODY_BYTES: usize = 64 * 1024;
 /// The longest `nonce` accepted, so the nonce set stays small.
 const MAX_NONCE_LEN: usize = 128;
 
-/// How many nonces are remembered at once. Only verified requests add one,
-/// so this bounds legitimate traffic to this many signed requests per
-/// `2 × CLOCK_SKEW_SECS`; beyond it, requests are refused until old nonces
-/// expire.
-const MAX_NONCES: usize = 65_536;
+/// How many nonces are remembered at once for each `keyid`. Only verified
+/// requests add one, so this bounds each signer to this many signed requests
+/// per `2 × CLOCK_SKEW_SECS`; beyond it, that signer's requests are refused
+/// until its old nonces expire. Other signers are unaffected.
+const MAX_NONCES_PER_KEY: usize = 4_096;
 
 /// Who signed a verified request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,8 +84,9 @@ pub enum SignedBy {
 pub struct Verifier {
     /// `keyid` → key.
     keys: HashMap<String, Secret>,
-    /// Accepted nonce → the unix time after which its `created` is stale.
-    nonces: Mutex<HashMap<String, i64>>,
+    /// `keyid` → accepted nonce → the unix time after which its `created`
+    /// is stale.
+    nonces: Mutex<HashMap<String, HashMap<String, i64>>>,
 }
 
 impl std::fmt::Debug for Verifier {
@@ -162,7 +163,7 @@ impl Verifier {
         if covers("content-digest") && !content_digest_matches(&parts.headers, body) {
             return Err("content-digest does not match the body");
         }
-        self.remember_nonce(nonce, created + CLOCK_SKEW_SECS, now)?;
+        self.remember_nonce(keyid, nonce, created + CLOCK_SKEW_SECS, now)?;
         Ok(if keyid == ADMIN_KEY_ID {
             SignedBy::Admin
         } else {
@@ -170,18 +171,25 @@ impl Verifier {
         })
     }
 
-    /// Record `nonce` until `stale_after`, refusing one already recorded.
-    /// When the set is full, expired nonces are dropped first; if it is
-    /// still full, the request is refused.
-    fn remember_nonce(&self, nonce: &str, stale_after: i64, now: i64) -> Result<(), &'static str> {
+    /// Record `keyid`'s `nonce` until `stale_after`, refusing one already
+    /// recorded. When that key's set is full, its expired nonces are dropped
+    /// first; if it is still full, the request is refused.
+    fn remember_nonce(
+        &self,
+        keyid: &str,
+        nonce: &str,
+        stale_after: i64,
+        now: i64,
+    ) -> Result<(), &'static str> {
         // A poisoned lock only means a holder panicked; the map is whole.
         let mut nonces = self.nonces.lock().unwrap_or_else(PoisonError::into_inner);
+        let nonces = nonces.entry(keyid.to_owned()).or_default();
         if nonces.get(nonce).is_some_and(|&until| until >= now) {
             return Err("replayed nonce");
         }
-        if nonces.len() >= MAX_NONCES {
+        if nonces.len() >= MAX_NONCES_PER_KEY {
             nonces.retain(|_, &mut until| until >= now);
-            if nonces.len() >= MAX_NONCES {
+            if nonces.len() >= MAX_NONCES_PER_KEY {
                 return Err("nonce set is full");
             }
         }
@@ -573,22 +581,27 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_nonce_set_is_bounded_and_drops_expired_nonces_when_full() {
+    fn each_keys_nonce_set_is_bounded_and_drops_expired_nonces_when_full() {
         let verifier = verifier();
-        for i in 0..MAX_NONCES {
+        for i in 0..MAX_NONCES_PER_KEY {
             verifier
-                .remember_nonce(&i.to_string(), NOW + CLOCK_SKEW_SECS, NOW)
+                .remember_nonce("alice", &i.to_string(), NOW + CLOCK_SKEW_SECS, NOW)
                 .unwrap();
         }
         assert_eq!(
-            verifier.remember_nonce("one more", NOW + CLOCK_SKEW_SECS, NOW),
+            verifier.remember_nonce("alice", "one more", NOW + CLOCK_SKEW_SECS, NOW),
             Err("nonce set is full")
         );
+        // One signer filling its set does not lock out another, and nonces
+        // are per key.
+        verifier
+            .remember_nonce("admin", "0", NOW + CLOCK_SKEW_SECS, NOW)
+            .unwrap();
         let later = NOW + CLOCK_SKEW_SECS + 1;
         verifier
-            .remember_nonce("one more", later + CLOCK_SKEW_SECS, later)
+            .remember_nonce("alice", "one more", later + CLOCK_SKEW_SECS, later)
             .unwrap();
-        assert_eq!(verifier.nonces.lock().unwrap().len(), 1);
+        assert_eq!(verifier.nonces.lock().unwrap()["alice"].len(), 1);
     }
 
     #[tokio::test]
@@ -715,7 +728,7 @@ pub(crate) mod tests {
         let verifier = verifier();
         let request = signed_request("GET", URI, b"", "alice", "alice-token", NOW, "n");
         let (parts, _) = request.into_parts();
-        let edits: [fn(&mut HeaderMap); 4] = [
+        let edits: [fn(&mut HeaderMap); 5] = [
             |headers| {
                 headers.remove("signature");
             },
@@ -734,6 +747,13 @@ pub(crate) mod tests {
                 headers.append(
                     "signature",
                     sig.replacen("sig=", "second=", 1).parse().unwrap(),
+                );
+            },
+            |headers| {
+                let input = headers["signature-input"].to_str().unwrap().to_owned();
+                headers.append(
+                    "signature-input",
+                    input.replacen("sig=", "second=", 1).parse().unwrap(),
                 );
             },
         ];
