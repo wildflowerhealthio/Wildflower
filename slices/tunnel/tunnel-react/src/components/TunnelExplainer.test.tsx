@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import type { TunnelState } from '../queries.ts'
+import type { TunnelState } from '../queries/index.ts'
 import { TunnelExplainer } from './TunnelExplainer.tsx'
 
 const OPEN_WITH_HOST: TunnelState = {

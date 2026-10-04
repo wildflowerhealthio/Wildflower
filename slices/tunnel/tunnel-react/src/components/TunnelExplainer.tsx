@@ -1,6 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 
-import { mightTunnelBeOpen, type TunnelState } from '../queries.ts'
+import { mightTunnelBeOpen, type TunnelState } from '../queries/index.ts'
 import styles from './TunnelExplainer.module.css'
 
 interface TunnelExplainerProps {

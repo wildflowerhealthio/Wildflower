@@ -7,7 +7,7 @@ import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { TUNNEL_STATE_QUERY_KEY, type RunAuthed, type TunnelState } from './queries.ts'
+import { TUNNEL_STATE_QUERY_KEY, type RunAuthed, type TunnelState } from './queries/index.ts'
 import { sliceRuntimeLayer, type RouterContext } from './router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 

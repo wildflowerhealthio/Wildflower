@@ -19,6 +19,7 @@ export {
 export * as GatekeeperRouterContext from './router-context.ts'
 
 export {
+  clientsQueryOptions,
   deviceConsentQueryOptions,
   GRANTS_QUERY_KEY,
   grantQueryOptions,
@@ -39,6 +40,7 @@ export {
   useRevokeGrantMutation,
   useRunAuthed,
   type ApproveOAuthPayload,
+  type Client,
   type Grant,
   type HttpRequest,
   type RequestDecision,

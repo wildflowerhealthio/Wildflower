@@ -7,18 +7,14 @@ import {
   type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
-import { useRouteContext } from '@tanstack/react-router'
 import { Effect, Schema } from 'effect'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 
-import { buildTunnelAdminClientLayer } from './client/tunnel-client.ts'
-import type { RouterContext, RunAuthed } from './router-context.ts'
-
-// Annotated `select` so the result stays typed when the slice's router
-// isn't registered (standalone build).
-const useRunAuthed = (): RunAuthed =>
-  useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
+import { buildTunnelAdminClientLayer } from '../client/tunnel-client.ts'
+import type { RunAuthed } from '../router-context.ts'
+import { TUNNEL_STATE_QUERY_KEY } from './keys.ts'
+import { useRunAuthed } from './use-run-authed.ts'
 
 type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateViewSchema>
 type RelayInput = Schema.Schema.Type<typeof Tunnel.RelayInputSchema>
@@ -61,9 +57,6 @@ type TunnelReplaceResult =
  * re-deriving `running || requestedRunning`.
  */
 const mightTunnelBeOpen = (state: TunnelState): boolean => state.running || state.requestedRunning
-
-/** External mutators of `TunnelState` (e.g. host-bridge events) should invalidate this. */
-const TUNNEL_STATE_QUERY_KEY = ['tunnel', 'state'] as const
 
 /** Shared by the route `loader` (`ensureQueryData`) and {@link useTunnelStateQuery}. */
 const tunnelStateQueryOptions = (
@@ -218,9 +211,8 @@ export {
   buildReplacePayload,
   isTunnelState,
   mightTunnelBeOpen,
-  TUNNEL_STATE_QUERY_KEY,
   tunnelStateQueryOptions,
   useTunnelReplaceMutation,
   useTunnelStateQuery,
 }
-export type { RelayInput, RunAuthed, TunnelReplaceInput, TunnelReplaceResult, TunnelState }
+export type { RelayInput, TunnelReplaceInput, TunnelReplaceResult, TunnelState }

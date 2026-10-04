@@ -13,7 +13,7 @@ import {
   tunnelStateQueryOptions,
   useTunnelStateQuery,
   type TunnelState,
-} from '../../../queries.ts'
+} from '../../../queries/index.ts'
 import { useTunnelSettingsForm } from '../../../use-tunnel-settings-form.ts'
 import styles from './index.module.css'
 

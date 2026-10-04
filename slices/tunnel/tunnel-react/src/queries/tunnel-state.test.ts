@@ -16,6 +16,7 @@ import { Tunnel } from 'tunnel-core/http-api-definition'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
+import { sliceRuntimeLayer, type RouterContext } from '../router-context.ts'
 import {
   applyTunnelOptimistic,
   buildReplacePayload,
@@ -27,8 +28,7 @@ import {
   type TunnelReplaceInput,
   type TunnelReplaceResult,
   type TunnelState,
-} from './queries.ts'
-import { sliceRuntimeLayer, type RouterContext } from './router-context.ts'
+} from './index.ts'
 
 /**
  * Drives `tunnelStateQueryOptions(runAuthed)` over the real

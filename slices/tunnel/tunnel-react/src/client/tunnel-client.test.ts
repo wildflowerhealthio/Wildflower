@@ -1,10 +1,10 @@
 import { HttpClient, HttpClientResponse, UrlParams } from '@effect/platform'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { isTunnelState } from '../queries.ts'
+import { isTunnelState } from '../queries/index.ts'
 import { buildTunnelAdminClientLayer } from './tunnel-client.ts'
 
 const STATE_BODY = Tunnel.freshTunnelState
@@ -208,7 +208,8 @@ describe('buildTunnelAdminClientLayer', () => {
     const result = await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
 
     expect(result.requests.map((request) => request.id)).toEqual([6])
-    expect(result.nextCursor).toBeNull()
+    expect(result.requests.map((request) => request.clientId)).toEqual([Option.some('lifting')])
+    expect(result.nextCursor).toEqual(Option.none())
     expect(seenQueries).toEqual(['cursor=7&client=lifting&auth=authorized'])
   })
 })

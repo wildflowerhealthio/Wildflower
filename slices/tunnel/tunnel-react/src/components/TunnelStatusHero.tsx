@@ -3,7 +3,8 @@ import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge, ToggleSwitch, type StatusTone } from 'react-tundraish'
 
-import { mightTunnelBeOpen, type TunnelState } from '../queries.ts'
+import { mightTunnelBeOpen, type TunnelState } from '../queries/index.ts'
+import { writeToClipboard } from '../write-to-clipboard.ts'
 import styles from './TunnelStatusHero.module.css'
 
 interface TunnelStatusHeroPropsBase {
@@ -128,22 +129,6 @@ const ConnectionPath = ({ open, error, className }: ConnectionPathProps): JSX.El
     </div>
   </div>
 )
-
-/*
- * Async-clipboard write with a graceful fallback. The Clipboard API
- * isn't guaranteed (older WebView contexts, non-secure origins, denied
- * permission); a failed copy stays silent rather than throwing into a
- * click handler. A future slice can wire toast feedback.
- */
-const writeToClipboard = async (text: string): Promise<void> => {
-  if (typeof navigator === 'undefined' || navigator.clipboard === undefined) return
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    // Best-effort — clipboard writes can reject (permissions, focus); the
-    // host glyph already shows the host the user wanted to copy.
-  }
-}
 
 /**
  * The Tunnel screen's status hero card.
