@@ -1,6 +1,6 @@
 /*
  * Recent-activity card — sits beneath the status hero on the Tunnel
- * screen, summarizing the most recent connections (allowed + blocked).
+ * screen, summarizing the most recent callers (signed in, public, refused).
  * Only renders when the tunnel is open; the parent route gates this.
  */
 /*
@@ -118,11 +118,12 @@
 }
 
 /*
- * Per-row leading status dot. Two tones — `active` (green, matches the
- * hero's "This device" and Internet nodes when on) and `error` (the
- * danger red the relay node uses when reporting). The mark is a plain
- * `<span>` with a fixed footprint so the row's flex `gap` separates it
- * cleanly from the text column.
+ * Per-row leading status dot, one tone per way a request met the bearer
+ * gates — `authorized` (green, matches the hero's "This device" and Internet
+ * nodes when on), `public` (a quiet neutral: nothing was asked of it) and
+ * `refused` (the danger red the relay node uses when reporting). The mark is
+ * a plain `<span>` with a fixed footprint so the row's flex `gap` separates
+ * it cleanly from the text column.
  */
 .dot {
   display: inline-block;
@@ -131,12 +132,38 @@
   border-radius: 999px;
 }
 
-.dot--active {
+.dot--authorized {
   background: var(--color-success);
 }
 
-.dot--error {
+.dot--public {
+  background: var(--color-neutral-4);
+}
+
+.dot--refused {
   background: var(--color-red-5);
+}
+
+/*
+ * Refused-streak warning — one line per address, in the danger red, with a
+ * link to the activity page filtered to that address's refused requests.
+ */
+.feed__warning {
+  margin: 0;
+  padding-inline: var(--space-7);
+  font-size: var(--font-size-2);
+  color: var(--color-red-5);
+}
+
+.feed__warning-link {
+  color: var(--color-accent);
+}
+
+.feed__empty {
+  margin: 0;
+  padding-inline: var(--space-7);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
 }
 
 /*

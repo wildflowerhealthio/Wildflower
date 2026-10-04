@@ -1,37 +1,37 @@
 import { Link } from '@tanstack/react-router'
-import { DateTime } from 'effect'
+import { DateTime, Duration } from 'effect'
 import { formatRelativeTime } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ItemList, type ItemListItem } from 'react-tundraish'
 
+import { REFUSED_STREAK_WINDOW, type ActivityCounts, type RefusedStreak } from '../activity-feed.ts'
+import { accessLabelOf, type RequestAccess } from '../request-log.ts'
 import styles from './TunnelActivityFeed.module.css'
 
 /**
- * A single connection event the activity feed renders as one row.
+ * One caller the activity feed renders as a row.
  *
- *   - `name` — the connecting agent (an app name, "Unknown client").
- *   - `location` — where it came from (a device label, an IP).
- *   - `lastConnectionAt` — the moment shown as a relative time on the
- *     row's right edge ("now", "2 min ago"). Effect `DateTime`, so
- *     the slice stays time-zone aware once a real source replaces the
- *     stubbed entries.
- *   - `message` — optional detail line addendum, used for the failure
- *     reason on blocked rows ("not authorized").
- *   - `state` — `active` (connection allowed) or `error` (blocked /
- *     denied). Drives the leading dot color, the row tint, and the
- *     meta-line prefix.
+ *   - `name` — who called: the client's name, its id, or "Unauthenticated".
+ *   - `location` — the address it called from.
+ *   - `lastConnectionAt` — its latest request, shown as a relative time on the
+ *     row's right edge ("now", "2 min ago").
+ *   - `access` — how that request met the bearer gates. Drives the leading dot
+ *     color, the detail line, and the danger tint on a refused row.
  */
 interface ActivityEntry {
   readonly name: string
   readonly location: string
   readonly lastConnectionAt: DateTime.DateTime
-  readonly message?: string
-  readonly state: 'active' | 'error'
+  readonly access: RequestAccess
 }
 
 interface TunnelActivityFeedProps {
   readonly entries: readonly ActivityEntry[]
+  /** Every request the log holds, by `auth` case, for the summary line. */
+  readonly counts: ActivityCounts
+  /** Addresses refused often enough lately to warn about. */
+  readonly streaks: readonly RefusedStreak[]
   /**
    * Override "now" for the relative-time formatter. Tests pin this so
    * the rendered "N min ago" values are deterministic; runtime callers
@@ -41,45 +41,53 @@ interface TunnelActivityFeedProps {
   readonly className?: string
 }
 
-const buildSubtitle = (entry: ActivityEntry): string =>
-  entry.message !== undefined ? `${entry.location} · ${entry.message}` : entry.location
-
-const buildMeta = (entry: ActivityEntry, now: DateTime.DateTime): string => {
-  const time = formatRelativeTime(entry.lastConnectionAt, now)
-  return entry.state === 'error' ? `blocked · ${time}` : time
+const DOT_MODIFIERS: Readonly<Record<RequestAccess['auth'], string | undefined>> = {
+  authorized: styles['dot--authorized'],
+  public: styles['dot--public'],
+  refused: styles['dot--refused'],
 }
 
 const toItem = (entry: ActivityEntry, index: number, now: DateTime.DateTime): ItemListItem => ({
   id: `${index}-${entry.name}`,
   title: entry.name,
-  subtitle: buildSubtitle(entry),
-  meta: buildMeta(entry, now),
-  tone: entry.state === 'error' ? 'danger' : 'neutral',
-  leading: (
-    <span
-      className={cn(
-        styles['dot'],
-        entry.state === 'error' ? styles['dot--error'] : styles['dot--active']
-      )}
-    />
-  ),
+  subtitle: `${entry.location} · ${accessLabelOf(entry.access)}`,
+  meta: formatRelativeTime(entry.lastConnectionAt, now),
+  tone: entry.access.auth === 'refused' ? 'danger' : 'neutral',
+  leading: <span className={cn(styles['dot'], DOT_MODIFIERS[entry.access.auth])} />,
 })
 
+const plural = (count: number, one: string, many: string): string =>
+  `${count} ${count === 1 ? one : many}`
+
+const describeCounts = (counts: ActivityCounts): string =>
+  [
+    plural(counts.authorized + counts.public + counts.refused, 'request', 'requests'),
+    `${counts.authorized} signed in`,
+    `${counts.public} no sign-in needed`,
+    `${counts.refused} refused`,
+  ].join(' · ')
+
 /**
- * Recent-activity card — a list of the most recent connection events
- * (allowed + blocked). Renders only when the tunnel is open; the
- * parent route gates this so the off-state's educational explainer
- * stands in.
+ * Recent-activity card — the callers seen most recently, a count of every
+ * request the log holds by how it met the bearer gates, and a warning per
+ * address refused often enough lately to look like credential guessing.
+ * Renders only when the tunnel is open; the parent route gates this so the
+ * off-state's educational explainer stands in.
  *
- * Each row reads as: a leading status dot, the agent's name + a
+ * Each row reads as: a leading status dot, the caller's name + a
  * relative-time mark on the row's right edge, and a detail line
- * underneath. Blocked rows tint the whole row danger so a single
+ * underneath. Refused rows tint the whole row danger so a single
  * failure stands out against an otherwise-quiet feed.
  */
-const TunnelActivityFeed = ({ entries, now, className }: TunnelActivityFeedProps): JSX.Element => {
+const TunnelActivityFeed = ({
+  entries,
+  counts,
+  streaks,
+  now,
+  className,
+}: TunnelActivityFeedProps): JSX.Element => {
   const resolvedNow = now ?? DateTime.unsafeNow()
   const items = entries.map((entry, index) => toItem(entry, index, resolvedNow))
-  const blockedCount = entries.filter((entry) => entry.state === 'error').length
 
   return (
     <section className={cn(styles['feed'], className)}>
@@ -87,11 +95,25 @@ const TunnelActivityFeed = ({ entries, now, className }: TunnelActivityFeedProps
         <span className={styles['feed__label']}>Recent activity</span>
         <span className={styles['feed__live']}>Live</span>
       </div>
-      <p className={styles['feed__summary']}>
-        {entries.length} {entries.length === 1 ? 'request' : 'requests'} today · {blockedCount}{' '}
-        blocked
-      </p>
-      <ItemList items={items} />
+      <p className={styles['feed__summary']}>{describeCounts(counts)}</p>
+      {streaks.map((streak) => (
+        <p key={streak.address} className={styles['feed__warning']} role="alert">
+          {plural(streak.count, 'refused request', 'refused requests')} from {streak.address} in the
+          last {Duration.toMinutes(REFUSED_STREAK_WINDOW)} minutes — possible credential guessing.{' '}
+          <Link
+            className={styles['feed__warning-link']}
+            to="/settings/tunnel/activity"
+            search={{ address: streak.address, auth: 'refused' }}
+          >
+            Review
+          </Link>
+        </p>
+      ))}
+      {entries.length === 0 ? (
+        <p className={styles['feed__empty']}>No requests have come through the tunnel yet.</p>
+      ) : (
+        <ItemList items={items} />
+      )}
       <Link className={styles['feed__footer']} to="/settings/tunnel/activity">
         View all activity ›
       </Link>

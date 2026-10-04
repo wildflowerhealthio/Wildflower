@@ -17,6 +17,8 @@ const TUNNEL_REQUESTS_QUERY_KEY = ['tunnel', 'requests'] as const
 
 const TUNNEL_CALLERS_QUERY_KEY = [...TUNNEL_REQUESTS_QUERY_KEY, 'callers'] as const
 
+const RECENT_REFUSED_REQUESTS_QUERY_KEY = [...TUNNEL_REQUESTS_QUERY_KEY, 'recent-refused'] as const
+
 /** The `ListRequests` pages read under `filter`. */
 const tunnelRequestsPagesQueryKey = (
   filter: RequestLogFilter
@@ -27,6 +29,7 @@ const tunnelRequestsPagesQueryKey = (
 ]
 
 export {
+  RECENT_REFUSED_REQUESTS_QUERY_KEY,
   TUNNEL_CALLERS_QUERY_KEY,
   TUNNEL_REQUESTS_QUERY_KEY,
   TUNNEL_STATE_QUERY_KEY,
