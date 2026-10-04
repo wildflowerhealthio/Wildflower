@@ -168,7 +168,8 @@ describe('PlannedWorkoutView', () => {
   it("should submit what PlannedWorkout.submit takes, every lift met, for any plan's first workout", async () => {
     await fc.assert(
       fc.asyncProperty(trainingPlanDefinitionArb, async (trainingPlanDefinition) => {
-        const user = userEvent.setup()
+        // No timer between pointer actions: a plan of many sets is many taps.
+        const user = userEvent.setup({ delay: null })
         const plannedWorkout = plannedWorkoutOf(
           startedLifterRecord({
             trainingPlanDefinition,
@@ -243,7 +244,7 @@ const nameOf = (plannedWorkoutExercise: PlannedWorkout.Exercise): string =>
 /** Taps the named exercise's sets in order, the Nth `taps[N]` times. */
 const tapEachSet = async (exerciseName: string, taps: readonly number[]): Promise<void> => {
   const setButtons = within(setGroup(exerciseName)).getAllByRole('button')
-  await userEvent.setup().pointer(
+  await userEvent.setup({ delay: null }).pointer(
     taps.flatMap((tapCount, setIndex) =>
       Array.from({ length: tapCount }, () => ({
         keys: '[MouseLeft]',
