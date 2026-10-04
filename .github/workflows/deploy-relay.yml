@@ -15,7 +15,8 @@ name: Deploy Relay
 #   - optionally, variables for the other settings in relay.example.env;
 #     those left unset keep the relay's defaults.
 # The host's `deploy` user may run only the commands in
-# apps/wildflower-relay/deploy/sudoers as root.
+# apps/wildflower-relay/deploy/sudoers as root, which don't include
+# installing the systemd unit.
 #
 # A restart drops open connections; devices reconnect their tunnels.
 on:
@@ -148,9 +149,10 @@ jobs:
           scp -q "$RUNNER_TEMP"/upload/* "relay:$dir/"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
-      # Installs the binary, environment file and unit, restarts the relay
-      # and checks it answers; on failure it restores the previous binary and
-      # environment file, and this step fails.
+      # Installs the binary and environment file, restarts the relay and
+      # checks it answers; on failure it restores the previous binary and
+      # environment file, and this step fails. It changes nothing if the
+      # host's unit differs from the repository's (the operator installs it).
       - name: Install and restart
         env:
           UPLOAD_DIR: ${{ steps.upload.outputs.dir }}

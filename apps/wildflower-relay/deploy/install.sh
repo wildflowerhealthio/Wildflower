@@ -6,8 +6,9 @@
 #   ssh deploy@<host> bash <upload dir>/install.sh <upload dir>
 #
 # The upload directory holds this script, `wildflower-relay` (the binary),
-# `env` (the environment file) and `wildflower-relay.service` (the unit).
-# Every root command below is one line of ./sudoers, character for character.
+# `env` (the environment file) and `wildflower-relay.service` (the unit, only
+# compared with the installed one). Every root command below is one line of
+# ./sudoers, character for character.
 # Files are piped into `install` through /dev/stdin, so root never opens a
 # path in the upload directory.
 set -euo pipefail
@@ -42,11 +43,12 @@ wait_healthy() {
   return 1
 }
 
-# The unit first: if it can't be installed, nothing else has changed yet.
+# The unit is installed by hand, since a unit can run anything as root. Stop
+# before changing anything if the installed one is not the repository's.
 if ! cmp -s "$upload/wildflower-relay.service" "$unit"; then
-  echo "unit file changed, reloading systemd"
-  sudo -n /usr/bin/install -m 0644 -o root -g root /dev/stdin /etc/systemd/system/wildflower-relay.service < "$upload/wildflower-relay.service"
-  sudo -n /usr/bin/systemctl daemon-reload
+  echo "::error::$unit differs from apps/wildflower-relay/wildflower-relay.service; install it on the host and run 'sudo systemctl daemon-reload', then re-run this deploy"
+  rm -rf "$upload"
+  exit 1
 fi
 
 # Keep what is running now so a failed deploy can go back to it. There is

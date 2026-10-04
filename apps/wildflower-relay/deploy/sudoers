@@ -11,10 +11,11 @@
 # New files are written through /dev/stdin, so root never reads a path the
 # deploy user controls.
 #
-# Installing the unit file is equivalent to root: a unit can run any command
-# as root. Drop WILDFLOWER_RELAY_UNIT from the last line to install the unit
-# by hand instead; install.sh then stops, before changing anything, whenever
-# the unit in the repository differs from the installed one.
+# Nothing here installs the systemd unit: a unit can run any command as root,
+# so permission to write one would be root. The operator installs the unit,
+# and install.sh stops before changing anything if it differs from the
+# repository's. What remains controls only the relay's binary and
+# environment, which run as the unit's unprivileged dynamic user.
 
 Cmnd_Alias WILDFLOWER_RELAY_FILES = \
   /usr/bin/install -d -m 0755 -o root -g root /etc/wildflower-relay, \
@@ -26,13 +27,9 @@ Cmnd_Alias WILDFLOWER_RELAY_FILES = \
   /usr/bin/install -m 0755 -o root -g root /usr/local/bin/wildflower-relay.prev /usr/local/bin/wildflower-relay, \
   /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env.prev /etc/wildflower-relay/env
 
-Cmnd_Alias WILDFLOWER_RELAY_UNIT = \
-  /usr/bin/install -m 0644 -o root -g root /dev/stdin /etc/systemd/system/wildflower-relay.service
-
 Cmnd_Alias WILDFLOWER_RELAY_SERVICE = \
-  /usr/bin/systemctl daemon-reload, \
   /usr/bin/systemctl enable wildflower-relay, \
   /usr/bin/systemctl restart wildflower-relay, \
   /usr/bin/journalctl -u wildflower-relay -n 50 --no-pager
 
-deploy ALL=(root) NOPASSWD: WILDFLOWER_RELAY_FILES, WILDFLOWER_RELAY_UNIT, WILDFLOWER_RELAY_SERVICE
+deploy ALL=(root) NOPASSWD: WILDFLOWER_RELAY_FILES, WILDFLOWER_RELAY_SERVICE
