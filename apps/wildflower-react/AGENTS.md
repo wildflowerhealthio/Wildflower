@@ -2,35 +2,39 @@
 
 The owner UI: the web app that manages a Wildflower server. One source tree,
 two entries, each passing its platform's wiring to `app-root.tsx`'s
-`buildAppTree` (`RenderAppOptions`):
+`buildAppTree` (`RenderAppOptions`) from the `bootApp` it hands
+`session/consented-entry-root.tsx`'s `ConsentedEntryRoot`:
 
 - **`main-web`** (`src/main-web.tsx`) — the build published at `/app/`,
   cross-origin to the server `?server=` names. Signs in by SMART redirect and
   holds its bearer in page memory (`web-entry.ts`, `sign-in.ts`).
 - **`main-tauri`** (`apps/wildflower-tauri/src/main.tsx`) — the Tauri host's
-  webview, authenticated by the host. Calls `renderApp`.
+  webview, authenticated by the host.
 
 ## Guardrails
 
-- **`main-web` boots nothing before the telemetry consent dialog is
-  answered.** It mounts `session/web-entry-root.tsx`'s `WebEntryRoot`, a
-  `TelemetryConsentGate` around the app. The answer starts telemetry
-  (`useConsentedTelemetryStart`, DSN `VITE_SENTRY_DSN_WILDFLOWER_REACT`, tags
-  `app: wildflower-react`, `entry: main-web`) and only then calls `bootApp`,
-  once: the sign-in redemption, then `buildAppTree`. So before an answer no
-  code is redeemed and no router, `QueryClient` or runtime exists, and a
-  stored yes has Sentry running before the router is built. Tests:
-  `session/web-entry-root.test.tsx`.
-- **`main-web` never starts telemetry from the build's env.** It does not
-  import `instrument.ts`, and its runtime's `effectTelemetryLayer` is
-  `telemetry-web`'s `consentedTelemetryLayer`. The `Sentry.*` calls in
-  `app-root.tsx`, `routes/_auth.tsx` and `session/token-timeout-retry.tsx`
-  run unconditionally; they do nothing until an answer starts Sentry.
-- **`main-tauri` starts telemetry without asking.** It imports
-  `wildflower-react/instrument` (`initWebTelemetryFromEnv`, the shared
-  `VITE_SENTRY_DSN`) and passes `webTelemetryLayerFromEnv()` as its
-  `effectTelemetryLayer`. It mounts no consent gate, so the settings screen
-  shows no Telemetry row there (`session/telemetry-settings-items.ts`).
+- **Neither entry boots before the telemetry consent dialog is answered.**
+  Each mounts `ConsentedEntryRoot` (exported as
+  `wildflower-react/consented-entry-root`), a `TelemetryConsentGate` around
+  the app, with its own `entry` and dialog copy: `main-web` the shared
+  `TELEMETRY_CONSENT_COPY`, `main-tauri` `branding-core`'s
+  `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY`. The answer, kept in the page's
+  `localStorage`, starts telemetry (`useConsentedTelemetryStart`, DSN
+  `VITE_SENTRY_DSN_WILDFLOWER_REACT`, tags `app: wildflower-react` and
+  `entry`) and only then calls `bootApp`, once: on `main-web` the sign-in
+  redemption, then `buildAppTree`; on `main-tauri` `buildAppTree` alone. So
+  before an answer no code is redeemed and no router, `QueryClient`, runtime
+  or transport exists, and a stored yes has Sentry running before the router
+  is built. Tests: `session/consented-entry-root.test.tsx`.
+- **Neither entry starts telemetry from the build's env.** Each runtime's
+  `effectTelemetryLayer` is `telemetry-web`'s `consentedTelemetryLayer`. The
+  `Sentry.*` calls in `app-root.tsx`, `routes/_auth.tsx` and
+  `session/token-timeout-retry.tsx` run unconditionally; they do nothing
+  until an answer starts Sentry. The settings screen's Telemetry row
+  (`session/telemetry-settings-items.ts`) reads the answer by the gate's copy
+  and reopens the dialog. `main-tauri`'s module-level `configureRecovery`
+  call and colour-scheme listener are not telemetry, and run before an
+  answer.
 - **The entry decides, not a branch on `entry`.** Platform differences reach
   the shared tree as `RenderAppOptions` fields (`effectTelemetryLayer`,
   `platformSettingsItems`, `platformTabs`, `platformBanner`,

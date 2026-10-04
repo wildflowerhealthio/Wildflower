@@ -83,5 +83,46 @@ const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
   continueLabel: 'Continue',
 }
 
-export { TELEMETRY_CONSENT_COPY }
+/**
+ * The telemetry consent dialog's copy for Wildflower Host, the desktop and
+ * mobile app whose webview runs the owner UI (`apps/wildflower-tauri`).
+ *
+ * @remarks
+ * The same dialog as {@link TELEMETRY_CONSENT_COPY}, worded for one app that
+ * keeps what it loads on the device rather than for a set of web apps: the
+ * warning says so, the session counts name no browser, and the answer is
+ * changed from the Settings screen rather than a button on the page. The
+ * switch labels are the shared ones, so the Telemetry row in Settings reads
+ * the same on every entry. Its answer is stored in the webview's own
+ * storage, under this copy's `version`, apart from any web app's.
+ */
+const WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
+  version: 1,
+  title: 'Demo app and telemetry',
+  warning: [
+    'Wildflower Host is a demo app from the Wildflower Health Project. ' +
+      'It keeps the records you load in it on this device.',
+    "Load synthetic data only. Never load a real person's health record.",
+  ],
+  destination:
+    'The two switches below choose what, if anything, this app reports to Sentry, ' +
+    'a third-party service in the United States. Both switches start off, ' +
+    'and with both off nothing is sent.',
+  crashReports: {
+    label: TELEMETRY_CONSENT_COPY.crashReports.label,
+    description:
+      'When the app runs into an error, it sends a report of the error. ' +
+      'A report can include anything the app had loaded at the time, including ' +
+      'names, medications, results, record ids and server addresses.',
+  },
+  performance: TELEMETRY_CONSENT_COPY.performance,
+  sessions:
+    'While either switch is on, Sentry also counts app sessions. A session records that ' +
+    'the app was opened, whether it ran into an error, and the operating system it ' +
+    'ran on. Sessions carry no page addresses or record data.',
+  changeLater: 'You can change your answer at any time with the Telemetry row in Settings.',
+  continueLabel: TELEMETRY_CONSENT_COPY.continueLabel,
+}
+
+export { TELEMETRY_CONSENT_COPY, WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY }
 export type { TelemetryConsentCopy }

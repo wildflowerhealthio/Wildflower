@@ -10,7 +10,7 @@ interface ActivePendingConsentProviderProps {
 
 /**
  * Provide the {@link ActivePendingConsentStore} to descendants. The
- * app's `renderApp` wraps the router tree in this so the
+ * app's `buildAppTree` wraps the router tree in this so the
  * {@link PendingConsentModalHost} (mounted alongside `<Outlet />`) and
  * the bridge handler share one store.
  */

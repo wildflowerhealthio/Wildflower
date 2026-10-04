@@ -5,7 +5,7 @@ import 'react-tundraish/styles'
 // itself; naming it here too (one module, so one copy) puts it ahead of this
 // app's own `global.css`, after the design system it builds on.
 import 'branding-react/styles.css'
-import { basenameOf, restoreRedirectedUrl } from 'branding-core'
+import { basenameOf, restoreRedirectedUrl, TELEMETRY_CONSENT_COPY } from 'branding-core'
 import { Option } from 'effect'
 import {
   isAuthorizationResponse,
@@ -17,8 +17,8 @@ import { addOsColorSchemeListener } from 'react-tundraish'
 import { consentedTelemetryLayer } from 'telemetry-web'
 import './styles/global.css'
 import { buildAppTree, mountAtRoot } from './app-root.tsx'
+import { ConsentedEntryRoot } from './session/consented-entry-root.tsx'
 import { ServerKind } from './session/server-kind.ts'
-import { WebEntryRoot } from './session/web-entry-root.tsx'
 import {
   authStateForSession,
   finishSignIn,
@@ -92,7 +92,7 @@ const settleUrlAfterSignIn = (returnTo: string): void => {
  * a microtask for this: with no pending record, `completeSignIn` resolves to
  * `None` without touching the network.
  *
- * `WebEntryRoot` calls this once the visitor has answered the telemetry
+ * `ConsentedEntryRoot` calls this once the visitor has answered the telemetry
  * consent dialog, so nothing here runs before an answer.
  */
 const bootApp = async (): Promise<JSX.Element> => {
@@ -168,4 +168,4 @@ const bootApp = async (): Promise<JSX.Element> => {
 }
 
 // The consent dialog first; the answer starts telemetry and then boots the app.
-mountAtRoot(<WebEntryRoot bootApp={bootApp} />)
+mountAtRoot(<ConsentedEntryRoot entry="main-web" copy={TELEMETRY_CONSENT_COPY} bootApp={bootApp} />)

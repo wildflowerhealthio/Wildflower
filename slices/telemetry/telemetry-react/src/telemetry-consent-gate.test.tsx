@@ -33,14 +33,14 @@ const APP_TEXT = 'The app'
 
 /** Stands in for the app: records that its effects ran, and carries the status control. */
 const App = ({ onMount }: { readonly onMount: () => void }): JSX.Element => {
-  const { consent, reopen } = useTelemetryConsentControls()
+  const { consent, copy, reopen } = useTelemetryConsentControls()
   useEffect(() => {
     onMount()
   }, [onMount])
   return (
     <main>
       <p>{APP_TEXT}</p>
-      <TelemetryStatusControl consent={consent} copy={TELEMETRY_CONSENT_COPY} onPress={reopen} />
+      <TelemetryStatusControl consent={consent} copy={copy} onPress={reopen} />
     </main>
   )
 }
@@ -183,6 +183,30 @@ describe('TelemetryConsentGate', () => {
     expect(
       screen.getByRole('button', {
         name: `Telemetry: ${TELEMETRY_CONSENT_COPY.crashReports.label} off · ${TELEMETRY_CONSENT_COPY.performance.label} on, change telemetry settings`,
+      })
+    ).toBeDefined()
+  })
+
+  it('should hand the app the copy its dialog shows', () => {
+    // Arrange — a copy whose switch labels differ from the shared one's
+    const storage = mapConsentStorage()
+    writeConsent(storage, answered({ crashReports: true, performance: false }))
+    const copy = {
+      ...TELEMETRY_CONSENT_COPY,
+      crashReports: { ...TELEMETRY_CONSENT_COPY.crashReports, label: 'Error reports' },
+    }
+
+    // Act
+    render(
+      <TelemetryConsentGate storage={storage} copy={copy} onDecided={vi.fn()}>
+        <App onMount={vi.fn()} />
+      </TelemetryConsentGate>
+    )
+
+    // Assert — the status control reads the switches by the gate's labels
+    expect(
+      screen.getByRole('button', {
+        name: `Telemetry: Error reports on · ${TELEMETRY_CONSENT_COPY.performance.label} off, change telemetry settings`,
       })
     ).toBeDefined()
   })

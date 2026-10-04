@@ -135,11 +135,9 @@ interface RenderAppOptions {
   readonly makeTransport: MakeTransport
   /**
    * The Effect telemetry layer every authed request runs under, binding its
-   * spans to the page's tracer provider. The entry decides whether that needs
-   * the visitor's consent: `main-web` passes `telemetry-web`'s
-   * `consentedTelemetryLayer` (empty until an answer turns performance on);
-   * `main-tauri` passes `webTelemetryLayerFromEnv()`, which starts telemetry
-   * from the build's env.
+   * spans to the page's tracer provider. Both entries pass `telemetry-web`'s
+   * `consentedTelemetryLayer`, empty until the user's answer to the consent
+   * dialog turns performance on.
    */
   readonly effectTelemetryLayer: Layer.Layer<never>
   /**
@@ -257,9 +255,8 @@ interface RenderAppOptions {
 
 /**
  * Build the app: its query runtime, transport and router, and the React tree
- * over them, ready to mount. Called once per entry point, by
- * {@link renderApp} or by an entry that mounts the tree inside its own root
- * (`main-web`, behind the telemetry consent gate).
+ * over them, ready to mount. Called once per entry point, from the
+ * `bootApp` it hands `ConsentedEntryRoot`, behind the telemetry consent gate.
  *
  * The same `QueryClient` is given to both `<QueryClientProvider>` and
  * `createRouter`'s `context`, so loaders' `ensureQueryData` and
@@ -443,13 +440,5 @@ const mountAtRoot = (appTree: ReactNode): void => {
   createRoot(container).render(<StrictMode>{appTree}</StrictMode>)
 }
 
-/**
- * Build the app with {@link buildAppTree} and mount it under `#root`: the
- * whole boot of an entry that asks nothing first (`main-tauri`).
- */
-const renderApp = (options: RenderAppOptions): void => {
-  mountAtRoot(buildAppTree(options))
-}
-
-export { buildAppTree, forkTokenRotationInvalidator, mountAtRoot, renderApp }
+export { buildAppTree, forkTokenRotationInvalidator, mountAtRoot }
 export type { MakeAwaitAuthReady, MakeTransport, RenderAppOptions }

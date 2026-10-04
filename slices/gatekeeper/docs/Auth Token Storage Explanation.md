@@ -6,7 +6,7 @@ why neither store is a cookie.
 The server authenticates by the `Authorization: Bearer` header alone: it issues
 no cookies and reads none. Each `main-*` entrypoint, which knows which
 environment it is in, picks an `AuthStateStore` factory and threads the store
-through `renderApp`. Every store has the same shape (a read-side
+through `buildAppTree`. Every store has the same shape (a read-side
 `subscribable` plus a `setAuthState` writer), so `AuthStateProvider`, the
 page-bridge `AuthTokenIssued` handler, and the `auth-ready` gates are all
 environment-blind. The `subscribable` carries a typed

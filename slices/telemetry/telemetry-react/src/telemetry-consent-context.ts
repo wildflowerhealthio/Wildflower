@@ -1,11 +1,17 @@
+import type { TelemetryConsentCopy } from 'branding-core'
 import { createContext } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
 import type { TelemetryConsent } from 'telemetry-core'
 
-/** What a `TelemetryConsentGate` hands the app it reveals: the answer, and a way to change it. */
+/**
+ * What a `TelemetryConsentGate` hands the app it reveals: the answer, the
+ * words it was given to, and a way to change it.
+ */
 interface TelemetryConsentControls {
   /** The visitor's answer, always given by the time the app renders. */
   readonly consent: TelemetryConsent
+  /** The gate's dialog copy, whose switch labels name the switches wherever the answer is read out. */
+  readonly copy: TelemetryConsentCopy
   /** Show the consent dialog again, with the switches set to `consent`. */
   readonly reopen: () => void
 }

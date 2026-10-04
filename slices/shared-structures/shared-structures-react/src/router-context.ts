@@ -76,7 +76,7 @@ interface RouterContextWith<Extra> {
   readonly runAuthed: RunAuthedWith<Extra>
   readonly runtimeLayer: RuntimeLayerWith<Extra>
   /**
-   * Environment-specific auth-readiness wait, injected at `renderApp`
+   * Environment-specific auth-readiness wait, injected at `buildAppTree`
    * and consulted by the gated layouts' `beforeLoad`. Resolves when a
    * bearer token is present; rejects with a tagged reason otherwise
    * (TanStack `redirect(...)` for standalone web, `TokenTimeout` for

@@ -1,10 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { TELEMETRY_CONSENT_COPY } from 'branding-core'
+import { TELEMETRY_CONSENT_COPY, WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
 import { StrictMode, type JSX, type ReactNode } from 'react'
 import { ItemList } from 'react-tundraish'
 import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { ConsentedEntryRoot, type ConsentedEntryRootProps } from './consented-entry-root.tsx'
 import {
   answerDialog,
   openDialog,
@@ -13,7 +14,6 @@ import {
   stubDialogModality,
 } from './telemetry-consent.test-helpers.ts'
 import { useTelemetrySettingsItems } from './telemetry-settings-items.ts'
-import { WebEntryRoot } from './web-entry-root.tsx'
 
 /** The part of Sentry's `captureException` hint the boot boundary sets. */
 interface CaptureHint {
@@ -24,7 +24,7 @@ interface CaptureHint {
 // touch the gate controls, so the module boundary is where they are stubbed:
 // each test reads back whether, when and with what the root started
 // telemetry. The rest of the module stays real, so the config is the one the
-// owner UI's web entry builds.
+// owner UI's entries build.
 const { initConsentedTelemetryMock, captureExceptionMock } = vi.hoisted(() => ({
   initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
   captureExceptionMock: vi.fn<(exception: unknown, hint?: CaptureHint) => string>(() => 'event-id'),
@@ -36,6 +36,15 @@ vi.mock('telemetry-web', async (importOriginal) => ({
 }))
 
 const OWNER_UI_DSN = 'https://key@sentry.example/11'
+
+/** What an entry hands the root besides its boot. */
+type EntryWiring = Pick<ConsentedEntryRootProps, 'entry' | 'copy'>
+
+const MAIN_WEB: EntryWiring = { entry: 'main-web', copy: TELEMETRY_CONSENT_COPY }
+const MAIN_TAURI: EntryWiring = {
+  entry: 'main-tauri',
+  copy: WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
+}
 const SETTINGS_ROW_NAME = /^Telemetry/
 
 /** Matches the Telemetry settings row's accessible name when it reads `summary`. */
@@ -57,7 +66,7 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-describe('WebEntryRoot', () => {
+describe('ConsentedEntryRoot on main-web', () => {
   it('should show only the consent dialog, boot nothing and start nothing, until the visitor answers', async () => {
     // Arrange
     const bootApp = vi.fn(bootsTo(<div data-testid="app" />))
@@ -133,7 +142,7 @@ describe('WebEntryRoot', () => {
   })
 
   it('should never let the shared VITE_SENTRY_DSN stand in for the owner UI’s own', async () => {
-    // Arrange — the Tauri entry's variable set, the web entry's not
+    // Arrange — the shared variable set, the owner UI's not
     vi.stubEnv('VITE_SENTRY_DSN_WILDFLOWER_REACT', '')
     vi.stubEnv('VITE_SENTRY_DSN', 'https://shared@sentry.example/1')
     storeConsent({ crashReports: true, performance: true })
@@ -192,17 +201,59 @@ describe('WebEntryRoot', () => {
   })
 })
 
+describe('ConsentedEntryRoot on main-tauri', () => {
+  it('should show only the host’s consent dialog, boot nothing and start nothing, until the user answers', async () => {
+    // Arrange
+    const bootApp = vi.fn(bootsTo(<div data-testid="app" />))
+
+    // Act
+    await renderRoot(bootApp, MAIN_TAURI)
+
+    // Assert — the host's words, and no transport, router or Sentry
+    expect(openDialog()).not.toBeNull()
+    expect(screen.getByText(WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY.changeLater)).toBeDefined()
+    expect(screen.queryByText(TELEMETRY_CONSENT_COPY.changeLater)).toBeNull()
+    expect(bootApp).not.toHaveBeenCalled()
+    expect(initConsentedTelemetryMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('app')).toBeNull()
+  })
+
+  it('should start telemetry with the owner UI’s DSN and the main-tauri tags, then boot the app, once the user answers', async () => {
+    // Arrange
+    const bootApp = vi.fn(bootsTo(<div data-testid="app" />))
+    await renderRoot(bootApp, MAIN_TAURI)
+
+    // Act
+    await answerDialogAndSettle({ crashReports: true, performance: false })
+
+    // Assert
+    expect(await screen.findByTestId('app')).toBeDefined()
+    expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)
+    const [{ consent, config, tags }] = initConsentedTelemetryMock.mock.calls[0]
+    expect(consent).toMatchObject({ crashReports: true, performance: false })
+    expect(config.sentry.dsn).toBe(OWNER_UI_DSN)
+    expect(tags).toStrictEqual({ app: 'wildflower-react', entry: 'main-tauri' })
+    expect(bootApp).toHaveBeenCalledTimes(1)
+    expect(initConsentedTelemetryMock.mock.invocationCallOrder[0]).toBeLessThan(
+      bootApp.mock.invocationCallOrder[0]
+    )
+  })
+})
+
 // Helpers
 
 /**
- * Render the root under StrictMode, as `main-web`'s `mountAtRoot` does,
- * letting a boot that starts settle.
+ * Render the root for `entry` under StrictMode, as both entries'
+ * `mountAtRoot` does, letting a boot that starts settle.
  */
-async function renderRoot(bootApp: () => Promise<ReactNode>): Promise<void> {
+async function renderRoot(
+  bootApp: () => Promise<ReactNode>,
+  entry: EntryWiring = MAIN_WEB
+): Promise<void> {
   await act(async () => {
     render(
       <StrictMode>
-        <WebEntryRoot bootApp={bootApp} />
+        <ConsentedEntryRoot entry={entry.entry} copy={entry.copy} bootApp={bootApp} />
       </StrictMode>
     )
   })

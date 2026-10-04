@@ -27,5 +27,8 @@ export {
   restoredUrl,
 } from './spa-redirect.ts'
 export type { RestorableHistory, RestorableLocation, RestorationTarget } from './spa-redirect.ts'
-export { TELEMETRY_CONSENT_COPY } from './telemetry-consent-copy.ts'
+export {
+  TELEMETRY_CONSENT_COPY,
+  WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
+} from './telemetry-consent-copy.ts'
 export type { TelemetryConsentCopy } from './telemetry-consent-copy.ts'
