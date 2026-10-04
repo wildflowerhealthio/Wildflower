@@ -1,4 +1,4 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
+import { HttpClient, HttpClientResponse, UrlParams } from '@effect/platform'
 import { Effect, Layer } from 'effect'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
@@ -158,5 +158,57 @@ describe('buildTunnelAdminClientLayer', () => {
     } else {
       throw new Error('expected the 409 body to decode into the error channel as a TunnelState')
     }
+  })
+
+  test('ListRequests sends its filters as query text and decodes the page', async () => {
+    const seenQueries: Array<string> = []
+    const page = {
+      requests: [
+        {
+          id: 6,
+          receivedAt: '2026-07-01T12:00:00Z',
+          clientId: 'lifting',
+          address: '192.0.2.1',
+          servedHost: 'dev1.example.com',
+          method: 'GET',
+          path: '/fhir-r4/Patient',
+          status: 403,
+          responseBytes: null,
+          durationMs: 12,
+          refusal: null,
+        },
+      ],
+      nextCursor: null,
+    }
+    const pageLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        seenQueries.push(UrlParams.toString(request.urlParams))
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            new Response(JSON.stringify(page), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            })
+          )
+        )
+      })
+    )
+
+    const program = Effect.gen(function* () {
+      const client = yield* TunnelAdminHttpApiClient
+      return yield* client.tunnel.ListRequests({
+        urlParams: { cursor: 7, client: 'lifting', refused: true },
+      })
+    })
+
+    const layer = buildTunnelAdminClientLayer().pipe(Layer.provideMerge(pageLayer))
+
+    const result = await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
+
+    expect(result.requests.map((request) => request.id)).toEqual([6])
+    expect(result.nextCursor).toBeNull()
+    expect(seenQueries).toEqual(['cursor=7&client=lifting&refused=true'])
   })
 })

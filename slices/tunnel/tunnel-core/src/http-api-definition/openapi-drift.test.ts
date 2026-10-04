@@ -1,5 +1,6 @@
 /**
- * Spec-drift contract test — tunnel admin (`/tunnel`) surface.
+ * Spec-drift contract test — tunnel admin (`/tunnel`, `/tunnel/requests/callers`,
+ * `/tunnel/requests`) surface.
  *
  * Diffs the Rust/axum server's OpenAPI spec (emitted by `utoipa`, committed at
  * `tunnel-rust/openapi/tunnel-admin.openapi.json`) against the TypeScript
@@ -23,5 +24,7 @@ defineSpecDriftTest({
   scope: [
     ['/tunnel', 'get'],
     ['/tunnel', 'put'],
+    ['/tunnel/requests/callers', 'get'],
+    ['/tunnel/requests', 'get'],
   ],
 })

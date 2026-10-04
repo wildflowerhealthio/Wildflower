@@ -15,6 +15,7 @@ use chrono::{DateTime, Utc};
 use shared_structures_rust::request_caller::ForwardedRequest;
 
 use crate::db::{seed_tunnel_settings, tunnel_requests, tunnel_settings};
+use crate::domain::request_log::{CallerSummary, RequestLogFilter, RequestLogPage};
 use crate::domain::{
     CallerClass, RelaySettings, RequestLogStore, SettingsSeed, SettingsUpdateOutcome, TunnelError,
     TunnelSettings, TunnelStore,
@@ -148,6 +149,14 @@ impl RequestLogStore for SqliteTunnelStore {
 
     fn delete_requests_received_before(&self, cutoff: DateTime<Utc>) -> Result<usize, TunnelError> {
         tunnel_requests::delete_requests_received_before(&mut self.connection()?, cutoff)
+    }
+
+    fn requests_page(&self, filter: &RequestLogFilter) -> Result<RequestLogPage, TunnelError> {
+        tunnel_requests::requests_page(&mut self.connection()?, filter)
+    }
+
+    fn caller_summaries(&self) -> Result<Vec<CallerSummary>, TunnelError> {
+        tunnel_requests::caller_summaries(&mut self.connection()?)
     }
 }
 

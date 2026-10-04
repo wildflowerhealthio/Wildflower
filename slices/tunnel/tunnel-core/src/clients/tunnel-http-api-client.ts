@@ -9,7 +9,8 @@ const sliceClient = defineSliceHttpClient({
 
 /**
  * Effect Service providing the resolved `TunnelAdminApi` (owner-only) HttpApi
- * client — `GetTunnel` + `ReplaceTunnel`. The host gates the `/tunnel` surface
+ * client — `GetTunnel` + `ReplaceTunnel`, and the request log's `ListCallers` +
+ * `ListRequests`. The host gates the `/tunnel` surface
  * behind the gatekeeper Owner check. The client itself sets no `Authorization`
  * header — the host app's `HttpClient` layer carries the credential. Adapter layers (`tunnel-react`) provide `.layer`; call
  * sites consume Effect-natively.
