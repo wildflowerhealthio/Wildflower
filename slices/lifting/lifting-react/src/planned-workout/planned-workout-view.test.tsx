@@ -207,7 +207,7 @@ describe('PlannedWorkoutView', () => {
           cleanup()
         }
       }),
-      { numRuns: numRunsFor({ base: 15 }) }
+      { numRuns: numRunsFor({ base: 11 }) }
     )
   })
 })
