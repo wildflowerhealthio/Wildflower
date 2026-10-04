@@ -1,4 +1,5 @@
-//! One `:80` request: redirect a known tunnel to `https://`, 404 the rest.
+//! One `:80` request: redirect the relay's own hostnames and known tunnels to
+//! `https://`, 404 the rest.
 //!
 //! Only the request line and the `Host` header are read (the head is capped
 //! at 8 KiB and must arrive within the hello deadline). Nothing is ever
@@ -10,6 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use super::Front;
+use crate::route::Destination;
 
 /// Upper bound on an HTTP request head.
 const MAX_HTTP_HEAD_BYTES: usize = 8 * 1024;
@@ -35,16 +37,18 @@ impl Front {
         let _ = stream.shutdown().await;
     }
 
-    /// `https://<tunnel name>.<domain><path>` if the request's host names a
-    /// known tunnel. The URL is rebuilt from the route rather than echoing `Host`.
+    /// `https://<hostname><path>` if the request's host is one of the
+    /// relay's local hostnames or names a known tunnel. The hostname is
+    /// rebuilt from the route rather than echoing `Host`.
     fn redirect_location(&self, head: &[u8]) -> Option<String> {
         let (host, path) = parse_http_head(head)?;
-        let route = self.router.resolve(&host)?;
-        Some(format!(
-            "https://{}.{}{path}",
-            route.tunnel_name,
-            self.router.domain()
-        ))
+        let hostname = match self.router.resolve(&host)? {
+            Destination::Local(hostname) => hostname,
+            Destination::Tunnel(route) => {
+                format!("{}.{}", route.tunnel_name, self.router.domain())
+            }
+        };
+        Some(format!("https://{hostname}{path}"))
     }
 }
 

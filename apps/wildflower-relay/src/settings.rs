@@ -4,8 +4,10 @@
 //! `relay.example.env` lists them all. The environment is the only source:
 //! [`ControlSettings`] (the rathole side, including every tunnel and its
 //! token) is rendered into a fresh rathole TOML on each start (see
-//! [`crate::config`]), and [`FrontSettings`] configures the TLS front, which
-//! rathole's file has no place for.
+//! [`crate::config`]), [`FrontSettings`] configures the TLS front, which
+//! rathole's file has no place for, and [`AcmeSettings`] how the relay's own
+//! site gets its certificate. The state directory holds only caches the
+//! relay can rebuild, such as that certificate and its ACME account.
 //!
 //! | Variable | Default |
 //! |---|---|
@@ -19,9 +21,13 @@
 //! | `WILDFLOWER_RELAY_HTTP_ADDR` | `0.0.0.0:80` |
 //! | `WILDFLOWER_RELAY_MAX_CONNECTIONS` | `4096` |
 //! | `WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS` | `5` |
+//! | `WILDFLOWER_RELAY_STATE_DIR` | `relay-state` (the systemd unit sets `/var/lib/wildflower-relay`) |
+//! | `WILDFLOWER_RELAY_ACME_STAGING` | `false` |
+//! | `WILDFLOWER_RELAY_ACME_CONTACT` | none (a `mailto:` address) |
 
 use std::fmt::{self, Debug, Display};
 use std::net::{Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -58,9 +64,14 @@ impl Debug for Secret {
 pub struct RelaySettings {
     pub control: ControlSettings,
     pub front: FrontSettings,
+    pub acme: AcmeSettings,
+    /// Where the relay keeps its caches, e.g. the site's certificate.
+    pub state_dir: PathBuf,
 }
 
 impl RelaySettings {
+    pub const STATE_DIR_VAR: &'static str = "WILDFLOWER_RELAY_STATE_DIR";
+
     /// Read the settings from the process environment.
     ///
     /// # Errors
@@ -80,6 +91,8 @@ impl RelaySettings {
         Ok(Self {
             control: ControlSettings::from_lookup(&lookup)?,
             front: FrontSettings::from_lookup(&lookup)?,
+            acme: AcmeSettings::from_lookup(&lookup)?,
+            state_dir: parsed(&lookup, Self::STATE_DIR_VAR, PathBuf::from("relay-state"))?,
         })
     }
 }
@@ -247,6 +260,51 @@ impl FrontSettings {
             },
         })
     }
+
+    /// The hostnames the relay serves itself rather than routing to a
+    /// tunnel, and orders its certificate for: the domain itself.
+    #[must_use]
+    pub fn local_hostnames(&self) -> Vec<String> {
+        vec![self.domain.clone()]
+    }
+}
+
+/// How the relay's own site gets its certificate from Let's Encrypt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcmeSettings {
+    /// Order from the staging directory instead of production. Its
+    /// certificates are not trusted by browsers, and its rate limits are far
+    /// higher.
+    pub staging: bool,
+    /// The ACME account's contact, a `mailto:` URL. `None` registers without
+    /// one.
+    pub contact: Option<String>,
+}
+
+impl AcmeSettings {
+    pub const STAGING_VAR: &'static str = "WILDFLOWER_RELAY_ACME_STAGING";
+    pub const CONTACT_VAR: &'static str = "WILDFLOWER_RELAY_ACME_CONTACT";
+
+    /// # Errors
+    ///
+    /// Returns an error naming the variable if the staging flag is not
+    /// `true` or `false`, or the contact does not start with `mailto:`.
+    pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
+        let contact = lookup(Self::CONTACT_VAR)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        if let Some(contact) = &contact {
+            anyhow::ensure!(
+                contact.starts_with("mailto:") && contact.len() > "mailto:".len(),
+                "{}={contact:?} is invalid: expected a `mailto:` address",
+                Self::CONTACT_VAR
+            );
+        }
+        Ok(Self {
+            staging: parsed(&lookup, Self::STAGING_VAR, false)?,
+            contact,
+        })
+    }
 }
 
 /// A required, non-empty variable (trimmed). The error names the variable
@@ -311,8 +369,14 @@ mod tests {
                     http_addr: "0.0.0.0:80".parse().unwrap(),
                     limits: Limits::default(),
                 },
+                acme: AcmeSettings {
+                    staging: false,
+                    contact: None,
+                },
+                state_dir: PathBuf::from("relay-state"),
             }
         );
+        assert_eq!(settings.front.local_hostnames(), ["relay.example.com"]);
     }
 
     #[test]
@@ -322,6 +386,9 @@ mod tests {
             (ControlSettings::CONTROL_ADDR_VAR, "127.0.0.1:7000"),
             (FrontSettings::HTTPS_ADDR_VAR, "[::]:8443"),
             (FrontSettings::HELLO_TIMEOUT_VAR, " 7 "),
+            (RelaySettings::STATE_DIR_VAR, "/var/lib/wildflower-relay"),
+            (AcmeSettings::STAGING_VAR, "true"),
+            (AcmeSettings::CONTACT_VAR, " mailto:ops@example.com "),
         ]);
         let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
         assert_eq!(
@@ -330,6 +397,17 @@ mod tests {
         );
         assert_eq!(settings.front.https_addr, "[::]:8443".parse().unwrap());
         assert_eq!(settings.front.limits.hello_timeout, Duration::from_secs(7));
+        assert_eq!(
+            settings.state_dir,
+            PathBuf::from("/var/lib/wildflower-relay")
+        );
+        assert_eq!(
+            settings.acme,
+            AcmeSettings {
+                staging: true,
+                contact: Some("mailto:ops@example.com".to_owned()),
+            }
+        );
     }
 
     #[test]
@@ -354,9 +432,25 @@ mod tests {
 
     #[test]
     fn bad_values_are_rejected() {
+        for bad in [
+            (FrontSettings::MAX_CONNECTIONS_VAR, "lots"),
+            (AcmeSettings::STAGING_VAR, "yes"),
+            (AcmeSettings::CONTACT_VAR, "ops@example.com"),
+            (AcmeSettings::CONTACT_VAR, "mailto:"),
+        ] {
+            let mut pairs = REQUIRED.to_vec();
+            pairs.push(bad);
+            let err = RelaySettings::from_lookup(env(&pairs)).unwrap_err();
+            assert!(format!("{err:#}").contains(bad.0), "{bad:?}: {err:#}");
+        }
+    }
+
+    #[test]
+    fn blank_acme_contact_registers_without_one() {
         let mut pairs = REQUIRED.to_vec();
-        pairs.push((FrontSettings::MAX_CONNECTIONS_VAR, "lots"));
-        assert!(RelaySettings::from_lookup(env(&pairs)).is_err());
+        pairs.push((AcmeSettings::CONTACT_VAR, "  "));
+        let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
+        assert_eq!(settings.acme.contact, None);
     }
 
     fn tunnels(raw: &str) -> anyhow::Result<Vec<(String, String)>> {

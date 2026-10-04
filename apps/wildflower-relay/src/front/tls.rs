@@ -1,26 +1,28 @@
 //! One `:443` connection, start to finish.
 //!
-//! Read the ClientHello and take its server name, look up the device's
-//! tunnel port, connect to it, send a PROXY header and the hello bytes, then
-//! copy bytes both ways until either side closes. TCP keepalive on both
-//! sockets clears out a peer that vanished without closing; an idle but
-//! live connection is the device's HTTP server's to close. The
-//! front never decrypts anything. Every step that fails logs why and drops
-//! the visitor's socket, which closes it without a byte written.
+//! Read the ClientHello and take its server name. For one of the relay's
+//! local hostnames, hand the connection, hello bytes first, to the relay's
+//! own site, which terminates TLS. Otherwise look up the device's tunnel
+//! port, connect to it, send a PROXY header and the hello bytes, then copy
+//! bytes both ways until either side closes. TCP keepalive on both sockets
+//! clears out a peer that vanished without closing; an idle but live
+//! connection is the device's HTTP server's to close. The front never
+//! decrypts a tunnel's traffic. Every step that fails logs why and drops the
+//! visitor's socket, which closes it without a byte written.
 
 use std::net::SocketAddr;
 use std::time::Duration;
 
 use socket2::{SockRef, TcpKeepalive};
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
 use super::hello::{read_client_hello, ClientHello};
 use super::proxy_header::proxy_header;
 use super::Front;
-use crate::route::Route;
+use crate::route::{Destination, Route};
 
 impl Front {
     /// Route one `:443` connection.
@@ -35,9 +37,16 @@ impl Front {
         let Some((hello_bytes, server_name)) = self.read_server_name(&mut client).await else {
             return;
         };
-        let Some(route) = self.router.resolve(&server_name) else {
-            tracing::debug!(%server_name, "refused: unknown tunnel");
-            return;
+        let route = match self.router.resolve(&server_name) {
+            Some(Destination::Tunnel(route)) => route,
+            Some(Destination::Local(_)) => {
+                self.serve_site(client, hello_bytes, shutdown_rx).await;
+                return;
+            }
+            None => {
+                tracing::debug!(%server_name, "refused: unknown tunnel");
+                return;
+            }
         };
         let Some(mut backend) = self.connect_to_tunnel(&route).await else {
             return;
@@ -48,6 +57,25 @@ impl Front {
             return;
         }
         self.pipe(client, backend, &route, shutdown_rx).await;
+    }
+
+    /// Hand the connection to the relay's own site. The site's TLS reads the
+    /// hello bytes already taken off the socket first, then the socket.
+    async fn serve_site(
+        &self,
+        client: TcpStream,
+        hello_bytes: Vec<u8>,
+        shutdown_rx: broadcast::Receiver<bool>,
+    ) {
+        tune(&client);
+        let (client_read, client_write) = client.into_split();
+        let rewound = tokio::io::join(
+            std::io::Cursor::new(hello_bytes).chain(client_read),
+            client_write,
+        );
+        self.site
+            .serve(rewound, self.limits.hello_timeout, shutdown_rx)
+            .await;
     }
 
     /// The ClientHello's bytes (to replay) and its server name, or `None`
@@ -120,8 +148,8 @@ const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const KEEPALIVE_RETRIES: u32 = 6;
 
 /// Set TCP_NODELAY (the bytes are TLS records, already framed) and TCP
-/// keepalive on a piped socket. Failures are ignored: neither is needed for
-/// correctness.
+/// keepalive on a piped socket or one the site serves. Failures are ignored:
+/// neither is needed for correctness.
 fn tune(stream: &TcpStream) {
     let _ = stream.set_nodelay(true);
     let keepalive = TcpKeepalive::new().with_time(KEEPALIVE_TIME);
