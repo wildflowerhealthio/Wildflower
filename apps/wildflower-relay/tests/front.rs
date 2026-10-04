@@ -16,6 +16,8 @@ use wildflower_relay::{watch, Front, Limits, RouteTable, Router};
 
 const DOMAIN: &str = "relay.example.com";
 const WAIT: Duration = Duration::from_secs(5);
+/// Config poll interval for the reload test (the relay uses 2 s).
+const POLL: Duration = Duration::from_millis(100);
 
 /// The ClientHello a real rustls client sends for `host`.
 fn client_hello(host: &str) -> Vec<u8> {
@@ -242,9 +244,12 @@ async fn config_reload_adds_a_route_without_dropping_a_live_pipe() {
         watch::load_routes(&path).await.unwrap(),
     ));
     let harness = start_front(Arc::clone(&router)).await;
-    let watcher =
-        watch::watch_routes(&path, Arc::clone(&router), harness.shutdown_tx.subscribe()).unwrap();
-    tokio::spawn(watcher);
+    tokio::spawn(watch::watch_routes(
+        &path,
+        Arc::clone(&router),
+        POLL,
+        harness.shutdown_tx.subscribe(),
+    ));
 
     let (mut client, mut upstream) =
         pipe_through(&harness, &first, "first.relay.example.com", b"").await;
@@ -268,7 +273,7 @@ async fn config_reload_adds_a_route_without_dropping_a_live_pipe() {
 
     // A broken edit keeps the routes we have.
     tokio::fs::write(&path, "not = [toml").await.unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(POLL * 5).await;
     assert!(router.resolve("second.relay.example.com").is_some());
 
     let (mut client2, mut upstream2) =

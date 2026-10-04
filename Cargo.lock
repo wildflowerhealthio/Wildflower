@@ -9175,7 +9175,6 @@ name = "wildflower-relay"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "notify",
  "ppp",
  "rathole",
  "rustls",

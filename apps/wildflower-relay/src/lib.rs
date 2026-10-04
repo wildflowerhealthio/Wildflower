@@ -89,8 +89,7 @@ pub fn build_server_cli(config_path: PathBuf) -> rathole::Cli {
 /// # Errors
 ///
 /// Returns an error if the config cannot be written or loaded, a front
-/// listener cannot bind, the config directory cannot be watched, or rathole
-/// exits with an error.
+/// listener cannot bind, or rathole exits with an error.
 pub async fn run_relay(
     config_path: PathBuf,
     settings: RelaySettings,
@@ -98,11 +97,20 @@ pub async fn run_relay(
 ) -> anyhow::Result<()> {
     config::write_config(&config_path, &settings.control).await?;
     let settings = settings.front;
+    // The watcher is created first so a write made while the initial routes
+    // load is still seen as a change; it only starts polling in `try_join!`.
+    let router = Arc::new(Router::new(&settings.domain, RouteTable::default()));
+    let watcher = watch::watch_routes(
+        &config_path,
+        Arc::clone(&router),
+        watch::POLL_INTERVAL,
+        shutdown_rx.resubscribe(),
+    );
     let table = watch::load_routes(&config_path)
         .await
         .with_context(|| format!("loading routes from {}", config_path.display()))?;
     tracing::info!(domain = %settings.domain, routes = table.len(), "routes loaded");
-    let router = Arc::new(Router::new(&settings.domain, table));
+    router.replace(table);
     let front = Front::new(Arc::clone(&router), settings.limits);
 
     let https = TcpListener::bind(settings.https_addr)
@@ -111,7 +119,6 @@ pub async fn run_relay(
     let http = TcpListener::bind(settings.http_addr)
         .await
         .with_context(|| format!("binding the HTTP redirect on {}", settings.http_addr))?;
-    let watcher = watch::watch_routes(&config_path, router, shutdown_rx.resubscribe())?;
     tracing::info!(https = %settings.https_addr, http = %settings.http_addr, "front listening");
 
     tokio::try_join!(

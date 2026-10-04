@@ -162,8 +162,9 @@ pub async fn write_config(path: &Path, control: &ControlSettings) -> anyhow::Res
     Ok(())
 }
 
-/// `.<name>.tmp` beside `path`. Both watchers filter by the config's file
-/// name, so writing the temp file triggers nothing; the rename does.
+/// `.<name>.tmp` beside `path`. rathole's watcher filters events by the
+/// config's file name and the route watcher only looks at the config itself,
+/// so writing the temp file triggers nothing; the rename does.
 fn temp_path(path: &Path) -> anyhow::Result<PathBuf> {
     let name = path
         .file_name()

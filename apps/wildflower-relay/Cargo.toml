@@ -13,9 +13,6 @@ publish.workspace = true
 # dropped) so the tunnel side needs no system OpenSSL either.
 [dependencies]
 anyhow.workspace = true
-# Same major as the `notify` rathole's `hot-reload` feature pulls in, so the
-# route watcher adds no second copy.
-notify = "5"
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
 ppp = "2.3"
