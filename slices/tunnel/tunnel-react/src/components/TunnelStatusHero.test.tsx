@@ -4,7 +4,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import type { TunnelState } from '../queries.ts'
+import type { TunnelState } from '../queries/index.ts'
 import { TunnelStatusHero } from './TunnelStatusHero.tsx'
 
 const ONLINE_WITH_HOST: TunnelState = {

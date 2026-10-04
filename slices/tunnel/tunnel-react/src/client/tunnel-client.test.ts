@@ -4,7 +4,7 @@ import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { isTunnelState } from '../queries.ts'
+import { isTunnelState } from '../queries/index.ts'
 import { buildTunnelAdminClientLayer } from './tunnel-client.ts'
 
 const STATE_BODY = Tunnel.freshTunnelState

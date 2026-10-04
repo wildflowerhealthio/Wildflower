@@ -1,6 +1,6 @@
 import { Array, DateTime, Match, Option } from 'effect'
 
-import type { CallerSummary, LoggedRequest, RequestAuth } from './queries.ts'
+import type { CallerSummary, LoggedRequest, RequestAuth } from './queries/index.ts'
 
 /** What a row shows for a request no bearer gate verified. */
 const UNAUTHENTICATED = 'Unauthenticated'

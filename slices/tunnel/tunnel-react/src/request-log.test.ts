@@ -1,7 +1,7 @@
 import { DateTime, Option } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { CallerSummary } from './queries.ts'
+import type { CallerSummary } from './queries/index.ts'
 import {
   accessLabelOf,
   callerNameOf,

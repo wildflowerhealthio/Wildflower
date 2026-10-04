@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge, ToggleSwitch, type StatusTone } from 'react-tundraish'
 
-import { mightTunnelBeOpen, type TunnelState } from '../queries.ts'
+import { mightTunnelBeOpen, type TunnelState } from '../queries/index.ts'
 import { writeToClipboard } from '../write-to-clipboard.ts'
 import styles from './TunnelStatusHero.module.css'
 

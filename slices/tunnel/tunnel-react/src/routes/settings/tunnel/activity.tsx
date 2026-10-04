@@ -20,7 +20,7 @@ import {
   useTunnelRequestsQuery,
   type CallerSummary,
   type LoggedRequest,
-} from '../../../queries.ts'
+} from '../../../queries/index.ts'
 import { REQUEST_LOG_CSV_FILE_NAME, requestLogCsv, saveCsv } from '../../../request-log-csv.ts'
 import {
   accessLabelOf,

@@ -1,7 +1,7 @@
 import { DateTime, Option } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { LoggedRequest } from './queries.ts'
+import type { LoggedRequest } from './queries/index.ts'
 import { requestLogCsv } from './request-log-csv.ts'
 
 const request = (overrides: Partial<LoggedRequest>): LoggedRequest => ({

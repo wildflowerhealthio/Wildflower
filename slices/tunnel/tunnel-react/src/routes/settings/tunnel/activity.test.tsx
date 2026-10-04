@@ -6,7 +6,7 @@ import { Effect, Layer, pipe } from 'effect'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import type { RunAuthed } from '../../../queries.ts'
+import type { RunAuthed } from '../../../queries/index.ts'
 import { sliceRuntimeLayer } from '../../../router-context.ts'
 import { routeTree } from '../../../routeTree.gen.ts'
 

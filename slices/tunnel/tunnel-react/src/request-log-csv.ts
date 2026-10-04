@@ -1,6 +1,6 @@
 import { DateTime, Option } from 'effect'
 
-import type { LoggedRequest } from './queries.ts'
+import type { LoggedRequest } from './queries/index.ts'
 import { callerNameOf, requestAccessOf } from './request-log.ts'
 
 /** The suggested name of an exported request log. */

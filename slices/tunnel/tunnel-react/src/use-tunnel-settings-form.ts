@@ -6,7 +6,7 @@ import {
   type RelayInput,
   type TunnelReplaceInput,
   type TunnelState,
-} from './queries.ts'
+} from './queries/index.ts'
 import { useFieldDraft } from './use-field-draft.ts'
 
 /** The write-only relay fields, in wire order. */

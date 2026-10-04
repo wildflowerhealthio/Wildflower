@@ -8,7 +8,7 @@ import {
   useTunnelStateQuery,
   type RelayInput,
   type TunnelState,
-} from '../../../queries.ts'
+} from '../../../queries/index.ts'
 import { useTunnelSettingsForm } from '../../../use-tunnel-settings-form.ts'
 import styles from './relay.module.css'
 

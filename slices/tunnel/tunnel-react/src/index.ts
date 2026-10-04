@@ -21,4 +21,4 @@ export {
   type TunnelReplaceInput,
   type TunnelReplaceResult,
   type TunnelState,
-} from './queries.ts'
+} from './queries/index.ts'

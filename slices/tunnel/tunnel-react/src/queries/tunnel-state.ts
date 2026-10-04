@@ -1,54 +1,24 @@
 import {
-  infiniteQueryOptions,
   queryOptions,
-  useInfiniteQuery,
   useMutation,
-  useQuery,
   useQueryClient,
   useSuspenseQuery,
-  type InfiniteData,
-  type UseInfiniteQueryOptions,
-  type UseInfiniteQueryResult,
   type UseMutationResult,
-  type UseQueryOptions,
-  type UseQueryResult,
   type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
-import { useRouteContext } from '@tanstack/react-router'
-import { Effect, type Layer, Option, Schema } from 'effect'
-import { clientsQueryOptions, useRunAuthed as useGatekeeperRunAuthed } from 'gatekeeper-react'
-import { useMemo } from 'react'
+import { Effect, Schema } from 'effect'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 
-import { buildTunnelAdminClientLayer } from './client/tunnel-client.ts'
-import type { RouterContext, RunAuthed, RuntimeLayer } from './router-context.ts'
-
-// Annotated `select` so the result stays typed when the slice's router
-// isn't registered (standalone build).
-const useRunAuthed = (): RunAuthed =>
-  useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
+import { buildTunnelAdminClientLayer } from '../client/tunnel-client.ts'
+import type { RunAuthed } from '../router-context.ts'
+import { TUNNEL_STATE_QUERY_KEY } from './keys.ts'
+import { useRunAuthed } from './use-run-authed.ts'
 
 type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateViewSchema>
 type RelayInput = Schema.Schema.Type<typeof Tunnel.RelayInputSchema>
 type ReplaceTunnelPayload = Schema.Schema.Type<typeof Tunnel.ReplaceTunnelRequestBodySchema>
-type CallerSummary = Schema.Schema.Type<typeof Tunnel.CallerSummarySchema>
-type LoggedRequest = Schema.Schema.Type<typeof Tunnel.LoggedRequestSchema>
-type RequestLogPage = Schema.Schema.Type<typeof Tunnel.RequestLogPageSchema>
-type RequestAuth = Schema.Schema.Type<typeof Tunnel.RequestAuthSchema>
-
-/**
- * Which requests a request-log read keeps — `ListRequests`' url params without
- * the `cursor`, which the paging owns.
- */
-type RequestLogFilter = Omit<
-  Schema.Schema.Type<typeof Tunnel.ListRequestsUrlParamsSchema>,
-  'cursor'
->
-
-/** The `cursor` a request-log page is read from; `null` is the newest page. */
-type RequestLogCursor = number | null
 
 /**
  * The user-controlled half of a `ReplaceTunnel` write. `settingsRevision` is
@@ -87,9 +57,6 @@ type TunnelReplaceResult =
  * re-deriving `running || requestedRunning`.
  */
 const mightTunnelBeOpen = (state: TunnelState): boolean => state.running || state.requestedRunning
-
-/** External mutators of `TunnelState` (e.g. host-bridge events) should invalidate this. */
-const TUNNEL_STATE_QUERY_KEY = ['tunnel', 'state'] as const
 
 /** Shared by the route `loader` (`ensureQueryData`) and {@link useTunnelStateQuery}. */
 const tunnelStateQueryOptions = (
@@ -239,161 +206,13 @@ const useTunnelReplaceMutation = (): UseMutationResult<
   })
 }
 
-/** Root of every request-log read; anything that writes the log invalidates under it. */
-const TUNNEL_REQUESTS_QUERY_KEY = ['tunnel', 'requests'] as const
-
-const TUNNEL_CALLERS_QUERY_KEY = [...TUNNEL_REQUESTS_QUERY_KEY, 'callers'] as const
-
-type TunnelRequestsQueryKey = readonly [
-  ...typeof TUNNEL_REQUESTS_QUERY_KEY,
-  'pages',
-  RequestLogFilter,
-]
-
-/**
- * `ListCallers` — one row per (caller, client address), the most recently seen
- * first. Shared by the activity card and the activity page's client summary.
- */
-const tunnelCallersQueryOptions = (
-  runAuthed: RunAuthed
-): UseQueryOptions<
-  readonly CallerSummary[],
-  Error,
-  readonly CallerSummary[],
-  typeof TUNNEL_CALLERS_QUERY_KEY
-> =>
-  queryOptions({
-    queryKey: TUNNEL_CALLERS_QUERY_KEY,
-    queryFn: () =>
-      runAuthed(
-        Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.ListCallers()).pipe(
-          Effect.provide(buildTunnelAdminClientLayer())
-        )
-      ),
-  })
-
-/**
- * Not a suspense query: the log is secondary to the screens that show it, so a
- * failed read renders in place rather than replacing the page.
- */
-const useTunnelCallersQuery = (): UseQueryResult<readonly CallerSummary[], Error> =>
-  useQuery(tunnelCallersQueryOptions(useRunAuthed()))
-
-/** One `ListRequests` page under `filter`, read from `cursor`. */
-const listRequestsPage = (
-  filter: RequestLogFilter,
-  cursor: RequestLogCursor
-): Effect.Effect<RequestLogPage, unknown, Layer.Layer.Success<RuntimeLayer>> =>
-  Effect.flatMap(TunnelAdminHttpApiClient, (c) =>
-    c.tunnel.ListRequests({ urlParams: cursor === null ? filter : { ...filter, cursor } })
-  ).pipe(Effect.provide(buildTunnelAdminClientLayer()))
-
-/**
- * `ListRequests` under `filter`, newest first, one keyset page at a time. A
- * page whose `nextCursor` is `None` is the last, which TanStack Query reads from
- * the `null` {@link UseInfiniteQueryOptions.getNextPageParam} returns.
- */
-const tunnelRequestsInfiniteQueryOptions = (
-  runAuthed: RunAuthed,
-  filter: RequestLogFilter
-): UseInfiniteQueryOptions<
-  RequestLogPage,
-  Error,
-  InfiniteData<RequestLogPage, RequestLogCursor>,
-  TunnelRequestsQueryKey,
-  RequestLogCursor
-> =>
-  infiniteQueryOptions({
-    queryKey: [...TUNNEL_REQUESTS_QUERY_KEY, 'pages', filter] as const,
-    initialPageParam: null as RequestLogCursor,
-    getNextPageParam: (lastPage: RequestLogPage): RequestLogCursor =>
-      Option.getOrNull(lastPage.nextCursor),
-    queryFn: ({ pageParam }: { readonly pageParam: RequestLogCursor }) =>
-      runAuthed(listRequestsPage(filter, pageParam)),
-  })
-
-const useTunnelRequestsQuery = (
-  filter: RequestLogFilter
-): UseInfiniteQueryResult<InfiniteData<RequestLogPage, RequestLogCursor>, Error> =>
-  useInfiniteQuery(tunnelRequestsInfiniteQueryOptions(useRunAuthed(), filter))
-
-/**
- * Every logged request under `filter`, newest first, read page by page to the
- * end of the log — the CSV export's read, which wants the whole filtered set
- * rather than the pages the table has shown.
- */
-const listEveryRequest = (
-  filter: RequestLogFilter
-): Effect.Effect<readonly LoggedRequest[], unknown, Layer.Layer.Success<RuntimeLayer>> => {
-  const readFrom = (
-    cursor: RequestLogCursor,
-    read: readonly LoggedRequest[]
-  ): Effect.Effect<readonly LoggedRequest[], unknown, Layer.Layer.Success<RuntimeLayer>> =>
-    Effect.flatMap(listRequestsPage(filter, cursor), (page) => {
-      const requests = [...read, ...page.requests]
-      return Option.match(page.nextCursor, {
-        onNone: () => Effect.succeed(requests),
-        onSome: (next) => readFrom(next, requests),
-      })
-    })
-  return readFrom(null, [])
-}
-
-/**
- * Exports the request log under a filter; resolves with every matching
- * request (see {@link listEveryRequest}) for the caller to format and save.
- */
-const useExportRequestsMutation = (): UseMutationResult<
-  readonly LoggedRequest[],
-  Error,
-  RequestLogFilter
-> => {
-  const runAuthed = useRunAuthed()
-  return useMutation({ mutationFn: (filter) => runAuthed(listEveryRequest(filter)) })
-}
-
-/**
- * Display names of the OAuth clients gatekeeper knows, by `clientId`. The log
- * stores only the id; the name is decoration, so the map is empty while the
- * client list loads or when it can't be read, and callers fall back to the id.
- */
-const useClientNames = (): ReadonlyMap<string, string> => {
-  const { data } = useQuery(clientsQueryOptions(useGatekeeperRunAuthed()))
-  return useMemo(
-    () => new Map((data ?? []).map((client) => [client.clientId, client.name] as const)),
-    [data]
-  )
-}
-
 export {
   applyTunnelOptimistic,
   buildReplacePayload,
   isTunnelState,
-  listEveryRequest,
   mightTunnelBeOpen,
-  TUNNEL_CALLERS_QUERY_KEY,
-  TUNNEL_REQUESTS_QUERY_KEY,
-  TUNNEL_STATE_QUERY_KEY,
-  tunnelCallersQueryOptions,
-  tunnelRequestsInfiniteQueryOptions,
   tunnelStateQueryOptions,
-  useClientNames,
-  useExportRequestsMutation,
-  useTunnelCallersQuery,
   useTunnelReplaceMutation,
-  useTunnelRequestsQuery,
   useTunnelStateQuery,
 }
-export type {
-  CallerSummary,
-  LoggedRequest,
-  RelayInput,
-  RequestAuth,
-  RequestLogCursor,
-  RequestLogFilter,
-  RequestLogPage,
-  RunAuthed,
-  TunnelReplaceInput,
-  TunnelReplaceResult,
-  TunnelState,
-}
+export type { RelayInput, TunnelReplaceInput, TunnelReplaceResult, TunnelState }
