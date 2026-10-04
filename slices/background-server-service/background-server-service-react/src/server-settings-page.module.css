@@ -1,0 +1,88 @@
+/*
+ * The server settings page: a Status card and the Tunnel section, each under a
+ * sentence-case eyebrow. The card uses the surface, row padding and hairline
+ * dividers of react-tundraish's `ItemList` card, so it sits with the Settings
+ * list it is reached from; it is a description list rather than an `ItemList`
+ * because its values wrap (a stop reason, an error chain) where `ItemList`
+ * truncates. Every colour comes from tundra-css and react-tundraish tokens.
+ */
+.server-settings-page__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* `ItemList`'s section title: 12px / 500, a hair of tracking, label ink. */
+.server-settings-page__heading {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+}
+
+.server-settings-page__card {
+  margin: 0;
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--radius-4);
+  background: var(--card-color-background);
+}
+
+/* A label with its value at the row's end; `--stacked` puts the value under
+ * the label, for values that run to a sentence or more. */
+.server-settings-page__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  min-height: var(--space-12);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.server-settings-page__row:last-child {
+  border-bottom: 0;
+}
+
+.server-settings-page__row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.server-settings-page__label {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
+  color: var(--color-foreground);
+}
+
+.server-settings-page__value {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-4);
+}
+
+/* The server's own error chain: a machine string, so mono and wrapping. */
+.server-settings-page__error {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-red-3);
+  overflow-wrap: anywhere;
+}
+
+/* What the Tunnel section says while there is no tunnel to show. */
+.server-settings-page__note {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-4);
+}
+
+:global(:root[data-color-scheme='dark']) .server-settings-page__error {
+  color: var(--color-red-2);
+}

@@ -95,9 +95,17 @@ impl<R: Runtime> BackgroundService<R> for WildflowerServerService {
 
 /// Start the background service as `start_config` says. A service that is
 /// already running counts as started. A failure to start is reported like a
-/// server failure: logged, a notification, and the native error dialog.
-async fn start_server_service<R: Runtime>(app: &AppHandle<R>, start_config: &StartConfig) {
+/// server failure: logged, a notification, and the native error dialog. No
+/// run begins, so no plugin event follows: the stop reason becomes
+/// [`ServiceStopReason::Error`] here, which also replaces a restart's own
+/// `AppStop` so the page doesn't wait on a restart that isn't coming.
+async fn start_server_service<R: Runtime>(
+    app: &AppHandle<R>,
+    start_config: &StartConfig,
+    last_stop_reason: &watch::Sender<Option<ServiceStopReason>>,
+) {
     let Some(service_manager) = app.try_state::<ServiceManagerHandle<R>>() else {
+        last_stop_reason.send_replace(Some(ServiceStopReason::Error));
         report_server_failure(app, "the background-service plugin is not registered");
         return;
     };
@@ -106,14 +114,25 @@ async fn start_server_service<R: Runtime>(app: &AppHandle<R>, start_config: &Sta
         .await
     {
         Ok(()) | Err(ServiceError::AlreadyRunning) => {}
-        Err(error) => report_server_failure(app, &format!("failed to start: {error}")),
+        Err(error) => {
+            last_stop_reason.send_replace(Some(ServiceStopReason::Error));
+            report_server_failure(app, &format!("failed to start: {error}"));
+        }
     }
 }
 
 /// Stop the service if it is running, then start it as `start_config` says. The
 /// stop uses [`RESTART_STOP_REASON`], so it posts no stop notification; the new
 /// run waits for the old one at the run gate.
-async fn restart_server_service<R: Runtime>(app: &AppHandle<R>, start_config: &StartConfig) {
+///
+/// The stop reason is recorded here, once the stop is accepted, rather than
+/// from the plugin's `Stopped` event: that event comes from the old run's task
+/// whenever it ends, which may be after a rejected start has recorded `Error`.
+async fn restart_server_service<R: Runtime>(
+    app: &AppHandle<R>,
+    start_config: &StartConfig,
+    last_stop_reason: &watch::Sender<Option<ServiceStopReason>>,
+) {
     let Some(service_manager) = app.try_state::<ServiceManagerHandle<R>>() else {
         report_server_failure(app, "the background-service plugin is not registered");
         return;
@@ -122,7 +141,13 @@ async fn restart_server_service<R: Runtime>(app: &AppHandle<R>, start_config: &S
         .stop_with_reason(stop_reason::to_plugin(RESTART_STOP_REASON))
         .await
     {
-        Ok(()) | Err(ServiceError::NotRunning) => start_server_service(app, start_config).await,
+        Ok(()) => {
+            last_stop_reason.send_replace(Some(RESTART_STOP_REASON));
+            start_server_service(app, start_config, last_stop_reason).await;
+        }
+        Err(ServiceError::NotRunning) => {
+            start_server_service(app, start_config, last_stop_reason).await;
+        }
         Err(error) => report_server_failure(app, &format!("failed to stop for a restart: {error}")),
     }
 }
@@ -171,10 +196,20 @@ pub fn start_background_server_service<R: Runtime>(
     let status_wanted = Arc::new(Notify::new());
     let (last_stop_reason_sender, last_stop_reason) = watch::channel(None);
 
-    listen_for_bridge_messages(app, Arc::clone(&status_wanted), start_config.clone());
-    listen_for_plugin_events(app, last_stop_reason_sender, run_state.clone());
+    listen_for_bridge_messages(
+        app,
+        Arc::clone(&status_wanted),
+        start_config.clone(),
+        last_stop_reason_sender.clone(),
+    );
+    listen_for_plugin_events(app, last_stop_reason_sender.clone(), run_state.clone());
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    start_or_restart_on_foreground_resume(app, run_state.clone(), start_config.clone());
+    start_or_restart_on_foreground_resume(
+        app,
+        run_state.clone(),
+        start_config.clone(),
+        last_stop_reason_sender.clone(),
+    );
     tauri::async_runtime::spawn(emit_status_changes(
         app.clone(),
         Arc::clone(&status_wanted),
@@ -192,7 +227,7 @@ pub fn start_background_server_service<R: Runtime>(
         // leaves the plugin nothing to ask.
         ask_for_notification_permission(&launch_handle).await;
         status_wanted.notify_one();
-        start_server_service(&launch_handle, &start_config).await;
+        start_server_service(&launch_handle, &start_config, &last_stop_reason_sender).await;
     });
 }
 
@@ -203,6 +238,7 @@ fn listen_for_bridge_messages<R: Runtime>(
     app: &AppHandle<R>,
     status_wanted: Arc<Notify>,
     start_config: StartConfig,
+    last_stop_reason_sender: watch::Sender<Option<ServiceStopReason>>,
 ) {
     let handle = app.clone();
     app.listen(BRIDGE_EVENT, move |event| {
@@ -223,8 +259,10 @@ fn listen_for_bridge_messages<R: Runtime>(
                 Ok(BackgroundServerServiceWebToHost::RestartServer) => {
                     let handle = handle.clone();
                     let start_config = start_config.clone();
+                    let last_stop_reason_sender = last_stop_reason_sender.clone();
                     tauri::async_runtime::spawn(async move {
-                        restart_server_service(&handle, &start_config).await;
+                        restart_server_service(&handle, &start_config, &last_stop_reason_sender)
+                            .await;
                     });
                 }
                 Err(error) => log::warn!(
@@ -250,7 +288,11 @@ fn listen_for_plugin_events<R: Runtime>(
             }
             Ok(BackgroundServiceEvent::Stopped { reason }) => {
                 log::info!("[background-server-service] service stopped: {reason:?}");
-                last_stop_reason_sender.send_replace(Some(reason));
+                // A restart records its own stop reason (see
+                // `restart_server_service`).
+                if reason != RESTART_STOP_REASON {
+                    last_stop_reason_sender.send_replace(Some(reason));
+                }
                 if let Some(notification) = stop_notification(reason) {
                     show_notification(&handle, &notification);
                 }
@@ -375,6 +417,7 @@ fn start_or_restart_on_foreground_resume<R: Runtime>(
     app: &AppHandle<R>,
     run_state: watch::Receiver<ServerRunState>,
     start_config: StartConfig,
+    last_stop_reason_sender: watch::Sender<Option<ServiceStopReason>>,
 ) {
     use background_server_service_rust::{ForegroundResume, ResumeAction};
 
@@ -404,15 +447,16 @@ fn start_or_restart_on_foreground_resume<R: Runtime>(
         };
         let handle = handle.clone();
         let start_config = start_config.clone();
+        let last_stop_reason_sender = last_stop_reason_sender.clone();
         match action {
             Some(ResumeAction::Start) => {
                 tauri::async_runtime::spawn(async move {
-                    start_server_service(&handle, &start_config).await;
+                    start_server_service(&handle, &start_config, &last_stop_reason_sender).await;
                 });
             }
             Some(ResumeAction::Restart) => {
                 tauri::async_runtime::spawn(async move {
-                    restart_server_service(&handle, &start_config).await;
+                    restart_server_service(&handle, &start_config, &last_stop_reason_sender).await;
                 });
             }
             None => {}

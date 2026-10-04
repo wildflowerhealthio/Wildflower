@@ -14,6 +14,11 @@
  * affordance stay reachable while the body scrolls; the canvas background and
  * `z-index` keep scrolled content from showing through. There is no bottom
  * divider — the bar sits directly under the status bar.
+ *
+ * The status-bar inset is read through `--safe-area-inset-top` (the device's
+ * `env(safe-area-inset-top)` unless an ancestor sets it), so chrome that
+ * already sits under the status bar — an app-wide banner above the route — can
+ * take the inset and zero it for the header below.
  */
 .page-header {
   position: sticky;
@@ -23,7 +28,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: max(calc(env(safe-area-inset-top, 0) + var(--space-3)), var(--space-4)) 0 0;
+  padding: max(
+      calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--space-3)),
+      var(--space-4)
+    )
+    0 0;
 
   /*
    * Bleed flush to the page edges by cancelling the `.page` shell's padding.

@@ -1,16 +1,19 @@
+// oxlint-disable import/max-dependencies -- the tree root provides every platform contribution and slice sender
 import { type AnyRouter, RouterProvider } from '@tanstack/react-router'
 import { HandlerCoordinatorContext } from 'effect-messaging-react'
 import { NavigationBridgeHandler } from 'navigation-react'
-import { Fragment, useMemo, type JSX, type PropsWithChildren } from 'react'
+import { Fragment, useMemo, type JSX, type PropsWithChildren, type ReactNode } from 'react'
 import { usePromiseOrDefault } from 'react-kitchen-sink'
 import { ErrorBodyRendererContext } from 'react-tundraish'
 import type { SettingsItem } from 'shared-structures-react'
 
 import { renderScopeError } from '../scope-error-renderer.tsx'
+import { PlatformBannerContext } from '../session/platform-banner-context.ts'
 import { PlatformSettingsItemsProvider } from '../session/platform-settings-items.tsx'
 import { PlatformTabsProvider } from '../session/platform-tabs.tsx'
 import { ServerKindContext, type ServerKind } from '../session/server-kind.ts'
 import type { TabSpec } from '../session/tabs.ts'
+import { BackgroundServerServiceSenderForwarder } from './background-server-service-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { HarRecorderSenderForwarder } from './har-recorder-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
@@ -24,6 +27,9 @@ interface AppRootTreeProps {
   /** The entry's platform-specific tabs, provided to the tree so the primary
    * bar can render them after the shared ones. See {@link PlatformTabsProvider}. */
   readonly platformTabs: readonly TabSpec[]
+  /** The entry's platform banner, provided to the tree so `<RootShell>` can
+   * render it above every route. See {@link PlatformBannerContext}. */
+  readonly platformBanner: ReactNode
   /** The kind of server the tree is for, provided so the primary bar renders
    * only the tabs it serves. See {@link ServerKindContext}. */
   readonly serverKind: ServerKind
@@ -47,6 +53,7 @@ const AppRootTree = ({
   transportPromise,
   platformSettingsItems,
   platformTabs,
+  platformBanner,
   serverKind,
 }: AppRootTreeProps): JSX.Element => {
   const transport = usePromiseOrDefault(transportPromise, stubTransport, () => stubTransport)
@@ -62,7 +69,11 @@ const AppRootTree = ({
            */}
           <NavigationBridgeHandler sender={transport.sendMessage} />
           <CollectorSenderForwarder>
-            <HarRecorderSenderForwarder>{children}</HarRecorderSenderForwarder>
+            <HarRecorderSenderForwarder>
+              <BackgroundServerServiceSenderForwarder>
+                {children}
+              </BackgroundServerServiceSenderForwarder>
+            </HarRecorderSenderForwarder>
           </CollectorSenderForwarder>
         </Fragment>
       ),
@@ -73,13 +84,15 @@ const AppRootTree = ({
     <ErrorBodyRendererContext.Provider value={renderScopeError}>
       <PlatformSettingsItemsProvider items={platformSettingsItems}>
         <PlatformTabsProvider tabs={platformTabs}>
-          <ServerKindContext value={serverKind}>
-            <TransportContext.Provider value={transport}>
-              <HandlerCoordinatorContext.Provider value={transport.coordinator}>
-                <RouterProvider router={router} InnerWrap={InnerWrap} />
-              </HandlerCoordinatorContext.Provider>
-            </TransportContext.Provider>
-          </ServerKindContext>
+          <PlatformBannerContext value={platformBanner}>
+            <ServerKindContext value={serverKind}>
+              <TransportContext.Provider value={transport}>
+                <HandlerCoordinatorContext.Provider value={transport.coordinator}>
+                  <RouterProvider router={router} InnerWrap={InnerWrap} />
+                </HandlerCoordinatorContext.Provider>
+              </TransportContext.Provider>
+            </ServerKindContext>
+          </PlatformBannerContext>
         </PlatformTabsProvider>
       </PlatformSettingsItemsProvider>
     </ErrorBodyRendererContext.Provider>

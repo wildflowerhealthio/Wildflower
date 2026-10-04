@@ -1,5 +1,11 @@
+// oxlint-disable import/max-dependencies -- the app root builds every slice store and provider the tree shares
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
+import {
+  makeServerServiceStatusStore,
+  ServerServiceStatusProvider,
+  type ServerServiceStatusStore,
+} from 'background-server-service-react'
 import { Effect, type Fiber, type Layer, type Subscribable, Stream } from 'effect'
 import {
   ActivePendingConsentProvider,
@@ -30,18 +36,21 @@ import 'react-tundraish/styles'
 
 /**
  * Per-entry transport factory. Receives a `writeIssuedToken` writer
- * threaded from the entry's {@link AuthStateStore} and a
+ * threaded from the entry's {@link AuthStateStore}, a
  * `setActivePendingConsent` writer threaded from the in-app
- * {@link ActivePendingConsentStore}; returns the page's transport
- * (narrowed to the React-facing `ReactTransport` surface). Web entries
- * return a pre-resolved stub and ignore both setters (no host bridge to
- * receive `AuthTokenIssued` or `PendingConsentRequested` from); Tauri
- * wires both into the gatekeeper page-bridge handler so host pushes land
- * in the corresponding stores.
+ * {@link ActivePendingConsentStore}, and a `setServerServiceStatus` writer
+ * threaded from the in-app {@link ServerServiceStatusStore}; returns the
+ * page's transport (narrowed to the React-facing `ReactTransport` surface).
+ * Web entries return a pre-resolved stub and ignore every setter (no host
+ * bridge to receive `AuthTokenIssued`, `PendingConsentRequested` or
+ * `ServerServiceStatus` from); Tauri wires them into the gatekeeper and
+ * background-server-service page-bridge handlers so host pushes land in the
+ * corresponding stores.
  */
 type MakeTransport = (
   writeIssuedToken: AuthStateStore['setAuthState'],
-  setActivePendingConsent: ActivePendingConsentStore['setActiveHead']
+  setActivePendingConsent: ActivePendingConsentStore['setActiveHead'],
+  setServerServiceStatus: ServerServiceStatusStore['setStatus']
 ) => Promise<ReactTransport>
 
 /**
@@ -181,6 +190,13 @@ interface RenderAppOptions {
    */
   readonly platformTabs: AppRootTreeProps['platformTabs']
   /**
+   * The banner this entry renders above every route (see
+   * `session/platform-banner-context.ts`). Chosen at the entry for the same
+   * reason as `platformTabs`. `main-tauri` passes the server status banner,
+   * since only its host runs the Wildflower server; web entries pass `null`.
+   */
+  readonly platformBanner: AppRootTreeProps['platformBanner']
+  /**
    * Whether a 401 that outlives the boot-race retry should redirect the user to
    * device login. Web entries set `true` (they have a device-login flow);
    * `main-tauri` sets `false` — the webview is host-authenticated, so there's no
@@ -278,6 +294,7 @@ const buildAppTree = ({
   externalLinkRoot,
   platformSettingsItems,
   platformTabs,
+  platformBanner,
   redirectToDeviceLoginOnUnauthorized,
   serverKind,
   readBearer,
@@ -323,9 +340,15 @@ const buildAppTree = ({
   // everywhere (no per-entry guard inside the gatekeeper-react surface).
   const activePendingConsentStore = makeActivePendingConsentStore()
 
+  // Built once per app, like the pending-consent store: only the Tauri host
+  // pushes `ServerServiceStatus`, but every entry provides the store, so the
+  // `/settings/server` page reads it the same way everywhere.
+  const serverServiceStatusStore = makeServerServiceStatusStore()
+
   const transportPromise = makeTransport(
     tokenStore.setAuthState,
-    activePendingConsentStore.setActiveHead
+    activePendingConsentStore.setActiveHead,
+    serverServiceStatusStore.setStatus
   )
   const transportReady = transportPromise.then(() => undefined)
   const resolvedAwaitAuthReady = awaitAuthReady(transportReady)
@@ -389,13 +412,16 @@ const buildAppTree = ({
         <AuthStateProvider store={tokenStore}>
           <TokenResponseHandlerContext value={tokenResponseHandler}>
             <ActivePendingConsentProvider store={activePendingConsentStore}>
-              <AppRootTree
-                router={router}
-                transportPromise={transportPromise}
-                platformSettingsItems={platformSettingsItems}
-                platformTabs={platformTabs}
-                serverKind={serverKind}
-              />
+              <ServerServiceStatusProvider store={serverServiceStatusStore}>
+                <AppRootTree
+                  router={router}
+                  transportPromise={transportPromise}
+                  platformSettingsItems={platformSettingsItems}
+                  platformTabs={platformTabs}
+                  platformBanner={platformBanner}
+                  serverKind={serverKind}
+                />
+              </ServerServiceStatusProvider>
             </ActivePendingConsentProvider>
           </TokenResponseHandlerContext>
         </AuthStateProvider>

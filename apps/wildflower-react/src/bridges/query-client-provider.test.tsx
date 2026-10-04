@@ -88,6 +88,23 @@ vi.mock('./collector-sender-forwarder.tsx', () => ({
 vi.mock('./har-recorder-sender-forwarder.tsx', () => ({
   HarRecorderSenderForwarder: Passthrough,
 }))
+vi.mock('./background-server-service-sender-forwarder.tsx', () => ({
+  BackgroundServerServiceSenderForwarder: Passthrough,
+}))
+// `renderApp` builds the server status store through the real
+// `react-kitchen-sink` store plumbing, which this harness mocks away; the
+// provider is a passthrough and the store a no-op, as for the pending-consent
+// store above.
+vi.mock('background-server-service-react', () => ({
+  ServerServiceStatusProvider: Passthrough,
+  makeServerServiceStatusStore: () => ({
+    subscribable: {
+      get: Effect.succeed(null),
+      changes: { pipe: () => ({}) },
+    },
+    setStatus: () => {},
+  }),
+}))
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
@@ -145,6 +162,7 @@ describe('in-memory QueryClientProvider', () => {
         externalLinkRoot: () => 'https://example.test',
         platformSettingsItems: [],
         platformTabs: [],
+        platformBanner: null,
         redirectToDeviceLoginOnUnauthorized: false,
         serverKind: ServerKind.Wildflower(),
       })
