@@ -34,7 +34,8 @@ const ACCEPT_BACKOFF: Duration = Duration::from_millis(50);
 pub struct Limits {
     /// Concurrent connections across `:443` and `:80` together.
     pub max_connections: usize,
-    /// Deadline for a complete ClientHello (or HTTP request head).
+    /// Deadline for a complete ClientHello (or HTTP request head), and for
+    /// the relay's own site to finish a TLS handshake.
     pub hello_timeout: Duration,
 }
 
