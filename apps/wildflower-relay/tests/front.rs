@@ -3,7 +3,6 @@
 //! on the other.
 
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,12 +11,10 @@ use rustls::{ClientConfig, ClientConnection, RootCertStore};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
-use wildflower_relay::{watch, Front, Limits, RouteTable, Router};
+use wildflower_relay::{Front, Limits, RouteTable, Router};
 
 const DOMAIN: &str = "relay.example.com";
 const WAIT: Duration = Duration::from_secs(5);
-/// Config poll interval for the reload test (the relay uses 2 s).
-const POLL: Duration = Duration::from_millis(100);
 
 /// The ClientHello a real rustls client sends for `host`.
 fn client_hello(host: &str) -> Vec<u8> {
@@ -216,77 +213,6 @@ async fn silent_client_is_dropped_after_the_hello_deadline() {
     // Connect and send nothing; the 2 s test deadline closes it.
     let client = TcpStream::connect(harness.https).await.unwrap();
     assert_closed_silently(client).await;
-}
-
-async fn write_config(path: &Path, services: &[(&str, SocketAddr)]) {
-    let mut text = String::from("[server]\nbind_addr = \"127.0.0.1:0\"\n\n[server.services]\n");
-    for (name, addr) in services {
-        text.push_str(&format!(
-            "\n[server.services.{name}]\nbind_addr = \"{addr}\"\ntoken = \"t\"\n"
-        ));
-    }
-    // Write-then-rename, as enrolment does.
-    let temp = path.with_extension("tmp");
-    tokio::fs::write(&temp, text).await.unwrap();
-    tokio::fs::rename(&temp, path).await.unwrap();
-}
-
-#[tokio::test]
-async fn config_reload_adds_a_route_without_dropping_a_live_pipe() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("relay.toml");
-    let first = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let second = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    write_config(&path, &[("first", first.local_addr().unwrap())]).await;
-
-    let router = Arc::new(Router::new(
-        DOMAIN,
-        watch::load_routes(&path).await.unwrap(),
-    ));
-    let harness = start_front(Arc::clone(&router)).await;
-    tokio::spawn(watch::watch_routes(
-        &path,
-        Arc::clone(&router),
-        POLL,
-        harness.shutdown_tx.subscribe(),
-    ));
-
-    let (mut client, mut upstream) =
-        pipe_through(&harness, &first, "first.relay.example.com", b"").await;
-    assert_eq!(router.resolve("second.relay.example.com"), None);
-
-    write_config(
-        &path,
-        &[
-            ("first", first.local_addr().unwrap()),
-            ("second", second.local_addr().unwrap()),
-        ],
-    )
-    .await;
-    tokio::time::timeout(WAIT, async {
-        while router.resolve("second.relay.example.com").is_none() {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .expect("reload should add the second route");
-
-    // A broken edit keeps the routes we have.
-    tokio::fs::write(&path, "not = [toml").await.unwrap();
-    tokio::time::sleep(POLL * 5).await;
-    assert!(router.resolve("second.relay.example.com").is_some());
-
-    let (mut client2, mut upstream2) =
-        pipe_through(&harness, &second, "second.relay.example.com", b"").await;
-    upstream2.write_all(b"two").await.unwrap();
-    assert_eq!(read_exact(&mut client2, 3).await, b"two");
-
-    // The first pipe survived the reload.
-    client.write_all(b"still here").await.unwrap();
-    assert_eq!(read_exact(&mut upstream, 10).await, b"still here");
-    upstream.write_all(b"and here").await.unwrap();
-    assert_eq!(read_exact(&mut client, 8).await, b"and here");
-    let _ = harness.shutdown_tx.send(true);
 }
 
 async fn http_get(addr: SocketAddr, request: &str) -> String {

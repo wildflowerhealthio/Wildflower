@@ -1,11 +1,11 @@
 //! Hostname → tunnel routing for the front.
 //!
-//! A public hostname `<label>.<domain>` names the rathole service
-//! `[server.services.<label>]` in the relay's TOML. That service's `bind_addr`
-//! is a loopback address which rathole listens on only while the device's
-//! tunnel is up, so the front connects there and lets a refused connection mean
-//! "device offline". The table is rebuilt from the same TOML whenever it
-//! changes (see [`crate::watch`]) and swapped in whole.
+//! A public hostname `<label>.<domain>` names the device service `<label>`
+//! from `WILDFLOWER_RELAY_SERVICES`. Its loopback address is where rathole
+//! listens for that device, and only while the device's tunnel is up, so the
+//! front connects there and lets a refused connection mean "device offline".
+//! The [`RouteTable`] is built from the same service list that the rathole
+//! TOML is rendered from, and [`Router::replace`] swaps in a new one whole.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -19,55 +19,15 @@ pub struct Route {
     pub addr: SocketAddr,
 }
 
-/// Label → loopback `bind_addr`, as read from one version of the rathole
-/// config.
+/// Label → loopback address of that device's rathole service.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RouteTable {
     addrs: HashMap<String, SocketAddr>,
 }
 
 impl RouteTable {
-    /// Build the table from a parsed rathole config. Services the front cannot
-    /// route are skipped with a warning rather than failing the whole reload:
-    /// the name must be a lowercase DNS label, the service must be TCP, and
-    /// `bind_addr` must be a literal loopback `ip:port` so nothing but this
-    /// front reaches the tunnel.
-    #[must_use]
-    pub fn from_config(config: &rathole::Config) -> Self {
-        let Some(server) = &config.server else {
-            return Self::default();
-        };
-        let addrs = server
-            .services
-            .iter()
-            .filter_map(|(name, service)| {
-                // rathole's `ServiceType` is not exported; its default is
-                // `tcp`, which is also what an omitted `type` parses to.
-                if service.service_type != Default::default() {
-                    tracing::warn!(service = %name, "not routable: only `type = \"tcp\"` services are fronted");
-                    return None;
-                }
-                if !is_dns_label(name) {
-                    tracing::warn!(service = %name, "not routable: service name is not a lowercase DNS label");
-                    return None;
-                }
-                match service.bind_addr.parse::<SocketAddr>() {
-                    Ok(addr) if addr.ip().is_loopback() => Some((name.clone(), addr)),
-                    _ => {
-                        tracing::warn!(
-                            service = %name,
-                            bind_addr = %service.bind_addr,
-                            "not routable: bind_addr must be a loopback ip:port"
-                        );
-                        None
-                    }
-                }
-            })
-            .collect();
-        Self { addrs }
-    }
-
-    /// Build a table directly from `(label, bind_addr)` pairs.
+    /// Build a table from `(label, loopback addr)` pairs, e.g.
+    /// [`crate::ControlSettings::service_addrs`].
     #[must_use]
     pub fn from_addrs(addrs: impl IntoIterator<Item = (String, SocketAddr)>) -> Self {
         Self {
@@ -87,8 +47,8 @@ impl RouteTable {
 }
 
 /// The front's view of routing: the public domain suffix (a relay-only
-/// setting) plus the current [`RouteTable`], which the config watcher swaps
-/// while connections are being routed.
+/// setting) plus the current [`RouteTable`], which [`Router::replace`] can
+/// swap while connections are being routed.
 #[derive(Debug)]
 pub struct Router {
     domain: String,
@@ -214,80 +174,8 @@ mod tests {
         }
     }
 
-    async fn table_from_toml(toml: &str) -> RouteTable {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("relay.toml");
-        std::fs::write(&path, toml).expect("write config");
-        let config = rathole::Config::from_file(&path)
-            .await
-            .expect("config must parse");
-        RouteTable::from_config(&config)
-    }
-
     fn addr(s: &str) -> SocketAddr {
         s.parse().expect("socket addr")
-    }
-
-    #[tokio::test]
-    async fn from_config_keeps_only_loopback_tcp_services_with_label_names() {
-        let table = table_from_toml(
-            r#"
-[server]
-bind_addr = "0.0.0.0:2333"
-
-[server.services.good]
-bind_addr = "127.0.0.1:5201"
-token = "t"
-
-[server.services.good-v6]
-type = "tcp"
-bind_addr = "[::1]:5202"
-token = "t"
-
-[server.services.udp]
-type = "udp"
-bind_addr = "127.0.0.1:5203"
-token = "t"
-
-[server.services.public]
-bind_addr = "0.0.0.0:5204"
-token = "t"
-
-[server.services.hostname]
-bind_addr = "localhost:5205"
-token = "t"
-
-[server.services.Upper]
-bind_addr = "127.0.0.1:5206"
-token = "t"
-
-[server.services."dotted.name"]
-bind_addr = "127.0.0.1:5207"
-token = "t"
-"#,
-        )
-        .await;
-        assert_eq!(
-            table,
-            RouteTable::from_addrs([
-                ("good".to_owned(), addr("127.0.0.1:5201")),
-                ("good-v6".to_owned(), addr("[::1]:5202")),
-            ])
-        );
-    }
-
-    #[tokio::test]
-    async fn example_config_routes_its_device() {
-        let table = table_from_toml(include_str!("../relay.example.toml")).await;
-        assert_eq!(table.len(), 1);
-        let router = Router::new(DOMAIN, table);
-        assert_eq!(
-            router.resolve("wildflower-device-1.relay.example.com"),
-            Some(Route {
-                label: "wildflower-device-1".to_owned(),
-                addr: addr("127.0.0.1:5201"),
-            })
-        );
     }
 
     #[test]

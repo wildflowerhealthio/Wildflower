@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
     let settings = RelaySettings::from_env()?;
 
     // rathole and the front shut down when `true` arrives on this broadcast
-    // channel. Ctrl-C (SIGINT) and SIGTERM (systemd, `docker stop`) are
+    // channel. Ctrl-C (SIGINT) and SIGTERM (systemd) are
     // translated into that so the relay stops cleanly instead of being
     // killed mid-connection.
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);

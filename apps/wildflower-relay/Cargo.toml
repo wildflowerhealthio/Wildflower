@@ -16,6 +16,8 @@ anyhow.workspace = true
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
 ppp = "2.3"
+# `hot-reload`: rathole picks up a rewritten TOML (e.g. from enrolment)
+# without a restart.
 rathole = { version = "0.5", default-features = false, features = [
   "server",
   "noise",
@@ -24,7 +26,7 @@ rathole = { version = "0.5", default-features = false, features = [
 # Only `rustls::server::Acceptor`, to read the ClientHello's server name. No
 # crypto provider: the front never completes a handshake.
 rustls = { version = "0.23", default-features = false, features = ["std"] }
-# Merges the env-owned `[server]` keys into the rathole TOML at startup.
+# Renders the rathole TOML from the environment at startup.
 toml = "0.9"
 tokio = { workspace = true, features = [
   "rt-multi-thread",
@@ -50,5 +52,5 @@ rustls = { version = "0.23", default-features = false, features = [
   "ring",
   "tls12",
 ] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "fs"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 tempfile = "3"

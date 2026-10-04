@@ -4,21 +4,22 @@
 #   1. Build and copy the binary:
 #        cargo build --release --locked -p wildflower-relay
 #        sudo install -m 0755 target/release/wildflower-relay /usr/local/bin/
-#   2. Write the settings (see src/settings.rs for every variable), readable
-#      by root only:
+#   2. Write the settings, readable by root only, starting from
+#      relay.example.env (it lists every variable):
 #        sudo install -d -m 0755 /etc/wildflower-relay
-#        sudo install -m 0600 /dev/null /etc/wildflower-relay/env
+#        sudo install -m 0600 apps/wildflower-relay/relay.example.env /etc/wildflower-relay/env
 #        sudoedit /etc/wildflower-relay/env
-#      with at least WILDFLOWER_RELAY_DOMAIN and
-#      WILDFLOWER_RELAY_NOISE_PRIVATE_KEY, plus WILDFLOWER_RELAY_SERVICES if
-#      devices are listed by env.
+#      Set WILDFLOWER_RELAY_DOMAIN, WILDFLOWER_RELAY_NOISE_PRIVATE_KEY and one
+#      WILDFLOWER_RELAY_SERVICES entry per device. After changing it:
+#        sudo systemctl restart wildflower-relay
 #   3. Install and start the unit:
 #        sudo install -m 0644 apps/wildflower-relay/wildflower-relay.service /etc/systemd/system/
 #        sudo systemctl daemon-reload
 #        sudo systemctl enable --now wildflower-relay
 #
-# The relay writes its rathole TOML to /var/lib/wildflower-relay/relay.toml,
-# keeping enrolled services across restarts.
+# The environment file is the relay's only configuration (see
+# relay.example.env). On each start the relay renders a fresh rathole TOML to
+# /run/wildflower-relay/relay.toml, which systemd removes when it stops.
 
 [Unit]
 Description=Wildflower relay (rathole tunnels and SNI front)
@@ -30,14 +31,14 @@ After=network-online.target
 Type=exec
 ExecStart=/usr/local/bin/wildflower-relay
 EnvironmentFile=/etc/wildflower-relay/env
-Environment=WILDFLOWER_RELAY_CONFIG=/var/lib/wildflower-relay/relay.toml
+Environment=WILDFLOWER_RELAY_CONFIG=/run/wildflower-relay/relay.toml
 Restart=on-failure
 RestartSec=2
 
 # Unprivileged, with only the right to bind 443 and 80.
 DynamicUser=yes
-StateDirectory=wildflower-relay
-StateDirectoryMode=0700
+RuntimeDirectory=wildflower-relay
+RuntimeDirectoryMode=0700
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 LimitNOFILE=65536

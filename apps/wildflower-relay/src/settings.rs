@@ -1,16 +1,15 @@
 //! The relay's environment interface.
 //!
-//! Every setting comes from a `WILDFLOWER_RELAY_*` environment variable. The
-//! rathole `[server]` keys ([`ControlSettings`]) are written into the rathole
-//! TOML at startup (see [`crate::config`]); the front's own settings
-//! ([`FrontSettings`]) never touch that file, because rathole parses it
-//! itself and rejects unknown keys. There is no shared token: every service
-//! carries its own `token`, written by enrolment or listed in
-//! `WILDFLOWER_RELAY_SERVICES` (for hosts whose disk does not persist).
+//! Every setting comes from a `WILDFLOWER_RELAY_*` environment variable;
+//! `relay.example.env` lists them all. The environment is the only source:
+//! [`ControlSettings`] (the rathole side, including every device service and
+//! its token) is rendered into a fresh rathole TOML on each start (see
+//! [`crate::config`]), and [`FrontSettings`] configures the TLS front, which
+//! rathole's file has no place for.
 //!
 //! | Variable | Default |
 //! |---|---|
-//! | `WILDFLOWER_RELAY_CONFIG` | `relay.toml` (path of the rathole TOML; read by `main`) |
+//! | `WILDFLOWER_RELAY_CONFIG` | `relay.toml` (where the rathole TOML is written; read by `main`) |
 //! | `WILDFLOWER_RELAY_CONTROL_ADDR` | `0.0.0.0:2333` |
 //! | `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY` | required |
 //! | `WILDFLOWER_RELAY_SERVICES` | none (`label=token,label=token`) |
@@ -24,7 +23,7 @@
 //! | `WILDFLOWER_RELAY_IDLE_TIMEOUT_SECS` | `300` |
 
 use std::fmt::{self, Debug, Display};
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -94,10 +93,10 @@ pub struct ControlSettings {
     pub control_addr: SocketAddr,
     /// `[server.transport.noise] local_private_key` (`rathole --genkey`).
     pub noise_private_key: Secret,
-    /// Device services from the environment, sorted by label. Each becomes
-    /// `[server.services.<label>]`, replacing a file entry of the same name.
+    /// Every device service, sorted by label. Each becomes
+    /// `[server.services.<label>]`.
     pub services: Vec<EnvService>,
-    /// First loopback port handed to [`ControlSettings::services`].
+    /// Loopback port of the first service; the rest follow in label order.
     pub service_port_base: u16,
 }
 
@@ -127,6 +126,13 @@ impl ControlSettings {
             .transpose()
             .with_context(|| format!("{} is invalid", Self::SERVICES_VAR))?
             .unwrap_or_default();
+        let service_port_base = parsed(&lookup, Self::SERVICE_PORT_BASE_VAR, 5201)?;
+        anyhow::ensure!(
+            usize::from(service_port_base) + services.len() <= usize::from(u16::MAX) + 1,
+            "{} = {service_port_base} leaves no port for each of the {} services",
+            Self::SERVICE_PORT_BASE_VAR,
+            services.len()
+        );
         Ok(Self {
             control_addr: parsed(&lookup, Self::CONTROL_ADDR_VAR, ([0, 0, 0, 0], 2333).into())?,
             noise_private_key: required(
@@ -136,8 +142,23 @@ impl ControlSettings {
             )
             .map(Secret)?,
             services,
-            service_port_base: parsed(&lookup, Self::SERVICE_PORT_BASE_VAR, 5201)?,
+            service_port_base,
         })
+    }
+
+    /// Each service's label and the loopback address rathole binds for it:
+    /// `127.0.0.1:<base + i>` for the `i`th service in label order.
+    #[must_use]
+    pub fn service_addrs(&self) -> Vec<(String, SocketAddr)> {
+        (self.service_port_base..=u16::MAX)
+            .zip(&self.services)
+            .map(|(port, service)| {
+                (
+                    service.label.clone(),
+                    SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
+                )
+            })
+            .collect()
     }
 }
 
@@ -413,6 +434,37 @@ mod tests {
         pairs.push((ControlSettings::SERVICES_VAR, "alice"));
         let err = format!("{:#}", RelaySettings::from_lookup(env(&pairs)).unwrap_err());
         assert!(err.contains(ControlSettings::SERVICES_VAR), "{err}");
+    }
+
+    #[test]
+    fn service_addrs_count_up_from_the_base_in_label_order() {
+        let mut pairs = REQUIRED.to_vec();
+        pairs.extend([
+            (ControlSettings::SERVICES_VAR, "carol=t3,alice=t1,bob=t2"),
+            (ControlSettings::SERVICE_PORT_BASE_VAR, "65534"),
+        ]);
+        let err = format!("{:#}", RelaySettings::from_lookup(env(&pairs)).unwrap_err());
+        assert!(
+            err.contains(ControlSettings::SERVICE_PORT_BASE_VAR),
+            "{err}"
+        );
+
+        pairs.pop();
+        pairs.push((ControlSettings::SERVICE_PORT_BASE_VAR, "65533"));
+        let control = RelaySettings::from_lookup(env(&pairs)).unwrap().control;
+        let addrs: Vec<_> = control
+            .service_addrs()
+            .into_iter()
+            .map(|(label, addr)| format!("{label}={addr}"))
+            .collect();
+        assert_eq!(
+            addrs,
+            [
+                "alice=127.0.0.1:65533",
+                "bob=127.0.0.1:65534",
+                "carol=127.0.0.1:65535"
+            ]
+        );
     }
 
     #[test]

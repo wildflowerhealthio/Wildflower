@@ -27,42 +27,32 @@
 //! byte written rather than answered with a certificate of its own. `:80`
 //! only redirects to `https://`.
 //!
-//! Every service binds a loopback `bind_addr`, so nothing but the front
-//! reaches a tunnel, and rathole binds it only while that device is
-//! connected: a refused connect is how the front knows a device is offline.
-//! The front reads its routes from the same TOML rathole hot-reloads (see
-//! [`watch`]), so one write that adds a service makes it routable.
+//! Every service binds a loopback address, so nothing but the front reaches
+//! a tunnel, and rathole binds it only while that device is connected: a
+//! refused connect is how the front knows a device is offline.
 //!
 //! ## Configuration
 //!
-//! Everything is set through `WILDFLOWER_RELAY_*` environment variables (the
-//! full list is in [`settings`]). At startup the relay writes the rathole
-//! `[server]` keys (control address, noise key) into the TOML at
-//! `WILDFLOWER_RELAY_CONFIG`, creating it if needed and keeping its
-//! `[server.services.*]` tables, which enrolment appends to (see [`config`]).
-//! Device services can also come from `WILDFLOWER_RELAY_SERVICES`
-//! (`label=token,...`), for hosts whose disk does not persist; those are
-//! written into the file on every start and win over a file entry with the
-//! same label. There is no default token: each service carries its own
-//! `token`.
-//! The front's own settings (domain suffix, listen addresses, limits) stay
-//! out of the file because rathole rejects unknown keys in it.
+//! The environment is the only source of configuration: every setting is a
+//! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
+//! for a commented list). Devices come from `WILDFLOWER_RELAY_SERVICES`, one
+//! `label=token` each, with no shared token. On every start the relay
+//! renders a fresh rathole TOML from the environment to
+//! `WILDFLOWER_RELAY_CONFIG` (see [`config`]) and never reads it back; the
+//! front's routes are built from the same service list.
 //!
 //! ## Deploying
 //!
-//! The relay stops cleanly on SIGINT or SIGTERM. It ships two ways, both in
-//! this crate's directory: a `Dockerfile` with a `compose.yaml` (config in a
-//! volume at `/etc/wildflower-relay`), and `wildflower-relay.service`, a
-//! systemd unit for a plain host that reads its settings from
-//! `/etc/wildflower-relay/env` and keeps the rathole TOML in
-//! `/var/lib/wildflower-relay`, running as a dynamic user allowed only to
-//! bind ports 443 and 80.
+//! `wildflower-relay.service` is a systemd unit for a plain host. It reads
+//! the environment from `/etc/wildflower-relay/env` and writes the rathole
+//! TOML to `/run/wildflower-relay/relay.toml`, running as a dynamic user
+//! allowed only to bind ports 443 and 80. The relay stops cleanly on SIGINT
+//! or SIGTERM.
 
 pub mod config;
 pub mod front;
 pub mod route;
 pub mod settings;
-pub mod watch;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -92,36 +82,24 @@ pub fn build_server_cli(config_path: PathBuf) -> rathole::Cli {
     }
 }
 
-/// Write the rathole TOML from `settings`, then run the relay — rathole, the
-/// `:443`/`:80` front and the route watcher — until `shutdown_rx` receives
-/// `true`.
+/// Write the rathole TOML from `settings`, then run the relay — rathole and
+/// the `:443`/`:80` front — until `shutdown_rx` receives `true`.
 ///
 /// # Errors
 ///
-/// Returns an error if the config cannot be written or loaded, a front
-/// listener cannot bind, or rathole exits with an error.
+/// Returns an error if the config cannot be written, a front listener cannot
+/// bind, or rathole exits with an error.
 pub async fn run_relay(
     config_path: PathBuf,
     settings: RelaySettings,
     shutdown_rx: broadcast::Receiver<bool>,
 ) -> anyhow::Result<()> {
     config::write_config(&config_path, &settings.control).await?;
+    let routes = RouteTable::from_addrs(settings.control.service_addrs());
     let settings = settings.front;
-    // The watcher is created first so a write made while the initial routes
-    // load is still seen as a change; it only starts polling in `try_join!`.
-    let router = Arc::new(Router::new(&settings.domain, RouteTable::default()));
-    let watcher = watch::watch_routes(
-        &config_path,
-        Arc::clone(&router),
-        watch::POLL_INTERVAL,
-        shutdown_rx.resubscribe(),
-    );
-    let table = watch::load_routes(&config_path)
-        .await
-        .with_context(|| format!("loading routes from {}", config_path.display()))?;
-    tracing::info!(domain = %settings.domain, routes = table.len(), "routes loaded");
-    router.replace(table);
-    let front = Front::new(Arc::clone(&router), settings.limits);
+    tracing::info!(domain = %settings.domain, routes = routes.len(), "routes built");
+    let router = Arc::new(Router::new(&settings.domain, routes));
+    let front = Front::new(router, settings.limits);
 
     let https = TcpListener::bind(settings.https_addr)
         .await
@@ -134,7 +112,6 @@ pub async fn run_relay(
     tokio::try_join!(
         Arc::clone(&front).serve_https(https, shutdown_rx.resubscribe()),
         front.serve_http(http, shutdown_rx.resubscribe()),
-        watcher,
         rathole::run(build_server_cli(config_path), shutdown_rx),
     )?;
     Ok(())
@@ -149,36 +126,13 @@ mod tests {
     /// listen) and never `genkey` (which would print a key and exit).
     #[test]
     fn build_server_cli_is_server_mode_with_config() {
-        let cli = build_server_cli(PathBuf::from("/etc/wildflower/relay.toml"));
+        let cli = build_server_cli(PathBuf::from("/run/wildflower-relay/relay.toml"));
         assert!(cli.server, "relay must run in server mode");
         assert!(!cli.client, "relay must not run in client mode");
         assert!(cli.genkey.is_none(), "relay must not be in genkey mode");
         assert_eq!(
             cli.config_path.as_deref(),
-            Some(std::path::Path::new("/etc/wildflower/relay.toml"))
-        );
-    }
-
-    /// Golden check that the shipped example config is a valid rathole server
-    /// config — catches drift between the example and rathole's schema before
-    /// it bites an operator at deploy time. rathole only exposes the async
-    /// `Config::from_file`, so the example is written to a temp file and parsed
-    /// through the same path an operator's deploy would take.
-    #[tokio::test]
-    async fn example_config_is_a_valid_rathole_server_config() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("relay.toml");
-        std::fs::write(&path, include_str!("../relay.example.toml")).expect("write example config");
-        let config = rathole::Config::from_file(&path)
-            .await
-            .expect("example config must parse");
-        assert!(
-            config.server.is_some(),
-            "example must define a [server] section"
-        );
-        assert!(
-            config.client.is_none(),
-            "relay example must not define a [client] section"
+            Some(std::path::Path::new("/run/wildflower-relay/relay.toml"))
         );
     }
 }
