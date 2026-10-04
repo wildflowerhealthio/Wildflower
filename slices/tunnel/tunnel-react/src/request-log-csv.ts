@@ -1,4 +1,4 @@
-import { DateTime } from 'effect'
+import { DateTime, Option } from 'effect'
 
 import type { LoggedRequest } from './queries.ts'
 import { callerNameOf, requestAccessOf } from './request-log.ts'
@@ -27,12 +27,17 @@ const COLUMNS = [
  * leading `=`, `+`, `-`, `@`, tab or carriage return) is prefixed with `'`, since
  * addresses, hosts and methods come from whoever called the tunnel.
  */
-const csvField = (value: string | number | null): string => {
-  if (value === null) return ''
+const csvField = (value: string | number): string => {
   const text = String(value)
   const inert = typeof value === 'string' && /^[=+\-@\t\r]/u.test(text) ? `'${text}` : text
   return /[",\r\n]/u.test(inert) ? `"${inert.replaceAll('"', '""')}"` : inert
 }
+
+/** An optional CSV field: {@link csvField} when present, empty when not. */
+const optionalCsvField: (value: Option.Option<string | number>) => string = Option.match({
+  onNone: () => '',
+  onSome: csvField,
+})
 
 /**
  * The request log as CSV, one row per request in the order given, under a
@@ -45,21 +50,19 @@ const requestLogCsv = (
 ): string => {
   const rows = requests.map((request) =>
     [
-      DateTime.formatIso(request.receivedAt),
-      request.clientId,
-      callerNameOf(request.clientId, names),
-      requestAccessOf(request).auth,
-      request.address,
-      request.servedHost,
-      request.method,
-      request.path,
-      request.status,
-      request.refusal,
-      request.responseBytes,
-      request.durationMs,
-    ]
-      .map(csvField)
-      .join(',')
+      csvField(DateTime.formatIso(request.receivedAt)),
+      optionalCsvField(request.clientId),
+      csvField(callerNameOf(request.clientId, names)),
+      csvField(requestAccessOf(request).auth),
+      optionalCsvField(request.address),
+      optionalCsvField(request.servedHost),
+      csvField(request.method),
+      csvField(request.path),
+      csvField(request.status),
+      optionalCsvField(request.refusal),
+      optionalCsvField(request.responseBytes),
+      csvField(request.durationMs),
+    ].join(',')
   )
   return [COLUMNS.join(','), ...rows].map((line) => `${line}\r\n`).join('')
 }

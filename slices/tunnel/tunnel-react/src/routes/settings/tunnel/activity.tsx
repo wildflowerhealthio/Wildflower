@@ -27,6 +27,7 @@ import {
   AUTH_LABELS,
   callerNameOf,
   clientActivityOf,
+  clientNameOf,
   requestAccessOf,
 } from '../../../request-log.ts'
 import { writeToClipboard } from '../../../write-to-clipboard.ts'
@@ -67,11 +68,11 @@ const clientOptionsOf = (
 ): readonly ClientOption[] =>
   [
     ...new Set([
-      ...callers.flatMap((caller) => (caller.clientId === null ? [] : [caller.clientId])),
+      ...callers.flatMap((caller) => Option.toArray(caller.clientId)),
       ...(selected === undefined ? [] : [selected]),
     ]),
   ]
-    .map((clientId) => ({ clientId, name: callerNameOf(clientId, names) }))
+    .map((clientId) => ({ clientId, name: clientNameOf(clientId, names) }))
     .toSorted((a, b) => a.name.localeCompare(b.name))
 
 interface ActivityFiltersProps {
@@ -240,7 +241,7 @@ const RequestRow = ({ request, search, names }: RequestRowProps): JSX.Element =>
     >
       <td className={styles['activity__time']}>{formatReceivedAt(request.receivedAt)}</td>
       <td>
-        {Option.fromNullable(request.clientId).pipe(
+        {request.clientId.pipe(
           Option.map((clientId) => (
             <Link key="client" to={Route.fullPath} search={{ ...search, client: clientId }}>
               {name}
@@ -250,7 +251,7 @@ const RequestRow = ({ request, search, names }: RequestRowProps): JSX.Element =>
         )}
       </td>
       <td className={styles['activity__mono']}>
-        {Option.fromNullable(request.address).pipe(
+        {request.address.pipe(
           Option.map((address) => (
             <Link key="address" to={Route.fullPath} search={{ ...search, address }}>
               {address}
@@ -265,7 +266,7 @@ const RequestRow = ({ request, search, names }: RequestRowProps): JSX.Element =>
       <td>{accessLabelOf(access)}</td>
       <td className={styles['activity__number']}>{request.status}</td>
       <td className={styles['activity__number']}>
-        {Option.fromNullable(request.responseBytes).pipe(
+        {request.responseBytes.pipe(
           Option.map(formatBytes),
           Option.getOrElse(() => '—')
         )}
@@ -365,7 +366,7 @@ const ActivityScreen = (): JSX.Element => {
         Option.map((clientId) => (
           <ClientSummary
             key="client-summary"
-            name={callerNameOf(clientId, names)}
+            name={clientNameOf(clientId, names)}
             callers={callers}
             clientId={clientId}
           />

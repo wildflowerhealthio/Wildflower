@@ -115,49 +115,56 @@ const RequestRefusalSchema = Schema.Literal('missingToken', 'tokenRejected', 're
 
 /**
  * What the request log holds for one (caller, client address) pair — a row of
- * `GET /tunnel/requests/callers`, mirroring the Rust `CallerSummaryBody`. `clientId`
- * is `null` for the requests no bearer gate verified; resolve a client's
- * display name through gatekeeper's client list. `refusedCount` counts a
- * bearer gate's `401`s and scope `403`s.
+ * `GET /tunnel/requests/callers`, mirroring the Rust `CallerSummaryBody`. The
+ * wire's nullable fields (`null` in JSON) decode to an `Option`: `clientId` is
+ * `None` for the requests no bearer gate verified, `address` when the trusted
+ * front recorded no visitor address, and `lastRefusal` when no bearer gate
+ * refused the newest request. Resolve a client's display name through
+ * gatekeeper's client list. `refusedCount` counts a bearer gate's `401`s and
+ * scope `403`s.
  */
 const CallerSummarySchema = Schema.Struct({
-  clientId: Schema.NullOr(Schema.String),
-  address: Schema.NullOr(Schema.String),
+  clientId: Schema.OptionFromNullOr(Schema.String),
+  address: Schema.OptionFromNullOr(Schema.String),
   firstSeen: Schema.DateTimeUtc,
   lastSeen: Schema.DateTimeUtc,
   requestCount: Schema.Int,
   refusedCount: Schema.Int,
   lastStatus: Schema.Int,
-  lastRefusal: Schema.NullOr(RequestRefusalSchema),
+  lastRefusal: Schema.OptionFromNullOr(RequestRefusalSchema),
 })
 
 /**
  * One request in the log — an element of `GET /tunnel/requests`, mirroring the
  * Rust `LoggedRequestBody`. `path` is the route the request was reduced to (no
- * ids, no query string); a higher `id` is newer.
+ * ids, no query string); a higher `id` is newer. The wire's nullable fields
+ * (`null` in JSON) decode to an `Option`: `clientId` is `None` when no bearer
+ * gate verified a caller, `address` when the trusted front recorded none,
+ * `servedHost` when no public host was addressed, `responseBytes` when the body's
+ * length wasn't known up front, and `refusal` when no bearer gate refused it.
  */
 const LoggedRequestSchema = Schema.Struct({
   id: Schema.Int,
   receivedAt: Schema.DateTimeUtc,
-  clientId: Schema.NullOr(Schema.String),
-  address: Schema.NullOr(Schema.String),
-  servedHost: Schema.NullOr(Schema.String),
+  clientId: Schema.OptionFromNullOr(Schema.String),
+  address: Schema.OptionFromNullOr(Schema.String),
+  servedHost: Schema.OptionFromNullOr(Schema.String),
   method: Schema.String,
   path: Schema.String,
   status: Schema.Int,
-  responseBytes: Schema.NullOr(Schema.Int),
+  responseBytes: Schema.OptionFromNullOr(Schema.Int),
   durationMs: Schema.Int,
-  refusal: Schema.NullOr(RequestRefusalSchema),
+  refusal: Schema.OptionFromNullOr(RequestRefusalSchema),
 })
 
 /**
  * One page of `GET /tunnel/requests`, newest first — mirrors the Rust
- * `RequestLogPageBody`. `nextCursor` is the `cursor` that reads the next page,
- * `null` on the last one.
+ * `RequestLogPageBody`. `nextCursor` is the `cursor` that reads the next page;
+ * it is `null` on the wire on the last page and decodes to an `Option`.
  */
 const RequestLogPageSchema = Schema.Struct({
   requests: Schema.Array(LoggedRequestSchema),
-  nextCursor: Schema.NullOr(Schema.Int),
+  nextCursor: Schema.OptionFromNullOr(Schema.Int),
 })
 
 /**

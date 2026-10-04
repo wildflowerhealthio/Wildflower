@@ -6,14 +6,27 @@ import type { CallerSummary, LoggedRequest, RequestAuth } from './queries.ts'
 const UNAUTHENTICATED = 'Unauthenticated'
 
 /**
- * Who made a logged request, as the owner reads it: the client's display name
- * from `names` (gatekeeper's client list), else its `clientId`, else
- * {@link UNAUTHENTICATED} when no caller was verified.
+ * An OAuth client as the owner reads it: its display name from `names`
+ * (gatekeeper's client list), else its `clientId`.
  */
-const callerNameOf = (clientId: string | null, names: ReadonlyMap<string, string>): string =>
-  clientId === null ? UNAUTHENTICATED : (names.get(clientId) ?? clientId)
+const clientNameOf = (clientId: string, names: ReadonlyMap<string, string>): string =>
+  names.get(clientId) ?? clientId
 
-type RequestRefusal = NonNullable<LoggedRequest['refusal']>
+/**
+ * Who made a logged request, as the owner reads it: the verified client's name
+ * (see {@link clientNameOf}), or {@link UNAUTHENTICATED} when no caller was
+ * verified.
+ */
+const callerNameOf = (
+  clientId: Option.Option<string>,
+  names: ReadonlyMap<string, string>
+): string =>
+  clientId.pipe(
+    Option.map((id) => clientNameOf(id, names)),
+    Option.getOrElse(() => UNAUTHENTICATED)
+  )
+
+type RequestRefusal = Option.Option.Value<LoggedRequest['refusal']>
 
 /**
  * Why a request was refused — the bearer gate's recorded reason, else
@@ -21,8 +34,11 @@ type RequestRefusal = NonNullable<LoggedRequest['refusal']>
  * wasn't. A `401` or `403` is what the server's `refused` filter and
  * `refusedCount` count as refused.
  */
-const refusalReasonOf = (status: number, refusal: RequestRefusal | null): Option.Option<string> =>
-  Option.fromNullable(refusal).pipe(
+const refusalReasonOf = (
+  status: number,
+  refusal: Option.Option<RequestRefusal>
+): Option.Option<string> =>
+  refusal.pipe(
     Option.map(
       Match.type<RequestRefusal>().pipe(
         Match.when('missingToken', () => 'no token'),
@@ -52,21 +68,28 @@ const refusalReasonOf = (status: number, refusal: RequestRefusal | null): Option
 type RequestAccess =
   | { readonly auth: 'authorized'; readonly clientId: string }
   | { readonly auth: 'public' }
-  | { readonly auth: 'refused'; readonly clientId: string | null; readonly reason: string }
+  | {
+      readonly auth: 'refused'
+      readonly clientId: Option.Option<string>
+      readonly reason: string
+    }
 
 /** What {@link requestAccessOf} reads off a logged request or a caller's last one. */
 interface RequestOutcome {
-  readonly clientId: string | null
+  readonly clientId: Option.Option<string>
   readonly status: number
-  readonly refusal: RequestRefusal | null
+  readonly refusal: Option.Option<RequestRefusal>
 }
 
 /** Classify a request into its {@link RequestAccess}. */
 const requestAccessOf = ({ clientId, status, refusal }: RequestOutcome): RequestAccess =>
   refusalReasonOf(status, refusal).pipe(
     Option.map((reason): RequestAccess => ({ auth: 'refused', clientId, reason })),
-    Option.getOrElse((): RequestAccess =>
-      clientId === null ? { auth: 'public' } : { auth: 'authorized', clientId }
+    Option.getOrElse(() =>
+      Option.match(clientId, {
+        onNone: (): RequestAccess => ({ auth: 'public' }),
+        onSome: (id): RequestAccess => ({ auth: 'authorized', clientId: id }),
+      })
     )
   )
 
@@ -100,13 +123,14 @@ const clientActivityOf = (
 ): Option.Option<ClientActivity> =>
   Option.map(
     Array.match(
-      callers.filter((caller) => caller.clientId === clientId),
+      callers.filter((caller) => Option.contains(caller.clientId, clientId)),
       { onEmpty: Option.none, onNonEmpty: Option.some }
     ),
     (rows) => ({
       requestCount: rows.reduce((sum, row) => sum + row.requestCount, 0),
       refusedCount: rows.reduce((sum, row) => sum + row.refusedCount, 0),
-      addressCount: new Set(rows.map((row) => row.address)).size,
+      // An unrecorded address counts once, as `None`.
+      addressCount: new Set(rows.map((row) => Option.getOrNull(row.address))).size,
       firstSeen: rows.map((row) => row.firstSeen).reduce((a, b) => DateTime.min(a, b)),
       lastSeen: rows.map((row) => row.lastSeen).reduce((a, b) => DateTime.max(a, b)),
     })
@@ -117,6 +141,7 @@ export {
   AUTH_LABELS,
   callerNameOf,
   clientActivityOf,
+  clientNameOf,
   requestAccessOf,
   UNAUTHENTICATED,
 }

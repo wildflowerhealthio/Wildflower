@@ -1,4 +1,4 @@
-import { Arbitrary, Schema } from 'effect'
+import { Arbitrary, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -175,19 +175,22 @@ describe('CallerSummarySchema', () => {
     )
   })
 
-  it('decodes the unverified-caller row the server sends, nulls included', () => {
-    const decoded = Schema.decodeUnknownSync(CallerSummarySchema)({
+  it('decodes the unverified-caller row the server sends, its nulls as None', () => {
+    const wire = {
       clientId: null,
       address: '203.0.113.9',
-      firstSeen: '2026-07-01T12:00:20Z',
-      lastSeen: '2026-07-01T12:00:50Z',
+      firstSeen: '2026-07-01T12:00:20.000Z',
+      lastSeen: '2026-07-01T12:00:50.000Z',
       requestCount: 2,
       refusedCount: 2,
       lastStatus: 401,
       lastRefusal: 'revoked',
-    })
-    expect(decoded.clientId).toBeNull()
-    expect(decoded.lastRefusal).toBe('revoked')
+    }
+    const decoded = Schema.decodeUnknownSync(CallerSummarySchema)(wire)
+    expect(decoded.clientId).toEqual(Option.none())
+    expect(decoded.address).toEqual(Option.some('203.0.113.9'))
+    expect(decoded.lastRefusal).toEqual(Option.some('revoked'))
+    expect(Schema.encodeSync(CallerSummarySchema)(decoded)).toEqual(wire)
   })
 })
 
@@ -221,8 +224,9 @@ describe('RequestLogPageSchema', () => {
       ],
       nextCursor: null,
     })
-    expect(decoded.nextCursor).toBeNull()
-    expect(decoded.requests[0]?.responseBytes).toBeNull()
+    expect(decoded.nextCursor).toEqual(Option.none())
+    expect(decoded.requests[0]?.responseBytes).toEqual(Option.none())
+    expect(decoded.requests[0]?.servedHost).toEqual(Option.some('dev1.example.com'))
   })
 })
 

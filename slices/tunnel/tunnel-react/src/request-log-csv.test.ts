@@ -1,4 +1,4 @@
-import { DateTime } from 'effect'
+import { DateTime, Option } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import type { LoggedRequest } from './queries.ts'
@@ -7,15 +7,15 @@ import { requestLogCsv } from './request-log-csv.ts'
 const request = (overrides: Partial<LoggedRequest>): LoggedRequest => ({
   id: 1,
   receivedAt: DateTime.unsafeMake('2026-07-01T12:00:00Z'),
-  clientId: 'lifting',
-  address: '198.51.100.24',
-  servedHost: 'dev1.example.com',
+  clientId: Option.some('lifting'),
+  address: Option.some('198.51.100.24'),
+  servedHost: Option.some('dev1.example.com'),
   method: 'GET',
   path: '/fhir-r4/Patient',
   status: 200,
-  responseBytes: null,
+  responseBytes: Option.none(),
   durationMs: 12,
-  refusal: null,
+  refusal: Option.none(),
   ...overrides,
 })
 
@@ -33,7 +33,7 @@ describe('requestLogCsv', () => {
 
   test('quotes fields holding commas, quotes or line breaks', () => {
     const csv = requestLogCsv(
-      [request({ clientId: 'a' })],
+      [request({ clientId: Option.some('a') })],
       new Map([['a', 'Say "hi", then\nleave']])
     )
 
@@ -42,7 +42,14 @@ describe('requestLogCsv', () => {
 
   test('neutralizes values a spreadsheet would run as a formula', () => {
     const csv = requestLogCsv(
-      [request({ clientId: null, address: '=HYPERLINK("x")', method: '+SUM', servedHost: '@x' })],
+      [
+        request({
+          clientId: Option.none(),
+          address: Option.some('=HYPERLINK("x")'),
+          method: '+SUM',
+          servedHost: Option.some('@x'),
+        }),
+      ],
       new Map()
     )
 

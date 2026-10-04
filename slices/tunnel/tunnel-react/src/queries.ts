@@ -16,7 +16,7 @@ import {
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
-import { Effect, type Layer, Schema } from 'effect'
+import { Effect, type Layer, Option, Schema } from 'effect'
 import { clientsQueryOptions, useRunAuthed as useGatekeeperRunAuthed } from 'gatekeeper-react'
 import { useMemo } from 'react'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
@@ -290,8 +290,8 @@ const listRequestsPage = (
 
 /**
  * `ListRequests` under `filter`, newest first, one keyset page at a time. A
- * page with no `nextCursor` is the last, which TanStack Query reads from the
- * `null` {@link UseInfiniteQueryOptions.getNextPageParam} returns.
+ * page whose `nextCursor` is `None` is the last, which TanStack Query reads from
+ * the `null` {@link UseInfiniteQueryOptions.getNextPageParam} returns.
  */
 const tunnelRequestsInfiniteQueryOptions = (
   runAuthed: RunAuthed,
@@ -306,7 +306,8 @@ const tunnelRequestsInfiniteQueryOptions = (
   infiniteQueryOptions({
     queryKey: [...TUNNEL_REQUESTS_QUERY_KEY, 'pages', filter] as const,
     initialPageParam: null as RequestLogCursor,
-    getNextPageParam: (lastPage: RequestLogPage): RequestLogCursor => lastPage.nextCursor,
+    getNextPageParam: (lastPage: RequestLogPage): RequestLogCursor =>
+      Option.getOrNull(lastPage.nextCursor),
     queryFn: ({ pageParam }: { readonly pageParam: RequestLogCursor }) =>
       runAuthed(listRequestsPage(filter, pageParam)),
   })
@@ -323,17 +324,20 @@ const useTunnelRequestsQuery = (
  */
 const listEveryRequest = (
   filter: RequestLogFilter
-): Effect.Effect<readonly LoggedRequest[], unknown, Layer.Layer.Success<RuntimeLayer>> =>
-  Effect.gen(function* () {
-    const requests: LoggedRequest[] = []
-    let cursor: RequestLogCursor = null
-    do {
-      const page: RequestLogPage = yield* listRequestsPage(filter, cursor)
-      requests.push(...page.requests)
-      cursor = page.nextCursor
-    } while (cursor !== null)
-    return requests
-  })
+): Effect.Effect<readonly LoggedRequest[], unknown, Layer.Layer.Success<RuntimeLayer>> => {
+  const readFrom = (
+    cursor: RequestLogCursor,
+    read: readonly LoggedRequest[]
+  ): Effect.Effect<readonly LoggedRequest[], unknown, Layer.Layer.Success<RuntimeLayer>> =>
+    Effect.flatMap(listRequestsPage(filter, cursor), (page) => {
+      const requests = [...read, ...page.requests]
+      return Option.match(page.nextCursor, {
+        onNone: () => Effect.succeed(requests),
+        onSome: (next) => readFrom(next, requests),
+      })
+    })
+  return readFrom(null, [])
+}
 
 /**
  * Exports the request log under a filter; resolves with every matching
