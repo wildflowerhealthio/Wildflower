@@ -7,6 +7,9 @@
  *   - {@link file://./requests.ts}      — the request log's pages (`ListRequests`) and export
  *   - {@link file://./client-names.ts}  — gatekeeper's client display names, by `clientId`
  *
+ * {@link file://./live-query-options.ts} holds the polling options the
+ * request-log hooks take.
+ *
  * Shared scaffolding lives in {@link file://./keys.ts} (the query-key roots
  * mutations invalidate) and {@link file://./use-run-authed.ts} (the authed-runner
  * hook each `queryFn` reads from router context).
@@ -16,6 +19,7 @@
  */
 
 export {
+  RECENT_REFUSED_REQUESTS_QUERY_KEY,
   TUNNEL_CALLERS_QUERY_KEY,
   TUNNEL_REQUESTS_QUERY_KEY,
   TUNNEL_STATE_QUERY_KEY,
@@ -44,8 +48,10 @@ export type { CallerSummary } from './callers.ts'
 
 export {
   listEveryRequest,
+  recentRefusedRequestsQueryOptions,
   tunnelRequestsInfiniteQueryOptions,
   useExportRequestsMutation,
+  useRecentRefusedRequestsQuery,
   useTunnelRequestsQuery,
 } from './requests.ts'
 export type {
@@ -57,5 +63,7 @@ export type {
 } from './requests.ts'
 
 export { useClientNames } from './client-names.ts'
+
+export type { LiveQueryOptions } from './live-query-options.ts'
 
 export type { RunAuthed } from '../router-context.ts'

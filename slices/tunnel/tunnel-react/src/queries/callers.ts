@@ -11,6 +11,7 @@ import type { Tunnel } from 'tunnel-core/http-api-definition'
 import { buildTunnelAdminClientLayer } from '../client/tunnel-client.ts'
 import type { RunAuthed } from '../router-context.ts'
 import { TUNNEL_CALLERS_QUERY_KEY } from './keys.ts'
+import type { LiveQueryOptions } from './live-query-options.ts'
 import { useRunAuthed } from './use-run-authed.ts'
 
 /** What the request log holds for one (caller, client address) pair. */
@@ -42,8 +43,10 @@ const tunnelCallersQueryOptions = (
  * Not a suspense query: the log is secondary to the screens that show it, so a
  * failed read renders in place rather than replacing the page.
  */
-const useTunnelCallersQuery = (): UseQueryResult<readonly CallerSummary[], Error> =>
-  useQuery(tunnelCallersQueryOptions(useRunAuthed()))
+const useTunnelCallersQuery = (
+  options?: LiveQueryOptions
+): UseQueryResult<readonly CallerSummary[], Error> =>
+  useQuery({ ...tunnelCallersQueryOptions(useRunAuthed()), ...options })
 
 export { tunnelCallersQueryOptions, useTunnelCallersQuery }
 export type { CallerSummary }

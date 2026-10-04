@@ -1,11 +1,15 @@
 import {
   infiniteQueryOptions,
+  queryOptions,
   useInfiniteQuery,
   useMutation,
+  useQuery,
   type InfiniteData,
   type UseInfiniteQueryOptions,
   type UseInfiniteQueryResult,
   type UseMutationResult,
+  type UseQueryOptions,
+  type UseQueryResult,
 } from '@tanstack/react-query'
 import { Effect, type Layer, Option, type Schema } from 'effect'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
@@ -13,7 +17,8 @@ import type { Tunnel } from 'tunnel-core/http-api-definition'
 
 import { buildTunnelAdminClientLayer } from '../client/tunnel-client.ts'
 import type { RunAuthed, RuntimeLayer } from '../router-context.ts'
-import { tunnelRequestsPagesQueryKey } from './keys.ts'
+import { RECENT_REFUSED_REQUESTS_QUERY_KEY, tunnelRequestsPagesQueryKey } from './keys.ts'
+import type { LiveQueryOptions } from './live-query-options.ts'
 import { useRunAuthed } from './use-run-authed.ts'
 
 type LoggedRequest = Schema.Schema.Type<typeof Tunnel.LoggedRequestSchema>
@@ -71,6 +76,32 @@ const useTunnelRequestsQuery = (
   useInfiniteQuery(tunnelRequestsInfiniteQueryOptions(useRunAuthed(), filter))
 
 /**
+ * The newest page of refused requests — what the activity card looks for
+ * refused streaks in. One page (the server's page size) is enough: a streak is
+ * a burst of recent refusals, and those are the newest.
+ */
+const recentRefusedRequestsQueryOptions = (
+  runAuthed: RunAuthed
+): UseQueryOptions<
+  readonly LoggedRequest[],
+  Error,
+  readonly LoggedRequest[],
+  typeof RECENT_REFUSED_REQUESTS_QUERY_KEY
+> =>
+  queryOptions({
+    queryKey: RECENT_REFUSED_REQUESTS_QUERY_KEY,
+    queryFn: () =>
+      runAuthed(
+        listRequestsPage({ auth: 'refused' }, null).pipe(Effect.map((page) => page.requests))
+      ),
+  })
+
+const useRecentRefusedRequestsQuery = (
+  options?: LiveQueryOptions
+): UseQueryResult<readonly LoggedRequest[], Error> =>
+  useQuery({ ...recentRefusedRequestsQueryOptions(useRunAuthed()), ...options })
+
+/**
  * Every logged request under `filter`, newest first, read page by page to the
  * end of the log — the CSV export's read, which wants the whole filtered set
  * rather than the pages the table has shown.
@@ -107,8 +138,10 @@ const useExportRequestsMutation = (): UseMutationResult<
 
 export {
   listEveryRequest,
+  recentRefusedRequestsQueryOptions,
   tunnelRequestsInfiniteQueryOptions,
   useExportRequestsMutation,
+  useRecentRefusedRequestsQuery,
   useTunnelRequestsQuery,
 }
 export type { LoggedRequest, RequestAuth, RequestLogCursor, RequestLogFilter, RequestLogPage }

@@ -48,12 +48,13 @@ const requestLogCsv = (
   requests: readonly LoggedRequest[],
   names: ReadonlyMap<string, string>
 ): string => {
-  const rows = requests.map((request) =>
-    [
+  const rows = requests.map((request) => {
+    const access = requestAccessOf(request)
+    return [
       csvField(DateTime.formatIso(request.receivedAt)),
       optionalCsvField(request.clientId),
-      csvField(callerNameOf(request.clientId, names)),
-      csvField(requestAccessOf(request).auth),
+      csvField(callerNameOf(access, names)),
+      csvField(access.auth),
       optionalCsvField(request.address),
       optionalCsvField(request.servedHost),
       csvField(request.method),
@@ -63,7 +64,7 @@ const requestLogCsv = (
       optionalCsvField(request.responseBytes),
       csvField(request.durationMs),
     ].join(',')
-  )
+  })
   return [COLUMNS.join(','), ...rows].map((line) => `${line}\r\n`).join('')
 }
 

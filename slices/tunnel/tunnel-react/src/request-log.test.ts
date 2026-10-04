@@ -25,10 +25,24 @@ const caller = (overrides: Partial<CallerSummary>): CallerSummary => ({
 })
 
 describe('callerNameOf', () => {
-  test('prefers the display name, then the client id, then Unauthenticated', () => {
-    expect(callerNameOf(Option.some('lifting'), NAMES)).toBe('Lifting app')
-    expect(callerNameOf(Option.some('unnamed-client'), NAMES)).toBe('unnamed-client')
-    expect(callerNameOf(Option.none(), NAMES)).toBe('Unauthenticated')
+  test('names a verified client by its display name, then its id', () => {
+    expect(callerNameOf({ auth: 'authorized', clientId: 'lifting' }, NAMES)).toBe('Lifting app')
+    expect(callerNameOf({ auth: 'authorized', clientId: 'unnamed-client' }, NAMES)).toBe(
+      'unnamed-client'
+    )
+    expect(
+      callerNameOf(
+        { auth: 'refused', clientId: Option.some('lifting'), reason: 'forbidden' },
+        NAMES
+      )
+    ).toBe('Lifting app')
+  })
+
+  test('names a public request Open and a refused one without a client No client', () => {
+    expect(callerNameOf({ auth: 'public' }, NAMES)).toBe('Open')
+    expect(
+      callerNameOf({ auth: 'refused', clientId: Option.none(), reason: 'no token' }, NAMES)
+    ).toBe('No client')
   })
 })
 

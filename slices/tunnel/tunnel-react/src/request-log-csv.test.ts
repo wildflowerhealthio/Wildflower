@@ -54,7 +54,7 @@ describe('requestLogCsv', () => {
     )
 
     expect(bodyOf(csv)[0]).toBe(
-      `2026-07-01T12:00:00.000Z,,Unauthenticated,public,"'=HYPERLINK(""x"")",'@x,'+SUM,/fhir-r4/Patient,200,,,12`
+      `2026-07-01T12:00:00.000Z,,Open,public,"'=HYPERLINK(""x"")",'@x,'+SUM,/fhir-r4/Patient,200,,,12`
     )
   })
 })

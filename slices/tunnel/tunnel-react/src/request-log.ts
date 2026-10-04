@@ -2,8 +2,11 @@ import { Array, DateTime, Match, Option } from 'effect'
 
 import type { CallerSummary, LoggedRequest, RequestAuth } from './queries/index.ts'
 
-/** What a row shows for a request no bearer gate verified. */
-const UNAUTHENTICATED = 'Unauthenticated'
+/** Who a row names for a request that needed no sign-in. */
+const OPEN_CALLER = 'Open'
+
+/** Who a row names for a refused request that carried no verified client. */
+const NO_CLIENT_CALLER = 'No client'
 
 /**
  * An OAuth client as the owner reads it: its display name from `names`
@@ -11,20 +14,6 @@ const UNAUTHENTICATED = 'Unauthenticated'
  */
 const clientNameOf = (clientId: string, names: ReadonlyMap<string, string>): string =>
   names.get(clientId) ?? clientId
-
-/**
- * Who made a logged request, as the owner reads it: the verified client's name
- * (see {@link clientNameOf}), or {@link UNAUTHENTICATED} when no caller was
- * verified.
- */
-const callerNameOf = (
-  clientId: Option.Option<string>,
-  names: ReadonlyMap<string, string>
-): string =>
-  clientId.pipe(
-    Option.map((id) => clientNameOf(id, names)),
-    Option.getOrElse(() => UNAUTHENTICATED)
-  )
 
 type RequestRefusal = Option.Option.Value<LoggedRequest['refusal']>
 
@@ -93,6 +82,24 @@ const requestAccessOf = ({ clientId, status, refusal }: RequestOutcome): Request
     )
   )
 
+/**
+ * Who made a logged request, as the owner reads it: the verified client's name
+ * (see {@link clientNameOf}); {@link OPEN_CALLER} when it needed no sign-in; or
+ * {@link NO_CLIENT_CALLER} when it was refused before a client was verified.
+ */
+const callerNameOf = (access: RequestAccess, names: ReadonlyMap<string, string>): string =>
+  Match.value(access).pipe(
+    Match.when({ auth: 'authorized' }, ({ clientId }) => clientNameOf(clientId, names)),
+    Match.when({ auth: 'public' }, () => OPEN_CALLER),
+    Match.when({ auth: 'refused' }, ({ clientId }) =>
+      clientId.pipe(
+        Option.map((id) => clientNameOf(id, names)),
+        Option.getOrElse(() => NO_CLIENT_CALLER)
+      )
+    ),
+    Match.exhaustive
+  )
+
 /** The owner-facing name of each `auth` case — the filter's options and the rows' label. */
 const AUTH_LABELS: Readonly<Record<RequestAuth, string>> = {
   authorized: 'Signed in',
@@ -142,7 +149,8 @@ export {
   callerNameOf,
   clientActivityOf,
   clientNameOf,
+  NO_CLIENT_CALLER,
+  OPEN_CALLER,
   requestAccessOf,
-  UNAUTHENTICATED,
 }
 export type { ClientActivity, RequestAccess, RequestOutcome }

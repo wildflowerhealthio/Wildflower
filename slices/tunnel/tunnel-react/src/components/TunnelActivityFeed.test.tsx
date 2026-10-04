@@ -4,12 +4,17 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { DateTime } from 'effect'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { DateTime, Option } from 'effect'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { TunnelActivityFeed, type ActivityEntry } from './TunnelActivityFeed.tsx'
+import type { ActivityCounts, RefusedStreak } from '../activity-feed.ts'
+import {
+  TunnelActivityFeed,
+  type ActivityEntry,
+  type TunnelActivityFeedProps,
+} from './TunnelActivityFeed.tsx'
 
 // A fixed "now" so all relative-time assertions are deterministic.
 const NOW_MS = 1_700_000_000_000
@@ -20,24 +25,27 @@ const dt = (offsetMs: number): DateTime.DateTime => DateTime.unsafeMake(NOW_MS -
 const ENTRIES: readonly ActivityEntry[] = [
   {
     name: 'Collector',
-    location: "Ruth's iPhone",
+    location: '192.0.2.1',
     lastConnectionAt: dt(0),
-    state: 'active',
+    access: { auth: 'authorized', clientId: 'collector' },
   },
   {
-    name: 'Patient app',
+    name: 'Open',
     location: '198.51.100.24',
     lastConnectionAt: dt(2 * 60 * 1000),
-    state: 'active',
+    access: { auth: 'public' },
   },
   {
-    name: 'Unknown client',
+    name: 'No client',
     location: '203.0.113.9',
     lastConnectionAt: dt(60 * 60 * 1000),
-    message: 'not authorized',
-    state: 'error',
+    access: { auth: 'refused', clientId: Option.none(), reason: 'token rejected' },
   },
 ]
+
+const COUNTS: ActivityCounts = { authorized: 40, public: 2, refused: 12 }
+
+const NO_STREAKS: readonly RefusedStreak[] = []
 
 const renderWithRouter = (content: ReactNode): ReturnType<typeof render> => {
   const rootRoute = createRootRoute({ component: () => <>{content}</> })
@@ -58,43 +66,53 @@ afterEach(() => {
 // the content lands.
 const findFeedText = (text: string | RegExp): Promise<HTMLElement> => screen.findByText(text)
 
+const renderFeed = (
+  props: Partial<Pick<TunnelActivityFeedProps, 'entries' | 'counts' | 'streaks'>> = {}
+): ReturnType<typeof render> =>
+  renderWithRouter(
+    <TunnelActivityFeed
+      entries={props.entries ?? ENTRIES}
+      counts={props.counts ?? COUNTS}
+      streaks={props.streaks ?? NO_STREAKS}
+      now={NOW}
+    />
+  )
+
 describe('TunnelActivityFeed', () => {
   test('renders the section eyebrow + "Live" cue + summary line', async () => {
-    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW} />)
+    renderFeed()
 
     expect(await findFeedText('Recent activity')).toBeTruthy()
     expect(await findFeedText('Live')).toBeTruthy()
-    // Summary = total entries today · blocked-count.
-    expect(await findFeedText('3 requests today · 1 blocked')).toBeTruthy()
+    // Summary = every logged request, then each access case.
+    expect(
+      await findFeedText('54 requests · 40 signed in · 2 no sign-in needed · 12 refused')
+    ).toBeTruthy()
   })
 
-  test('renders one row per entry with name, location, and relative time', async () => {
-    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW} />)
+  test('renders one row per entry with name, location, access and relative time', async () => {
+    renderFeed()
 
-    // Names.
     expect(await findFeedText('Collector')).toBeTruthy()
-    expect(await findFeedText('Patient app')).toBeTruthy()
-    expect(await findFeedText('Unknown client')).toBeTruthy()
+    expect(await findFeedText('192.0.2.1 · Signed in')).toBeTruthy()
+    expect(await findFeedText('198.51.100.24 · No sign-in needed')).toBeTruthy()
     // Relative time on the right of each row.
     expect(await findFeedText('now')).toBeTruthy()
     expect(await findFeedText('2 min ago')).toBeTruthy()
-    // Blocked row's right-edge meta carries the "blocked · " prefix.
-    expect(await findFeedText('blocked · 1 hr ago')).toBeTruthy()
+    expect(await findFeedText('1 hr ago')).toBeTruthy()
   })
 
-  test('blocked rows surface the message in the subtitle and the danger row tint', async () => {
-    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW} />)
+  test('refused rows surface the reason in the subtitle and the danger row tint', async () => {
+    renderFeed()
 
-    // Message appended after the location with the bullet separator.
-    expect(await findFeedText('203.0.113.9 · not authorized')).toBeTruthy()
-    // The row carries the danger-tone modifier so the danger CSS tint
-    // applies (class names are CSS-modules-hashed; check by substring).
-    const row = (await findFeedText('Unknown client')).closest('li')
+    const row = (await findFeedText('203.0.113.9 · Refused · token rejected')).closest('li')
+    // Class names are CSS-modules-hashed; check by substring.
     expect(row?.className).toMatch(/tone-danger/)
+    expect(row?.querySelector('[class*="dot--refused"]')).not.toBeNull()
   })
 
   test('renders the "View all activity" footer as a navigable link', async () => {
-    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW} />)
+    renderFeed()
 
     await waitFor(() => {
       const link = screen.getByRole('link', { name: /View all activity/ })
@@ -102,17 +120,32 @@ describe('TunnelActivityFeed', () => {
     })
   })
 
-  test('singularizes the summary line for a single entry', async () => {
-    const single: readonly ActivityEntry[] = [
-      {
-        name: 'Collector',
-        location: "Ruth's iPhone",
-        lastConnectionAt: dt(0),
-        state: 'active',
-      },
-    ]
-    renderWithRouter(<TunnelActivityFeed entries={single} now={NOW} />)
+  test('singularizes the summary line for a single request', async () => {
+    renderFeed({
+      entries: ENTRIES.slice(0, 1),
+      counts: { authorized: 1, public: 0, refused: 0 },
+    })
 
-    expect(await findFeedText('1 request today · 0 blocked')).toBeTruthy()
+    expect(
+      await findFeedText('1 request · 1 signed in · 0 no sign-in needed · 0 refused')
+    ).toBeTruthy()
+  })
+
+  test('says so when the log holds no requests', async () => {
+    renderFeed({ entries: [], counts: { authorized: 0, public: 0, refused: 0 } })
+
+    expect(await findFeedText('No requests have come through the tunnel yet.')).toBeTruthy()
+  })
+
+  test('warns about a refused streak, linking to its refused requests', async () => {
+    renderFeed({ streaks: [{ address: '203.0.113.9', count: 14 }] })
+
+    const warning = await screen.findByRole('alert')
+    expect(warning.textContent).toBe(
+      '14 refused requests from 203.0.113.9 in the last 10 minutes — possible credential guessing. Review'
+    )
+    expect(within(warning).getByRole('link', { name: 'Review' }).getAttribute('href')).toBe(
+      '/settings/tunnel/activity?address=203.0.113.9&auth=refused'
+    )
   })
 })

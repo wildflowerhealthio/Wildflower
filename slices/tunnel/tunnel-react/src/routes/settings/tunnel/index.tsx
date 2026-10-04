@@ -1,16 +1,20 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { DateTime } from 'effect'
+import { DateTime, Duration, Option } from 'effect'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, PageHeader, pageLayoutStyles } from 'react-tundraish'
+import { AsyncErrorView, ErrorBanner, PageHeader, pageLayoutStyles } from 'react-tundraish'
 
+import { activityCountsOf, activityEntryOf, refusedStreaksOf } from '../../../activity-feed.ts'
 import { RelaySettingsEntry } from '../../../components/RelaySettingsEntry.tsx'
-import { TunnelActivityFeed, type ActivityEntry } from '../../../components/TunnelActivityFeed.tsx'
+import { TunnelActivityFeed } from '../../../components/TunnelActivityFeed.tsx'
 import { TunnelExplainer } from '../../../components/TunnelExplainer.tsx'
 import { TunnelStatusHero } from '../../../components/TunnelStatusHero.tsx'
 import {
   mightTunnelBeOpen,
   tunnelStateQueryOptions,
+  useClientNames,
+  useRecentRefusedRequestsQuery,
+  useTunnelCallersQuery,
   useTunnelStateQuery,
   type TunnelState,
 } from '../../../queries/index.ts'
@@ -21,36 +25,36 @@ interface TunnelScreenBodyProps {
   readonly state: TunnelState
 }
 
-/*
- * Sham activity feed entries. The real source (connection-log query
- * against the daemon) is a future slice; until then the screen renders
- * a fixed set of plausible events so the layout/design can be reviewed
- * with real-shaped data. Generated at call time so the relative times
- * stay anchored to "now".
+/** How often the activity card re-reads the request log while it's shown. */
+const ACTIVITY_REFRESH_INTERVAL = Duration.seconds(10)
+
+/** How many callers the activity card lists; the activity page has the rest. */
+const ACTIVITY_FEED_LENGTH = 5
+
+/**
+ * The activity card, read live from the request log: the most recent callers,
+ * the request counts, and refused streaks from the newest refused requests.
+ * The log is secondary on this screen, so while it loads the card waits, and a
+ * failed read shows in place of the card rather than failing the screen.
  */
-const buildShamActivityEntries = (): readonly ActivityEntry[] => {
-  const now = DateTime.unsafeNow()
-  return [
-    {
-      name: 'Collector',
-      location: "Ruth's iPhone",
-      lastConnectionAt: now,
-      state: 'active',
-    },
-    {
-      name: 'Patient app',
-      location: '198.51.100.24',
-      lastConnectionAt: DateTime.subtract(now, { minutes: 2 }),
-      state: 'active',
-    },
-    {
-      name: 'Unknown client',
-      location: '203.0.113.9',
-      lastConnectionAt: DateTime.subtract(now, { hours: 1 }),
-      message: 'not authorized',
-      state: 'error',
-    },
-  ]
+const LiveActivityFeed = (): JSX.Element | null => {
+  const live = { refetchInterval: Duration.toMillis(ACTIVITY_REFRESH_INTERVAL) }
+  const callers = useTunnelCallersQuery(live)
+  const refused = useRecentRefusedRequestsQuery(live)
+  const names = useClientNames()
+
+  if (callers.error !== null) return <ErrorBanner error={callers.error} />
+  return Option.fromNullable(callers.data).pipe(
+    Option.map((rows) => (
+      <TunnelActivityFeed
+        key="feed"
+        entries={rows.slice(0, ACTIVITY_FEED_LENGTH).map((row) => activityEntryOf(row, names))}
+        counts={activityCountsOf(rows)}
+        streaks={refusedStreaksOf(refused.data ?? [], DateTime.unsafeNow())}
+      />
+    )),
+    Option.getOrNull
+  )
 }
 
 /**
@@ -97,9 +101,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         </p>
       ) : null}
 
-      {mightTunnelBeOpen(state) ? (
-        <TunnelActivityFeed entries={buildShamActivityEntries()} />
-      ) : null}
+      {mightTunnelBeOpen(state) ? <LiveActivityFeed /> : null}
 
       <RelaySettingsEntry />
     </>

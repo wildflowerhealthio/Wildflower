@@ -190,7 +190,7 @@ describe('/settings/tunnel/activity', () => {
   test('names each caller and labels each access case', async () => {
     renderActivity()
 
-    const refused = await rowOf('Unauthenticated')
+    const refused = await rowOf('No client')
     expect(within(refused).getByText('Refused · token rejected')).toBeTruthy()
     expect(refused.className).toMatch(/activity__row--refused/)
     expect(within(await rowOf('unnamed-client')).getByText('GET /access')).toBeTruthy()
@@ -262,10 +262,10 @@ describe('/settings/tunnel/activity', () => {
       'received_at,client_id,client_name,access,address,served_host,method,path,status,refusal,response_bytes,duration_ms'
     )
     expect(lines?.slice(1)).toEqual([
-      '2026-07-01T12:04:00.000Z,,Unauthenticated,refused,203.0.113.9,dev1.example.com,GET,/fhir-r4/Patient,401,tokenRejected,2048,12',
+      '2026-07-01T12:04:00.000Z,,No client,refused,203.0.113.9,dev1.example.com,GET,/fhir-r4/Patient,401,tokenRejected,2048,12',
       '2026-07-01T12:03:00.000Z,unnamed-client,unnamed-client,authorized,198.51.100.24,dev1.example.com,GET,/access,200,,2048,12',
       '2026-07-01T12:02:00.000Z,lifting,Lifting app,authorized,198.51.100.24,dev1.example.com,POST,/fhir-r4/Observation,200,,2048,12',
-      '2026-07-01T12:01:00.000Z,,Unauthenticated,public,198.51.100.24,dev1.example.com,GET,/.well-known,200,,2048,12',
+      '2026-07-01T12:01:00.000Z,,Open,public,198.51.100.24,dev1.example.com,GET,/.well-known,200,,2048,12',
     ])
   })
 })
