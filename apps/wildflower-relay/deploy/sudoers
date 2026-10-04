@@ -1,7 +1,10 @@
 # sudoers rules for the `deploy` user on the relay host, installed as
-# /etc/sudoers.d/wildflower-relay:
+# /etc/sudoers.d/wildflower-relay. On the host:
 #
-#   sudo visudo -cf sudoers && sudo install -m 0440 sudoers /etc/sudoers.d/wildflower-relay
+#   curl -fsSL -o /tmp/wildflower-relay.sudoers \
+#     https://raw.githubusercontent.com/wildflowerhealthio/Wildflower/main/apps/wildflower-relay/deploy/sudoers
+#   sudo visudo -cf /tmp/wildflower-relay.sudoers \
+#     && sudo install -m 0440 -o root -g root /tmp/wildflower-relay.sudoers /etc/sudoers.d/wildflower-relay
 #
 # They allow exactly the commands install.sh runs for
 # .github/workflows/deploy-relay.yml, with these arguments and no others.
