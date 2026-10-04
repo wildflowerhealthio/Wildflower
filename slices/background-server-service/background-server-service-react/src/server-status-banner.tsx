@@ -52,13 +52,13 @@ const ServerStatusBanner = (): JSX.Element => {
     Option.map(serverDisplayState),
     Option.filter((state): state is BannerState => state !== 'running')
   )
-  const title = Option.map(bannerState, (state) => BANNER_TITLE[state])
-  const stopped = Option.filter(status, () => Option.contains(bannerState, 'stopped'))
+  const title = bannerState.pipe(Option.map((state) => BANNER_TITLE[state]))
+  const stopped = status.pipe(Option.filter(() => Option.contains(bannerState, 'stopped')))
   const reason = stopped.pipe(
     Option.flatMapNullable((stoppedStatus) => stoppedStatus.stopReason),
     Option.map((stopReason) => STOP_REASON_DESCRIPTION[stopReason])
   )
-  const lastError = Option.flatMapNullable(stopped, (stoppedStatus) => stoppedStatus.lastError)
+  const lastError = stopped.pipe(Option.flatMapNullable((stoppedStatus) => stoppedStatus.lastError))
   const announcement = stopped.pipe(
     Option.map(() =>
       Arr.getSomes([Option.some(`${BANNER_TITLE.stopped}.`), reason, lastError]).join(' ')
@@ -71,50 +71,64 @@ const ServerStatusBanner = (): JSX.Element => {
       <p className="sr-only" role="status">
         {announcement}
       </p>
-      {Option.getOrNull(
-        Option.map(title, (bannerTitle) => (
+      {title.pipe(
+        Option.map((bannerTitle) => (
           <section
+            key="banner"
             aria-label="Wildflower server"
             className={cn(
               styles['server-status-banner'],
-              Option.getOrNull(Option.map(stopped, () => styles['server-status-banner--stopped']))
+              stopped.pipe(
+                Option.map(() => styles['server-status-banner--stopped']),
+                Option.getOrNull
+              )
             )}
           >
             <span
               aria-hidden="true"
               className={cn(
                 styles['server-status-banner__dot'],
-                Option.getOrNull(
-                  Option.map(lastError, () => styles['server-status-banner__dot--error'])
+                lastError.pipe(
+                  Option.map(() => styles['server-status-banner__dot--error']),
+                  Option.getOrNull
                 )
               )}
             />
             <div className={styles['server-status-banner__text']}>
               <p className={styles['server-status-banner__title']}>{bannerTitle}</p>
-              {Option.getOrNull(
-                Option.map(reason, (description) => (
-                  <p className={styles['server-status-banner__detail']}>{description}</p>
-                ))
+              {reason.pipe(
+                Option.map((description) => (
+                  <p key="reason" className={styles['server-status-banner__detail']}>
+                    {description}
+                  </p>
+                )),
+                Option.getOrNull
               )}
-              {Option.getOrNull(
-                Option.map(lastError, (error) => (
-                  <p className={styles['server-status-banner__error']}>{error}</p>
-                ))
+              {lastError.pipe(
+                Option.map((error) => (
+                  <p key="error" className={styles['server-status-banner__error']}>
+                    {error}
+                  </p>
+                )),
+                Option.getOrNull
               )}
             </div>
-            {Option.getOrNull(
-              Option.map(stopped, () => (
+            {stopped.pipe(
+              Option.map(() => (
                 <button
+                  key="restart"
                   type="button"
                   className={cn('button-3 outline', styles['server-status-banner__action'])}
                   onClick={restartServer}
                 >
                   Restart
                 </button>
-              ))
+              )),
+              Option.getOrNull
             )}
           </section>
-        ))
+        )),
+        Option.getOrNull
       )}
     </>
   )
