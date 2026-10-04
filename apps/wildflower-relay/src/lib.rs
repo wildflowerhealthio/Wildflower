@@ -1,30 +1,64 @@
 //! `wildflower-relay` — the self-hostable tunnel relay.
 //!
-//! This crate is a thin wrapper over the [`rathole`] library in *server*
-//! mode. It deliberately implements no tunneling protocol of its own: it
-//! loads a rathole server config, runs the relay, and translates a shutdown
-//! signal into rathole's broadcast shutdown channel.
+//! One process runs two things side by side on one shutdown broadcast:
+//!
+//! - the [`rathole`] library in *server* mode, which holds a noise-encrypted
+//!   tunnel per device and implements no protocol of our own; and
+//! - a small TCP [`front`] on `:443` and `:80` that routes each visitor to a
+//!   device's tunnel by the server name in the TLS ClientHello.
 //!
 //! ## Where it sits
 //!
 //! ```text
-//!   Tauri host (rathole CLIENT)  ──noise──►  wildflower-relay (rathole SERVER)
-//!                                                     │  forwards a control
-//!                                                     │  port per device
-//!                                                     ▼
-//!                                            reverse-proxy edge (Caddy/Traefik)
-//!                                            terminates TLS, routes
-//!                                            https://{sub}.{root} → device port
+//!   browser ──TLS──► front :443 ── reads SNI only ──► 127.0.0.1:<port>
+//!                    (wildflower-relay)                (rathole service <label>)
+//!                                                             │ noise tunnel
+//!                                                             ▼
+//!                                       device: rathole CLIENT ──► TLS listener
+//!                                       (holds the certificate for <label>.<domain>)
 //! ```
 //!
-//! rathole forwards raw TCP/UDP only — it has no HTTP virtual-host routing —
-//! so subdomain + TLS for the public surface are the edge proxy's job. Keeping
-//! that split is intentional: the relay stays a small, audited binary and the
-//! battle-tested proxy owns certificates and host routing.
+//! TLS for `https://<label>.<domain>` is terminated on the device. The relay
+//! routes ciphertext: it reads the ClientHello's server name, maps
+//! `<label>.<domain>` to the rathole service `[server.services.<label>]`,
+//! writes a PROXY protocol v2 header carrying the visitor's address, replays
+//! the hello and then copies bytes both ways. It holds no certificates or keys
+//! for the public surface, and a hostname it cannot route is closed without a
+//! byte written rather than answered with a certificate of its own. `:80`
+//! only redirects to `https://`.
+//!
+//! Every service binds a loopback `bind_addr`, so nothing but the front
+//! reaches a tunnel, and rathole binds it only while that device is
+//! connected: a refused connect is how the front knows a device is offline.
+//! The front reads its routes from the same TOML rathole hot-reloads (see
+//! [`watch`]), so one write that adds a service makes it routable.
+//!
+//! ## Configuration
+//!
+//! Everything is set through `WILDFLOWER_RELAY_*` environment variables (the
+//! full list is in [`settings`]). At startup the relay writes the rathole
+//! `[server]` keys (control address, default token, noise key) into the TOML
+//! at `WILDFLOWER_RELAY_CONFIG`, creating it if needed and keeping its
+//! `[server.services.*]` tables, which enrolment appends to (see [`config`]).
+//! The front's own settings (domain suffix, listen addresses, limits) stay
+//! out of the file because rathole rejects unknown keys in it.
+
+pub mod config;
+pub mod front;
+pub mod route;
+pub mod settings;
+pub mod watch;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use anyhow::Context;
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+
+pub use front::{Front, Limits};
+pub use route::{Route, RouteTable, Router};
+pub use settings::{ControlSettings, FrontSettings, RelaySettings, Secret};
 
 /// Build the [`rathole::Cli`] that runs the relay in server mode against the
 /// config at `config_path`.
@@ -43,18 +77,45 @@ pub fn build_server_cli(config_path: PathBuf) -> rathole::Cli {
     }
 }
 
-/// Run the relay until `shutdown_rx` receives `true` (or the underlying
-/// rathole instance exits on its own).
+/// Write the rathole TOML from `settings`, then run the relay — rathole, the
+/// `:443`/`:80` front and the route watcher — until `shutdown_rx` receives
+/// `true`.
 ///
 /// # Errors
 ///
-/// Returns an error if rathole fails to load the config, bind its control
-/// port, or exits with a transport error.
+/// Returns an error if the config cannot be written or loaded, a front
+/// listener cannot bind, the config directory cannot be watched, or rathole
+/// exits with an error.
 pub async fn run_relay(
     config_path: PathBuf,
+    settings: RelaySettings,
     shutdown_rx: broadcast::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    rathole::run(build_server_cli(config_path), shutdown_rx).await
+    config::write_config(&config_path, &settings.control).await?;
+    let settings = settings.front;
+    let table = watch::load_routes(&config_path)
+        .await
+        .with_context(|| format!("loading routes from {}", config_path.display()))?;
+    tracing::info!(domain = %settings.domain, routes = table.len(), "routes loaded");
+    let router = Arc::new(Router::new(&settings.domain, table));
+    let front = Front::new(Arc::clone(&router), settings.limits);
+
+    let https = TcpListener::bind(settings.https_addr)
+        .await
+        .with_context(|| format!("binding the TLS front on {}", settings.https_addr))?;
+    let http = TcpListener::bind(settings.http_addr)
+        .await
+        .with_context(|| format!("binding the HTTP redirect on {}", settings.http_addr))?;
+    let watcher = watch::watch_routes(&config_path, router, shutdown_rx.resubscribe())?;
+    tracing::info!(https = %settings.https_addr, http = %settings.http_addr, "front listening");
+
+    tokio::try_join!(
+        Arc::clone(&front).serve_https(https, shutdown_rx.resubscribe()),
+        front.serve_http(http, shutdown_rx.resubscribe()),
+        watcher,
+        rathole::run(build_server_cli(config_path), shutdown_rx),
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

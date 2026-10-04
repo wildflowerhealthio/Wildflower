@@ -4,22 +4,37 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# A deliberately thin wrapper over the `rathole` library running in server
-# mode — this binary owns no tunneling protocol of its own. The `noise`
-# transport is selected (and TLS/websocket default features dropped) so the
-# relay needs no system OpenSSL and no certificate plumbing of its own; TLS
-# for the public `https://*.<root>` surface is terminated by the reverse-proxy
-# edge (Caddy/Traefik) that sits in front of this relay.
+# Two parts in one process: the `rathole` library in server mode, which owns
+# the noise-encrypted tunnels to devices, and a small TCP front on :443/:80
+# that routes visitors to those tunnels by the TLS ClientHello's server name.
+# The relay never terminates TLS for the public `https://<label>.<domain>`
+# surface: it holds no certificates or keys for it and forwards ciphertext.
+# The `noise` transport is selected (and TLS/websocket default features
+# dropped) so the tunnel side needs no system OpenSSL either.
 [dependencies]
 anyhow.workspace = true
+# Same major as the `notify` rathole's `hot-reload` feature pulls in, so the
+# route watcher adds no second copy.
+notify = "5"
+# PROXY protocol v2 header ahead of each replayed ClientHello, so the device
+# sees the visitor's address instead of the relay's.
+ppp = "2.3"
 rathole = { version = "0.5", default-features = false, features = [
   "server",
   "noise",
   "hot-reload",
 ] }
+# Only `rustls::server::Acceptor`, to read the ClientHello's server name. No
+# crypto provider: the front never completes a handshake.
+rustls = { version = "0.23", default-features = false, features = ["std"] }
+# Merges the env-owned `[server]` keys into the rathole TOML at startup.
+toml = "0.9"
 tokio = { workspace = true, features = [
   "rt-multi-thread",
   "macros",
+  "net",
+  "io-util",
+  "time",
   "signal",
   "sync",
 ] }
@@ -27,11 +42,16 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Opt into the workspace lints (notably `unsafe_code = "forbid"`). This crate
-# is pure glue and carries no `unsafe`; rathole's transitive deps are
-# unaffected by our lints.
+# carries no `unsafe`; rathole's transitive deps are unaffected by our lints.
 [lints]
 workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
+# A real rustls client produces the ClientHellos the tests feed the front.
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "ring",
+  "tls12",
+] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "fs"] }
 tempfile = "3"

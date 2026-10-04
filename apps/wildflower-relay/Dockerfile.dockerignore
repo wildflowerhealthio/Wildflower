@@ -1,0 +1,13 @@
+# Build context for apps/wildflower-relay/Dockerfile (repository root). Cargo
+# loads every workspace member, so the Rust trees stay; everything else, and
+# all build output and node_modules, is left out.
+*
+!Cargo.toml
+!Cargo.lock
+!apps/
+!plugins/
+!slices/
+**/node_modules
+**/target
+**/dist
+**/.vite

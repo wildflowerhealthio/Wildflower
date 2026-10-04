@@ -1,0 +1,42 @@
+# wildflower-relay: rathole tunnels plus the SNI front, in one container.
+#
+#   docker compose up -d --build
+#
+# Secrets come from the shell or a `.env` file beside this file; compose refuses
+# to start without them. Generate the noise keypair with `rathole --genkey` and
+# give the public half to devices as `remote_public_key`.
+services:
+  wildflower-relay:
+    build:
+      context: ../..
+      dockerfile: apps/wildflower-relay/Dockerfile
+    image: wildflower-relay
+    restart: unless-stopped
+    environment:
+      WILDFLOWER_RELAY_DOMAIN: ${WILDFLOWER_RELAY_DOMAIN:?the public domain suffix, e.g. relay.example.com}
+      WILDFLOWER_RELAY_DEFAULT_TOKEN: ${WILDFLOWER_RELAY_DEFAULT_TOKEN:?the shared rathole token}
+      WILDFLOWER_RELAY_NOISE_PRIVATE_KEY: ${WILDFLOWER_RELAY_NOISE_PRIVATE_KEY:?the noise private key from rathole --genkey}
+      WILDFLOWER_RELAY_CONFIG: /etc/wildflower-relay/relay.toml
+      WILDFLOWER_RELAY_CONTROL_ADDR: 0.0.0.0:2333
+      WILDFLOWER_RELAY_HTTPS_ADDR: 0.0.0.0:443
+      WILDFLOWER_RELAY_HTTP_ADDR: 0.0.0.0:80
+      # Optional limits (defaults shown):
+      # WILDFLOWER_RELAY_MAX_CONNECTIONS: 4096
+      # WILDFLOWER_RELAY_MAX_CONNECTIONS_PER_LABEL: 256
+      # WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS: 5
+      # WILDFLOWER_RELAY_IDLE_TIMEOUT_SECS: 300
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - '443:443'
+      - '80:80'
+      - '2333:2333'
+    # Lets the non-root user bind 443 and 80 (Docker's default too, stated
+    # here so other runtimes match).
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    volumes:
+      # The rathole TOML. Enrolled devices' services live here across restarts.
+      - relay-config:/etc/wildflower-relay
+
+volumes:
+  relay-config:
