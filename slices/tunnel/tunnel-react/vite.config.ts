@@ -10,6 +10,10 @@ export default defineConfig({
       routesDirectory: './src/routes',
       generatedRouteTree: './src/routeTree.gen.ts',
       autoCodeSplitting: false,
+      // Colocated `*.test.tsx` files live beside the route modules they
+      // exercise; without this the route generator would treat them as
+      // routes and pollute `routeTree.gen.ts`.
+      routeFileIgnorePattern: '\\.(test|spec)\\.',
     }),
   ],
   pack: {

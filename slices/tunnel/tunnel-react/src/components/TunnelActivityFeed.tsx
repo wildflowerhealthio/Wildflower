@@ -39,14 +39,6 @@ interface TunnelActivityFeedProps {
    */
   readonly now?: DateTime.DateTime
   readonly className?: string
-  /**
-   * Optional destination for the "View all activity" footer link. The
-   * full activity log is a future screen — leaving the URL stubbed
-   * means the link still renders + navigates (to a 404 today) without
-   * fabricating a typed route reference. Defaults to a stable
-   * placeholder so consumers don't have to thread it.
-   */
-  readonly viewAllHref?: string
 }
 
 const buildSubtitle = (entry: ActivityEntry): string =>
@@ -84,12 +76,7 @@ const toItem = (entry: ActivityEntry, index: number, now: DateTime.DateTime): It
  * underneath. Blocked rows tint the whole row danger so a single
  * failure stands out against an otherwise-quiet feed.
  */
-const TunnelActivityFeed = ({
-  entries,
-  now,
-  className,
-  viewAllHref = '/settings/tunnel/activity',
-}: TunnelActivityFeedProps): JSX.Element => {
+const TunnelActivityFeed = ({ entries, now, className }: TunnelActivityFeedProps): JSX.Element => {
   const resolvedNow = now ?? DateTime.unsafeNow()
   const items = entries.map((entry, index) => toItem(entry, index, resolvedNow))
   const blockedCount = entries.filter((entry) => entry.state === 'error').length
@@ -105,7 +92,7 @@ const TunnelActivityFeed = ({
         blocked
       </p>
       <ItemList items={items} />
-      <Link className={styles['feed__footer']} to={viewAllHref}>
+      <Link className={styles['feed__footer']} to="/settings/tunnel/activity">
         View all activity ›
       </Link>
     </section>

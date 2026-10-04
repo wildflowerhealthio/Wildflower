@@ -29,19 +29,44 @@ const routes = (): readonly AnyRoute[] =>
   Object.values(router.routesById).filter((route) => route.id !== '__root__')
 
 describe('tunnel routes', () => {
-  test('the generated tree exposes the overview + relay-settings routes', () => {
+  test('the generated tree exposes the overview, activity and relay-settings routes', () => {
     const ids = routes()
       .map((route) => route.id)
       .toSorted((a, b) => a.localeCompare(b))
-    expect(ids).toEqual(['/settings/tunnel/', '/settings/tunnel/relay'])
+    expect(ids).toEqual([
+      '/settings/tunnel/',
+      '/settings/tunnel/activity',
+      '/settings/tunnel/relay',
+    ])
   })
 
-  test('the overview resolves at /settings/tunnel/ and the relay page at /settings/tunnel/relay', () => {
+  test('the overview resolves at /settings/tunnel/ and the leaves at their own paths', () => {
     const byId = new Map(routes().map((route) => [route.id, route]))
     // The overview is an index route, so the resolved fullPath keeps the
-    // trailing slash; the relay page is a leaf, no trailing slash.
+    // trailing slash; the activity and relay pages are leaves, no trailing slash.
     expect(byId.get('/settings/tunnel/')?.fullPath).toBe('/settings/tunnel/')
+    expect(byId.get('/settings/tunnel/activity')?.fullPath).toBe('/settings/tunnel/activity')
     expect(byId.get('/settings/tunnel/relay')?.fullPath).toBe('/settings/tunnel/relay')
+  })
+
+  test('the activity route decodes its filter from the search', async () => {
+    const activityMatch = async (
+      search: string
+    ): Promise<{ readonly search: unknown; readonly status: string } | undefined> => {
+      const searchRouter = createRouter({
+        routeTree,
+        context: router.options.context,
+        history: createMemoryHistory({ initialEntries: [`/settings/tunnel/activity${search}`] }),
+      })
+      await searchRouter.load()
+      return searchRouter.state.matches.find((m) => m.routeId === '/settings/tunnel/activity')
+    }
+
+    expect(await activityMatch('?client=lifting&address=203.0.113.9&auth=refused')).toMatchObject({
+      status: 'success',
+      search: { client: 'lifting', address: '203.0.113.9', auth: 'refused' },
+    })
+    expect(await activityMatch('?auth=sometimes')).toMatchObject({ status: 'error' })
   })
 })
 
