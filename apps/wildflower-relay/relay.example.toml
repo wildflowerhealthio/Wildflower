@@ -12,7 +12,10 @@
 # There is no `default_token`; the relay removes one if present. The
 # `[server.services.*]` tables are kept across restarts: enrolment adds one per
 # device, with its own `token`, and both rathole and the relay's TLS front
-# reload them on change. rathole rejects the whole file if any service lacks a
+# reload them on change. Services listed in WILDFLOWER_RELAY_SERVICES
+# (`label=token,...`) are written here on every start, replacing a table with
+# the same label, with loopback ports counted up from
+# WILDFLOWER_RELAY_SERVICE_PORT_BASE (default 5201) that no other service uses. rathole rejects the whole file if any service lacks a
 # token, so the relay refuses to start and a reload is ignored until it is
 # fixed.
 # The relay rewrites the file as a whole, so comments are not kept.

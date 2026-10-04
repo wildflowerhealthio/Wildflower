@@ -40,7 +40,11 @@
 //! `[server]` keys (control address, noise key) into the TOML at
 //! `WILDFLOWER_RELAY_CONFIG`, creating it if needed and keeping its
 //! `[server.services.*]` tables, which enrolment appends to (see [`config`]).
-//! There is no default token: each service carries its own `token`.
+//! Device services can also come from `WILDFLOWER_RELAY_SERVICES`
+//! (`label=token,...`), for hosts whose disk does not persist; those are
+//! written into the file on every start and win over a file entry with the
+//! same label. There is no default token: each service carries its own
+//! `token`.
 //! The front's own settings (domain suffix, listen addresses, limits) stay
 //! out of the file because rathole rejects unknown keys in it.
 

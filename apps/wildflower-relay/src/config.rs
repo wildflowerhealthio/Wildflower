@@ -6,7 +6,11 @@
 //! service can connect without a token of its own. The `[server.services.*]`
 //! tables belong to enrolment, which appends a service per device with its
 //! own `token`, and are kept as they are, along with any other key the
-//! environment does not own.
+//! environment does not own. Services listed in `WILDFLOWER_RELAY_SERVICES`
+//! are written too, for hosts whose disk does not persist: each replaces a
+//! file entry of the same label and gets the next loopback port from
+//! `WILDFLOWER_RELAY_SERVICE_PORT_BASE` (in label order) that no file-only
+//! service already uses.
 //!
 //! rathole rejects the whole file if any service has no `token` (and there is
 //! no `default_token` to fall back on). At startup that is an error naming
@@ -16,6 +20,8 @@
 //! the base keys under a running rathole would make it restart every tunnel.
 //! The file is machine-owned, so comments in it are not preserved.
 
+use std::collections::HashSet;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -45,7 +51,9 @@ pub fn render(existing: Option<&str>, control: &ControlSettings) -> anyhow::Resu
     );
     server.remove("default_token");
     // rathole requires the table even when no device is enrolled yet.
-    let tokenless: Vec<&str> = table_at(server, "services")?
+    let services = table_at(server, "services")?;
+    merge_env_services(services, control)?;
+    let tokenless: Vec<&str> = services
         .iter()
         .filter(|(_, service)| {
             service
@@ -68,6 +76,42 @@ pub fn render(existing: Option<&str>, control: &ControlSettings) -> anyhow::Resu
         Value::String(control.noise_private_key.expose().to_owned()),
     );
     Ok(toml::to_string(&root)?)
+}
+
+/// Write each env service into `services` as a loopback TCP service,
+/// replacing a file entry with the same label. Ports count up from the base
+/// in label order, skipping any port a file-only service binds.
+fn merge_env_services(services: &mut Table, control: &ControlSettings) -> anyhow::Result<()> {
+    let from_env = |name: &str| control.services.iter().any(|s| s.label == name);
+    let taken: HashSet<u16> = services
+        .iter()
+        .filter(|(name, _)| !from_env(name))
+        .filter_map(|(_, service)| {
+            let addr: SocketAddr = service.get("bind_addr")?.as_str()?.parse().ok()?;
+            Some(addr.port())
+        })
+        .collect();
+    let mut ports = (control.service_port_base..=u16::MAX).filter(|port| !taken.contains(port));
+    for service in &control.services {
+        let port = ports.next().with_context(|| {
+            format!(
+                "no free loopback port for service {:?} from {} up",
+                service.label, control.service_port_base
+            )
+        })?;
+        let mut table = Table::new();
+        table.insert("type".to_owned(), Value::String("tcp".to_owned()));
+        table.insert(
+            "bind_addr".to_owned(),
+            Value::String(SocketAddr::from((Ipv4Addr::LOCALHOST, port)).to_string()),
+        );
+        table.insert(
+            "token".to_owned(),
+            Value::String(service.token.expose().to_owned()),
+        );
+        services.insert(service.label.clone(), Value::Table(table));
+    }
+    Ok(())
 }
 
 /// The table at `key` in `parent`, created empty if absent.
@@ -144,13 +188,31 @@ fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::Secret;
+    use crate::route::{RouteTable, Router};
+    use crate::settings::{EnvService, Secret};
 
     fn control() -> ControlSettings {
         ControlSettings {
             control_addr: "0.0.0.0:2333".parse().unwrap(),
             // 32 zero bytes, valid base64; any key parses.
             noise_private_key: Secret::new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+            services: Vec::new(),
+            service_port_base: 5201,
+        }
+    }
+
+    /// `control()` with env services, given already sorted by label as
+    /// settings parsing leaves them.
+    fn with_services(services: &[(&str, &str)]) -> ControlSettings {
+        ControlSettings {
+            services: services
+                .iter()
+                .map(|&(label, token)| EnvService {
+                    label: label.to_owned(),
+                    token: Secret::new(token),
+                })
+                .collect(),
+            ..control()
         }
     }
 
@@ -213,6 +275,70 @@ token = "other-token"
             Some("device-token")
         );
         assert_eq!(server.services["def"].token.as_deref(), Some("other-token"));
+    }
+
+    #[tokio::test]
+    async fn env_services_get_ports_in_label_order_skipping_file_ports() {
+        let existing = r#"
+[server]
+bind_addr = "0.0.0.0:2333"
+
+[server.services.enrolled]
+bind_addr = "127.0.0.1:5202"
+token = "enrolled-token"
+"#;
+        let control = with_services(&[("alice", "t1"), ("bob", "t2"), ("carol", "t3")]);
+        let text = render(Some(existing), &control).unwrap();
+        assert_eq!(
+            render(Some(existing), &control).unwrap(),
+            text,
+            "deterministic"
+        );
+        let server = parse(&text).await.server.expect("[server]");
+        let bind = |label: &str| server.services[label].bind_addr.clone();
+        assert_eq!(bind("alice"), "127.0.0.1:5201");
+        assert_eq!(bind("enrolled"), "127.0.0.1:5202", "file-only service kept");
+        assert_eq!(bind("bob"), "127.0.0.1:5203");
+        assert_eq!(bind("carol"), "127.0.0.1:5204");
+        assert_eq!(
+            server.services["enrolled"].token.as_deref(),
+            Some("enrolled-token")
+        );
+        assert_eq!(server.services["bob"].token.as_deref(), Some("t2"));
+    }
+
+    #[tokio::test]
+    async fn env_service_replaces_a_file_entry_with_the_same_label() {
+        let existing = r#"
+[server]
+bind_addr = "0.0.0.0:2333"
+
+[server.services.alice]
+bind_addr = "127.0.0.1:9000"
+token = "file-token"
+nodelay = true
+"#;
+        let text = render(Some(existing), &with_services(&[("alice", "env-token")])).unwrap();
+        assert!(!text.contains("file-token"));
+        let server = parse(&text).await.server.expect("[server]");
+        let alice = &server.services["alice"];
+        assert_eq!(alice.bind_addr, "127.0.0.1:5201");
+        assert_eq!(alice.token.as_deref(), Some("env-token"));
+        assert_eq!(alice.nodelay, None, "the whole table is replaced");
+    }
+
+    #[tokio::test]
+    async fn rendered_env_services_route() {
+        let control = with_services(&[("alice", "t1"), ("bob", "t2")]);
+        let config = parse(&render(None, &control).unwrap()).await;
+        let router = Router::new("relay.example.com", RouteTable::from_config(&config));
+        assert_eq!(
+            router
+                .resolve("bob.relay.example.com")
+                .map(|route| route.addr.to_string()),
+            Some("127.0.0.1:5202".to_owned())
+        );
+        assert!(router.resolve("alice.relay.example.com").is_some());
     }
 
     #[test]

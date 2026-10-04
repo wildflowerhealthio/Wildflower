@@ -146,7 +146,7 @@ pub fn label_for_host(host: &str, domain: &str) -> Option<String> {
 }
 
 /// A lowercase LDH label: 1–63 of `[a-z0-9-]`, not starting or ending in `-`.
-fn is_dns_label(label: &str) -> bool {
+pub(crate) fn is_dns_label(label: &str) -> bool {
     (1..=63).contains(&label.len())
         && label
             .bytes()
