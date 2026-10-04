@@ -53,6 +53,9 @@ rathole = { version = "0.5", default-features = false, features = [
   "client",
   "noise",
 ] }
+# The relay's `GET /rathole` settings, and the transport and noise pattern the
+# rendered client config names.
+rathole-settings-rust = { path = "../rathole-settings-rust" }
 async-trait = "0.1"
 parking_lot = "0.12"
 rand = "0.10"

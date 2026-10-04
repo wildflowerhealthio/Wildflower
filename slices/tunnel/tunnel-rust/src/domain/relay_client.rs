@@ -10,6 +10,7 @@
 //! re-serializes the token as a masked `***`, so we render the client config
 //! from our own typed structs with [`toml`] (escaping handled by construction)
 //! to a temp file that lives for the duration of the attempt.
+use rathole_settings_rust::PublicRatholeSettings;
 use tokio_util::sync::CancellationToken;
 
 /// A fully-specified relay connection — produced only when every field the
@@ -21,6 +22,24 @@ pub struct RelaySettings {
     pub token: String,
     pub public_key: String,
     pub service_name: String,
+}
+
+impl RelaySettings {
+    /// The connection to the relay that served `relay` at `GET /rathole`, for
+    /// this device's tunnel `service_name` and its `token`.
+    #[must_use]
+    pub fn from_public_rathole_settings(
+        relay: PublicRatholeSettings,
+        service_name: String,
+        token: String,
+    ) -> Self {
+        Self {
+            remote_addr: relay.remote_addr,
+            token,
+            public_key: relay.public_key,
+            service_name,
+        }
+    }
 }
 
 /// Runs a single rathole client attempt. The supervisor calls this in a loop.

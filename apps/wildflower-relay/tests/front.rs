@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use rustls::sign::{CertifiedKey, SingleCertAndKey};
 use rustls::{ClientConfig, ClientConnection, RootCertStore};
@@ -54,7 +55,17 @@ fn self_signed_site() -> (Site, CertificateDer<'static>) {
         &rustls::crypto::ring::default_provider(),
     )
     .expect("certified key");
-    (Site::new(Arc::new(SingleCertAndKey::from(key))), cert)
+    let rathole_settings = PublicRatholeSettings {
+        remote_addr: format!("{DOMAIN}:2333"),
+        transport: Transport::Noise,
+        noise_pattern: NoisePattern::Nk25519ChaChaPolyBlake2s,
+        public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
+        domain: DOMAIN.to_owned(),
+    };
+    (
+        Site::new(Arc::new(SingleCertAndKey::from(key)), rathole_settings),
+        cert,
+    )
 }
 
 /// A running front on ephemeral ports. Dropping it leaves the tasks to end

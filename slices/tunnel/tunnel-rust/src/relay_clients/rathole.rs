@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 
 use crate::domain::{RelayClient, RelaySettings};
 use anyhow::Context;
+use rathole_settings_rust::{NoisePattern, Transport};
 use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -107,8 +108,9 @@ fn render_client_toml(relay: &RelaySettings, local_addr: &str) -> anyhow::Result
             remote_addr: &relay.remote_addr,
             default_token: &relay.token,
             transport: TransportSection {
-                transport_type: "noise",
+                transport_type: Transport::Noise,
                 noise: NoiseSection {
+                    pattern: NoisePattern::Nk25519ChaChaPolyBlake2s,
                     remote_public_key: &relay.public_key,
                 },
             },
@@ -137,12 +139,13 @@ struct ClientSection<'a> {
 #[derive(Serialize)]
 struct TransportSection<'a> {
     #[serde(rename = "type")]
-    transport_type: &'a str,
+    transport_type: Transport,
     noise: NoiseSection<'a>,
 }
 
 #[derive(Serialize)]
 struct NoiseSection<'a> {
+    pattern: NoisePattern,
     remote_public_key: &'a str,
 }
 
@@ -180,6 +183,43 @@ mod tests {
             "client config must not be a server"
         );
         assert!(client.services.contains_key("wildflower-device-1"));
+    }
+
+    /// A device that has only its tunnel name and token gets a working client
+    /// config from the relay's `GET /rathole` response.
+    #[tokio::test]
+    async fn client_toml_from_public_rathole_settings_is_a_valid_rathole_client_config() {
+        let response = r#"{
+            "remote_addr": "relay.example.com:2333",
+            "transport": "noise",
+            "noise_pattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
+            "public_key": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
+            "domain": "relay.example.com"
+        }"#;
+        let relay = RelaySettings::from_public_rathole_settings(
+            serde_json::from_str(response).expect("GET /rathole response"),
+            "abc123".into(),
+            "tunnel-token".into(),
+        );
+        let rendered = render_client_toml(&relay, "127.0.0.1:8080").expect("render");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("client.toml");
+        std::fs::write(&path, &rendered).expect("write client toml");
+        let client = rathole::Config::from_file(&path)
+            .await
+            .expect("client config must parse")
+            .client
+            .expect("[client]");
+        assert_eq!(client.remote_addr, "relay.example.com:2333");
+        let noise = client.transport.noise.expect("[client.transport.noise]");
+        assert_eq!(noise.pattern, "Noise_NK_25519_ChaChaPoly_BLAKE2s");
+        assert_eq!(
+            noise.remote_public_key.as_deref(),
+            Some("24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=")
+        );
+        assert_eq!(client.services.len(), 1);
+        assert_eq!(client.services["abc123"].local_addr, "127.0.0.1:8080");
+        assert!(rendered.contains(r#"default_token = "tunnel-token""#));
     }
 
     /// Adversarial field contents that would break a hand-formatted config —

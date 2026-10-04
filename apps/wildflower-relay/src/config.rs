@@ -1,11 +1,11 @@
 //! Writes the rathole TOML from the environment on every start.
 //!
 //! The file is generated, never read back: the control address, the noise
-//! transport and key, and for each tunnel in `WILDFLOWER_RELAY_TUNNELS` a
-//! rathole service `[server.services.<tunnel name>]`: loopback TCP with the
-//! tunnel's own `token`, on the port [`ControlSettings::tunnel_addrs`] gives
-//! it. There is
-//! no `default_token`, so a device needs its own token to connect.
+//! transport, pattern and key, and for each tunnel in
+//! `WILDFLOWER_RELAY_TUNNELS` a rathole service `[server.services.<tunnel
+//! name>]`: loopback TCP with the tunnel's own `token`, on the port
+//! [`ControlSettings::tunnel_addrs`] gives it. There is no `default_token`,
+//! so a device needs its own token to connect.
 
 use std::path::{Path, PathBuf};
 
@@ -34,11 +34,15 @@ pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
 
     let mut noise = Table::new();
     noise.insert(
+        "pattern".into(),
+        Value::try_from(ControlSettings::NOISE_PATTERN)?,
+    );
+    noise.insert(
         "local_private_key".into(),
         Value::String(control.noise_private_key.expose().to_owned()),
     );
     let mut transport = Table::new();
-    transport.insert("type".into(), Value::String("noise".into()));
+    transport.insert("type".into(), Value::try_from(ControlSettings::TRANSPORT)?);
     transport.insert("noise".into(), Value::Table(noise));
 
     let mut server = Table::new();
@@ -205,6 +209,11 @@ mod tests {
         assert_eq!(server.services["bob"].token.as_deref(), Some("t2"));
         let noise = server.transport.noise.expect("[server.transport.noise]");
         assert!(noise.local_private_key.is_some());
+        // `GET /rathole` tells clients the pattern the server runs.
+        assert_eq!(
+            Value::try_from(settings(&env).public_rathole_settings().noise_pattern).unwrap(),
+            Value::String(noise.pattern)
+        );
 
         // The front routes the same tunnel names to the same ports.
         let router = Router::new(

@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
+use rathole_settings_rust::PublicRatholeSettings;
 use rustls::server::ResolvesServerCert;
 use rustls::ServerConfig;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
@@ -43,14 +44,18 @@ impl std::fmt::Debug for Site {
 
 impl Site {
     /// A site whose certificates come from `cert_resolver`, normally
-    /// the resolver of [`acme::state`].
+    /// the resolver of [`acme::state`], serving `rathole_settings` at
+    /// `GET /rathole`.
     ///
     /// # Panics
     ///
     /// If the `ring` provider supports none of rustls's safe default
     /// protocol versions, which it always does.
     #[must_use]
-    pub fn new(cert_resolver: Arc<dyn ResolvesServerCert>) -> Self {
+    pub fn new(
+        cert_resolver: Arc<dyn ResolvesServerCert>,
+        rathole_settings: PublicRatholeSettings,
+    ) -> Self {
         let mut config =
             ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
                 .with_safe_default_protocol_versions()
@@ -62,7 +67,7 @@ impl Site {
         config.alpn_protocols = vec![b"http/1.1".to_vec(), ACME_TLS_ALPN.to_vec()];
         Self {
             tls: TlsAcceptor::from(Arc::new(config)),
-            router: routes::router(),
+            router: routes::router(rathole_settings),
         }
     }
 
@@ -116,6 +121,7 @@ impl Site {
 
 #[cfg(test)]
 mod tests {
+    use rathole_settings_rust::{NoisePattern, Transport};
     use rustls::pki_types::ServerName;
     use rustls::{ClientConfig, RootCertStore};
     use tokio_rustls::TlsConnector;
@@ -136,7 +142,16 @@ mod tests {
             },
             state_dir.path(),
         );
-        let site = Site::new(acme.resolver());
+        let site = Site::new(
+            acme.resolver(),
+            PublicRatholeSettings {
+                remote_addr: "relay.example.com:2333".to_owned(),
+                transport: Transport::Noise,
+                noise_pattern: NoisePattern::Nk25519ChaChaPolyBlake2s,
+                public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
+                domain: "relay.example.com".to_owned(),
+            },
+        );
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (_shutdown_tx, shutdown_rx) = broadcast::channel(1);
         let served = tokio::spawn(async move {
