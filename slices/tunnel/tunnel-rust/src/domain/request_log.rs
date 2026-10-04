@@ -1,8 +1,8 @@
 //! The request log: what the trusted front relayed through the tunnel, kept on
 //! the device. The [`RequestLogStore`] port, the row caps that bound it,
 //! [`record_requests`], the action the request-log writer runs on each batch,
-//! and the shapes the log is read back in: a page of [`LoggedRequest`]s and the
-//! [`RequestActivity`] feed. Its time-based retention is
+//! and the shapes the log is read back in: a page of [`LoggedRequest`]s and one
+//! [`CallerSummary`] per caller. Its time-based retention is
 //! [`crate::domain::retention`].
 //!
 //! Each row is a [`ForwardedRequest`] the server's forwarded-request layer
@@ -62,10 +62,10 @@ pub struct RequestLogPage {
     pub next_cursor: Option<i64>,
 }
 
-/// What the log holds for one (caller, client address) pair: the activity
-/// feed's row.
+/// What the log holds for one (caller, client address) pair: one row of
+/// `GET /tunnel/requests/callers`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RequestActivity {
+pub struct CallerSummary {
     /// The verified caller, or `None` for the requests no bearer gate verified.
     pub caller: Option<RequestCaller>,
     pub client_address: Option<String>,
@@ -152,7 +152,7 @@ pub trait RequestLogStore {
     ///
     /// [`TunnelError::Infrastructure`] on a checkout / read failure, or a row
     /// the log could not have written.
-    fn request_activity(&self) -> Result<Vec<RequestActivity>, TunnelError>;
+    fn caller_summaries(&self) -> Result<Vec<CallerSummary>, TunnelError>;
 
     /// Delete every row received before `cutoff`, returning how many went.
     ///

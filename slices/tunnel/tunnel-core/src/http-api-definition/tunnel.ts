@@ -115,12 +115,12 @@ const RequestRefusalSchema = Schema.Literal('missingToken', 'tokenRejected', 're
 
 /**
  * What the request log holds for one (caller, client address) pair — a row of
- * `GET /tunnel/activity`, mirroring the Rust `RequestActivityBody`. `clientId`
+ * `GET /tunnel/requests/callers`, mirroring the Rust `CallerSummaryBody`. `clientId`
  * is `null` for the requests no bearer gate verified; resolve a client's
  * display name through gatekeeper's client list. `refusedCount` counts a
  * bearer gate's `401`s and scope `403`s.
  */
-const RequestActivitySchema = Schema.Struct({
+const CallerSummarySchema = Schema.Struct({
   clientId: Schema.NullOr(Schema.String),
   address: Schema.NullOr(Schema.String),
   firstSeen: Schema.DateTimeUtc,
@@ -208,12 +208,12 @@ const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
  * behind the gatekeeper Owner check; the TS client layer still attaches
  * the bearer (see `tunnel-react/src/client/tunnel-client.ts`).
  *
- * Every endpoint is scope-gated on the Rust side — `GetTunnel`, `GetActivity`
+ * Every endpoint is scope-gated on the Rust side — `GetTunnel`, `ListCallers`
  * and `ListRequests` by `wildflower/TunnelSettings.r`, `ReplaceTunnel` by
  * `wildflower/TunnelSettings.u` — returning a `403 InsufficientScope` when the
  * token doesn't cover it.
  *
- * `GetActivity` reads the request log grouped by (caller, client address), the
+ * `ListCallers` reads the request log grouped by (caller, client address), the
  * group with the newest request first; `ListRequests` reads it one page at a
  * time, newest first, keyset-paged on id through `cursor`.
  *
@@ -243,8 +243,8 @@ const httpApiGroup = HttpApiGroup.make('tunnel', { topLevel: false })
       .addError(TunnelStateViewSchema, { status: 409 })
   )
   .add(
-    HttpApiEndpoint.get('GetActivity', '/tunnel/activity')
-      .addSuccess(Schema.Array(RequestActivitySchema))
+    HttpApiEndpoint.get('ListCallers', '/tunnel/requests/callers')
+      .addSuccess(Schema.Array(CallerSummarySchema))
       .addError(InsufficientScopeSchema, { status: 403 })
   )
   .add(
@@ -264,7 +264,7 @@ export {
   RelayInputSchema,
   RelayViewSchema,
   ReplaceTunnelRequestBodySchema,
-  RequestActivitySchema,
+  CallerSummarySchema,
   RequestLogPageSchema,
   RequestRefusalSchema,
   TunnelStateViewSchema,

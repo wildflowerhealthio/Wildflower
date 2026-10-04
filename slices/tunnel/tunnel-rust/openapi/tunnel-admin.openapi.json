@@ -96,40 +96,6 @@
         }
       }
     },
-    "/tunnel/activity": {
-      "get": {
-        "tags": [
-          "Request log"
-        ],
-        "summary": "`GET /tunnel/activity` — who reached the server through the tunnel: one row\nper (caller, client address), the group with the newest request first.\nGated by [`Scoped<LiveRequestLogReader>`] (`wildflower/TunnelSettings.r`).",
-        "operationId": "handle_get_activity",
-        "responses": {
-          "200": {
-            "description": "The request log grouped by caller and client address, newest first",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RequestActivityBody"
-                  }
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/TunnelSettings.r`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/tunnel/requests": {
       "get": {
         "tags": [
@@ -199,10 +165,108 @@
           }
         }
       }
+    },
+    "/tunnel/requests/callers": {
+      "get": {
+        "tags": [
+          "Request log"
+        ],
+        "summary": "`GET /tunnel/requests/callers` — who reached the server through the tunnel: one row\nper (caller, client address), the group with the newest request first.\nGated by [`Scoped<LiveRequestLogReader>`] (`wildflower/TunnelSettings.r`).",
+        "operationId": "handle_list_callers",
+        "responses": {
+          "200": {
+            "description": "The request log grouped by caller and client address, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CallerSummaryBody"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/TunnelSettings.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "CallerSummaryBody": {
+        "type": "object",
+        "description": "What the request log holds for one (caller, client address) pair — a row of\n`GET /tunnel/requests/callers`. The client's display name is not included; resolve\n`clientId` through gatekeeper's client list.",
+        "required": [
+          "clientId",
+          "address",
+          "firstSeen",
+          "lastSeen",
+          "requestCount",
+          "refusedCount",
+          "lastStatus",
+          "lastRefusal"
+        ],
+        "properties": {
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The verified caller's OAuth client, or `null` for the requests no\nbearer gate verified."
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The visitor's address the trusted front recorded, or `null` when it\nrecorded none."
+          },
+          "firstSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "refusedCount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many were refused: a bearer gate's `401` or a scope `403`."
+          },
+          "lastStatus": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The newest request's response status.",
+            "minimum": 0
+          },
+          "lastRefusal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RequestRefusalBody",
+                "description": "The newest request's refusal, or `null` when no bearer gate refused it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "InsufficientScopeBody": {
         "type": "object",
         "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
@@ -392,70 +456,6 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RelayInput"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
-      "RequestActivityBody": {
-        "type": "object",
-        "description": "What the request log holds for one (caller, client address) pair — a row of\n`GET /tunnel/activity`. The client's display name is not included; resolve\n`clientId` through gatekeeper's client list.",
-        "required": [
-          "clientId",
-          "address",
-          "firstSeen",
-          "lastSeen",
-          "requestCount",
-          "refusedCount",
-          "lastStatus",
-          "lastRefusal"
-        ],
-        "properties": {
-          "clientId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The verified caller's OAuth client, or `null` for the requests no\nbearer gate verified."
-          },
-          "address": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The visitor's address the trusted front recorded, or `null` when it\nrecorded none."
-          },
-          "firstSeen": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "lastSeen": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "requestCount": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "refusedCount": {
-            "type": "integer",
-            "format": "int64",
-            "description": "How many were refused: a bearer gate's `401` or a scope `403`."
-          },
-          "lastStatus": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The newest request's response status.",
-            "minimum": 0
-          },
-          "lastRefusal": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RequestRefusalBody",
-                "description": "The newest request's refusal, or `null` when no bearer gate refused it."
               },
               {
                 "type": "null"

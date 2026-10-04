@@ -1,7 +1,7 @@
 //! Shared wire types for the `/tunnel` handlers: the snapshot helper and the
 //! response shape the GET/PUT operations serve on `/tunnel`, and the request
-//! log's shapes `GET /tunnel/activity` and `GET /tunnel/requests` serve. The
-//! per-operation handlers (`get`, `replace`, `activity`, `requests`) live in
+//! log's shapes `GET /tunnel/requests/callers` and `GET /tunnel/requests` serve. The
+//! per-operation handlers (`get`, `replace`, `requests`, `callers`) live in
 //! sibling modules and pull what they need from here.
 
 use chrono::{DateTime, Utc};
@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 use shared_structures_rust::request_caller::RequestRefusal;
 use shared_structures_rust::tunnel_service::TunnelStatus;
 
-use crate::domain::request_log::{LoggedRequest, RequestActivity, RequestLogPage};
+use crate::domain::request_log::{CallerSummary, LoggedRequest, RequestLogPage};
 use crate::domain::TunnelSettings;
 use crate::TunnelDaemon;
 
@@ -146,11 +146,11 @@ impl From<RequestRefusal> for RequestRefusalBody {
 }
 
 /// What the request log holds for one (caller, client address) pair — a row of
-/// `GET /tunnel/activity`. The client's display name is not included; resolve
+/// `GET /tunnel/requests/callers`. The client's display name is not included; resolve
 /// `clientId` through gatekeeper's client list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct RequestActivityBody {
+pub struct CallerSummaryBody {
     /// The verified caller's OAuth client, or `null` for the requests no
     /// bearer gate verified.
     #[schema(required)]
@@ -173,17 +173,17 @@ pub struct RequestActivityBody {
     pub(super) last_refusal: Option<RequestRefusalBody>,
 }
 
-impl From<RequestActivity> for RequestActivityBody {
-    fn from(activity: RequestActivity) -> Self {
-        RequestActivityBody {
-            client_id: activity.caller.map(|caller| caller.client_id),
-            address: activity.client_address,
-            first_seen: activity.first_seen,
-            last_seen: activity.last_seen,
-            request_count: activity.request_count,
-            refused_count: activity.refused_count,
-            last_status: activity.last_status,
-            last_refusal: activity.last_refusal.map(RequestRefusalBody::from),
+impl From<CallerSummary> for CallerSummaryBody {
+    fn from(summary: CallerSummary) -> Self {
+        CallerSummaryBody {
+            client_id: summary.caller.map(|caller| caller.client_id),
+            address: summary.client_address,
+            first_seen: summary.first_seen,
+            last_seen: summary.last_seen,
+            request_count: summary.request_count,
+            refused_count: summary.refused_count,
+            last_status: summary.last_status,
+            last_refusal: summary.last_refusal.map(RequestRefusalBody::from),
         }
     }
 }

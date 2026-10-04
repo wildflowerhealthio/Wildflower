@@ -1,12 +1,12 @@
 //! `/tunnel` routes — the host-side surface for reading and replacing tunnel
 //! settings, and for reading the request log. One module per operation (`get`,
-//! `replace`, `activity`, `requests`), each a `#[utoipa::path]`-annotated
+//! `replace`, `requests`, `callers`), each a `#[utoipa::path]`-annotated
 //! handler; the shared wire shapes live in [`wire_representations`].
 //! [`openapi_router`] is the only path table — the two methods on `/tunnel`
 //! (GET + PUT) share the path and `routes!` merges them, collecting the
 //! `OpenAPI` spec from the very handlers that serve traffic.
 
-mod activity;
+mod callers;
 mod get;
 mod replace;
 mod requests;
@@ -25,7 +25,7 @@ pub(crate) fn openapi_router() -> OpenApiRouter<Arc<TunnelState>> {
             get::handle_get_tunnel,
             replace::handle_replace_tunnel
         ))
-        .routes(routes!(activity::handle_get_activity))
+        .routes(routes!(callers::handle_list_callers))
         .routes(routes!(requests::handle_list_requests))
 }
 
@@ -582,20 +582,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn activity_lists_each_caller_and_address_newest_first() {
+    async fn callers_lists_each_caller_and_address_newest_first() {
         let st = state_with_logged_requests();
-        let (status, body) = send(&st, get_uri_as("/tunnel/activity", OWNER_SCOPES)).await;
+        let (status, body) = send(&st, get_uri_as("/tunnel/requests/callers", OWNER_SCOPES)).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
-        let activity = body.as_array().expect("an array");
-        assert_eq!(activity.len(), 2);
-        assert_eq!(activity[0]["clientId"], serde_json::Value::Null);
-        assert_eq!(activity[0]["address"], "203.0.113.9");
-        assert_eq!(activity[0]["refusedCount"], 1);
-        assert_eq!(activity[0]["lastStatus"], 401);
-        assert_eq!(activity[0]["lastRefusal"], "missingToken");
-        assert_eq!(activity[1]["clientId"], "lifting");
-        assert_eq!(activity[1]["requestCount"], 1);
-        assert_eq!(activity[1]["lastRefusal"], serde_json::Value::Null);
+        let callers = body.as_array().expect("an array");
+        assert_eq!(callers.len(), 2);
+        assert_eq!(callers[0]["clientId"], serde_json::Value::Null);
+        assert_eq!(callers[0]["address"], "203.0.113.9");
+        assert_eq!(callers[0]["refusedCount"], 1);
+        assert_eq!(callers[0]["lastStatus"], 401);
+        assert_eq!(callers[0]["lastRefusal"], "missingToken");
+        assert_eq!(callers[1]["clientId"], "lifting");
+        assert_eq!(callers[1]["requestCount"], 1);
+        assert_eq!(callers[1]["lastRefusal"], serde_json::Value::Null);
     }
 
     #[tokio::test]
@@ -631,7 +631,7 @@ mod tests {
     #[tokio::test]
     async fn the_request_log_without_the_read_scope_is_403() {
         let st = state_with_logged_requests();
-        for uri in ["/tunnel/activity", "/tunnel/requests"] {
+        for uri in ["/tunnel/requests/callers", "/tunnel/requests"] {
             let (status, body) = send(&st, get_uri_as(uri, "wildflower/TunnelSettings.u")).await;
             assert_eq!(status, StatusCode::FORBIDDEN, "{uri}: {body}");
             assert_eq!(body["error"], serde_json::json!("InsufficientScope"));

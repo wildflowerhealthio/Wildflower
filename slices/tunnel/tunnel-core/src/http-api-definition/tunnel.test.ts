@@ -8,7 +8,7 @@ import {
   ListRequestsUrlParamsSchema,
   RelayInputSchema,
   ReplaceTunnelRequestBodySchema,
-  RequestActivitySchema,
+  CallerSummarySchema,
   RequestLogPageSchema,
   TunnelStateViewSchema,
 } from './tunnel.ts'
@@ -164,19 +164,19 @@ describe('ReplaceTunnelRequestBodySchema', () => {
   })
 })
 
-describe('RequestActivitySchema', () => {
-  it('round-trips any schema-conformant activity row', () => {
+describe('CallerSummarySchema', () => {
+  it('round-trips any schema-conformant caller summary', () => {
     fc.assert(
-      fc.property(Arbitrary.make(RequestActivitySchema), (activity) => {
-        const encoded = Schema.encodeSync(RequestActivitySchema)(activity)
-        expect(Schema.decodeSync(RequestActivitySchema)(encoded)).toEqual(activity)
+      fc.property(Arbitrary.make(CallerSummarySchema), (summary) => {
+        const encoded = Schema.encodeSync(CallerSummarySchema)(summary)
+        expect(Schema.decodeSync(CallerSummarySchema)(encoded)).toEqual(summary)
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 
   it('decodes the unverified-caller row the server sends, nulls included', () => {
-    const decoded = Schema.decodeUnknownSync(RequestActivitySchema)({
+    const decoded = Schema.decodeUnknownSync(CallerSummarySchema)({
       clientId: null,
       address: '203.0.113.9',
       firstSeen: '2026-07-01T12:00:20Z',

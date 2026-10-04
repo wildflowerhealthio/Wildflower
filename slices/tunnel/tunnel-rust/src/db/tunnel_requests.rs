@@ -15,7 +15,7 @@ use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, Re
 
 use crate::db::schema::tunnel_requests;
 use crate::domain::request_log::{
-    LoggedRequest, RequestActivity, RequestLogFilter, RequestLogPage, REFUSED_STATUSES,
+    CallerSummary, LoggedRequest, RequestLogFilter, RequestLogPage, REFUSED_STATUSES,
     REQUEST_LOG_PAGE_SIZE,
 };
 use crate::domain::{CallerClass, TunnelError};
@@ -160,10 +160,10 @@ impl TryFrom<TunnelRequestRow> for LoggedRequest {
     }
 }
 
-/// One (caller, client address) group as the activity query returns it,
-/// before it's folded into a [`RequestActivity`].
+/// One (caller, client address) group as the callers query returns it,
+/// before it's folded into a [`CallerSummary`].
 #[derive(Debug, QueryableByName)]
-struct RequestActivityRow {
+struct CallerSummaryRow {
     #[diesel(sql_type = Nullable<Text>)]
     client_id: Option<String>,
     #[diesel(sql_type = Nullable<Text>)]
@@ -182,11 +182,11 @@ struct RequestActivityRow {
     last_refusal: Option<String>,
 }
 
-impl TryFrom<RequestActivityRow> for RequestActivity {
+impl TryFrom<CallerSummaryRow> for CallerSummary {
     type Error = TunnelError;
 
-    fn try_from(row: RequestActivityRow) -> Result<Self, TunnelError> {
-        Ok(RequestActivity {
+    fn try_from(row: CallerSummaryRow) -> Result<Self, TunnelError> {
+        Ok(CallerSummary {
             caller: row.client_id.map(|client_id| RequestCaller { client_id }),
             client_address: row.address,
             first_seen: row.first_seen,
@@ -329,25 +329,25 @@ pub(super) fn requests_page(
 /// The log grouped by (`client_id`, `address`) over their index, each group's
 /// newest row joined back for its last outcome, the group with the newest
 /// request first. Backs
-/// [`SqliteTunnelStore::request_activity`](crate::db::SqliteTunnelStore).
+/// [`SqliteTunnelStore::caller_summaries`](crate::db::SqliteTunnelStore).
 ///
 /// # Errors
 ///
 /// [`TunnelError::Infrastructure`] on a read failure, or a row the log could
 /// not have written.
-pub(super) fn request_activity(
+pub(super) fn caller_summaries(
     conn: &mut PooledDieselConnection,
-) -> Result<Vec<RequestActivity>, TunnelError> {
+) -> Result<Vec<CallerSummary>, TunnelError> {
     let [refused_401, refused_403] = REFUSED_STATUSES.map(i32::from);
     diesel::sql_query(
-        "WITH activity AS (              SELECT client_id, address,                     MIN(received_at) AS first_seen,                     MAX(received_at) AS last_seen,                     COUNT(*) AS request_count,                     SUM(status IN (?, ?)) AS refused_count,                     MAX(id) AS last_id              FROM tunnel_requests              GROUP BY client_id, address          )          SELECT activity.client_id, activity.address, activity.first_seen,                 activity.last_seen, activity.request_count, activity.refused_count,                 last.status AS last_status, last.refusal AS last_refusal          FROM activity JOIN tunnel_requests AS last ON last.id = activity.last_id          ORDER BY activity.last_id DESC",
+        "WITH callers AS (              SELECT client_id, address,                     MIN(received_at) AS first_seen,                     MAX(received_at) AS last_seen,                     COUNT(*) AS request_count,                     SUM(status IN (?, ?)) AS refused_count,                     MAX(id) AS last_id              FROM tunnel_requests              GROUP BY client_id, address          )          SELECT callers.client_id, callers.address, callers.first_seen,                 callers.last_seen, callers.request_count, callers.refused_count,                 last.status AS last_status, last.refusal AS last_refusal          FROM callers JOIN tunnel_requests AS last ON last.id = callers.last_id          ORDER BY callers.last_id DESC",
     )
     .bind::<Integer, _>(refused_401)
     .bind::<Integer, _>(refused_403)
-    .load::<RequestActivityRow>(conn)
-    .map_err(|e| TunnelError::infrastructure("read tunnel request activity failed", e))?
+    .load::<CallerSummaryRow>(conn)
+    .map_err(|e| TunnelError::infrastructure("read tunnel request callers failed", e))?
     .into_iter()
-    .map(RequestActivity::try_from)
+    .map(CallerSummary::try_from)
     .collect()
 }
 
@@ -672,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn activity_groups_by_caller_and_address_and_counts_refusals() {
+    fn caller_summaries_group_by_caller_and_address_and_counts_refusals() {
         let store = store();
         store
             .insert_requests(&[
@@ -691,12 +691,12 @@ mod tests {
             ])
             .expect("insert");
 
-        let activity = store.request_activity().expect("activity");
+        let callers = store.caller_summaries().expect("callers");
 
         assert_eq!(
-            activity,
+            callers,
             vec![
-                RequestActivity {
+                CallerSummary {
                     caller: Some(RequestCaller {
                         client_id: "lifting".to_owned()
                     }),
@@ -708,7 +708,7 @@ mod tests {
                     last_status: 200,
                     last_refusal: None,
                 },
-                RequestActivity {
+                CallerSummary {
                     caller: None,
                     client_address: Some("203.0.113.9".to_owned()),
                     first_seen: at(20),
@@ -718,7 +718,7 @@ mod tests {
                     last_status: 401,
                     last_refusal: Some(RequestRefusal::Revoked),
                 },
-                RequestActivity {
+                CallerSummary {
                     caller: Some(RequestCaller {
                         client_id: "lifting".to_owned()
                     }),

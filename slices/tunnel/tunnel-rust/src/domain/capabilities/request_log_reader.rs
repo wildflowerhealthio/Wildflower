@@ -7,7 +7,7 @@
 use scopes_rust::Scope;
 
 use super::tunnel_settings_reader_scopes;
-use crate::domain::request_log::{RequestActivity, RequestLogFilter, RequestLogPage};
+use crate::domain::request_log::{CallerSummary, RequestLogFilter, RequestLogPage};
 use crate::domain::{RequestLogStore, TunnelError};
 
 /// The scope gating [`RequestLogReader`]: the tunnel settings read scope
@@ -17,7 +17,7 @@ pub(crate) fn request_log_reader_scopes() -> Vec<Scope> {
     tunnel_settings_reader_scopes()
 }
 
-/// Read the request log — `GET /tunnel/activity` and `GET /tunnel/requests`.
+/// Read the request log — `GET /tunnel/requests/callers` and `GET /tunnel/requests`.
 /// Generic over the [`RequestLogStore`] port; the binding instantiates it over
 /// the concrete `SqliteTunnelStore`. A capability of its own rather than a
 /// method on [`TunnelSettingsReader`](super::TunnelSettingsReader), which reads
@@ -32,13 +32,13 @@ impl<S: RequestLogStore> RequestLogReader<S> {
         RequestLogReader { store }
     }
 
-    /// The activity feed: the log grouped by (caller, client address).
+    /// One summary per caller: the log grouped by (caller, client address).
     ///
     /// # Errors
     ///
     /// [`TunnelError::Infrastructure`] if the store read fails.
-    pub(crate) fn activity(&self) -> Result<Vec<RequestActivity>, TunnelError> {
-        self.store.request_activity()
+    pub(crate) fn caller_summaries(&self) -> Result<Vec<CallerSummary>, TunnelError> {
+        self.store.caller_summaries()
     }
 
     /// The page of the log `filter` selects.
@@ -70,7 +70,7 @@ mod tests {
             .expect("insert");
         let reader = RequestLogReader::new(store);
 
-        assert_eq!(reader.activity().expect("activity").len(), 1);
+        assert_eq!(reader.caller_summaries().expect("callers").len(), 1);
         assert_eq!(
             reader
                 .requests_page(&RequestLogFilter::default())
