@@ -173,7 +173,7 @@ describe('/settings/server', () => {
 
     // Assert
     expect(await screen.findByText('The tunnel starts once the server is running.')).toBeDefined()
-    expect(screen.getByText('Not decided yet')).toBeDefined()
+    expect(screen.getByText('Unknown')).toBeDefined()
     expect(tunnelRequests()).toBe(0)
   })
 

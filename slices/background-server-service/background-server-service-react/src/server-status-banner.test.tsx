@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ServerServiceStatus } from 'background-server-service-core'
 import { Arbitrary, Schema } from 'effect'
@@ -58,6 +58,13 @@ const renderBanner = async (
   return { ...sender, ...rendered, store }
 }
 
+/** The banner's strip, or `null` when it shows none. */
+const queryStrip = (): HTMLElement | null =>
+  screen.queryByRole('region', { name: 'Wildflower server' })
+
+/** The banner's strip. */
+const getStrip = (): HTMLElement => screen.getByRole('region', { name: 'Wildflower server' })
+
 afterEach(() => {
   cleanup()
 })
@@ -65,10 +72,11 @@ afterEach(() => {
 describe('ServerStatusBanner', () => {
   it('should render nothing before the first snapshot arrives', async () => {
     // Act
-    const { container } = await renderBanner(null)
+    await renderBanner(null)
 
     // Assert
-    expect(container.innerHTML).toBe('')
+    expect(queryStrip()).toBeNull()
+    expect(screen.getByRole('status').textContent).toBe('')
   })
 
   it('should render nothing for any running status', async () => {
@@ -77,10 +85,11 @@ describe('ServerStatusBanner', () => {
         arbitraryStatus.map((status) => ({ ...status, state: 'running' as const })),
         async (status) => {
           // Act
-          const { container, unmount } = await renderBanner(status)
+          const { unmount } = await renderBanner(status)
 
           // Assert
-          expect(container.innerHTML).toBe('')
+          expect(queryStrip()).toBeNull()
+          expect(screen.getByRole('status').textContent).toBe('')
           unmount()
         }
       ),
@@ -93,11 +102,12 @@ describe('ServerStatusBanner', () => {
     await renderBanner(STOPPED_WITH_BIND_ERROR)
 
     // Assert
-    expect(screen.getByText('Server stopped')).toBeDefined()
-    expect(screen.getByText('iOS ended the background window.')).toBeDefined()
-    expect(screen.getByRole('alert').textContent).toBe(
-      'failed to bind to 127.0.0.1:8080: Address already in use'
-    )
+    const strip = within(getStrip())
+    expect(strip.getByText('Server stopped')).toBeDefined()
+    expect(strip.getByText('iOS ended the background window.')).toBeDefined()
+    expect(
+      strip.getByText('failed to bind to 127.0.0.1:8080: Address already in use')
+    ).toBeDefined()
     expect(screen.getByRole('button', { name: 'Restart' })).toBeDefined()
   })
 
@@ -112,8 +122,8 @@ describe('ServerStatusBanner', () => {
     })
 
     // Assert
-    expect(screen.getByText('Server starting…')).toBeDefined()
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(queryStrip()?.textContent).toBe('Server starting…')
+    expect(screen.getByRole('status').textContent).toBe('Server starting…')
     expect(screen.queryByText(/restart\./i)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
   })
@@ -129,18 +139,19 @@ describe('ServerStatusBanner', () => {
     })
 
     // Assert
-    expect(screen.getByText('Server restarting…')).toBeDefined()
-    expect(screen.queryByText('Server stopped')).toBeNull()
+    expect(queryStrip()?.textContent).toBe('Server restarting…')
+    expect(screen.getByRole('status').textContent).toBe('Server restarting…')
     expect(screen.queryByText(/restart\./i)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
   })
 
   it('should render nothing on the server page, which shows the same status in full', async () => {
     // Act
-    const { container } = await renderBanner(STOPPED_WITH_BIND_ERROR, '/settings/server')
+    await renderBanner(STOPPED_WITH_BIND_ERROR, '/settings/server')
 
     // Assert
-    expect(container.innerHTML).toBe('')
+    expect(queryStrip()).toBeNull()
+    expect(screen.getByRole('status').textContent).toBe('')
   })
 
   it('should send RestartServer when Restart is pressed', async () => {
@@ -154,9 +165,29 @@ describe('ServerStatusBanner', () => {
     expect(sent).toEqual([{ _tag: 'RestartServer' }])
   })
 
+  it('should announce each status it shows through a live region mounted before it', async () => {
+    // Arrange
+    const { store } = await renderBanner(null)
+    const liveRegion = screen.getByRole('status')
+
+    // Act
+    act(() => {
+      store.setStatus(STOPPED_WITH_BIND_ERROR)
+    })
+
+    // Assert — the same element, now holding the strip's text.
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBe(liveRegion)
+    })
+    expect(liveRegion.textContent).toBe(
+      'Server stopped. iOS ended the background window. failed to bind to 127.0.0.1:8080: Address already in use'
+    )
+    expect(queryStrip()?.querySelector('[role="status"], [role="alert"]')).toBeNull()
+  })
+
   it('should disappear when the next snapshot says the server is running', async () => {
     // Arrange
-    const { container, store } = await renderBanner(STOPPED_WITH_BIND_ERROR)
+    const { store } = await renderBanner(STOPPED_WITH_BIND_ERROR)
 
     // Act
     act(() => {
@@ -165,7 +196,8 @@ describe('ServerStatusBanner', () => {
 
     // Assert
     await waitFor(() => {
-      expect(container.innerHTML).toBe('')
+      expect(queryStrip()).toBeNull()
     })
+    expect(screen.getByRole('status').textContent).toBe('')
   })
 })

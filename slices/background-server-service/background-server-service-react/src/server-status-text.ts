@@ -16,8 +16,8 @@ type ServerDisplayState = ServerServiceState | 'restarting'
  * The state to show `status` as. A clean `appStop` stop is the stop half of a
  * restart (the host stops with it only to restart, and posts no notification
  * for it), so it shows as `restarting` rather than as a stop: the next snapshot
- * is the new run's `starting`. Should that start fail, the host reports it with
- * its native dialog and failure notification.
+ * is the new run's `starting`. Should that start fail, the host replaces
+ * `appStop` with `error`, which shows as a stop.
  */
 const serverDisplayState = (status: ServerServiceStatus): ServerDisplayState =>
   status.state === 'stopped' && status.stopReason === 'appStop' && status.lastError === null
@@ -53,7 +53,7 @@ const STOP_REASON_DESCRIPTION: Readonly<Record<ServiceStopReason, string>> = {
 const NOTIFICATION_PERMISSION_LABEL: Readonly<Record<NotificationPermission, string>> = {
   granted: 'On',
   denied: 'Off',
-  unknown: 'Not decided yet',
+  unknown: 'Unknown',
 }
 
 /** The badge tone for a displayed state that isn't a stop. */
