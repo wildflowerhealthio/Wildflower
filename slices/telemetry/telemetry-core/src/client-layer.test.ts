@@ -5,13 +5,8 @@ import {
   createContextKey,
   ROOT_CONTEXT,
 } from '@opentelemetry/api'
-import { Layer } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
-import {
-  initClientTelemetry,
-  makeClientTelemetryLayer,
-  type SentryAdapter,
-} from './client-layer.ts'
+import { initClientTelemetry, type SentryAdapter } from './client-layer.ts'
 import { configFromEnv } from './config.ts'
 
 const probeKey = createContextKey('telemetry-core/client-layer.test')
@@ -81,12 +76,6 @@ describe('client ContextManager injection', () => {
 
   test('initClientTelemetry does not rebuild the manager on a later call', () => {
     expect(initClientTelemetry(config, disabledSentry, createContextManager)).toBeUndefined()
-
-    expect(built).toBe(1)
-  })
-
-  test('makeClientTelemetryLayer is a no-op layer while telemetry is disabled', () => {
-    expect(makeClientTelemetryLayer(config, disabledSentry, createContextManager)).toBe(Layer.empty)
 
     expect(built).toBe(1)
   })

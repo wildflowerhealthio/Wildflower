@@ -143,8 +143,8 @@ const initConsentedTelemetry = ({
  * time a runtime builds it: an app that provides it per request (the owner
  * UI's `runAuthed`) traces from the first request after a yes turns
  * performance on, and stops with the first after it is turned off. Until an
- * answer registers the provider it is `Layer.empty`. Unlike
- * `webTelemetryLayerFromEnv`, it never initializes anything itself.
+ * answer registers the provider it is `Layer.empty`. It never initializes
+ * anything itself.
  */
 const consentedTelemetryLayer: Layer.Layer<never> = Layer.suspend(() =>
   consentedEffectTracerLayer !== undefined && latestConsent?.performance === true
