@@ -1,12 +1,18 @@
 import { DateTime } from 'effect'
 import { type JSX, type PointerEvent, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { ColourSlots, Crosshair, type TimeDomain, type ValueAxis } from 'health-viewer-fundamentals'
+import {
+  Buckets,
+  ColourSlots,
+  Crosshair,
+  type TimeDomain,
+  type ValueAxis,
+} from 'health-viewer-fundamentals'
 
-import { FRAME_HEIGHT, MARGIN_TOP, chartOptions } from './chart-marks.ts'
+import { FRAME_HEIGHT, MARGIN_TOP, bucketCountFor, chartOptions } from './chart-marks.ts'
 import { CrosshairTooltip } from './crosshair-tooltip.tsx'
 import { Legend } from './legend.tsx'
-import { usePlot } from './use-plot.ts'
+import { usePlot, usePlotContainer } from './use-plot.ts'
 import styles from './multi-axis-chart.module.css'
 
 interface MultiAxisChartProps {
@@ -62,15 +68,33 @@ const useColours = (axes: readonly ValueAxis.ValueAxis[]): readonly number[] => 
  * or a level starting or ending — across all series, and lists the level each
  * series holds there (`Series.levelAt`), so the pointer never has to land on
  * a line. The whole plot is the hit area.
+ *
+ * A point series with more readings in the window than the frame has room for
+ * dots (`bucketCountFor` at the figure's width) is drawn as buckets — a mean
+ * line over a min–max envelope — and read as them: its stops are the bucket
+ * middles and its row the bucket's mean. `Buckets.ofDenseSeries` decides
+ * which, once per render, and the marks, the stops and the readout all take
+ * that one map; a new width decides again.
  */
 const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.Element => {
+  const { containerRef, container, width: figureWidth } = usePlotContainer()
+  const bucketsBySeriesId = useMemo(
+    () =>
+      Buckets.ofDenseSeries(
+        axes.map((axis) => axis.series),
+        xDomain,
+        bucketCountFor(axes, figureWidth)
+      ),
+    [axes, xDomain, figureWidth]
+  )
   const stops = useMemo(
     () =>
       Crosshair.stops(
         axes.map((axis) => axis.series),
-        xDomain
+        xDomain,
+        bucketsBySeriesId
       ),
-    [axes, xDomain]
+    [axes, xDomain, bucketsBySeriesId]
   )
   const [hover, setHover] = useState<{
     readonly stops: readonly number[]
@@ -86,8 +110,11 @@ const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.El
   }, [hoverIsStale, onHover])
 
   const colours = useColours(axes)
-  const options = useMemo(() => chartOptions(axes, xDomain, colours), [axes, xDomain, colours])
-  const { containerRef, figure, width } = usePlot(options)
+  const options = useMemo(
+    () => chartOptions(axes, xDomain, colours, bucketsBySeriesId),
+    [axes, xDomain, colours, bucketsBySeriesId]
+  )
+  const figure = usePlot(container, figureWidth, options)
 
   const handlePointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
@@ -141,9 +168,10 @@ const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.El
             <CrosshairTooltip
               axes={axes}
               colours={colours}
+              bucketsBySeriesId={bucketsBySeriesId}
               time={DateTime.unsafeMake(hoveredMillis)}
               left={crosshairLeft}
-              flip={crosshairLeft + TOOLTIP_ROOM > width}
+              flip={crosshairLeft + TOOLTIP_ROOM > figureWidth}
             />
           </>
         )}

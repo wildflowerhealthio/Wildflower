@@ -14,27 +14,40 @@ and opaque series ids.
 - `src/multi-axis-chart.tsx` — `MultiAxisChart` (`axes`, `xDomain`,
   `onHover`): the legend, the figure, and the crosshair. Colours come from
   `ColourSlots.assign`, carried across renders; the crosshair snaps to
-  `Crosshair.nearestStop` over `Crosshair.stops`.
+  `Crosshair.nearestStop` over `Crosshair.stops`. Which series are drawn as
+  buckets is `Buckets.ofDenseSeries` at `bucketCountFor` the figure's width,
+  decided once per render and handed to the marks, the stops and the tooltip
+  alike.
 - `src/chart-marks.ts` — `chartOptions`, the figure's marks, bottom layer
   first:
   - a value axis per `ValueAxis` (ticks from the axis, labels mapped back
     through `ValueAxis.denormalise`), two per side stepping outward;
   - bands: a point series' readings' `low` / `high` as an area, a level
-    series' levels' as one rectangle each;
+    series' levels' as one rectangle each, and a bucketed series' min–max
+    envelope as an area in place of its readings' band;
   - a point series as a line with dots, `step-after` when its interpolation
     is `'step'` and straight otherwise;
+  - a bucketed point series — more readings in the window than
+    `bucketCountFor` (one bucket per `BUCKET_WIDTH` = 10px of frame, about a
+    dot across) — as a line through each bucket's mean with no dots, curved
+    as its interpolation says. `bucketVertices` breaks the line and envelope
+    with a `NaN` vertex across a left-out slice and stretches each run to its
+    slices' edges, so a lone bucket still draws;
   - a level series as `step-after` lines, one per `LevelRun` — a run breaks at
     a gap and where `lineStyle` changes, and an open level runs to the end of
     `xDomain`. `LINE_STYLE_DASH_ARRAY` is what `'dashed'` strokes with.
 - `src/crosshair-tooltip.tsx` — `CrosshairTooltip`: one row per axis with
   `Series.levelAt`'s value, unit and `note`; the detail line is the reading's
   date for a point series and `start – end` (or `ongoing`) for a level series.
+  A bucketed series' row reads `Buckets.at` instead: the bucket mean in the
+  unit, detailed `mean of n readings, min–max`.
 - `src/legend.tsx` — `Legend`, the key above the figure.
 - `src/series-colors.ts` — `seriesColors`, the `--color-series-N` /
   `-soft` tokens for a palette index.
 - `src/value-format.ts` — tick, value and date formatting.
-- `src/use-plot.ts` — `usePlot`: mounts a figure into a container and redraws
-  it at the container's width.
+- `src/use-plot.ts` — `usePlotContainer` measures the container a figure
+  mounts into, and `usePlot` mounts the figure there and redraws it at that
+  width. Two hooks so the chart knows its width before it builds its marks.
 - `src/series-panel.tsx` — `SeriesPanel` (`catalogGroups`,
   `selectedSeriesIds`, `onSelectionChange`): a search box filtering rows
   through core's `matchesSearch`, each `CatalogGroup` as a heading that folds
@@ -59,7 +72,8 @@ and opaque series ids.
   stops, the level in effect and the colour a series keeps are fundamentals'
   functions. How a series is drawn — interpolation, line style, value scale,
   the readout's note — is the domain package's choice, carried on the series.
-  A mark here branches only on `Series.kind`.
+  A mark here branches only on `Series.kind` and on whether
+  `Buckets.ofDenseSeries` bucketed the series.
 - **No domain imports.** Among the slice's packages this one depends on
   `health-viewer-fundamentals` and `health-viewer-core` only — core for the
   catalogue rows, the search and the range presets. A test fixture is a

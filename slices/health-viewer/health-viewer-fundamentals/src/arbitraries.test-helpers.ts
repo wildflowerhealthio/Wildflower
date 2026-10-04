@@ -4,9 +4,18 @@ import * as fc from 'fast-check'
 import type * as LevelSeries from './level-series.ts'
 import type * as PointSeries from './point-series.ts'
 import type * as Series from './series.ts'
+import type * as TimeDomain from './time-domain.ts'
 
 /** An instant within a small window, so generated series collide and interleave. */
 const smallMillis = fc.integer({ min: 0, max: 1_000_000 })
+
+/** A window over {@link smallMillis}, possibly a single instant. */
+const windowArb: fc.Arbitrary<TimeDomain.TimeDomain> = fc
+  .tuple(smallMillis, smallMillis)
+  .map((bounds): TimeDomain.TimeDomain => {
+    const [from, to] = bounds.toSorted((left, right) => left - right)
+    return [DateTime.unsafeMake(from), DateTime.unsafeMake(to)]
+  })
 
 const finite = fc.double({ min: -1e9, max: 1e9, noNaN: true })
 
@@ -93,4 +102,5 @@ export {
   pointSeriesOf,
   seriesArb,
   smallMillis,
+  windowArb,
 }

@@ -6,7 +6,7 @@ export { MultiAxisChart, type MultiAxisChartProps } from './multi-axis-chart.tsx
 
 export { seriesColors, type SeriesColors } from './series-colors.ts'
 
-export { usePlot, type MountedPlot, type PlotFigure } from './use-plot.ts'
+export { usePlot, usePlotContainer, type PlotContainer, type PlotFigure } from './use-plot.ts'
 
 export { HealthViewerLayout, type HealthViewerLayoutProps } from './health-viewer-layout.tsx'
 

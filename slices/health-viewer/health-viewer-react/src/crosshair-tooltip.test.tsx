@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { type LevelSeries, type PointSeries, ValueAxis } from 'health-viewer-fundamentals'
+import { Buckets, type LevelSeries, type PointSeries, ValueAxis } from 'health-viewer-fundamentals'
 
 import { CrosshairTooltip } from './crosshair-tooltip.tsx'
 import { formatDate, formatReading } from './value-format.ts'
@@ -35,8 +35,21 @@ const oneLevel = (
   ],
 })
 
-const renderRow = (axes: readonly ValueAxis.ValueAxis[], time: DateTime.Utc): string => {
-  render(<CrosshairTooltip axes={axes} colours={[0]} time={time} left={0} flip={false} />)
+const renderRow = (
+  axes: readonly ValueAxis.ValueAxis[],
+  time: DateTime.Utc,
+  bucketsBySeriesId: ReadonlyMap<string, readonly Buckets.Bucket[]> = new Map()
+): string => {
+  render(
+    <CrosshairTooltip
+      axes={axes}
+      colours={[0]}
+      bucketsBySeriesId={bucketsBySeriesId}
+      time={time}
+      left={0}
+      flip={false}
+    />
+  )
   return screen.getByTestId('crosshair-row').textContent ?? ''
 }
 
@@ -80,5 +93,53 @@ describe('CrosshairTooltip', () => {
     expect(row).toContain(`${formatReading(5.4)} mmol/L`)
     expect(row).toContain(formatDate(DateTime.unsafeMake(10 * DAY)))
     expect(row).not.toContain('–')
+  })
+
+  describe('on a bucketed series', () => {
+    const dense: PointSeries.PointSeries = {
+      kind: 'points',
+      id: 'p:dense',
+      label: 'Heart rate',
+      unit: 'beats/min',
+      valueScale: 'fitted',
+      interpolation: 'linear',
+      points: [
+        { time: DateTime.unsafeMake(1 * DAY), value: 58 },
+        { time: DateTime.unsafeMake(2 * DAY), value: 91 },
+        { time: DateTime.unsafeMake(3 * DAY), value: 70.5 },
+        { time: DateTime.unsafeMake(12 * DAY), value: 64 },
+      ],
+    }
+    // Ten-day buckets: days 1–3 share the first, day 12 sits alone in the second.
+    const buckets = Buckets.of(
+      dense.points,
+      [DateTime.unsafeMake(0), DateTime.unsafeMake(30 * DAY - 1)],
+      3
+    )
+    const rowAt = (day: number): string =>
+      renderRow(
+        ValueAxis.assign([dense]),
+        DateTime.unsafeMake(day * DAY),
+        new Map([[dense.id, buckets]])
+      )
+
+    test('shows the bucket mean in the unit, and how many readings it is the mean of and their range', () => {
+      const row = rowAt(5)
+      expect(row).toContain(`${formatReading((58 + 91 + 70.5) / 3)} beats/min`)
+      expect(row).toContain(`mean of 3 readings, ${formatReading(58)}–${formatReading(91)}`)
+    })
+
+    test('a bucket of one reading says so, without a range', () => {
+      const row = rowAt(15)
+      expect(row).toContain(`${formatReading(64)} beats/min`)
+      expect(row).toContain('1 reading')
+      expect(row).not.toContain('mean of')
+    })
+
+    test('a slice with no readings reads as a gap', () => {
+      const row = rowAt(25)
+      expect(row).toContain('—')
+      expect(row).not.toContain('reading')
+    })
   })
 })

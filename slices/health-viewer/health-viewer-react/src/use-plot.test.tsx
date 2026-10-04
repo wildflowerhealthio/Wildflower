@@ -3,7 +3,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import { FALLBACK_WIDTH, usePlot } from './use-plot.ts'
+import { FALLBACK_WIDTH, usePlot, usePlotContainer } from './use-plot.ts'
 
 afterEach(() => {
   cleanup()
@@ -11,7 +11,8 @@ afterEach(() => {
 })
 
 const Harness = ({ options }: { readonly options: Plot.PlotOptions | null }): JSX.Element => {
-  const { containerRef } = usePlot(options)
+  const { containerRef, container, width } = usePlotContainer()
+  usePlot(container, width, options)
   return <div ref={containerRef} data-testid="container" />
 }
 

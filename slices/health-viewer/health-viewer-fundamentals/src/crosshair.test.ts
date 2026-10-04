@@ -1,4 +1,3 @@
-import { DateTime } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -8,19 +7,16 @@ import {
   pointSeriesArb,
   seriesArb,
   smallMillis,
+  windowArb,
 } from './arbitraries.test-helpers.ts'
+import * as Buckets from './buckets.ts'
 import * as Crosshair from './crosshair.ts'
 import * as Series from './series.ts'
 import type * as TimeDomain from './time-domain.ts'
 
 const RUNS = numRunsFor({ base: 200 })
 
-const windowArb: fc.Arbitrary<TimeDomain.TimeDomain> = fc
-  .tuple(smallMillis, smallMillis)
-  .map((bounds): TimeDomain.TimeDomain => {
-    const [from, to] = bounds.toSorted((left, right) => left - right)
-    return [DateTime.unsafeMake(from), DateTime.unsafeMake(to)]
-  })
+const noBuckets: ReadonlyMap<string, readonly Buckets.Bucket[]> = new Map()
 
 const inWindow = (window: TimeDomain.TimeDomain, millis: number): boolean =>
   millis >= window[0].epochMillis && millis <= window[1].epochMillis
@@ -38,7 +34,7 @@ describe('Crosshair.stops', () => {
             ...(level.end === null ? [] : [level.end.epochMillis]),
           ])
         )
-        expect(Crosshair.stops(plotted, window)).toEqual(
+        expect(Crosshair.stops(plotted, window, noBuckets)).toEqual(
           ascendingDistinct(boundaries.filter((millis) => inWindow(window, millis)))
         )
       }),
@@ -50,7 +46,7 @@ describe('Crosshair.stops', () => {
     fc.assert(
       fc.property(pointSeriesArb, windowArb, (series, window) => {
         const readingTimes = series.points.map((point) => point.time.epochMillis)
-        expect(Crosshair.stops([series], window)).toEqual(
+        expect(Crosshair.stops([series], window, noBuckets)).toEqual(
           ascendingDistinct(readingTimes.filter((millis) => inWindow(window, millis)))
         )
       }),
@@ -66,10 +62,32 @@ describe('Crosshair.stops', () => {
             ? [level.start.epochMillis]
             : [level.start.epochMillis, level.end.epochMillis]
         )
-        expect(Crosshair.stops([series], window)).toEqual(
+        expect(Crosshair.stops([series], window, noBuckets)).toEqual(
           ascendingDistinct(boundaries.filter((millis) => inWindow(window, millis)))
         )
       }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test("a bucketed series' stops are exactly its bucket middles; the others' are unchanged", () => {
+    fc.assert(
+      fc.property(
+        pointSeriesArb,
+        levelSeriesArb,
+        windowArb,
+        fc.integer({ min: 1, max: 20 }),
+        (bucketed, drawnAsIs, window, bucketCount) => {
+          const buckets = Buckets.of(bucketed.points, window, bucketCount)
+          const bucketsBySeriesId = new Map([[bucketed.id, buckets]])
+          expect(Crosshair.stops([bucketed, drawnAsIs], window, bucketsBySeriesId)).toEqual(
+            ascendingDistinct([
+              ...buckets.map((bucket) => bucket.time.epochMillis),
+              ...Crosshair.stops([drawnAsIs], window, noBuckets),
+            ])
+          )
+        }
+      ),
       { numRuns: RUNS }
     )
   })

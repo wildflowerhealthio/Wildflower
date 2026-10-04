@@ -2,7 +2,7 @@
   "name": "health-viewer-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "The health viewer's domain-free plot vocabulary: PointSeries / LevelSeries / Level (what a chart draws), ValueAxis (value domains, ticks and axis assignment), Crosshair (where it snaps), ColourSlots (which colour a series keeps), TimeDomain, SeriesId (the escaped field grammar every series id is written in), and SeriesSource (a health-viewer domain source as one value). Pure — no DOM, no React, and no dependency on any slice; domain packages map their records onto this vocabulary.",
+  "description": "The health viewer's domain-free plot vocabulary: PointSeries / LevelSeries / Level (what a chart draws), ValueAxis (value domains, ticks and axis assignment), Buckets (a dense series summarised per fixed-width time slice), Crosshair (where it snaps), ColourSlots (which colour a series keeps), TimeDomain, SeriesId (the escaped field grammar every series id is written in), and SeriesSource (a health-viewer domain source as one value). Pure — no DOM, no React, and no dependency on any slice; domain packages map their records onto this vocabulary.",
   "license": "MIT",
   "type": "module",
   "exports": {
