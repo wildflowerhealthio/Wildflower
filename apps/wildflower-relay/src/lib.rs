@@ -70,10 +70,11 @@
 //! bind ports 443 and 80. The relay stops cleanly on SIGINT or SIGTERM.
 //!
 //! `.github/workflows/deploy-relay.yml` deploys it to an Ubuntu 24.04
-//! droplet on every push to `main` that touches this crate,
-//! `rathole-settings-rust` or `Cargo.lock`, and on manual dispatch. It
-//! builds the release binary on `ubuntu-24.04`, then, in the `relay` GitHub
-//! environment, writes the environment file from
+//! droplet on every push to `main` that touches this crate, one of its path
+//! dependencies (`shared-structures-rust`, `rathole-settings-rust`) or
+//! `Cargo.lock`, and on manual dispatch. It builds the release binary on
+//! `ubuntu-24.04`, then, in the `relay` GitHub environment, writes the
+//! environment file from
 //! that environment's secrets (`WILDFLOWER_RELAY_DOMAIN`,
 //! `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`, `WILDFLOWER_RELAY_TUNNELS`) and
 //! variables (any other setting, left out when unset). It copies the binary,
