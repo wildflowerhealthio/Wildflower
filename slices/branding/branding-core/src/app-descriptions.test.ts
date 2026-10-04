@@ -12,23 +12,15 @@ import { MARKETING_ANCHORS } from './nav.ts'
 import { SECTION_PATHS, SITE_ORIGIN, siteRootFor } from './site.ts'
 
 /**
- * Every described app: the homepage's SMART apps, the Synthesized Health Viewer
- * (a landing page, and a homepage row that does not read this copy yet), and
- * the Synthetic Data Loader and the owner UI, which have a landing page but no
- * homepage row.
+ * Every described app: the homepage's SMART apps, and the Synthetic Data Loader
+ * and the owner UI, which have a landing page but no homepage row.
  */
-const DESCRIBED_APP_IDS: readonly AppSectionId[] = [
-  ...APP_SECTION_IDS,
-  'healthViewer',
-  'syntheticData',
-  'lifting',
-  'app',
-]
+const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'syntheticData', 'app']
 
 const appSectionIdArb = fc.constantFrom<AppSectionId>(...DESCRIBED_APP_IDS)
 
 describe('APP_SECTION_IDS', () => {
-  it('should list every described app but the health viewer, the data loader and the owner UI exactly once, and nothing else', () => {
+  it('should list every described app but the data loader and the owner UI exactly once, and nothing else', () => {
     expect(DESCRIBED_APP_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
   })
 

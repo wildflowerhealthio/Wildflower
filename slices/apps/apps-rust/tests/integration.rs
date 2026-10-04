@@ -134,6 +134,7 @@ async fn fresh_install_lists_the_default_set() {
             "importer-app",
             "ohif-viewer",
             "lifting-app",
+            "health-viewer-app",
         ],
     );
 }
@@ -264,6 +265,7 @@ async fn home_screen_reorders_and_disables_an_app() {
         { "id": "web-server-docs", "onHomescreen": true },
         { "id": "importer-app", "onHomescreen": true },
         { "id": "ohif-viewer", "onHomescreen": true },
+        { "id": "health-viewer-app", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -289,6 +291,7 @@ async fn home_screen_reorders_and_disables_an_app() {
             "web-server-docs",
             "importer-app",
             "ohif-viewer",
+            "health-viewer-app",
         ],
     );
     let lifting = arr.iter().find(|v| v["id"] == "lifting-app").unwrap();

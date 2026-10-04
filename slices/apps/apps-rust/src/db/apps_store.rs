@@ -369,7 +369,7 @@ mod tests {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let inserted = store.insert_app(&registration("app-x")).expect("inserted");
         assert_eq!(store.find_app("app-x").unwrap(), Some(inserted.clone()));
-        assert_eq!(inserted.position, 9, "the store assigns the tail position");
+        assert_eq!(inserted.position, 10, "the store assigns the tail position");
         assert!(inserted.on_homescreen);
         assert!(!inserted.is_smart(), "inserted app has no client_id");
         assert_eq!(inserted.url, launch_url("https://example.com/launch"));
@@ -396,7 +396,7 @@ mod tests {
         );
         let stored = store.find_app("app-x").unwrap().unwrap();
         assert_eq!(stored.name, "app-x", "the existing row is untouched");
-        assert_eq!(stored.position, 9);
+        assert_eq!(stored.position, 10);
     }
 
     #[test]
@@ -580,7 +580,7 @@ mod migration_tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 9, "exactly the nine seeded default apps");
+        assert_eq!(row_count, 10, "exactly the ten seeded default apps");
     }
 
     /// The port hands back the seeded registry, in display order.
@@ -653,6 +653,16 @@ mod migration_tests {
             .bind::<Text, _>("https://example.com/launch")
             .execute(conn)
             .expect("configuration insert must succeed");
+    }
+
+    /// [`SEEDED_IDS`] as an install migrated before `0015` holds them, in display
+    /// order: every seeded app but the Health Viewer, which `0015` appends after
+    /// any app the user created before upgrading.
+    fn seeded_before_0015() -> Vec<&'static str> {
+        SEEDED_IDS
+            .into_iter()
+            .filter(|id| *id != "health-viewer-app")
+            .collect()
     }
 
     /// The launch template a `0001`–`0011` cloud configuration row holds.
@@ -840,6 +850,82 @@ mod migration_tests {
         );
     }
 
+    /// The Synthesized Health Viewer is seeded as a SMART app (`client_id ==
+    /// id`) launching at its published Pages copy's `launch.html` — a SMART EHR
+    /// launch, with no slash between `launch.html` and the query.
+    #[test]
+    fn health_viewer_app_launches_at_its_launch_page() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+
+        let registration = store
+            .find_app("health-viewer-app")
+            .unwrap()
+            .expect("health-viewer-app must exist");
+        assert_eq!(registration.client_id.as_deref(), Some("health-viewer-app"));
+        assert_eq!(registration.name, "Synthesized Health Viewer");
+        assert_eq!(
+            registration.subtitle.as_deref(),
+            Some("Plot labs, vitals and doses on one chart"),
+        );
+        assert!(registration.on_homescreen);
+        assert!(
+            registration.requires_tunnel,
+            "the published page's `iss={{origin}}` fetch must resolve through the \
+             tunnel's verified HTTPS origin",
+        );
+        assert_eq!(
+            registration.url.to_string(),
+            "https://wildflowerhealth.io/health-viewer-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+        );
+    }
+
+    /// An install already at `0014` gains the Health Viewer when it upgrades —
+    /// at the tail, after an app the user created before upgrading, since
+    /// `position` is UNIQUE and `0015` appends rather than naming a literal slot.
+    #[test]
+    fn an_install_already_at_0014_gains_the_health_viewer_at_the_tail() {
+        let pool = pool_migrated_through("0014");
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, requires_tunnel) \
+             VALUES ('my-app', (SELECT MAX(position) + 1 FROM app_registrations), 1, 'My App', \
+                     'https://example.com/launch', 0)",
+        )
+        .execute(&mut pool.get().unwrap())
+        .expect("a 0014 registration insert must succeed");
+
+        let store = SqliteAppsStore::new(pool).expect("0015 must apply over the user's app");
+        let user_app = store
+            .find_app("my-app")
+            .unwrap()
+            .expect("the user's app survives");
+        let health_viewer = store
+            .find_app("health-viewer-app")
+            .unwrap()
+            .expect("0015 must seed health-viewer-app on an upgraded install");
+        assert_eq!(
+            health_viewer.position,
+            user_app.position + 1,
+            "the Health Viewer takes the tail, after the user's app",
+        );
+    }
+
+    /// Reverting `0015` removes the Health Viewer and leaves every other app.
+    #[test]
+    fn reverting_0015_removes_the_health_viewer() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        embedded_migration("0015")
+            .revert(&mut store.pool().get().unwrap())
+            .expect("revert 0015");
+
+        assert!(store.find_app("health-viewer-app").unwrap().is_none());
+        assert_eq!(
+            store.list_registrations().unwrap().len(),
+            SEEDED_IDS.len() - 1,
+            "every other app stays",
+        );
+    }
+
     /// The regression `0008` exists for: migrations are run-once, so an install
     /// that already applied `0007` never re-reads it. Editing `0007`'s launch
     /// template in place would have left every upgraded install on the viewer's
@@ -1003,8 +1089,8 @@ mod migration_tests {
         let store = SqliteAppsStore::new(pool).expect("0012 must apply");
         let registrations = store.list_registrations().unwrap();
         let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
-        let mut expected: Vec<&str> = SEEDED_IDS.to_vec();
-        expected.push("my-cloud-app");
+        let mut expected = seeded_before_0015();
+        expected.extend(["my-cloud-app", "health-viewer-app"]);
         assert_eq!(
             ids, expected,
             "the system apps are gone and the rest keep their order"
@@ -1219,8 +1305,8 @@ mod migration_tests {
         let store = SqliteAppsStore::new(pool).expect("0014 must apply");
         let registrations = store.list_registrations().unwrap();
         let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
-        let mut expected: Vec<&str> = SEEDED_IDS.to_vec();
-        expected.extend(["kept-https", "kept-http"]);
+        let mut expected = seeded_before_0015();
+        expected.extend(["kept-https", "kept-http", "health-viewer-app"]);
         assert_eq!(
             ids, expected,
             "the origin-relative apps are gone and the rest keep their order"

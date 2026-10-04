@@ -9,17 +9,18 @@ import rows from './app-rows.module.css'
 import layout from './layout.module.css'
 
 /**
- * "Building on an open personal health record" — the three patient-facing
- * apps, presented as things that exist rather than products being sold. The
+ * "Building on an open personal health record" — the patient-facing apps,
+ * presented as things that exist rather than products being sold. The
  * Synthesized Health Viewer leads because it's the more evocative
- * "many-sources-on-one-chart" demo, even though it has no public route yet
- * (add a `Launcher` in the same pattern when a route appears). The Medication
- * Viewer's and FHIR Sync for Pebble's copy is the shared `APP_DESCRIPTIONS`
- * entry each one's own landing page renders.
+ * "many-sources-on-one-chart" demo. Each row's copy is the shared
+ * `APP_DESCRIPTIONS` entry the app's own landing page renders, and its
+ * `Launcher` opens that landing page.
  */
 function Built(): JSX.Element {
+  const healthViewer = APP_DESCRIPTIONS.healthViewer
   const medications = APP_DESCRIPTIONS.medications
   const pebble = APP_DESCRIPTIONS.fhirSyncPebble
+  const lifting = APP_DESCRIPTIONS.lifting
 
   return (
     <section className={layout['section']} id="built">
@@ -35,16 +36,17 @@ function Built(): JSX.Element {
         </div>
         <div className={`${rows['rows']} ${rows['rows--after-intro']}`}>
           <AppRow
-            title="Synthesized Health Viewer"
-            status="Status: demo, rough edges"
-            paragraphs={[
-              'I want to see health data from several places on one chart.',
-              'I have a dose of a medication that keeps changing from my pharmacy, and labs ' +
-                'tracking both the medication level and possible side effects. It is hard to tell ' +
-                'what all the changes are doing to each other. This tool plots data from several ' +
-                'sources on the same chart so I can see how everything relates.',
-            ]}
+            title={healthViewer.name}
+            status={healthViewer.status}
+            paragraphs={healthViewer.paragraphs}
             placeholderLabel="screenshot — meds and labs timeline"
+            launcher={
+              <Launcher
+                href={sectionHref(onMarketingSite, 'healthViewer')}
+                label={healthViewer.launch.label}
+                note={healthViewer.launch.note}
+              />
+            }
           />
           <AppRow
             title={medications.name}
@@ -69,6 +71,19 @@ function Built(): JSX.Element {
                 href={sectionHref(onMarketingSite, 'fhirSyncPebble')}
                 label={pebble.launch.label}
                 note={pebble.launch.note}
+              />
+            }
+          />
+          <AppRow
+            title={lifting.name}
+            status={lifting.status}
+            paragraphs={lifting.paragraphs}
+            placeholderLabel="screenshot — today's workout, one set at a time"
+            launcher={
+              <Launcher
+                href={sectionHref(onMarketingSite, 'lifting')}
+                label={lifting.launch.label}
+                note={lifting.launch.note}
               />
             }
           />

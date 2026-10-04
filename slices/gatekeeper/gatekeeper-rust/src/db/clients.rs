@@ -290,8 +290,8 @@ mod tests {
     /// their published-site redirect by `0006`), the server-docs API console by
     /// `0007`, the Importer by `0008`, the OHIF imaging viewer by `0009`
     /// (re-seeded by `0016` on an install that skipped it), FHIR Sync for
-    /// Pebble by `0017` (its Observation scope widened by `0018`), and Lifting by
-    /// `0019` — so a
+    /// Pebble by `0017` (its Observation scope widened by `0018`), Lifting by
+    /// `0019`, and the Synthesized Health Viewer by `0022` — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -312,6 +312,7 @@ mod tests {
             "ohif-viewer",
             "fhir-sync-pebble",
             "lifting-app",
+            "health-viewer-app",
         ] {
             let client = store
                 .client_by_id(client_id)
@@ -607,6 +608,25 @@ mod tests {
         );
         assert_eq!(
             lifting.allowed_grant_types,
+            vec![
+                AllowedGrantType::AuthorizationCode,
+                AllowedGrantType::RefreshToken,
+            ],
+        );
+        // `health-viewer-app` (the Synthesized Health Viewer) carries its
+        // published-site redirect, seeded by `0022`, and read-only scopes. Its
+        // scopes are pinned to `apps/health-viewer/src/config.ts` by
+        // `seeding.rs`'s `seeds_the_health_viewer_dev_client_with_the_apps_own_scopes`.
+        let health_viewer = store.client_by_id("health-viewer-app").unwrap().unwrap();
+        assert_eq!(
+            health_viewer.redirect_uris,
+            vec![
+                url::Url::parse("https://wildflowerhealth.io/health-viewer-app/")
+                    .expect("a valid absolute redirect")
+            ],
+        );
+        assert_eq!(
+            health_viewer.allowed_grant_types,
             vec![
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken,

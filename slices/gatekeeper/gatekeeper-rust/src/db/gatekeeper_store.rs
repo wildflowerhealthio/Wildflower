@@ -928,6 +928,37 @@ mod tests {
         assert!(!clients.is_empty());
     }
 
+    /// A new seed reaches an install that already ran every earlier migration:
+    /// driving a database through `0021` and then opening it with the full set
+    /// must add the `health-viewer-app` client (`0022`) with its exact redirect
+    /// URIs and scope set.
+    #[test]
+    fn an_install_already_at_0021_gains_the_health_viewer_app_client() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0021"),
+        )
+        .expect("migrate to 0021");
+        assert!(
+            column_for_client(&mut conn, "client_id", "health-viewer-app").is_empty(),
+            "no migration through 0021 seeds health-viewer-app"
+        );
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0022");
+
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", "health-viewer-app")[0].name,
+            r#"["https://wildflowerhealth.io/health-viewer-app/"]"#,
+        );
+        assert_eq!(
+            allowed_scopes_of(&mut conn, "health-viewer-app"),
+            r#"["launch","openid","fhirUser","system/Observation.rs","system/MedicationRequest.rs","system/Patient.rs"]"#,
+        );
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database

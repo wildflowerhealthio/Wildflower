@@ -111,16 +111,24 @@ device.
 
 ## Registration
 
-The production `health-viewer-app` registry row and OAuth client are not
-seeded yet (#588). In development the debug-only `health-viewer-app-dev` row
-launches the vite dev server instead (below).
+`src/config.ts`'s `clientId` is `health-viewer-app` in a production build and
+`health-viewer-app-dev` under the vite dev server, and must equal the
+`client_id` of the app row it is launched through — a launch checks the
+caller's grant against that client's scopes, and `/authorize` matches the
+redirect against that client's registered URIs — and its scope string must
+equal the client's allowed scopes; `gatekeeper-rust`'s `seeding.rs` test reads
+`config.ts` to hold both clients to it.
 
-`src/config.ts`'s `clientId` must equal the `client_id` of the app row it is
-launched through — a launch checks the caller's grant against that client's
-scopes, and `/authorize` matches the redirect against that client's registered
-URIs — and its scope string
-must equal the seeded client's allowed scopes; `gatekeeper-rust`'s
-`seeding.rs` test reads `config.ts` to hold the dev client to it.
+- **`health-viewer-app`** is a row (apps migration
+  `0015_seed_health_viewer_app`) launching
+  `https://wildflowerhealth.io/health-viewer-app/launch.html?launch={launch}&iss={origin}/fhir-r4`
+  with `requires_tunnel` set, as every first-party row has. Its public OAuth
+  client (gatekeeper migration `0022_seed_health_viewer_app_client`) redirects
+  to `https://wildflowerhealth.io/health-viewer-app/`.
+- **`health-viewer-app-dev`** is seeded in debug builds only, at runtime rather
+  than by a migration: a row on the dev server's port
+  (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
+  `http://localhost:<port>/` (`gatekeeper-rust/src/seeding.rs`).
 
 ## Running locally
 

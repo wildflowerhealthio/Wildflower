@@ -10,9 +10,11 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * patients" (see `app.tsx`). An EHR launch that puts a patient in context
  * opens on that patient.
  *
- * The seeded OAuth clients carry exactly this set — the debug-only
- * `health-viewer-app-dev` client in `gatekeeper-rust`'s `seed_dev_app_clients`
- * — so a scope added here alone fails `/authorize` against a Wildflower host.
+ * The seeded OAuth clients carry exactly this set — `health-viewer-app`
+ * (gatekeeper migration `0022_seed_health_viewer_app_client`) and the
+ * debug-only `health-viewer-app-dev` client in `gatekeeper-rust`'s
+ * `seed_dev_app_clients` — so a scope added here alone fails `/authorize`
+ * against a Wildflower host.
  *
  * The bare `launch` scope is formally EHR-context-only per the SMART App
  * Launch IG (a standalone launch has no EHR context to launch into);
@@ -28,7 +30,8 @@ const HEALTH_VIEWER_SCOPE =
  *
  * - A **production** build is published to
  *   `https://wildflowerhealth.io/health-viewer-app/` and launches as
- *   `health-viewer-app`.
+ *   `health-viewer-app`, through the row apps migration
+ *   `0015_seed_health_viewer_app` seeds.
  * - The **vite dev server** (`vp run -F health-viewer-app dev`, on the port
  *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
  *   `health-viewer-app-dev` row (`apps-rust`'s `seed_dev_apps`) and its

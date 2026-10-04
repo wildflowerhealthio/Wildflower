@@ -415,6 +415,7 @@ mod tests {
             "importer-app",
             "ohif-viewer",
             "lifting-app",
+            "health-viewer-app",
         ] {
             let registration = store.find_app(id).unwrap().expect("migrated row");
             assert_eq!(registration.client_id.as_deref(), Some(id));

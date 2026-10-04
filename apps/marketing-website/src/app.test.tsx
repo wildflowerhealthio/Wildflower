@@ -98,7 +98,7 @@ describe('App', () => {
     }
   })
 
-  it('should render launcher links into the apps, and none for the Synthesized Health Viewer', () => {
+  it('should render launcher links into the apps', () => {
     // Arrange / Act
     render(<App />)
 
@@ -118,9 +118,12 @@ describe('App', () => {
     expect(
       screen.getByRole('link', { name: /Open the Web Trace Viewer/ }).getAttribute('href')
     ).toBe('./web-trace-app')
-    // No public route yet — intentionally no launcher.
-    expect(screen.getByText('Synthesized Health Viewer')).toBeDefined()
-    expect(screen.queryByRole('link', { name: /Synthesized/ })).toBeNull()
+    expect(
+      screen.getByRole('link', { name: /Open the Synthesized Health Viewer/ }).getAttribute('href')
+    ).toBe('./health-viewer-app')
+    expect(screen.getByRole('link', { name: /Open Lifting/ }).getAttribute('href')).toBe(
+      './lifting-app'
+    )
   })
 
   it('should render Wildflower FHIR server download links pulled from versions.json', () => {
