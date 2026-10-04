@@ -19,24 +19,22 @@ type AppSectionId = Extract<
 
 /**
  * The app sections the marketing homepage has a launcher row for: all but the
- * owner UI; the Synthesized Health Viewer, whose homepage row keeps its own
- * inline copy until the app is registered on the Wildflower host; the Synthetic
- * Data Loader, which has no homepage row; and Lifting, which has no homepage
- * row until it is registered there.
+ * owner UI and the Synthetic Data Loader, which have no homepage row.
  */
-type HomepageAppSectionId = Exclude<
-  AppSectionId,
-  'app' | 'healthViewer' | 'syntheticData' | 'lifting'
->
+type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'syntheticData'>
 
 /**
- * The four SMART app sections, in the order the marketing homepage presents
- * them. The owner UI (`app`) has a landing page but no homepage row, so it is
- * not among them.
+ * The six SMART app sections with a homepage row, grouped by the homepage
+ * section the row sits in: the patient-facing apps (`built`), then the Importer
+ * (`try`), then the Web Trace Viewer (`developers`). The owner UI (`app`) and
+ * the Synthetic Data Loader have a landing page but no homepage row, so they
+ * are not among them.
  */
 const APP_SECTION_IDS: readonly HomepageAppSectionId[] = [
   'medications',
+  'healthViewer',
   'fhirSyncPebble',
+  'lifting',
   'importer',
   'webTrace',
 ]
@@ -273,6 +271,7 @@ const APP_DESCRIPTIONS: {
     tagline:
       'A strength-training program, the workout due today and every set you lift, ' +
       'kept on your own FHIR record.',
+    status: 'Status: early, rough edges',
     paragraphs: [
       'I want my training log to live with the rest of my health record, ' +
         'not in one more app that keeps it to itself.',
@@ -285,7 +284,10 @@ const APP_DESCRIPTIONS: {
         'resources, so any other app you connect can read your training too.',
     ],
     anchor: 'built',
-
+    launch: {
+      label: 'Open Lifting',
+      note: 'Plan and log workouts on any FHIR server, including our demo',
+    },
     smartLaunchPage: 'launch.html',
   },
   app: {

@@ -132,9 +132,11 @@ struct DevAppPorts {
 
 /// The `health-viewer-app-dev` client's scopes: exactly the scope string in
 /// `apps/health-viewer/src/config.ts`, which requests the same set for an EHR
-/// launch and a standalone connect. A test below reads that file and pins the
-/// two together, so a scope added on one side alone fails the test rather than
-/// `/authorize` on a real device.
+/// launch and a standalone connect, and the same set the production
+/// `health-viewer-app` client allows (gatekeeper migration
+/// `0022_seed_health_viewer_app_client`). A test below reads that file and pins
+/// all three together, so a scope added on one side alone fails the test rather
+/// than `/authorize` on a real device.
 #[cfg(debug_assertions)]
 const HEALTH_VIEWER_DEV_SCOPES: &[&str] = &[
     "launch",
@@ -441,9 +443,10 @@ mod tests {
     use super::*;
 
     /// The health viewer's dev client is seeded on its dev server's loopback
-    /// root with exactly the scopes the app requests. The app's scope string
-    /// is read out of `config.ts` itself, the one place it is written, so the
-    /// TS and Rust halves cannot drift apart unnoticed.
+    /// root with exactly the scopes the app requests, and the production
+    /// `health-viewer-app` client (gatekeeper migration `0022`) allows the same
+    /// set. The app's scope string is read out of `config.ts` itself, the one
+    /// place it is written, so neither client can drift from it unnoticed.
     #[test]
     fn seeds_the_health_viewer_dev_client_with_the_apps_own_scopes() {
         const HEALTH_VIEWER_CONFIG_TS: &str = include_str!(concat!(
@@ -474,6 +477,12 @@ mod tests {
             ))
             .expect("a valid absolute redirect")],
         );
+
+        let production = store
+            .client_by_id("health-viewer-app")
+            .expect("query client")
+            .expect("migration 0022 seeds the health-viewer-app client");
+        assert_eq!(production.allowed_scopes, HEALTH_VIEWER_DEV_SCOPES);
     }
 
     /// The synthetic data loader's dev client is seeded on its dev server's

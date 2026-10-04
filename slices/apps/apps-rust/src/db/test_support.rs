@@ -5,7 +5,7 @@
 use crate::domain::AppsError;
 
 /// The migration-seeded registry, in display order.
-pub(crate) const SEEDED_IDS: [&str; 9] = [
+pub(crate) const SEEDED_IDS: [&str; 10] = [
     "growth-chart",
     "medication-viewer",
     "precise-hbr",
@@ -15,6 +15,7 @@ pub(crate) const SEEDED_IDS: [&str; 9] = [
     "importer-app",
     "ohif-viewer",
     "lifting-app",
+    "health-viewer-app",
 ];
 
 /// The `context: source` text of an [`AppsError::Infrastructure`], for asserting on

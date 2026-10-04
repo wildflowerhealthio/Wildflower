@@ -128,17 +128,13 @@ described apps naming one. The core tests pin the exact five paths.
   the icon size.** The derivation is `padding-top + padding-bottom + icon-size +
 border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
 - **App copy lives in `APP_DESCRIPTIONS`, not in a component.** The homepage
-  rows (`built`, `possible-today`, `dev-tools`) and the apps' landing pages
+  rows (`built`, `infrastructure`, `dev-tools`) and the apps' landing pages
   render the same entries; editing the copy in one component would fork the
   story. The server-docs row is not a SMART app with a landing page, so its
   copy stays inline on the homepage. The owner UI's entry (`app`) and the
   Synthetic Data Loader's (`syntheticData`) are the reverse: each has a
   landing page but no homepage row, so it is described but left out of
-  `APP_SECTION_IDS`, the homepage's list. The Synthesized Health
-  Viewer (`healthViewer`) is described for its landing page but left out of
-  `APP_SECTION_IDS` and `HomepageAppSectionId` until it is registered on the
-  Wildflower host; until then its homepage row keeps its own inline copy.
-  Lifting (`lifting`) is the same, with no homepage row at all until then.
+  `APP_SECTION_IDS`, the homepage's list.
 - **`SiteHeader`/`SiteFooter` are the one chrome, used by the homepage and the
   apps.** `apps/marketing-website` consumes them just like the apps do (passing
   `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
