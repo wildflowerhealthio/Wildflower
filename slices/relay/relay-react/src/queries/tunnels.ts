@@ -31,11 +31,16 @@ const useTunnelsQuery = (): UseQueryResult<readonly TunnelInfo[]> => {
   })
 }
 
-/** `CreateTunnel`; refreshes the list. */
+/**
+ * `CreateTunnel`; refreshes the list. The result holds the token, so the
+ * mutation cache drops it as soon as nothing shows it (`reset`, or the form
+ * unmounting) rather than keeping it for the default five minutes.
+ */
 const useCreateTunnelMutation = (): UseMutationResult<CreatedTunnel, Error, CreateTunnelBody> => {
   const { run } = useRelayAdmin()
   const queryClient = useQueryClient()
   return useMutation({
+    gcTime: 0,
     mutationFn: (payload) =>
       run(
         Effect.flatMap(RelayAdminHttpApiClient, (client) =>

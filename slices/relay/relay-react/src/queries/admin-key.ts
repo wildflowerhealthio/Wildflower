@@ -25,12 +25,15 @@ const useStoredAdminKeyQuery = (): UseQueryResult<Option.Option<CryptoKey>> => {
 
 /**
  * Sign in with the pasted `WILDFLOWER_RELAY_ADMIN_KEY`: import it as a
- * non-extractable signing key and store that. The text itself is not kept.
+ * non-extractable signing key and store that. The text itself is not kept: it
+ * is the mutation's variables, which the mutation cache drops as soon as the
+ * key form is gone rather than after the default five minutes.
  */
 const useSignInMutation = (): UseMutationResult<CryptoKey, Error, string> => {
   const { run, setKeyRefused } = useRelayAdmin()
   const queryClient = useQueryClient()
   return useMutation({
+    gcTime: 0,
     mutationFn: (pasted) =>
       run(
         Effect.gen(function* () {

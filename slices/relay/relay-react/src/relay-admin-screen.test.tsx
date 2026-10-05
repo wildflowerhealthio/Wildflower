@@ -108,7 +108,7 @@ const runtimeFor = async (relay: FakeRelay, signedIn: boolean): Promise<RelayAdm
 const holdsKey = (runtime: RelayAdminRuntime): Promise<boolean> =>
   runtime.runPromise(Effect.flatMap(AdminKeyStore, (store) => store.load)).then(Option.isSome)
 
-const renderScreen = (runtime: RelayAdminRuntime): void => {
+const renderScreen = (runtime: RelayAdminRuntime): QueryClient => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
@@ -117,6 +117,7 @@ const renderScreen = (runtime: RelayAdminRuntime): void => {
       </RelayAdminProvider>
     </QueryClientProvider>
   )
+  return queryClient
 }
 
 const relayWith = (names: readonly string[]): FakeRelay => ({
@@ -175,7 +176,7 @@ describe('RelayAdminScreen', () => {
     // Arrange
     const relay = relayWith(['alice'])
     const runtime = await runtimeFor(relay, false)
-    renderScreen(runtime)
+    const queryClient = renderScreen(runtime)
     const user = userEvent.setup()
 
     // Act
@@ -185,6 +186,10 @@ describe('RelayAdminScreen', () => {
     // Assert
     expect(await screen.findByText('alice.relay.example.com')).toBeDefined()
     expect(await holdsKey(runtime)).toBe(true)
+    // The pasted text is not kept as the mutation's variables.
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toEqual([])
+    })
   })
 
   it('refuses to sign in with a key shorter than the relay accepts', async () => {
@@ -205,7 +210,7 @@ describe('RelayAdminScreen', () => {
   it('shows a created tunnel’s token once, and not after Done', async () => {
     // Arrange
     const relay = relayWith([])
-    renderScreen(await runtimeFor(relay, true))
+    const queryClient = renderScreen(await runtimeFor(relay, true))
     const user = userEvent.setup()
     await screen.findByText('No tunnels yet.')
 
@@ -225,6 +230,10 @@ describe('RelayAdminScreen', () => {
     // Assert
     expect(screen.queryByText('token-for-calm-otter')).toBeNull()
     expect(screen.getByRole('button', { name: 'Create tunnel' })).toBeDefined()
+    // Nor is it kept in the mutation cache.
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toEqual([])
+    })
   })
 
   it('shows the relay’s reason when the name is taken, and keeps the form', async () => {
