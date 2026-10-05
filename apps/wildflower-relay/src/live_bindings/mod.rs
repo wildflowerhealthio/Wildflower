@@ -4,7 +4,7 @@
 //! `Arc<TunnelRegistry>` router state (in [`state`]). Each binding lives in
 //! its own file and lifts what its capability needs out of the state. The
 //! ones that change tunnels also keep the registry, through which they serve
-//! the change (rathole's services, the front's routes, the verifier's keys);
+//! the change (rathole's services, the served tunnels);
 //! those side effects stay here, out of `domain/`. Store calls block on
 //! SQLite, so the bindings run them on blocking threads.
 //!

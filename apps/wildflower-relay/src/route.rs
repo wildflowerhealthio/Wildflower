@@ -4,13 +4,14 @@
 //! served by the relay's own site, which terminates TLS in-process. Any
 //! other public hostname `<tunnel name>.<domain>` names a stored tunnel,
 //! whose visitors the front puts into rathole's visitor queue for the
-//! service of that name (see [`crate::tunnels`]). The [`RouteTable`] starts
-//! with the tunnels stored at startup, as rathole's services do, and
-//! [`Router::insert`] and [`Router::remove`] follow each tunnel created or
-//! deleted, so a deleted tunnel stops routing as soon as it is deleted.
+//! service of that name (see [`crate::tunnels`]). Which tunnels exist is
+//! the [`ServedTunnels`] the router shares with the site's verifier, so a
+//! deleted tunnel stops routing as soon as it is deleted.
 
 use std::collections::BTreeSet;
-use std::sync::{PoisonError, RwLock, RwLockWriteGuard};
+use std::sync::Arc;
+
+use crate::served::ServedTunnels;
 
 /// One routable tunnel: the rathole service its visitors are handed to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,41 +29,14 @@ pub enum Destination {
     Tunnel(Route),
 }
 
-/// The names of the routable tunnels.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct RouteTable {
-    tunnel_names: BTreeSet<String>,
-}
-
-impl RouteTable {
-    /// Build a table from tunnel names.
-    #[must_use]
-    pub fn from_names(tunnel_names: impl IntoIterator<Item = String>) -> Self {
-        Self {
-            tunnel_names: tunnel_names.into_iter().collect(),
-        }
-    }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.tunnel_names.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.tunnel_names.is_empty()
-    }
-}
-
 /// The front's view of routing: the public domain suffix and the relay's
-/// local hostnames (relay-only settings) plus the current [`RouteTable`],
-/// which [`Router::insert`] and [`Router::remove`] change while connections
-/// are being routed.
+/// local hostnames (relay-only settings) plus the [`ServedTunnels`], which
+/// change while connections are being routed.
 #[derive(Debug)]
 pub struct Router {
     domain: String,
     local_hostnames: BTreeSet<String>,
-    table: RwLock<RouteTable>,
+    tunnels: Arc<ServedTunnels>,
 }
 
 impl Router {
@@ -74,7 +48,7 @@ impl Router {
     pub fn new(
         domain: &str,
         local_hostnames: impl IntoIterator<Item = String>,
-        table: RouteTable,
+        tunnels: Arc<ServedTunnels>,
     ) -> Self {
         Self {
             domain: normalize_hostname(domain),
@@ -82,7 +56,7 @@ impl Router {
                 .into_iter()
                 .map(|hostname| normalize_hostname(&hostname))
                 .collect(),
-            table: RwLock::new(table),
+            tunnels,
         }
     }
 
@@ -91,25 +65,9 @@ impl Router {
         &self.domain
     }
 
-    /// Route the tunnel named `tunnel_name`, for lookups from now on.
-    pub fn insert(&self, tunnel_name: String) {
-        self.table_mut().tunnel_names.insert(tunnel_name);
-    }
-
-    /// Stop routing the tunnel named `tunnel_name`. Connections already
-    /// piped are unaffected; only lookups from now on miss it.
-    pub fn remove(&self, tunnel_name: &str) {
-        self.table_mut().tunnel_names.remove(tunnel_name);
-    }
-
-    fn table_mut(&self) -> RwLockWriteGuard<'_, RouteTable> {
-        // A poisoned lock only means a writer panicked mid-insert or -remove
-        // of one name; the set inside is still whole.
-        self.table.write().unwrap_or_else(PoisonError::into_inner)
-    }
-
     /// Resolve a public hostname (SNI or HTTP `Host`, without port) to where
-    /// it goes, or `None` if it is outside the domain or names no tunnel. A
+    /// it goes, or `None` if it is outside the domain or names no served
+    /// tunnel. A
     /// local hostname is [`Destination::Local`] even if a tunnel of the same
     /// name exists, so no tunnel can take over the relay's own site.
     #[must_use]
@@ -119,10 +77,7 @@ impl Router {
             return Some(Destination::Local(hostname));
         }
         let tunnel_name = tunnel_name_for_host(&hostname, &self.domain)?;
-        self.table
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .tunnel_names
+        self.tunnels
             .contains(&tunnel_name)
             .then_some(Destination::Tunnel(Route { tunnel_name }))
     }
@@ -164,6 +119,7 @@ pub(crate) fn is_dns_label(label: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::test_fake::stored_tunnel;
 
     const DOMAIN: &str = "relay.example.com";
 
@@ -220,6 +176,14 @@ mod tests {
         }
     }
 
+    fn served(names: &[&str]) -> Arc<ServedTunnels> {
+        let tunnels: Vec<_> = names
+            .iter()
+            .map(|name| stored_tunnel(name).tunnel)
+            .collect();
+        Arc::new(ServedTunnels::new(&tunnels))
+    }
+
     fn tunnel(tunnel_name: &str) -> Option<Destination> {
         Some(Destination::Tunnel(Route {
             tunnel_name: tunnel_name.to_owned(),
@@ -227,29 +191,22 @@ mod tests {
     }
 
     #[test]
-    fn router_resolves_known_tunnels_and_follows_inserts_and_removes() {
-        let router = Router::new(
-            DOMAIN,
-            [DOMAIN.to_owned()],
-            RouteTable::from_names(["a".to_owned()]),
-        );
+    fn router_resolves_served_tunnels_as_they_are_inserted_and_removed() {
+        let tunnels = served(&["a"]);
+        let router = Router::new(DOMAIN, [DOMAIN.to_owned()], Arc::clone(&tunnels));
         assert_eq!(router.resolve("A.relay.example.com"), tunnel("a"));
         assert_eq!(router.resolve("b.relay.example.com"), None);
 
-        router.insert("b".to_owned());
+        tunnels.insert(&stored_tunnel("b").tunnel);
         assert_eq!(router.resolve("b.relay.example.com"), tunnel("b"));
-        router.remove("a");
+        tunnels.remove("a");
         assert_eq!(router.resolve("a.relay.example.com"), None);
         assert_eq!(router.resolve("b.relay.example.com"), tunnel("b"));
     }
 
     #[test]
     fn router_resolves_local_hostnames_case_folded() {
-        let router = Router::new(
-            DOMAIN,
-            [".Relay.Example.com.".to_owned()],
-            RouteTable::default(),
-        );
+        let router = Router::new(DOMAIN, [".Relay.Example.com.".to_owned()], served(&[]));
         for host in [
             "relay.example.com",
             "RELAY.example.com",
@@ -271,7 +228,7 @@ mod tests {
         let router = Router::new(
             DOMAIN,
             [DOMAIN.to_owned(), "admin.relay.example.com".to_owned()],
-            RouteTable::from_names(["admin".to_owned()]),
+            served(&["admin"]),
         );
         assert_eq!(
             router.resolve("admin.relay.example.com"),

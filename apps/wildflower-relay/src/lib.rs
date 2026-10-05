@@ -137,8 +137,9 @@
 //! `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`. On every start the relay
 //! builds rathole's config for them in memory (see [`config`]); no rathole
 //! file is written or read. Each change through the admin API reaches the
-//! running rathole server as one service added or deleted, and the front's
-//! routes and the signing keys follow the same change (see
+//! running rathole server as one service added or deleted, and the same
+//! change inserts or removes the tunnel in the [`ServedTunnels`] the front
+//! routes by and the site verifies signatures against (see
 //! [`TunnelRegistry`]).
 //!
 //! The tunnels are layered like the slices' stores:
@@ -154,8 +155,8 @@
 //!  - [`live_bindings`] — the [`TunnelRegistry`] router state that holds the
 //!    store and what serves the stored tunnels, and the bindings that build
 //!    each capability from it for an admin-signed request, run it off the
-//!    async runtime and serve the change: rathole's services, the front's
-//!    routes and the signing keys.
+//!    async runtime and serve the change: rathole's services and the
+//!    [`ServedTunnels`].
 //!
 //! ## Deploying
 //!
@@ -196,6 +197,7 @@ pub mod domain;
 pub mod front;
 pub mod live_bindings;
 pub mod route;
+pub mod served;
 pub mod settings;
 pub mod site;
 #[cfg(test)]
@@ -213,7 +215,8 @@ pub use db::SqliteTunnelStore;
 pub use domain::{StoredTunnel, Tunnel, TunnelStore};
 pub use front::{Front, Limits};
 pub use live_bindings::state::{RatholeFeed, TunnelRegistry};
-pub use route::{Route, RouteTable, Router};
+pub use route::{Route, Router};
+pub use served::ServedTunnels;
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
 pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;
@@ -268,7 +271,7 @@ pub async fn run_relay(
         Arc::clone(&front).serve_https(https, shutdown_rx.resubscribe()),
         front.serve_http(http, shutdown_rx.resubscribe()),
         site::acme::drive(acme, shutdown_rx.resubscribe()),
-        tunnels.serve(rathole.config, rathole.changes, shutdown_rx),
+        tunnels.serve(rathole.initial_config, rathole.changes, shutdown_rx),
     )?;
     Ok(())
 }

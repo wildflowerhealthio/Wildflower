@@ -85,6 +85,7 @@ mod tests {
     use super::*;
     use crate::domain::Tunnel;
     use crate::live_bindings::{LiveTunnelsCreator, LiveTunnelsDeleter};
+    use crate::served::ServedTunnels;
     use crate::settings::{RelaySettings, Secret};
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
@@ -110,7 +111,7 @@ mod tests {
 
         let response = router(
             settings.public_rathole_settings(),
-            Arc::new(Verifier::new(&[], None)),
+            Arc::new(Verifier::new(Arc::default(), None)),
             None,
         )
         .oneshot(
@@ -153,10 +154,10 @@ mod tests {
         router(
             rathole_settings(),
             Arc::new(Verifier::new(
-                &[Tunnel {
+                Arc::new(ServedTunnels::new(&[Tunnel {
                     name: "alice".to_owned(),
                     token: Secret::new("alice-token"),
-                }],
+                }])),
                 Some(Secret::new("admin-key")),
             )),
             None,

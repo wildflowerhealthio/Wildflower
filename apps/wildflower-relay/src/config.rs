@@ -92,10 +92,12 @@ pub fn service(tunnel: &Tunnel) -> rathole::ServerServiceConfig {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     use super::*;
     use crate::domain::test_fake::stored_tunnel;
-    use crate::route::{Destination, RouteTable, Router};
+    use crate::route::{Destination, Router};
+    use crate::served::ServedTunnels;
     use crate::settings::RelaySettings;
 
     /// The `KEY=value` lines of `relay.example.env`, optionally including
@@ -169,10 +171,8 @@ mod tests {
     fn build_makes_each_tunnel_a_service_with_its_token() {
         let env = minimal_env();
         let control = settings(&env).control;
-        let server = build(&control, &tunnels(&["bob", "alice"]))
-            .unwrap()
-            .server
-            .expect("[server]");
+        let tunnels = tunnels(&["bob", "alice"]);
+        let server = build(&control, &tunnels).unwrap().server.expect("[server]");
         assert_eq!(server.bind_addr, "0.0.0.0:2333");
         assert_eq!(server.services.len(), 2);
         assert_eq!(server.services["alice"].name, "alice");
@@ -193,7 +193,7 @@ mod tests {
         let router = Router::new(
             "relay.example.com",
             ["relay.example.com".to_owned()],
-            RouteTable::from_names(["bob".to_owned(), "alice".to_owned()]),
+            Arc::new(ServedTunnels::new(&tunnels)),
         );
         let Some(Destination::Tunnel(route)) = router.resolve("bob.relay.example.com") else {
             panic!("bob routes to a tunnel");

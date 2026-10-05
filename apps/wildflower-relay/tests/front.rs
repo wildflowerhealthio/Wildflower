@@ -19,7 +19,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use wildflower_relay::{
-    Front, Limits, RelaySettings, RouteTable, Router, Secret, Site, SqliteTunnelStore,
+    Front, Limits, RelaySettings, Router, Secret, ServedTunnels, Site, SqliteTunnelStore,
     StoredTunnel, Tunnel, TunnelRegistry, TunnelStore, Tunnels, Verifier,
 };
 
@@ -47,9 +47,18 @@ fn client_hello(host: &str) -> Vec<u8> {
     hello
 }
 
-/// A router with the relay's domain as its one local hostname.
-fn router(routes: RouteTable) -> Arc<Router> {
-    Arc::new(Router::new(DOMAIN, [DOMAIN.to_owned()], routes))
+/// A router with the relay's domain as its one local hostname, serving the
+/// tunnels named `tunnel_names`.
+fn router(tunnel_names: &[&str]) -> Arc<Router> {
+    let tunnels: Vec<_> = tunnel_names
+        .iter()
+        .map(|name| Tunnel {
+            name: (*name).to_owned(),
+            token: Secret::new(format!("{name}-token")),
+        })
+        .collect();
+    let tunnels = Arc::new(ServedTunnels::new(&tunnels));
+    Arc::new(Router::new(DOMAIN, [DOMAIN.to_owned()], tunnels))
 }
 
 /// The relay's site with a self-signed certificate for [`DOMAIN`], and that
@@ -75,7 +84,7 @@ fn self_signed_site() -> (Site, CertificateDer<'static>) {
         Site::new(
             Arc::new(SingleCertAndKey::from(key)),
             rathole_settings,
-            Arc::new(Verifier::new(&[], None)),
+            Arc::new(Verifier::new(Arc::default(), None)),
             None,
         ),
         cert,
@@ -291,7 +300,7 @@ async fn pipe_through(
 #[tokio::test]
 async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
     let mut tunnel = start_tunnel().await;
-    let router = router(RouteTable::from_names([TUNNEL.to_owned()]));
+    let router = router(&[TUNNEL]);
     let harness = start_front(router, tunnel.tunnels.clone()).await;
 
     let (mut client, mut upstream) =
@@ -326,7 +335,7 @@ async fn read_to_eof(stream: &mut (impl AsyncRead + Unpin)) -> Vec<u8> {
 #[tokio::test]
 async fn half_close_reaches_the_other_side_in_both_directions() {
     let mut tunnel = start_tunnel().await;
-    let router = router(RouteTable::from_names([TUNNEL.to_owned()]));
+    let router = router(&[TUNNEL]);
     let harness = start_front(router, tunnel.tunnels.clone()).await;
 
     // The visitor finishes sending first; the device still answers.
@@ -353,7 +362,7 @@ async fn half_close_reaches_the_other_side_in_both_directions() {
 
 #[tokio::test]
 async fn unknown_tunnel_is_closed_without_a_byte_written() {
-    let harness = start_front(router(RouteTable::default()), no_tunnels()).await;
+    let harness = start_front(router(&[]), no_tunnels()).await;
 
     for host in [
         "nobody.relay.example.com",
@@ -376,11 +385,7 @@ async fn unknown_tunnel_is_closed_without_a_byte_written() {
 #[tokio::test]
 async fn known_tunnel_that_is_down_is_closed_silently() {
     // A tunnel whose device never connected has no visitor queue.
-    let harness = start_front(
-        router(RouteTable::from_names([TUNNEL.to_owned()])),
-        no_tunnels(),
-    )
-    .await;
+    let harness = start_front(router(&[TUNNEL]), no_tunnels()).await;
 
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     client
@@ -392,7 +397,7 @@ async fn known_tunnel_that_is_down_is_closed_silently() {
 
 #[tokio::test]
 async fn silent_client_is_dropped_after_the_hello_deadline() {
-    let harness = start_front(router(RouteTable::default()), no_tunnels()).await;
+    let harness = start_front(router(&[]), no_tunnels()).await;
     // Connect and send nothing; the 2 s test deadline closes it.
     let client = TcpStream::connect(harness.https).await.unwrap();
     assert_closed_silently(client).await;
@@ -411,11 +416,7 @@ async fn http_get(addr: SocketAddr, request: &str) -> String {
 
 #[tokio::test]
 async fn http_redirects_known_tunnels_and_404s_the_rest() {
-    let harness = start_front(
-        router(RouteTable::from_names([TUNNEL.to_owned()])),
-        no_tunnels(),
-    )
-    .await;
+    let harness = start_front(router(&[TUNNEL]), no_tunnels()).await;
 
     let response = http_get(
         harness.http,
@@ -482,11 +483,7 @@ async fn tls_connect(harness: &Harness, host: &str, alpn: &[&[u8]]) -> TlsStream
 async fn own_hostname_is_served_by_the_site_over_tls() {
     // A tunnel is routable too, so the site is chosen by name, not by default.
     let mut tunnel = start_tunnel().await;
-    let harness = start_front(
-        router(RouteTable::from_names([TUNNEL.to_owned()])),
-        tunnel.tunnels.clone(),
-    )
-    .await;
+    let harness = start_front(router(&[TUNNEL]), tunnel.tunnels.clone()).await;
 
     let mut tls = tls_connect(&harness, "Relay.Example.com", &[b"h2", b"http/1.1"]).await;
     assert_eq!(tls.get_ref().1.alpn_protocol(), Some(&b"http/1.1"[..]));
@@ -513,7 +510,7 @@ async fn own_hostname_is_served_by_the_site_over_tls() {
 
 #[tokio::test]
 async fn acme_tls_alpn_handshake_for_own_hostname_reaches_the_site() {
-    let harness = start_front(router(RouteTable::default()), no_tunnels()).await;
+    let harness = start_front(router(&[]), no_tunnels()).await;
 
     let mut tls = tls_connect(&harness, DOMAIN, &[b"acme-tls/1"]).await;
     assert_eq!(tls.get_ref().1.alpn_protocol(), Some(&b"acme-tls/1"[..]));
@@ -563,11 +560,11 @@ async fn stored_tunnels_route_on_the_front_once_their_device_connects() {
     let (registry, rathole) = TunnelRegistry::open(&settings).await.unwrap();
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
     let tunnels = Tunnels::default();
-    tokio::spawn(
-        tunnels
-            .clone()
-            .serve(rathole.config, rathole.changes, shutdown_rx.resubscribe()),
-    );
+    tokio::spawn(tunnels.clone().serve(
+        rathole.initial_config,
+        rathole.changes,
+        shutdown_rx.resubscribe(),
+    ));
     let harness = start_front(registry.router(), tunnels.clone()).await;
     let public_host = format!("alice.{DOMAIN}");
 

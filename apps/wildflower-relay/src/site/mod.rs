@@ -161,7 +161,7 @@ mod tests {
                 public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
                 domain: "relay.example.com".to_owned(),
             },
-            Arc::new(Verifier::new(&[], None)),
+            Arc::new(Verifier::new(Arc::default(), None)),
             None,
         );
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);

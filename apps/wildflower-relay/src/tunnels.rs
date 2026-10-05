@@ -47,11 +47,12 @@ impl Tunnels {
         shutdown_rx: broadcast::Receiver<bool>,
     ) -> anyhow::Result<()> {
         let (event_tx, mut events) = mpsc::unbounded_channel();
-        let server = rathole::run_server_with_visitor_queue(config, shutdown_rx, changes, event_tx);
-        tokio::pin!(server);
+        let server_lifetime =
+            rathole::run_server_with_visitor_queue(config, shutdown_rx, changes, event_tx);
+        tokio::pin!(server_lifetime);
         loop {
             tokio::select! {
-                result = &mut server => return result,
+                result = &mut server_lifetime => return result,
                 Some(event) = events.recv() => self.apply(event),
             }
         }
