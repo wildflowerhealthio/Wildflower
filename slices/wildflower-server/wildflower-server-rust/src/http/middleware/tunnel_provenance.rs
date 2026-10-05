@@ -41,8 +41,9 @@ use crate::http::listener_identity::ListenerIdentity;
 ///
 /// `for` is the visitor's address from the PROXY header, and is left out when
 /// the connection had none. The rathole client hands the connection over in
-/// process, so it has no socket peer to name the visitor instead. An IPv6 address is bracketed and quoted, as RFC 7239
-/// requires, which `served_origin::forwarded_client_address` unquotes.
+/// process, so it has no socket peer to name the visitor instead. An IPv6
+/// address is bracketed and quoted, as RFC 7239 requires, which
+/// `served_origin::forwarded_client_address` unquotes.
 ///
 /// A request with no [`ListenerIdentity`] never came through `serve`; it is
 /// stamped as a tunnel request with no visitor address rather than trusted as

@@ -22,8 +22,8 @@ pub(super) fn peekable<S: AsyncRead>(stream: S) -> BufReader<S> {
 }
 
 /// Read the PROXY protocol v2 header off the front of a [`peekable`] `stream`
-/// when it starts with one, and return the visitor's address the header names. A stream that
-/// doesn't start with the header is left with every byte unread.
+/// when it starts with one, and return the visitor's address the header names.
+/// A stream that doesn't start with the header is left with every byte unread.
 ///
 /// # Errors
 ///
@@ -35,10 +35,10 @@ pub(super) fn peekable<S: AsyncRead>(stream: S) -> BufReader<S> {
 ///
 /// The first bytes are peeked into `stream`'s buffer, not consumed, so a
 /// stream with no header (a stock rathole server sends none) reaches HTTP
-/// intact. Bytes that begin the
-/// signature commit the stream to a header; no HTTP request starts with them,
-/// since a client must not preface a request with an empty line (RFC 9112
-/// §2.2). The header is then read whole and parsed by `ppp`.
+/// intact. Bytes that begin the signature commit the stream to a header; no
+/// HTTP request starts with them, since a client must not preface a request
+/// with an empty line (RFC 9112 §2.2). The header is then read whole and parsed
+/// by `ppp`.
 ///
 /// Nothing here bounds how long the sender takes; the caller runs it under a
 /// timeout.

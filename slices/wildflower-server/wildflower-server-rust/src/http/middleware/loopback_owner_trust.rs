@@ -35,10 +35,11 @@ pub(crate) struct LoopbackOwnerTrust {
 /// the desktop single-user trust model (a local process running as the user can
 /// already read the app's data on disk). It stays gated on the local listener
 /// and on `!forwarded` so it never extends to a tunnel connection (handed over
-/// in process, so its peer reads as loopback) or a front-relayed caller, and skips
-/// gatekeeper's pre-auth public surface ([`is_pre_auth_public_path`]) where a
-/// stray owner bearer could confuse client authentication. A request that already presents
-/// its own bearer is left untouched (via the shared [`ensure_bearer_header`]).
+/// in process, so its peer reads as loopback) or a front-relayed caller, and
+/// skips gatekeeper's pre-auth public surface ([`is_pre_auth_public_path`])
+/// where a stray owner bearer could confuse client authentication. A request
+/// that already presents its own bearer is left untouched (via the shared
+/// [`ensure_bearer_header`]).
 /// Applied inside the loopback-peer gate, so a non-loopback peer is already
 /// rejected before this runs.
 pub(crate) async fn inject_loopback_owner_token(

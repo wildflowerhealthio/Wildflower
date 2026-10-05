@@ -312,8 +312,9 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     assert_eq!(local_tunnel_settings.status(), reqwest::StatusCode::OK);
     assert!(forwarded_requests.try_recv().is_err());
 
-    // The same request on the tunnel listener, with no `Forwarded`, gets no owner token, and is reported as served for
-    // the public host with no visitor address (no PROXY header).
+    // The same request on the tunnel listener, with no `Forwarded`, gets no
+    // owner token, and is reported as served for the public host with no
+    // visitor address (no PROXY header).
     let (status, _) = raw_exchange(&tunnel_listener, None, &tunnel_get("/tunnel", ""))
         .await
         .expect("the tunnel listener answers");

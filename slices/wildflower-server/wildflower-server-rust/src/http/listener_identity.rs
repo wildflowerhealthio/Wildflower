@@ -12,9 +12,8 @@ use std::net::SocketAddr;
 /// A tunnel connection is handed over in process, so its peer reads as
 /// loopback and cannot tell it from a local one. The listener can: the rathole
 /// client hands every tunnel connection to the tunnel listener, and nothing
-/// else reaches it. A request without this
-/// extension never came through `serve`, and the layers reading it treat it as
-/// remote.
+/// else reaches it. A request without this extension never came through
+/// `serve`, and the layers reading it treat it as remote.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ListenerIdentity {
     /// The loopback API listener: the on-device webview, other local
@@ -22,8 +21,8 @@ pub(crate) enum ListenerIdentity {
     /// relays with `Forwarded`.
     Local,
     /// The tunnel listener the rathole client hands its connections to.
-    /// Every connection on it is
-    /// remote, whatever its peer address or headers say.
+    /// Every connection on it is remote, whatever its peer address or headers
+    /// say.
     Tunnel {
         /// The visitor's address and port, from the PROXY protocol v2 header
         /// the relay front prepends. `None` when the connection carried no

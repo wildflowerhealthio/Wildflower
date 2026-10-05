@@ -427,10 +427,11 @@ pub async fn set_up(
         ));
 
     // Defense-in-depth: gate the entire API surface on a loopback peer address.
-    // Every endpoint here is meant to be reached only over a loopback socket —
-    // directly, through the tunnel listener (handed over in process),
-    // or relayed by a front run on this machine; the latter two are
-    // distinguished downstream by the `Forwarded` header.
+    // Every endpoint here is meant to be reached only from this machine —
+    // directly over the loopback socket, through the tunnel listener (handed
+    // over in process, with a loopback peer), or relayed by a front run on this
+    // machine; the latter two are distinguished downstream by the `Forwarded`
+    // header.
     // A genuinely non-loopback peer is rejected with `403` before any handler
     // runs, so even a bearer-gated, CORS-permissive endpoint like
     // `POST /apps/{id}` (which can open a native popup on the owner's device) can't
