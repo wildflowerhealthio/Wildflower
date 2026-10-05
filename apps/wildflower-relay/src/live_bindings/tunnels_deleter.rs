@@ -56,7 +56,7 @@ mod tests {
 
     #[tokio::test]
     async fn deleting_an_unknown_tunnel_is_not_found() {
-        let (registry, _dir) = registry(None).await;
+        let (registry, _fixture) = registry(None).await;
         let deleter: LiveTunnelsDeleter = admin(&registry);
         assert_eq!(
             deleter.delete("nobody".to_owned()).await.unwrap_err(),

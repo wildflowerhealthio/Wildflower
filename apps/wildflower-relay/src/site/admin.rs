@@ -15,7 +15,7 @@
 //! changes answer with a short plain-text reason: `422` for a name that is
 //! not a lowercase DNS label or an unusable email, `409` for a name that is
 //! reserved or taken, `404` for deleting a tunnel that does not exist, and
-//! `503` when no name or port is left.
+//! `503` when no name is left.
 
 use std::sync::Arc;
 
@@ -195,7 +195,7 @@ mod tests {
     use crate::live_bindings::LiveTunnelsCreator;
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
-    use crate::test_support::{admin, registry};
+    use crate::test_support::{admin, registry, Fixture};
 
     const ADMIN_KEY: &str = "an-admin-key-of-thirty-two-bytes";
     const ADMIN: &str = "https://admin.relay.example.com";
@@ -238,8 +238,8 @@ mod tests {
 
     /// The admin router over a fresh registry holding the tunnel `alice`,
     /// whose token is returned.
-    async fn router_with_alice() -> (axum::Router, Arc<TunnelRegistry>, String, tempfile::TempDir) {
-        let (registry, dir) = registry(Some(ADMIN_KEY)).await;
+    async fn router_with_alice() -> (axum::Router, Arc<TunnelRegistry>, String, Fixture) {
+        let (registry, fixture) = registry(Some(ADMIN_KEY)).await;
         let creator: LiveTunnelsCreator = admin(&registry);
         let alice = creator
             .create("alice@example.com".to_owned(), Some("alice".to_owned()))
@@ -247,12 +247,12 @@ mod tests {
             .unwrap();
         let router = router(Arc::clone(&registry), registry.verifier());
         let token = alice.tunnel.token.expose().to_owned();
-        (router, registry, token, dir)
+        (router, registry, token, fixture)
     }
 
     #[tokio::test]
     async fn creates_lists_and_deletes_tunnels() {
-        let (router, tunnels, _, _dir) = router_with_alice().await;
+        let (router, tunnels, _, _fixture) = router_with_alice().await;
 
         let (status, body) = send(
             &router,
@@ -324,7 +324,7 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_bad_names_reserved_names_conflicts_and_unknown_deletes() {
-        let (router, tunnels, _, _dir) = router_with_alice().await;
+        let (router, tunnels, _, _fixture) = router_with_alice().await;
         let post =
             |body: serde_json::Value| admin_request("POST", &format!("{ADMIN}/api/tunnels"), &body);
         for (body, expected) in [
@@ -364,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_unsigned_wrongly_signed_and_tunnel_signed_requests() {
-        let (router, tunnels, alice, _dir) = router_with_alice().await;
+        let (router, tunnels, alice, _fixture) = router_with_alice().await;
         let uri = format!("{ADMIN}/api/tunnels");
         let now = unix_now().unwrap();
         let unsigned = Request::builder()
@@ -398,7 +398,7 @@ mod tests {
     /// for a request properly signed for that host.
     #[tokio::test]
     async fn the_admin_api_is_only_on_the_admin_hostname() {
-        let (tunnels, _dir) = registry(Some(ADMIN_KEY)).await;
+        let (tunnels, _fixture) = registry(Some(ADMIN_KEY)).await;
         let router = router(Arc::clone(&tunnels), tunnels.verifier());
         for host in ["https://relay.example.com", "https://other.example.com"] {
             let request = admin_request(

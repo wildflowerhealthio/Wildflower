@@ -2,8 +2,7 @@
 //!
 //! It holds the decisions a create makes before anything is served: whether
 //! the email is usable, whether the name is a usable, unreserved, untaken
-//! DNS label (or a fresh default from [`names`]), whether a port is left,
-//! and minting the token. Only then does it read the clock and write the
+//! DNS label (or a fresh default from [`names`]), and minting the token. Only then does it read the clock and write the
 //! store, so a refused request never depends on the clock. Serving the new
 //! set, and undoing the store write if that fails, is the registry's.
 
@@ -37,7 +36,7 @@ impl<S: TunnelStore> TunnelsCreator<S> {
     /// two random words (see [`names`]), with a random token from `rng`,
     /// created at the time `now` reads (Unix epoch seconds). Returns the
     /// stored tunnel (whose token is shown only to the caller of
-    /// `POST /api/tunnels`) and `live` with it added on the next port.
+    /// `POST /api/tunnels`) and `live` with it added.
     ///
     /// # Errors
     ///
@@ -66,10 +65,6 @@ impl<S: TunnelStore> TunnelsCreator<S> {
             })
             .ok_or(TunnelError::Exhausted("no unused tunnel name was drawn"))?,
         };
-        let no_port = TunnelError::Exhausted("no loopback port is left");
-        if !live.has_free_port() {
-            return Err(no_port);
-        }
         let mut token = [0; TOKEN_BYTES];
         rng.fill_bytes(&mut token);
         let stored = StoredTunnel {
@@ -82,7 +77,9 @@ impl<S: TunnelStore> TunnelsCreator<S> {
         };
 
         let mut next = live.clone();
-        next.add(stored.clone()).map_err(|_| no_port)?;
+        if !next.add(stored.clone()) {
+            return Err(TunnelError::Taken);
+        }
         self.store.insert_tunnel(&stored)?;
         Ok((stored, next))
     }
@@ -128,13 +125,10 @@ mod tests {
     use crate::test_support::settings;
 
     /// A creator for `relay.example.com` over `store`, and the live set of
-    /// what `store` holds, from `port_base`.
-    fn creator(
-        store: FakeTunnelStore,
-        port_base: u16,
-    ) -> (TunnelsCreator<FakeTunnelStore>, TunnelSet) {
-        let front = settings(std::path::Path::new("/nonexistent"), port_base, None).front;
-        let live = TunnelSet::new(port_base, store.list_tunnels().unwrap()).unwrap();
+    /// what `store` holds.
+    fn creator(store: FakeTunnelStore) -> (TunnelsCreator<FakeTunnelStore>, TunnelSet) {
+        let front = settings(std::path::Path::new("/nonexistent"), None).front;
+        let live = TunnelSet::new(store.list_tunnels().unwrap()).unwrap();
         (TunnelsCreator::new(store, front), live)
     }
 
@@ -149,10 +143,10 @@ mod tests {
     }
 
     #[test]
-    fn create_stores_the_tunnel_and_adds_it_on_the_next_port() {
+    fn create_stores_the_tunnel_and_adds_it_to_the_set() {
         let store = FakeTunnelStore::default();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let (creator, live) = creator(store, 5201);
+        let (creator, live) = creator(store);
         let (stored, next) = create(&creator, &live, " bob@example.com ", Some("bob")).unwrap();
         assert_eq!(stored.tunnel.name, "bob");
         assert_eq!(stored.email, "bob@example.com");
@@ -169,7 +163,7 @@ mod tests {
             [stored_tunnel("alice"), stored.clone()]
         );
 
-        assert_eq!(next.get("bob").unwrap().port, 5202);
+        assert_eq!(next.get("bob"), Some(&stored));
         assert_eq!(next.len(), 2);
         assert_eq!(creator.public_host("bob"), "bob.relay.example.com");
 
@@ -184,7 +178,7 @@ mod tests {
     fn create_validates_the_name_and_email() {
         let store = FakeTunnelStore::default();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let (creator, live) = creator(store, 5201);
+        let (creator, live) = creator(store);
         for (email, name) in [
             ("bob@example.com", "Bob"),
             ("bob@example.com", "bob.example"),
@@ -218,7 +212,7 @@ mod tests {
     fn refusals_come_before_the_clock() {
         let store = FakeTunnelStore::default();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let (creator, live) = creator(store, 5201);
+        let (creator, live) = creator(store);
         let clock_failed = || -> Result<i64, TunnelError> {
             Err(TunnelError::infrastructure(
                 "reading the clock failed",
@@ -254,19 +248,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn create_without_a_free_port_stores_nothing() {
-        let store = FakeTunnelStore::default();
-        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let (creator, live) = creator(store, 65535);
-        let result = create(&creator, &live, "bob@example.com", Some("bob"));
-        assert_eq!(
-            result.unwrap_err(),
-            TunnelError::Exhausted("no loopback port is left")
-        );
-        assert_eq!(creator.store.list_tunnels().unwrap().len(), 1);
-    }
-
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(32))]
 
@@ -279,7 +260,7 @@ mod tests {
             domain in "[a-z0-9]{6,20}",
             seed: u64,
         ) {
-            let (creator, live) = creator(FakeTunnelStore::default(), 5201);
+            let (creator, live) = creator(FakeTunnelStore::default());
             let email = format!("{local}@{domain}.example");
             let mut rng = StdRng::seed_from_u64(seed);
             let (created, _) = creator.create(&live, &email, None, &mut rng, || Ok(1)).unwrap();

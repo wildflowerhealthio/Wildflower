@@ -255,7 +255,7 @@ mod tests {
     /// verifying at once, without a restart.
     #[tokio::test]
     async fn created_tunnels_sign_at_once_and_deleted_ones_stop() {
-        let (tunnels, _dir) = registry(Some("an-admin-key-of-thirty-two-bytes")).await;
+        let (tunnels, _fixture) = registry(Some("an-admin-key-of-thirty-two-bytes")).await;
         let router = router(
             rathole_settings(),
             tunnels.verifier(),

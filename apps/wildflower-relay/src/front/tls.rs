@@ -2,11 +2,12 @@
 //!
 //! Read the ClientHello and take its server name. For one of the relay's
 //! local hostnames, hand the connection, hello bytes first, to the relay's
-//! own site, which terminates TLS. Otherwise look up the device's tunnel
-//! port, connect to it, send a PROXY header and the hello bytes, then copy
-//! bytes both ways until either side closes. TCP keepalive on both sockets
-//! clears out a peer that vanished without closing; an idle but live
-//! connection is the device's HTTP server's to close. The front never
+//! own site, which terminates TLS. Otherwise hand rathole one end of an
+//! in-process pipe as a visitor of the device's tunnel, send a PROXY header
+//! and the hello bytes into the other, then copy bytes both ways between it
+//! and the visitor's socket until either side closes. TCP keepalive on the
+//! socket clears out a visitor that vanished without closing; an idle but
+//! live connection is the device's HTTP server's to close. The front never
 //! decrypts a tunnel's traffic. Every step that fails logs why and drops the
 //! visitor's socket, which closes it without a byte written.
 
@@ -15,7 +16,7 @@ use std::time::Duration;
 
 use socket2::{SockRef, TcpKeepalive};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
@@ -23,6 +24,7 @@ use super::hello::{read_client_hello, ClientHello};
 use super::proxy_header::proxy_header;
 use super::Front;
 use crate::route::{Destination, Route};
+use crate::tunnels::TunnelDown;
 
 impl Front {
     /// Route one `:443` connection.
@@ -52,7 +54,6 @@ impl Front {
             return;
         };
         tune(&client);
-        tune(&backend);
         if !send_preface(&mut backend, visitor, relay, &hello_bytes, &route).await {
             return;
         }
@@ -102,16 +103,27 @@ impl Front {
         }
     }
 
-    /// Connect to the tunnel's loopback port. rathole binds it only while the
-    /// device is connected, so a refused connect means the tunnel is down.
-    /// This is where a known tunnel meets a down one, should the relay ever
-    /// need to tell the device (wake-up push, #918).
-    async fn connect_to_tunnel(&self, route: &Route) -> Option<TcpStream> {
-        let connect = TcpStream::connect(route.addr);
+    /// Hand rathole one end of a pipe as a visitor of the tunnel, and return
+    /// the other. The tunnel takes a visitor only while the device is
+    /// connected and refuses it with [`TunnelDown`] otherwise. That refusal
+    /// is where a known tunnel meets a down one, should the relay ever need
+    /// to tell the device (wake-up push, #918). It waits only while the
+    /// tunnel's queue of visitors is full, so running out of time means the
+    /// device is connected but not taking visitors, not that it is down.
+    async fn connect_to_tunnel(&self, route: &Route) -> Option<DuplexStream> {
+        let (backend, visitor) = tokio::io::duplex(PIPE_BUFFER_SIZE);
+        let connect = self.tunnels.connect(&route.tunnel_name, visitor);
         match tokio::time::timeout(self.limits.hello_timeout, connect).await {
-            Ok(Ok(backend)) => Some(backend),
-            _ => {
+            Ok(Ok(())) => Some(backend),
+            Ok(Err(TunnelDown)) => {
                 tracing::info!(tunnel = %route.tunnel_name, "refused: tunnel is down");
+                None
+            }
+            Err(_) => {
+                tracing::warn!(
+                    tunnel = %route.tunnel_name,
+                    "refused: the tunnel's visitor queue stayed full past the deadline"
+                );
                 None
             }
         }
@@ -122,7 +134,7 @@ impl Front {
     async fn pipe(
         &self,
         mut client: TcpStream,
-        mut backend: TcpStream,
+        mut backend: DuplexStream,
         route: &Route,
         mut shutdown_rx: broadcast::Receiver<bool>,
     ) {
@@ -137,6 +149,9 @@ impl Front {
     }
 }
 
+/// Bytes the pipe to a tunnel buffers in each direction.
+const PIPE_BUFFER_SIZE: usize = 64 * 1024;
+
 /// First keepalive probe after this long with nothing received.
 const KEEPALIVE_TIME: Duration = Duration::from_secs(60);
 /// Gap between unanswered probes.
@@ -148,8 +163,8 @@ const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const KEEPALIVE_RETRIES: u32 = 6;
 
 /// Set TCP_NODELAY (the bytes are TLS records, already framed) and TCP
-/// keepalive on a piped socket or one the site serves. Failures are ignored:
-/// neither is needed for correctness.
+/// keepalive on a visitor's socket, piped or served by the site. Failures are
+/// ignored: neither is needed for correctness.
 fn tune(stream: &TcpStream) {
     let _ = stream.set_nodelay(true);
     let keepalive = TcpKeepalive::new().with_time(KEEPALIVE_TIME);
@@ -163,7 +178,7 @@ fn tune(stream: &TcpStream) {
 /// Write the PROXY header and then the visitor's hello bytes to the tunnel,
 /// as one write. `false` if that failed.
 async fn send_preface(
-    backend: &mut TcpStream,
+    backend: &mut (impl AsyncWrite + Unpin),
     visitor: SocketAddr,
     relay: SocketAddr,
     hello_bytes: &[u8],

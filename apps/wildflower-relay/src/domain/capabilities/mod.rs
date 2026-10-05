@@ -14,7 +14,7 @@
 //! dependencies **lifted from the state**, never the
 //! [`TunnelRegistry`](crate::live_bindings::state::TunnelRegistry) itself.
 //! The bindings that name the `SqliteTunnelStore` adapter, build a
-//! capability from the router state and serve a change (the rathole TOML,
+//! capability from the router state and serve a change (rathole's services,
 //! the front's routes, the verifier's keys) live beside the state in
 //! [`crate::live_bindings`], so `domain/` stays store-agnostic and free of
 //! side effects.

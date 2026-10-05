@@ -77,16 +77,18 @@ impl LiveTunnelsCreator {
 mod tests {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL;
     use base64::Engine;
+    use rathole::{ConfigChange, ServerServiceChange};
 
     use super::*;
+    use crate::config;
     use crate::live_bindings::LiveTunnelsDeleter;
-    use crate::test_support::{admin, rathole_services, registry};
+    use crate::test_support::{admin, registry};
 
-    /// A created tunnel is in the rathole TOML, routes and signs at once; a
-    /// deleted one is gone from all three.
+    /// A created tunnel is sent to rathole as a service and routes at once;
+    /// a deleted one is deleted from rathole and stops routing.
     #[tokio::test]
     async fn create_and_delete_serve_the_change() {
-        let (registry, dir) = registry(None).await;
+        let (registry, mut fixture) = registry(None).await;
         let creator: LiveTunnelsCreator = admin(&registry);
         let created = creator
             .create("bob@example.com".to_owned(), Some("bob".to_owned()))
@@ -95,17 +97,23 @@ mod tests {
         assert_eq!(creator.public_host("bob"), "bob.relay.example.com");
         let token = created.tunnel.token.expose();
         assert_eq!(BASE64_URL.decode(token).unwrap().len(), 32);
-        let services = rathole_services(&dir).await;
         assert_eq!(
-            services["bob"],
-            ("127.0.0.1:5201".to_owned(), Some(token.to_owned()))
+            fixture.rathole.changes.recv().await,
+            Some(ConfigChange::ServerChange(ServerServiceChange::Add(
+                config::service(&created.tunnel)
+            )))
         );
         let router = registry.router();
         assert!(router.resolve("bob.relay.example.com").is_some());
 
         let deleter: LiveTunnelsDeleter = admin(&registry);
         deleter.delete("bob".to_owned()).await.unwrap();
-        assert!(rathole_services(&dir).await.is_empty());
+        assert_eq!(
+            fixture.rathole.changes.recv().await,
+            Some(ConfigChange::ServerChange(ServerServiceChange::Delete(
+                "bob".to_owned()
+            )))
+        );
         assert!(router.resolve("bob.relay.example.com").is_none());
     }
 
@@ -113,7 +121,7 @@ mod tests {
     /// matrix of refusals is the capability's tests.
     #[tokio::test]
     async fn refused_creates_change_nothing() {
-        let (registry, _dir) = registry(None).await;
+        let (registry, _fixture) = registry(None).await;
         let creator: LiveTunnelsCreator = admin(&registry);
         let create =
             |email: &str, name: &str| creator.create(email.to_owned(), Some(name.to_owned()));

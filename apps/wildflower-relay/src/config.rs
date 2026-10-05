@@ -1,39 +1,29 @@
-//! Writes the rathole TOML from the settings and the live tunnel set, on
-//! every start and after every change through the admin API. rathole
-//! reloads the file when it is replaced.
+//! Builds rathole's server config in memory from the settings and the live
+//! tunnel set, on every start. Nothing is written to disk: rathole runs on
+//! the built [`rathole::Config`], and a change through the admin API reaches
+//! it as one service added or deleted (see
+//! [`TunnelRegistry`](crate::TunnelRegistry)).
 //!
-//! The file is generated, never read back: the control address, the noise
-//! transport, pattern and key, and for each live tunnel (see
-//! [`crate::domain::TunnelSet`]) a rathole service `[server.services.<tunnel name>]`:
-//! loopback TCP with the tunnel's own `token`, on the tunnel's port. There
-//! is no `default_token`, so a device needs its own token to connect.
-
-use std::path::{Path, PathBuf};
+//! The `[server]` table holds the control address and the noise transport,
+//! pattern and key. It is rendered as TOML and parsed with rathole's own
+//! parser, since rathole builds its server config no other way. Each live
+//! tunnel (see [`crate::domain::TunnelSet`]) is a rathole service of the
+//! same name, `[server.services.<tunnel name>]`, built by [`service`]: TCP
+//! with the tunnel's own `token`. There is no `default_token`, so a device
+//! needs its own token to connect.
 
 use anyhow::Context;
 use toml::{Table, Value};
 
-use crate::domain::TunnelSet;
+use crate::domain::{Tunnel, TunnelSet};
 use crate::settings::ControlSettings;
 
-/// The rathole server TOML for `control` and `tunnels`.
+/// The rathole `[server]` TOML for `control`, with no services.
 ///
 /// # Errors
 ///
 /// Returns an error if the table cannot be serialised as TOML.
-pub fn render(control: &ControlSettings, tunnels: &TunnelSet) -> anyhow::Result<String> {
-    let mut services = Table::new();
-    for live in tunnels.iter() {
-        let mut entry = Table::new();
-        entry.insert("type".into(), Value::String("tcp".into()));
-        entry.insert("bind_addr".into(), Value::String(live.addr().to_string()));
-        entry.insert(
-            "token".into(),
-            Value::String(live.stored.tunnel.token.expose().to_owned()),
-        );
-        services.insert(live.stored.tunnel.name.clone(), Value::Table(entry));
-    }
-
+pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
     let mut noise = Table::new();
     noise.insert(
         "pattern".into(),
@@ -53,72 +43,51 @@ pub fn render(control: &ControlSettings, tunnels: &TunnelSet) -> anyhow::Result<
         Value::String(control.control_addr.to_string()),
     );
     server.insert("transport".into(), Value::Table(transport));
-    // rathole requires the table even when there are no tunnels.
-    server.insert("services".into(), Value::Table(services));
+    // rathole requires the table even when there are no services.
+    server.insert("services".into(), Value::Table(Table::new()));
 
     let mut root = Table::new();
     root.insert("server".into(), Value::Table(server));
     Ok(toml::to_string(&root)?)
 }
 
-/// Render the config for `control` and `tunnels` and replace the file at `path`
-/// atomically: the new text goes to a temp file in the same directory, is
-/// checked with rathole's own parser, and is renamed over `path`, so rathole
-/// never sees a half-written file.
+/// The config rathole runs on: [`render`] for `control`, parsed with
+/// rathole's own parser, with a [`service`] for each of `tunnels`.
 ///
 /// # Errors
 ///
-/// Returns an error if the result is not a valid rathole config or the write
-/// or rename fails.
-pub async fn write_config(
-    path: &Path,
-    control: &ControlSettings,
-    tunnels: &TunnelSet,
-) -> anyhow::Result<()> {
-    let rendered = render(control, tunnels)?;
-    let temp = temp_path(path)?;
-    write_private(&temp, &rendered).with_context(|| format!("writing {}", temp.display()))?;
-    let checked = rathole::Config::from_file(&temp).await.and_then(|config| {
-        anyhow::ensure!(config.server.is_some(), "no [server] section");
-        Ok(())
-    });
-    let renamed = checked.and_then(|()| {
-        std::fs::rename(&temp, path).with_context(|| format!("replacing {}", path.display()))
-    });
-    if renamed.is_err() {
-        let _ = std::fs::remove_file(&temp);
+/// Returns an error if the rendered `[server]` table is not a valid rathole
+/// server config.
+pub fn build(control: &ControlSettings, tunnels: &TunnelSet) -> anyhow::Result<rathole::Config> {
+    let mut config = render(control)?
+        .parse::<rathole::Config>()
+        .context("the rendered relay config was rejected")?;
+    let server = config
+        .server
+        .as_mut()
+        .context("the rendered relay config has no [server] section")?;
+    server.services = tunnels
+        .tunnels()
+        .iter()
+        .map(|tunnel| (tunnel.name.clone(), service(tunnel)))
+        .collect();
+    tracing::info!(tunnels = tunnels.len(), "rathole config built");
+    Ok(config)
+}
+
+/// The rathole service of `tunnel`: TCP, named after the tunnel, with its
+/// token.
+#[must_use]
+pub fn service(tunnel: &Tunnel) -> rathole::ServerServiceConfig {
+    rathole::ServerServiceConfig {
+        // rathole requires one, but a server run with visitor queues never
+        // binds a TCP service's: the front puts its visitors into the
+        // tunnel's queue. An empty address cannot be bound, so a service
+        // that were ever bound would fail rather than open a port.
+        bind_addr: String::new(),
+        token: Some(tunnel.token.expose().into()),
+        ..rathole::ServerServiceConfig::with_name(&tunnel.name)
     }
-    renamed.context("the rendered relay config was rejected")?;
-    tracing::info!(
-        config = %path.display(),
-        tunnels = tunnels.len(),
-        "relay config written"
-    );
-    Ok(())
-}
-
-/// `.<name>.tmp` beside `path`. rathole's watcher filters events by the
-/// config's file name, so writing the temp file triggers nothing; the rename
-/// does.
-fn temp_path(path: &Path) -> anyhow::Result<PathBuf> {
-    let name = path
-        .file_name()
-        .context("relay config path has no file name")?
-        .to_string_lossy();
-    Ok(path.with_file_name(format!(".{name}.tmp")))
-}
-
-/// Create (or truncate) `path` readable by the owner only: it holds the
-/// tunnel tokens and the private key.
-fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut file = options.open(path)?;
-    file.write_all(contents.as_bytes())?;
-    file.sync_all()
 }
 
 #[cfg(test)]
@@ -153,50 +122,8 @@ mod tests {
         RelaySettings::from_lookup(|name| env.get(name).cloned()).expect("example settings")
     }
 
-    /// The stored tunnels `names`, from `control`'s port base.
-    fn tunnel_set(control: &ControlSettings, names: &[&str]) -> TunnelSet {
-        let stored = names.iter().copied().map(stored_tunnel).collect();
-        TunnelSet::new(control.tunnel_port_base, stored).expect("tunnel set")
-    }
-
-    async fn parse(text: &str) -> rathole::Config {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("relay.toml");
-        std::fs::write(&path, text).expect("write");
-        rathole::Config::from_file(&path)
-            .await
-            .expect("rendered config must parse with rathole")
-    }
-
-    /// Golden check on `relay.example.env`: its values give settings that
-    /// render to a config rathole accepts, and the defaults it documents in
-    /// comments are the real ones.
-    #[tokio::test]
-    async fn example_env_renders_a_valid_rathole_config() {
-        let example = settings(&example_env(false));
-        assert_eq!(
-            settings(&example_env(true)),
-            example,
-            "commented defaults in relay.example.env must match the code"
-        );
-
-        let tunnels = tunnel_set(&example.control, &["wildflower-device-1"]);
-        let server = parse(&render(&example.control, &tunnels).unwrap())
-            .await
-            .server
-            .expect("[server]");
-        assert!(server.default_token.is_none());
-        assert_eq!(server.services.len(), 1);
-        for (name, addr) in tunnels.addrs() {
-            let service = &server.services[&name];
-            assert_eq!(service.bind_addr, addr.to_string());
-            assert!(service.token.is_some());
-        }
-    }
-
-    #[tokio::test]
-    async fn render_writes_each_tunnel_as_a_service_with_its_token_and_port() {
-        let env = HashMap::from([
+    fn minimal_env() -> HashMap<String, String> {
+        HashMap::from([
             (
                 "WILDFLOWER_RELAY_DOMAIN".to_owned(),
                 "relay.example.com".to_owned(),
@@ -205,21 +132,52 @@ mod tests {
                 "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY".to_owned(),
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
             ),
-        ]);
+        ])
+    }
+
+    /// The stored tunnels `names`.
+    fn tunnel_set(names: &[&str]) -> TunnelSet {
+        TunnelSet::new(names.iter().copied().map(stored_tunnel).collect()).expect("tunnel set")
+    }
+
+    /// Golden check on `relay.example.env`: its values give settings that
+    /// build a config rathole accepts, and the defaults it documents in
+    /// comments are the real ones.
+    #[test]
+    fn example_env_builds_a_valid_rathole_config() {
+        let example = settings(&example_env(false));
+        assert_eq!(
+            settings(&example_env(true)),
+            example,
+            "commented defaults in relay.example.env must match the code"
+        );
+
+        let server = build(&example.control, &tunnel_set(&["wildflower-device-1"]))
+            .unwrap()
+            .server
+            .expect("[server]");
+        assert!(server.default_token.is_none());
+        assert_eq!(server.services.len(), 1);
+        let service = &server.services["wildflower-device-1"];
+        assert!(service.bind_addr.is_empty());
+        assert!(service.token.is_some());
+    }
+
+    #[test]
+    fn build_makes_each_tunnel_a_service_with_its_token() {
+        let env = minimal_env();
         let control = settings(&env).control;
-        let tunnels = tunnel_set(&control, &["bob", "alice"]);
-        let server = parse(&render(&control, &tunnels).unwrap())
-            .await
+        let server = build(&control, &tunnel_set(&["bob", "alice"]))
+            .unwrap()
             .server
             .expect("[server]");
         assert_eq!(server.bind_addr, "0.0.0.0:2333");
         assert_eq!(server.services.len(), 2);
-        assert_eq!(server.services["alice"].bind_addr, "127.0.0.1:5201");
+        assert_eq!(server.services["alice"].name, "alice");
         assert_eq!(
             server.services["alice"].token.as_deref(),
             Some("alice-token")
         );
-        assert_eq!(server.services["bob"].bind_addr, "127.0.0.1:5202");
         assert_eq!(server.services["bob"].token.as_deref(), Some("bob-token"));
         let noise = server.transport.noise.expect("[server.transport.noise]");
         assert!(noise.local_private_key.is_some());
@@ -229,59 +187,36 @@ mod tests {
             Value::String(noise.pattern)
         );
 
-        // The front routes the same tunnel names to the same ports.
+        // The front routes the same tunnel names to the services.
         let router = Router::new(
             "relay.example.com",
             ["relay.example.com".to_owned()],
-            RouteTable::from_addrs(tunnels.addrs()),
+            RouteTable::from_names(tunnel_set(&["bob", "alice"]).names()),
         );
         let Some(Destination::Tunnel(route)) = router.resolve("bob.relay.example.com") else {
             panic!("bob routes to a tunnel");
         };
-        assert_eq!(route.addr.to_string(), server.services["bob"].bind_addr);
+        assert!(server.services.contains_key(&route.tunnel_name));
     }
 
-    #[tokio::test]
-    async fn render_with_no_tunnels_is_still_valid() {
-        let env = HashMap::from([
-            (
-                "WILDFLOWER_RELAY_DOMAIN".to_owned(),
-                "relay.example.com".to_owned(),
-            ),
-            (
-                "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY".to_owned(),
-                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
-            ),
-        ]);
-        let control = settings(&env).control;
-        let server = parse(&render(&control, &tunnel_set(&control, &[])).unwrap())
-            .await
+    #[test]
+    fn build_with_no_tunnels_is_still_valid() {
+        let server = build(&settings(&minimal_env()).control, &TunnelSet::default())
+            .unwrap()
             .server
             .expect("[server]");
         assert!(server.services.is_empty());
     }
 
-    #[tokio::test]
-    async fn write_config_replaces_the_file_privately() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("relay.toml");
-        std::fs::write(&path, "stale contents from a previous run").unwrap();
-
-        let control = settings(&example_env(false)).control;
-        let tunnels = tunnel_set(&control, &["alice"]);
-        write_config(&path, &control, &tunnels).await.unwrap();
-        let written = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(written, render(&control, &tunnels).unwrap());
-        assert!(
-            !temp_path(&path).unwrap().exists(),
-            "temp file is renamed away"
-        );
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-            assert_eq!(mode & 0o777, 0o600);
-        }
+    /// A service built here is the one rathole parses from the same TOML,
+    /// so services added while the relay runs match those it starts with.
+    #[test]
+    fn service_is_what_rathole_parses_for_the_tunnel() {
+        let alice = stored_tunnel("alice").tunnel;
+        let parsed: rathole::Config = "[server]\nbind_addr = \"0.0.0.0:2333\"\n\
+             [server.services.alice]\ntype = \"tcp\"\nbind_addr = \"\"\ntoken = \"alice-token\"\n"
+            .parse()
+            .expect("rathole parses the service");
+        assert_eq!(parsed.server.unwrap().services["alice"], service(&alice));
     }
 }

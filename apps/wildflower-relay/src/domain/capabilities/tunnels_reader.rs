@@ -37,7 +37,7 @@ mod tests {
         let store = FakeTunnelStore::default();
         store.insert_tunnel(&stored_tunnel("carol")).unwrap();
         store.insert_tunnel(&stored_tunnel("bob")).unwrap();
-        let front = settings(std::path::Path::new("/nonexistent"), 5201, None).front;
+        let front = settings(std::path::Path::new("/nonexistent"), None).front;
         let reader = TunnelsReader::new(store, front);
         assert_eq!(
             reader.list().unwrap(),

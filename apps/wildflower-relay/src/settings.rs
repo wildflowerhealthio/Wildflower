@@ -2,10 +2,11 @@
 //!
 //! Every setting comes from a `WILDFLOWER_RELAY_*` environment variable;
 //! `relay.example.env` lists them all. The environment is the only source:
-//! [`ControlSettings`] (the rathole side) is rendered, with the stored
-//! tunnels, into a fresh rathole TOML on each start (see [`crate::config`]), [`FrontSettings`] configures the TLS front, which
-//! rathole's file has no place for, and [`AcmeSettings`] how the relay's own
-//! site gets its certificate. [`RelaySettings::public_rathole_settings`] is
+//! [`ControlSettings`] (the rathole side) is built, with the stored tunnels,
+//! into rathole's server config on each start (see [`crate::config`]),
+//! [`FrontSettings`] configures the TLS front, which rathole's config has no
+//! place for, and [`AcmeSettings`] how the relay's own site gets its
+//! certificate. [`RelaySettings::public_rathole_settings`] is
 //! what the site serves at `GET /rathole`. The admin key signs requests as
 //! `keyid="admin"` (see [`crate::site::signature`]) and enables the admin
 //! API. The state directory holds that certificate and its ACME account,
@@ -14,11 +15,9 @@
 //!
 //! | Variable | Default |
 //! |---|---|
-//! | `WILDFLOWER_RELAY_CONFIG` | `relay.toml` (where the rathole TOML is written; read by `main`) |
 //! | `WILDFLOWER_RELAY_CONTROL_ADDR` | `0.0.0.0:2333` |
 //! | `WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR` | `<domain>:<port of WILDFLOWER_RELAY_CONTROL_ADDR>` |
 //! | `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY` | required |
-//! | `WILDFLOWER_RELAY_TUNNEL_PORT_BASE` | `5201` |
 //! | `WILDFLOWER_RELAY_DOMAIN` | required |
 //! | `WILDFLOWER_RELAY_HTTPS_ADDR` | `0.0.0.0:443` |
 //! | `WILDFLOWER_RELAY_HTTP_ADDR` | `0.0.0.0:80` |
@@ -143,7 +142,7 @@ impl RelaySettings {
     }
 }
 
-/// The rathole keys the relay owns and writes into the TOML.
+/// The rathole keys the relay owns and builds into rathole's config.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ControlSettings {
     /// `[server] bind_addr`: where devices' rathole clients connect.
@@ -156,9 +155,6 @@ pub struct ControlSettings {
     /// The X25519 public key of [`Self::noise_private_key`], base64: the
     /// `remote_public_key` of every device's rathole client.
     pub noise_public_key: String,
-    /// Loopback port of the first stored tunnel; the rest follow in name
-    /// order (see [`crate::domain::TunnelSet`]).
-    pub tunnel_port_base: u16,
 }
 
 impl ControlSettings {
@@ -170,7 +166,6 @@ impl ControlSettings {
     pub const CONTROL_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_CONTROL_ADDR";
     pub const PUBLIC_CONTROL_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR";
     pub const NOISE_PRIVATE_KEY_VAR: &'static str = "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY";
-    pub const TUNNEL_PORT_BASE_VAR: &'static str = "WILDFLOWER_RELAY_TUNNEL_PORT_BASE";
 
     /// # Errors
     ///
@@ -178,7 +173,6 @@ impl ControlSettings {
     /// empty or not a base64 X25519 key, or a number or address does not
     /// parse.
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
-        let tunnel_port_base = parsed(&lookup, Self::TUNNEL_PORT_BASE_VAR, 5201)?;
         let public_control_addr = lookup(Self::PUBLIC_CONTROL_ADDR_VAR)
             .map(|value| value.trim().to_owned())
             .filter(|value| !value.is_empty())
@@ -204,7 +198,6 @@ impl ControlSettings {
             public_control_addr,
             noise_private_key,
             noise_public_key,
-            tunnel_port_base,
         })
     }
 }
@@ -425,7 +418,6 @@ mod tests {
                     public_control_addr: None,
                     noise_private_key: Secret::new(GENKEY_PRIVATE_KEY),
                     noise_public_key: GENKEY_PUBLIC_KEY.to_owned(),
-                    tunnel_port_base: 5201,
                 },
                 front: FrontSettings {
                     domain: "relay.example.com".to_owned(),
@@ -552,14 +544,6 @@ mod tests {
         for name in ["relay", "example", "relay-example-com", "alice", ""] {
             assert!(!front.is_reserved(name), "{name:?}");
         }
-    }
-
-    #[test]
-    fn the_port_base_comes_from_the_environment() {
-        let mut pairs = REQUIRED.to_vec();
-        pairs.push((ControlSettings::TUNNEL_PORT_BASE_VAR, "6000"));
-        let control = RelaySettings::from_lookup(env(&pairs)).unwrap().control;
-        assert_eq!(control.tunnel_port_base, 6000);
     }
 
     #[test]

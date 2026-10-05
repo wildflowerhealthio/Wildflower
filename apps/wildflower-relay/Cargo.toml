@@ -47,12 +47,12 @@ ppp = "2.3"
 # OS randomness (`SysRng`) for created tunnels' tokens and default names. The
 # version the slices use.
 rand = "0.10"
-# `hot-reload`: rathole picks up a rewritten TOML (e.g. from enrolment)
-# without a restart.
+# The server takes the front's visitors through each tunnel's visitor queue,
+# and the admin API's tunnel changes while it runs (our fork, patched in the
+# workspace `Cargo.toml`).
 rathole = { version = "0.5", default-features = false, features = [
   "server",
   "noise",
-  "hot-reload",
 ] }
 # The wire shape of `GET /rathole`, shared with the device's rathole client.
 rathole-settings-rust = { path = "../../slices/tunnel/rathole-settings-rust" }
@@ -86,7 +86,7 @@ shared-structures-rust = { path = "../../slices/shared-structures/shared-structu
 # TCP keepalive on piped sockets (tokio has no setter); already in the tree
 # through tokio.
 socket2 = "0.6"
-# Renders the rathole TOML from the settings and the live tunnels.
+# Renders the rathole server TOML in memory, for rathole's own parser.
 toml = "0.9"
 tokio = { workspace = true, features = [
   "rt-multi-thread",
@@ -117,6 +117,13 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 tempfile = "3"
+# A rathole client hands the tests each tunnel's visitor streams in place of
+# a device.
+rathole = { version = "0.5", default-features = false, features = [
+  "server",
+  "client",
+  "noise",
+] }
 # Property tests of the name generator and the admin API's defaults.
 proptest = "1"
 # Drive the site's router in unit tests.

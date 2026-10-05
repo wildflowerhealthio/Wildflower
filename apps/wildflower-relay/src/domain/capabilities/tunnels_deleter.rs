@@ -28,7 +28,7 @@ impl<S: TunnelStore> TunnelsDeleter<S> {
         name: &str,
     ) -> Result<(StoredTunnel, TunnelSet), TunnelError> {
         let mut next = live.clone();
-        let deleted = next.remove(name).ok_or(TunnelError::NotFound)?.stored;
+        let deleted = next.remove(name).ok_or(TunnelError::NotFound)?;
         // A miss means the row is already gone, which is what deleting wants.
         self.store.delete_tunnel(name)?;
         Ok((deleted, next))
@@ -55,7 +55,7 @@ mod tests {
         let store = FakeTunnelStore::default();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
         store.insert_tunnel(&stored_tunnel("bob")).unwrap();
-        let live = TunnelSet::new(5201, store.list_tunnels().unwrap()).unwrap();
+        let live = TunnelSet::new(store.list_tunnels().unwrap()).unwrap();
         let deleter = TunnelsDeleter::new(store);
 
         assert_eq!(

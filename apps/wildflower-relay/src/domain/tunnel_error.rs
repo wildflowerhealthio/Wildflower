@@ -22,9 +22,9 @@ pub enum TunnelError {
     Taken,
     /// No tunnel has the name.
     NotFound,
-    /// No free name or port is left.
+    /// No free name is left.
     Exhausted(&'static str),
-    /// Storing, rendering or the clock failed — opaque to clients: the admin
+    /// Storing, reaching rathole or the clock failed — opaque to clients: the admin
     /// API logs `context` + `source` and answers an empty `500`. The cause is
     /// captured as text so this type stays free of the store's diesel /
     /// `r2d2` error types.
@@ -36,7 +36,7 @@ pub enum TunnelError {
 
 impl TunnelError {
     /// Wrap an infrastructure failure (a store checkout or query error, a
-    /// config write, the clock) as an opaque
+    /// change rathole did not take, the clock) as an opaque
     /// [`Infrastructure`](Self::Infrastructure), capturing `context` and the
     /// cause's alternate `Display` text (an `anyhow` chain in full).
     #[must_use]

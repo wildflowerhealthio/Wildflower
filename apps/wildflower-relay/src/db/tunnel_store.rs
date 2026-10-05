@@ -7,9 +7,8 @@
 //! `tunnel-rust`'s `SqliteTunnelStore`.
 //!
 //! Tokens are stored in plain text, since rathole and the HMAC check both
-//! need them, so the file is created readable by the owner only, like the
-//! rendered rathole TOML. Every call blocks on SQLite; the registry runs
-//! them off the async runtime.
+//! need them, so the file is created readable by the owner only. Every call
+//! blocks on SQLite; the registry runs them off the async runtime.
 
 use std::path::Path;
 
