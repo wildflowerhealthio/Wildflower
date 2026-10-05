@@ -75,6 +75,28 @@ pub enum Relay {
     },
 }
 
+impl Relay {
+    /// The site of the relay Wildflower runs.
+    pub const WILDFLOWER_BASE_URL: &'static str = "https://relay.wildflowerhealth.io";
+
+    /// The relay's site, where it serves `GET /rathole` and `GET /me`:
+    /// [`WILDFLOWER_BASE_URL`](Self::WILDFLOWER_BASE_URL) for
+    /// [`Relay::Wildflower`], the entered `base_url` for [`Relay::Custom`].
+    ///
+    /// # Panics
+    ///
+    /// Never: [`WILDFLOWER_BASE_URL`](Self::WILDFLOWER_BASE_URL) is an
+    /// absolute URL, which a test checks.
+    #[must_use]
+    pub fn base_url(&self) -> Url {
+        match self {
+            Self::Wildflower => Url::parse(Self::WILDFLOWER_BASE_URL)
+                .expect("WILDFLOWER_BASE_URL is an absolute URL"),
+            Self::Custom { base_url } => base_url.clone(),
+        }
+    }
+}
+
 /// A tunnel's token at the relay: a secret.
 ///
 /// `Debug` and `Serialize` both write [`TunnelToken::REDACTED`] in its place,
@@ -160,6 +182,18 @@ pub(crate) mod tests {
         assert_eq!(
             ServerRecord::default_launcher_url().as_str(),
             "https://wildflowerhealth.io/app"
+        );
+    }
+
+    #[test]
+    fn a_relay_s_base_url_is_wildflower_s_site_or_the_entered_one() {
+        assert_eq!(
+            Relay::Wildflower.base_url().as_str(),
+            "https://relay.wildflowerhealth.io/"
+        );
+        assert_eq!(
+            custom_record("lab").relay.base_url().as_str(),
+            "https://relay.example.com/"
         );
     }
 

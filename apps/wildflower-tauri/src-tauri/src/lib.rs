@@ -259,7 +259,11 @@ pub fn run() {
             // untrusted content webview — allowlists the inner `_tag` so the page
             // can't forge control tags it would otherwise reach via a bus `emit`
             // grant. See capabilities/native-webview-window.json.
-            browser_sniffer_tauri_rust::native_webview_data_plane_emit
+            browser_sniffer_tauri_rust::native_webview_data_plane_emit,
+            // The base's enrolment commands, granted to the `main` webview
+            // only (`allow-server-enrolment`, see capabilities/default.json).
+            servers_tauri_rust::server_add,
+            servers_tauri_rust::server_set_credentials,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -356,6 +360,10 @@ pub fn run() {
             // finished recording into `<app data dir>/saved_data`, taking the
             // directory this `setup()` already resolved rather than its own.
             har_recorder_tauri_rust::attach_har_recorder(app.handle(), app_data_dir.clone());
+
+            // The registry the enrolment commands write, `servers.json` in the
+            // same data root.
+            servers_tauri_rust::manage_servers(app.handle(), &app_data_dir);
 
             // Hostname/port come from the shared `tauri-shared-config.json`
             // (see `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the

@@ -106,7 +106,11 @@ render the host's status snapshot and restart the server.
 `ServerRecord` per server, identified by its domain
 (`<tunnel name>.<relay domain>`), in `<data root>/servers.json` behind the
 `ServerRegistry` port; the file is versioned, replaced atomically, and the
-only place a server's tunnel token is written in full.
+only place a server's tunnel token is written in full. It also enrols a
+server: the relay's `GET /rathole` is fetched and checked, and a `GET /me`
+signed with the token confirms the tunnel before the record is written.
+`servers-tauri-rust` is the base's `server_add` and `server_set_credentials`
+commands over it.
 
 `smart-app` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 

@@ -5,8 +5,10 @@ edition.workspace = true
 publish.workspace = true
 
 # The install's list of servers: `ServerRecord`s kept in `<data root>/servers.json`
-# behind the `ServerRegistry` port. No `tauri` dependency; the host builds a
-# `JsonServerRegistry` over its data root.
+# behind the `ServerRegistry` port, and enrolment, which checks a tunnel's
+# credentials with its relay's site behind the `RelaySite` port before a record
+# is written. No `tauri` dependency; the host builds a `JsonServerRegistry` over
+# its data root and a `ReqwestRelaySite`.
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
@@ -18,8 +20,28 @@ rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
 url = { version = "2", features = ["serde"] }
 # Serialises read-modify-write cycles on `servers.json` within the process.
 parking_lot = "0.12"
-# `RegistryError`'s `Display`/`source` wiring.
+# `RegistryError`'s and `EnrolmentError`'s `Display`/`source` wiring.
 thiserror = "2"
+# `RelaySite` is an `#[async_trait]`, so the base holds it as a trait object.
+async-trait = "0.1"
+# Runs the synchronous registry off the async runtime during enrolment.
+tokio = { workspace = true, features = ["rt"] }
+# `GET /rathole` and the signed `GET /me` on the relay's site. `rustls-tls`
+# (no openssl) as in `wildflower-server-rust`; `json` decodes both bodies.
+# Already in the tree.
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+] }
+# `hmac-sha256` HTTP message signatures (RFC 9421) keyed by the tunnel's
+# token, the scheme the relay verifies. All three are already in the tree.
+hmac = "0.12"
+sha2 = "0.10"
+base64.workspace = true
+# The signature's `created`, in unix seconds.
+chrono = { workspace = true, features = ["clock"] }
+# Each signature's nonce.
+rand = "0.10"
 
 [lints]
 workspace = true
@@ -27,3 +49,14 @@ workspace = true
 [dev-dependencies]
 # The registry's atomic replace only exists against a real filesystem.
 tempfile = "3"
+tokio = { workspace = true, features = ["rt", "macros", "net", "sync", "time"] }
+# The relay's own site and signature verifier, served on a loopback port, so
+# enrolment is tested against the real relay rather than a copy of its rules.
+wildflower-relay = { path = "../../../apps/wildflower-relay" }
+# A self-signed certificate for that site, and the rustls types to serve it,
+# as the relay's own tests do.
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
+# Collects log output to check that the token never reaches it.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
