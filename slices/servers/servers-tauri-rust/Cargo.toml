@@ -9,7 +9,6 @@ publish.workspace = true
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
-serde.workspace = true
 # The registry, enrolment and the relay client adapter the commands drive.
 servers-rust = { path = "../servers-rust" }
 # `TunnelName`, which the commands parse the entered tunnel name into.
@@ -23,6 +22,7 @@ workspace = true
 
 [dev-dependencies]
 async-trait = "0.1"
+serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["rt", "macros"] }

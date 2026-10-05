@@ -31,7 +31,7 @@
 //! | `WILDFLOWER_RELAY_ADMIN_KEY` | none (no request can sign as `admin`) |
 
 use std::fmt::{self, Debug, Display};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -41,7 +41,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use curve25519_dalek::MontgomeryPoint;
 use rathole_settings_rust::{
-    is_dns_label, NoisePattern, PublicRatholeSettings, Transport, TunnelName,
+    parse_public_addr, NoisePattern, PublicRatholeSettings, Transport, TunnelName,
 };
 
 use crate::front::Limits;
@@ -257,27 +257,6 @@ fn noise_public_key(private_key: &Secret) -> anyhow::Result<String> {
         .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
         .context("expected 32 bytes of base64, as `rathole --genkey` prints")?;
     Ok(BASE64.encode(MontgomeryPoint::mul_base_clamped(bytes).to_bytes()))
-}
-
-/// Validate a `host:port` for clients to dial and case-fold it. The host is
-/// lowercase DNS labels (which covers an IPv4 address) or a bracketed IPv6
-/// address; the port is 1–65535.
-fn parse_public_addr(raw: &str) -> anyhow::Result<String> {
-    let addr = raw.to_ascii_lowercase();
-    let (host, port) = addr.rsplit_once(':').context("expected `host:port`")?;
-    anyhow::ensure!(
-        port.parse::<u16>().is_ok_and(|port| port != 0),
-        "port {port:?} is not 1–65535"
-    );
-    let host_is_valid = match host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
-        Some(ipv6) => ipv6.parse::<Ipv6Addr>().is_ok(),
-        None => host.split('.').all(is_dns_label),
-    };
-    anyhow::ensure!(
-        host_is_valid,
-        "host {host:?} is not a DNS name or IP address"
-    );
-    Ok(addr)
 }
 
 /// Parse `name=token,name=token` (whitespace trimmed, blank entries

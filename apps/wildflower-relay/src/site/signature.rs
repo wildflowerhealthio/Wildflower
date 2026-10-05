@@ -43,7 +43,7 @@ use axum::http::{header, HeaderMap, HeaderName, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, Mac};
-use rathole_settings_rust::ADMIN_KEY_ID;
+use rathole_settings_rust::{TunnelName, ADMIN_KEY_ID};
 use sfv::{BareItem, Dictionary, FieldType, InnerList, ListEntry, Parser};
 use sha2::{Digest, Sha256};
 
@@ -73,7 +73,7 @@ const MAX_NONCES_PER_KEY: usize = 4_096;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignedBy {
     /// The device holding this tunnel's token.
-    Tunnel(String),
+    Tunnel(TunnelName),
     /// The holder of `WILDFLOWER_RELAY_ADMIN_KEY`.
     Admin,
 }
@@ -81,8 +81,8 @@ pub enum SignedBy {
 /// Checks signatures against the tunnels' tokens and the admin key, and
 /// remembers the nonces of the requests it has accepted.
 pub struct Verifier {
-    /// `keyid` → key.
-    keys: HashMap<String, Secret>,
+    /// `keyid` → who signs with it, and the key.
+    keys: HashMap<String, (SignedBy, Secret)>,
     /// `keyid` → accepted nonce → the unix time after which its `created`
     /// is stale.
     nonces: Mutex<HashMap<String, HashMap<String, i64>>>,
@@ -101,8 +101,13 @@ impl Verifier {
     pub fn new(tunnels: &[Tunnel], admin_key: Option<Secret>) -> Self {
         let keys = tunnels
             .iter()
-            .map(|tunnel| (tunnel.name.as_str().to_owned(), tunnel.token.clone()))
-            .chain(admin_key.map(|key| (ADMIN_KEY_ID.to_owned(), key)))
+            .map(|tunnel| {
+                (
+                    tunnel.name.as_str().to_owned(),
+                    (SignedBy::Tunnel(tunnel.name.clone()), tunnel.token.clone()),
+                )
+            })
+            .chain(admin_key.map(|key| (ADMIN_KEY_ID.to_owned(), (SignedBy::Admin, key))))
             .collect();
         Self {
             keys,
@@ -154,7 +159,7 @@ impl Verifier {
         if !body.is_empty() && !covers("content-digest") {
             return Err("the body is not covered by content-digest");
         }
-        let key = self.keys.get(keyid).ok_or("unknown keyid")?;
+        let (signed_by, key) = self.keys.get(keyid).ok_or("unknown keyid")?;
         let base = signature_base(parts, &signature.input).ok_or("components unavailable")?;
         if !mac_is_valid(key.expose().as_bytes(), &base, &signature.mac)? {
             return Err("MAC mismatch");
@@ -163,11 +168,7 @@ impl Verifier {
             return Err("content-digest does not match the body");
         }
         self.remember_nonce(keyid, nonce, created + CLOCK_SKEW_SECS, now)?;
-        Ok(if keyid == ADMIN_KEY_ID {
-            SignedBy::Admin
-        } else {
-            SignedBy::Tunnel(keyid.to_owned())
-        })
+        Ok(signed_by.clone())
     }
 
     /// Record `keyid`'s `nonce` until `stale_after`, refusing one already
@@ -541,7 +542,7 @@ pub(crate) mod tests {
         let request = signed_request("GET", URI, b"", "alice", "alice-token", NOW, "n1");
         assert_eq!(
             verify(&verifier, request).await,
-            Ok(SignedBy::Tunnel("alice".to_owned()))
+            Ok(SignedBy::Tunnel(TunnelName::parse("alice").unwrap()))
         );
         let request = signed_request("POST", URI, b"{}", "admin", "admin-key", NOW, "n2");
         assert_eq!(verify(&verifier, request).await, Ok(SignedBy::Admin));

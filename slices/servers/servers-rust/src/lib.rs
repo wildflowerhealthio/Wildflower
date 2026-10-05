@@ -18,13 +18,15 @@
 //! token, and only then is the record written. A rathole relay, a rathole
 //! server with no Wildflower relay site, is entered as its settings, which get
 //! the same checks. [`set_server_credentials`] replaces a server's token the
-//! same way, and a rathole server's without a request.
+//! same way, refusing a relay whose identity ([`RelayIdentity`]: its dial
+//! address and noise key) is no longer the one the server was added with,
+//! and replaces a rathole server's without a request.
 //!
 //!  - [`domain`] — [`ServerRecord`], its [`RelayKind`] and [`TunnelToken`],
-//!    [`RegistryError`], and enrolment with its [`EnteredRelay`], [`RelayPin`]
-//!    and [`EnrolmentError`]. The token is a secret: its `Debug` and
-//!    `Serialize` write a redaction marker, and only `servers.json` holds it in
-//!    full.
+//!    [`RegistryError`], and enrolment with its [`EnteredRelay`],
+//!    [`RelayIdentity`] and [`EnrolmentError`]. The token is a secret: its
+//!    `Debug` and `Serialize` write a redaction marker, and only `servers.json`
+//!    holds it in full.
 //!  - `ports` — the [`ServerRegistry`] port (read all, insert, update,
 //!    remove) and the [`RelayClient`] port (`GET /rathole`, signed
 //!    `GET /me`).
@@ -41,7 +43,7 @@ mod ports;
 
 pub use adapters::{JsonServerRegistry, ReqwestRelayClient, SERVERS_FILE_NAME};
 pub use domain::{
-    add_server, set_server_credentials, EnrolmentError, EnteredRelay, RegistryError, RelayKind,
-    RelayPin, ServerRecord, TunnelToken,
+    add_server, set_server_credentials, EnrolmentError, EnteredRelay, RegistryError, RelayIdentity,
+    RelayKind, ServerRecord, TunnelToken,
 };
 pub use ports::{RelayClient, ServerRegistry};

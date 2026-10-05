@@ -4,8 +4,11 @@
 //! The relay's site has a publicly trusted certificate for its own hostname,
 //! so requests are TLS-only and checked against the bundled web PKI roots.
 //! It answers both paths itself, so a redirect is a bad response rather than
-//! followed. `GET /me` is signed with the tunnel's token (see
-//! [`RequestSignature`]); the token is never sent.
+//! followed. The base URL is treated as a directory: a site served under a
+//! path prefix, `https://example.com/relay`, is asked for
+//! `https://example.com/relay/rathole`, not `https://example.com/rathole`.
+//! `GET /me` is signed with the tunnel's token (see [`RequestSignature`]); the
+//! token is never sent.
 
 use std::time::Duration;
 
@@ -46,8 +49,18 @@ impl ReqwestRelayClient {
 
     /// The site at `relay_base` over `client`, e.g. one that trusts a test
     /// relay's certificate.
-    pub(crate) fn with_client(relay_base: Url, client: reqwest::Client) -> Self {
+    pub(crate) fn with_client(mut relay_base: Url, client: reqwest::Client) -> Self {
+        if !relay_base.path().ends_with('/') {
+            let directory = format!("{}/", relay_base.path());
+            relay_base.set_path(&directory);
+        }
         Self { relay_base, client }
+    }
+
+    /// `{relay base}{path}`, `path` being `/`-rooted at the base URL's own
+    /// path rather than its host's.
+    fn target_uri(&self, path: &str) -> Result<Url, url::ParseError> {
+        self.relay_base.join(path.trim_start_matches('/'))
     }
 
     /// `GET {relay base}{path}`, signed as the tunnel in `sign_as` when there
@@ -63,8 +76,7 @@ impl ReqwestRelayClient {
                 source,
             };
         let target_uri = self
-            .relay_base
-            .join(path)
+            .target_uri(path)
             .map_err(|error| unreachable(error.into()))?;
         let mut request = self.client.get(target_uri.clone());
         if let Some((tunnel_name, token)) = sign_as {
@@ -103,7 +115,7 @@ impl RelayClient for ReqwestRelayClient {
         const PATH: &str = "/me";
         let response = self.get(PATH, Some((tunnel_name, token))).await?;
         if response.status() == StatusCode::UNAUTHORIZED {
-            return Err(EnrolmentError::CredentialsRejected {
+            return Err(EnrolmentError::SignedRequestRejected {
                 tunnel_name: tunnel_name.clone(),
             });
         }
@@ -235,7 +247,7 @@ mod tests {
         /// The relay as the user would enter it.
         fn relay(&self) -> EnteredRelay {
             EnteredRelay::SelfHostedWildflower {
-                base_url: self.base_url(),
+                base_url: self.base_url().to_string(),
                 pin: None,
             }
         }
@@ -264,6 +276,38 @@ mod tests {
         }
     }
 
+    /// The base URL is a directory: its path prefix, with or without a
+    /// trailing slash, is kept in front of each path.
+    #[test]
+    fn paths_are_joined_under_the_base_url_s_own_path() {
+        let client = reqwest::Client::new();
+        for (relay_base, rathole, me) in [
+            (
+                "https://relay.example.com",
+                "https://relay.example.com/rathole",
+                "https://relay.example.com/me",
+            ),
+            (
+                "https://example.com/relay",
+                "https://example.com/relay/rathole",
+                "https://example.com/relay/me",
+            ),
+            (
+                "https://example.com/a/relay/",
+                "https://example.com/a/relay/rathole",
+                "https://example.com/a/relay/me",
+            ),
+        ] {
+            let relay_client =
+                ReqwestRelayClient::with_client(Url::parse(relay_base).unwrap(), client.clone());
+            assert_eq!(
+                relay_client.target_uri("/rathole").unwrap().as_str(),
+                rathole
+            );
+            assert_eq!(relay_client.target_uri("/me").unwrap().as_str(), me);
+        }
+    }
+
     #[tokio::test]
     async fn fetches_the_relay_s_public_settings() {
         let relay = TestRelay::start().await;
@@ -286,7 +330,7 @@ mod tests {
         assert_eq!(
             tunnel_host,
             TunnelHost {
-                tunnel_name: "ruth".to_owned(),
+                tunnel_name: TunnelName::parse("ruth").unwrap(),
                 public_host: format!("ruth.{RELAY_DOMAIN}"),
             }
         );
@@ -316,7 +360,7 @@ mod tests {
                 .tunnel_host(&tunnel_name, &TunnelToken::new(token))
                 .await;
             assert!(
-                matches!(&result, Err(EnrolmentError::CredentialsRejected { tunnel_name: rejected }) if *rejected == tunnel_name),
+                matches!(&result, Err(EnrolmentError::SignedRequestRejected { tunnel_name: rejected }) if *rejected == tunnel_name),
                 "{tunnel_name}: {result:?}"
             );
         }
@@ -420,7 +464,7 @@ mod tests {
                 add_server(
                     Arc::clone(&registry),
                     EnteredRelay::SelfHostedWildflower {
-                        base_url: relay_base,
+                        base_url: relay_base.to_string(),
                         pin: None,
                     },
                     ruth(),
@@ -434,7 +478,7 @@ mod tests {
 
         assert!(matches!(
             errors[0],
-            EnrolmentError::CredentialsRejected { .. }
+            EnrolmentError::SignedRequestRejected { .. }
         ));
         assert!(matches!(errors[1], EnrolmentError::RelayUnreachable { .. }));
         let logged = logs.text();

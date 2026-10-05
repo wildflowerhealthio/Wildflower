@@ -26,7 +26,9 @@ pub trait RelayClient: Send + Sync {
     ///
     /// # Errors
     ///
-    /// [`EnrolmentError::CredentialsRejected`] when the relay answers `401`,
+    /// [`EnrolmentError::SignedRequestRejected`] when the relay answers
+    /// `401`, which it does for every signature it refuses, whatever the
+    /// reason;
     /// [`EnrolmentError::RelayUnreachable`] when no response comes back, and
     /// [`EnrolmentError::BadRelayResponse`] for any other non-success status
     /// or a body that isn't a [`TunnelHost`].

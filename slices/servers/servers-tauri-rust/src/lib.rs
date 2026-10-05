@@ -3,21 +3,29 @@
 //! [`servers_rust`], which needs no webview to be tested; this crate is only
 //! the glue.
 //!
-//! - [`server_add`] enrols a tunnel at a relay and registers the server (see
-//!   [`servers_rust::add_server`]), answering with the server's domain.
-//! - [`server_set_credentials`] replaces a registered server's token, checked
-//!   with its relay the same way, or replaced at once for a rathole relay
-//!   (see [`servers_rust::set_server_credentials`]).
+//! - [`server_add`], invoked as
+//!   `invoke('server_add', { relay, tunnelName, token })`, enrols a tunnel at
+//!   a relay and registers the server (see [`servers_rust::add_server`]),
+//!   answering with the server's domain.
+//! - [`server_set_credentials`], invoked as
+//!   `invoke('server_set_credentials', { domain, token })`, replaces a
+//!   registered server's token, checked with its relay the same way, or
+//!   replaced at once for a rathole relay (see
+//!   [`servers_rust::set_server_credentials`]).
 //!
-//! Arguments and answers are camelCase. Each command trims the token's
-//! surrounding whitespace, as the relay does, and refuses one left empty.
-//! Enrolment gets a [`ReqwestRelayClient`](servers_rust::ReqwestRelayClient)
-//! for a relay's site, built when it asks for one.
+//! Parameters are top-level and camelCase in the invoke payload, which Tauri
+//! maps onto the commands' snake_case parameters; answers are camelCase. Each
+//! command trims the token's surrounding whitespace, as the relay does, and
+//! refuses one left empty. Enrolment gets a
+//! [`ReqwestRelayClient`](servers_rust::ReqwestRelayClient) for a relay's site,
+//! built when it asks for one.
 //!
 //! The token goes in and never comes back: neither command answers with it
-//! or logs it. A failure answers with the
+//! or logs it. A failure the command reaches answers with the
 //! [`EnrolmentError`](servers_rust::EnrolmentError), serialised as
-//! `{"kind", "message"}`.
+//! `{"kind", "message"}`; every value a user types is checked there. A
+//! payload Tauri can't decode into the parameters is rejected by Tauri before
+//! the command runs, with a plain string naming the parameter.
 //!
 //! The app registers both in its `invoke_handler` and grants them to the
 //! `main` webview only, through its app-defined `allow-server-enrolment`
@@ -32,7 +40,7 @@ use std::sync::Arc;
 use servers_rust::{JsonServerRegistry, ServerRegistry};
 use tauri::{AppHandle, Manager};
 
-pub use commands::{server_add, server_set_credentials, ServerAddArgs, ServerSetCredentialsArgs};
+pub use commands::{server_add, server_set_credentials};
 
 /// What the servers commands work through: the install's registry.
 pub struct ServersState {

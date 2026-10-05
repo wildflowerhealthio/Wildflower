@@ -9,16 +9,24 @@
 //! tunnel name with the same [`TunnelName::parse`]. A request signed with
 //! the token gets the tunnel's [`TunnelHost`] from `GET /me`.
 //!
+//! Both ends also check a dial address with the same [`parse_public_addr`].
+//! A device decodes the relay's domain, which ends each of its servers'
+//! domains and folder names, as a [`RelayDomain`].
+//!
 //! [`Transport`] and [`NoisePattern`] each have one value, the one the relay
 //! and the device's rathole are both built for. The relay renders its rathole
 //! server TOML from the same values, and a response naming anything else
 //! fails to deserialize instead of becoming a client config the device
 //! cannot run.
 
+mod public_addr;
+mod relay_domain;
 mod tunnel_name;
 
 use serde::{Deserialize, Serialize};
 
+pub use public_addr::{parse_public_addr, InvalidPublicAddr};
+pub use relay_domain::{is_dns_name, InvalidRelayDomain, RelayDomain};
 pub use tunnel_name::{is_dns_label, InvalidTunnelName, TunnelName, ADMIN_KEY_ID};
 
 /// The relay's public rathole settings, as `GET /rathole` serves them.
@@ -42,7 +50,9 @@ pub struct PublicRatholeSettings {
 /// the hostname visitors reach it at.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TunnelHost {
-    pub tunnel_name: String,
+    /// Decoded as a [`TunnelName`], so a `/me` naming anything else fails to
+    /// deserialize.
+    pub tunnel_name: TunnelName,
     /// `<tunnel name>.<domain>`.
     pub public_host: String,
 }
@@ -89,6 +99,19 @@ mod tests {
     fn deserializes_the_documented_wire_shape() {
         let settings: PublicRatholeSettings = serde_json::from_str(EXAMPLE_JSON).unwrap();
         assert_eq!(settings, example());
+    }
+
+    #[test]
+    fn a_tunnel_host_decodes_its_name_as_a_tunnel_name() {
+        let tunnel_host: TunnelHost = serde_json::from_str(
+            r#"{"tunnel_name":"ruth","public_host":"ruth.relay.example.com"}"#,
+        )
+        .unwrap();
+        assert_eq!(tunnel_host.tunnel_name, TunnelName::parse("ruth").unwrap());
+        for name in ["Ruth", "admin", "ru.th"] {
+            let json = format!(r#"{{"tunnel_name":"{name}","public_host":"x"}}"#);
+            assert!(serde_json::from_str::<TunnelHost>(&json).is_err(), "{json}");
+        }
     }
 
     #[test]

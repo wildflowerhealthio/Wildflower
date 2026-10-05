@@ -18,7 +18,9 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use parking_lot::Mutex;
-use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
+use rathole_settings_rust::{
+    NoisePattern, PublicRatholeSettings, RelayDomain, Transport, TunnelName,
+};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -219,117 +221,83 @@ impl RegistryDocument {
     fn from_records(records: &[ServerRecord]) -> Self {
         Self {
             version: FORMAT_VERSION,
-            servers: records.iter().map(StoredServer::from_record).collect(),
+            servers: records.iter().cloned().map(StoredServer).collect(),
         }
     }
 
     fn into_records(self) -> Vec<ServerRecord> {
-        self.servers
-            .into_iter()
-            .map(StoredServer::into_record)
-            .collect()
+        self.servers.into_iter().map(|server| server.0).collect()
     }
 }
 
-/// A [`ServerRecord`] as `servers.json` stores it, in camelCase: the one
-/// place its token is written in full.
+/// A [`ServerRecord`] as `servers.json` stores it: the one place its token
+/// is written in full.
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StoredServer {
+#[serde(transparent)]
+struct StoredServer(#[serde(with = "StoredServerFields")] ServerRecord);
+
+/// [`ServerRecord`]'s fields as `servers.json` names them, in camelCase,
+/// with the token in full. A `remote` mirror rather than serde attributes on
+/// the record itself, so the record's own `Serialize` keeps redacting the
+/// token; the compiler checks the fields match the record's.
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "ServerRecord", rename_all = "camelCase", deny_unknown_fields)]
+struct StoredServerFields {
     relay: RelayKind,
     tunnel_name: TunnelName,
-    token: String,
-    public_settings: StoredPublicSettings,
+    #[serde(with = "exposed_token")]
+    token: TunnelToken,
+    #[serde(with = "StoredPublicSettings")]
+    public_settings: PublicRatholeSettings,
     launcher_url: Url,
     staging_certificates: bool,
 }
 
-impl StoredServer {
-    fn from_record(record: &ServerRecord) -> Self {
-        let ServerRecord {
-            relay,
-            tunnel_name,
-            token,
-            public_settings,
-            launcher_url,
-            staging_certificates,
-        } = record;
-        Self {
-            relay: relay.clone(),
-            tunnel_name: tunnel_name.clone(),
-            token: token.expose().to_owned(),
-            public_settings: StoredPublicSettings::from_settings(public_settings),
-            launcher_url: launcher_url.clone(),
-            staging_certificates: *staging_certificates,
-        }
-    }
-
-    fn into_record(self) -> ServerRecord {
-        let Self {
-            relay,
-            tunnel_name,
-            token,
-            public_settings,
-            launcher_url,
-            staging_certificates,
-        } = self;
-        ServerRecord {
-            relay,
-            tunnel_name,
-            token: TunnelToken::new(token),
-            public_settings: public_settings.into_settings(),
-            launcher_url,
-            staging_certificates,
-        }
-    }
-}
-
-/// A record's [`PublicRatholeSettings`] as `servers.json` stores them, in
-/// camelCase; the relay's `GET /rathole` serves the same fields in its own
-/// snake_case wire shape.
+/// [`PublicRatholeSettings`]' fields as `servers.json` names them, in
+/// camelCase. A `remote` mirror because the type itself is the relay's
+/// `GET /rathole` wire shape, which is snake_case and served by the relay;
+/// the compiler checks the fields match it. Reading decodes the domain as a
+/// [`RelayDomain`], since it ends the server's folder name, so a file whose
+/// domain could walk out of `servers/` is refused, as one with a bad tunnel
+/// name is.
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(
+    remote = "PublicRatholeSettings",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
 struct StoredPublicSettings {
     remote_addr: String,
     transport: Transport,
     noise_pattern: NoisePattern,
     public_key: String,
+    #[serde(deserialize_with = "relay_domain")]
     domain: String,
 }
 
-impl StoredPublicSettings {
-    fn from_settings(public_settings: &PublicRatholeSettings) -> Self {
-        let PublicRatholeSettings {
-            remote_addr,
-            transport,
-            noise_pattern,
-            public_key,
-            domain,
-        } = public_settings.clone();
-        Self {
-            remote_addr,
-            transport,
-            noise_pattern,
-            public_key,
-            domain,
-        }
+/// A stored domain, decoded as a [`RelayDomain`].
+fn relay_domain<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    RelayDomain::deserialize(deserializer).map(String::from)
+}
+
+/// The token as `servers.json` holds it: in full, unlike its own
+/// `Serialize`.
+mod exposed_token {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    use crate::domain::TunnelToken;
+
+    pub(super) fn serialize<S: Serializer>(
+        token: &TunnelToken,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(token.expose())
     }
 
-    fn into_settings(self) -> PublicRatholeSettings {
-        let Self {
-            remote_addr,
-            transport,
-            noise_pattern,
-            public_key,
-            domain,
-        } = self;
-        PublicRatholeSettings {
-            remote_addr,
-            transport,
-            noise_pattern,
-            public_key,
-            domain,
-        }
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<TunnelToken, D::Error> {
+        String::deserialize(deserializer).map(TunnelToken::new)
     }
 }
 
@@ -489,6 +457,56 @@ mod tests {
                 "{tunnel_name}"
             );
         }
+    }
+
+    /// The relay domain ends the server's folder name too, so a stored one
+    /// that could walk out of `servers/` is refused.
+    #[test]
+    fn a_stored_domain_that_is_not_a_dns_name_is_refused() {
+        let (data_root, registry) = registry();
+        for domain in ["x/../../..", "..", "Relay.example.com", ""] {
+            let file = version_1_file("ruth").replace(
+                r#""domain": "relay.wildflowerhealth.io""#,
+                &format!(r#""domain": "{domain}""#),
+            );
+            assert_ne!(file, version_1_file("ruth"));
+            fs::write(data_root.path().join(SERVERS_FILE_NAME), file).unwrap();
+            assert!(
+                matches!(registry.read_all(), Err(RegistryError::Storage { .. })),
+                "{domain:?}"
+            );
+        }
+    }
+
+    /// The stored settings are `PublicRatholeSettings`' own fields, renamed
+    /// to camelCase, and read back as they were.
+    #[test]
+    fn stored_settings_are_the_rathole_settings_in_camel_case() {
+        #[derive(Serialize, Deserialize)]
+        #[serde(transparent)]
+        struct Stored(#[serde(with = "StoredPublicSettings")] PublicRatholeSettings);
+
+        let public_settings = official_record("ruth").public_settings;
+        let stored = serde_json::to_value(Stored(public_settings.clone())).unwrap();
+        let wire = serde_json::to_value(&public_settings).unwrap();
+        let camel_case = |snake_case: &str| {
+            let mut parts = snake_case.split('_');
+            let first = parts.next().unwrap().to_owned();
+            parts.fold(first, |name, part| {
+                name + &part[..1].to_uppercase() + &part[1..]
+            })
+        };
+        let renamed: serde_json::Map<String, serde_json::Value> = wire
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(name, value)| (camel_case(name), value.clone()))
+            .collect();
+        assert_eq!(stored, serde_json::Value::Object(renamed));
+        assert_eq!(
+            serde_json::from_value::<Stored>(stored).unwrap().0,
+            public_settings
+        );
     }
 
     #[test]

@@ -1,41 +1,32 @@
 //! The servers commands: thin wrappers that parse their arguments, call
-//! [`servers_rust`]'s enrolment with a [`ReqwestRelayClient`] for the relay's
-//! site, and log the outcome by domain.
+//! [`servers_rust`]'s enrolment with a [`ReqwestRelayClient`] for a
+//! Wildflower relay, and log the outcome by domain.
+//!
+//! Each takes its arguments as top-level parameters, which Tauri reads from
+//! the invoke payload under their camelCase names (`tunnel_name` is
+//! `tunnelName`). A failure the command reaches answers with the
+//! [`EnrolmentError`] as `{kind, message}`. A payload Tauri can't decode into
+//! the parameters (a missing key, a value of the wrong JSON type, an unknown
+//! relay `kind` or field) never reaches the command: Tauri rejects it with a
+//! plain string, ``invalid args `<parameter>` for command `<command>`:
+//! <reason>``. The values a user types (the tunnel name, the token, a base
+//! URL, a rathole relay's settings) are all taken as strings and checked
+//! here, so a bad one is an [`EnrolmentError`]; only a webview bug gets the
+//! plain string.
 
 use std::sync::Arc;
 
 use rathole_settings_rust::TunnelName;
-use serde::Deserialize;
 use servers_rust::{EnrolmentError, EnteredRelay, RelayClient, ReqwestRelayClient, TunnelToken};
 use tauri_plugin_log::log;
 use url::Url;
 
 use crate::ServersState;
 
-/// [`server_add`]'s arguments, `{relay, tunnelName, token}`. No `Debug`,
-/// since it holds the token.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ServerAddArgs {
-    pub relay: EnteredRelay,
-    /// As entered; parsed into a [`TunnelName`] here.
-    pub tunnel_name: String,
-    /// As entered; surrounding whitespace is trimmed here.
-    pub token: String,
-}
-
-/// [`server_set_credentials`]'s arguments, `{domain, token}`. No `Debug`,
-/// since it holds the token.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ServerSetCredentialsArgs {
-    /// The registered server's domain.
-    pub domain: String,
-    /// As entered; surrounding whitespace is trimmed here.
-    pub token: String,
-}
-
-/// Enrol and register a server; answers with its domain.
+/// Enrol and register a server; answers with its domain. Invoked as
+/// `invoke('server_add', { relay, tunnelName, token })`, `relay` being an
+/// [`EnteredRelay`]. The token is trimmed. No parameter is logged, and the
+/// token never is.
 ///
 /// # Errors
 ///
@@ -43,13 +34,17 @@ pub struct ServerSetCredentialsArgs {
 #[tauri::command]
 pub async fn server_add(
     servers: tauri::State<'_, ServersState>,
-    args: ServerAddArgs,
+    relay: EnteredRelay,
+    tunnel_name: String,
+    token: String,
 ) -> Result<String, EnrolmentError> {
-    add(&servers, args, ReqwestRelayClient::new).await
+    add(&servers, relay, tunnel_name, token, ReqwestRelayClient::new).await
 }
 
 /// Replace a registered server's token once its relay accepts it, or at
-/// once for a rathole relay.
+/// once for a rathole relay; answers with nothing. Invoked as
+/// `invoke('server_set_credentials', { domain, token })`. The token is
+/// trimmed.
 ///
 /// # Errors
 ///
@@ -57,9 +52,10 @@ pub async fn server_add(
 #[tauri::command]
 pub async fn server_set_credentials(
     servers: tauri::State<'_, ServersState>,
-    args: ServerSetCredentialsArgs,
+    domain: String,
+    token: String,
 ) -> Result<(), EnrolmentError> {
-    set_credentials(&servers, args, ReqwestRelayClient::new).await
+    set_credentials(&servers, domain, token, ReqwestRelayClient::new).await
 }
 
 /// The token as entered, without its surrounding whitespace, as the relay
@@ -78,14 +74,11 @@ fn entered_token(token: &str) -> Result<TunnelToken, EnrolmentError> {
 
 async fn add<S: RelayClient>(
     servers: &ServersState,
-    args: ServerAddArgs,
+    relay: EnteredRelay,
+    tunnel_name: String,
+    token: String,
     relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
 ) -> Result<String, EnrolmentError> {
-    let ServerAddArgs {
-        relay,
-        tunnel_name,
-        token,
-    } = args;
     let result = async {
         let tunnel_name = TunnelName::parse(tunnel_name)?;
         let token = entered_token(&token)?;
@@ -114,10 +107,10 @@ async fn add<S: RelayClient>(
 
 async fn set_credentials<S: RelayClient>(
     servers: &ServersState,
-    args: ServerSetCredentialsArgs,
+    domain: String,
+    token: String,
     relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
 ) -> Result<(), EnrolmentError> {
-    let ServerSetCredentialsArgs { domain, token } = args;
     let result = async {
         servers_rust::set_server_credentials(
             Arc::clone(&servers.registry),
@@ -145,9 +138,52 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use rathole_settings_rust::{PublicRatholeSettings, TunnelHost};
+    use serde::Deserialize;
     use servers_rust::{JsonServerRegistry, RelayKind};
 
     use super::*;
+
+    /// `server_add`'s parameters as the webview sends them, each decoded
+    /// under the camelCase name Tauri reads it from (`tunnel_name` from
+    /// `tunnelName`), so the tests build them from the payload the docs give.
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct AddArgs {
+        relay: EnteredRelay,
+        tunnel_name: String,
+        token: String,
+    }
+
+    /// `server_set_credentials`'s parameters, likewise.
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SetCredentialsArgs {
+        domain: String,
+        token: String,
+    }
+
+    async fn add_with<S: RelayClient>(
+        servers: &ServersState,
+        args: AddArgs,
+        relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
+    ) -> Result<String, EnrolmentError> {
+        add(
+            servers,
+            args.relay,
+            args.tunnel_name,
+            args.token,
+            relay_client,
+        )
+        .await
+    }
+
+    async fn set_credentials_with<S: RelayClient>(
+        servers: &ServersState,
+        args: SetCredentialsArgs,
+        relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
+    ) -> Result<(), EnrolmentError> {
+        set_credentials(servers, args.domain, args.token, relay_client).await
+    }
 
     const TOKEN: &str = "s3cret-tunnel-token";
     const PUBLIC_KEY: &str = "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=";
@@ -179,12 +215,12 @@ mod tests {
             token: &TunnelToken,
         ) -> Result<TunnelHost, EnrolmentError> {
             if tunnel_name.as_str() != "ruth" || token.expose() != TOKEN {
-                return Err(EnrolmentError::CredentialsRejected {
+                return Err(EnrolmentError::SignedRequestRejected {
                     tunnel_name: tunnel_name.clone(),
                 });
             }
             Ok(TunnelHost {
-                tunnel_name: "ruth".to_owned(),
+                tunnel_name: TunnelName::parse("ruth").unwrap(),
                 public_host: "ruth.relay.example.com".to_owned(),
             })
         }
@@ -210,7 +246,7 @@ mod tests {
 
     /// `server_add`'s arguments for a self-hosted Wildflower relay, as the
     /// webview sends them.
-    fn add_args(tunnel_name: &str, token: &str) -> ServerAddArgs {
+    fn add_args(tunnel_name: &str, token: &str) -> AddArgs {
         serde_json::from_value(serde_json::json!({
             "relay": {
                 "kind": "selfHostedWildflower",
@@ -228,7 +264,7 @@ mod tests {
 
     /// `server_add`'s arguments for a rathole relay, as the webview sends
     /// them.
-    fn rathole_add_args(token: &str) -> ServerAddArgs {
+    fn rathole_add_args(token: &str) -> AddArgs {
         serde_json::from_value(serde_json::json!({
             "relay": {
                 "kind": "rathole",
@@ -242,7 +278,7 @@ mod tests {
         .unwrap()
     }
 
-    fn set_credentials_args(domain: &str, token: &str) -> ServerSetCredentialsArgs {
+    fn set_credentials_args(domain: &str, token: &str) -> SetCredentialsArgs {
         serde_json::from_value(serde_json::json!({"domain": domain, "token": token})).unwrap()
     }
 
@@ -280,37 +316,48 @@ mod tests {
         })
     }
 
+    /// The parameters are top-level: the old `{args: {...}}` wrapper and
+    /// snake_case names don't decode.
     #[test]
-    fn snake_case_arguments_are_refused() {
+    fn the_parameters_are_top_level_and_camel_case() {
+        let relay = serde_json::json!({"kind": "wildflowerOfficial"});
+        assert!(serde_json::from_value::<AddArgs>(
+            serde_json::json!({"relay": relay, "tunnelName": "ruth", "token": TOKEN})
+        )
+        .is_ok());
         for json in [
-            serde_json::json!({
-                "relay": {"kind": "wildflowerOfficial"},
-                "tunnel_name": "ruth",
-                "token": TOKEN,
-            }),
-            serde_json::json!({
-                "relay": {"kind": "selfHostedWildflower", "base_url": "https://relay.example.com"},
-                "tunnelName": "ruth",
-                "token": TOKEN,
-            }),
-            serde_json::json!({
-                "relay": {"kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com"},
-                "relayPin": {"remoteAddr": "relay.example.com:2333", "publicKey": PUBLIC_KEY},
-                "tunnelName": "ruth",
-                "token": TOKEN,
-            }),
+            serde_json::json!({"args": {"relay": relay, "tunnelName": "ruth", "token": TOKEN}}),
+            serde_json::json!({"relay": relay, "tunnel_name": "ruth", "token": TOKEN}),
         ] {
             assert!(
-                serde_json::from_value::<ServerAddArgs>(json.clone()).is_err(),
+                serde_json::from_value::<AddArgs>(json.clone()).is_err(),
                 "{json}"
             );
         }
     }
 
     #[tokio::test]
+    async fn server_add_names_a_base_url_no_relay_site_can_be_asked_at() {
+        let (_data_root, servers) = servers();
+        let args: AddArgs = serde_json::from_value(serde_json::json!({
+            "relay": {"kind": "selfHostedWildflower", "baseUrl": "http://relay.example.com"},
+            "tunnelName": "ruth",
+            "token": TOKEN,
+        }))
+        .unwrap();
+        let result = add_with(&servers, args, no_client).await;
+        assert!(
+            answer(&result).contains(r#""kind":"invalidRelaySetting""#)
+                && answer(&result).contains("baseUrl"),
+            "{}",
+            answer(&result)
+        );
+    }
+
+    #[tokio::test]
     async fn server_add_answers_with_the_domain_and_registers_the_server() {
         let (_data_root, servers) = servers();
-        let result = add(&servers, add_args("ruth", TOKEN), fake_client).await;
+        let result = add_with(&servers, add_args("ruth", TOKEN), fake_client).await;
         assert_eq!(answer(&result), r#""ruth.relay.example.com""#);
         let registered = servers.registry.read_all().unwrap();
         assert_eq!(registered.len(), 1);
@@ -321,7 +368,7 @@ mod tests {
     async fn server_add_refuses_a_tunnel_name_that_is_not_a_dns_label() {
         let (_data_root, servers) = servers();
         for tunnel_name in ["Ruth", "ru.th", "", "admin"] {
-            let result = add(&servers, add_args(tunnel_name, TOKEN), fake_client).await;
+            let result = add_with(&servers, add_args(tunnel_name, TOKEN), fake_client).await;
             assert!(
                 matches!(result, Err(EnrolmentError::InvalidTunnelName(_))),
                 "{tunnel_name:?}"
@@ -335,7 +382,7 @@ mod tests {
     async fn server_add_trims_the_token_and_refuses_an_empty_one() {
         let (_data_root, servers) = servers();
         for token in ["", "   ", "\n\t"] {
-            let result = add(&servers, add_args("ruth", token), fake_client).await;
+            let result = add_with(&servers, add_args("ruth", token), fake_client).await;
             assert!(
                 answer(&result).contains(r#""kind":"emptyToken""#),
                 "{token:?}"
@@ -343,7 +390,7 @@ mod tests {
         }
         assert_eq!(servers.registry.read_all().unwrap(), Vec::new());
 
-        let result = add(
+        let result = add_with(
             &servers,
             add_args("ruth", &format!("  {TOKEN}\n")),
             fake_client,
@@ -359,7 +406,7 @@ mod tests {
     #[tokio::test]
     async fn server_add_registers_a_rathole_relay_without_a_request() {
         let (_data_root, servers) = servers();
-        let result = add(&servers, rathole_add_args(" any-token "), no_client).await;
+        let result = add_with(&servers, rathole_add_args(" any-token "), no_client).await;
         assert_eq!(answer(&result), r#""ruth.rathole.example.com""#);
         let registered = servers.registry.read_all().unwrap();
         assert_eq!(registered[0].relay, RelayKind::Rathole);
@@ -374,10 +421,10 @@ mod tests {
     async fn server_add_names_a_rathole_relay_s_invalid_setting() {
         let (_data_root, servers) = servers();
         let mut args = rathole_add_args(TOKEN);
-        if let EnteredRelay::Rathole { public_key, .. } = &mut args.relay {
-            *public_key = "not-a-key".to_owned();
+        if let EnteredRelay::Rathole { identity, .. } = &mut args.relay {
+            identity.public_key = "not-a-key".to_owned();
         }
-        let result = add(&servers, args, no_client).await;
+        let result = add_with(&servers, args, no_client).await;
         assert!(
             answer(&result).contains(r#""kind":"invalidRelaySetting""#),
             "{}",
@@ -389,10 +436,10 @@ mod tests {
     #[tokio::test]
     async fn server_set_credentials_replaces_the_token() {
         let (_data_root, servers) = servers();
-        add(&servers, add_args("ruth", TOKEN), fake_client)
+        add_with(&servers, add_args("ruth", TOKEN), fake_client)
             .await
             .unwrap();
-        let result = set_credentials(
+        let result = set_credentials_with(
             &servers,
             set_credentials_args("ruth.relay.example.com", TOKEN),
             fake_client,
@@ -400,7 +447,7 @@ mod tests {
         .await;
         assert_eq!(answer(&result), "null");
 
-        let result = set_credentials(
+        let result = set_credentials_with(
             &servers,
             set_credentials_args("lab.relay.example.com", TOKEN),
             fake_client,
@@ -412,11 +459,11 @@ mod tests {
     #[tokio::test]
     async fn server_set_credentials_trims_the_token_and_refuses_an_empty_one() {
         let (_data_root, servers) = servers();
-        add(&servers, rathole_add_args(TOKEN), no_client)
+        add_with(&servers, rathole_add_args(TOKEN), no_client)
             .await
             .unwrap();
 
-        let result = set_credentials(
+        let result = set_credentials_with(
             &servers,
             set_credentials_args("ruth.rathole.example.com", " \t "),
             no_client,
@@ -428,7 +475,7 @@ mod tests {
             TOKEN
         );
 
-        let result = set_credentials(
+        let result = set_credentials_with(
             &servers,
             set_credentials_args("ruth.rathole.example.com", "  the-new-token\n"),
             no_client,
@@ -450,11 +497,11 @@ mod tests {
         let wrong_token = "the-wrong-s3cret";
 
         let answers = [
-            answer(&add(&servers, add_args("ruth", wrong_token), fake_client).await),
-            answer(&add(&servers, add_args("ruth", TOKEN), fake_client).await),
-            answer(&add(&servers, add_args("ruth", TOKEN), fake_client).await),
+            answer(&add_with(&servers, add_args("ruth", wrong_token), fake_client).await),
+            answer(&add_with(&servers, add_args("ruth", TOKEN), fake_client).await),
+            answer(&add_with(&servers, add_args("ruth", TOKEN), fake_client).await),
             answer(
-                &set_credentials(
+                &set_credentials_with(
                     &servers,
                     set_credentials_args("ruth.relay.example.com", wrong_token),
                     fake_client,
@@ -462,7 +509,7 @@ mod tests {
                 .await,
             ),
             answer(
-                &set_credentials(
+                &set_credentials_with(
                     &servers,
                     set_credentials_args("ruth.relay.example.com", TOKEN),
                     fake_client,
@@ -471,9 +518,9 @@ mod tests {
             ),
         ];
 
-        assert!(answers[0].contains(r#""kind":"credentialsRejected""#));
+        assert!(answers[0].contains(r#""kind":"signedRequestRejected""#));
         assert!(answers[2].contains(r#""kind":"alreadyRegistered""#));
-        assert!(answers[3].contains(r#""kind":"credentialsRejected""#));
+        assert!(answers[3].contains(r#""kind":"signedRequestRejected""#));
         let logged = logs.lock().unwrap().join("\n");
         assert!(
             logged.contains("[servers] added ruth.relay.example.com"),
