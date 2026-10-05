@@ -39,17 +39,18 @@ const signRequest = (
     )
     const url = new URL(request.url, origin)
     for (const [name, value] of request.urlParams) url.searchParams.append(name, value)
+    // The query as the transport writes it back (form-encoded), and no
+    // fragment, which is never sent: the URL fetched is the one signed.
+    url.search = url.searchParams.toString()
+    url.hash = ''
     const body = yield* bodyBytes(request.body)
     const headers = yield* signAdminRequest(
       key,
       { method: request.method, url, body },
       { created: Math.floor((yield* Clock.currentTimeMillis) / 1000), nonce: yield* freshNonce }
     )
-    url.search = ''
-    return request.pipe(
-      HttpClientRequest.setUrl(url.toString()),
-      HttpClientRequest.setHeaders(headers)
-    )
+    // A `URL` replaces the request's URL, params and hash alike.
+    return request.pipe(HttpClientRequest.setUrl(url), HttpClientRequest.setHeaders(headers))
   }).pipe(
     Effect.mapError(
       (cause) =>

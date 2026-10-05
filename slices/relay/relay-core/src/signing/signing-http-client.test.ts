@@ -77,6 +77,40 @@ describe('signingHttpClient', () => {
     )
   })
 
+  it('fetches exactly the URL it signed, query included', async () => {
+    // Arrange
+    const fetched: string[] = []
+    const transport = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request, url) => {
+        fetched.push(url.toString())
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))
+        )
+      })
+    )
+    const request = HttpClientRequest.get('/api/tunnels?a=1 2#top').pipe(
+      HttpClientRequest.appendUrlParam('b', 'x/y')
+    )
+
+    // Act
+    const signed = await Effect.runPromise(
+      HttpClient.execute(request).pipe(
+        Effect.map((response) => response.request),
+        Effect.provide(signingClient(transport, ADMIN_KEY))
+      )
+    )
+
+    // Assert
+    const target = `${ORIGIN}/api/tunnels?a=1+2&b=x%2Fy`
+    expect(fetched).toEqual([target])
+    const params = signed.headers['signature-input']?.replace(/^sig=/, '') ?? ''
+    const base = ['"@method": GET', `"@target-uri": ${target}`, `"@signature-params": ${params}`]
+    expect(signed.headers['signature']).toBe(
+      `sig=:${createHmac('sha256', ADMIN_KEY).update(base.join('\n')).digest('base64')}:`
+    )
+  })
+
   it('gives every request its own nonce', async () => {
     // Arrange
     const sent: HttpClientRequest.HttpClientRequest[] = []
