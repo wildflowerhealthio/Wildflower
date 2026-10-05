@@ -43,14 +43,11 @@ use axum::http::{header, HeaderMap, HeaderName, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, Mac};
+use rathole_settings_rust::ADMIN_KEY_ID;
 use sfv::{BareItem, Dictionary, FieldType, InnerList, ListEntry, Parser};
 use sha2::{Digest, Sha256};
 
 use crate::settings::{Secret, Tunnel};
-
-/// The `keyid` signed with `WILDFLOWER_RELAY_ADMIN_KEY`; no tunnel may take
-/// this name.
-pub const ADMIN_KEY_ID: &str = "admin";
 
 /// How far `created` may be from the relay's clock, either way, and so how
 /// long a nonce is remembered.
@@ -104,7 +101,7 @@ impl Verifier {
     pub fn new(tunnels: &[Tunnel], admin_key: Option<Secret>) -> Self {
         let keys = tunnels
             .iter()
-            .map(|tunnel| (tunnel.name.clone(), tunnel.token.clone()))
+            .map(|tunnel| (tunnel.name.as_str().to_owned(), tunnel.token.clone()))
             .chain(admin_key.map(|key| (ADMIN_KEY_ID.to_owned(), key)))
             .collect();
         Self {
@@ -469,7 +466,7 @@ pub(crate) mod tests {
     fn verifier() -> Verifier {
         Verifier::new(
             &[Tunnel {
-                name: "alice".to_owned(),
+                name: rathole_settings_rust::TunnelName::parse("alice").unwrap(),
                 token: Secret::new("alice-token"),
             }],
             Some(Secret::new("admin-key")),

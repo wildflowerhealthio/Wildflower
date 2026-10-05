@@ -136,7 +136,7 @@ mod tests {
             rathole_settings(),
             Verifier::new(
                 &[Tunnel {
-                    name: "alice".to_owned(),
+                    name: rathole_settings_rust::TunnelName::parse("alice").unwrap(),
                     token: Secret::new("alice-token"),
                 }],
                 Some(Secret::new("admin-key")),

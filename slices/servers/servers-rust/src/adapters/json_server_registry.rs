@@ -17,7 +17,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use parking_lot::Mutex;
-use rathole_settings_rust::PublicRatholeSettings;
+use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -236,7 +236,7 @@ impl RegistryDocument {
 #[serde(deny_unknown_fields)]
 struct StoredServer {
     relay: Relay,
-    tunnel_name: String,
+    tunnel_name: TunnelName,
     token: String,
     public_settings: PublicRatholeSettings,
     launcher_url: Url,
@@ -352,36 +352,60 @@ mod tests {
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
     }
 
+    /// A version 1 `servers.json` holding `wildflower_record(tunnel_name)`,
+    /// written by hand rather than by the adapter.
+    fn version_1_file(tunnel_name: &str) -> String {
+        format!(
+            r#"{{
+              "version": 1,
+              "servers": [{{
+                "relay": {{"kind": "wildflower"}},
+                "tunnel_name": "{tunnel_name}",
+                "token": "{TOKEN}",
+                "public_settings": {{
+                  "remote_addr": "relay.wildflowerhealth.io:2333",
+                  "transport": "noise",
+                  "noise_pattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
+                  "public_key": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
+                  "domain": "relay.wildflowerhealth.io"
+                }},
+                "launcher_url": "https://wildflowerhealth.io/app",
+                "staging_certificates": false
+              }}]
+            }}"#
+        )
+    }
+
     #[test]
     fn reads_the_version_1_format() {
         let (data_root, registry) = registry();
         fs::write(
             data_root.path().join(SERVERS_FILE_NAME),
-            format!(
-                r#"{{
-                  "version": 1,
-                  "servers": [{{
-                    "relay": {{"kind": "wildflower"}},
-                    "tunnel_name": "ruth",
-                    "token": "{TOKEN}",
-                    "public_settings": {{
-                      "remote_addr": "relay.wildflowerhealth.io:2333",
-                      "transport": "noise",
-                      "noise_pattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
-                      "public_key": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
-                      "domain": "relay.wildflowerhealth.io"
-                    }},
-                    "launcher_url": "https://wildflowerhealth.io/app",
-                    "staging_certificates": false
-                  }}]
-                }}"#
-            ),
+            version_1_file("ruth"),
         )
         .unwrap();
         assert_eq!(
             registry.read_all().unwrap(),
             vec![wildflower_record("ruth")]
         );
+    }
+
+    /// The tunnel name becomes the server's folder name, so one read from the
+    /// file is checked as strictly as one entered by hand.
+    #[test]
+    fn a_stored_tunnel_name_that_is_not_a_dns_label_is_refused() {
+        let (data_root, registry) = registry();
+        for tunnel_name in ["Ruth", "ru.th", "..", "admin"] {
+            fs::write(
+                data_root.path().join(SERVERS_FILE_NAME),
+                version_1_file(tunnel_name),
+            )
+            .unwrap();
+            assert!(
+                matches!(registry.read_all(), Err(RegistryError::Storage { .. })),
+                "{tunnel_name}"
+            );
+        }
     }
 
     #[test]

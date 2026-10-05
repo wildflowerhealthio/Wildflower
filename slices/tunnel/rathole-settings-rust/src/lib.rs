@@ -1,10 +1,12 @@
-//! `rathole-settings-rust` — what the relay's `GET /rathole` returns.
+//! `rathole-settings-rust` — what the relay's `GET /rathole` returns, and
+//! the tunnel name a device adds to it.
 //!
 //! `wildflower-relay` serves [`PublicRatholeSettings`] at
 //! `https://<domain>/rathole` without authentication: everything public a
-//! rathole client needs to dial the relay. A device adds only its tunnel
-//! name, which is its rathole service name, and that tunnel's token. Its
-//! public host is `<tunnel name>.<domain>`.
+//! rathole client needs to dial the relay. A device adds only its
+//! [`TunnelName`], which is its rathole service name, and that tunnel's
+//! token. Its public host is `<tunnel name>.<domain>`. Both ends check a
+//! tunnel name with the same [`TunnelName::parse`].
 //!
 //! [`Transport`] and [`NoisePattern`] each have one value, the one the relay
 //! and the device's rathole are both built for. The relay renders its rathole
@@ -12,7 +14,11 @@
 //! fails to deserialize instead of becoming a client config the device
 //! cannot run.
 
+mod tunnel_name;
+
 use serde::{Deserialize, Serialize};
+
+pub use tunnel_name::{is_dns_label, InvalidTunnelName, TunnelName, ADMIN_KEY_ID};
 
 /// The relay's public rathole settings, as `GET /rathole` serves them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

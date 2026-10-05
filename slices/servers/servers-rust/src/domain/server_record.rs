@@ -6,7 +6,7 @@
 //! tunnel's liveness and its certificate are live state, held by whatever runs
 //! the server, never here.
 
-use rathole_settings_rust::PublicRatholeSettings;
+use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
 use serde::{Deserialize, Serialize, Serializer};
 use url::Url;
 
@@ -21,14 +21,16 @@ pub struct ServerRecord {
     /// The relay this server's tunnel runs through.
     pub relay: Relay,
     /// The tunnel's name at the relay, which is also its rathole service name.
-    pub tunnel_name: String,
+    pub tunnel_name: TunnelName,
     /// The tunnel's token at the relay.
     pub token: TunnelToken,
-    /// What the relay returned from `GET /rathole` when the server was added.
+    /// What the relay returned from `GET /rathole` when the server was added:
+    /// the only copy of the relay's dial address and noise key, which the
+    /// tunnel client always dials.
     pub public_settings: PublicRatholeSettings,
     /// The page the base opens to launch apps against this server, with `iss`
-    /// and `launch` in its query. The add-server flow fills it with the
-    /// hosted owner UI (`sectionUrl('app')`, `https://wildflowerhealth.io/app`).
+    /// and `launch` in its query. A new server gets
+    /// [`DEFAULT_LAUNCHER_URL`](ServerRecord::DEFAULT_LAUNCHER_URL).
     pub launcher_url: Url,
     /// Whether this server's certificates come from the ACME staging directory
     /// instead of production.
@@ -36,6 +38,20 @@ pub struct ServerRecord {
 }
 
 impl ServerRecord {
+    /// The launcher a new server gets: the hosted owner UI's app section
+    /// (`sectionUrl('app')`).
+    pub const DEFAULT_LAUNCHER_URL: &'static str = "https://wildflowerhealth.io/app";
+
+    /// [`DEFAULT_LAUNCHER_URL`](Self::DEFAULT_LAUNCHER_URL) as a [`Url`].
+    ///
+    /// # Panics
+    ///
+    /// Never: the constant is an absolute URL, which a test checks.
+    #[must_use]
+    pub fn default_launcher_url() -> Url {
+        Url::parse(Self::DEFAULT_LAUNCHER_URL).expect("DEFAULT_LAUNCHER_URL is an absolute URL")
+    }
+
     /// The server's domain, `<tunnel name>.<relay domain>`: its identity in
     /// the registry, its issuer, and the name of its data folder.
     #[must_use]
@@ -50,14 +66,12 @@ impl ServerRecord {
 pub enum Relay {
     /// The relay Wildflower runs.
     Wildflower,
-    /// A relay the user runs or chose, entered by hand.
+    /// A relay the user runs or chose, entered by hand. What its rathole
+    /// client dials comes from its `GET /rathole`, kept in the record's
+    /// `public_settings`.
     Custom {
         /// The relay's site, where it serves `GET /rathole`.
         base_url: Url,
-        /// `[client] remote_addr`: the `host:port` the rathole client dials.
-        remote_addr: String,
-        /// The relay's X25519 noise public key, base64.
-        public_key: String,
     },
 }
 
@@ -108,7 +122,7 @@ pub(crate) mod tests {
     pub(crate) fn wildflower_record(tunnel_name: &str) -> ServerRecord {
         ServerRecord {
             relay: Relay::Wildflower,
-            tunnel_name: tunnel_name.to_owned(),
+            tunnel_name: TunnelName::parse(tunnel_name).unwrap(),
             token: TunnelToken::new(TOKEN),
             public_settings: PublicRatholeSettings {
                 remote_addr: "relay.wildflowerhealth.io:2333".to_owned(),
@@ -117,7 +131,7 @@ pub(crate) mod tests {
                 public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
                 domain: "relay.wildflowerhealth.io".to_owned(),
             },
-            launcher_url: Url::parse("https://wildflowerhealth.io/app").unwrap(),
+            launcher_url: ServerRecord::default_launcher_url(),
             staging_certificates: false,
         }
     }
@@ -126,10 +140,8 @@ pub(crate) mod tests {
         ServerRecord {
             relay: Relay::Custom {
                 base_url: Url::parse("https://relay.example.com").unwrap(),
-                remote_addr: "relay.example.com:2333".to_owned(),
-                public_key: "AAAAC3NzaC1lZDI1NTE5AAAAIExampleNoiseKey=".to_owned(),
             },
-            tunnel_name: tunnel_name.to_owned(),
+            tunnel_name: TunnelName::parse(tunnel_name).unwrap(),
             token: TunnelToken::new(TOKEN),
             public_settings: PublicRatholeSettings {
                 remote_addr: "relay.example.com:2333".to_owned(),
@@ -141,6 +153,14 @@ pub(crate) mod tests {
             launcher_url: Url::parse("https://launcher.example.com/").unwrap(),
             staging_certificates: true,
         }
+    }
+
+    #[test]
+    fn the_default_launcher_is_the_hosted_owner_ui_s_app_section() {
+        assert_eq!(
+            ServerRecord::default_launcher_url().as_str(),
+            "https://wildflowerhealth.io/app"
+        );
     }
 
     #[test]

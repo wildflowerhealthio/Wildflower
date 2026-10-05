@@ -11,7 +11,8 @@ publish.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # The relay's `GET /rathole` response a `ServerRecord` keeps as its
-# `public_settings`; its `domain` is the relay domain a server's domain ends in.
+# `public_settings`, whose `domain` is the relay domain a server's domain ends
+# in, and `TunnelName`, the tunnel-name check the relay applies too.
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
 # `launcher_url` and a custom relay's `base_url`, stored as URLs in the file.
 url = { version = "2", features = ["serde"] }

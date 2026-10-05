@@ -40,11 +40,11 @@ use anyhow::Context;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use curve25519_dalek::MontgomeryPoint;
-use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport};
+use rathole_settings_rust::{
+    is_dns_label, NoisePattern, PublicRatholeSettings, Transport, TunnelName,
+};
 
 use crate::front::Limits;
-use crate::route::is_dns_label;
-use crate::site::signature::ADMIN_KEY_ID;
 
 /// A secret read from the environment. `Debug` never prints it, so settings
 /// can be logged or put in error context safely.
@@ -166,7 +166,7 @@ pub struct ControlSettings {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tunnel {
     /// The tunnel name: the device's subdomain and its rathole service name.
-    pub name: String,
+    pub name: TunnelName,
     /// The tunnel's own rathole token.
     pub token: Secret,
 }
@@ -239,7 +239,7 @@ impl ControlSettings {
             .zip(&self.tunnels)
             .map(|(port, tunnel)| {
                 (
-                    tunnel.name.clone(),
+                    tunnel.name.as_str().to_owned(),
                     SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
                 )
             })
@@ -281,9 +281,9 @@ fn parse_public_addr(raw: &str) -> anyhow::Result<String> {
 }
 
 /// Parse `name=token,name=token` (whitespace trimmed, blank entries
-/// ignored) into tunnels sorted by name. `admin` is reserved: it is the
-/// `keyid` of the admin key. Errors name the entry by position
-/// and tunnel name, never the token.
+/// ignored) into tunnels sorted by name. Each name is a [`TunnelName`], so
+/// `admin`, the `keyid` of the admin key, is refused. Errors name the entry
+/// by position and tunnel name, never the token.
 fn parse_tunnels(raw: &Secret) -> anyhow::Result<Vec<Tunnel>> {
     let mut tunnels: Vec<Tunnel> = Vec::new();
     for (index, entry) in raw
@@ -298,24 +298,19 @@ fn parse_tunnels(raw: &Secret) -> anyhow::Result<Vec<Tunnel>> {
             .split_once('=')
             .with_context(|| format!("entry {position} is not `name=token`"))?;
         let (name, token) = (name.trim(), token.trim());
-        anyhow::ensure!(
-            is_dns_label(name),
-            "entry {position}: tunnel name {name:?} is not a lowercase DNS label"
-        );
-        anyhow::ensure!(
-            name != ADMIN_KEY_ID,
-            "entry {position}: tunnel name {name:?} is reserved"
-        );
+        let name = TunnelName::parse(name).with_context(|| format!("entry {position}"))?;
         anyhow::ensure!(
             !token.is_empty(),
-            "entry {position}: tunnel name {name:?} has an empty token"
+            "entry {position}: tunnel name {:?} has an empty token",
+            name.as_str()
         );
         anyhow::ensure!(
             tunnels.iter().all(|s| s.name != name),
-            "entry {position}: tunnel name {name:?} is listed twice"
+            "entry {position}: tunnel name {:?} is listed twice",
+            name.as_str()
         );
         tunnels.push(Tunnel {
-            name: name.to_owned(),
+            name,
             token: Secret::new(token),
         });
     }
@@ -600,7 +595,7 @@ mod tests {
         parse_tunnels(&Secret::new(raw)).map(|tunnels| {
             tunnels
                 .into_iter()
-                .map(|s| (s.name, s.token.expose().to_owned()))
+                .map(|s| (s.name.into(), s.token.expose().to_owned()))
                 .collect()
         })
     }

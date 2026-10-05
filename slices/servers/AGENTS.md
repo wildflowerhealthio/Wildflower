@@ -18,6 +18,15 @@ The **servers** this install knows about. Rust-only, no `-core`.
   `GET /rathole` returned. There's no separate display name; the registry is
   keyed by the domain, and each server's data folder is
   `<data root>/servers/<domain>/`.
+- **The tunnel name is one DNS label.** `ServerRecord::tunnel_name` is a
+  `TunnelName` from `rathole-settings-rust`, the same check the relay applies
+  to its tunnels: one lowercase DNS label, never `admin`. It is checked on
+  construction and again when `servers.json` is read.
+- **`public_settings` is the only copy of the relay's dial settings.** The
+  rathole client always dials the `remote_addr` and `public_key` the relay's
+  `GET /rathole` returned. `Relay::Custom` holds only the relay's `base_url`.
+- **A new server launches from `ServerRecord::DEFAULT_LAUNCHER_URL`**,
+  `https://wildflowerhealth.io/app`.
 - **The token is a secret.** `TunnelToken`'s `Debug` and `Serialize` write
   `<redacted>`, and it has no `Deserialize`. `JsonServerRegistry`'s own file
   representation is the only place the token is written in full, and the file
@@ -40,4 +49,5 @@ The **servers** this install knows about. Rust-only, no `-core`.
 
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.
 - `slices/tunnel/rathole-settings-rust` — `PublicRatholeSettings`, the
-  `GET /rathole` response a record keeps as `public_settings`.
+  `GET /rathole` response a record keeps as `public_settings`, and
+  `TunnelName`.
