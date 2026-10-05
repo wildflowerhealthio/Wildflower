@@ -2,23 +2,18 @@
 //!
 //! The relay's local hostnames (its domain itself) are served by the relay's
 //! own site, which terminates TLS in-process. Any other public hostname
-//! `<tunnel name>.<domain>` names a tunnel from `WILDFLOWER_RELAY_TUNNELS`.
-//! Its loopback address is where rathole listens for that device, and only
-//! while the device's tunnel is up, so the front connects there and lets a
-//! refused connection mean "device offline". The [`RouteTable`] is built from
-//! the same tunnel list that the rathole TOML is rendered from, and
-//! [`Router::replace`] swaps in a new one whole.
+//! `<tunnel name>.<domain>` names a tunnel from `WILDFLOWER_RELAY_TUNNELS`,
+//! which the front hands to rathole as a visitor of the service of that name.
+//! The [`RouteTable`] is built from the same tunnel list that the rathole TOML
+//! is rendered from, and [`Router::replace`] swaps in a new one whole.
 
-use std::collections::{BTreeSet, HashMap};
-use std::net::SocketAddr;
+use std::collections::BTreeSet;
 use std::sync::{Arc, PoisonError, RwLock};
 
-/// One routable tunnel: its name and the loopback address rathole binds for
-/// it.
+/// One routable tunnel: the rathole service its visitors are handed to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Route {
     pub tunnel_name: String,
-    pub addr: SocketAddr,
 }
 
 /// Where a public hostname goes.
@@ -31,30 +26,30 @@ pub enum Destination {
     Tunnel(Route),
 }
 
-/// Tunnel name → loopback address rathole binds for that tunnel.
+/// The names of the routable tunnels.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RouteTable {
-    addrs: HashMap<String, SocketAddr>,
+    tunnel_names: BTreeSet<String>,
 }
 
 impl RouteTable {
-    /// Build a table from `(tunnel name, loopback addr)` pairs, e.g.
-    /// [`crate::ControlSettings::tunnel_addrs`].
+    /// Build a table from tunnel names, e.g.
+    /// [`crate::ControlSettings::tunnel_names`].
     #[must_use]
-    pub fn from_addrs(addrs: impl IntoIterator<Item = (String, SocketAddr)>) -> Self {
+    pub fn from_names(tunnel_names: impl IntoIterator<Item = String>) -> Self {
         Self {
-            addrs: addrs.into_iter().collect(),
+            tunnel_names: tunnel_names.into_iter().collect(),
         }
     }
 
     #[must_use]
     pub fn len(&self) -> usize {
-        self.addrs.len()
+        self.tunnel_names.len()
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.addrs.is_empty()
+        self.tunnel_names.is_empty()
     }
 }
 
@@ -117,8 +112,10 @@ impl Router {
             return Some(Destination::Local(hostname));
         }
         let tunnel_name = tunnel_name_for_host(&hostname, &self.domain)?;
-        let addr = *self.table().addrs.get(&tunnel_name)?;
-        Some(Destination::Tunnel(Route { tunnel_name, addr }))
+        self.table()
+            .tunnel_names
+            .contains(&tunnel_name)
+            .then_some(Destination::Tunnel(Route { tunnel_name }))
     }
 }
 
@@ -214,34 +211,24 @@ mod tests {
         }
     }
 
-    fn addr(s: &str) -> SocketAddr {
-        s.parse().expect("socket addr")
-    }
-
-    fn tunnel_addr(destination: Option<Destination>) -> Option<SocketAddr> {
-        match destination? {
-            Destination::Tunnel(route) => Some(route.addr),
-            Destination::Local(_) => None,
-        }
+    fn tunnel(tunnel_name: &str) -> Option<Destination> {
+        Some(Destination::Tunnel(Route {
+            tunnel_name: tunnel_name.to_owned(),
+        }))
     }
 
     #[test]
     fn router_resolves_known_tunnels_and_sees_replacements() {
-        let a = addr("127.0.0.1:1");
-        let b = addr("127.0.0.1:2");
         let router = Router::new(
             DOMAIN,
             [DOMAIN.to_owned()],
-            RouteTable::from_addrs([("a".to_owned(), a)]),
+            RouteTable::from_names(["a".to_owned()]),
         );
-        assert_eq!(tunnel_addr(router.resolve("A.relay.example.com")), Some(a));
+        assert_eq!(router.resolve("A.relay.example.com"), tunnel("a"));
         assert_eq!(router.resolve("b.relay.example.com"), None);
 
-        router.replace(RouteTable::from_addrs([
-            ("a".to_owned(), a),
-            ("b".to_owned(), b),
-        ]));
-        assert_eq!(tunnel_addr(router.resolve("b.relay.example.com")), Some(b));
+        router.replace(RouteTable::from_names(["a".to_owned(), "b".to_owned()]));
+        assert_eq!(router.resolve("b.relay.example.com"), tunnel("b"));
     }
 
     #[test]
@@ -272,7 +259,7 @@ mod tests {
         let router = Router::new(
             DOMAIN,
             [DOMAIN.to_owned(), "admin.relay.example.com".to_owned()],
-            RouteTable::from_addrs([("admin".to_owned(), addr("127.0.0.1:1"))]),
+            RouteTable::from_names(["admin".to_owned()]),
         );
         assert_eq!(
             router.resolve("admin.relay.example.com"),

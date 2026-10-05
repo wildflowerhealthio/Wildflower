@@ -35,12 +35,12 @@ hyper-util = { version = "0.1", features = ["tokio", "service"] }
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
 ppp = "2.3"
-# `hot-reload`: rathole picks up a rewritten TOML (e.g. from enrolment)
-# without a restart.
+# The server takes the front's visitors through a `ServerHandle`, which also
+# adds and removes services while it runs (our fork, patched in the workspace
+# `Cargo.toml`).
 rathole = { version = "0.5", default-features = false, features = [
   "server",
   "noise",
-  "hot-reload",
 ] }
 # The wire shape of `GET /rathole`, shared with the device's rathole client.
 rathole-settings-rust = { path = "../../slices/tunnel/rathole-settings-rust" }
@@ -105,6 +105,13 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 tempfile = "3"
+# A rathole client hands the front tests each tunnel's connections in place
+# of a device.
+rathole = { version = "0.5", default-features = false, features = [
+  "server",
+  "client",
+  "noise",
+] }
 # Drive the site's router in unit tests.
 tower = { workspace = true, features = ["util"] }
 http-body-util.workspace = true

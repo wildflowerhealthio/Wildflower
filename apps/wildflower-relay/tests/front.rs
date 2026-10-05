@@ -1,22 +1,28 @@
 //! End-to-end tests of the front over real sockets: a rustls client's hello
-//! goes in on one side, a fake backend stands in for a tunnel's rathole port
-//! on the other. The relay's own site is served with a self-signed
-//! certificate in place of the ACME one.
+//! goes in on one side, and on the other an in-process rathole server takes
+//! the front's visitors and a rathole client hands each tunnel's connections
+//! to the test in place of a device. The relay's own site is served with a
+//! self-signed certificate in place of the ACME one.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use rathole::{HandedOffConnection, ServerHandle};
 use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use rustls::sign::{CertifiedKey, SingleCertAndKey};
 use rustls::{ClientConfig, ClientConnection, RootCertStore};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use wildflower_relay::{Front, Limits, RouteTable, Router, Site, Verifier};
+
+/// The tunnel every test that pipes bytes routes to, and its token.
+const TUNNEL: &str = "abc";
+const TUNNEL_TOKEN: &str = "abc-token";
 
 const DOMAIN: &str = "relay.example.com";
 const WAIT: Duration = Duration::from_secs(5);
@@ -82,7 +88,72 @@ struct Harness {
     shutdown_tx: broadcast::Sender<bool>,
 }
 
-async fn start_front(router: Arc<Router>) -> Harness {
+/// A rathole server holding the tunnel [`TUNNEL`], with a client connected
+/// to it: the front's visitors of the tunnel come out of `backend`, as the
+/// device would take them.
+struct Tunnels {
+    handle: ServerHandle,
+    backend: mpsc::Receiver<HandedOffConnection>,
+    /// Stops the server and the client when dropped.
+    _shutdown_tx: broadcast::Sender<bool>,
+}
+
+async fn start_tunnels() -> Tunnels {
+    let control_port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let server_config = format!(
+        "[server]\nbind_addr = \"127.0.0.1:{control_port}\"\n\
+         [server.services.{TUNNEL}]\ntoken = \"{TUNNEL_TOKEN}\"\n"
+    );
+    let client_config = format!(
+        "[client]\nremote_addr = \"127.0.0.1:{control_port}\"\n\
+         [client.services.{TUNNEL}]\ntoken = \"{TUNNEL_TOKEN}\"\n"
+    );
+    let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
+    let (handle, receiver) = rathole::server_handle();
+    tokio::spawn(rathole::run_server_with_handoff(
+        server_config.parse().unwrap(),
+        shutdown_rx.resubscribe(),
+        receiver,
+    ));
+    let (connection_tx, mut backend) = mpsc::channel(8);
+    tokio::spawn(rathole::run_client_with_handoff(
+        client_config.parse().unwrap(),
+        shutdown_rx,
+        connection_tx,
+    ));
+
+    // Once a visitor goes through, the client is connected. That visitor is
+    // not part of any test.
+    let connected = async {
+        loop {
+            let (_visitor, stream) = tokio::io::duplex(64);
+            if handle.connect(TUNNEL, stream).await.is_ok() {
+                return backend.recv().await;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    tokio::time::timeout(WAIT, connected)
+        .await
+        .expect("the client should connect")
+        .expect("the client hands over the first visitor");
+    Tunnels {
+        handle,
+        backend,
+        _shutdown_tx: shutdown_tx,
+    }
+}
+
+/// A handle to a rathole server that is not running: every tunnel is down.
+fn no_tunnels() -> ServerHandle {
+    rathole::server_handle().0
+}
+
+async fn start_front(router: Arc<Router>, tunnels: ServerHandle) -> Harness {
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
     let https = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let http = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -95,6 +166,7 @@ async fn start_front(router: Arc<Router>) -> Harness {
     };
     let front = Front::new(
         router,
+        tunnels,
         site,
         Limits {
             hello_timeout: Duration::from_secs(2),
@@ -107,7 +179,7 @@ async fn start_front(router: Arc<Router>) -> Harness {
 }
 
 /// Read exactly `len` bytes, failing the test on timeout.
-async fn read_exact(stream: &mut TcpStream, len: usize) -> Vec<u8> {
+async fn read_exact(stream: &mut (impl AsyncRead + Unpin), len: usize) -> Vec<u8> {
     let mut buf = vec![0; len];
     tokio::time::timeout(WAIT, stream.read_exact(&mut buf))
         .await
@@ -118,7 +190,7 @@ async fn read_exact(stream: &mut TcpStream, len: usize) -> Vec<u8> {
 
 /// Read the PROXY v2 header off `stream` and return the source address it
 /// carries.
-async fn read_proxy_header(stream: &mut TcpStream) -> ppp::v2::Addresses {
+async fn read_proxy_header(stream: &mut (impl AsyncRead + Unpin)) -> ppp::v2::Addresses {
     // 12-byte signature, version/command, family/protocol, 2-byte length.
     let mut header = read_exact(stream, 16).await;
     let len = usize::from(u16::from_be_bytes([header[14], header[15]]));
@@ -142,24 +214,25 @@ async fn assert_closed_silently(mut stream: TcpStream) {
     }
 }
 
-/// Connect a client, send the hello for `host` plus `extra`, and accept the
-/// matching connection on `backend`. Checks the PROXY header names the
+/// Connect a client, send the hello for `host` plus `extra`, and take the
+/// matching connection off `tunnels`. Checks the PROXY header names the
 /// client and the replayed bytes are exactly what was sent.
 async fn pipe_through(
     harness: &Harness,
-    backend: &TcpListener,
+    tunnels: &mut Tunnels,
     host: &str,
     extra: &[u8],
-) -> (TcpStream, TcpStream) {
+) -> (TcpStream, Box<dyn rathole::DataChannelStream>) {
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     let mut sent = client_hello(host);
     sent.extend_from_slice(extra);
     client.write_all(&sent).await.unwrap();
 
-    let (mut upstream, _) = tokio::time::timeout(WAIT, backend.accept())
+    let mut upstream = tokio::time::timeout(WAIT, tunnels.backend.recv())
         .await
-        .expect("front should connect to the backend")
-        .unwrap();
+        .expect("front should hand the visitor to the tunnel")
+        .expect("the tunnel's client is running")
+        .stream;
     let client_addr = client.local_addr().unwrap();
     let ppp::v2::Addresses::IPv4(addresses) = read_proxy_header(&mut upstream).await else {
         panic!("expected IPv4 addresses");
@@ -178,15 +251,12 @@ async fn pipe_through(
 
 #[tokio::test]
 async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
-    let backend = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let router = router(RouteTable::from_addrs([(
-        "abc".to_owned(),
-        backend.local_addr().unwrap(),
-    )]));
-    let harness = start_front(router).await;
+    let mut tunnels = start_tunnels().await;
+    let router = router(RouteTable::from_names([TUNNEL.to_owned()]));
+    let harness = start_front(router, tunnels.handle.clone()).await;
 
     let (mut client, mut upstream) =
-        pipe_through(&harness, &backend, "ABC.relay.example.com", b"early").await;
+        pipe_through(&harness, &mut tunnels, "ABC.relay.example.com", b"early").await;
 
     upstream.write_all(b"server bytes").await.unwrap();
     assert_eq!(read_exact(&mut client, 12).await, b"server bytes");
@@ -204,9 +274,47 @@ async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
     let _ = harness.shutdown_tx.send(true);
 }
 
+/// Read until EOF, failing the test on timeout, and return what came.
+async fn read_to_eof(stream: &mut (impl AsyncRead + Unpin)) -> Vec<u8> {
+    let mut rest = Vec::new();
+    tokio::time::timeout(WAIT, stream.read_to_end(&mut rest))
+        .await
+        .expect("the stream should reach EOF")
+        .unwrap();
+    rest
+}
+
+#[tokio::test]
+async fn half_close_reaches_the_other_side_in_both_directions() {
+    let mut tunnels = start_tunnels().await;
+    let router = router(RouteTable::from_names([TUNNEL.to_owned()]));
+    let harness = start_front(router, tunnels.handle.clone()).await;
+
+    // The visitor finishes sending first; the device still answers.
+    let (mut client, mut upstream) =
+        pipe_through(&harness, &mut tunnels, "abc.relay.example.com", b"").await;
+    client.write_all(b"request").await.unwrap();
+    client.shutdown().await.unwrap();
+    assert_eq!(read_to_eof(&mut upstream).await, b"request");
+    upstream.write_all(b"response").await.unwrap();
+    upstream.shutdown().await.unwrap();
+    assert_eq!(read_to_eof(&mut client).await, b"response");
+
+    // The device finishes sending first; the visitor can still send.
+    let (mut client, mut upstream) =
+        pipe_through(&harness, &mut tunnels, "abc.relay.example.com", b"").await;
+    upstream.write_all(b"goodbye").await.unwrap();
+    upstream.shutdown().await.unwrap();
+    assert_eq!(read_to_eof(&mut client).await, b"goodbye");
+    client.write_all(b"last words").await.unwrap();
+    client.shutdown().await.unwrap();
+    assert_eq!(read_to_eof(&mut upstream).await, b"last words");
+    let _ = harness.shutdown_tx.send(true);
+}
+
 #[tokio::test]
 async fn unknown_tunnel_is_closed_without_a_byte_written() {
-    let harness = start_front(router(RouteTable::default())).await;
+    let harness = start_front(router(RouteTable::default()), no_tunnels()).await;
 
     for host in [
         "nobody.relay.example.com",
@@ -228,17 +336,11 @@ async fn unknown_tunnel_is_closed_without_a_byte_written() {
 
 #[tokio::test]
 async fn known_tunnel_that_is_down_is_closed_silently() {
-    // Bind then drop, so the port is (almost certainly) not listening: what
-    // rathole looks like while the device is offline.
-    let offline = TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap()
-        .local_addr()
-        .unwrap();
-    let harness = start_front(router(RouteTable::from_addrs([(
-        "abc".to_owned(),
-        offline,
-    )])))
+    // rathole refuses a visitor of a tunnel whose device is offline.
+    let harness = start_front(
+        router(RouteTable::from_names([TUNNEL.to_owned()])),
+        no_tunnels(),
+    )
     .await;
 
     let mut client = TcpStream::connect(harness.https).await.unwrap();
@@ -251,7 +353,7 @@ async fn known_tunnel_that_is_down_is_closed_silently() {
 
 #[tokio::test]
 async fn silent_client_is_dropped_after_the_hello_deadline() {
-    let harness = start_front(router(RouteTable::default())).await;
+    let harness = start_front(router(RouteTable::default()), no_tunnels()).await;
     // Connect and send nothing; the 2 s test deadline closes it.
     let client = TcpStream::connect(harness.https).await.unwrap();
     assert_closed_silently(client).await;
@@ -270,10 +372,10 @@ async fn http_get(addr: SocketAddr, request: &str) -> String {
 
 #[tokio::test]
 async fn http_redirects_known_tunnels_and_404s_the_rest() {
-    let harness = start_front(router(RouteTable::from_addrs([(
-        "abc".to_owned(),
-        "127.0.0.1:1".parse().unwrap(),
-    )])))
+    let harness = start_front(
+        router(RouteTable::from_names([TUNNEL.to_owned()])),
+        no_tunnels(),
+    )
     .await;
 
     let response = http_get(
@@ -340,11 +442,11 @@ async fn tls_connect(harness: &Harness, host: &str, alpn: &[&[u8]]) -> TlsStream
 #[tokio::test]
 async fn own_hostname_is_served_by_the_site_over_tls() {
     // A tunnel is routable too, so the site is chosen by name, not by default.
-    let backend = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let harness = start_front(router(RouteTable::from_addrs([(
-        "abc".to_owned(),
-        backend.local_addr().unwrap(),
-    )])))
+    let mut tunnels = start_tunnels().await;
+    let harness = start_front(
+        router(RouteTable::from_names([TUNNEL.to_owned()])),
+        tunnels.handle.clone(),
+    )
     .await;
 
     let mut tls = tls_connect(&harness, "Relay.Example.com", &[b"h2", b"http/1.1"]).await;
@@ -364,14 +466,15 @@ async fn own_hostname_is_served_by_the_site_over_tls() {
     );
     assert!(response.ends_with(r#"{"status":"pass"}"#), "{response}");
 
-    // The tunnel still routes to its port alongside the site.
-    let (_client, _upstream) = pipe_through(&harness, &backend, "abc.relay.example.com", b"").await;
+    // The tunnel still routes alongside the site.
+    let (_client, _upstream) =
+        pipe_through(&harness, &mut tunnels, "abc.relay.example.com", b"").await;
     let _ = harness.shutdown_tx.send(true);
 }
 
 #[tokio::test]
 async fn acme_tls_alpn_handshake_for_own_hostname_reaches_the_site() {
-    let harness = start_front(router(RouteTable::default())).await;
+    let harness = start_front(router(RouteTable::default()), no_tunnels()).await;
 
     let mut tls = tls_connect(&harness, DOMAIN, &[b"acme-tls/1"]).await;
     assert_eq!(tls.get_ref().1.alpn_protocol(), Some(&b"acme-tls/1"[..]));

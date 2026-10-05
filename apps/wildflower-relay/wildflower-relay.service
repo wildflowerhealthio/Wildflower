@@ -22,10 +22,8 @@
 #        sudo systemctl enable --now wildflower-relay
 #
 # The environment file is the relay's only configuration (see
-# relay.example.env). On each start the relay renders a fresh rathole TOML to
-# /run/wildflower-relay/relay.toml, which systemd removes when it stops.
-# /var/lib/wildflower-relay keeps the relay's caches across restarts, such as
-# the certificate for its own hostname.
+# relay.example.env). /var/lib/wildflower-relay keeps the relay's caches
+# across restarts, such as the certificate for its own hostname.
 
 [Unit]
 Description=Wildflower relay (rathole tunnels and SNI front)
@@ -37,15 +35,12 @@ After=network-online.target
 Type=exec
 ExecStart=/opt/wildflower-relay/wildflower-relay
 EnvironmentFile=/etc/wildflower-relay/env
-Environment=WILDFLOWER_RELAY_CONFIG=/run/wildflower-relay/relay.toml
 Environment=WILDFLOWER_RELAY_STATE_DIR=/var/lib/wildflower-relay
 Restart=on-failure
 RestartSec=2
 
 # Unprivileged, with only the right to bind 443 and 80.
 DynamicUser=yes
-RuntimeDirectory=wildflower-relay
-RuntimeDirectoryMode=0700
 # Writable despite ProtectSystem=strict. With DynamicUser it lives in
 # /var/lib/private/wildflower-relay, linked from /var/lib/wildflower-relay.
 StateDirectory=wildflower-relay

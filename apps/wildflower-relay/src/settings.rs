@@ -3,9 +3,9 @@
 //! Every setting comes from a `WILDFLOWER_RELAY_*` environment variable;
 //! `relay.example.env` lists them all. The environment is the only source:
 //! [`ControlSettings`] (the rathole side, including every tunnel and its
-//! token) is rendered into a fresh rathole TOML on each start (see
+//! token) is built into a rathole config on each start (see
 //! [`crate::config`]), [`FrontSettings`] configures the TLS front, which
-//! rathole's file has no place for, and [`AcmeSettings`] how the relay's own
+//! rathole's config has no place for, and [`AcmeSettings`] how the relay's own
 //! site gets its certificate. [`RelaySettings::public_rathole_settings`] is
 //! what the site serves at `GET /rathole`. The admin key signs requests as
 //! `keyid="admin"` (see [`crate::site::signature`]). The state directory
@@ -14,12 +14,10 @@
 //!
 //! | Variable | Default |
 //! |---|---|
-//! | `WILDFLOWER_RELAY_CONFIG` | `relay.toml` (where the rathole TOML is written; read by `main`) |
 //! | `WILDFLOWER_RELAY_CONTROL_ADDR` | `0.0.0.0:2333` |
 //! | `WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR` | `<domain>:<port of WILDFLOWER_RELAY_CONTROL_ADDR>` |
 //! | `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY` | required |
 //! | `WILDFLOWER_RELAY_TUNNELS` | none (`name=token,name=token`) |
-//! | `WILDFLOWER_RELAY_TUNNEL_PORT_BASE` | `5201` |
 //! | `WILDFLOWER_RELAY_DOMAIN` | required |
 //! | `WILDFLOWER_RELAY_HTTPS_ADDR` | `0.0.0.0:443` |
 //! | `WILDFLOWER_RELAY_HTTP_ADDR` | `0.0.0.0:80` |
@@ -31,7 +29,7 @@
 //! | `WILDFLOWER_RELAY_ADMIN_KEY` | none (no request can sign as `admin`) |
 
 use std::fmt::{self, Debug, Display};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -158,8 +156,6 @@ pub struct ControlSettings {
     /// Every tunnel, sorted by name. Each becomes the rathole service
     /// `[server.services.<name>]`.
     pub tunnels: Vec<Tunnel>,
-    /// Loopback port of the first tunnel; the rest follow in name order.
-    pub tunnel_port_base: u16,
 }
 
 /// One `name=token` entry of `WILDFLOWER_RELAY_TUNNELS`: a device's tunnel.
@@ -181,7 +177,6 @@ impl ControlSettings {
     pub const PUBLIC_CONTROL_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR";
     pub const NOISE_PRIVATE_KEY_VAR: &'static str = "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY";
     pub const TUNNELS_VAR: &'static str = "WILDFLOWER_RELAY_TUNNELS";
-    pub const TUNNEL_PORT_BASE_VAR: &'static str = "WILDFLOWER_RELAY_TUNNEL_PORT_BASE";
 
     /// # Errors
     ///
@@ -194,13 +189,6 @@ impl ControlSettings {
             .transpose()
             .with_context(|| format!("{} is invalid", Self::TUNNELS_VAR))?
             .unwrap_or_default();
-        let tunnel_port_base = parsed(&lookup, Self::TUNNEL_PORT_BASE_VAR, 5201)?;
-        anyhow::ensure!(
-            usize::from(tunnel_port_base) + tunnels.len() <= usize::from(u16::MAX) + 1,
-            "{} = {tunnel_port_base} leaves no port for each of the {} tunnels",
-            Self::TUNNEL_PORT_BASE_VAR,
-            tunnels.len()
-        );
         let public_control_addr = lookup(Self::PUBLIC_CONTROL_ADDR_VAR)
             .map(|value| value.trim().to_owned())
             .filter(|value| !value.is_empty())
@@ -227,23 +215,12 @@ impl ControlSettings {
             noise_private_key,
             noise_public_key,
             tunnels,
-            tunnel_port_base,
         })
     }
 
-    /// Each tunnel's name and the loopback address rathole binds for it:
-    /// `127.0.0.1:<base + i>` for the `i`th tunnel in name order.
-    #[must_use]
-    pub fn tunnel_addrs(&self) -> Vec<(String, SocketAddr)> {
-        (self.tunnel_port_base..=u16::MAX)
-            .zip(&self.tunnels)
-            .map(|(port, tunnel)| {
-                (
-                    tunnel.name.clone(),
-                    SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
-                )
-            })
-            .collect()
+    /// Every tunnel's name, in name order.
+    pub fn tunnel_names(&self) -> impl Iterator<Item = String> + '_ {
+        self.tunnels.iter().map(|tunnel| tunnel.name.clone())
     }
 }
 
@@ -481,7 +458,6 @@ mod tests {
                     noise_private_key: Secret::new(GENKEY_PRIVATE_KEY),
                     noise_public_key: GENKEY_PUBLIC_KEY.to_owned(),
                     tunnels: Vec::new(),
-                    tunnel_port_base: 5201,
                 },
                 front: FrontSettings {
                     domain: "relay.example.com".to_owned(),
@@ -644,49 +620,17 @@ mod tests {
     }
 
     #[test]
-    fn tunnels_and_port_base_come_from_the_environment() {
+    fn tunnels_come_from_the_environment_in_name_order() {
         let mut pairs = REQUIRED.to_vec();
-        pairs.extend([
-            (ControlSettings::TUNNELS_VAR, "bob=tok2,alice=tok1"),
-            (ControlSettings::TUNNEL_PORT_BASE_VAR, "6000"),
-        ]);
+        pairs.push((ControlSettings::TUNNELS_VAR, "bob=tok2,alice=tok1"));
         let control = RelaySettings::from_lookup(env(&pairs)).unwrap().control;
-        let names: Vec<_> = control.tunnels.iter().map(|s| s.name.as_str()).collect();
+        let names: Vec<_> = control.tunnel_names().collect();
         assert_eq!(names, ["alice", "bob"]);
-        assert_eq!(control.tunnel_port_base, 6000);
 
         let mut pairs = REQUIRED.to_vec();
         pairs.push((ControlSettings::TUNNELS_VAR, "alice"));
         let err = format!("{:#}", RelaySettings::from_lookup(env(&pairs)).unwrap_err());
         assert!(err.contains(ControlSettings::TUNNELS_VAR), "{err}");
-    }
-
-    #[test]
-    fn tunnel_addrs_count_up_from_the_base_in_name_order() {
-        let mut pairs = REQUIRED.to_vec();
-        pairs.extend([
-            (ControlSettings::TUNNELS_VAR, "carol=t3,alice=t1,bob=t2"),
-            (ControlSettings::TUNNEL_PORT_BASE_VAR, "65534"),
-        ]);
-        let err = format!("{:#}", RelaySettings::from_lookup(env(&pairs)).unwrap_err());
-        assert!(err.contains(ControlSettings::TUNNEL_PORT_BASE_VAR), "{err}");
-
-        pairs.pop();
-        pairs.push((ControlSettings::TUNNEL_PORT_BASE_VAR, "65533"));
-        let control = RelaySettings::from_lookup(env(&pairs)).unwrap().control;
-        let addrs: Vec<_> = control
-            .tunnel_addrs()
-            .into_iter()
-            .map(|(name, addr)| format!("{name}={addr}"))
-            .collect();
-        assert_eq!(
-            addrs,
-            [
-                "alice=127.0.0.1:65533",
-                "bob=127.0.0.1:65534",
-                "carol=127.0.0.1:65535"
-            ]
-        );
     }
 
     #[test]
