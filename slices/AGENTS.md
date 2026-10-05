@@ -17,9 +17,9 @@ slices/<name>/
 └── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
 
-Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `wildflower-server`).
+Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `servers`, `wildflower-server`).
 
-Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `relay`, `request-log`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `relay`, `request-log`, `scopes`, `servers`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
 
 `http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
 
@@ -117,6 +117,13 @@ all without `tauri`; `background-server-service-tauri-rust` drives it from
 `background-server-service-core` is the bridge's TS schema; and
 `background-server-service-react` the banner and `/settings/server` page that
 render the host's status snapshot and restart the server.
+
+`servers` is the install's list of servers — see
+[servers/AGENTS.md](./servers/AGENTS.md). `servers-rust` holds a
+`ServerRecord` per server, identified by its domain
+(`<tunnel name>.<relay domain>`), in `<data root>/servers.json` behind the
+`ServerRegistry` port; the file is versioned, replaced atomically, and the
+only place a server's tunnel token is written in full.
 
 `smart-app` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
