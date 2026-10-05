@@ -1,7 +1,6 @@
 import { Context, Data, Effect, Layer, Option, Ref, Schema } from 'effect'
 
 import { subtle, type WebCryptoUnavailable } from '../signing/web-crypto.ts'
-import { indexedDbRecord, type IndexedDbUnavailable } from './indexed-db.ts'
 
 /** The fewest bytes the relay accepts in `WILDFLOWER_RELAY_ADMIN_KEY`. */
 const ADMIN_KEY_MIN_BYTES = 32
@@ -23,6 +22,15 @@ const AdminKeyText = Schema.Trim.pipe(
 
 /** The pasted text is not a usable admin key. */
 class AdminKeyRejected extends Data.TaggedError('AdminKeyRejected')<{
+  readonly reason: string
+}> {
+  override get message(): string {
+    return this.reason
+  }
+}
+
+/** The store the admin key lives in is missing or failed a read or write. */
+class AdminKeyStoreUnavailable extends Data.TaggedError('AdminKeyStoreUnavailable')<{
   readonly reason: string
 }> {
   override get message(): string {
@@ -56,34 +64,17 @@ const importAdminKey = (
 
 /**
  * Where the admin key lives between visits: the imported `CryptoKey`, never
- * the pasted text. Signing out clears it.
+ * the pasted text. Signing out clears it. The browser's store is IndexedDB
+ * (`relay-react`'s `adminKeyStoreIndexedDb`).
  */
 class AdminKeyStore extends Context.Tag('relay-core/AdminKeyStore')<
   AdminKeyStore,
   {
-    readonly load: Effect.Effect<Option.Option<CryptoKey>, IndexedDbUnavailable>
-    readonly save: (key: CryptoKey) => Effect.Effect<void, IndexedDbUnavailable>
-    readonly clear: Effect.Effect<void, IndexedDbUnavailable>
+    readonly load: Effect.Effect<Option.Option<CryptoKey>, AdminKeyStoreUnavailable>
+    readonly save: (key: CryptoKey) => Effect.Effect<void, AdminKeyStoreUnavailable>
+    readonly clear: Effect.Effect<void, AdminKeyStoreUnavailable>
   }
 >() {
-  /**
-   * The browser's store: one record in IndexedDB, which keeps a `CryptoKey`
-   * by structured clone, so a non-extractable key stays non-extractable.
-   */
-  static readonly layerIndexedDb: Layer.Layer<AdminKeyStore> = Layer.sync(AdminKeyStore, () => {
-    const record = indexedDbRecord<CryptoKey>({
-      database: 'relay-admin',
-      store: 'keys',
-      key: 'admin',
-      is: (value): value is CryptoKey => value instanceof CryptoKey,
-    })
-    return {
-      load: record.get,
-      save: record.put,
-      clear: record.delete,
-    }
-  })
-
   /** A store that lasts as long as the layer, for tests. */
   static readonly layerMemory: Layer.Layer<AdminKeyStore> = Layer.effect(
     AdminKeyStore,
@@ -99,6 +90,7 @@ export {
   ADMIN_KEY_MIN_BYTES,
   AdminKeyRejected,
   AdminKeyStore,
+  AdminKeyStoreUnavailable,
   AdminKeyText,
   importAdminKey,
   NoAdminKey,

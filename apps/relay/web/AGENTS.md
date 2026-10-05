@@ -16,7 +16,7 @@ the relay's Content Security Policy (below).
 
 - `main.tsx` — builds the runtime (`RelayAdminHttpApiClient` over
   `signingHttpClient(location.origin)` over `fetch`, with the key in
-  `AdminKeyStore.layerIndexedDb`) and mounts the screen.
+  `relay-react`'s `adminKeyStoreIndexedDb`) and mounts the screen.
 - `vite.config.ts` — `base: '/'` and `assetsInlineLimit: 0`.
 
 ## Using it

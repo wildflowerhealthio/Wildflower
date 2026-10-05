@@ -11,9 +11,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layer, ManagedRuntime } from 'effect'
 import { addOsColorSchemeListener } from 'react-tundraish'
 import { RelayAdminHttpApiClient } from 'relay-core/clients'
-import { AdminKeyStore } from 'relay-core/key-store'
 import { signingHttpClient } from 'relay-core/signing'
-import { RelayAdminProvider, RelayAdminScreen } from 'relay-react'
+import { adminKeyStoreIndexedDb, RelayAdminProvider, RelayAdminScreen } from 'relay-react'
 
 // Mirror the OS colour preference onto `data-color-scheme` so tundra's dark
 // palette (keyed off that attribute, not `prefers-color-scheme`) tracks the OS.
@@ -27,7 +26,7 @@ addOsColorSchemeListener()
 const runtime = ManagedRuntime.make(
   RelayAdminHttpApiClient.layer.pipe(
     Layer.provide(signingHttpClient(window.location.origin)),
-    Layer.provideMerge(AdminKeyStore.layerIndexedDb),
+    Layer.provideMerge(adminKeyStoreIndexedDb),
     Layer.provide(FetchHttpClient.layer)
   )
 )

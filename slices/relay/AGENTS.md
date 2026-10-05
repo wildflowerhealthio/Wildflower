@@ -26,11 +26,14 @@ page it serves at `https://admin.<domain>/` is
     sends it to the absolute URL it signed.
   - `relay-core/key-store`: `importAdminKey`, which turns the pasted
     `WILDFLOWER_RELAY_ADMIN_KEY` into a non-extractable HMAC SHA-256
-    `CryptoKey`, and `AdminKeyStore`, where that key lives: IndexedDB in the
-    browser (`layerIndexedDb`), memory in tests (`layerMemory`).
+    `CryptoKey`, and `AdminKeyStore`, the port that key lives behind, with an
+    in-memory layer for tests (`layerMemory`). No browser API: the core runs
+    on Web Crypto alone.
 - `relay-react` — the admin screen (`RelayAdminScreen`) under a
-  `RelayAdminProvider`, and the TanStack Query hooks it is built from. CSS
-  modules use BEM, the block named after the component's file.
+  `RelayAdminProvider`, the TanStack Query hooks it is built from, and the
+  browser's `AdminKeyStore`, one IndexedDB record
+  (`adminKeyStoreIndexedDb`). CSS modules use BEM, the block named after the
+  component's file.
 
 ## Rules
 

@@ -1,9 +1,7 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    // `DOM` for the browser APIs the key store and signer run on: IndexedDB and
-    // Web Crypto's `CryptoKey`. No module here touches the document.
-    "lib": ["es2024", "DOM"],
+    "lib": ["es2024"],
     "moduleDetection": "force",
     "module": "nodenext",
     "moduleResolution": "nodenext",
