@@ -28,9 +28,9 @@ const CreatedTunnelToken = ({ created, onDone }: CreatedTunnelTokenProps): JSX.E
   }
   return (
     <section className={styles['created-tunnel-token']} aria-labelledby={headingId}>
-      <h3 id={headingId} className="text-heading-3">
+      <h2 id={headingId} className="text-heading-3">
         Created {created.name}
-      </h3>
+      </h2>
       <p className="text-body-2">
         Visitors reach it at <code>https://{created.public_host}</code>. Its device signs in with
         this token:

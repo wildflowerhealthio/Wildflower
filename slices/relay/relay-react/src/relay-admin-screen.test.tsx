@@ -220,6 +220,8 @@ describe('RelayAdminScreen', () => {
 
     // Assert
     expect((await screen.findByLabelText('Token')).textContent).toBe('token-for-calm-otter')
+    // It takes the form's place, at the form's heading level.
+    expect(screen.getByRole('heading', { level: 2, name: 'Created calm-otter' })).toBeDefined()
     expect(screen.getByText(/won’t be shown again/)).toBeDefined()
     expect(relay.tunnels.get('calm-otter')?.email).toBe('carol@example.com')
     expect(await screen.findByText('calm-otter.relay.example.com')).toBeDefined()
