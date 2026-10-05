@@ -85,3 +85,6 @@ unsafe_code = "forbid"
 # `deny.toml` allows this git source.
 [patch.crates-io]
 tauri-plugin-background-service = { git = "https://github.com/wildflowerhealthio/tauri-background-service", branch = "fix/ios-background-grace-window" }
+# Our fork of `rathole` (wildflower/handoff), pinned to a commit while its
+# changes are reviewed upstream in wildflowerhealthio/rathole#1.
+rathole = { git = "https://github.com/wildflowerhealthio/rathole", rev = "2c678fb0cdd8cae0276d53b3a860f925b2590bc0" }

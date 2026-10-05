@@ -112,4 +112,7 @@ unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # Our fork of `tauri-plugin-background-service`, which the workspace's
 # `[patch.crates-io]` points at until upstream releases its fixes.
-allow-git = ["https://github.com/wildflowerhealthio/tauri-background-service"]
+allow-git = [
+  "https://github.com/wildflowerhealthio/rathole",
+  "https://github.com/wildflowerhealthio/tauri-background-service",
+]
