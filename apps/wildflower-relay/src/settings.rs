@@ -2,24 +2,22 @@
 //!
 //! Every setting comes from a `WILDFLOWER_RELAY_*` environment variable;
 //! `relay.example.env` lists them all. The environment is the only source:
-//! [`ControlSettings`] (the rathole side, including every tunnel and its
-//! token) is rendered into a fresh rathole TOML on each start (see
-//! [`crate::config`]), [`FrontSettings`] configures the TLS front, which
-//! rathole's file has no place for, and [`AcmeSettings`] how the relay's own
-//! site gets its certificate. [`RelaySettings::public_rathole_settings`] is
+//! [`ControlSettings`] (the rathole side) is built, with the stored tunnels,
+//! into rathole's server config on each start (see [`crate::config`]),
+//! [`FrontSettings`] configures the TLS front, which rathole's config has no
+//! place for, and [`AcmeSettings`] how the relay's own site gets its
+//! certificate. [`RelaySettings::public_rathole_settings`] is
 //! what the site serves at `GET /rathole`. The admin key signs requests as
-//! `keyid="admin"` (see [`crate::site::signature`]). The state directory
-//! holds only caches the relay can rebuild, such as that certificate and its
-//! ACME account.
+//! `keyid="admin"` (see [`crate::site::signature`]) and enables the admin
+//! API. The state directory holds that certificate and its ACME account,
+//! which the relay can rebuild, and the tunnels created through the admin
+//! API (see [`crate::db`]), which it cannot.
 //!
 //! | Variable | Default |
 //! |---|---|
-//! | `WILDFLOWER_RELAY_CONFIG` | `relay.toml` (where the rathole TOML is written; read by `main`) |
 //! | `WILDFLOWER_RELAY_CONTROL_ADDR` | `0.0.0.0:2333` |
 //! | `WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR` | `<domain>:<port of WILDFLOWER_RELAY_CONTROL_ADDR>` |
 //! | `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY` | required |
-//! | `WILDFLOWER_RELAY_TUNNELS` | none (`name=token,name=token`) |
-//! | `WILDFLOWER_RELAY_TUNNEL_PORT_BASE` | `5201` |
 //! | `WILDFLOWER_RELAY_DOMAIN` | required |
 //! | `WILDFLOWER_RELAY_HTTPS_ADDR` | `0.0.0.0:443` |
 //! | `WILDFLOWER_RELAY_HTTP_ADDR` | `0.0.0.0:80` |
@@ -28,10 +26,10 @@
 //! | `WILDFLOWER_RELAY_STATE_DIR` | `relay-state` (the systemd unit sets `/var/lib/wildflower-relay`) |
 //! | `WILDFLOWER_RELAY_ACME_STAGING` | `false` |
 //! | `WILDFLOWER_RELAY_ACME_CONTACT` | none (a `mailto:` address) |
-//! | `WILDFLOWER_RELAY_ADMIN_KEY` | none (no request can sign as `admin`) |
+//! | `WILDFLOWER_RELAY_ADMIN_KEY` | none (the admin API is not served, so no tunnel can be created) |
 
 use std::fmt::{self, Debug, Display};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -43,7 +41,7 @@ use curve25519_dalek::MontgomeryPoint;
 use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport};
 
 use crate::front::Limits;
-use crate::route::is_dns_label;
+use crate::route::{is_dns_label, tunnel_name_for_host};
 use crate::site::signature::ADMIN_KEY_ID;
 
 /// A secret read from the environment. `Debug` never prints it, so settings
@@ -75,10 +73,11 @@ pub struct RelaySettings {
     pub control: ControlSettings,
     pub front: FrontSettings,
     pub acme: AcmeSettings,
-    /// Where the relay keeps its caches, e.g. the site's certificate.
+    /// Where the relay keeps its state: the site's certificate and the
+    /// tunnel store.
     pub state_dir: PathBuf,
     /// The key for requests signed with `keyid="admin"`. `None` means no
-    /// request can sign as admin.
+    /// request can sign as admin, and the admin API is not served.
     pub admin_key: Option<Secret>,
 }
 
@@ -114,9 +113,10 @@ impl RelaySettings {
                 Self::ADMIN_KEY_MIN_LEN
             );
         }
+        let front = FrontSettings::from_lookup(&lookup)?;
         Ok(Self {
             control: ControlSettings::from_lookup(&lookup)?,
-            front: FrontSettings::from_lookup(&lookup)?,
+            front,
             acme: AcmeSettings::from_lookup(&lookup)?,
             state_dir: parsed(&lookup, Self::STATE_DIR_VAR, PathBuf::from("relay-state"))?,
             admin_key,
@@ -142,7 +142,7 @@ impl RelaySettings {
     }
 }
 
-/// The rathole keys the relay owns and writes into the TOML.
+/// The rathole keys the relay owns and builds into rathole's config.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ControlSettings {
     /// `[server] bind_addr`: where devices' rathole clients connect.
@@ -155,20 +155,6 @@ pub struct ControlSettings {
     /// The X25519 public key of [`Self::noise_private_key`], base64: the
     /// `remote_public_key` of every device's rathole client.
     pub noise_public_key: String,
-    /// Every tunnel, sorted by name. Each becomes the rathole service
-    /// `[server.services.<name>]`.
-    pub tunnels: Vec<Tunnel>,
-    /// Loopback port of the first tunnel; the rest follow in name order.
-    pub tunnel_port_base: u16,
-}
-
-/// One `name=token` entry of `WILDFLOWER_RELAY_TUNNELS`: a device's tunnel.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Tunnel {
-    /// The tunnel name: the device's subdomain and its rathole service name.
-    pub name: String,
-    /// The tunnel's own rathole token.
-    pub token: Secret,
 }
 
 impl ControlSettings {
@@ -180,27 +166,13 @@ impl ControlSettings {
     pub const CONTROL_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_CONTROL_ADDR";
     pub const PUBLIC_CONTROL_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_PUBLIC_CONTROL_ADDR";
     pub const NOISE_PRIVATE_KEY_VAR: &'static str = "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY";
-    pub const TUNNELS_VAR: &'static str = "WILDFLOWER_RELAY_TUNNELS";
-    pub const TUNNEL_PORT_BASE_VAR: &'static str = "WILDFLOWER_RELAY_TUNNEL_PORT_BASE";
 
     /// # Errors
     ///
     /// Returns an error naming the variable if the private key is unset,
-    /// empty or not a base64 X25519 key, a tunnel entry is malformed, or a
-    /// number or address does not parse.
+    /// empty or not a base64 X25519 key, or a number or address does not
+    /// parse.
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
-        let tunnels = lookup(Self::TUNNELS_VAR)
-            .map(|raw| parse_tunnels(&Secret(raw)))
-            .transpose()
-            .with_context(|| format!("{} is invalid", Self::TUNNELS_VAR))?
-            .unwrap_or_default();
-        let tunnel_port_base = parsed(&lookup, Self::TUNNEL_PORT_BASE_VAR, 5201)?;
-        anyhow::ensure!(
-            usize::from(tunnel_port_base) + tunnels.len() <= usize::from(u16::MAX) + 1,
-            "{} = {tunnel_port_base} leaves no port for each of the {} tunnels",
-            Self::TUNNEL_PORT_BASE_VAR,
-            tunnels.len()
-        );
         let public_control_addr = lookup(Self::PUBLIC_CONTROL_ADDR_VAR)
             .map(|value| value.trim().to_owned())
             .filter(|value| !value.is_empty())
@@ -226,24 +198,7 @@ impl ControlSettings {
             public_control_addr,
             noise_private_key,
             noise_public_key,
-            tunnels,
-            tunnel_port_base,
         })
-    }
-
-    /// Each tunnel's name and the loopback address rathole binds for it:
-    /// `127.0.0.1:<base + i>` for the `i`th tunnel in name order.
-    #[must_use]
-    pub fn tunnel_addrs(&self) -> Vec<(String, SocketAddr)> {
-        (self.tunnel_port_base..=u16::MAX)
-            .zip(&self.tunnels)
-            .map(|(port, tunnel)| {
-                (
-                    tunnel.name.clone(),
-                    SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
-                )
-            })
-            .collect()
     }
 }
 
@@ -280,49 +235,6 @@ fn parse_public_addr(raw: &str) -> anyhow::Result<String> {
     Ok(addr)
 }
 
-/// Parse `name=token,name=token` (whitespace trimmed, blank entries
-/// ignored) into tunnels sorted by name. `admin` is reserved: it is the
-/// `keyid` of the admin key. Errors name the entry by position
-/// and tunnel name, never the token.
-fn parse_tunnels(raw: &Secret) -> anyhow::Result<Vec<Tunnel>> {
-    let mut tunnels: Vec<Tunnel> = Vec::new();
-    for (index, entry) in raw
-        .expose()
-        .split(',')
-        .map(str::trim)
-        .filter(|entry| !entry.is_empty())
-        .enumerate()
-    {
-        let position = index + 1;
-        let (name, token) = entry
-            .split_once('=')
-            .with_context(|| format!("entry {position} is not `name=token`"))?;
-        let (name, token) = (name.trim(), token.trim());
-        anyhow::ensure!(
-            is_dns_label(name),
-            "entry {position}: tunnel name {name:?} is not a lowercase DNS label"
-        );
-        anyhow::ensure!(
-            name != ADMIN_KEY_ID,
-            "entry {position}: tunnel name {name:?} is reserved"
-        );
-        anyhow::ensure!(
-            !token.is_empty(),
-            "entry {position}: tunnel name {name:?} has an empty token"
-        );
-        anyhow::ensure!(
-            tunnels.iter().all(|s| s.name != name),
-            "entry {position}: tunnel name {name:?} is listed twice"
-        );
-        tunnels.push(Tunnel {
-            name: name.to_owned(),
-            token: Secret::new(token),
-        });
-    }
-    tunnels.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(tunnels)
-}
-
 /// The front's own settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrontSettings {
@@ -339,6 +251,8 @@ impl FrontSettings {
     pub const HTTP_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_HTTP_ADDR";
     pub const MAX_CONNECTIONS_VAR: &'static str = "WILDFLOWER_RELAY_MAX_CONNECTIONS";
     pub const HELLO_TIMEOUT_VAR: &'static str = "WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS";
+    /// The label of the admin API's hostname, `admin.<domain>`.
+    pub const ADMIN_LABEL: &'static str = "admin";
 
     /// Only the domain is required; everything else has a default.
     ///
@@ -374,10 +288,34 @@ impl FrontSettings {
     }
 
     /// The hostnames the relay serves itself rather than routing to a
-    /// tunnel, and orders its certificate for: the domain itself.
+    /// tunnel, and orders its certificate for: the domain itself and the
+    /// admin API's [`Self::admin_hostname`].
     #[must_use]
     pub fn local_hostnames(&self) -> Vec<String> {
-        vec![self.domain.clone()]
+        vec![self.domain.clone(), self.admin_hostname()]
+    }
+
+    /// `<name>.<domain>`, where the tunnel named `name` is served.
+    #[must_use]
+    pub fn public_host(&self, name: &str) -> String {
+        format!("{name}.{}", self.domain)
+    }
+
+    /// `admin.<domain>`, the only hostname the admin API is served on.
+    #[must_use]
+    pub fn admin_hostname(&self) -> String {
+        format!("{}.{}", Self::ADMIN_LABEL, self.domain)
+    }
+
+    /// Whether `name` can't be a tunnel name: it is the admin key's `keyid`
+    /// ([`ADMIN_KEY_ID`]) or the label of a local hostname under the domain,
+    /// whose hostname the relay serves itself. The admin API checks it.
+    #[must_use]
+    pub fn is_reserved(&self, name: &str) -> bool {
+        name == ADMIN_KEY_ID
+            || self.local_hostnames().iter().any(|hostname| {
+                tunnel_name_for_host(hostname, &self.domain).as_deref() == Some(name)
+            })
     }
 }
 
@@ -480,8 +418,6 @@ mod tests {
                     public_control_addr: None,
                     noise_private_key: Secret::new(GENKEY_PRIVATE_KEY),
                     noise_public_key: GENKEY_PUBLIC_KEY.to_owned(),
-                    tunnels: Vec::new(),
-                    tunnel_port_base: 5201,
                 },
                 front: FrontSettings {
                     domain: "relay.example.com".to_owned(),
@@ -497,7 +433,10 @@ mod tests {
                 admin_key: None,
             }
         );
-        assert_eq!(settings.front.local_hostnames(), ["relay.example.com"]);
+        assert_eq!(
+            settings.front.local_hostnames(),
+            ["relay.example.com", "admin.relay.example.com"]
+        );
     }
 
     #[test]
@@ -596,97 +535,15 @@ mod tests {
         assert_eq!(settings.acme.contact, None);
     }
 
-    fn tunnels(raw: &str) -> anyhow::Result<Vec<(String, String)>> {
-        parse_tunnels(&Secret::new(raw)).map(|tunnels| {
-            tunnels
-                .into_iter()
-                .map(|s| (s.name, s.token.expose().to_owned()))
-                .collect()
-        })
-    }
-
+    /// `admin` is both the admin key's `keyid` and the label of
+    /// `admin.<domain>`; the domain itself has no label to reserve.
     #[test]
-    fn tunnels_parse_trimmed_and_sorted_by_name() {
-        assert_eq!(
-            tunnels(" bob = tok2 ,alice=tok1,, ").unwrap(),
-            [
-                ("alice".to_owned(), "tok1".to_owned()),
-                ("bob".to_owned(), "tok2".to_owned()),
-            ]
-        );
-        assert!(tunnels("").unwrap().is_empty());
-        assert!(tunnels(" , ").unwrap().is_empty());
-        // Only the first `=` splits; a token may contain more.
-        assert_eq!(tunnels("a=b=c").unwrap()[0].1, "b=c");
-    }
-
-    #[test]
-    fn bad_tunnel_entries_are_named_without_their_token() {
-        for (raw, expected) in [
-            ("alice=tok1,secret-without-name", "entry 2 is not"),
-            (
-                "Alice=secret-token",
-                "\"Alice\" is not a lowercase DNS label",
-            ),
-            ("a.b=secret-token", "\"a.b\" is not a lowercase DNS label"),
-            ("=secret-token", "\"\" is not a lowercase DNS label"),
-            ("alice=  ", "\"alice\" has an empty token"),
-            ("admin=secret-token", "\"admin\" is reserved"),
-            (
-                "alice=secret-token,alice=secret-token2",
-                "entry 2: tunnel name \"alice\" is listed twice",
-            ),
-        ] {
-            let err = format!("{:#}", tunnels(raw).unwrap_err());
-            assert!(err.contains(expected), "{raw:?}: {err}");
-            assert!(!err.contains("secret"), "{raw:?}: {err}");
+    fn reserved_names_are_the_admin_key_id_and_local_hostname_labels() {
+        let front = FrontSettings::from_lookup(env(&REQUIRED)).unwrap();
+        assert!(front.is_reserved("admin"));
+        for name in ["relay", "example", "relay-example-com", "alice", ""] {
+            assert!(!front.is_reserved(name), "{name:?}");
         }
-    }
-
-    #[test]
-    fn tunnels_and_port_base_come_from_the_environment() {
-        let mut pairs = REQUIRED.to_vec();
-        pairs.extend([
-            (ControlSettings::TUNNELS_VAR, "bob=tok2,alice=tok1"),
-            (ControlSettings::TUNNEL_PORT_BASE_VAR, "6000"),
-        ]);
-        let control = RelaySettings::from_lookup(env(&pairs)).unwrap().control;
-        let names: Vec<_> = control.tunnels.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, ["alice", "bob"]);
-        assert_eq!(control.tunnel_port_base, 6000);
-
-        let mut pairs = REQUIRED.to_vec();
-        pairs.push((ControlSettings::TUNNELS_VAR, "alice"));
-        let err = format!("{:#}", RelaySettings::from_lookup(env(&pairs)).unwrap_err());
-        assert!(err.contains(ControlSettings::TUNNELS_VAR), "{err}");
-    }
-
-    #[test]
-    fn tunnel_addrs_count_up_from_the_base_in_name_order() {
-        let mut pairs = REQUIRED.to_vec();
-        pairs.extend([
-            (ControlSettings::TUNNELS_VAR, "carol=t3,alice=t1,bob=t2"),
-            (ControlSettings::TUNNEL_PORT_BASE_VAR, "65534"),
-        ]);
-        let err = format!("{:#}", RelaySettings::from_lookup(env(&pairs)).unwrap_err());
-        assert!(err.contains(ControlSettings::TUNNEL_PORT_BASE_VAR), "{err}");
-
-        pairs.pop();
-        pairs.push((ControlSettings::TUNNEL_PORT_BASE_VAR, "65533"));
-        let control = RelaySettings::from_lookup(env(&pairs)).unwrap().control;
-        let addrs: Vec<_> = control
-            .tunnel_addrs()
-            .into_iter()
-            .map(|(name, addr)| format!("{name}={addr}"))
-            .collect();
-        assert_eq!(
-            addrs,
-            [
-                "alice=127.0.0.1:65533",
-                "bob=127.0.0.1:65534",
-                "carol=127.0.0.1:65535"
-            ]
-        );
     }
 
     #[test]
@@ -715,14 +572,12 @@ mod tests {
     #[test]
     fn debug_output_never_contains_secrets() {
         let mut pairs = REQUIRED.to_vec();
-        pairs.push((ControlSettings::TUNNELS_VAR, "alice=tunnel-token"));
         pairs.push((
             RelaySettings::ADMIN_KEY_VAR,
             "the-admin-key-of-thirty-two-byte",
         ));
         let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
         let debug = format!("{settings:?}");
-        assert!(!debug.contains("tunnel-token"), "{debug}");
         assert!(!debug.contains("the-admin-key"), "{debug}");
         assert!(!debug.contains(GENKEY_PRIVATE_KEY), "{debug}");
     }

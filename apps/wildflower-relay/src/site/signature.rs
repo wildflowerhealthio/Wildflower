@@ -46,7 +46,8 @@ use hmac::{Hmac, Mac};
 use sfv::{BareItem, Dictionary, FieldType, InnerList, ListEntry, Parser};
 use sha2::{Digest, Sha256};
 
-use crate::settings::{Secret, Tunnel};
+use crate::served::ServedTunnels;
+use crate::settings::Secret;
 
 /// The `keyid` signed with `WILDFLOWER_RELAY_ADMIN_KEY`; no tunnel may take
 /// this name.
@@ -81,11 +82,14 @@ pub enum SignedBy {
     Admin,
 }
 
-/// Checks signatures against the tunnels' tokens and the admin key, and
-/// remembers the nonces of the requests it has accepted.
+/// Checks signatures against the served tunnels' tokens and the admin key,
+/// and remembers the nonces of the requests it has accepted. The tunnels
+/// that can sign are the [`ServedTunnels`] it shares with the front's
+/// router; [`Verifier::forget`] drops a removed tunnel's nonces.
 pub struct Verifier {
-    /// `keyid` → key.
-    keys: HashMap<String, Secret>,
+    tunnels: Arc<ServedTunnels>,
+    /// Signs for [`ADMIN_KEY_ID`], when set.
+    admin_key: Option<Secret>,
     /// `keyid` → accepted nonce → the unix time after which its `created`
     /// is stale.
     nonces: Mutex<HashMap<String, HashMap<String, i64>>>,
@@ -98,18 +102,33 @@ impl std::fmt::Debug for Verifier {
 }
 
 impl Verifier {
-    /// Each tunnel's token signs for its name; `admin_key`, when set, signs
-    /// for [`ADMIN_KEY_ID`].
+    /// Each of `tunnels`' tokens signs for its name; `admin_key`, when set,
+    /// signs for [`ADMIN_KEY_ID`].
     #[must_use]
-    pub fn new(tunnels: &[Tunnel], admin_key: Option<Secret>) -> Self {
-        let keys = tunnels
-            .iter()
-            .map(|tunnel| (tunnel.name.clone(), tunnel.token.clone()))
-            .chain(admin_key.map(|key| (ADMIN_KEY_ID.to_owned(), key)))
-            .collect();
+    pub fn new(tunnels: Arc<ServedTunnels>, admin_key: Option<Secret>) -> Self {
         Self {
-            keys,
+            tunnels,
+            admin_key,
             nonces: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Forget the nonces of the tunnel named `name`, once it has been
+    /// removed from the served tunnels. The other signers keep theirs.
+    pub fn forget(&self, name: &str) {
+        self.nonces
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(name);
+    }
+
+    /// The key that signs for `keyid`, if any. No tunnel may be named
+    /// [`ADMIN_KEY_ID`].
+    fn key(&self, keyid: &str) -> Option<Secret> {
+        if keyid == ADMIN_KEY_ID {
+            self.admin_key.clone()
+        } else {
+            self.tunnels.token(keyid)
         }
     }
 
@@ -157,7 +176,7 @@ impl Verifier {
         if !body.is_empty() && !covers("content-digest") {
             return Err("the body is not covered by content-digest");
         }
-        let key = self.keys.get(keyid).ok_or("unknown keyid")?;
+        let key = self.key(keyid).ok_or("unknown keyid")?;
         let base = signature_base(parts, &signature.input).ok_or("components unavailable")?;
         if !mac_is_valid(key.expose().as_bytes(), &base, &signature.mac)? {
             return Err("MAC mismatch");
@@ -165,7 +184,7 @@ impl Verifier {
         if covers("content-digest") && !content_digest_matches(&parts.headers, body) {
             return Err("content-digest does not match the body");
         }
-        self.remember_nonce(keyid, nonce, created + CLOCK_SKEW_SECS, now)?;
+        self.remember_nonce(keyid, &key, nonce, created + CLOCK_SKEW_SECS, now)?;
         Ok(if keyid == ADMIN_KEY_ID {
             SignedBy::Admin
         } else {
@@ -174,17 +193,25 @@ impl Verifier {
     }
 
     /// Record `keyid`'s `nonce` until `stale_after`, refusing one already
-    /// recorded. When that key's set is full, its expired nonces are dropped
+    /// recorded, or any for a request checked with a `key` that no longer
+    /// signs for `keyid`: its tunnel was removed since, even if one was
+    /// created again under the same name. Checking that under the nonce
+    /// lock means a tunnel removed and then [forgotten](Self::forget) keeps
+    /// no nonce. When that key's set is full, its expired nonces are dropped
     /// first; if it is still full, the request is refused.
     fn remember_nonce(
         &self,
         keyid: &str,
+        key: &Secret,
         nonce: &str,
         stale_after: i64,
         now: i64,
     ) -> Result<(), &'static str> {
         // A poisoned lock only means a holder panicked; the map is whole.
         let mut nonces = self.nonces.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.key(keyid).as_ref() != Some(key) {
+            return Err("unknown keyid");
+        }
         let nonces = nonces.entry(keyid.to_owned()).or_default();
         if nonces.get(nonce).is_some_and(|&until| until >= now) {
             return Err("replayed nonce");
@@ -236,7 +263,7 @@ pub async fn require_signature(
 /// # Errors
 ///
 /// Returns an error if the clock reads before the epoch or past `i64`.
-pub(super) fn unix_now() -> anyhow::Result<i64> {
+pub(crate) fn unix_now() -> anyhow::Result<i64> {
     let elapsed = SystemTime::now().duration_since(UNIX_EPOCH)?;
     Ok(i64::try_from(elapsed.as_secs())?)
 }
@@ -350,8 +377,9 @@ fn field_value(headers: &HeaderMap, name: &str) -> Option<String> {
 }
 
 /// The request's authority: `Host` (or an absolute-form target's
-/// authority), lowercased, without the default `:443`.
-fn authority(parts: &Parts) -> Option<String> {
+/// authority), lowercased, without the default `:443`. It is the authority
+/// of `@target-uri`.
+pub(super) fn authority(parts: &Parts) -> Option<String> {
     let host = match parts.uri.authority() {
         Some(authority) => authority.as_str(),
         None => parts.headers.get(header::HOST)?.to_str().ok()?,
@@ -420,6 +448,7 @@ pub(crate) mod tests {
     use base64::Engine;
 
     use super::*;
+    use crate::domain::Tunnel;
 
     /// A signed request for `method` `uri` (with its `Host` taken from the
     /// URI) carrying `body`, signed as `keyid` with `key` at `created`. The
@@ -467,13 +496,20 @@ pub(crate) mod tests {
     const URI: &str = "https://relay.example.com/me";
 
     fn verifier() -> Verifier {
+        let alice = Tunnel {
+            name: "alice".to_owned(),
+            token: Secret::new("alice-token"),
+        };
         Verifier::new(
-            &[Tunnel {
-                name: "alice".to_owned(),
-                token: Secret::new("alice-token"),
-            }],
+            Arc::new(ServedTunnels::new(&[alice])),
             Some(Secret::new("admin-key")),
         )
+    }
+
+    /// Stop serving the tunnel `name`, as the registry does on a delete.
+    fn remove(verifier: &Verifier, name: &str) {
+        verifier.tunnels.remove(name);
+        verifier.forget(name);
     }
 
     async fn verify_at(
@@ -558,7 +594,7 @@ pub(crate) mod tests {
             assert!(verify(&verifier, request).await.is_err(), "{keyid}");
         }
         // Without an admin key, `admin` signs nothing.
-        let no_admin = Verifier::new(&[], None);
+        let no_admin = Verifier::new(Arc::default(), None);
         let request = signed_request("GET", URI, b"", "admin", "", NOW, "n");
         assert!(verify(&no_admin, request).await.is_err());
     }
@@ -593,25 +629,110 @@ pub(crate) mod tests {
     #[test]
     fn each_keys_nonce_set_is_bounded_and_drops_expired_nonces_when_full() {
         let verifier = verifier();
+        let alice = Secret::new("alice-token");
         for i in 0..MAX_NONCES_PER_KEY {
             verifier
-                .remember_nonce("alice", &i.to_string(), NOW + CLOCK_SKEW_SECS, NOW)
+                .remember_nonce("alice", &alice, &i.to_string(), NOW + CLOCK_SKEW_SECS, NOW)
                 .unwrap();
         }
         assert_eq!(
-            verifier.remember_nonce("alice", "one more", NOW + CLOCK_SKEW_SECS, NOW),
+            verifier.remember_nonce("alice", &alice, "one more", NOW + CLOCK_SKEW_SECS, NOW),
             Err("nonce set is full")
         );
         // One signer filling its set does not lock out another, and nonces
         // are per key.
         verifier
-            .remember_nonce("admin", "0", NOW + CLOCK_SKEW_SECS, NOW)
+            .remember_nonce(
+                "admin",
+                &Secret::new("admin-key"),
+                "0",
+                NOW + CLOCK_SKEW_SECS,
+                NOW,
+            )
             .unwrap();
         let later = NOW + CLOCK_SKEW_SECS + 1;
         verifier
-            .remember_nonce("alice", "one more", later + CLOCK_SKEW_SECS, later)
+            .remember_nonce("alice", &alice, "one more", later + CLOCK_SKEW_SECS, later)
             .unwrap();
         assert_eq!(verifier.nonces.lock().unwrap()["alice"].len(), 1);
+    }
+
+    #[tokio::test]
+    async fn served_tunnels_change_the_signers_and_forgetting_keeps_the_others_nonces() {
+        let verifier = verifier();
+        for (keyid, key, nonce) in [("alice", "alice-token", "a1"), ("admin", "admin-key", "m1")] {
+            let request = signed_request("GET", URI, b"", keyid, key, NOW, nonce);
+            assert!(verify(&verifier, request).await.is_ok(), "{keyid}");
+        }
+
+        verifier.tunnels.insert(&Tunnel {
+            name: "bob".to_owned(),
+            token: Secret::new("bob-token"),
+        });
+        let bob = signed_request("GET", URI, b"", "bob", "bob-token", NOW, "b1");
+        assert_eq!(
+            verify(&verifier, bob).await,
+            Ok(SignedBy::Tunnel("bob".to_owned()))
+        );
+        remove(&verifier, "alice");
+        let alice = signed_request("GET", URI, b"", "alice", "alice-token", NOW, "a2");
+        assert_eq!(verify(&verifier, alice).await, Err("unknown keyid"));
+        // The remaining signers keep their nonce sets.
+        for (keyid, key, nonce) in [("admin", "admin-key", "m1"), ("bob", "bob-token", "b1")] {
+            let replayed = signed_request("GET", URI, b"", keyid, key, NOW, nonce);
+            assert_eq!(verify(&verifier, replayed).await, Err("replayed nonce"));
+        }
+        let nonces = verifier.nonces.lock().unwrap();
+        assert!(
+            !nonces.contains_key("alice"),
+            "a removed tunnel's nonces go"
+        );
+        assert!(nonces.contains_key("admin"));
+    }
+
+    /// A request checked against the old keys cannot record a nonce for a
+    /// signer removed before it got that far.
+    #[test]
+    fn a_removed_signer_records_no_nonce() {
+        let verifier = verifier();
+        let alice = Secret::new("alice-token");
+        remove(&verifier, "alice");
+        assert_eq!(
+            verifier.remember_nonce("alice", &alice, "n", NOW + CLOCK_SKEW_SECS, NOW),
+            Err("unknown keyid")
+        );
+        assert!(verifier.nonces.lock().unwrap().is_empty());
+    }
+
+    /// Nor can it for a signer deleted and created again under the same
+    /// name with a new key: the old key no longer signs as that name.
+    #[test]
+    fn a_signer_created_again_under_the_same_name_records_no_nonce_for_the_old_key() {
+        let verifier = verifier();
+        remove(&verifier, "alice");
+        verifier.tunnels.insert(&Tunnel {
+            name: "alice".to_owned(),
+            token: Secret::new("alice-new-token"),
+        });
+        assert_eq!(
+            verifier.remember_nonce(
+                "alice",
+                &Secret::new("alice-token"),
+                "n",
+                NOW + CLOCK_SKEW_SECS,
+                NOW
+            ),
+            Err("unknown keyid")
+        );
+        verifier
+            .remember_nonce(
+                "alice",
+                &Secret::new("alice-new-token"),
+                "n",
+                NOW + CLOCK_SKEW_SECS,
+                NOW,
+            )
+            .unwrap();
     }
 
     #[tokio::test]

@@ -10,10 +10,12 @@
 //! as the handshake completes.
 //!
 //! - `routes`: the axum router.
+//! - `admin`: the admin API on `admin.<domain>`.
 //! - `acme`: ordering and renewing the certificate.
 //! - `signature`: verifying signed requests (RFC 9421).
 
 pub mod acme;
+mod admin;
 mod routes;
 pub mod signature;
 
@@ -30,6 +32,7 @@ use tokio::sync::broadcast;
 use tokio_rustls::TlsAcceptor;
 
 use self::signature::Verifier;
+use crate::live_bindings::state::TunnelRegistry;
 
 /// The ALPN protocol of a TLS-ALPN-01 validation handshake (RFC 8737).
 const ACME_TLS_ALPN: &[u8] = b"acme-tls/1";
@@ -49,7 +52,8 @@ impl std::fmt::Debug for Site {
 impl Site {
     /// A site whose certificates come from `cert_resolver`, normally
     /// the resolver of [`acme::state`], serving `rathole_settings` at
-    /// `GET /rathole` and checking signed requests with `verifier`.
+    /// `GET /rathole` and checking signed requests with `verifier`. With
+    /// `admin`, it serves the admin API, which changes tunnels through it.
     ///
     /// # Panics
     ///
@@ -59,7 +63,8 @@ impl Site {
     pub fn new(
         cert_resolver: Arc<dyn ResolvesServerCert>,
         rathole_settings: PublicRatholeSettings,
-        verifier: Verifier,
+        verifier: Arc<Verifier>,
+        admin: Option<Arc<TunnelRegistry>>,
     ) -> Self {
         let mut config =
             ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
@@ -72,7 +77,7 @@ impl Site {
         config.alpn_protocols = vec![b"http/1.1".to_vec(), ACME_TLS_ALPN.to_vec()];
         Self {
             tls: TlsAcceptor::from(Arc::new(config)),
-            router: routes::router(rathole_settings, verifier),
+            router: routes::router(rathole_settings, verifier, admin),
         }
     }
 
@@ -156,7 +161,8 @@ mod tests {
                 public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
                 domain: "relay.example.com".to_owned(),
             },
-            Verifier::new(&[], None),
+            Arc::new(Verifier::new(Arc::default(), None)),
+            None,
         );
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (_shutdown_tx, shutdown_rx) = broadcast::channel(1);
