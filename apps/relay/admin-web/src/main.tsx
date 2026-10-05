@@ -19,15 +19,23 @@ import { adminKeyStoreIndexedDb, RelayAdminProvider, RelayAdminScreen } from 're
 addOsColorSchemeListener()
 
 /**
- * The admin API client over `fetch`, every request signed with the admin key
- * in IndexedDB. The page is served by the relay on `admin.<domain>`, so the
- * API is this page's own origin.
+ * `fetch`, with every admin request signed here: `signingHttpClient` signs
+ * each request with the admin key in IndexedDB before `fetch` sends it. The
+ * page is served by the relay on `admin.<domain>`, so the API is this page's
+ * own origin.
+ */
+const signedFetch = signingHttpClient(window.location.origin).pipe(
+  Layer.provide(Layer.merge(FetchHttpClient.layer, adminKeyStoreIndexedDb))
+)
+
+/**
+ * The admin API client over `signedFetch`, and the key store itself, which
+ * the screen saves the pasted key to and clears on Sign out.
  */
 const runtime = ManagedRuntime.make(
-  RelayAdminHttpApiClient.layer.pipe(
-    Layer.provide(signingHttpClient(window.location.origin)),
-    Layer.provideMerge(adminKeyStoreIndexedDb),
-    Layer.provide(FetchHttpClient.layer)
+  Layer.merge(
+    RelayAdminHttpApiClient.layer.pipe(Layer.provide(signedFetch)),
+    adminKeyStoreIndexedDb
   )
 )
 
