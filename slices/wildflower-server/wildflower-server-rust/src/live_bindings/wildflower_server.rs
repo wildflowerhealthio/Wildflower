@@ -1,10 +1,9 @@
 //! The server's composition: [`set_up`] opens the host's databases, sets up
 //! every server slice, joins them through [`crate::adapters`], wraps them in
-//! the [`crate::http`] layers and binds the loopback port and the tunnel
+//! the [`crate::http`] layers, binds the loopback port and opens the tunnel
 //! listener; [`WildflowerServer`] serves the result on both.
 
 use std::future::IntoFuture;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -16,9 +15,9 @@ use gatekeeper_rust::{
     GatekeeperConfig,
 };
 use tokio::net::TcpListener;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
-use tunnel_rust::TunnelLiveness;
+use tunnel_rust::{TunnelConnection, TunnelLiveness};
 
 use super::hfs_base_url;
 use super::make_service::MakeServiceWithListenerIdentity;
@@ -42,25 +41,29 @@ use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 const HEALTH_DATA_DB: &str = "health-data.sqlite";
 const WILDFLOWER_DB: &str = "wildflower.sqlite";
 
-/// A composed server bound to the loopback port and the tunnel listener, ready
-/// to [`serve`](Self::serve).
+/// How many tunnel connections the rathole client may hand over before the
+/// tunnel listener takes them. Past this, the client waits.
+const TUNNEL_CONNECTION_BACKLOG: usize = 64;
+
+/// A composed server bound to the loopback port, with the tunnel listener's
+/// connections, ready to [`serve`](Self::serve).
 pub struct WildflowerServer {
     /// The loopback API port local clients use.
     local_listener: TcpListener,
-    /// The loopback port rathole forwards each tunnel connection to.
-    tunnel_listener: TcpListener,
+    /// The connections the rathole client hands the tunnel listener.
+    tunnel_connections: mpsc::Receiver<TunnelConnection>,
+    /// Where the tunnel slice hands those connections, kept for
+    /// [`tunnel_connection_sender`](Self::tunnel_connection_sender).
+    tunnel_connection_sender: mpsc::Sender<TunnelConnection>,
     router: Router,
 }
 
 impl WildflowerServer {
-    /// The address of the tunnel listener, the `127.0.0.1` port rathole
-    /// forwards each tunnel connection to.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the listener's address can't be read.
-    pub fn tunnel_listener_addr(&self) -> std::io::Result<SocketAddr> {
-        self.tunnel_listener.local_addr()
+    /// A sender onto the tunnel listener, as the tunnel slice holds: each
+    /// connection sent is served as one arriving through the tunnel.
+    #[must_use]
+    pub fn tunnel_connection_sender(&self) -> mpsc::Sender<TunnelConnection> {
+        self.tunnel_connection_sender.clone()
     }
 
     /// Serve the composed API on the bound loopback port and the tunnel
@@ -76,13 +79,12 @@ impl WildflowerServer {
     /// Both listeners serve the one router. Each connection's requests carry
     /// the [`ListenerIdentity`](crate::http::listener_identity::ListenerIdentity)
     /// of the listener it arrived on, so the layers can hold a tunnel
-    /// connection to the tunnel's public host and never trust it as local,
-    /// though its peer is the rathole client on loopback.
+    /// connection to the tunnel's public host and never trust it as local.
     pub async fn serve(self, shutdown: CancellationToken) -> anyhow::Result<()> {
         let make_service = MakeServiceWithListenerIdentity::new(self.router);
         let local = axum::serve(self.local_listener, make_service.clone())
             .with_graceful_shutdown(shutdown.clone().cancelled_owned());
-        let tunnel = axum::serve(TunnelListener::new(self.tunnel_listener)?, make_service)
+        let tunnel = axum::serve(TunnelListener::new(self.tunnel_connections), make_service)
             .with_graceful_shutdown(shutdown.cancelled_owned());
         tokio::try_join!(local.into_future(), tunnel.into_future())?;
         Ok(())
@@ -90,7 +92,7 @@ impl WildflowerServer {
 }
 
 /// Set up every server slice over the host's databases and bind the API to the
-/// loopback port and the tunnel listener, ready to
+/// loopback port, with the tunnel listener's connections, ready to
 /// [`serve`](WildflowerServer::serve).
 ///
 /// `config` is what the host derived at build time or from its paths; `host`
@@ -100,7 +102,7 @@ impl WildflowerServer {
 /// # Errors
 ///
 /// Returns an error if a scheduled database deletion can't be applied, a
-/// database or store can't be opened, either loopback port can't be bound, a
+/// database or store can't be opened, the loopback port can't be bound, a
 /// slice's setup fails, or the tunnel's stored public host can't be FHIR's base
 /// URL.
 ///
@@ -181,18 +183,10 @@ pub async fn set_up(
     let local_listener = TcpListener::bind(&loopback_host)
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
-    // The tunnel listener, on a port of its own so a tunnel connection is told
-    // from a local one by where it arrived (its peer is the rathole client, on
-    // loopback too). Bound before the tunnel slice is set up, which forwards
-    // to it as soon as the tunnel resumes. Any free port does; the slice is
-    // handed the one bound.
-    let tunnel_listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-        .await
-        .context("failed to bind the tunnel listener")?;
-    let tunnel_listener_port = tunnel_listener
-        .local_addr()
-        .context("failed to read the tunnel listener's address")?
-        .port();
+    // The tunnel listener's connections, which the tunnel slice's rathole
+    // client hands over in process, so a tunnel connection is told from a
+    // local one by where it arrived.
+    let (tunnel_connection_sender, tunnel_connections) = mpsc::channel(TUNNEL_CONNECTION_BACKLOG);
 
     let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
@@ -276,7 +270,7 @@ pub async fn set_up(
     // `tunnel_rust::SqliteTunnelStore::seed_if_absent`).
     let tunnel_config = tunnel_rust::TunnelConfig {
         loopback_base_url: runtime.loopback_base_url(),
-        tunnel_listener_port,
+        tunnel_connection_sender: tunnel_connection_sender.clone(),
         seed: tunnel_seed,
     };
     // `setup_tunnel` hands back the `/tunnel` router plus the in-process
@@ -434,7 +428,7 @@ pub async fn set_up(
 
     // Defense-in-depth: gate the entire API surface on a loopback peer address.
     // Every endpoint here is meant to be reached only over a loopback socket —
-    // directly, through the tunnel listener (whose peer is the rathole client),
+    // directly, through the tunnel listener (handed over in process),
     // or relayed by a front run on this machine; the latter two are
     // distinguished downstream by the `Forwarded` header.
     // A genuinely non-loopback peer is rejected with `403` before any handler
@@ -468,7 +462,8 @@ pub async fn set_up(
 
     Ok(WildflowerServer {
         local_listener,
-        tunnel_listener,
+        tunnel_connections,
+        tunnel_connection_sender,
         router,
     })
 }

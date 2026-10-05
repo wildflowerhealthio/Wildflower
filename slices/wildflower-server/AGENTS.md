@@ -9,8 +9,9 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   host's databases, sets up every server slice (gatekeeper, emr, OHIF, collector,
   tunnel, apps, databases), gates them, wraps them in the loopback owner trust,
   the loopback-peer gate, the CORS policy, the forwarded-request observer and
-  the tunnel provenance, and binds the loopback port and the tunnel listener
-  rathole forwards to; `WildflowerServer::serve(shutdown)` serves the result on
+  the tunnel provenance, and binds the loopback port next to the tunnel
+  listener the rathole client hands its connections to in process;
+  `WildflowerServer::serve(shutdown)` serves the result on
   both until `shutdown` is cancelled. It also holds the server-side adapters that join two slices: the
   gatekeeper-backed `AppLaunchScopes` for apps, the reqwest `HealthProbe` for the
   tunnel, and HFS's base URL following the tunnel's public host. The

@@ -77,7 +77,6 @@ pub(crate) mod test_support {
             Arc::new(HoldUntilCancelRelayClient),
             probe,
             "http://127.0.0.1:8080",
-            8080,
         ))
     }
 }

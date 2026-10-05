@@ -40,9 +40,8 @@ use crate::http::listener_identity::ListenerIdentity;
 /// `https://<public host>` (see `tunnel_rust::public_origin_url`).
 ///
 /// `for` is the visitor's address from the PROXY header, and is left out when
-/// the connection had none. The peer is the in-process rathole client on
-/// loopback, which names no visitor, so writing it would record every tunnel
-/// visitor as `127.0.0.1`. An IPv6 address is bracketed and quoted, as RFC 7239
+/// the connection had none. The rathole client hands the connection over in
+/// process, so it has no socket peer to name the visitor instead. An IPv6 address is bracketed and quoted, as RFC 7239
 /// requires, which `served_origin::forwarded_client_address` unquotes.
 ///
 /// A request with no [`ListenerIdentity`] never came through `serve`; it is
@@ -252,8 +251,8 @@ mod tests {
         assert_eq!(forwarded_client_address(&headers), Some("[2001:db8::1]"));
     }
 
-    /// Without a PROXY address there is no `for`: the rathole peer names no
-    /// visitor.
+    /// Without a PROXY address there is no `for`: an in-process connection
+    /// names no visitor.
     #[tokio::test]
     async fn a_tunnel_request_without_a_proxy_address_has_no_for() {
         let (_, seen) = send(

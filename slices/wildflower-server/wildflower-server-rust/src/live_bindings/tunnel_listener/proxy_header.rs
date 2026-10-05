@@ -1,22 +1,28 @@
 //! The PROXY protocol v2 header a relay front prepends to a tunnel connection
-//! to carry the visitor's address past rathole, whose own peer is always the
-//! in-process client on loopback. See
+//! to carry the visitor's address past rathole, which hands the connection
+//! over with no address of its own. See
 //! <https://www.haproxy.org/download/2.9/doc/proxy-protocol.txt>, section 2.2.
 
 use std::net::SocketAddr;
 
 use anyhow::ensure;
 use ppp::v2::{Addresses, Command, Header, PROTOCOL_PREFIX};
-use tokio::io::AsyncReadExt;
-use tokio::net::TcpStream;
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
 
 /// The bytes of a v2 header ahead of its addresses: the 12-byte signature, the
 /// version and command, the address family and protocol, and the big-endian
 /// length of everything after these 16 bytes.
 const FIXED_LENGTH: usize = 16;
 
-/// Read the PROXY protocol v2 header off the front of `stream` when it starts
-/// with one, and return the visitor's address the header names. A stream that
+/// Buffer `stream` so that [`read_client_address`] can peek at its first
+/// bytes. The buffer holds no more than the signature; larger reads bypass it
+/// once it is drained.
+pub(super) fn peekable<S: AsyncRead>(stream: S) -> BufReader<S> {
+    BufReader::with_capacity(PROTOCOL_PREFIX.len(), stream)
+}
+
+/// Read the PROXY protocol v2 header off the front of a [`peekable`] `stream`
+/// when it starts with one, and return the visitor's address the header names. A stream that
 /// doesn't start with the header is left with every byte unread.
 ///
 /// # Errors
@@ -27,21 +33,25 @@ const FIXED_LENGTH: usize = 16;
 ///
 /// # Remarks
 ///
-/// The first bytes are peeked, not read, so a stream with no header (a stock
-/// rathole server sends none) reaches HTTP intact. Bytes that begin the
+/// The first bytes are peeked into `stream`'s buffer, not consumed, so a
+/// stream with no header (a stock rathole server sends none) reaches HTTP
+/// intact. Bytes that begin the
 /// signature commit the stream to a header; no HTTP request starts with them,
 /// since a client must not preface a request with an empty line (RFC 9112
 /// §2.2). The header is then read whole and parsed by `ppp`.
 ///
 /// Nothing here bounds how long the sender takes; the caller runs it under a
 /// timeout.
-pub(super) async fn read_client_address(
-    stream: &mut TcpStream,
+pub(super) async fn read_client_address<S: AsyncRead + Unpin>(
+    stream: &mut BufReader<S>,
 ) -> anyhow::Result<Option<SocketAddr>> {
-    let mut signature = [0; PROTOCOL_PREFIX.len()];
-    let peeked = stream.peek(&mut signature).await?;
-    ensure!(peeked > 0, "the connection closed before sending anything");
-    if !PROTOCOL_PREFIX.starts_with(&signature[..peeked]) {
+    let peeked = stream.fill_buf().await?;
+    ensure!(
+        !peeked.is_empty(),
+        "the connection closed before sending anything"
+    );
+    let signature = &peeked[..peeked.len().min(PROTOCOL_PREFIX.len())];
+    if !PROTOCOL_PREFIX.starts_with(signature) {
         return Ok(None);
     }
 
@@ -74,17 +84,6 @@ pub(super) mod tests {
     use ppp::v2::{Builder, Protocol, Version};
     use proptest::prelude::*;
     use tokio::io::AsyncWriteExt;
-    use tokio::net::TcpListener;
-
-    /// A connected loopback pair: the client end and the server end.
-    pub(in crate::live_bindings) async fn connected_pair() -> (TcpStream, TcpStream) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let client = TcpStream::connect(listener.local_addr().expect("address"))
-            .await
-            .expect("connect");
-        let (server, _) = listener.accept().await.expect("accept");
-        (client, server)
-    }
 
     /// A v2 `PROXY` header from `source` to a relay address of its family.
     pub(in crate::live_bindings) fn proxy_header(source: &str) -> Vec<u8> {
@@ -107,7 +106,8 @@ pub(super) mod tests {
     /// Send `bytes` and close the sending half, then read the header off the
     /// server end. Returns what the reader made of it and the bytes it left.
     async fn read_after_sending(bytes: &[u8]) -> (anyhow::Result<Option<SocketAddr>>, Vec<u8>) {
-        let (mut client, mut server) = connected_pair().await;
+        let (mut client, server) = tokio::io::duplex(1024);
+        let mut server = peekable(server);
         client.write_all(bytes).await.expect("write");
         client.shutdown().await.expect("shutdown");
         let client_address = read_client_address(&mut server).await;

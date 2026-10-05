@@ -6,18 +6,18 @@
 //! no run lifecycle of its own. The trait exists so the supervisor can be tested
 //! against a fake instead of a live relay.
 //!
-//! rathole's public API only accepts a config *file* path, and its own `Config`
-//! re-serializes the token as a masked `***`, so we render the client config
-//! from our own typed structs with [`toml`] (escaping handled by construction)
-//! to a temp file that lives for the duration of the attempt.
+//! rathole exports only its `Config`, parsed from TOML, so we render the client
+//! config from our own typed structs with [`toml`] (escaping handled by
+//! construction) and parse that. The client hands each tunnel connection to the
+//! caller's channel rather than forwarding it to a socket.
 
 use std::collections::BTreeMap;
 
-use crate::domain::{RelayClient, RelaySettings};
+use crate::domain::{RelayClient, RelaySettings, TunnelConnection};
 use anyhow::Context;
 use rathole_settings_rust::{NoisePattern, Transport};
 use serde::Serialize;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
 /// The real client: renders a rathole client config and runs an embedded
@@ -37,47 +37,30 @@ impl RelayClient for RatholeRelayClient {
     async fn run_once(
         &self,
         relay: &RelaySettings,
-        local_addr: &str,
+        connections: mpsc::Sender<TunnelConnection>,
         cancel: CancellationToken,
     ) -> anyhow::Result<()> {
-        let rendered = render_client_toml(relay, local_addr)?;
-        let mut file = tempfile::Builder::new()
-            .prefix("wildflower-tunnel-client")
-            .suffix(".toml")
-            .tempfile()
-            .context("failed to create tunnel client config file")?;
-        std::io::Write::write_all(&mut file, rendered.as_bytes())
-            .context("failed to write tunnel client config")?;
+        let config: rathole::Config = render_client_toml(relay)?
+            .parse()
+            .context("rendered tunnel client config is invalid")?;
 
-        let cli = rathole::Cli {
-            config_path: Some(file.path().to_path_buf()),
-            client: true,
-            ..Default::default()
-        };
-        // We build rathole with `default-features = false` (no `hot-reload`), so
-        // its config watcher is the stub that does nothing but await this
-        // shutdown channel. rathole's `run()` therefore ends — tearing down its
-        // control channel and logging `Unable to listen for shutdown signal:
-        // channel closed` from `client.run` — the instant `shutdown_tx` drops.
-        // That drop happens on graceful shutdown (below) OR whenever this
-        // `run_once` future is itself dropped on cancel. So that log line is a
-        // teardown *symptom*, not a fault: when a tunnel flaps, chase what
+        // rathole's client stops, tearing down its control channel, when
+        // `shutdown_tx` sends or drops. A drop logs `Unable to listen for
+        // shutdown signal: channel closed` from rathole's `client.run`; that is
+        // a teardown *symptom*, not a fault: when a tunnel flaps, chase what
         // cancelled `run_once` (a reconcile — see `domain::tunnel_daemon`), not
         // the rathole error.
         let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
-        let run = rathole::run(cli, shutdown_rx);
+        let run = rathole::run_client_with_handoff(config, shutdown_rx, connections);
         tokio::pin!(run);
 
-        // Cancellation asks rathole to shut down, then waits for it to drain so
-        // the temp config file (still in scope until this fn returns) isn't
-        // dropped out from under it.
+        // Cancellation asks rathole to shut down, then waits for it to drain.
         tokio::select! {
             res = &mut run => {
-                // rathole's `run` returned without us cancelling — the relay
-                // dropped us, or rathole tore itself down (e.g. its config
-                // watcher / shutdown plumbing). This is the unexpected path
-                // when the tunnel should be staying up.
-                tracing::warn!(?res, "rathole run() returned on its own (no cancel)");
+                // rathole's client returned without us cancelling — the relay
+                // dropped us, or rathole tore itself down. This is the
+                // unexpected path when the tunnel should be staying up.
+                tracing::warn!(?res, "rathole client returned on its own (no cancel)");
                 res
             }
             () = cancel.cancelled() => {
@@ -89,17 +72,16 @@ impl RelayClient for RatholeRelayClient {
     }
 }
 
-/// Render a rathole client config (TOML) from our own typed structs. We don't
-/// reuse rathole's `Config` because its `MaskedString` token serializes as
-/// `***`; serializing our own structs keeps the real token and escapes every
-/// value (including the `service_name` table key) by construction.
-fn render_client_toml(relay: &RelaySettings, local_addr: &str) -> anyhow::Result<String> {
+/// Render a rathole client config (TOML) from our own typed structs, which
+/// escape every value (including the `service_name` table key) by
+/// construction. The service names no `local_addr`: its connections are
+/// handed off.
+fn render_client_toml(relay: &RelaySettings) -> anyhow::Result<String> {
     let mut services = BTreeMap::new();
     services.insert(
         relay.service_name.as_str(),
         ServiceSection {
             service_type: "tcp",
-            local_addr,
         },
     );
 
@@ -153,7 +135,6 @@ struct NoiseSection<'a> {
 struct ServiceSection<'a> {
     #[serde(rename = "type")]
     service_type: &'a str,
-    local_addr: &'a str,
 }
 
 #[cfg(test)]
@@ -162,41 +143,37 @@ mod tests {
 
     /// The rendered client config must parse as a valid rathole *client* config
     /// through the same path runtime uses — guards against TOML drift.
-    #[tokio::test]
-    async fn rendered_client_toml_is_a_valid_rathole_client_config() {
+    #[test]
+    fn rendered_client_toml_is_a_valid_rathole_client_config() {
         let relay = RelaySettings {
             remote_addr: "relay.example.com:2333".into(),
             token: "shared-secret".into(),
             public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into(),
             service_name: "wildflower-device-1".into(),
         };
-        let rendered = render_client_toml(&relay, "127.0.0.1:9090").expect("render");
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("client.toml");
-        std::fs::write(&path, &rendered).expect("write client toml");
-        let config = rathole::Config::from_file(&path)
-            .await
+        let config: rathole::Config = render_client_toml(&relay)
+            .expect("render")
+            .parse()
             .expect("rendered client config must parse");
         let client = config.client.expect("must define a [client] section");
         assert!(
             config.server.is_none(),
             "client config must not be a server"
         );
-        // The service forwards to the `local_addr` it was given: the server's
-        // tunnel listener.
+        // The service names no local address: its connections are handed off.
         assert_eq!(
             client
                 .services
                 .get("wildflower-device-1")
                 .map(|service| service.local_addr.as_str()),
-            Some("127.0.0.1:9090")
+            Some("")
         );
     }
 
     /// A device that has only its tunnel name and token gets a working client
     /// config from the relay's `GET /rathole` response.
-    #[tokio::test]
-    async fn client_toml_from_public_rathole_settings_is_a_valid_rathole_client_config() {
+    #[test]
+    fn client_toml_from_public_rathole_settings_is_a_valid_rathole_client_config() {
         let response = r#"{
             "remote_addr": "relay.example.com:2333",
             "transport": "noise",
@@ -209,12 +186,9 @@ mod tests {
             "abc123".into(),
             "tunnel-token".into(),
         );
-        let rendered = render_client_toml(&relay, "127.0.0.1:8080").expect("render");
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("client.toml");
-        std::fs::write(&path, &rendered).expect("write client toml");
-        let client = rathole::Config::from_file(&path)
-            .await
+        let rendered = render_client_toml(&relay).expect("render");
+        let client = rendered
+            .parse::<rathole::Config>()
             .expect("client config must parse")
             .client
             .expect("[client]");
@@ -226,27 +200,24 @@ mod tests {
             Some("24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=")
         );
         assert_eq!(client.services.len(), 1);
-        assert_eq!(client.services["abc123"].local_addr, "127.0.0.1:8080");
+        assert_eq!(client.services["abc123"].local_addr, "");
         assert!(rendered.contains(r#"default_token = "tunnel-token""#));
     }
 
     /// Adversarial field contents that would break a hand-formatted config —
     /// quotes, brackets, newlines — must still round-trip through rathole's
     /// parser, proving the typed serializer escapes them.
-    #[tokio::test]
-    async fn rendered_toml_escapes_hostile_field_contents() {
+    #[test]
+    fn rendered_toml_escapes_hostile_field_contents() {
         let relay = RelaySettings {
             remote_addr: "relay:2333".into(),
             token: "tok\"with\nquote".into(),
             public_key: "key".into(),
             service_name: "svc\"]\n[client.services.evil".into(),
         };
-        let rendered = render_client_toml(&relay, "127.0.0.1:8080").expect("render");
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("client.toml");
-        std::fs::write(&path, &rendered).expect("write");
-        let config = rathole::Config::from_file(&path)
-            .await
+        let config: rathole::Config = render_client_toml(&relay)
+            .expect("render")
+            .parse()
             .expect("hostile values must still parse, not inject");
         let client = config.client.expect("client section");
         // The service name survives verbatim as a single key — no injected service.

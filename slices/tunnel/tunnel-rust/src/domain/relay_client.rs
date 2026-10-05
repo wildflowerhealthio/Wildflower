@@ -6,12 +6,19 @@
 //! no run lifecycle of its own. The trait exists so the supervisor can be tested
 //! against a fake instead of a live relay.
 //!
-//! rathole's public API only accepts a config *file* path, and its own `Config`
-//! re-serializes the token as a masked `***`, so we render the client config
-//! from our own typed structs with [`toml`] (escaping handled by construction)
-//! to a temp file that lives for the duration of the attempt.
+//! Each tunnel connection is handed, in process, to the server's tunnel
+//! listener as a [`TunnelConnection`].
+
 use rathole_settings_rust::PublicRatholeSettings;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+
+/// One visitor's connection through the relay, as the rathole client hands it
+/// over: the service it arrived for and its [`TunnelStream`].
+pub type TunnelConnection = rathole::HandedOffConnection;
+
+/// The byte stream of a [`TunnelConnection`].
+pub type TunnelStream = Box<dyn rathole::DataChannelStream>;
 
 /// A fully-specified relay connection — produced only when every field the
 /// rathole client needs is present. Also the shape a PUT sets the relay block
@@ -45,14 +52,15 @@ impl RelaySettings {
 /// Runs a single rathole client attempt. The supervisor calls this in a loop.
 #[async_trait::async_trait]
 pub trait RelayClient: Send + Sync {
-    /// Forward `local_addr` to the relay per `relay`, running until the client
-    /// exits. Resolves `Ok` on a clean stop — `cancel` fired, or the relay
-    /// closed the session without error — and `Err` on a failure the supervisor
-    /// should back off and retry (relay unreachable, handshake rejected).
+    /// Bring up the tunnel per `relay`, sending each tunnel connection to
+    /// `connections`, and run until the client exits. Resolves `Ok` on a clean
+    /// stop — `cancel` fired, or the relay closed the session without error —
+    /// and `Err` on a failure the supervisor should back off and retry (relay
+    /// unreachable, handshake rejected).
     async fn run_once(
         &self,
         relay: &RelaySettings,
-        local_addr: &str,
+        connections: mpsc::Sender<TunnelConnection>,
         cancel: CancellationToken,
     ) -> anyhow::Result<()>;
 }

@@ -38,13 +38,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelStatus};
 
-use crate::domain::{RelayClient, RelaySettings, TunnelSettings};
+use crate::domain::{RelayClient, RelaySettings, TunnelConnection, TunnelSettings};
 use crate::health::HealthProbe;
 
 /// Message shown when the tunnel is requested on but the relay isn't configured.
@@ -140,9 +140,9 @@ pub struct TunnelDaemon {
     /// The `/health` probe adapter the supervisor uses to confirm reachability.
     probe: Arc<dyn HealthProbe>,
     loopback_origin: String,
-    /// The server's tunnel listener port on `127.0.0.1`: the `local_addr` each
-    /// dial forwards to.
-    tunnel_listener_port: u16,
+    /// Where each dial hands its tunnel connections: the server's tunnel
+    /// listener.
+    connections: mpsc::Sender<TunnelConnection>,
     state_tx: watch::Sender<TunnelLiveness>,
     state_rx: watch::Receiver<TunnelLiveness>,
     /// The live supervisor's cancel token + join handle. Taken and replaced on
@@ -178,13 +178,13 @@ impl TunnelDaemon {
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
         loopback_origin: impl Into<String>,
-        tunnel_listener_port: u16,
+        connections: mpsc::Sender<TunnelConnection>,
     ) -> Self {
         Self::with_tuning(
             client,
             probe,
             loopback_origin,
-            tunnel_listener_port,
+            connections,
             Backoff::default(),
             ProbeTiming::default(),
         )
@@ -194,7 +194,7 @@ impl TunnelDaemon {
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
         loopback_origin: impl Into<String>,
-        tunnel_listener_port: u16,
+        connections: mpsc::Sender<TunnelConnection>,
         backoff: Backoff,
         probe_timing: ProbeTiming,
     ) -> Self {
@@ -211,7 +211,7 @@ impl TunnelDaemon {
             client,
             probe,
             loopback_origin,
-            tunnel_listener_port,
+            connections,
             state_tx,
             state_rx,
             supervisor: Mutex::new(None),
@@ -379,7 +379,7 @@ impl TunnelDaemon {
                 state: self.state_tx.clone(),
                 client: Arc::clone(&self.client),
                 probe: Arc::clone(&self.probe),
-                local_addr: format!("127.0.0.1:{}", self.tunnel_listener_port),
+                connections: self.connections.clone(),
                 public_origin: public.expect("Dialing implies a public origin"),
                 loopback_origin: self.loopback_origin.clone(),
                 settings: settings.clone(),
@@ -404,7 +404,7 @@ struct SupervisorJob {
     state: watch::Sender<TunnelLiveness>,
     client: Arc<dyn RelayClient>,
     probe: Arc<dyn HealthProbe>,
-    local_addr: String,
+    connections: mpsc::Sender<TunnelConnection>,
     /// The public `https://{host}` this revision serves at when `Verified`.
     public_origin: String,
     loopback_origin: String,
@@ -442,7 +442,7 @@ async fn supervise(job: SupervisorJob) {
         state,
         client,
         probe,
-        local_addr,
+        connections,
         public_origin,
         loopback_origin,
         settings,
@@ -481,7 +481,7 @@ async fn supervise(job: SupervisorJob) {
             public_origin = %public_origin,
             "tunnel: dialing relay"
         );
-        let dial = client.run_once(&relay, &local_addr, cancel.child_token());
+        let dial = client.run_once(&relay, connections.clone(), cancel.child_token());
         tokio::pin!(dial);
         let dial_result = dial_with_probes(
             &mut dial,
@@ -672,18 +672,17 @@ fn set_state(
 impl TunnelDaemon {
     /// Build with a near-zero backoff and fast probe timing so reconnect/probe
     /// tests don't wait on wall time. 1ms (not zero) keeps the retry loop from
-    /// busy-spinning the runtime.
+    /// busy-spinning the runtime. Its tunnel connections go nowhere.
     pub(crate) fn new_test(
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
         loopback_origin: impl Into<String>,
-        tunnel_listener_port: u16,
     ) -> Self {
         Self::with_tuning(
             client,
             probe,
             loopback_origin,
-            tunnel_listener_port,
+            mpsc::channel(1).0,
             Backoff {
                 initial: Duration::from_millis(1),
                 max: Duration::from_millis(1),
@@ -715,7 +714,7 @@ mod tests {
         async fn run_once(
             &self,
             _relay: &RelaySettings,
-            _local_addr: &str,
+            _connections: mpsc::Sender<TunnelConnection>,
             _cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             Ok(())
@@ -730,7 +729,7 @@ mod tests {
         async fn run_once(
             &self,
             _relay: &RelaySettings,
-            _local_addr: &str,
+            _connections: mpsc::Sender<TunnelConnection>,
             _cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             Err(anyhow::anyhow!("relay unreachable"))
@@ -763,7 +762,7 @@ mod tests {
     }
 
     fn daemon_with(client: Arc<dyn RelayClient>, probe: Arc<dyn HealthProbe>) -> TunnelDaemon {
-        TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080)
+        TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080")
     }
 
     fn noop_daemon() -> TunnelDaemon {
@@ -916,7 +915,7 @@ mod tests {
             async fn run_once(
                 &self,
                 _relay: &RelaySettings,
-                _local_addr: &str,
+                _connections: mpsc::Sender<TunnelConnection>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 if !self.0.swap(true, Ordering::SeqCst) {
@@ -965,7 +964,7 @@ mod tests {
             async fn run_once(
                 &self,
                 _relay: &RelaySettings,
-                _local_addr: &str,
+                _connections: mpsc::Sender<TunnelConnection>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 self.0.fetch_add(1, Ordering::SeqCst);
@@ -1028,7 +1027,7 @@ mod tests {
             async fn run_once(
                 &self,
                 _relay: &RelaySettings,
-                _local_addr: &str,
+                _connections: mpsc::Sender<TunnelConnection>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 self.0.fetch_add(1, Ordering::SeqCst);

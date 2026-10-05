@@ -42,7 +42,7 @@ mod tests {
 
     use super::*;
     use crate::db::SqliteTunnelStore;
-    use crate::domain::{RelayClient, RelaySettings};
+    use crate::domain::{RelayClient, RelaySettings, TunnelConnection};
     use crate::health::HealthProbe;
     use crate::test_support::StubProbe;
     use crate::TunnelDaemon;
@@ -92,7 +92,7 @@ mod tests {
         async fn run_once(
             &self,
             _relay: &RelaySettings,
-            _local_addr: &str,
+            _connections: mpsc::Sender<TunnelConnection>,
             cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             let _ = self.started.send(());
@@ -123,7 +123,6 @@ mod tests {
                 client,
                 probe,
                 "http://127.0.0.1:8080",
-                8080,
             )),
         });
         (state, rx)

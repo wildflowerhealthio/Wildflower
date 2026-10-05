@@ -19,10 +19,10 @@ use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tunnel_rust::TunnelConnection;
 use url::Url;
 use wildflower_server_rust::{set_up, HostPorts, ServerObservers, WildflowerServerConfig};
 
@@ -194,22 +194,29 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
 /// name.
 const PUBLIC_HOST: &str = "demo.example.com";
 
-/// Send `request` (raw HTTP/1.1, asking the server to close) to `address`,
-/// after `proxy_header` if given, and return the response's status code and
-/// body. `None` when the server closes the connection without answering.
+/// Hand the tunnel listener a connection, as the tunnel's rathole client
+/// does, and send `request` (raw HTTP/1.1, asking the server to close) on it,
+/// after `proxy_header` if given. Returns the response's status code and body;
+/// `None` when the server closes the connection without answering.
 async fn raw_exchange(
-    address: SocketAddr,
+    tunnel_connection_sender: &mpsc::Sender<TunnelConnection>,
     proxy_header: Option<&[u8]>,
     request: &str,
 ) -> Option<(u16, String)> {
-    let mut stream = TcpStream::connect(address).await.expect("connect");
+    let (mut stream, server_end) = tokio::io::duplex(64 * 1024);
+    tunnel_connection_sender
+        .send(TunnelConnection {
+            service_name: "demo".to_owned(),
+            stream: Box::new(server_end),
+        })
+        .await
+        .expect("the tunnel listener takes connections");
     if let Some(proxy_header) = proxy_header {
         stream.write_all(proxy_header).await.expect("write header");
     }
-    // A server that already closed may reset the write; the read says so.
+    // A server that already closed fails the write; the read says so.
     let _ = stream.write_all(request.as_bytes()).await;
     let mut response = Vec::new();
-    // A close with unread bytes may arrive as a reset rather than EOF.
     let _ = stream.read_to_end(&mut response).await;
     let response = String::from_utf8(response).expect("utf-8 response");
     let status = response.split(' ').nth(1)?.parse().ok()?;
@@ -293,10 +300,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         .await
         .expect("the server sets up in time")
         .expect("the server sets up and binds");
-    let tunnel_listener = server
-        .tunnel_listener_addr()
-        .expect("tunnel listener address");
-    assert!(tunnel_listener.ip().is_loopback());
+    let tunnel_listener = server.tunnel_connection_sender();
     let shutdown = CancellationToken::new();
     let serving = tokio::spawn(server.serve(shutdown.clone()));
 
@@ -308,10 +312,9 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     assert_eq!(local_tunnel_settings.status(), reqwest::StatusCode::OK);
     assert!(forwarded_requests.try_recv().is_err());
 
-    // The same request on the tunnel listener, from the same loopback peer and
-    // with no `Forwarded`, gets no owner token, and is reported as served for
+    // The same request on the tunnel listener, with no `Forwarded`, gets no owner token, and is reported as served for
     // the public host with no visitor address (no PROXY header).
-    let (status, _) = raw_exchange(tunnel_listener, None, &tunnel_get("/tunnel", ""))
+    let (status, _) = raw_exchange(&tunnel_listener, None, &tunnel_get("/tunnel", ""))
         .await
         .expect("the tunnel listener answers");
     assert_eq!(status, 401);
@@ -324,7 +327,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     // Discovery renders the public origin, even when the visitor sends a
     // `Forwarded` of its own naming another host and scheme.
     let (status, smart_configuration) = raw_exchange(
-        tunnel_listener,
+        &tunnel_listener,
         None,
         &tunnel_get(
             "/fhir-r4/.well-known/smart-configuration",
@@ -349,7 +352,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     // A host other than the public host is misdirected, and not reported.
     let misdirected =
         "GET /health HTTP/1.1\r\nHost: other.example.com\r\nConnection: close\r\n\r\n";
-    let (status, _) = raw_exchange(tunnel_listener, None, misdirected)
+    let (status, _) = raw_exchange(&tunnel_listener, None, misdirected)
         .await
         .expect("the tunnel listener answers");
     assert_eq!(status, 421);
@@ -361,7 +364,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         ("[2001:db8::1]:4711", "[2001:db8::1]"),
     ] {
         let (status, _) = raw_exchange(
-            tunnel_listener,
+            &tunnel_listener,
             Some(&proxy_header(source)),
             &tunnel_get("/health", ""),
         )
@@ -384,14 +387,14 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     malformed[12] = 0x11;
     assert_eq!(
         raw_exchange(
-            tunnel_listener,
+            &tunnel_listener,
             Some(&malformed),
             &tunnel_get("/health", "")
         )
         .await,
         None
     );
-    let (status, _) = raw_exchange(tunnel_listener, None, &tunnel_get("/health", ""))
+    let (status, _) = raw_exchange(&tunnel_listener, None, &tunnel_get("/health", ""))
         .await
         .expect("the tunnel listener still answers");
     assert_eq!(status, 200);

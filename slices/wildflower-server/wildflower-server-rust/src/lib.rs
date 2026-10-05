@@ -5,9 +5,10 @@
 //! (gatekeeper, FHIR R4, OHIF, collector, tunnel, apps, databases), gates them,
 //! wraps them in the loopback owner trust, the loopback-peer gate, the CORS
 //! policy, the forwarded-request observer and the tunnel provenance, and binds
-//! two loopback listeners: the API port local clients use and the tunnel
-//! listener rathole forwards to. [`WildflowerServer::serve`] then serves the
-//! result on both until its shutdown token is cancelled.
+//! the loopback API port local clients use, next to the tunnel listener the
+//! tunnel's rathole client hands its connections to in process.
+//! [`WildflowerServer::serve`] then serves the result on both until its
+//! shutdown token is cancelled.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's

@@ -10,10 +10,10 @@ point back to instead of each re-deriving it.
 ## Two origins: loopback and served
 
 The embedded API server is bound to **loopback only**: the API port
-(`http://127.0.0.1:<port>/`) local clients use, and a second loopback listener
-the tunnel's rathole client forwards every tunnel connection to. Every remote
-caller reaches it over loopback — through the tunnel listener, or through a
-front a person runs themselves (nginx) on the API port. So a request can arrive
+(`http://127.0.0.1:<port>/`) local clients use. Next to it, a tunnel listener
+takes every tunnel connection, which the tunnel's rathole client hands over in
+process. Every remote caller reaches it through the tunnel listener, or through
+a front a person runs themselves (nginx) on the API port. So a request can arrive
 having been addressed two different ways:
 
 - **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
@@ -44,8 +44,9 @@ two trusted fronts writes:
   `for=<visitor>;host="<public host>";proto=https`. `proto` is `https` because
   the public origin is. `for` is the visitor's address from the PROXY protocol
   v2 header the relay front prepends to the connection, and is left out when
-  the connection had none (a stock rathole server sends none): the socket peer
-  is the rathole client on loopback, which names no visitor.
+  the connection had none (a stock rathole server sends none): the rathole
+  client hands the connection over in process, with no socket peer to name the
+  visitor.
 - **A front a person runs themselves** in front of the API port, such as nginx.
   It appends its hop to any inbound `Forwarded` chain and tacks the public
   `host`/`proto` onto that trailing element.
@@ -145,13 +146,14 @@ allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (emr-rust), which mirrors HFS's own
 The loopback-socket gate ([`require_loopback_peer`]) is what lets every slice
 trust the `Forwarded` header: a non-loopback peer is rejected before any handler
 runs, so every request a handler sees came from this machine, through the
-tunnel listener, or through a front on this machine. See
+tunnel listener (whose in-process connections read as loopback), or through a
+front on this machine. See
 [Apps Explanation](../Apps/Explanation.md) for how this lands in the apps auth
 posture.
 
-A loopback peer alone doesn't make a request local. Every tunnel connection's
-peer is the in-process rathole client, on loopback too, so each request carries
-the identity of the listener its connection arrived on. The tunnel listener's
+A loopback peer alone doesn't make a request local. Every tunnel connection is
+handed over in process and reads as loopback too, so each request carries the
+identity of the listener its connection arrived on. The tunnel listener's
 requests are remote, full stop: they always carry the `Forwarded` header the
 tunnel listener wrote, and the loopback owner trust also refuses them by
 listener, whatever their headers say. Only a connection on the API port can be

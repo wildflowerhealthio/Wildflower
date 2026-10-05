@@ -10,8 +10,8 @@
 //! A trusted front is whatever writes the `Forwarded` header ahead of the
 //! loopback socket. There are two:
 //!
-//! - **The server's tunnel listener.** Every tunnel connection arrives on its
-//!   own loopback listener, which discards any inbound `Forwarded` and writes a
+//! - **The server's tunnel listener.** Every tunnel connection arrives on a
+//!   listener of its own, which discards any inbound `Forwarded` and writes a
 //!   single element, `for=<visitor>;host="<public host>";proto=https`, once the
 //!   request's `Host` matches the tunnel's public host (see
 //!   `wildflower-server-rust`'s `tunnel_provenance`).

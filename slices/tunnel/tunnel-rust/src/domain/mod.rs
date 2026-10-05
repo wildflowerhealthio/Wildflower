@@ -17,7 +17,7 @@ mod tunnel_store;
 
 pub use capabilities::grantable_tunnel_scopes;
 pub use public_host::{public_origin_url, InvalidPublicHost};
-pub use relay_client::{RelayClient, RelaySettings};
+pub use relay_client::{RelayClient, RelaySettings, TunnelConnection, TunnelStream};
 pub use request_log::{CallerClass, RequestLogStore};
 pub use tunnel_daemon::TunnelDaemon;
 pub use tunnel_error::TunnelError;

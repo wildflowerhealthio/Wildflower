@@ -252,7 +252,7 @@ mod tests {
             },
         )
         .expect("seed settings");
-        let daemon = TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080);
+        let daemon = TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080");
         daemon.reconcile(&store.get_settings().expect("read settings"));
         Arc::new(TunnelState {
             store,

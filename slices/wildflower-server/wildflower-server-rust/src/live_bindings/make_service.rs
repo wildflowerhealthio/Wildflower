@@ -4,7 +4,7 @@
 
 use std::convert::Infallible;
 use std::future::{ready, Ready};
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::task::{Context, Poll};
 
 use axum::extract::ConnectInfo;
@@ -16,6 +16,12 @@ use tower::{Layer, Service};
 
 use super::tunnel_listener::TunnelListener;
 use crate::http::listener_identity::ListenerIdentity;
+
+/// The peer a tunnel connection carries as its `ConnectInfo`. The rathole
+/// client hands the connection over in process, so it has no socket peer; it
+/// is from this process, which the loopback-peer gate admits. What makes it
+/// remote is its [`ListenerIdentity`].
+const TUNNEL_CONNECTION_PEER: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
 
 /// A connection's service: the router, with the connection's peer as
 /// `ConnectInfo<SocketAddr>` (which the loopback-peer gate and owner trust
@@ -79,7 +85,7 @@ impl Service<IncomingStream<'_, TunnelListener>> for MakeServiceWithListenerIden
     fn call(&mut self, incoming: IncomingStream<'_, TunnelListener>) -> Self::Future {
         let tunnel_peer = *incoming.remote_addr();
         ready(Ok(self.identified_connection(
-            tunnel_peer.peer,
+            TUNNEL_CONNECTION_PEER,
             ListenerIdentity::Tunnel {
                 client_address: tunnel_peer.client_address,
             },

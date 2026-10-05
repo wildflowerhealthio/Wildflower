@@ -65,7 +65,8 @@ pub use db::SqliteTunnelStore;
 // the scopes the `/tunnel` surface enforces, for a future consent/admin surface.
 pub use domain::grantable_tunnel_scopes;
 pub use domain::{
-    public_origin_url, InvalidPublicHost, RelaySettings, SettingsSeed, TunnelDaemon, TunnelSettings,
+    public_origin_url, InvalidPublicHost, RelaySettings, SettingsSeed, TunnelConnection,
+    TunnelDaemon, TunnelSettings, TunnelStream,
 };
 // The persistence port trait, in scope so `setup_tunnel` can drive the store's
 // `seed_if_absent` / `get_settings` methods directly (the trivial reads/seeds the
@@ -168,9 +169,9 @@ pub fn setup_tunnel(
     })
 }
 
-/// The daemon [`setup_tunnel`] drives: it dials through `client`, forwarding
-/// the tunnel to the server's tunnel listener, and falls back to the loopback
-/// origin while the tunnel is unverified.
+/// The daemon [`setup_tunnel`] drives: it dials through `client`, handing each
+/// tunnel connection to the server's tunnel listener, and falls back to the
+/// loopback origin while the tunnel is unverified.
 fn tunnel_daemon(
     config: &TunnelConfig,
     client: Arc<dyn domain::RelayClient>,
@@ -182,7 +183,7 @@ fn tunnel_daemon(
         // The daemon renders the loopback origin into `TunnelLiveness.origin` (a
         // wire string), so hand it the bare origin (no trailing slash).
         shared_structures_rust::origin_string(&config.loopback_base_url),
-        config.tunnel_listener_port,
+        config.tunnel_connection_sender.clone(),
     )
 }
 
@@ -280,42 +281,44 @@ mod tests {
         );
     }
 
-    /// A relay client that reports each `local_addr` it is asked to forward,
+    /// A relay client that hands one connection to each dial's `connections`,
     /// then holds the session until cancelled.
-    struct LocalAddrRecordingRelayClient {
-        local_addr_sender: mpsc::UnboundedSender<String>,
-    }
+    struct HandOneConnectionRelayClient;
 
     #[async_trait::async_trait]
-    impl domain::RelayClient for LocalAddrRecordingRelayClient {
+    impl domain::RelayClient for HandOneConnectionRelayClient {
         async fn run_once(
             &self,
-            _relay: &RelaySettings,
-            local_addr: &str,
+            relay: &RelaySettings,
+            connections: mpsc::Sender<TunnelConnection>,
             cancel: tokio_util::sync::CancellationToken,
         ) -> anyhow::Result<()> {
-            self.local_addr_sender
-                .send(local_addr.to_owned())
+            let (stream, _) = tokio::io::duplex(64);
+            connections
+                .send(TunnelConnection {
+                    service_name: relay.service_name.clone(),
+                    stream: Box::new(stream),
+                })
+                .await
                 .expect("the test holds the receiver");
             cancel.cancelled().await;
             Ok(())
         }
     }
 
-    /// The tunnel forwards to the server's tunnel listener, never to the
-    /// loopback API port, so every tunnel connection arrives on the listener
-    /// that marks it remote.
+    /// The tunnel hands its connections to the server's tunnel listener, so
+    /// every tunnel connection arrives on the listener that marks it remote.
     #[tokio::test]
-    async fn the_daemon_forwards_the_tunnel_to_the_tunnel_listener_port() {
-        let (local_addr_sender, mut local_addrs) = mpsc::unbounded_channel();
+    async fn the_daemon_hands_tunnel_connections_to_the_tunnel_listener() {
+        let (tunnel_connection_sender, mut tunnel_connections) = mpsc::channel(1);
         let config = TunnelConfig {
             loopback_base_url: url::Url::parse("http://127.0.0.1:8080/").expect("loopback URL"),
-            tunnel_listener_port: 9090,
+            tunnel_connection_sender,
             seed: SettingsSeed::default(),
         };
         let daemon = tunnel_daemon(
             &config,
-            Arc::new(LocalAddrRecordingRelayClient { local_addr_sender }),
+            Arc::new(HandOneConnectionRelayClient),
             Arc::new(test_support::StubProbe::failing()),
         );
 
@@ -331,10 +334,11 @@ mod tests {
             }),
         });
 
+        let connection = tunnel_connections.recv().await;
         assert_eq!(
-            local_addrs.recv().await.as_deref(),
-            Some("127.0.0.1:9090"),
-            "the first dial forwards the tunnel listener"
+            connection.map(|connection| connection.service_name),
+            Some("dev1".to_owned()),
+            "the first dial hands its connection to the tunnel listener"
         );
         // The supervisor falls back to the loopback origin, not the listener.
         assert_eq!(daemon.served_origin(), "http://127.0.0.1:8080");
