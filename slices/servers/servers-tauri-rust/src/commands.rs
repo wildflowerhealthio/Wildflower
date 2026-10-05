@@ -49,7 +49,7 @@ pub async fn server_add(
 }
 
 /// Replace a registered server's token once its relay accepts it, or at
-/// once for a bare rathole relay.
+/// once for a rathole relay.
 ///
 /// # Errors
 ///
@@ -226,12 +226,12 @@ mod tests {
         .unwrap()
     }
 
-    /// `server_add`'s arguments for a bare rathole relay, as the webview sends
+    /// `server_add`'s arguments for a rathole relay, as the webview sends
     /// them.
-    fn bare_rathole_add_args(token: &str) -> ServerAddArgs {
+    fn rathole_add_args(token: &str) -> ServerAddArgs {
         serde_json::from_value(serde_json::json!({
             "relay": {
-                "kind": "bareRathole",
+                "kind": "rathole",
                 "remoteAddr": "rathole.example.com:2333",
                 "publicKey": PUBLIC_KEY,
                 "domain": "rathole.example.com",
@@ -284,7 +284,7 @@ mod tests {
     fn snake_case_arguments_are_refused() {
         for json in [
             serde_json::json!({
-                "relay": {"kind": "firstPartyWildflower"},
+                "relay": {"kind": "wildflowerOfficial"},
                 "tunnel_name": "ruth",
                 "token": TOKEN,
             }),
@@ -357,12 +357,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn server_add_registers_a_bare_rathole_relay_without_a_request() {
+    async fn server_add_registers_a_rathole_relay_without_a_request() {
         let (_data_root, servers) = servers();
-        let result = add(&servers, bare_rathole_add_args(" any-token "), no_client).await;
+        let result = add(&servers, rathole_add_args(" any-token "), no_client).await;
         assert_eq!(answer(&result), r#""ruth.rathole.example.com""#);
         let registered = servers.registry.read_all().unwrap();
-        assert_eq!(registered[0].relay, RelayKind::BareRathole);
+        assert_eq!(registered[0].relay, RelayKind::Rathole);
         assert_eq!(registered[0].token.expose(), "any-token");
         assert_eq!(
             registered[0].public_settings.remote_addr,
@@ -371,10 +371,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn server_add_names_a_bare_rathole_relay_s_invalid_setting() {
+    async fn server_add_names_a_rathole_relay_s_invalid_setting() {
         let (_data_root, servers) = servers();
-        let mut args = bare_rathole_add_args(TOKEN);
-        if let EnteredRelay::BareRathole { public_key, .. } = &mut args.relay {
+        let mut args = rathole_add_args(TOKEN);
+        if let EnteredRelay::Rathole { public_key, .. } = &mut args.relay {
             *public_key = "not-a-key".to_owned();
         }
         let result = add(&servers, args, no_client).await;
@@ -412,7 +412,7 @@ mod tests {
     #[tokio::test]
     async fn server_set_credentials_trims_the_token_and_refuses_an_empty_one() {
         let (_data_root, servers) = servers();
-        add(&servers, bare_rathole_add_args(TOKEN), no_client)
+        add(&servers, rathole_add_args(TOKEN), no_client)
             .await
             .unwrap();
 

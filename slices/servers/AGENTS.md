@@ -31,19 +31,19 @@ The **servers** this install knows about. Rust-only, no `-core`.
   `TunnelName` from `rathole-settings-rust`, the same check the relay applies
   to its tunnels: one lowercase DNS label, never `admin`. It is checked on
   construction and again when `servers.json` is read.
-- **A relay is a first-party Wildflower relay, a self-hosted Wildflower relay
-  or a bare rathole server.** `RelayKind::FirstPartyWildflower` is the relay
+- **A relay is an official Wildflower relay, a self-hosted Wildflower relay
+  or a rathole server.** `RelayKind::WildflowerOfficial` is the relay
   Wildflower runs at `RelayKind::WILDFLOWER_BASE_URL`,
   `https://relay.wildflowerhealth.io`; `RelayKind::SelfHostedWildflower` one
   someone else runs, with its Wildflower relay site at its `base_url`, whose
   host needn't match the domain its `GET /rathole` serves;
-  `RelayKind::BareRathole` a rathole server with no Wildflower relay site,
+  `RelayKind::Rathole` a rathole server with no Wildflower relay site,
   whose settings were entered by hand. `RelayKind::site_base_url()` is `None`
-  only for a bare rathole relay.
+  only for a rathole relay.
 - **`public_settings` is the only copy of the relay's dial settings.** The
   rathole client always dials the `remote_addr` and `public_key` the relay's
-  `GET /rathole` returned, or that were entered for a bare rathole relay.
-  `RelayKind::SelfHostedWildflower` holds only the relay's `base_url`, and `RelayKind::BareRathole`
+  `GET /rathole` returned, or that were entered for a rathole relay.
+  `RelayKind::SelfHostedWildflower` holds only the relay's `base_url`, and `RelayKind::Rathole`
   nothing.
 - **A new server launches from `ServerRecord::DEFAULT_LAUNCHER_URL`**,
   `https://wildflowerhealth.io/app`.
@@ -52,7 +52,7 @@ The **servers** this install knows about. Rust-only, no `-core`.
   representation is the only place the token is written in full, and the file
   is created readable by its owner only.
 - **A Wildflower relay accepts a server before it is written.** For an
-  `EnteredRelay::FirstPartyWildflower` or `EnteredRelay::SelfHostedWildflower`, `add_server` builds a
+  `EnteredRelay::WildflowerOfficial` or `EnteredRelay::SelfHostedWildflower`, `add_server` builds a
   `RelayClient` for the relay's base URL, fetches its `GET /rathole`, checks
   its relay settings, compares them with the user's `RelayPin` when there is
   one, then confirms the tunnel name and token with a signed `GET /me`. The
@@ -61,11 +61,11 @@ The **servers** this install knows about. Rust-only, no `-core`.
   the same way, taking the relay's current `GET /rathole`, and refuses a
   relay that now serves another domain. A `401` from `GET /me` is
   `EnrolmentError::CredentialsRejected`.
-- **A bare rathole relay is checked by its settings alone.** An
-  `EnteredRelay::BareRathole` carries `remoteAddr`, `publicKey` and `domain`; they
+- **A rathole relay is checked by its settings alone.** An
+  `EnteredRelay::Rathole` carries `remoteAddr`, `publicKey` and `domain`; they
   become `public_settings` with the one transport and noise pattern a device
   runs, and no request is made: the tunnel coming up is the check.
-  `set_server_credentials` replaces a bare rathole server's token without a
+  `set_server_credentials` replaces a rathole server's token without a
   request.
 - **Relay settings get one check, served or entered.** The `domain` is a
   lowercase DNS name, the `remoteAddr` a `host:port`, and the `publicKey` 32
@@ -84,9 +84,9 @@ The **servers** this install knows about. Rust-only, no `-core`.
   tunnel name as `keyid`, which the relay verifies with its own copy. The
   adapter's tests run against the relay's real site and verifier.
 - **Everything on the wire and on disk is camelCase.** `server_add` takes
-  `{relay, tunnelName, token}`, the relay one of `{kind: "firstPartyWildflower"}`,
+  `{relay, tunnelName, token}`, the relay one of `{kind: "wildflowerOfficial"}`,
   `{kind: "selfHostedWildflower", baseUrl, pin?}` with `pin` `{remoteAddr, publicKey}`, or
-  `{kind: "bareRathole", remoteAddr, publicKey, domain}`; `server_set_credentials`
+  `{kind: "rathole", remoteAddr, publicKey, domain}`; `server_set_credentials`
   takes `{domain, token}`. An `EnrolmentError`'s `kind` is camelCase
   (`credentialsRejected`, `alreadyRegistered`, ...), and so is every field of
   `servers.json`. Only the relay's own `GET /rathole` and `GET /me` keep its

@@ -6,7 +6,7 @@
 //! - [`server_add`] enrols a tunnel at a relay and registers the server (see
 //!   [`servers_rust::add_server`]), answering with the server's domain.
 //! - [`server_set_credentials`] replaces a registered server's token, checked
-//!   with its relay the same way, or replaced at once for a bare rathole relay
+//!   with its relay the same way, or replaced at once for a rathole relay
 //!   (see [`servers_rust::set_server_credentials`]).
 //!
 //! Arguments and answers are camelCase. Each command trims the token's

@@ -1,7 +1,7 @@
 //! Enrolment: adding a server from a relay, a tunnel name and its token, and
 //! re-entering a server's token.
 //!
-//! A Wildflower relay (the first-party one, or a self-hosted one entered by the
+//! A Wildflower relay (the official one, or a self-hosted one entered by the
 //! base URL of its relay site) is asked the same way both times, through a
 //! [`RelayClient`] built for its base URL. Its `GET /rathole` is fetched and
 //! checked, then compared with the user's [`RelayPin`] when there is one. Then
@@ -10,7 +10,7 @@
 //! Only then is the registry written. The response to `GET /rathole` becomes
 //! the record's `public_settings`; a pin is checked and never stored.
 //!
-//! A bare rathole relay, a rathole server with no Wildflower relay site, is
+//! A rathole relay, a rathole server with no Wildflower relay site, is
 //! entered as its settings. They get the same checks a `GET /rathole` response
 //! does and become the record's `public_settings`; no request is made, and the
 //! tunnel coming up is the check. Its token is replaced without a request too.
@@ -30,9 +30,9 @@ use crate::ports::{RelayClient, ServerRegistry};
 
 /// The relay as the user entered it.
 ///
-/// Deserialised from `{"kind": "firstPartyWildflower"}`,
+/// Deserialised from `{"kind": "wildflowerOfficial"}`,
 /// `{"kind": "selfHostedWildflower", "baseUrl", "pin"?}` or
-/// `{"kind": "bareRathole", "remoteAddr", "publicKey", "domain"}`.
+/// `{"kind": "rathole", "remoteAddr", "publicKey", "domain"}`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(
     tag = "kind",
@@ -42,7 +42,7 @@ use crate::ports::{RelayClient, ServerRegistry};
 )]
 pub enum EnteredRelay {
     /// The relay Wildflower runs.
-    FirstPartyWildflower,
+    WildflowerOfficial,
     /// A Wildflower relay someone else runs, with its Wildflower relay site
     /// at `base_url`, which needn't share a host with the domain its
     /// `GET /rathole` serves.
@@ -52,10 +52,10 @@ pub enum EnteredRelay {
         #[serde(default)]
         pin: Option<RelayPin>,
     },
-    /// A bare rathole server with no Wildflower relay site, entered as the
+    /// A rathole server with no Wildflower relay site, entered as the
     /// settings its `GET /rathole` would serve. The transport and noise
     /// pattern are the only ones a device runs.
-    BareRathole {
+    Rathole {
         /// The `host:port` the rathole client dials.
         remote_addr: String,
         /// The server's X25519 noise public key, base64.
@@ -109,12 +109,12 @@ impl RelayPin {
 /// the default launcher and production certificates.
 ///
 /// `relay_client` builds the [`RelayClient`] for a Wildflower relay from its
-/// base URL; it is called once for a first-party or self-hosted Wildflower
-/// relay, and never for [`EnteredRelay::BareRathole`].
+/// base URL; it is called once for an official or self-hosted Wildflower
+/// relay, and never for [`EnteredRelay::Rathole`].
 ///
 /// # Errors
 ///
-/// [`EnrolmentError::InvalidRelaySetting`] for a bare rathole relay's settings,
+/// [`EnrolmentError::InvalidRelaySetting`] for a rathole relay's settings,
 /// any [`EnrolmentError`] from `relay_client` or the relay's site, with nothing
 /// written, or [`EnrolmentError::Registry`]; a server with the same domain is
 /// [`RegistryError::AlreadyRegistered`].
@@ -126,11 +126,11 @@ pub async fn add_server<S: RelayClient>(
     relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
 ) -> Result<ServerRecord, EnrolmentError> {
     let (relay, public_settings) = match relay {
-        EnteredRelay::FirstPartyWildflower => {
+        EnteredRelay::WildflowerOfficial => {
             let relay_client = relay_client(RelayKind::wildflower_base_url())?;
             let public_settings =
                 confirmed_public_settings(&relay_client, None, &tunnel_name, &token).await?;
-            (RelayKind::FirstPartyWildflower, public_settings)
+            (RelayKind::WildflowerOfficial, public_settings)
         }
         EnteredRelay::SelfHostedWildflower { base_url, pin } => {
             let relay_client = relay_client(base_url.clone())?;
@@ -142,7 +142,7 @@ pub async fn add_server<S: RelayClient>(
                 public_settings,
             )
         }
-        EnteredRelay::BareRathole {
+        EnteredRelay::Rathole {
             remote_addr,
             public_key,
             domain,
@@ -160,7 +160,7 @@ pub async fn add_server<S: RelayClient>(
                     reason: problem.reason,
                 }
             })?;
-            (RelayKind::BareRathole, public_settings)
+            (RelayKind::Rathole, public_settings)
         }
     };
     let record = ServerRecord {
@@ -182,7 +182,7 @@ pub async fn add_server<S: RelayClient>(
 /// For a Wildflower relay, the token is first checked with it the way
 /// [`add_server`] does, through the [`RelayClient`] `relay_client` builds from
 /// its base URL, and the record takes the relay's current `GET /rathole` as its
-/// `public_settings`. A [`RelayKind::BareRathole`] server's token is replaced
+/// `public_settings`. A [`RelayKind::Rathole`] server's token is replaced
 /// without a request, and `relay_client` is never called.
 ///
 /// # Errors
@@ -344,7 +344,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::domain::fixtures::{first_party_record, TOKEN};
+    use crate::domain::fixtures::{official_record, TOKEN};
     use crate::JsonServerRegistry;
 
     const RELAY_DOMAIN: &str = "relay.example.com";
@@ -450,8 +450,8 @@ mod tests {
         }
     }
 
-    fn bare_rathole_relay() -> EnteredRelay {
-        EnteredRelay::BareRathole {
+    fn rathole_relay() -> EnteredRelay {
+        EnteredRelay::Rathole {
             remote_addr: format!("{RELAY_DOMAIN}:2333"),
             public_key: PUBLIC_KEY.to_owned(),
             domain: RELAY_DOMAIN.to_owned(),
@@ -506,20 +506,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_first_party_relay_is_asked_at_its_own_site() {
+    async fn the_official_relay_is_asked_at_its_own_site() {
         let (_data_root, registry) = registry();
         let relay_client = FakeRelayClient::serving(served_settings());
 
         let record = add(
             &registry,
             &relay_client,
-            EnteredRelay::FirstPartyWildflower,
+            EnteredRelay::WildflowerOfficial,
             TOKEN,
         )
         .await
         .unwrap();
 
-        assert_eq!(record.relay, RelayKind::FirstPartyWildflower);
+        assert_eq!(record.relay, RelayKind::WildflowerOfficial);
         assert_eq!(
             relay_client.built_for(),
             vec![RelayKind::wildflower_base_url()]
@@ -750,12 +750,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_bare_rathole_relay_is_added_from_its_entered_settings_without_a_request() {
+    async fn a_rathole_relay_is_added_from_its_entered_settings_without_a_request() {
         let (_data_root, registry) = registry();
 
         let record = add_server(
             Arc::clone(&registry),
-            bare_rathole_relay(),
+            rathole_relay(),
             ruth(),
             TunnelToken::new("any-token"),
             no_client,
@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(
             record,
             ServerRecord {
-                relay: RelayKind::BareRathole,
+                relay: RelayKind::Rathole,
                 tunnel_name: ruth(),
                 token: TunnelToken::new("any-token"),
                 public_settings: served_settings(),
@@ -778,15 +778,15 @@ mod tests {
         assert_eq!(registry.read_all().unwrap(), vec![record]);
     }
 
-    /// A bare rathole relay's entered settings get the checks a `GET /rathole`
+    /// A rathole relay's entered settings get the checks a `GET /rathole`
     /// response does.
     #[tokio::test]
-    async fn a_bare_rathole_relay_s_invalid_setting_is_named_and_writes_nothing() {
+    async fn a_rathole_relay_s_invalid_setting_is_named_and_writes_nothing() {
         for (setting, public_settings) in bad_settings() {
             let (_data_root, registry) = registry();
             let result = add_server(
                 Arc::clone(&registry),
-                EnteredRelay::BareRathole {
+                EnteredRelay::Rathole {
                     remote_addr: public_settings.remote_addr.clone(),
                     public_key: public_settings.public_key.clone(),
                     domain: public_settings.domain.clone(),
@@ -808,8 +808,8 @@ mod tests {
     fn an_entered_relay_decodes_from_camel_case_json() {
         for (json, relay) in [
             (
-                serde_json::json!({"kind": "firstPartyWildflower"}),
-                EnteredRelay::FirstPartyWildflower,
+                serde_json::json!({"kind": "wildflowerOfficial"}),
+                EnteredRelay::WildflowerOfficial,
             ),
             (
                 serde_json::json!({"kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com"}),
@@ -828,12 +828,12 @@ mod tests {
             ),
             (
                 serde_json::json!({
-                    "kind": "bareRathole",
+                    "kind": "rathole",
                     "remoteAddr": "relay.example.com:2333",
                     "publicKey": PUBLIC_KEY,
                     "domain": RELAY_DOMAIN,
                 }),
-                bare_rathole_relay(),
+                rathole_relay(),
             ),
         ] {
             assert_eq!(
@@ -845,7 +845,7 @@ mod tests {
         for json in [
             serde_json::json!({"kind": "selfHostedWildflower", "base_url": "https://relay.example.com"}),
             serde_json::json!({
-                "kind": "bareRathole",
+                "kind": "rathole",
                 "remote_addr": "relay.example.com:2333",
                 "publicKey": PUBLIC_KEY,
                 "domain": RELAY_DOMAIN,
@@ -866,7 +866,7 @@ mod tests {
     #[tokio::test]
     async fn set_credentials_replaces_the_token_and_settings_and_keeps_the_rest() {
         let (_data_root, registry) = registry();
-        let mut registered = first_party_record("ruth");
+        let mut registered = official_record("ruth");
         registered.token = TunnelToken::new("the-old-token");
         registered.public_settings.domain = RELAY_DOMAIN.to_owned();
         registered.staging_certificates = true;
@@ -918,7 +918,7 @@ mod tests {
     #[tokio::test]
     async fn set_credentials_refuses_a_relay_that_moved_domain_or_rejects_the_token() {
         let (_data_root, registry) = registry();
-        let mut registered = first_party_record("ruth");
+        let mut registered = official_record("ruth");
         registered.public_settings.domain = "old.example.com".to_owned();
         registry.insert(registered.clone()).unwrap();
         let relay_client = FakeRelayClient::serving(served_settings());
@@ -948,11 +948,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_credentials_for_a_bare_rathole_server_replaces_only_the_token_without_a_request() {
+    async fn set_credentials_for_a_rathole_server_replaces_only_the_token_without_a_request() {
         let (_data_root, registry) = registry();
         let registered = add_server(
             Arc::clone(&registry),
-            bare_rathole_relay(),
+            rathole_relay(),
             ruth(),
             TunnelToken::new("the-old-token"),
             no_client,

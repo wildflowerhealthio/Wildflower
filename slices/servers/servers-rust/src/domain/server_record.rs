@@ -26,7 +26,7 @@ pub struct ServerRecord {
     /// The tunnel's token at the relay.
     pub token: TunnelToken,
     /// What the relay returned from `GET /rathole` when the server was added,
-    /// or, for a [`RelayKind::BareRathole`] one, what was entered: the only
+    /// or, for a [`RelayKind::Rathole`] one, what was entered: the only
     /// copy of the relay's dial address and noise key, which the tunnel client
     /// always dials.
     pub public_settings: PublicRatholeSettings,
@@ -65,8 +65,8 @@ impl ServerRecord {
 /// The kind of relay a server's tunnel runs through, as the record stores
 /// it.
 ///
-/// Serialised as `{"kind": "firstPartyWildflower"}`,
-/// `{"kind": "selfHostedWildflower", "baseUrl"}` or `{"kind": "bareRathole"}`.
+/// Serialised as `{"kind": "wildflowerOfficial"}`,
+/// `{"kind": "selfHostedWildflower", "baseUrl"}` or `{"kind": "rathole"}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
@@ -77,7 +77,7 @@ impl ServerRecord {
 pub enum RelayKind {
     /// The relay Wildflower runs, at
     /// [`WILDFLOWER_BASE_URL`](Self::WILDFLOWER_BASE_URL).
-    FirstPartyWildflower,
+    WildflowerOfficial,
     /// A Wildflower relay someone else runs, entered by the base URL of its
     /// Wildflower relay site. What its rathole client dials comes from its
     /// `GET /rathole`, kept in the record's `public_settings`.
@@ -86,10 +86,10 @@ pub enum RelayKind {
         /// and `GET /me`.
         base_url: Url,
     },
-    /// A bare rathole server with no Wildflower relay site, whose settings
+    /// A rathole server with no Wildflower relay site, whose settings
     /// were entered by hand. They are kept only in the record's
     /// `public_settings`.
-    BareRathole,
+    Rathole,
 }
 
 impl RelayKind {
@@ -108,15 +108,15 @@ impl RelayKind {
 
     /// The relay's Wildflower relay site, where it serves `GET /rathole` and
     /// `GET /me`: [`WILDFLOWER_BASE_URL`](Self::WILDFLOWER_BASE_URL) for
-    /// [`RelayKind::FirstPartyWildflower`], the entered `base_url` for
+    /// [`RelayKind::WildflowerOfficial`], the entered `base_url` for
     /// [`RelayKind::SelfHostedWildflower`], and none for
-    /// [`RelayKind::BareRathole`].
+    /// [`RelayKind::Rathole`].
     #[must_use]
     pub fn site_base_url(&self) -> Option<Url> {
         match self {
-            Self::FirstPartyWildflower => Some(Self::wildflower_base_url()),
+            Self::WildflowerOfficial => Some(Self::wildflower_base_url()),
             Self::SelfHostedWildflower { base_url } => Some(base_url.clone()),
-            Self::BareRathole => None,
+            Self::Rathole => None,
         }
     }
 }
@@ -165,9 +165,9 @@ pub(crate) mod tests {
 
     pub(crate) const TOKEN: &str = "s3cret-tunnel-token";
 
-    pub(crate) fn first_party_record(tunnel_name: &str) -> ServerRecord {
+    pub(crate) fn official_record(tunnel_name: &str) -> ServerRecord {
         ServerRecord {
-            relay: RelayKind::FirstPartyWildflower,
+            relay: RelayKind::WildflowerOfficial,
             tunnel_name: TunnelName::parse(tunnel_name).unwrap(),
             token: TunnelToken::new(TOKEN),
             public_settings: PublicRatholeSettings {
@@ -210,9 +210,9 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_relay_s_site_is_first_party_s_the_entered_one_or_none() {
+    fn a_relay_s_site_is_the_official_one_the_entered_one_or_none() {
         assert_eq!(
-            RelayKind::FirstPartyWildflower
+            RelayKind::WildflowerOfficial
                 .site_base_url()
                 .unwrap()
                 .as_str(),
@@ -226,24 +226,21 @@ pub(crate) mod tests {
                 .as_str(),
             "https://relay.example.com/"
         );
-        assert_eq!(RelayKind::BareRathole.site_base_url(), None);
+        assert_eq!(RelayKind::Rathole.site_base_url(), None);
     }
 
     #[test]
     fn a_relay_serialises_camel_case_by_kind() {
         for (relay, json) in [
             (
-                RelayKind::FirstPartyWildflower,
-                serde_json::json!({"kind": "firstPartyWildflower"}),
+                RelayKind::WildflowerOfficial,
+                serde_json::json!({"kind": "wildflowerOfficial"}),
             ),
             (
                 self_hosted_record("lab").relay,
                 serde_json::json!({"kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com/"}),
             ),
-            (
-                RelayKind::BareRathole,
-                serde_json::json!({"kind": "bareRathole"}),
-            ),
+            (RelayKind::Rathole, serde_json::json!({"kind": "rathole"})),
         ] {
             assert_eq!(serde_json::to_value(&relay).unwrap(), json);
             assert_eq!(serde_json::from_value::<RelayKind>(json).unwrap(), relay);
@@ -257,7 +254,7 @@ pub(crate) mod tests {
     #[test]
     fn domain_is_the_tunnel_name_under_the_relay_domain() {
         assert_eq!(
-            first_party_record("ruth").domain(),
+            official_record("ruth").domain(),
             "ruth.relay.wildflowerhealth.io"
         );
         assert_eq!(self_hosted_record("lab").domain(), "lab.relay.example.com");
@@ -265,7 +262,7 @@ pub(crate) mod tests {
 
     #[test]
     fn debug_redacts_the_token() {
-        let rendered = format!("{:?}", first_party_record("ruth"));
+        let rendered = format!("{:?}", official_record("ruth"));
         assert!(!rendered.contains(TOKEN), "token leaked: {rendered}");
         assert!(
             rendered.contains(TunnelToken::REDACTED),

@@ -13,12 +13,12 @@
 //! [`ServerRegistry`] port, and holds any number of servers.
 //!
 //! A server is added by enrolment ([`add_server`]). For a Wildflower relay,
-//! first-party or self-hosted, the relay's `GET /rathole` is fetched and
+//! official or self-hosted, the relay's `GET /rathole` is fetched and
 //! checked, a signed `GET /me` confirms the relay holds the tunnel name and
-//! token, and only then is the record written. A bare rathole relay, a rathole
+//! token, and only then is the record written. A rathole relay, a rathole
 //! server with no Wildflower relay site, is entered as its settings, which get
 //! the same checks. [`set_server_credentials`] replaces a server's token the
-//! same way, and a bare rathole server's without a request.
+//! same way, and a rathole server's without a request.
 //!
 //!  - [`domain`] — [`ServerRecord`], its [`RelayKind`] and [`TunnelToken`],
 //!    [`RegistryError`], and enrolment with its [`EnteredRelay`], [`RelayPin`]
