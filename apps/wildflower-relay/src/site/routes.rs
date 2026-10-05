@@ -9,8 +9,7 @@ use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Json;
-use rathole_settings_rust::PublicRatholeSettings;
-use serde::Serialize;
+use rathole_settings_rust::{PublicRatholeSettings, TunnelHost};
 use shared_structures_rust::health_check::{health_router, AlwaysHealthy};
 
 use super::signature::{require_signature, SignedBy, Verifier};
@@ -40,14 +39,6 @@ async fn rathole(State(rathole_settings): State<Arc<PublicRatholeSettings>>) -> 
         [(header::CACHE_CONTROL, RATHOLE_CACHE_CONTROL)],
         Json(PublicRatholeSettings::clone(&rathole_settings)),
     )
-}
-
-/// A tunnel and the hostname visitors reach it at.
-#[derive(Debug, Serialize)]
-struct TunnelHost {
-    tunnel_name: String,
-    /// `<tunnel name>.<domain>`.
-    public_host: String,
 }
 
 async fn me(

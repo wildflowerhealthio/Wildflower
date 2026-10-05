@@ -41,4 +41,4 @@ pub use domain::{
     add_server, set_server_credentials, EnrolmentError, RegistryError, Relay, RelayPin,
     ServerRecord, TunnelToken,
 };
-pub use ports::{RelaySite, ServerRegistry, TunnelHost};
+pub use ports::{RelaySite, ServerRegistry};

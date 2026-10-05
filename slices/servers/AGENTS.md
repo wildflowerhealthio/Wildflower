@@ -82,7 +82,7 @@ The **servers** this install knows about. Rust-only, no `-core`.
 
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.
 - `slices/tunnel/rathole-settings-rust` — `PublicRatholeSettings`, the
-  `GET /rathole` response a record keeps as `public_settings`, and
-  `TunnelName`.
+  `GET /rathole` response a record keeps as `public_settings`,
+  `TunnelHost`, the `GET /me` response, and `TunnelName`.
 - `apps/wildflower-relay` — the relay whose `GET /rathole` and `GET /me`
   enrolment calls; its crate docs give the signing rules.

@@ -6,5 +6,5 @@
 mod relay_site;
 mod server_registry;
 
-pub use relay_site::{RelaySite, TunnelHost};
+pub use relay_site::RelaySite;
 pub use server_registry::ServerRegistry;

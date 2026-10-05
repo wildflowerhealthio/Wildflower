@@ -1,8 +1,7 @@
 //! The [`RelaySite`] port: the two requests enrolment makes to a relay's own
 //! site.
 
-use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
-use serde::Deserialize;
+use rathole_settings_rust::{PublicRatholeSettings, TunnelHost, TunnelName};
 use url::Url;
 
 use crate::domain::{EnrolmentError, TunnelToken};
@@ -42,13 +41,4 @@ pub trait RelaySite: Send + Sync {
         tunnel_name: &TunnelName,
         token: &TunnelToken,
     ) -> Result<TunnelHost, EnrolmentError>;
-}
-
-/// What the relay's `GET /me` returns: the tunnel that signed, and the
-/// hostname visitors reach it at.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct TunnelHost {
-    pub tunnel_name: String,
-    /// `<tunnel name>.<domain>`.
-    pub public_host: String,
 }

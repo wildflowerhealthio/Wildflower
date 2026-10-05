@@ -2,18 +2,19 @@
 //!
 //! The relay's site has a publicly trusted certificate for its own hostname,
 //! so requests are TLS-only and checked against the bundled web PKI roots.
-//! `GET /me` is signed with the tunnel's token (see [`RequestSignature`]); the
+//! It answers both paths itself, so a redirect is a bad response rather than
+//! followed. `GET /me` is signed with the tunnel's token (see [`RequestSignature`]); the
 //! token is never sent.
 
 use std::time::Duration;
 
-use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
+use rathole_settings_rust::{PublicRatholeSettings, TunnelHost, TunnelName};
 use reqwest::StatusCode;
 use url::Url;
 
 use super::request_signature::RequestSignature;
 use crate::domain::{EnrolmentError, TunnelToken};
-use crate::ports::{RelaySite, TunnelHost};
+use crate::ports::RelaySite;
 
 /// How long one request to the relay's site may take, connection included.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -30,10 +31,7 @@ impl ReqwestRelaySite {
     #[must_use]
     pub fn new() -> Self {
         Self::with_client(
-            reqwest::Client::builder()
-                .use_rustls_tls()
-                .https_only(true)
-                .timeout(REQUEST_TIMEOUT)
+            client_builder()
                 .build()
                 .expect("failed to build the relay site's HTTP client"),
         )
@@ -115,6 +113,16 @@ impl RelaySite for ReqwestRelaySite {
         }
         decode_success(PATH, response).await
     }
+}
+
+/// The client settings every request to a relay's site is made with:
+/// `rustls`, HTTPS only, [`REQUEST_TIMEOUT`] and no redirects.
+fn client_builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .use_rustls_tls()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(REQUEST_TIMEOUT)
 }
 
 /// `response`'s JSON body as `T`, if its status is a success.
@@ -243,13 +251,10 @@ mod tests {
         /// and resolves [`RELAY_DOMAIN`] to it.
         fn relay_site(&self) -> ReqwestRelaySite {
             ReqwestRelaySite::with_client(
-                reqwest::Client::builder()
-                    .use_rustls_tls()
-                    .https_only(true)
+                client_builder()
                     .tls_built_in_root_certs(false)
                     .add_root_certificate(reqwest::Certificate::from_der(&self.cert).unwrap())
                     .resolve(RELAY_DOMAIN, self.addr)
-                    .timeout(REQUEST_TIMEOUT)
                     .build()
                     .unwrap(),
             )
@@ -468,7 +473,10 @@ mod tests {
             tracing::subscriber::set_global_default(
                 tracing_subscriber::fmt()
                     .with_max_level(tracing::Level::TRACE)
-                    .with_writer(logs.clone())
+                    .with_writer({
+                        let logs = logs.clone();
+                        move || logs.clone()
+                    })
                     .finish(),
             )
             .expect("no other test sets a global subscriber");
@@ -495,14 +503,6 @@ mod tests {
 
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
-        }
-    }
-
-    impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for CapturedLogs {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
         }
     }
 }

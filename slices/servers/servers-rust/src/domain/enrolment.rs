@@ -11,12 +11,12 @@
 
 use std::sync::Arc;
 
-use rathole_settings_rust::{is_dns_label, PublicRatholeSettings, TunnelName};
+use rathole_settings_rust::{is_dns_label, PublicRatholeSettings, TunnelHost, TunnelName};
 use serde::Deserialize;
 use url::Url;
 
 use crate::domain::{EnrolmentError, RegistryError, Relay, ServerRecord, TunnelToken};
-use crate::ports::{RelaySite, ServerRegistry, TunnelHost};
+use crate::ports::{RelaySite, ServerRegistry};
 
 /// The relay settings a user entered by hand to check `GET /rathole`
 /// against: enrolment fails unless the relay serves exactly these.

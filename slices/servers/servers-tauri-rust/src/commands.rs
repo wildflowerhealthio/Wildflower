@@ -120,11 +120,9 @@ async fn set_credentials(
 mod tests {
     use std::sync::{Mutex, OnceLock};
 
-    use rathole_settings_rust::PublicRatholeSettings;
-    use servers_rust::TunnelHost;
-    use url::Url;
-
+    use rathole_settings_rust::{PublicRatholeSettings, TunnelHost};
     use servers_rust::{JsonServerRegistry, RelaySite};
+    use url::Url;
 
     use super::*;
 

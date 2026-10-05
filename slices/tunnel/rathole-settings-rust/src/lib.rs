@@ -1,12 +1,13 @@
-//! `rathole-settings-rust` — what the relay's `GET /rathole` returns, and
-//! the tunnel name a device adds to it.
+//! `rathole-settings-rust` — what the relay's `GET /rathole` returns, the
+//! tunnel name a device adds to it, and what its signed `GET /me` returns.
 //!
 //! `wildflower-relay` serves [`PublicRatholeSettings`] at
 //! `https://<domain>/rathole` without authentication: everything public a
 //! rathole client needs to dial the relay. A device adds only its
 //! [`TunnelName`], which is its rathole service name, and that tunnel's
 //! token. Its public host is `<tunnel name>.<domain>`. Both ends check a
-//! tunnel name with the same [`TunnelName::parse`].
+//! tunnel name with the same [`TunnelName::parse`]. A request signed with
+//! the token gets the tunnel's [`TunnelHost`] from `GET /me`.
 //!
 //! [`Transport`] and [`NoisePattern`] each have one value, the one the relay
 //! and the device's rathole are both built for. The relay renders its rathole
@@ -35,6 +36,15 @@ pub struct PublicRatholeSettings {
     /// The relay's own hostname; each tunnel is reached at
     /// `<tunnel name>.<domain>`.
     pub domain: String,
+}
+
+/// What the relay's signed `GET /me` returns: the tunnel that signed, and
+/// the hostname visitors reach it at.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TunnelHost {
+    pub tunnel_name: String,
+    /// `<tunnel name>.<domain>`.
+    pub public_host: String,
 }
 
 /// A rathole transport (`[client.transport] type`).
