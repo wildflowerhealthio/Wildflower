@@ -32,7 +32,7 @@ use tokio::sync::broadcast;
 use tokio_rustls::TlsAcceptor;
 
 use self::signature::Verifier;
-use crate::tunnels::TunnelRegistry;
+use crate::tunnel_registry::TunnelRegistry;
 
 /// The ALPN protocol of a TLS-ALPN-01 validation handshake (RFC 8737).
 const ACME_TLS_ALPN: &[u8] = b"acme-tls/1";

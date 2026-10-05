@@ -23,6 +23,11 @@ base64.workspace = true
 # Derives the noise public key from the private key (X25519). Already in the
 # tree through snow, rathole's noise implementation.
 curve25519-dalek = "4.1"
+# The tunnel store, `<state dir>/tunnels.db`: queries over the
+# `persistence_rust::DieselPool`, as the slices' stores do.
+diesel.workspace = true
+# Embeds the tunnel store's migrations (`migrations/`) at compile time.
+diesel_migrations.workspace = true
 # Polls the `AcmeState` stream (`StreamExt::next`).
 futures-util = { version = "0.3", default-features = false }
 # `hmac-sha256` HTTP message signatures (RFC 9421), with a constant-time
@@ -33,8 +38,8 @@ hmac = "0.12"
 # already in the tree through axum.
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
-# The tunnel store's migration runner and shared SQLite connection handle, as
-# the slices use them.
+# The tunnel store's diesel connection pool and namespaced migration runner,
+# as the slices use them. The relay names the pool type but not rusqlite.
 persistence-rust = { path = "../../slices/persistence/persistence-rust" }
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
@@ -51,8 +56,6 @@ rathole = { version = "0.5", default-features = false, features = [
 ] }
 # The wire shape of `GET /rathole`, shared with the device's rathole client.
 rathole-settings-rust = { path = "../../slices/tunnel/rathole-settings-rust" }
-# The tunnel store, `<state dir>/tunnels.db`.
-rusqlite.workspace = true
 # `rustls::server::Acceptor` reads the ClientHello's server name for routing.
 # `ring` is the provider for the site's TLS, the same one rustls-acme uses;
 # aws-lc-rs would need cmake to build.

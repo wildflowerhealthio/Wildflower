@@ -4,7 +4,7 @@
 //!
 //! The file is generated, never read back: the control address, the noise
 //! transport, pattern and key, and for each live tunnel (see
-//! [`crate::tunnels`]) a rathole service `[server.services.<tunnel name>]`:
+//! [`crate::domain::TunnelSet`]) a rathole service `[server.services.<tunnel name>]`:
 //! loopback TCP with the tunnel's own `token`, on the tunnel's port. There
 //! is no `default_token`, so a device needs its own token to connect.
 
@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use toml::{Table, Value};
 
+use crate::domain::TunnelSet;
 use crate::settings::ControlSettings;
-use crate::tunnels::TunnelSet;
 
 /// The rathole server TOML for `control` and `tunnels`.
 ///

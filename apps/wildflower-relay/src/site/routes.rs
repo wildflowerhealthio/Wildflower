@@ -15,7 +15,7 @@ use shared_structures_rust::health_check::{health_router, AlwaysHealthy};
 
 use super::admin;
 use super::signature::{require_signature, SignedBy, Verifier};
-use crate::tunnels::TunnelRegistry;
+use crate::tunnel_registry::TunnelRegistry;
 
 /// `GET /rathole` changes only when the relay restarts with a new
 /// environment, so clients may reuse it for a minute.
@@ -86,7 +86,7 @@ mod tests {
     use crate::settings::{RelaySettings, Secret, Tunnel};
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
-    use crate::tunnels::tests::registry;
+    use crate::test_support::registry;
 
     #[tokio::test]
     async fn rathole_serves_the_settings_from_the_environment() {
@@ -264,7 +264,7 @@ mod tests {
             .create("bob@example.com", Some("bob"))
             .await
             .unwrap();
-        let token = created.token.expose();
+        let token = created.tunnel.token.expose();
         let response = router.clone().oneshot(me(token, "1")).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 

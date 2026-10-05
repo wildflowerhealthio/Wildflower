@@ -414,14 +414,12 @@ async fn created_tunnels_route_without_a_restart_and_deleted_ones_stop() {
     let harness = start_front(tunnels.router()).await;
 
     let created = tunnels.create("ops@example.com", None).await.unwrap();
-    let (_client, _upstream) = pipe_through(&harness, &backend, &created.public_host, b"").await;
+    let public_host = tunnels.public_host(&created.tunnel.name);
+    let (_client, _upstream) = pipe_through(&harness, &backend, &public_host, b"").await;
 
-    tunnels.delete(&created.name).await.unwrap();
+    tunnels.delete(&created.tunnel.name).await.unwrap();
     let mut client = TcpStream::connect(harness.https).await.unwrap();
-    client
-        .write_all(&client_hello(&created.public_host))
-        .await
-        .unwrap();
+    client.write_all(&client_hello(&public_host)).await.unwrap();
     assert_closed_silently(client).await;
     let _ = harness.shutdown_tx.send(true);
 }

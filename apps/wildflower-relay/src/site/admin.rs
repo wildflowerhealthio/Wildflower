@@ -26,10 +26,12 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get};
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, Serializer};
 
 use super::signature::{authority, require_signature, SignedBy, Verifier};
-use crate::tunnels::{TunnelError, TunnelRegistry};
+use crate::domain::{LiveTunnel, Source, StoredTunnel, TunnelError};
+use crate::settings::Secret;
+use crate::tunnel_registry::TunnelRegistry;
 
 /// The routes above, changing tunnels through `tunnels` and checking
 /// signatures with `verifier`.
@@ -66,6 +68,58 @@ struct CreateTunnel {
     name: Option<String>,
 }
 
+/// A live tunnel as `GET /api/tunnels` lists it: no token.
+#[derive(Debug, Serialize)]
+struct TunnelInfo {
+    name: String,
+    /// `None` for a tunnel from the environment.
+    email: Option<String>,
+    /// `<tunnel name>.<domain>`.
+    public_host: String,
+    /// Unix epoch seconds; `None` for a tunnel from the environment.
+    created_at: Option<i64>,
+    source: Source,
+}
+
+impl TunnelInfo {
+    fn new(live: LiveTunnel, public_host: String) -> Self {
+        let source = live.source();
+        let (email, created_at) = live.stored.unzip();
+        Self {
+            name: live.tunnel.name,
+            email,
+            public_host,
+            created_at,
+            source,
+        }
+    }
+}
+
+/// A tunnel just created, as `POST /api/tunnels` answers. The only place its
+/// token is ever shown.
+#[derive(Debug, Serialize)]
+struct CreatedTunnel {
+    name: String,
+    #[serde(serialize_with = "expose")]
+    token: Secret,
+    /// `<tunnel name>.<domain>`.
+    public_host: String,
+}
+
+impl CreatedTunnel {
+    fn new(stored: StoredTunnel, public_host: String) -> Self {
+        Self {
+            name: stored.tunnel.name,
+            token: stored.tunnel.token,
+            public_host,
+        }
+    }
+}
+
+fn expose<S: Serializer>(secret: &Secret, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(secret.expose())
+}
+
 /// The body is checked only after the signer, so a tunnel-signed request is
 /// `401` whatever it carries.
 async fn create(
@@ -81,7 +135,11 @@ async fn create(
         Err(rejection) => return rejection.into_response(),
     };
     match tunnels.create(&body.email, body.name.as_deref()).await {
-        Ok(created) => (StatusCode::CREATED, Json(created)).into_response(),
+        Ok(stored) => {
+            let public_host = tunnels.public_host(&stored.tunnel.name);
+            let created = CreatedTunnel::new(stored, public_host);
+            (StatusCode::CREATED, Json(created)).into_response()
+        }
         Err(error) => error.into_response(),
     }
 }
@@ -90,7 +148,16 @@ async fn list(State(tunnels): State<Arc<TunnelRegistry>>, signed_by: SignedBy) -
     if signed_by != SignedBy::Admin {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    Json(tunnels.list().await).into_response()
+    let listed: Vec<_> = tunnels
+        .list()
+        .await
+        .into_iter()
+        .map(|live| {
+            let public_host = tunnels.public_host(&live.tunnel.name);
+            TunnelInfo::new(live, public_host)
+        })
+        .collect();
+    Json(listed).into_response()
 }
 
 async fn remove(
@@ -126,8 +193,8 @@ impl IntoResponse for TunnelError {
                 "the tunnel is in WILDFLOWER_RELAY_TUNNELS; remove it there",
             ),
             Self::Exhausted(reason) => (StatusCode::SERVICE_UNAVAILABLE, reason),
-            Self::Internal(error) => {
-                tracing::error!("tunnel change failed: {error:#}");
+            Self::Infrastructure { context, source } => {
+                tracing::error!("tunnel change failed: {context}: {source}");
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
         };
@@ -145,7 +212,7 @@ mod tests {
     use super::*;
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
-    use crate::tunnels::tests::registry;
+    use crate::test_support::registry;
 
     const ADMIN_KEY: &str = "an-admin-key-of-thirty-two-bytes";
     const ADMIN: &str = "https://admin.relay.example.com";

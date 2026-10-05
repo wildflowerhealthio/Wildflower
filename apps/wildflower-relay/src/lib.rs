@@ -131,12 +131,25 @@
 //! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
 //! for a commented list). Tunnels come from `WILDFLOWER_RELAY_TUNNELS`, one
 //! `name=token` each, with no shared token, and from the admin API, which
-//! keeps them in SQLite at `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db` (see
-//! [`store`]); a name in both is a startup error. The relay renders a fresh
-//! rathole TOML for all of them to `WILDFLOWER_RELAY_CONFIG` on every start
-//! and after every change (see [`config`]), and never reads it back; the
-//! front's routes and the signing keys follow the same tunnel set (see
-//! [`tunnels`]).
+//! keeps them in SQLite at `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`; a
+//! name in both is a startup error. The relay renders a fresh rathole TOML
+//! for all of them to `WILDFLOWER_RELAY_CONFIG` on every start and after
+//! every change (see [`config`]), and never reads it back; the front's routes
+//! and the signing keys follow the same tunnel set (see [`tunnel_registry`]).
+//!
+//! The tunnels are layered like the slices' stores:
+//!
+//!  - [`domain`] — pure: the live [`TunnelSet`], the [`TunnelStore`]
+//!    persistence *port*, the failure vocabulary
+//!    ([`TunnelError`](domain::TunnelError)), and the
+//!    [`actions`](domain::actions) that decide a create or delete and drive
+//!    the store through the port.
+//!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing that port with
+//!    Diesel over a `persistence_rust::DieselPool` onto `tunnels.db`, and its
+//!    migrations (`migrations/`).
+//!  - [`tunnel_registry`] — the [`TunnelRegistry`] that holds the live set,
+//!    runs the actions off the async runtime and serves each change: the
+//!    rathole TOML, the front's routes and the signing keys.
 //!
 //! ## Deploying
 //!
@@ -173,13 +186,15 @@
 //! A restart drops open connections; devices reconnect their tunnels.
 
 pub mod config;
+pub mod db;
+pub mod domain;
 pub mod front;
-pub mod names;
 pub mod route;
 pub mod settings;
 pub mod site;
-pub mod store;
-pub mod tunnels;
+#[cfg(test)]
+mod test_support;
+pub mod tunnel_registry;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -188,13 +203,14 @@ use anyhow::Context;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
+pub use db::SqliteTunnelStore;
+pub use domain::{TunnelSet, TunnelStore};
 pub use front::{Front, Limits};
 pub use route::{Route, RouteTable, Router};
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
 pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;
-pub use store::TunnelStore;
-pub use tunnels::{TunnelRegistry, TunnelSet};
+pub use tunnel_registry::TunnelRegistry;
 
 /// Build the [`rathole::Cli`] that runs the relay in server mode against the
 /// config at `config_path`.

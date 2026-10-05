@@ -3,11 +3,11 @@
 //! The relay's local hostnames (its domain itself and `admin.<domain>`) are
 //! served by the relay's own site, which terminates TLS in-process. Any
 //! other public hostname `<tunnel name>.<domain>` names a live tunnel (see
-//! [`crate::tunnels`]). Its loopback address is where rathole listens for
-//! that device, and only while the device's tunnel is up, so the front
-//! connects there and lets a refused connection mean "device offline". The
-//! [`RouteTable`] is built from the same tunnel set that the rathole TOML is
-//! rendered from, and [`Router::replace`] swaps in a new one whole when a
+//! [`crate::domain::TunnelSet`]). Its loopback address is where rathole
+//! listens for that device, and only while the device's tunnel is up, so the
+//! front connects there and lets a refused connection mean "device offline".
+//! The [`RouteTable`] is built from the same tunnel set that the rathole TOML
+//! is rendered from, and [`Router::replace`] swaps in a new one whole when a
 //! tunnel is created or deleted.
 
 use std::collections::{BTreeSet, HashMap};

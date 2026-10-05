@@ -11,7 +11,7 @@
 //! `keyid="admin"` (see [`crate::site::signature`]) and enables the admin
 //! API. The state directory holds that certificate and its ACME account,
 //! which the relay can rebuild, and the tunnels created through the admin
-//! API (see [`crate::store`]), which it cannot.
+//! API (see [`crate::db`]), which it cannot.
 //!
 //! | Variable | Default |
 //! |---|---|
@@ -160,7 +160,7 @@ pub struct ControlSettings {
     pub noise_public_key: String,
     /// Every tunnel in `WILDFLOWER_RELAY_TUNNELS`, sorted by name. Each
     /// becomes the rathole service `[server.services.<name>]`, as does each
-    /// stored tunnel (see [`crate::tunnels`]).
+    /// stored tunnel (see [`crate::domain::TunnelSet`]).
     pub tunnels: Vec<Tunnel>,
     /// Loopback port of the first tunnel; the rest of the environment's
     /// follow in name order, then the stored ones.
