@@ -1,11 +1,12 @@
-//! Writes the rathole TOML from the environment on every start.
+//! Writes the rathole TOML from the settings and the live tunnel set, on
+//! every start and after every change through the admin API. rathole
+//! reloads the file when it is replaced.
 //!
 //! The file is generated, never read back: the control address, the noise
-//! transport, pattern and key, and for each tunnel in
-//! `WILDFLOWER_RELAY_TUNNELS` a rathole service `[server.services.<tunnel
-//! name>]`: loopback TCP with the tunnel's own `token`, on the port
-//! [`ControlSettings::tunnel_addrs`] gives it. There is no `default_token`,
-//! so a device needs its own token to connect.
+//! transport, pattern and key, and for each live tunnel (see
+//! [`crate::tunnels`]) a rathole service `[server.services.<tunnel name>]`:
+//! loopback TCP with the tunnel's own `token`, on the tunnel's port. There
+//! is no `default_token`, so a device needs its own token to connect.
 
 use std::path::{Path, PathBuf};
 
@@ -13,23 +14,24 @@ use anyhow::Context;
 use toml::{Table, Value};
 
 use crate::settings::ControlSettings;
+use crate::tunnels::TunnelSet;
 
-/// The rathole server TOML for `control`.
+/// The rathole server TOML for `control` and `tunnels`.
 ///
 /// # Errors
 ///
 /// Returns an error if the table cannot be serialised as TOML.
-pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
+pub fn render(control: &ControlSettings, tunnels: &TunnelSet) -> anyhow::Result<String> {
     let mut services = Table::new();
-    for ((name, addr), tunnel) in control.tunnel_addrs().into_iter().zip(&control.tunnels) {
+    for live in tunnels.iter() {
         let mut entry = Table::new();
         entry.insert("type".into(), Value::String("tcp".into()));
-        entry.insert("bind_addr".into(), Value::String(addr.to_string()));
+        entry.insert("bind_addr".into(), Value::String(live.addr().to_string()));
         entry.insert(
             "token".into(),
-            Value::String(tunnel.token.expose().to_owned()),
+            Value::String(live.tunnel.token.expose().to_owned()),
         );
-        services.insert(name, Value::Table(entry));
+        services.insert(live.tunnel.name.clone(), Value::Table(entry));
     }
 
     let mut noise = Table::new();
@@ -59,7 +61,7 @@ pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
     Ok(toml::to_string(&root)?)
 }
 
-/// Render the config for `control` and replace the file at `path`
+/// Render the config for `control` and `tunnels` and replace the file at `path`
 /// atomically: the new text goes to a temp file in the same directory, is
 /// checked with rathole's own parser, and is renamed over `path`, so rathole
 /// never sees a half-written file.
@@ -68,8 +70,12 @@ pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
 ///
 /// Returns an error if the result is not a valid rathole config or the write
 /// or rename fails.
-pub async fn write_config(path: &Path, control: &ControlSettings) -> anyhow::Result<()> {
-    let rendered = render(control)?;
+pub async fn write_config(
+    path: &Path,
+    control: &ControlSettings,
+    tunnels: &TunnelSet,
+) -> anyhow::Result<()> {
+    let rendered = render(control, tunnels)?;
     let temp = temp_path(path)?;
     write_private(&temp, &rendered).with_context(|| format!("writing {}", temp.display()))?;
     let checked = rathole::Config::from_file(&temp).await.and_then(|config| {
@@ -85,8 +91,8 @@ pub async fn write_config(path: &Path, control: &ControlSettings) -> anyhow::Res
     renamed.context("the rendered relay config was rejected")?;
     tracing::info!(
         config = %path.display(),
-        tunnels = control.tunnels.len(),
-        "relay config written from the environment"
+        tunnels = tunnels.len(),
+        "relay config written"
     );
     Ok(())
 }
@@ -146,6 +152,11 @@ mod tests {
         RelaySettings::from_lookup(|name| env.get(name).cloned()).expect("example settings")
     }
 
+    /// The environment's tunnels, with nothing stored.
+    fn env_tunnels(control: &ControlSettings) -> TunnelSet {
+        TunnelSet::new(control, Vec::new()).expect("tunnel set")
+    }
+
     async fn parse(text: &str) -> rathole::Config {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("relay.toml");
@@ -167,13 +178,14 @@ mod tests {
             "commented defaults in relay.example.env must match the code"
         );
 
-        let server = parse(&render(&example.control).unwrap())
+        let tunnels = env_tunnels(&example.control);
+        let server = parse(&render(&example.control, &tunnels).unwrap())
             .await
             .server
             .expect("[server]");
         assert!(server.default_token.is_none());
         assert!(!server.services.is_empty(), "the example lists a tunnel");
-        for (name, addr) in example.control.tunnel_addrs() {
+        for (name, addr) in tunnels.addrs() {
             let service = &server.services[&name];
             assert_eq!(service.bind_addr, addr.to_string());
             assert!(service.token.is_some());
@@ -197,7 +209,8 @@ mod tests {
             ),
         ]);
         let control = settings(&env).control;
-        let server = parse(&render(&control).unwrap())
+        let tunnels = env_tunnels(&control);
+        let server = parse(&render(&control, &tunnels).unwrap())
             .await
             .server
             .expect("[server]");
@@ -219,7 +232,7 @@ mod tests {
         let router = Router::new(
             "relay.example.com",
             ["relay.example.com".to_owned()],
-            RouteTable::from_addrs(control.tunnel_addrs()),
+            RouteTable::from_addrs(tunnels.addrs()),
         );
         let Some(Destination::Tunnel(route)) = router.resolve("bob.relay.example.com") else {
             panic!("bob routes to a tunnel");
@@ -239,7 +252,8 @@ mod tests {
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
             ),
         ]);
-        let server = parse(&render(&settings(&env).control).unwrap())
+        let control = settings(&env).control;
+        let server = parse(&render(&control, &env_tunnels(&control)).unwrap())
             .await
             .server
             .expect("[server]");
@@ -253,9 +267,10 @@ mod tests {
         std::fs::write(&path, "stale contents from a previous run").unwrap();
 
         let control = settings(&example_env(false)).control;
-        write_config(&path, &control).await.unwrap();
+        let tunnels = env_tunnels(&control);
+        write_config(&path, &control, &tunnels).await.unwrap();
         let written = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(written, render(&control).unwrap());
+        assert_eq!(written, render(&control, &tunnels).unwrap());
         assert!(
             !temp_path(&path).unwrap().exists(),
             "temp file is renamed away"

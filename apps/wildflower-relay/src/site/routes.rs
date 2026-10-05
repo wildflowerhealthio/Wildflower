@@ -13,7 +13,9 @@ use rathole_settings_rust::PublicRatholeSettings;
 use serde::Serialize;
 use shared_structures_rust::health_check::{health_router, AlwaysHealthy};
 
+use super::admin;
 use super::signature::{require_signature, SignedBy, Verifier};
+use crate::tunnels::TunnelRegistry;
 
 /// `GET /rathole` changes only when the relay restarts with a new
 /// environment, so clients may reuse it for a minute.
@@ -23,16 +25,25 @@ const RATHOLE_CACHE_CONTROL: &str = "public, max-age=60";
 /// - `GET /rathole`: `rathole_settings` as JSON, without authentication.
 /// - `GET /me`: the signing tunnel's [`TunnelHost`], for a request signed
 ///   with a tunnel's token (see [`super::signature`]); `401` otherwise.
-pub(super) fn router(rathole_settings: PublicRatholeSettings, verifier: Verifier) -> axum::Router {
-    axum::Router::new()
+/// - With `admin`, the admin API on `admin.<domain>` (see [`super::admin`]).
+pub(super) fn router(
+    rathole_settings: PublicRatholeSettings,
+    verifier: Arc<Verifier>,
+    admin: Option<Arc<TunnelRegistry>>,
+) -> axum::Router {
+    let router = axum::Router::new()
         .route("/me", get(me))
         .route_layer(middleware::from_fn_with_state(
-            Arc::new(verifier),
+            Arc::clone(&verifier),
             require_signature,
         ))
         .route("/rathole", get(rathole))
         .with_state(Arc::new(rathole_settings))
-        .merge(health_router(Arc::new(AlwaysHealthy)))
+        .merge(health_router(Arc::new(AlwaysHealthy)));
+    match admin {
+        Some(tunnels) => router.merge(admin::router(tunnels, verifier)),
+        None => router,
+    }
 }
 
 async fn rathole(State(rathole_settings): State<Arc<PublicRatholeSettings>>) -> impl IntoResponse {
@@ -75,6 +86,7 @@ mod tests {
     use crate::settings::{RelaySettings, Secret, Tunnel};
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
+    use crate::tunnels::tests::registry;
 
     #[tokio::test]
     async fn rathole_serves_the_settings_from_the_environment() {
@@ -94,15 +106,19 @@ mod tests {
         })
         .expect("settings");
 
-        let response = router(settings.public_rathole_settings(), Verifier::new(&[], None))
-            .oneshot(
-                Request::builder()
-                    .uri("/rathole")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = router(
+            settings.public_rathole_settings(),
+            Arc::new(Verifier::new(&[], None)),
+            None,
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/rathole")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let headers = response.headers();
         assert_eq!(headers[header::CONTENT_TYPE], "application/json");
@@ -134,13 +150,14 @@ mod tests {
     fn signing_router() -> axum::Router {
         router(
             rathole_settings(),
-            Verifier::new(
+            Arc::new(Verifier::new(
                 &[Tunnel {
                     name: "alice".to_owned(),
                     token: Secret::new("alice-token"),
                 }],
                 Some(Secret::new("admin-key")),
-            ),
+            )),
+            None,
         )
     }
 
@@ -218,5 +235,59 @@ mod tests {
             let response = router.clone().oneshot(request).await.unwrap();
             assert_eq!(response.status(), status, "{uri}");
         }
+    }
+
+    fn me(token: &str, nonce: &str) -> Request<Body> {
+        signed_request(
+            "GET",
+            "https://relay.example.com/me",
+            b"",
+            "bob",
+            token,
+            unix_now().unwrap(),
+            nonce,
+        )
+    }
+
+    /// A created tunnel signs `GET /me` at once, and a deleted one stops
+    /// verifying at once, without a restart.
+    #[tokio::test]
+    async fn created_tunnels_sign_at_once_and_deleted_ones_stop() {
+        let (tunnels, _dir) = registry("", Some("an-admin-key-of-thirty-two-bytes")).await;
+        let tunnels = Arc::new(tunnels);
+        let router = router(
+            rathole_settings(),
+            tunnels.verifier(),
+            Some(Arc::clone(&tunnels)),
+        );
+        let created = tunnels
+            .create("bob@example.com", Some("bob"))
+            .await
+            .unwrap();
+        let token = created.token.expose();
+        let response = router.clone().oneshot(me(token, "1")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        tunnels.delete("bob").await.unwrap();
+        let response = router.oneshot(me(token, "2")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// Without an admin key nothing can sign as admin, and the admin API is
+    /// not mounted at all.
+    #[tokio::test]
+    async fn without_an_admin_key_the_admin_api_is_absent() {
+        let router = signing_router();
+        let request = signed_request(
+            "GET",
+            "https://admin.relay.example.com/api/tunnels",
+            b"",
+            "admin",
+            "admin-key",
+            unix_now().unwrap(),
+            "absent",
+        );
+        let response = router.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

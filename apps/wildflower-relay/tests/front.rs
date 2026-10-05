@@ -16,7 +16,9 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
-use wildflower_relay::{Front, Limits, RouteTable, Router, Site, Verifier};
+use wildflower_relay::{
+    Front, Limits, RelaySettings, RouteTable, Router, Site, TunnelRegistry, Verifier,
+};
 
 const DOMAIN: &str = "relay.example.com";
 const WAIT: Duration = Duration::from_secs(5);
@@ -66,7 +68,8 @@ fn self_signed_site() -> (Site, CertificateDer<'static>) {
         Site::new(
             Arc::new(SingleCertAndKey::from(key)),
             rathole_settings,
-            Verifier::new(&[], None),
+            Arc::new(Verifier::new(&[], None)),
+            None,
         ),
         cert,
     )
@@ -382,5 +385,43 @@ async fn acme_tls_alpn_handshake_for_own_hostname_reaches_the_site() {
         .expect("site should close a validation handshake")
         .unwrap();
     assert!(rest.is_empty());
+    let _ = harness.shutdown_tx.send(true);
+}
+
+/// A tunnel created through the registry routes on the running front at
+/// once, and stops routing once it is deleted.
+#[tokio::test]
+async fn created_tunnels_route_without_a_restart_and_deleted_ones_stop() {
+    // With no tunnels in the environment, the first created tunnel gets the
+    // port base, where this backend already listens.
+    let backend = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port_base = backend.local_addr().unwrap().port().to_string();
+    let state_dir = tempfile::tempdir().unwrap();
+    let state_dir_path = state_dir.path().display().to_string();
+    let settings = RelaySettings::from_lookup(|name| match name {
+        "WILDFLOWER_RELAY_DOMAIN" => Some(DOMAIN.to_owned()),
+        "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY" => {
+            Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned())
+        }
+        "WILDFLOWER_RELAY_TUNNEL_PORT_BASE" => Some(port_base.clone()),
+        "WILDFLOWER_RELAY_STATE_DIR" => Some(state_dir_path.clone()),
+        _ => None,
+    })
+    .unwrap();
+    let tunnels = TunnelRegistry::open(state_dir.path().join("relay.toml"), &settings)
+        .await
+        .unwrap();
+    let harness = start_front(tunnels.router()).await;
+
+    let created = tunnels.create("ops@example.com", None).await.unwrap();
+    let (_client, _upstream) = pipe_through(&harness, &backend, &created.public_host, b"").await;
+
+    tunnels.delete(&created.name).await.unwrap();
+    let mut client = TcpStream::connect(harness.https).await.unwrap();
+    client
+        .write_all(&client_hello(&created.public_host))
+        .await
+        .unwrap();
+    assert_closed_silently(client).await;
     let _ = harness.shutdown_tx.send(true);
 }

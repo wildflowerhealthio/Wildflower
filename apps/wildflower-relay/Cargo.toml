@@ -17,7 +17,8 @@ publish.workspace = true
 anyhow.workspace = true
 # The router of the relay's own site.
 axum.workspace = true
-# Decodes the noise private key and encodes its public key for `GET /rathole`.
+# Decodes the noise private key and encodes its public key for `GET /rathole`,
+# and encodes created tunnels' tokens (base64url).
 base64.workspace = true
 # Derives the noise public key from the private key (X25519). Already in the
 # tree through snow, rathole's noise implementation.
@@ -32,9 +33,15 @@ hmac = "0.12"
 # already in the tree through axum.
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
+# The tunnel store's migration runner and shared SQLite connection handle, as
+# the slices use them.
+persistence-rust = { path = "../../slices/persistence/persistence-rust" }
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
 ppp = "2.3"
+# OS randomness (`SysRng`) for created tunnels' tokens and default names. The
+# version the slices use.
+rand = "0.10"
 # `hot-reload`: rathole picks up a rewritten TOML (e.g. from enrolment)
 # without a restart.
 rathole = { version = "0.5", default-features = false, features = [
@@ -44,6 +51,8 @@ rathole = { version = "0.5", default-features = false, features = [
 ] }
 # The wire shape of `GET /rathole`, shared with the device's rathole client.
 rathole-settings-rust = { path = "../../slices/tunnel/rathole-settings-rust" }
+# The tunnel store, `<state dir>/tunnels.db`.
+rusqlite.workspace = true
 # `rustls::server::Acceptor` reads the ClientHello's server name for routing.
 # `ring` is the provider for the site's TLS, the same one rustls-acme uses;
 # aws-lc-rs would need cmake to build.
@@ -59,7 +68,7 @@ rustls-acme = { version = "0.15", default-features = false, features = [
   "ring",
   "webpki-roots",
 ] }
-# The `GET /me` response body.
+# The `GET /me` response body and the admin API's bodies.
 serde.workspace = true
 # SHA-256 for `hmac-sha256` and for `sha-256` content digests (RFC 9530).
 # Already in the tree.
@@ -105,6 +114,8 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 tempfile = "3"
+# Property tests of the name generator and the admin API's defaults.
+proptest = "1"
 # Drive the site's router in unit tests.
 tower = { workspace = true, features = ["util"] }
 http-body-util.workspace = true

@@ -1,13 +1,14 @@
 //! Hostname routing for the front: the relay's own site or a tunnel.
 //!
-//! The relay's local hostnames (its domain itself) are served by the relay's
-//! own site, which terminates TLS in-process. Any other public hostname
-//! `<tunnel name>.<domain>` names a tunnel from `WILDFLOWER_RELAY_TUNNELS`.
-//! Its loopback address is where rathole listens for that device, and only
-//! while the device's tunnel is up, so the front connects there and lets a
-//! refused connection mean "device offline". The [`RouteTable`] is built from
-//! the same tunnel list that the rathole TOML is rendered from, and
-//! [`Router::replace`] swaps in a new one whole.
+//! The relay's local hostnames (its domain itself and `admin.<domain>`) are
+//! served by the relay's own site, which terminates TLS in-process. Any
+//! other public hostname `<tunnel name>.<domain>` names a live tunnel (see
+//! [`crate::tunnels`]). Its loopback address is where rathole listens for
+//! that device, and only while the device's tunnel is up, so the front
+//! connects there and lets a refused connection mean "device offline". The
+//! [`RouteTable`] is built from the same tunnel set that the rathole TOML is
+//! rendered from, and [`Router::replace`] swaps in a new one whole when a
+//! tunnel is created or deleted.
 
 use std::collections::{BTreeSet, HashMap};
 use std::net::SocketAddr;
@@ -39,7 +40,7 @@ pub struct RouteTable {
 
 impl RouteTable {
     /// Build a table from `(tunnel name, loopback addr)` pairs, e.g.
-    /// [`crate::ControlSettings::tunnel_addrs`].
+    /// [`crate::TunnelSet::addrs`].
     #[must_use]
     pub fn from_addrs(addrs: impl IntoIterator<Item = (String, SocketAddr)>) -> Self {
         Self {

@@ -33,13 +33,14 @@
 //! byte written rather than answered with a certificate of its own. `:80`
 //! only redirects to `https://`.
 //!
-//! The one exception is the relay's own hostname, `<domain>` itself. There
-//! the front hands the connection to the [`site`], which terminates TLS with
-//! the relay's own certificate and serves `GET /health` (`200
-//! {"status":"pass"}`), `GET /rathole`, the public settings a rathole
-//! client needs to dial the relay (see
-//! [`RelaySettings::public_rathole_settings`]), and `GET /me`, a signed
-//! request's tunnel (see "Signed requests" below). The certificate comes from
+//! The exception is the relay's own hostnames, `<domain>` itself and
+//! `admin.<domain>`. There the front hands the connection to the [`site`],
+//! which terminates TLS with the relay's own certificate and serves `GET
+//! /health` (`200 {"status":"pass"}`), `GET /rathole`, the public settings a
+//! rathole client needs to dial the relay (see
+//! [`RelaySettings::public_rathole_settings`]), `GET /me`, a signed
+//! request's tunnel, and on `admin.<domain>` the admin API (see "Signed
+//! requests" below). The certificate, for both names, comes from
 //! Let's Encrypt over TLS-ALPN-01, whose validation handshakes reach the
 //! site through the same routing, and is cached in the state directory
 //! (`WILDFLOWER_RELAY_STATE_DIR`), so a restart reuses it instead of
@@ -95,15 +96,47 @@
 //!
 //! [`site::signature`] has the full rules.
 //!
+//! ### Admin API
+//!
+//! With `WILDFLOWER_RELAY_ADMIN_KEY` set, `https://admin.<domain>` serves an
+//! API for tunnels, to requests signed with `keyid="admin"`. Without the
+//! key it is not served. On any other hostname its paths are `404`, and a
+//! request signed by a tunnel, or not verified, is a bare `401`.
+//!
+//! - `POST /api/tunnels` with `Content-Type: application/json` and
+//!   `{"email": "<owner>", "name": "<tunnel name>"}` creates a tunnel and
+//!   answers `201 {"name", "token", "public_host"}`. The token, 32 random
+//!   bytes as unpadded base64url, is shown only in this answer. `name` is
+//!   optional: without it the relay picks two random words from the EFF
+//!   short wordlist, e.g. `acorn-shady`, never anything taken from the
+//!   email, since names appear in cleartext SNI and in Certificate
+//!   Transparency logs. A given name must be a lowercase DNS label (`422`
+//!   otherwise), and not reserved or in use (`409`). `admin` is reserved.
+//! - `GET /api/tunnels` lists every live tunnel as `{"name", "email",
+//!   "public_host", "created_at", "source"}`, without tokens. `created_at`
+//!   is Unix epoch seconds. `source` is `"store"`, or `"env"` for a tunnel
+//!   from `WILDFLOWER_RELAY_TUNNELS`, whose `email` and `created_at` are
+//!   `null`.
+//! - `DELETE /api/tunnels/{name}` deletes a stored tunnel (`204`). A tunnel
+//!   from the environment is `409`: remove it there.
+//!
+//! A created tunnel's device can connect and sign at once. A deleted one can
+//! no longer sign, and its tunnel drops when rathole reloads its config.
+//! A `POST` has a body, so its signature covers `content-digest`;
+//! `content-type` may be covered too but need not be.
+//!
 //! ## Configuration
 //!
-//! The environment is the only source of configuration: every setting is a
+//! The environment is the only source of settings: every setting is a
 //! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
 //! for a commented list). Tunnels come from `WILDFLOWER_RELAY_TUNNELS`, one
-//! `name=token` each, with no shared token. On every start the relay
-//! renders a fresh rathole TOML from the environment to
-//! `WILDFLOWER_RELAY_CONFIG` (see [`config`]) and never reads it back; the
-//! front's routes are built from the same tunnel list.
+//! `name=token` each, with no shared token, and from the admin API, which
+//! keeps them in SQLite at `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db` (see
+//! [`store`]); a name in both is a startup error. The relay renders a fresh
+//! rathole TOML for all of them to `WILDFLOWER_RELAY_CONFIG` on every start
+//! and after every change (see [`config`]), and never reads it back; the
+//! front's routes and the signing keys follow the same tunnel set (see
+//! [`tunnels`]).
 //!
 //! ## Deploying
 //!
@@ -115,12 +148,13 @@
 //!
 //! `.github/workflows/deploy-relay.yml` deploys it to an Ubuntu 24.04
 //! droplet on every push to `main` that touches this crate, one of its path
-//! dependencies (`shared-structures-rust`, `rathole-settings-rust`) or
-//! `Cargo.lock`, and on manual dispatch. It builds the release binary on
+//! dependencies (`shared-structures-rust`, `rathole-settings-rust`,
+//! `persistence-rust`) or `Cargo.lock`, and on manual dispatch. It builds the release binary on
 //! `ubuntu-24.04`, then, in the `relay` GitHub environment, writes the
 //! environment file from
 //! that environment's secrets (`WILDFLOWER_RELAY_DOMAIN`,
-//! `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`, `WILDFLOWER_RELAY_TUNNELS`) and
+//! `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`, `WILDFLOWER_RELAY_TUNNELS`,
+//! `WILDFLOWER_RELAY_ADMIN_KEY`) and
 //! variables (any other setting, left out when unset). It copies the binary,
 //! environment file and unit to the host over SSH as the `deploy` user
 //! (secrets `RELAY_HOST`, `RELAY_SSH_KEY`, `RELAY_SSH_KNOWN_HOSTS`) and runs
@@ -141,9 +175,12 @@
 
 pub mod config;
 pub mod front;
+pub mod names;
 pub mod route;
 pub mod settings;
 pub mod site;
+pub mod store;
+pub mod tunnels;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -157,6 +194,8 @@ pub use route::{Route, RouteTable, Router};
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
 pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;
+pub use store::TunnelStore;
+pub use tunnels::{TunnelRegistry, TunnelSet};
 
 /// Build the [`rathole::Cli`] that runs the relay in server mode against the
 /// config at `config_path`.
@@ -175,36 +214,45 @@ pub fn build_server_cli(config_path: PathBuf) -> rathole::Cli {
     }
 }
 
-/// Write the rathole TOML from `settings`, then run the relay — rathole, the
-/// `:443`/`:80` front and the site's certificate upkeep — until
-/// `shutdown_rx` receives `true`.
+/// Load the live tunnels from the environment and the store, write the
+/// rathole TOML for them, then run the relay — rathole, the `:443`/`:80`
+/// front and the site's certificate upkeep — until `shutdown_rx` receives
+/// `true`.
 ///
 /// # Errors
 ///
-/// Returns an error if the config cannot be written, the state directory
-/// cannot be created, a front listener cannot bind, or rathole exits with an
-/// error.
+/// Returns an error if the state directory cannot be created, the tunnels
+/// cannot be loaded (see [`TunnelRegistry::open`]), the config cannot be
+/// written, a front listener cannot bind, or rathole exits with an error.
 pub async fn run_relay(
     config_path: PathBuf,
     settings: RelaySettings,
     shutdown_rx: broadcast::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    config::write_config(&config_path, &settings.control).await?;
-    let routes = RouteTable::from_addrs(settings.control.tunnel_addrs());
     create_state_dir(&settings.state_dir)
         .with_context(|| format!("creating {}", settings.state_dir.display()))?;
-    let local_hostnames = settings.front.local_hostnames();
-    let acme = site::acme::state(&local_hostnames, &settings.acme, &settings.state_dir);
-    let verifier = Verifier::new(&settings.control.tunnels, settings.admin_key.clone());
+    let tunnels = Arc::new(TunnelRegistry::open(config_path.clone(), &settings).await?);
+    let acme = site::acme::state(
+        &settings.front.local_hostnames(),
+        &settings.acme,
+        &settings.state_dir,
+    );
+    // Without an admin key nothing could sign for the admin API.
+    let admin = settings.admin_key.is_some().then(|| Arc::clone(&tunnels));
+    tracing::info!(enabled = admin.is_some(), "admin API");
     let site = Site::new(
         acme.resolver(),
         settings.public_rathole_settings(),
-        verifier,
+        tunnels.verifier(),
+        admin,
     );
     let settings = settings.front;
-    tracing::info!(domain = %settings.domain, routes = routes.len(), "routes built");
-    let router = Arc::new(Router::new(&settings.domain, local_hostnames, routes));
-    let front = Front::new(router, site, settings.limits);
+    tracing::info!(
+        domain = %settings.domain,
+        tunnels = tunnels.list().await.len(),
+        "routes built"
+    );
+    let front = Front::new(tunnels.router(), site, settings.limits);
 
     let https = TcpListener::bind(settings.https_addr)
         .await
@@ -224,7 +272,7 @@ pub async fn run_relay(
 }
 
 /// Create the state directory, and any missing parents, readable by the
-/// owner only: it holds the ACME account key. Under systemd,
+/// owner only: it holds the ACME account key and the tunnel store. Under systemd,
 /// `StateDirectory=` has already created it.
 fn create_state_dir(path: &Path) -> std::io::Result<()> {
     let mut builder = std::fs::DirBuilder::new();
