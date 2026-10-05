@@ -7292,6 +7292,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "servers-rust"
+version = "0.0.0"
+dependencies = [
+ "parking_lot",
+ "rathole-settings-rust",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "url",
+]
+
+[[package]]
 name = "servo_arc"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
