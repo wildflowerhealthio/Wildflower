@@ -128,6 +128,20 @@
 //! A `POST` has a body, so its signature covers `content-digest`;
 //! `content-type` may be covered too but need not be.
 //!
+//! ### Admin UI
+//!
+//! `https://admin.<domain>/` also serves a page for the admin API: the
+//! static build of `apps/relay/web`, embedded in the binary (see
+//! [`site`]'s `admin_ui`), under a `Content-Security-Policy` that allows
+//! only its own files. To manage tunnels, the operator opens it and pastes
+//! `WILDFLOWER_RELAY_ADMIN_KEY` once; the browser keeps a non-extractable
+//! signing key made from it, signs each API call with it as above, and
+//! forgets it on Sign out. The page lists the tunnels, creates one (showing
+//! its token once, to hand to the tunnel's owner) and deletes one. A `401`
+//! there means the key is wrong or the operator's clock is more than a
+//! minute off the relay's. The relay keeps no session: without the key the
+//! page can do nothing.
+//!
 //! ## Configuration
 //!
 //! The environment is the only source of settings: every setting is a
@@ -168,8 +182,10 @@
 //! `.github/workflows/deploy-relay.yml` deploys it to an Ubuntu 24.04
 //! droplet on every push to `main` that touches this crate, one of its path
 //! dependencies (`shared-structures-rust`, `rathole-settings-rust`,
-//! `persistence-rust`) or `Cargo.lock`, and on manual dispatch. It builds the
-//! release binary on `ubuntu-24.04`, then, in the `relay` GitHub
+//! `persistence-rust`), the admin UI (`apps/relay/web`, `slices/relay`),
+//! `Cargo.lock` or `pnpm-lock.yaml`, and on manual dispatch. It builds the
+//! admin UI and then the release binary, which embeds it, on
+//! `ubuntu-24.04`, then, in the `relay` GitHub
 //! environment, writes the environment file from that environment's secrets
 //! (`WILDFLOWER_RELAY_DOMAIN`, `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`,
 //! `WILDFLOWER_RELAY_ADMIN_KEY`) and

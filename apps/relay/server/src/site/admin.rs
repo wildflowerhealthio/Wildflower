@@ -51,7 +51,7 @@ pub(super) fn router(registry: Arc<TunnelRegistry>, verifier: Arc<Verifier>) -> 
 }
 
 /// `404` unless the request's authority is the admin hostname.
-async fn require_admin_host(
+pub(super) async fn require_admin_host(
     State(admin_hostname): State<Arc<str>>,
     request: Request,
     next: Next,

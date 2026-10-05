@@ -574,6 +574,39 @@ pub(crate) mod tests {
         );
     }
 
+    /// A request the admin UI's signer (`relay-core`, in TypeScript) signed:
+    /// `slices/relay/relay-core/src/signing/fixtures/admin-request.json`,
+    /// which relay-core's own test checks it still produces. It verifies
+    /// here as the admin, at the time it was signed.
+    #[tokio::test]
+    async fn admin_request_fixture_from_the_js_signer_verifies() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../slices/relay/relay-core/src/signing/fixtures/admin-request.json"
+        )))
+        .unwrap();
+        let text = |name: &str| fixture[name].as_str().unwrap();
+        let (host, path) = text("url")
+            .strip_prefix("https://")
+            .and_then(|rest| rest.split_once('/'))
+            .unwrap();
+        let mut builder = Request::builder()
+            .method(text("method"))
+            .uri(format!("/{path}"))
+            .header(header::HOST, host);
+        for (name, value) in fixture["headers"].as_object().unwrap() {
+            builder = builder.header(name.as_str(), value.as_str().unwrap());
+        }
+        let request = builder.body(Body::from(text("body").to_owned())).unwrap();
+        let verifier = Verifier::new(Arc::default(), Some(Secret::new(text("key"))));
+
+        let created = fixture["created"].as_i64().unwrap();
+        assert_eq!(
+            verify_at(&verifier, request, created).await,
+            Ok(SignedBy::Admin)
+        );
+    }
+
     #[tokio::test]
     async fn accepts_tunnel_and_admin_signatures() {
         let verifier = verifier();

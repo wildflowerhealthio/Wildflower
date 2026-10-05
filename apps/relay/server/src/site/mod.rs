@@ -11,11 +11,13 @@
 //!
 //! - `routes`: the axum router.
 //! - `admin`: the admin API on `admin.<domain>`.
+//! - `admin_ui`: the admin UI's static files on `admin.<domain>`.
 //! - `acme`: ordering and renewing the certificate.
 //! - `signature`: verifying signed requests (RFC 9421).
 
 pub mod acme;
 mod admin;
+mod admin_ui;
 mod routes;
 pub mod signature;
 

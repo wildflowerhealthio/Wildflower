@@ -13,8 +13,8 @@ use rathole_settings_rust::PublicRatholeSettings;
 use serde::Serialize;
 use shared_structures_rust::health_check::{health_router, AlwaysHealthy};
 
-use super::admin;
 use super::signature::{require_signature, SignedBy, Verifier};
+use super::{admin, admin_ui};
 use crate::live_bindings::state::TunnelRegistry;
 
 /// `GET /rathole` changes only when the relay restarts with a new
@@ -25,7 +25,9 @@ const RATHOLE_CACHE_CONTROL: &str = "public, max-age=60";
 /// - `GET /rathole`: `rathole_settings` as JSON, without authentication.
 /// - `GET /me`: the signing tunnel's [`TunnelHost`], for a request signed
 ///   with a tunnel's token (see [`super::signature`]); `401` otherwise.
-/// - With `admin`, the admin API on `admin.<domain>` (see [`super::admin`]).
+/// - With `admin`, the admin API on `admin.<domain>` (see [`super::admin`]),
+///   and the admin UI that calls it, at `/` there (see [`super::admin_ui`]).
+///   The UI's catch-all path loses to every route above.
 pub(super) fn router(
     rathole_settings: PublicRatholeSettings,
     verifier: Arc<Verifier>,
@@ -41,7 +43,12 @@ pub(super) fn router(
         .with_state(Arc::new(rathole_settings))
         .merge(health_router(Arc::new(AlwaysHealthy)));
     match admin {
-        Some(tunnels) => router.merge(admin::router(tunnels, verifier)),
+        Some(tunnels) => {
+            let admin_hostname: Arc<str> = tunnels.admin_hostname().into();
+            router
+                .merge(admin::router(tunnels, verifier))
+                .merge(admin_ui::router(admin_hostname))
+        }
         None => router,
     }
 }
@@ -275,6 +282,47 @@ mod tests {
         deleter.delete("bob".to_owned()).await.unwrap();
         let response = router.oneshot(me(token, "2")).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// With the admin API on, `admin.<domain>` also serves the admin UI at
+    /// `/`, and every route the site had still answers as before: the UI's
+    /// catch-all takes no path another route has.
+    #[tokio::test]
+    async fn the_admin_ui_sits_beside_the_api_on_the_admin_host_only() {
+        let (tunnels, _fixture) = registry(Some("an-admin-key-of-thirty-two-bytes")).await;
+        let router = router(
+            rathole_settings(),
+            tunnels.verifier(),
+            Some(Arc::clone(&tunnels)),
+        );
+        let get = |host: &str, uri: &str| {
+            Request::builder()
+                .uri(uri)
+                .header(header::HOST, host)
+                .body(Body::empty())
+                .unwrap()
+        };
+        let admin = "admin.relay.example.com";
+        for (host, uri, status) in [
+            (admin, "/", StatusCode::OK),
+            (admin, "/api/tunnels", StatusCode::UNAUTHORIZED),
+            (admin, "/api/tunnels/alice", StatusCode::UNAUTHORIZED),
+            (admin, "/me", StatusCode::UNAUTHORIZED),
+            (admin, "/health", StatusCode::OK),
+            (admin, "/rathole", StatusCode::OK),
+            ("relay.example.com", "/", StatusCode::NOT_FOUND),
+            ("relay.example.com", "/api/tunnels", StatusCode::NOT_FOUND),
+            ("relay.example.com", "/rathole", StatusCode::OK),
+        ] {
+            let response = router.clone().oneshot(get(host, uri)).await.unwrap();
+            assert_eq!(response.status(), status, "{host}{uri}");
+        }
+        let page = router.oneshot(get(admin, "/")).await.unwrap();
+        assert_eq!(
+            page.headers()[header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+        assert!(page.headers().contains_key(header::CONTENT_SECURITY_POLICY));
     }
 
     /// Without an admin key nothing can sign as admin, and the admin API is
