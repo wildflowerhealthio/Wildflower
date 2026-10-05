@@ -26,13 +26,13 @@ ad-hoc inline styles:
   `--font-weight-*`). Use tokens, not literal values.
 - **Dark mode** is driven by the `:root[data-color-scheme='dark']` attribute
   (set in JS), **not** `prefers-color-scheme`.
-- **Fonts** — the design language uses three brand families, shipped with the
-  bundle via `@font-face`: **Hanken Grotesk Variable** (sans, the working UI
-  voice → `--font-sans`), **Newsreader Variable** (serif, reserved for titles
-  & emphasis → `--font-serif`), and **Spline Sans Mono Variable** (mono,
-  carries eyebrows/labels/technical strings → `--font-mono`). Each falls back
-  to a system stack. Style type through the `--font-*` and type-scale tokens,
-  not literal font names.
+- **Fonts** — one UI family, **Atkinson Hyperlegible Next Variable**
+  (`--font-sans`), shipped via `@font-face`: body, labels, inputs, buttons
+  *and* titles — weight carries the hierarchy. **Atkinson Hyperlegible Mono
+  Variable** (`--font-mono`) is only for genuine machine strings (hostnames,
+  keys, IDs), never decorative labels or captions. `--font-serif` is retired
+  (it aliases `--font-sans`) — never reach for it. Style type through the
+  `--font-*` and type-scale tokens, not literal font names.
 
 ## Composition notes
 
@@ -44,3 +44,12 @@ ad-hoc inline styles:
   needs no outer `Field`/`FieldGroup`.
 - Destructive menu items use `destructive: true`; blocking dialogs use
   `dismissable={false}` (no × button, ESC/backdrop swallowed).
+- A yes/no confirm is `ConfirmDialog` (`destructive`, `pending`); compose
+  `Dialog` directly only for a richer body.
+- A failed action on a still-usable screen is `ErrorBanner
+  error={mutation.error}` (renders nothing when `null`); a failed *body* is
+  `PageBodyError`.
+- A body waiting on data it can't render without is `GateCard`; incomplete
+  data shown anyway gets a `PartialBanner` above it.
+- An action inside prose or a compact surface is a `LinkButton`, not a
+  `button-N`.

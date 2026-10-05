@@ -8,16 +8,22 @@
   "tokensPkg": "tundra-css",
   "readmeHeader": ".design-sync/conventions.md",
   "docsDir": "../../.design-sync/docs",
-  "extraFonts": "../../.design-sync/fonts/fonts.css",
+  "extraFonts": [
+    "../../node_modules/@fontsource-variable/atkinson-hyperlegible-next/wght.css",
+    "../../node_modules/@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css",
+    "../../node_modules/@fontsource-variable/atkinson-hyperlegible-mono/wght.css"
+  ],
   "componentSrcMap": {
     "pageLayoutStyles": null
   },
   "overrides": {
     "Menu": { "cardMode": "single", "primaryStory": "Opened", "viewport": "360x300" },
     "Dialog": { "cardMode": "single", "primaryStory": "Confirm", "viewport": "420x300" },
+    "ConfirmDialog": { "cardMode": "single", "primaryStory": "Destructive", "viewport": "420x300" },
     "Field": { "cardMode": "column" },
     "FieldDescription": { "cardMode": "column" },
     "Chip": { "cardMode": "column" },
-    "PageHeader": { "cardMode": "column" }
+    "PageHeader": { "cardMode": "column" },
+    "SegmentedToggle": { "cardMode": "column" }
   }
 }

@@ -1,7 +1,58 @@
 # design-sync notes — react-tundraish → "Tundraish Design System"
 
 Project: https://claude.ai/design/p/89c8cb47-f40c-4311-a4f5-ada94f3e88ef
-Shape: package (no Storybook). DS package: `global/react-tundraish`. **18 components** (was 15).
+Shape: package (no Storybook). DS package: `global/react-tundraish`. **26 components** (was 18).
+
+## RE-SYNC COMPLETE (2026-10-05) — Atkinson fonts + 8 new components
+
+Anchored re-sync, atomic upload, render check 26/26 clean, all authored
+previews graded `good`, project re-anchored. What changed:
+
+- **Fonts switched to Atkinson Hyperlegible** (DS commit `1184e5ad`): one UI
+  family (`Atkinson Hyperlegible Next Variable` → `--font-sans`, incl. titles)
+  plus `Atkinson Hyperlegible Mono Variable` (`--font-mono`, machine strings
+  only); `--font-serif` retired (aliases sans). **`cfg.extraFonts` now points
+  straight at the `@fontsource-variable` `wght.css`/`wght-italic.css` files**
+  in the repo-root `node_modules` (hoisted linker) — those packages ship only
+  latin + latin-ext, so no hand-pulled subset file is needed. The old
+  `.design-sync/fonts/fonts.css` (Hanken/Newsreader/Spline) was deleted, and
+  the 8 stale woff2s were deleted from the project by hand-reviewed plan
+  deletes — **the anchor diff's `deletePaths` is component-keyed and does NOT
+  see orphaned `fonts/` files**; always diff remote `fonts/` against
+  `ds-bundle/fonts/` via `list_files` when fonts change.
+- **Residual `[FONT_MISSING]`** names only the bare non-`Variable` family names
+  (`Atkinson Hyperlegible Next`/`Mono`), which are second entries in the
+  `--font-*` stacks and not shipped by the apps either. Triaged-legitimate,
+  same pattern as the previous fonts.
+- **8 new components, all authored + graded `good`**, with
+  `.design-sync/docs/<name>.md` category stubs: CheckboxGroup, LinkButton
+  (forms); SegmentedToggle (navigation); ConfirmDialog (feedback); ErrorBanner,
+  PartialBanner, GateCard, ChunkBar (Async & Errors). Copy is from real usage:
+  `apps/medications-app/src/app.tsx` (GateCard/PartialBanner/ChunkBar/
+  SegmentedToggle), `slices/gatekeeper/.../TrustedAppsSection.tsx`
+  (ConfirmDialog), `slices/scopes/.../permission-picker.tsx` (CheckboxGroup),
+  `slices/smart-app/.../patient-choice-line.tsx` (LinkButton),
+  `slices/databases/.../databases-view.tsx` (ErrorBanner).
+- **Config added**: `overrides.ConfirmDialog = {single, Destructive, 420x300}`
+  (overlay, mirrors Dialog); `overrides.SegmentedToggle = {cardMode: column}`
+  (`[GRID_OVERFLOW]` wide on `Views`).
+- **ErrorBanner vs the harness's crash detector**: validate counts any cell
+  whose text *starts with* `⚠` as a caught error. A bare `ErrorBanner` renders
+  `⚠ Error: …` first, so it read as 2 broken cells. Fix: each cell composes the
+  banner under a section heading (its real in-app placement). Don't "simplify"
+  the preview back to a bare banner.
+- **ChunkBar `Locked`** captures mid-way through its one-shot lock pulse
+  (scaleY 1.9, ~1s incl. stagger) — capture doesn't wait on CSS animations. The
+  settled card is a solid bar. Graded good with that note; not a defect.
+- `ErrorBodyRendererContext` (a context, not a component) is correctly not
+  detected — no `componentSrcMap` exclusion needed.
+- **Conventions header**: Fonts bullet rewritten for Atkinson; composition
+  notes added for ConfirmDialog / ErrorBanner / GateCard / PartialBanner /
+  LinkButton (user-approved).
+- **Local install was stale** at the start (`@fontsource-variable/*` missing):
+  run `vp install` before the DS build on any re-sync.
+- Existing 18 previews were **spot-checked only** (user decision) — the
+  "provisional, rework later" watch-list item below still stands.
 
 ## RE-SYNC COMPLETE (2026-06-19) — wholesale DS refresh
 
@@ -27,7 +78,8 @@ atomically; project re-anchored. What changed this round:
   utility classes like `.button.filled`/`.accent-red` are still used), and the
   Wildflower palette/tokens re-point it on top. The utility-class idiom in
   conventions.md (`input-2`, `button-N`, `text-body-N`, `accent-*`) still verifies.
-- **Brand fonts now SHIP (reverses the old "no fonts" note).** The refresh's
+- *(Superseded 2026-10-05 — fonts are now Atkinson; see the top section.)*
+  **Brand fonts now SHIP (reverses the old "no fonts" note).** The refresh's
   typography uses three custom families — Hanken Grotesk (sans), Newsreader
   (serif, titles/emphasis), Spline Sans Mono (mono). Latin+latin-ext subsets
   (~700KB, 8 woff2) are shipped via `.design-sync/fonts/fonts.css` +
@@ -81,7 +133,7 @@ The DS is **tundra-css**-styled. Token + utility-class source: `node_modules/tun
 - Inputs: `input-{1..4}` (apps use `input-2`). Checkboxes/radios: `checkbox-{1..4}`, `radio-{1..4}` on the `<input>`.
 - Buttons: `.button`, filled/outline variants; accents `accent-{red,blue,green,…}` / `app-{color}` to repoint the `--app-accent-*` chain.
 - Dark mode: `:root[data-color-scheme='dark']` attribute (set in JS), not `prefers-color-scheme`.
-- No custom `@font-face` anywhere — tundra uses system font stacks + `--font-size-*`/`--font-weight-*` tokens. No fonts to ship; `fonts/` is empty by design (not a `[FONT_MISSING]` to chase).
+- *(Superseded — the DS now ships Atkinson Hyperlegible; see the top section.)* No custom `@font-face` anywhere — tundra uses system font stacks + `--font-size-*`/`--font-weight-*` tokens. No fonts to ship; `fonts/` is empty by design (not a `[FONT_MISSING]` to chase).
 
 ## Component-specific findings
 
@@ -99,6 +151,9 @@ The DS is **tundra-css**-styled. Token + utility-class source: `node_modules/tun
 Files in `.design-sync/previews/*.tsx` import from `'react-tundraish'` (the converter aliases it to `window.ReactTundraish`) and use multiple named exports / no explicit return types. The repo's oxlint/tsc will flag these (module-not-found, no-any, single-export, return-type). They are NOT repo sources — the converter's own esbuild compiles them. Ignore the editor diagnostics; do not "fix" them to repo style or the cell convention breaks.
 
 ## Known render warns (triaged-legitimate)
+
+- `[FONT_MISSING] "Atkinson Hyperlegible Mono", "Atkinson Hyperlegible Next"`:
+  bare fallback names only; the `Variable` faces ship (2026-10-05).
 
 (none yet — Field/FieldGroup `thin` and Menu `blank` were floor-card warns that disappear once their previews are authored. Re-check after the full author pass — especially the new Dialog/ItemList/PageHeader/RadioGroup/StatusBadge cells.)
 
