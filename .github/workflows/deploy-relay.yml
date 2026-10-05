@@ -31,6 +31,15 @@ on:
       # The admin UI the binary embeds, and the slice it is built from.
       - 'apps/relay/admin-web/**'
       - 'slices/relay/**'
+      # The UI's other sources: the workspace packages it is built from
+      # (relay-admin-web's dependency closure; the build resolves them by
+      # their `source` export), the catalog and the shared Vite config.
+      - 'global/kitchen-sink/**'
+      - 'global/react-kitchen-sink/**'
+      - 'global/react-tundraish/**'
+      - 'slices/shared-structures/shared-structures-core/**'
+      - 'pnpm-workspace.yaml'
+      - 'vite.config.base.ts'
       - 'pnpm-lock.yaml'
       - 'slices/shared-structures/shared-structures-rust/**'
       - 'slices/tunnel/rathole-settings-rust/**'
