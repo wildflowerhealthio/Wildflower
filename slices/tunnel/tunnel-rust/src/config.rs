@@ -5,7 +5,7 @@
 use tokio::sync::mpsc;
 use url::Url;
 
-use crate::domain::{SettingsSeed, TunnelConnection};
+use crate::domain::{SettingsSeed, TunnelStream};
 
 /// What [`setup_tunnel`](crate::setup_tunnel) needs to stand up the slice: the
 /// loopback origin used as the `servedOrigin` fallback and where the tunnel
@@ -23,7 +23,7 @@ pub struct TunnelConfig {
     /// tunnel connection to. It is a listener of its own, apart from the
     /// loopback API port, so the server can tell a tunnel connection from a
     /// local one by where it arrived.
-    pub tunnel_connection_sender: mpsc::Sender<TunnelConnection>,
+    pub tunnel_connection_sender: mpsc::Sender<TunnelStream>,
     /// Build-time connection defaults seeded into a fresh row at startup (only
     /// where unconfigured), so settings survive a reinstall. The composition
     /// root populates this from the build environment.

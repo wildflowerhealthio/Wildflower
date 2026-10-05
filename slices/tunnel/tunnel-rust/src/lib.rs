@@ -65,8 +65,8 @@ pub use db::SqliteTunnelStore;
 // the scopes the `/tunnel` surface enforces, for a future consent/admin surface.
 pub use domain::grantable_tunnel_scopes;
 pub use domain::{
-    public_origin_url, InvalidPublicHost, RelaySettings, SettingsSeed, TunnelConnection,
-    TunnelDaemon, TunnelSettings, TunnelStream,
+    public_origin_url, InvalidPublicHost, RelaySettings, SettingsSeed, TunnelDaemon,
+    TunnelSettings, TunnelStream,
 };
 // The persistence port trait, in scope so `setup_tunnel` can drive the store's
 // `seed_if_absent` / `get_settings` methods directly (the trivial reads/seeds the
@@ -289,16 +289,13 @@ mod tests {
     impl domain::RelayClient for HandOneConnectionRelayClient {
         async fn run_once(
             &self,
-            relay: &RelaySettings,
-            connections: mpsc::Sender<TunnelConnection>,
+            _relay: &RelaySettings,
+            connections: mpsc::Sender<TunnelStream>,
             cancel: tokio_util::sync::CancellationToken,
         ) -> anyhow::Result<()> {
             let (stream, _) = tokio::io::duplex(64);
             connections
-                .send(TunnelConnection {
-                    service_name: relay.service_name.clone(),
-                    stream: Box::new(stream),
-                })
+                .send(Box::new(stream))
                 .await
                 .expect("the test holds the receiver");
             cancel.cancelled().await;
@@ -334,10 +331,8 @@ mod tests {
             }),
         });
 
-        let connection = tunnel_connections.recv().await;
-        assert_eq!(
-            connection.map(|connection| connection.service_name),
-            Some("dev1".to_owned()),
+        assert!(
+            tunnel_connections.recv().await.is_some(),
             "the first dial hands its connection to the tunnel listener"
         );
         // The supervisor falls back to the loopback origin, not the listener.

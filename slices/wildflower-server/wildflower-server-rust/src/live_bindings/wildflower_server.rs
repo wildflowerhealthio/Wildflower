@@ -17,7 +17,7 @@ use gatekeeper_rust::{
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
-use tunnel_rust::{TunnelConnection, TunnelLiveness};
+use tunnel_rust::{TunnelLiveness, TunnelStream};
 
 use super::hfs_base_url;
 use super::make_service::MakeServiceWithListenerIdentity;
@@ -51,10 +51,10 @@ pub struct WildflowerServer {
     /// The loopback API port local clients use.
     local_listener: TcpListener,
     /// The connections the rathole client hands the tunnel listener.
-    tunnel_connections: mpsc::Receiver<TunnelConnection>,
+    tunnel_connections: mpsc::Receiver<TunnelStream>,
     /// Where the tunnel slice hands those connections, kept for
     /// [`tunnel_connection_sender`](Self::tunnel_connection_sender).
-    tunnel_connection_sender: mpsc::Sender<TunnelConnection>,
+    tunnel_connection_sender: mpsc::Sender<TunnelStream>,
     router: Router,
 }
 
@@ -62,7 +62,7 @@ impl WildflowerServer {
     /// A sender onto the tunnel listener, as the tunnel slice holds: each
     /// connection sent is served as one arriving through the tunnel.
     #[must_use]
-    pub fn tunnel_connection_sender(&self) -> mpsc::Sender<TunnelConnection> {
+    pub fn tunnel_connection_sender(&self) -> mpsc::Sender<TunnelStream> {
         self.tunnel_connection_sender.clone()
     }
 

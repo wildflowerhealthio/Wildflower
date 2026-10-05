@@ -5,7 +5,7 @@
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::domain::{RelayClient, RelaySettings, TunnelConnection};
+use crate::domain::{RelayClient, RelaySettings, TunnelStream};
 use crate::health::HealthProbe;
 
 /// A relay client that holds the session until cancelled — a stable "up" dial
@@ -17,7 +17,7 @@ impl RelayClient for HoldUntilCancelRelayClient {
     async fn run_once(
         &self,
         _relay: &RelaySettings,
-        _connections: mpsc::Sender<TunnelConnection>,
+        _connections: mpsc::Sender<TunnelStream>,
         cancel: CancellationToken,
     ) -> anyhow::Result<()> {
         cancel.cancelled().await;

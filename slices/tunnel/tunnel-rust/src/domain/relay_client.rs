@@ -7,18 +7,15 @@
 //! against a fake instead of a live relay.
 //!
 //! Each tunnel connection is handed, in process, to the server's tunnel
-//! listener as a [`TunnelConnection`].
+//! listener as a [`TunnelStream`].
 
 use rathole_settings_rust::PublicRatholeSettings;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 /// One visitor's connection through the relay, as the rathole client hands it
-/// over: the service it arrived for and its [`TunnelStream`].
-pub type TunnelConnection = rathole::HandedOffConnection;
-
-/// The byte stream of a [`TunnelConnection`].
-pub type TunnelStream = Box<dyn rathole::DataChannelStream>;
+/// over: the bytes of exactly that visitor.
+pub type TunnelStream = Box<dyn rathole::AsyncStream>;
 
 /// A fully-specified relay connection — produced only when every field the
 /// rathole client needs is present. Also the shape a PUT sets the relay block
@@ -60,7 +57,7 @@ pub trait RelayClient: Send + Sync {
     async fn run_once(
         &self,
         relay: &RelaySettings,
-        connections: mpsc::Sender<TunnelConnection>,
+        connections: mpsc::Sender<TunnelStream>,
         cancel: CancellationToken,
     ) -> anyhow::Result<()>;
 }

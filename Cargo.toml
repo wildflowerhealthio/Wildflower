@@ -88,11 +88,11 @@ unsafe_code = "forbid"
 # `deny.toml` allows this git source.
 [patch.crates-io]
 tauri-plugin-background-service = { git = "https://github.com/wildflowerhealthio/tauri-background-service", branch = "fix/ios-background-grace-window" }
-# Our fork of `rathole` 0.5.0, which hands each tunnel data channel to the
-# embedding process (`run_client_with_handoff`) instead of connecting to a
-# local address, takes visitors handed in by it (`run_server_with_handoff`)
-# instead of binding a port per service, and builds its `Config` from a
-# string. The tunnel slice's client hands its connections straight to the
-# server's tunnel listener, and the relay's front hands its visitors straight
-# to the relay's rathole server.
+# Our fork of `rathole` 0.5.0, which queues each tunnel visitor's stream for
+# the embedding process (`run_client_with_visitor_queue`) instead of connecting
+# to a local address, gives it a queue to put each service's visitors in
+# (`run_server_with_visitor_queue`) instead of binding a port per service, and
+# builds its `Config` from a string. The tunnel slice's client hands those
+# streams straight to the server's tunnel listener, and the relay's front puts
+# its visitors straight into the relay's rathole server.
 rathole = { git = "https://github.com/wildflowerhealthio/rathole", branch = "wildflower/handoff" }
