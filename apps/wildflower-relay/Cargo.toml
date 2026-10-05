@@ -24,6 +24,9 @@ base64.workspace = true
 curve25519-dalek = "4.1"
 # Polls the `AcmeState` stream (`StreamExt::next`).
 futures-util = { version = "0.3", default-features = false }
+# `hmac-sha256` HTTP message signatures (RFC 9421), with a constant-time
+# MAC check. Already in the tree.
+hmac = "0.12"
 # Serves the site's router over each TLS connection; `axum::serve` only takes
 # listeners, and the front hands over connections one at a time. Both are
 # already in the tree through axum.
@@ -56,6 +59,14 @@ rustls-acme = { version = "0.15", default-features = false, features = [
   "ring",
   "webpki-roots",
 ] }
+# The `GET /me` response body.
+serde.workspace = true
+# SHA-256 for `hmac-sha256` and for `sha-256` content digests (RFC 9530).
+# Already in the tree.
+sha2 = "0.10"
+# Parses `Signature-Input`, `Signature` and `Content-Digest`, which are
+# structured fields (RFC 9651), and serializes `@signature-params`.
+sfv = "0.15"
 # `GET /health` on the site.
 shared-structures-rust = { path = "../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",

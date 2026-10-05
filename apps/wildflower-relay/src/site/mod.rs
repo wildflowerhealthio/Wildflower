@@ -11,9 +11,11 @@
 //!
 //! - `routes`: the axum router.
 //! - `acme`: ordering and renewing the certificate.
+//! - `signature`: verifying signed requests (RFC 9421).
 
 pub mod acme;
 mod routes;
+pub mod signature;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,6 +28,8 @@ use rustls::ServerConfig;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::broadcast;
 use tokio_rustls::TlsAcceptor;
+
+use self::signature::Verifier;
 
 /// The ALPN protocol of a TLS-ALPN-01 validation handshake (RFC 8737).
 const ACME_TLS_ALPN: &[u8] = b"acme-tls/1";
@@ -45,7 +49,7 @@ impl std::fmt::Debug for Site {
 impl Site {
     /// A site whose certificates come from `cert_resolver`, normally
     /// the resolver of [`acme::state`], serving `rathole_settings` at
-    /// `GET /rathole`.
+    /// `GET /rathole` and checking signed requests with `verifier`.
     ///
     /// # Panics
     ///
@@ -55,6 +59,7 @@ impl Site {
     pub fn new(
         cert_resolver: Arc<dyn ResolvesServerCert>,
         rathole_settings: PublicRatholeSettings,
+        verifier: Verifier,
     ) -> Self {
         let mut config =
             ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
@@ -67,7 +72,7 @@ impl Site {
         config.alpn_protocols = vec![b"http/1.1".to_vec(), ACME_TLS_ALPN.to_vec()];
         Self {
             tls: TlsAcceptor::from(Arc::new(config)),
-            router: routes::router(rathole_settings),
+            router: routes::router(rathole_settings, verifier),
         }
     }
 
@@ -151,6 +156,7 @@ mod tests {
                 public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
                 domain: "relay.example.com".to_owned(),
             },
+            Verifier::new(&[], None),
         );
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (_shutdown_tx, shutdown_rx) = broadcast::channel(1);

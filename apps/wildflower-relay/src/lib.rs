@@ -36,9 +36,10 @@
 //! The one exception is the relay's own hostname, `<domain>` itself. There
 //! the front hands the connection to the [`site`], which terminates TLS with
 //! the relay's own certificate and serves `GET /health` (`200
-//! {"status":"pass"}`) and `GET /rathole`, the public settings a rathole
+//! {"status":"pass"}`), `GET /rathole`, the public settings a rathole
 //! client needs to dial the relay (see
-//! [`RelaySettings::public_rathole_settings`]). The certificate comes from
+//! [`RelaySettings::public_rathole_settings`]), and `GET /me`, a signed
+//! request's tunnel (see "Signed requests" below). The certificate comes from
 //! Let's Encrypt over TLS-ALPN-01, whose validation handshakes reach the
 //! site through the same routing, and is cached in the state directory
 //! (`WILDFLOWER_RELAY_STATE_DIR`), so a restart reuses it instead of
@@ -50,6 +51,49 @@
 //! Every tunnel's port is on loopback, so nothing but the front reaches it,
 //! and rathole binds it only while that device is connected: a refused
 //! connect is how the front knows a device is offline.
+//!
+//! ## Signed requests
+//!
+//! A device authenticates to the relay's site with its tunnel token without
+//! sending it: it signs the request with HTTP Message Signatures (RFC 9421),
+//! `alg="hmac-sha256"`, `keyid` its tunnel name and the token's UTF-8 bytes
+//! as the key. The operator signs with `keyid="admin"` and
+//! `WILDFLOWER_RELAY_ADMIN_KEY`, so `admin` is not a valid tunnel name.
+//! `GET /me` answers a tunnel's signed request with `{"tunnel_name":
+//! "<tunnel name>", "public_host": "<tunnel name>.<domain>"}`; a request
+//! that fails verification gets a bare `401`.
+//!
+//! To sign `GET https://relay.example.com/me` as tunnel `alice` at unix
+//! time `1700000000`, a client builds this signature base (lines joined
+//! with `\n`, no trailing newline):
+//!
+//! ```text
+//! "@method": GET
+//! "@target-uri": https://relay.example.com/me
+//! "@signature-params": ("@method" "@target-uri");created=1700000000;nonce="<random>";keyid="alice";alg="hmac-sha256"
+//! ```
+//!
+//! and sends the HMAC-SHA256 of it under the token as:
+//!
+//! ```text
+//! Signature-Input: sig=("@method" "@target-uri");created=1700000000;nonce="<random>";keyid="alice";alg="hmac-sha256"
+//! Signature: sig=:<base64 MAC>:
+//! ```
+//!
+//! - `created` must be within 60 seconds of the relay's clock, and each
+//!   `nonce` is accepted once (a fresh random value per request, at most
+//!   128 characters).
+//! - `@target-uri` is the URL fetched, as a URL parser serializes it:
+//!   `https`, the lowercase host without `:443`, then the path and query
+//!   exactly as sent. The relay rebuilds it from `Host` and the request
+//!   target.
+//! - A request with a body also sends `Content-Digest: sha-256=:<base64
+//!   SHA-256 of the body>:` (RFC 9530) and covers `"content-digest"` after
+//!   `"@target-uri"`. Bodies are limited to 64 KiB.
+//! - Exactly one signature per request; other components may be covered
+//!   too, but none with component parameters.
+//!
+//! [`site::signature`] has the full rules.
 //!
 //! ## Configuration
 //!
@@ -111,6 +155,7 @@ use tokio::sync::broadcast;
 pub use front::{Front, Limits};
 pub use route::{Route, RouteTable, Router};
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
+pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;
 
 /// Build the [`rathole::Cli`] that runs the relay in server mode against the
@@ -150,7 +195,12 @@ pub async fn run_relay(
         .with_context(|| format!("creating {}", settings.state_dir.display()))?;
     let local_hostnames = settings.front.local_hostnames();
     let acme = site::acme::state(&local_hostnames, &settings.acme, &settings.state_dir);
-    let site = Site::new(acme.resolver(), settings.public_rathole_settings());
+    let verifier = Verifier::new(&settings.control.tunnels, settings.admin_key.clone());
+    let site = Site::new(
+        acme.resolver(),
+        settings.public_rathole_settings(),
+        verifier,
+    );
     let settings = settings.front;
     tracing::info!(domain = %settings.domain, routes = routes.len(), "routes built");
     let router = Arc::new(Router::new(&settings.domain, local_hostnames, routes));

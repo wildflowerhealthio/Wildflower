@@ -16,7 +16,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
-use wildflower_relay::{Front, Limits, RouteTable, Router, Site};
+use wildflower_relay::{Front, Limits, RouteTable, Router, Site, Verifier};
 
 const DOMAIN: &str = "relay.example.com";
 const WAIT: Duration = Duration::from_secs(5);
@@ -63,7 +63,11 @@ fn self_signed_site() -> (Site, CertificateDer<'static>) {
         domain: DOMAIN.to_owned(),
     };
     (
-        Site::new(Arc::new(SingleCertAndKey::from(key)), rathole_settings),
+        Site::new(
+            Arc::new(SingleCertAndKey::from(key)),
+            rathole_settings,
+            Verifier::new(&[], None),
+        ),
         cert,
     )
 }
