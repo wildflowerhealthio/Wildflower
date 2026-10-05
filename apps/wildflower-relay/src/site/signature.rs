@@ -119,7 +119,8 @@ impl Verifier {
     pub fn replace(&self, tunnels: &[Tunnel]) {
         let keys = keys(tunnels, self.admin_key.as_ref());
         // Holding the nonce lock across the swap keeps a request verified
-        // with the old keys from recording a nonce for a removed signer.
+        // with the old keys from recording a nonce for a signer whose key
+        // the swap removes or changes.
         let mut nonces = self.nonces.lock().unwrap_or_else(PoisonError::into_inner);
         nonces.retain(|keyid, _| keys.contains_key(keyid));
         // A poisoned lock only means a writer panicked mid-swap of an `Arc`;
@@ -184,7 +185,7 @@ impl Verifier {
         if covers("content-digest") && !content_digest_matches(&parts.headers, body) {
             return Err("content-digest does not match the body");
         }
-        self.remember_nonce(keyid, nonce, created + CLOCK_SKEW_SECS, now)?;
+        self.remember_nonce(keyid, key, nonce, created + CLOCK_SKEW_SECS, now)?;
         Ok(if keyid == ADMIN_KEY_ID {
             SignedBy::Admin
         } else {
@@ -193,19 +194,21 @@ impl Verifier {
     }
 
     /// Record `keyid`'s `nonce` until `stale_after`, refusing one already
-    /// recorded, or any for a `keyid` that [`Self::replace`] has removed since
-    /// the request was checked. When that key's set is full, its expired
-    /// nonces are dropped first; if it is still full, the request is refused.
+    /// recorded, or any for a request checked with a `key` that
+    /// [`Self::replace`] has since removed, or replaced with another under
+    /// the same `keyid`. When that key's set is full, its expired nonces are
+    /// dropped first; if it is still full, the request is refused.
     fn remember_nonce(
         &self,
         keyid: &str,
+        key: &Secret,
         nonce: &str,
         stale_after: i64,
         now: i64,
     ) -> Result<(), &'static str> {
         // A poisoned lock only means a holder panicked; the map is whole.
         let mut nonces = self.nonces.lock().unwrap_or_else(PoisonError::into_inner);
-        if !self.keys().contains_key(keyid) {
+        if self.keys().get(keyid) != Some(key) {
             return Err("unknown keyid");
         }
         let nonces = nonces.entry(keyid.to_owned()).or_default();
@@ -626,23 +629,30 @@ pub(crate) mod tests {
     #[test]
     fn each_keys_nonce_set_is_bounded_and_drops_expired_nonces_when_full() {
         let verifier = verifier();
+        let alice = Secret::new("alice-token");
         for i in 0..MAX_NONCES_PER_KEY {
             verifier
-                .remember_nonce("alice", &i.to_string(), NOW + CLOCK_SKEW_SECS, NOW)
+                .remember_nonce("alice", &alice, &i.to_string(), NOW + CLOCK_SKEW_SECS, NOW)
                 .unwrap();
         }
         assert_eq!(
-            verifier.remember_nonce("alice", "one more", NOW + CLOCK_SKEW_SECS, NOW),
+            verifier.remember_nonce("alice", &alice, "one more", NOW + CLOCK_SKEW_SECS, NOW),
             Err("nonce set is full")
         );
         // One signer filling its set does not lock out another, and nonces
         // are per key.
         verifier
-            .remember_nonce("admin", "0", NOW + CLOCK_SKEW_SECS, NOW)
+            .remember_nonce(
+                "admin",
+                &Secret::new("admin-key"),
+                "0",
+                NOW + CLOCK_SKEW_SECS,
+                NOW,
+            )
             .unwrap();
         let later = NOW + CLOCK_SKEW_SECS + 1;
         verifier
-            .remember_nonce("alice", "one more", later + CLOCK_SKEW_SECS, later)
+            .remember_nonce("alice", &alice, "one more", later + CLOCK_SKEW_SECS, later)
             .unwrap();
         assert_eq!(verifier.nonces.lock().unwrap()["alice"].len(), 1);
     }
@@ -682,12 +692,43 @@ pub(crate) mod tests {
     #[test]
     fn a_removed_signer_records_no_nonce() {
         let verifier = verifier();
+        let alice = Secret::new("alice-token");
         verifier.replace(&[]);
         assert_eq!(
-            verifier.remember_nonce("alice", "n", NOW + CLOCK_SKEW_SECS, NOW),
+            verifier.remember_nonce("alice", &alice, "n", NOW + CLOCK_SKEW_SECS, NOW),
             Err("unknown keyid")
         );
         assert!(verifier.nonces.lock().unwrap().is_empty());
+    }
+
+    /// Nor can it for a signer deleted and created again under the same
+    /// name with a new key: the old key no longer signs as that name.
+    #[test]
+    fn a_signer_replaced_under_the_same_name_records_no_nonce_for_the_old_key() {
+        let verifier = verifier();
+        verifier.replace(&[Tunnel {
+            name: "alice".to_owned(),
+            token: Secret::new("alice-new-token"),
+        }]);
+        assert_eq!(
+            verifier.remember_nonce(
+                "alice",
+                &Secret::new("alice-token"),
+                "n",
+                NOW + CLOCK_SKEW_SECS,
+                NOW
+            ),
+            Err("unknown keyid")
+        );
+        verifier
+            .remember_nonce(
+                "alice",
+                &Secret::new("alice-new-token"),
+                "n",
+                NOW + CLOCK_SKEW_SECS,
+                NOW,
+            )
+            .unwrap();
     }
 
     #[tokio::test]

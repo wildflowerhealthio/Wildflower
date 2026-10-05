@@ -149,12 +149,11 @@
 //! `.github/workflows/deploy-relay.yml` deploys it to an Ubuntu 24.04
 //! droplet on every push to `main` that touches this crate, one of its path
 //! dependencies (`shared-structures-rust`, `rathole-settings-rust`,
-//! `persistence-rust`) or `Cargo.lock`, and on manual dispatch. It builds the release binary on
-//! `ubuntu-24.04`, then, in the `relay` GitHub environment, writes the
-//! environment file from
-//! that environment's secrets (`WILDFLOWER_RELAY_DOMAIN`,
-//! `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`, `WILDFLOWER_RELAY_TUNNELS`,
-//! `WILDFLOWER_RELAY_ADMIN_KEY`) and
+//! `persistence-rust`) or `Cargo.lock`, and on manual dispatch. It builds the
+//! release binary on `ubuntu-24.04`, then, in the `relay` GitHub
+//! environment, writes the environment file from that environment's secrets
+//! (`WILDFLOWER_RELAY_DOMAIN`, `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`,
+//! `WILDFLOWER_RELAY_TUNNELS`, `WILDFLOWER_RELAY_ADMIN_KEY`) and
 //! variables (any other setting, left out when unset). It copies the binary,
 //! environment file and unit to the host over SSH as the `deploy` user
 //! (secrets `RELAY_HOST`, `RELAY_SSH_KEY`, `RELAY_SSH_KNOWN_HOSTS`) and runs

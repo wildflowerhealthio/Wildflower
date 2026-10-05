@@ -358,5 +358,17 @@ mod tests {
             let (status, _) = send(&router, request).await;
             assert_eq!(status, StatusCode::NOT_FOUND, "{host}");
         }
+        // The host is checked before the signature: an unsigned request, or
+        // one with a method the API lacks, is `404` too, not `401` or `405`.
+        for method in ["GET", "PUT"] {
+            let request = Request::builder()
+                .method(method)
+                .uri("/api/tunnels")
+                .header(header::HOST, "relay.example.com")
+                .body(Body::empty())
+                .unwrap();
+            let (status, _) = send(&router, request).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{method}");
+        }
     }
 }

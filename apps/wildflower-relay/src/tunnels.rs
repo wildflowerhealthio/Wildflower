@@ -291,10 +291,15 @@ impl TunnelRegistry {
     /// written.
     pub async fn open(config_path: PathBuf, settings: &RelaySettings) -> anyhow::Result<Self> {
         let store_path = settings.state_dir.join(TunnelStore::FILE_NAME);
-        let store = TunnelStore::open(&store_path)?;
-        let stored = store
-            .list()
-            .with_context(|| format!("reading {}", store_path.display()))?;
+        let (store, stored) = tokio::task::spawn_blocking(move || {
+            let store = TunnelStore::open(&store_path)?;
+            let stored = store
+                .list()
+                .with_context(|| format!("reading {}", store_path.display()))?;
+            anyhow::Ok((store, stored))
+        })
+        .await
+        .context("opening the tunnel store panicked")??;
         let set = TunnelSet::new(&settings.control, stored)?;
         config::write_config(&config_path, &settings.control, &set).await?;
         let router = Router::new(
@@ -394,9 +399,11 @@ impl TunnelRegistry {
             Some((stored.email.clone(), stored.created_at)),
         )
         .map_err(|_| TunnelError::Exhausted("no loopback port is left"))?;
-        self.store.insert(&stored)?;
+        let inserted = stored.clone();
+        self.on_store(move |store| store.insert(&inserted)).await?;
         if let Err(error) = self.apply(&next).await {
-            if let Err(undo) = self.store.delete(&name) {
+            let undo_name = name.clone();
+            if let Err(undo) = self.on_store(move |store| store.delete(&undo_name)).await {
                 tracing::error!(tunnel = %name, "tunnel stored but not served: {undo:#}");
             }
             return Err(error.into());
@@ -429,9 +436,11 @@ impl TunnelRegistry {
 
         let mut next = set.clone();
         next.remove(name);
-        self.store.delete(name)?;
+        let deleted_name = name.to_owned();
+        self.on_store(move |store| store.delete(&deleted_name))
+            .await?;
         if let Err(error) = self.apply(&next).await {
-            if let Err(undo) = self.store.insert(&stored) {
+            if let Err(undo) = self.on_store(move |store| store.insert(&stored)).await {
                 tracing::error!(tunnel = %name, "tunnel served but no longer stored: {undo:#}");
             }
             return Err(error.into());
@@ -439,6 +448,18 @@ impl TunnelRegistry {
         *set = next;
         tracing::info!(tunnel = %name, "tunnel deleted");
         Ok(())
+    }
+
+    /// Run `op` on the store on a blocking thread: SQLite blocks while it
+    /// writes and syncs the file.
+    async fn on_store<T: Send + 'static>(
+        &self,
+        op: impl FnOnce(&TunnelStore) -> anyhow::Result<T> + Send + 'static,
+    ) -> anyhow::Result<T> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || op(&store))
+            .await
+            .context("a tunnel store task panicked")?
     }
 
     /// Render `set` for rathole, then swap the routes and keys to it.

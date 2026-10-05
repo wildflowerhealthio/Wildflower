@@ -83,7 +83,7 @@ shared-structures-rust = { path = "../../slices/shared-structures/shared-structu
 # TCP keepalive on piped sockets (tokio has no setter); already in the tree
 # through tokio.
 socket2 = "0.6"
-# Renders the rathole TOML from the environment at startup.
+# Renders the rathole TOML from the settings and the live tunnels.
 toml = "0.9"
 tokio = { workspace = true, features = [
   "rt-multi-thread",
