@@ -10,11 +10,11 @@ publish.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
 serde.workspace = true
-# The registry, enrolment and the relay site adapter the commands drive.
+# The registry, enrolment and the relay client adapter the commands drive.
 servers-rust = { path = "../servers-rust" }
 # `TunnelName`, which the commands parse the entered tunnel name into.
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
-# The relay base URL enrolment builds a relay site client for.
+# The relay base URL enrolment builds a relay client for.
 url = "2"
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).

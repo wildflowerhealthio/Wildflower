@@ -22,7 +22,7 @@ use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, Tunn
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::domain::{RegistryError, Relay, ServerRecord, TunnelToken};
+use crate::domain::{RegistryError, RelayKind, ServerRecord, TunnelToken};
 use crate::ports::ServerRegistry;
 
 /// The registry's file name in the data root.
@@ -236,7 +236,7 @@ impl RegistryDocument {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StoredServer {
-    relay: Relay,
+    relay: RelayKind,
     tunnel_name: TunnelName,
     token: String,
     public_settings: StoredPublicSettings,
@@ -336,7 +336,7 @@ impl StoredPublicSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::fixtures::{custom_record, wildflower_record, TOKEN};
+    use crate::domain::fixtures::{first_party_record, self_hosted_record, TOKEN};
 
     fn registry() -> (tempfile::TempDir, JsonServerRegistry) {
         let data_root = tempfile::tempdir().unwrap();
@@ -358,20 +358,20 @@ mod tests {
     #[test]
     fn records_round_trip_through_the_file() {
         let (data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
-        registry.insert(custom_record("lab")).unwrap();
+        registry.insert(first_party_record("ruth")).unwrap();
+        registry.insert(self_hosted_record("lab")).unwrap();
 
         let reopened = JsonServerRegistry::in_data_root(data_root.path());
         assert_eq!(
             reopened.read_all().unwrap(),
-            vec![wildflower_record("ruth"), custom_record("lab")]
+            vec![first_party_record("ruth"), self_hosted_record("lab")]
         );
     }
 
     #[test]
     fn the_file_holds_the_token_in_full() {
         let (data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
+        registry.insert(first_party_record("ruth")).unwrap();
         assert!(file_text(&data_root).contains(TOKEN));
     }
 
@@ -381,7 +381,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let (data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
+        registry.insert(first_party_record("ruth")).unwrap();
         let metadata = fs::metadata(data_root.path().join(SERVERS_FILE_NAME)).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
     }
@@ -396,20 +396,20 @@ mod tests {
         fs::write(&temp_path, "").unwrap();
         fs::set_permissions(&temp_path, fs::Permissions::from_mode(0o644)).unwrap();
 
-        registry.insert(wildflower_record("ruth")).unwrap();
+        registry.insert(first_party_record("ruth")).unwrap();
 
         let metadata = fs::metadata(data_root.path().join(SERVERS_FILE_NAME)).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
     }
 
-    /// A version 1 `servers.json` holding `wildflower_record(tunnel_name)`,
+    /// A version 1 `servers.json` holding `first_party_record(tunnel_name)`,
     /// written by hand rather than by the adapter.
     fn version_1_file(tunnel_name: &str) -> String {
         format!(
             r#"{{
               "version": 1,
               "servers": [{{
-                "relay": {{"kind": "wildflower"}},
+                "relay": {{"kind": "firstPartyWildflower"}},
                 "tunnelName": "{tunnel_name}",
                 "token": "{TOKEN}",
                 "publicSettings": {{
@@ -436,14 +436,14 @@ mod tests {
         .unwrap();
         assert_eq!(
             registry.read_all().unwrap(),
-            vec![wildflower_record("ruth")]
+            vec![first_party_record("ruth")]
         );
     }
 
     #[test]
     fn writes_the_version_1_format() {
         let (data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
+        registry.insert(first_party_record("ruth")).unwrap();
         let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
         let by_hand: serde_json::Value = serde_json::from_str(&version_1_file("ruth")).unwrap();
         assert_eq!(written, by_hand);
@@ -463,17 +463,17 @@ mod tests {
     }
 
     #[test]
-    fn a_manual_relay_round_trips_with_no_settings_of_its_own() {
+    fn a_bare_rathole_relay_round_trips_with_no_settings_of_its_own() {
         let (data_root, registry) = registry();
-        let mut manual = custom_record("lab");
-        manual.relay = Relay::Manual;
-        registry.insert(manual.clone()).unwrap();
+        let mut bare_rathole = self_hosted_record("lab");
+        bare_rathole.relay = RelayKind::BareRathole;
+        registry.insert(bare_rathole.clone()).unwrap();
         let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
         assert_eq!(
             written["servers"][0]["relay"],
-            serde_json::json!({"kind": "manual"})
+            serde_json::json!({"kind": "bareRathole"})
         );
-        assert_eq!(registry.read_all().unwrap(), vec![manual]);
+        assert_eq!(registry.read_all().unwrap(), vec![bare_rathole]);
     }
 
     /// The tunnel name becomes the server's folder name, so one read from the
@@ -505,7 +505,7 @@ mod tests {
             Err(RegistryError::UnsupportedVersion { version: 2 })
         ));
         assert!(matches!(
-            registry.insert(wildflower_record("ruth")),
+            registry.insert(first_party_record("ruth")),
             Err(RegistryError::UnsupportedVersion { version: 2 })
         ));
         assert_eq!(file_text(&data_root), future);
@@ -514,11 +514,13 @@ mod tests {
     #[test]
     fn a_crash_before_the_rename_leaves_the_previous_file() {
         let (data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
+        registry.insert(first_party_record("ruth")).unwrap();
         let before = file_text(&data_root);
 
         let staged = registry
-            .stage(&RegistryDocument::from_records(&[custom_record("lab")]))
+            .stage(&RegistryDocument::from_records(&[self_hosted_record(
+                "lab",
+            )]))
             .unwrap();
         assert!(staged.temp_path.exists());
         // The process dies here: the staged file is never committed.
@@ -527,38 +529,43 @@ mod tests {
         assert_eq!(file_text(&data_root), before);
         assert_eq!(
             registry.read_all().unwrap(),
-            vec![wildflower_record("ruth")]
+            vec![first_party_record("ruth")]
         );
 
         // The next change writes over the leftover temporary file.
-        registry.insert(custom_record("lab")).unwrap();
+        registry.insert(self_hosted_record("lab")).unwrap();
         assert_eq!(
             registry.read_all().unwrap(),
-            vec![wildflower_record("ruth"), custom_record("lab")]
+            vec![first_party_record("ruth"), self_hosted_record("lab")]
         );
     }
 
     #[test]
     fn a_committed_stage_replaces_the_file() {
         let (data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
+        registry.insert(first_party_record("ruth")).unwrap();
 
         let staged = registry
-            .stage(&RegistryDocument::from_records(&[custom_record("lab")]))
+            .stage(&RegistryDocument::from_records(&[self_hosted_record(
+                "lab",
+            )]))
             .unwrap();
         let temp_path = staged.temp_path.clone();
         staged.commit().unwrap();
 
         assert!(!temp_path.exists());
-        assert_eq!(registry.read_all().unwrap(), vec![custom_record("lab")]);
+        assert_eq!(
+            registry.read_all().unwrap(),
+            vec![self_hosted_record("lab")]
+        );
         assert!(!file_text(&data_root).contains("ruth"));
     }
 
     #[test]
     fn inserting_a_registered_domain_is_refused() {
         let (_data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
-        let mut same_domain = wildflower_record("ruth");
+        registry.insert(first_party_record("ruth")).unwrap();
+        let mut same_domain = first_party_record("ruth");
         same_domain.staging_certificates = true;
 
         assert!(matches!(
@@ -567,16 +574,16 @@ mod tests {
         ));
         assert_eq!(
             registry.read_all().unwrap(),
-            vec![wildflower_record("ruth")]
+            vec![first_party_record("ruth")]
         );
     }
 
     #[test]
     fn update_replaces_the_record_with_the_same_domain() {
         let (_data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
-        registry.insert(custom_record("lab")).unwrap();
-        let mut updated = wildflower_record("ruth");
+        registry.insert(first_party_record("ruth")).unwrap();
+        registry.insert(self_hosted_record("lab")).unwrap();
+        let mut updated = first_party_record("ruth");
         updated.staging_certificates = true;
         updated.launcher_url = Url::parse("http://localhost:5200/").unwrap();
 
@@ -584,7 +591,7 @@ mod tests {
 
         assert_eq!(
             registry.read_all().unwrap(),
-            vec![updated, custom_record("lab")]
+            vec![updated, self_hosted_record("lab")]
         );
     }
 
@@ -592,7 +599,7 @@ mod tests {
     fn update_of_an_unregistered_domain_is_refused() {
         let (_data_root, registry) = registry();
         assert!(matches!(
-            registry.update(wildflower_record("ruth")),
+            registry.update(first_party_record("ruth")),
             Err(RegistryError::NotRegistered { domain }) if domain == "ruth.relay.wildflowerhealth.io"
         ));
         assert_eq!(registry.read_all().unwrap(), Vec::new());
@@ -601,12 +608,15 @@ mod tests {
     #[test]
     fn remove_drops_only_the_named_server() {
         let (_data_root, registry) = registry();
-        registry.insert(wildflower_record("ruth")).unwrap();
-        registry.insert(custom_record("lab")).unwrap();
+        registry.insert(first_party_record("ruth")).unwrap();
+        registry.insert(self_hosted_record("lab")).unwrap();
 
         registry.remove("ruth.relay.wildflowerhealth.io").unwrap();
 
-        assert_eq!(registry.read_all().unwrap(), vec![custom_record("lab")]);
+        assert_eq!(
+            registry.read_all().unwrap(),
+            vec![self_hosted_record("lab")]
+        );
         assert!(matches!(
             registry.remove("ruth.relay.wildflowerhealth.io"),
             Err(RegistryError::NotRegistered { .. })

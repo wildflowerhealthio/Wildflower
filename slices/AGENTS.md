@@ -107,10 +107,11 @@ render the host's status snapshot and restart the server.
 (`<tunnel name>.<relay domain>`), in `<data root>/servers.json` behind the
 `ServerRegistry` port; the file is versioned, replaced atomically, and the
 only place a server's tunnel token is written in full. It also enrols a
-server: for a relay with a site, its `GET /rathole` is fetched and checked,
-and a `GET /me` signed with the token confirms the tunnel before the record
-is written; a manual relay, a bare rathole server, is entered as its
-settings, which get the same checks.
+server: for a Wildflower relay, first-party or self-hosted, its
+`GET /rathole` is fetched and checked, and a `GET /me` signed with the token
+confirms the tunnel before the record is written; a bare rathole server, with
+no Wildflower relay site, is entered as its settings, which get the same
+checks.
 `servers-tauri-rust` is the base's `server_add` and `server_set_credentials`
 commands over it.
 

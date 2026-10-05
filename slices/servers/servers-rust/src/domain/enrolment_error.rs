@@ -24,9 +24,10 @@ pub enum EnrolmentError {
     /// The entered token is empty once its surrounding whitespace is trimmed.
     #[error("the tunnel token is empty")]
     EmptyToken,
-    /// A relay setting entered by hand for a [`Relay::Manual`](crate::Relay::Manual)
-    /// relay is one a server can't be built on; `setting` names it as the
-    /// command's arguments do.
+    /// A relay setting entered by hand for a
+    /// [`RelayKind::BareRathole`](crate::RelayKind::BareRathole) relay is one a
+    /// server can't be built on; `setting` names it as the command's arguments
+    /// do.
     #[error("the entered {setting} {reason}")]
     InvalidRelaySetting {
         setting: &'static str,

@@ -1,15 +1,16 @@
-//! The [`RelaySite`] port: the two requests enrolment makes to a relay's own
-//! site.
+//! The [`RelayClient`] port: the two requests enrolment makes to a Wildflower
+//! relay's own site.
 
 use rathole_settings_rust::{PublicRatholeSettings, TunnelHost, TunnelName};
 
 use crate::domain::{EnrolmentError, TunnelToken};
 
-/// One relay's own HTTPS site, at the base URL it was built for (see
-/// [`Relay::site_base_url`](crate::Relay::site_base_url)). The production
-/// adapter is [`RelaySiteClient`](crate::RelaySiteClient).
+/// A client for one Wildflower relay's own HTTPS site, at the base URL it was
+/// built for (see
+/// [`RelayKind::site_base_url`](crate::RelayKind::site_base_url)). The
+/// production adapter is [`ReqwestRelayClient`](crate::ReqwestRelayClient).
 #[async_trait::async_trait]
-pub trait RelaySite: Send + Sync {
+pub trait RelayClient: Send + Sync {
     /// `GET {relay base}/rathole`: the relay's public rathole settings, as
     /// served.
     ///
@@ -18,7 +19,7 @@ pub trait RelaySite: Send + Sync {
     /// [`EnrolmentError::RelayUnreachable`] when no response comes back, and
     /// [`EnrolmentError::BadRelayResponse`] for a non-success status or a body
     /// that isn't [`PublicRatholeSettings`].
-    async fn fetch_public_settings(&self) -> Result<PublicRatholeSettings, EnrolmentError>;
+    async fn public_settings(&self) -> Result<PublicRatholeSettings, EnrolmentError>;
 
     /// `GET {relay base}/me`, signed as `tunnel_name` with `token`: the
     /// tunnel the relay holds that pair for.
@@ -29,7 +30,7 @@ pub trait RelaySite: Send + Sync {
     /// [`EnrolmentError::RelayUnreachable`] when no response comes back, and
     /// [`EnrolmentError::BadRelayResponse`] for any other non-success status
     /// or a body that isn't a [`TunnelHost`].
-    async fn fetch_tunnel_host(
+    async fn tunnel_host(
         &self,
         tunnel_name: &TunnelName,
         token: &TunnelToken,

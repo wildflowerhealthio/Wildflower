@@ -6,9 +6,9 @@ publish.workspace = true
 
 # The install's list of servers: `ServerRecord`s kept in `<data root>/servers.json`
 # behind the `ServerRegistry` port, and enrolment, which checks a tunnel's
-# credentials with its relay's site behind the `RelaySite` port before a record
+# credentials with its Wildflower relay behind the `RelayClient` port before a record
 # is written. No `tauri` dependency; the host builds a `JsonServerRegistry` over
-# its data root and a `RelaySiteClient` for each relay site enrolment asks.
+# its data root and a `ReqwestRelayClient` for each relay enrolment asks.
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
@@ -16,13 +16,13 @@ serde_json.workspace = true
 # `public_settings`, whose `domain` is the relay domain a server's domain ends
 # in, and `TunnelName`, the tunnel-name check the relay applies too.
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
-# `launcher_url` and a custom relay's `base_url`, stored as URLs in the file.
+# `launcher_url` and a self-hosted relay's `base_url`, stored as URLs in the file.
 url = { version = "2", features = ["serde"] }
 # Serialises read-modify-write cycles on `servers.json` within the process.
 parking_lot = "0.12"
 # `RegistryError`'s and `EnrolmentError`'s `Display`/`source` wiring.
 thiserror = "2"
-# `RelaySite` is an `#[async_trait]`, so the base holds it as a trait object.
+# `RelayClient` is an `#[async_trait]`, so the base holds it as a trait object.
 async-trait = "0.1"
 # Runs the synchronous registry off the async runtime during enrolment.
 tokio = { workspace = true, features = ["rt"] }

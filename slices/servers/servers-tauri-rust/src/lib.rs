@@ -6,13 +6,13 @@
 //! - [`server_add`] enrols a tunnel at a relay and registers the server (see
 //!   [`servers_rust::add_server`]), answering with the server's domain.
 //! - [`server_set_credentials`] replaces a registered server's token, checked
-//!   with its relay the same way, or replaced at once for a manual relay (see
-//!   [`servers_rust::set_server_credentials`]).
+//!   with its relay the same way, or replaced at once for a bare rathole relay
+//!   (see [`servers_rust::set_server_credentials`]).
 //!
 //! Arguments and answers are camelCase. Each command trims the token's
 //! surrounding whitespace, as the relay does, and refuses one left empty.
-//! Enrolment gets a [`RelaySiteClient`](servers_rust::RelaySiteClient) for
-//! a relay's site, built when it asks for one.
+//! Enrolment gets a [`ReqwestRelayClient`](servers_rust::ReqwestRelayClient)
+//! for a relay's site, built when it asks for one.
 //!
 //! The token goes in and never comes back: neither command answers with it
 //! or logs it. A failure answers with the
