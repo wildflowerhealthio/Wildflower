@@ -24,6 +24,7 @@ use super::hello::{read_client_hello, ClientHello};
 use super::proxy_header::proxy_header;
 use super::Front;
 use crate::route::{Destination, Route};
+use crate::tunnels::TunnelDown;
 
 impl Front {
     /// Route one `:443` connection.
@@ -103,10 +104,10 @@ impl Front {
     }
 
     /// Hand rathole one end of a pipe as a visitor of the tunnel, and return
-    /// the other. rathole takes a visitor only while the device is connected
-    /// and refuses it with [`rathole::NotConnected`] otherwise. That refusal
+    /// the other. The tunnel takes a visitor only while the device is
+    /// connected and refuses it with [`TunnelDown`] otherwise. That refusal
     /// is where a known tunnel meets a down one, should the relay ever need
-    /// to tell the device (wake-up push, #918). rathole waits only while the
+    /// to tell the device (wake-up push, #918). It waits only while the
     /// tunnel's queue of visitors is full, so running out of time means the
     /// device is connected but not taking visitors, not that it is down.
     async fn connect_to_tunnel(&self, route: &Route) -> Option<DuplexStream> {
@@ -114,7 +115,7 @@ impl Front {
         let connect = self.tunnels.connect(&route.tunnel_name, visitor);
         match tokio::time::timeout(self.limits.hello_timeout, connect).await {
             Ok(Ok(())) => Some(backend),
-            Ok(Err(rathole::NotConnected)) => {
+            Ok(Err(TunnelDown)) => {
                 tracing::info!(tunnel = %route.tunnel_name, "refused: tunnel is down");
                 None
             }

@@ -4,9 +4,9 @@
 //! own parser. It holds the control address, the noise transport, pattern
 //! and key, and for each tunnel in `WILDFLOWER_RELAY_TUNNELS` a rathole
 //! service `[server.services.<tunnel name>]`: TCP with the tunnel's own
-//! `token`. A service has no `bind_addr`,
-//! since the front hands rathole its visitors. There is no `default_token`,
-//! so a device needs its own token to connect.
+//! `token`. A service's `bind_addr` is empty, since the front puts its
+//! visitors into rathole's queue for it. There is no `default_token`, so a
+//! device needs its own token to connect.
 
 use anyhow::Context;
 use toml::{Table, Value};
@@ -23,6 +23,9 @@ pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
     for tunnel in &control.tunnels {
         let mut entry = Table::new();
         entry.insert("type".into(), Value::String("tcp".into()));
+        // rathole requires one, but a server run with a visitor queue never
+        // binds a TCP service's, so it is left empty.
+        entry.insert("bind_addr".into(), Value::String(String::new()));
         entry.insert(
             "token".into(),
             Value::String(tunnel.token.expose().to_owned()),
@@ -160,7 +163,7 @@ mod tests {
         assert_eq!(server.services.len(), 2);
         assert_eq!(server.services["alice"].token.as_deref(), Some("t1"));
         assert_eq!(server.services["bob"].token.as_deref(), Some("t2"));
-        // The front hands rathole its visitors, so no service binds a port.
+        // The front queues rathole's visitors, so no service binds a port.
         assert!(server
             .services
             .values()

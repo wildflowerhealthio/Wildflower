@@ -35,9 +35,8 @@ hyper-util = { version = "0.1", features = ["tokio", "service"] }
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
 ppp = "2.3"
-# The server takes the front's visitors through a `ServerHandle`, which also
-# adds and removes services while it runs (our fork, patched in the workspace
-# `Cargo.toml`).
+# The server takes the front's visitors through each tunnel's visitor queue
+# (our fork, patched in the workspace `Cargo.toml`).
 rathole = { version = "0.5", default-features = false, features = [
   "server",
   "noise",
@@ -105,8 +104,8 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 tempfile = "3"
-# A rathole client hands the front tests each tunnel's connections in place
-# of a device.
+# A rathole client hands the front tests each tunnel's visitor streams in
+# place of a device.
 rathole = { version = "0.5", default-features = false, features = [
   "server",
   "client",

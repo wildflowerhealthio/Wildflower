@@ -1,14 +1,14 @@
 //! End-to-end tests of the front over real sockets: a rustls client's hello
 //! goes in on one side, and on the other an in-process rathole server takes
-//! the front's visitors and a rathole client hands each tunnel's connections
-//! to the test in place of a device. The relay's own site is served with a
+//! the front's visitors and a rathole client hands each tunnel's visitor
+//! streams to the test in place of a device. The relay's own site is served with a
 //! self-signed certificate in place of the ACME one.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rathole::{HandedOffConnection, ServerHandle};
+use rathole::{AsyncStream, ClientServiceEvent};
 use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use rustls::sign::{CertifiedKey, SingleCertAndKey};
@@ -18,7 +18,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
-use wildflower_relay::{Front, Limits, RouteTable, Router, Site, Verifier};
+use wildflower_relay::{Front, Limits, RouteTable, Router, Site, Tunnels, Verifier};
 
 /// The tunnel every test that pipes bytes routes to, and its token.
 const TUNNEL: &str = "abc";
@@ -91,47 +91,59 @@ struct Harness {
 /// A rathole server holding the tunnel [`TUNNEL`], with a client connected
 /// to it: the front's visitors of the tunnel come out of `backend`, as the
 /// device would take them.
-struct Tunnels {
-    handle: ServerHandle,
-    backend: mpsc::Receiver<HandedOffConnection>,
+struct ConnectedTunnel {
+    tunnels: Tunnels,
+    backend: mpsc::Receiver<Box<dyn AsyncStream>>,
     /// Stops the server and the client when dropped.
     _shutdown_tx: broadcast::Sender<bool>,
 }
 
-async fn start_tunnels() -> Tunnels {
+async fn start_tunnel() -> ConnectedTunnel {
     let control_port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()
         .unwrap()
         .port();
+    // Neither address is used: the server and the client both run with a
+    // visitor queue.
     let server_config = format!(
         "[server]\nbind_addr = \"127.0.0.1:{control_port}\"\n\
-         [server.services.{TUNNEL}]\ntoken = \"{TUNNEL_TOKEN}\"\n"
+         [server.services.{TUNNEL}]\nbind_addr = \"\"\ntoken = \"{TUNNEL_TOKEN}\"\n"
     );
     let client_config = format!(
         "[client]\nremote_addr = \"127.0.0.1:{control_port}\"\n\
-         [client.services.{TUNNEL}]\ntoken = \"{TUNNEL_TOKEN}\"\n"
+         [client.services.{TUNNEL}]\nlocal_addr = \"\"\ntoken = \"{TUNNEL_TOKEN}\"\n"
     );
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
-    let (handle, receiver) = rathole::server_handle();
-    tokio::spawn(rathole::run_server_with_handoff(
-        server_config.parse().unwrap(),
-        shutdown_rx.resubscribe(),
-        receiver,
-    ));
-    let (connection_tx, mut backend) = mpsc::channel(8);
-    tokio::spawn(rathole::run_client_with_handoff(
+    let tunnels = Tunnels::default();
+    tokio::spawn(
+        tunnels
+            .clone()
+            .serve(server_config.parse().unwrap(), shutdown_rx.resubscribe()),
+    );
+    let (_, update_rx) = mpsc::channel(1);
+    let (event_tx, mut events) = mpsc::unbounded_channel();
+    tokio::spawn(rathole::run_client_with_visitor_queue(
         client_config.parse().unwrap(),
         shutdown_rx,
-        connection_tx,
+        update_rx,
+        event_tx,
     ));
+    // The client reports its one service as soon as it starts it.
+    let Some(ClientServiceEvent::TcpStarted {
+        visitor_stream_rx: mut backend,
+        ..
+    }) = events.recv().await
+    else {
+        panic!("the client starts the tunnel's service");
+    };
 
     // Once a visitor goes through, the client is connected. That visitor is
     // not part of any test.
     let connected = async {
         loop {
             let (_visitor, stream) = tokio::io::duplex(64);
-            if handle.connect(TUNNEL, stream).await.is_ok() {
+            if tunnels.connect(TUNNEL, stream).await.is_ok() {
                 return backend.recv().await;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -141,19 +153,19 @@ async fn start_tunnels() -> Tunnels {
         .await
         .expect("the client should connect")
         .expect("the client hands over the first visitor");
-    Tunnels {
-        handle,
+    ConnectedTunnel {
+        tunnels,
         backend,
         _shutdown_tx: shutdown_tx,
     }
 }
 
-/// A handle to a rathole server that is not running: every tunnel is down.
-fn no_tunnels() -> ServerHandle {
-    rathole::server_handle().0
+/// Tunnels with no rathole server behind them: every tunnel is down.
+fn no_tunnels() -> Tunnels {
+    Tunnels::default()
 }
 
-async fn start_front(router: Arc<Router>, tunnels: ServerHandle) -> Harness {
+async fn start_front(router: Arc<Router>, tunnels: Tunnels) -> Harness {
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
     let https = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let http = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -215,24 +227,23 @@ async fn assert_closed_silently(mut stream: TcpStream) {
 }
 
 /// Connect a client, send the hello for `host` plus `extra`, and take the
-/// matching connection off `tunnels`. Checks the PROXY header names the
+/// matching connection off `tunnel`. Checks the PROXY header names the
 /// client and the replayed bytes are exactly what was sent.
 async fn pipe_through(
     harness: &Harness,
-    tunnels: &mut Tunnels,
+    tunnel: &mut ConnectedTunnel,
     host: &str,
     extra: &[u8],
-) -> (TcpStream, Box<dyn rathole::DataChannelStream>) {
+) -> (TcpStream, Box<dyn AsyncStream>) {
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     let mut sent = client_hello(host);
     sent.extend_from_slice(extra);
     client.write_all(&sent).await.unwrap();
 
-    let mut upstream = tokio::time::timeout(WAIT, tunnels.backend.recv())
+    let mut upstream = tokio::time::timeout(WAIT, tunnel.backend.recv())
         .await
         .expect("front should hand the visitor to the tunnel")
-        .expect("the tunnel's client is running")
-        .stream;
+        .expect("the tunnel's client is running");
     let client_addr = client.local_addr().unwrap();
     let ppp::v2::Addresses::IPv4(addresses) = read_proxy_header(&mut upstream).await else {
         panic!("expected IPv4 addresses");
@@ -251,12 +262,12 @@ async fn pipe_through(
 
 #[tokio::test]
 async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
-    let mut tunnels = start_tunnels().await;
+    let mut tunnel = start_tunnel().await;
     let router = router(RouteTable::from_names([TUNNEL.to_owned()]));
-    let harness = start_front(router, tunnels.handle.clone()).await;
+    let harness = start_front(router, tunnel.tunnels.clone()).await;
 
     let (mut client, mut upstream) =
-        pipe_through(&harness, &mut tunnels, "ABC.relay.example.com", b"early").await;
+        pipe_through(&harness, &mut tunnel, "ABC.relay.example.com", b"early").await;
 
     upstream.write_all(b"server bytes").await.unwrap();
     assert_eq!(read_exact(&mut client, 12).await, b"server bytes");
@@ -286,13 +297,13 @@ async fn read_to_eof(stream: &mut (impl AsyncRead + Unpin)) -> Vec<u8> {
 
 #[tokio::test]
 async fn half_close_reaches_the_other_side_in_both_directions() {
-    let mut tunnels = start_tunnels().await;
+    let mut tunnel = start_tunnel().await;
     let router = router(RouteTable::from_names([TUNNEL.to_owned()]));
-    let harness = start_front(router, tunnels.handle.clone()).await;
+    let harness = start_front(router, tunnel.tunnels.clone()).await;
 
     // The visitor finishes sending first; the device still answers.
     let (mut client, mut upstream) =
-        pipe_through(&harness, &mut tunnels, "abc.relay.example.com", b"").await;
+        pipe_through(&harness, &mut tunnel, "abc.relay.example.com", b"").await;
     client.write_all(b"request").await.unwrap();
     client.shutdown().await.unwrap();
     assert_eq!(read_to_eof(&mut upstream).await, b"request");
@@ -302,7 +313,7 @@ async fn half_close_reaches_the_other_side_in_both_directions() {
 
     // The device finishes sending first; the visitor can still send.
     let (mut client, mut upstream) =
-        pipe_through(&harness, &mut tunnels, "abc.relay.example.com", b"").await;
+        pipe_through(&harness, &mut tunnel, "abc.relay.example.com", b"").await;
     upstream.write_all(b"goodbye").await.unwrap();
     upstream.shutdown().await.unwrap();
     assert_eq!(read_to_eof(&mut client).await, b"goodbye");
@@ -336,7 +347,7 @@ async fn unknown_tunnel_is_closed_without_a_byte_written() {
 
 #[tokio::test]
 async fn known_tunnel_that_is_down_is_closed_silently() {
-    // rathole refuses a visitor of a tunnel whose device is offline.
+    // A tunnel whose device never connected has no visitor queue.
     let harness = start_front(
         router(RouteTable::from_names([TUNNEL.to_owned()])),
         no_tunnels(),
@@ -442,10 +453,10 @@ async fn tls_connect(harness: &Harness, host: &str, alpn: &[&[u8]]) -> TlsStream
 #[tokio::test]
 async fn own_hostname_is_served_by_the_site_over_tls() {
     // A tunnel is routable too, so the site is chosen by name, not by default.
-    let mut tunnels = start_tunnels().await;
+    let mut tunnel = start_tunnel().await;
     let harness = start_front(
         router(RouteTable::from_names([TUNNEL.to_owned()])),
-        tunnels.handle.clone(),
+        tunnel.tunnels.clone(),
     )
     .await;
 
@@ -468,7 +479,7 @@ async fn own_hostname_is_served_by_the_site_over_tls() {
 
     // The tunnel still routes alongside the site.
     let (_client, _upstream) =
-        pipe_through(&harness, &mut tunnels, "abc.relay.example.com", b"").await;
+        pipe_through(&harness, &mut tunnel, "abc.relay.example.com", b"").await;
     let _ = harness.shutdown_tx.send(true);
 }
 

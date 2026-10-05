@@ -47,10 +47,10 @@
 //! from Let's Encrypt's staging directory instead, whose certificates
 //! browsers do not trust.
 //!
-//! rathole binds no port for a tunnel: the front hands each visitor to it in
-//! process through a [`rathole::ServerHandle`], so nothing but the front
-//! reaches a tunnel. rathole takes a visitor only while that device is
-//! connected, and refuses it otherwise: that is how the front knows a device
+//! rathole binds no port for a tunnel: the front puts each visitor into the
+//! tunnel's queue in process, through [`Tunnels`], so nothing but the front
+//! reaches a tunnel. rathole reports a tunnel's queue only while that
+//! device is connected: a tunnel with none is how the front knows a device
 //! is offline.
 //!
 //! ## Signed requests
@@ -144,6 +144,7 @@ pub mod front;
 pub mod route;
 pub mod settings;
 pub mod site;
+pub mod tunnels;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -157,6 +158,7 @@ pub use route::{Route, RouteTable, Router};
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
 pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;
+pub use tunnels::{TunnelDown, Tunnels};
 
 /// Build the rathole config from `settings`, then run the relay — rathole, the
 /// `:443`/`:80` front and the site's certificate upkeep — until
@@ -186,8 +188,8 @@ pub async fn run_relay(
     let settings = settings.front;
     tracing::info!(domain = %settings.domain, routes = routes.len(), "routes built");
     let router = Arc::new(Router::new(&settings.domain, local_hostnames, routes));
-    let (tunnels, tunnels_receiver) = rathole::server_handle();
-    let front = Front::new(router, tunnels, site, settings.limits);
+    let tunnels = Tunnels::default();
+    let front = Front::new(router, tunnels.clone(), site, settings.limits);
 
     let https = TcpListener::bind(settings.https_addr)
         .await
@@ -201,7 +203,7 @@ pub async fn run_relay(
         Arc::clone(&front).serve_https(https, shutdown_rx.resubscribe()),
         front.serve_http(http, shutdown_rx.resubscribe()),
         site::acme::drive(acme, shutdown_rx.resubscribe()),
-        rathole::run_server_with_handoff(rathole_config, shutdown_rx, tunnels_receiver),
+        tunnels.serve(rathole_config, shutdown_rx),
     )?;
     Ok(())
 }

@@ -1,10 +1,10 @@
 //! The public TCP front: `:443` routes TLS by server name, `:80` redirects.
 //!
 //! This file holds what both listeners share: the [`Front`] (routes, the
-//! handle that hands visitors to rathole's tunnels, the relay's own site,
-//! limits and the semaphores that enforce them) and the
-//! accept loops that hand each connection to its handler. The handlers and
-//! their helpers live in their own files:
+//! [`Tunnels`] it puts visitors into, the relay's own site, limits and the
+//! semaphores that enforce them) and the accept loops that hand each
+//! connection to its handler. The handlers and their helpers live in their
+//! own files:
 //!
 //! - `tls`: one `:443` connection, from ClientHello to byte pipe, or to the
 //!   relay's own site for a local hostname.
@@ -25,6 +25,7 @@ use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
 
 use crate::route::Router;
 use crate::site::Site;
+use crate::tunnels::Tunnels;
 
 /// Pause after a failed `accept` (e.g. out of file descriptors) so the loop
 /// does not spin.
@@ -55,8 +56,8 @@ impl Default for Limits {
 #[derive(Debug)]
 pub struct Front {
     router: Arc<Router>,
-    /// Hands each visitor to the rathole service of its tunnel.
-    tunnels: rathole::ServerHandle,
+    /// Takes each visitor to the rathole service of its tunnel.
+    tunnels: Tunnels,
     site: Site,
     limits: Limits,
     connections: Arc<Semaphore>,
@@ -64,12 +65,7 @@ pub struct Front {
 
 impl Front {
     #[must_use]
-    pub fn new(
-        router: Arc<Router>,
-        tunnels: rathole::ServerHandle,
-        site: Site,
-        limits: Limits,
-    ) -> Arc<Self> {
+    pub fn new(router: Arc<Router>, tunnels: Tunnels, site: Site, limits: Limits) -> Arc<Self> {
         Arc::new(Self {
             router,
             tunnels,
