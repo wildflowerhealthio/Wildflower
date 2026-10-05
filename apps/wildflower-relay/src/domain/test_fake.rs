@@ -1,6 +1,7 @@
-//! The in-memory [`TunnelStore`] fake the [`actions`](crate::domain::actions)
-//! unit tests drive, plus the [`stored_tunnel`] builder they (and the `db`
-//! tests) seed with. Modelling the real primitive semantics —
+//! The in-memory [`TunnelStore`] fake the
+//! [`capabilities`](crate::domain::capabilities) unit tests drive, plus the
+//! [`stored_tunnel`] builder they (and the `db` and registry tests) seed
+//! with. Modelling the real primitive semantics —
 //! `insert_tunnel` fails a duplicate name as
 //! [`TunnelError::Infrastructure`] (the primary-key violation),
 //! `delete_tunnel` reports a miss as `false`, `list_tunnels` is by name — it
@@ -10,8 +11,8 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use crate::domain::{StoredTunnel, TunnelError, TunnelStore};
-use crate::settings::{Secret, Tunnel};
+use crate::domain::{StoredTunnel, Tunnel, TunnelError, TunnelStore};
+use crate::settings::Secret;
 
 #[derive(Default)]
 pub(crate) struct FakeTunnelStore {

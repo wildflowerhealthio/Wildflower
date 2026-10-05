@@ -4,18 +4,18 @@
 //! - `POST /api/tunnels` `{"email": "…", "name": "…"}` (`name` optional):
 //!   `201 {"name", "token", "public_host"}`. The token is shown only here.
 //! - `GET /api/tunnels`: `200 [{"name", "email", "public_host",
-//!   "created_at", "source"}]`, `source` being `"env"` or `"store"`. No
-//!   tokens.
-//! - `DELETE /api/tunnels/{name}`: `204` once the stored tunnel is gone.
+//!   "created_at"}]`. No tokens.
+//! - `DELETE /api/tunnels/{name}`: `204` once the tunnel is gone.
 //!
 //! On any other `Host` these paths are `404`, before the signature is
 //! looked at, so `@target-uri` always names the admin hostname. A request
-//! that fails verification, or is signed by a tunnel, is a bare `401`.
-//! Refused changes answer with a short plain-text reason: `422` for a name
-//! that is not a lowercase DNS label or an unusable email, `409` for a name
-//! that is reserved or taken and for deleting a tunnel from the
-//! environment, `404` for deleting one that does not exist, and `503` when
-//! no name or port is left.
+//! that fails verification, or is signed by a tunnel, is a bare `401`: each
+//! handler acquires its capability through the [`Admin`] extractor, which
+//! builds it only for the admin signer, before the body is read. Refused
+//! changes answer with a short plain-text reason: `422` for a name that is
+//! not a lowercase DNS label or an unusable email, `409` for a name that is
+//! reserved or taken, `404` for deleting a tunnel that does not exist, and
+//! `503` when no name or port is left.
 
 use std::sync::Arc;
 
@@ -28,34 +28,36 @@ use axum::routing::{delete, get};
 use axum::Json;
 use serde::{Deserialize, Serialize, Serializer};
 
-use super::signature::{authority, require_signature, SignedBy, Verifier};
-use crate::domain::{LiveTunnel, Source, StoredTunnel, TunnelError};
+use super::signature::{authority, require_signature, Verifier};
+use crate::domain::{StoredTunnel, TunnelError};
+use crate::live_bindings::state::TunnelRegistry;
+use crate::live_bindings::{Admin, LiveTunnelsCreator, LiveTunnelsDeleter, LiveTunnelsReader};
 use crate::settings::Secret;
-use crate::tunnel_registry::TunnelRegistry;
 
-/// The routes above, changing tunnels through `tunnels` and checking
-/// signatures with `verifier`.
-pub(super) fn router(tunnels: Arc<TunnelRegistry>, verifier: Arc<Verifier>) -> axum::Router {
+/// The routes above, changing tunnels through capabilities built from
+/// `registry` and checking signatures with `verifier`.
+pub(super) fn router(registry: Arc<TunnelRegistry>, verifier: Arc<Verifier>) -> axum::Router {
+    let admin_hostname: Arc<str> = registry.admin_hostname().into();
     axum::Router::new()
         .route("/api/tunnels", get(list).post(create))
         .route("/api/tunnels/{name}", delete(remove))
         .route_layer(middleware::from_fn_with_state(verifier, require_signature))
         // The outer layer: the host is checked before the signature.
         .route_layer(middleware::from_fn_with_state(
-            Arc::clone(&tunnels),
+            admin_hostname,
             require_admin_host,
         ))
-        .with_state(tunnels)
+        .with_state(registry)
 }
 
 /// `404` unless the request's authority is the admin hostname.
 async fn require_admin_host(
-    State(tunnels): State<Arc<TunnelRegistry>>,
+    State(admin_hostname): State<Arc<str>>,
     request: Request,
     next: Next,
 ) -> Response {
     let (parts, body) = request.into_parts();
-    if authority(&parts) != Some(tunnels.admin_hostname()) {
+    if authority(&parts).as_deref() != Some(&*admin_hostname) {
         return StatusCode::NOT_FOUND.into_response();
     }
     next.run(Request::from_parts(parts, body)).await
@@ -68,29 +70,24 @@ struct CreateTunnel {
     name: Option<String>,
 }
 
-/// A live tunnel as `GET /api/tunnels` lists it: no token.
+/// A tunnel as `GET /api/tunnels` lists it: no token.
 #[derive(Debug, Serialize)]
 struct TunnelInfo {
     name: String,
-    /// `None` for a tunnel from the environment.
-    email: Option<String>,
+    email: String,
     /// `<tunnel name>.<domain>`.
     public_host: String,
-    /// Unix epoch seconds; `None` for a tunnel from the environment.
-    created_at: Option<i64>,
-    source: Source,
+    /// Unix epoch seconds.
+    created_at: i64,
 }
 
 impl TunnelInfo {
-    fn new(live: LiveTunnel, public_host: String) -> Self {
-        let source = live.source();
-        let (email, created_at) = live.stored.unzip();
+    fn new(stored: StoredTunnel, public_host: String) -> Self {
         Self {
-            name: live.tunnel.name,
-            email,
+            name: stored.tunnel.name,
+            email: stored.email,
             public_host,
-            created_at,
-            source,
+            created_at: stored.created_at,
         }
     }
 }
@@ -120,23 +117,19 @@ fn expose<S: Serializer>(secret: &Secret, serializer: S) -> Result<S::Ok, S::Err
     serializer.serialize_str(secret.expose())
 }
 
-/// The body is checked only after the signer, so a tunnel-signed request is
-/// `401` whatever it carries.
+/// The body is checked only after the signer: [`Admin`] runs first, so a
+/// tunnel-signed request is `401` whatever it carries.
 async fn create(
-    State(tunnels): State<Arc<TunnelRegistry>>,
-    signed_by: SignedBy,
+    Admin(creator): Admin<LiveTunnelsCreator>,
     body: Result<Json<CreateTunnel>, JsonRejection>,
 ) -> Response {
-    if signed_by != SignedBy::Admin {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
     let body = match body {
         Ok(Json(body)) => body,
         Err(rejection) => return rejection.into_response(),
     };
-    match tunnels.create(&body.email, body.name.as_deref()).await {
+    match creator.create(body.email, body.name).await {
         Ok(stored) => {
-            let public_host = tunnels.public_host(&stored.tunnel.name);
+            let public_host = creator.public_host(&stored.tunnel.name);
             let created = CreatedTunnel::new(stored, public_host);
             (StatusCode::CREATED, Json(created)).into_response()
         }
@@ -144,31 +137,24 @@ async fn create(
     }
 }
 
-async fn list(State(tunnels): State<Arc<TunnelRegistry>>, signed_by: SignedBy) -> Response {
-    if signed_by != SignedBy::Admin {
-        return StatusCode::UNAUTHORIZED.into_response();
+async fn list(Admin(reader): Admin<LiveTunnelsReader>) -> Response {
+    match reader.list().await {
+        Ok(stored) => {
+            let listed: Vec<_> = stored
+                .into_iter()
+                .map(|stored| {
+                    let public_host = reader.public_host(&stored.tunnel.name);
+                    TunnelInfo::new(stored, public_host)
+                })
+                .collect();
+            Json(listed).into_response()
+        }
+        Err(error) => error.into_response(),
     }
-    let listed: Vec<_> = tunnels
-        .list()
-        .await
-        .into_iter()
-        .map(|live| {
-            let public_host = tunnels.public_host(&live.tunnel.name);
-            TunnelInfo::new(live, public_host)
-        })
-        .collect();
-    Json(listed).into_response()
 }
 
-async fn remove(
-    State(tunnels): State<Arc<TunnelRegistry>>,
-    signed_by: SignedBy,
-    Path(name): Path<String>,
-) -> Response {
-    if signed_by != SignedBy::Admin {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
-    match tunnels.delete(&name).await {
+async fn remove(Admin(deleter): Admin<LiveTunnelsDeleter>, Path(name): Path<String>) -> Response {
+    match deleter.delete(name).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => error.into_response(),
     }
@@ -188,10 +174,6 @@ impl IntoResponse for TunnelError {
             Self::Reserved => (StatusCode::CONFLICT, "the name is reserved"),
             Self::Taken => (StatusCode::CONFLICT, "a tunnel already has the name"),
             Self::NotFound => (StatusCode::NOT_FOUND, "no tunnel has the name"),
-            Self::FromEnvironment => (
-                StatusCode::CONFLICT,
-                "the tunnel is in WILDFLOWER_RELAY_TUNNELS; remove it there",
-            ),
             Self::Exhausted(reason) => (StatusCode::SERVICE_UNAVAILABLE, reason),
             Self::Infrastructure { context, source } => {
                 tracing::error!("tunnel change failed: {context}: {source}");
@@ -210,9 +192,10 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+    use crate::live_bindings::LiveTunnelsCreator;
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
-    use crate::test_support::registry;
+    use crate::test_support::{admin, registry};
 
     const ADMIN_KEY: &str = "an-admin-key-of-thirty-two-bytes";
     const ADMIN: &str = "https://admin.relay.example.com";
@@ -253,11 +236,23 @@ mod tests {
         serde_json::from_slice(body).unwrap()
     }
 
+    /// The admin router over a fresh registry holding the tunnel `alice`,
+    /// whose token is returned.
+    async fn router_with_alice() -> (axum::Router, Arc<TunnelRegistry>, String, tempfile::TempDir) {
+        let (registry, dir) = registry(Some(ADMIN_KEY)).await;
+        let creator: LiveTunnelsCreator = admin(&registry);
+        let alice = creator
+            .create("alice@example.com".to_owned(), Some("alice".to_owned()))
+            .await
+            .unwrap();
+        let router = router(Arc::clone(&registry), registry.verifier());
+        let token = alice.tunnel.token.expose().to_owned();
+        (router, registry, token, dir)
+    }
+
     #[tokio::test]
     async fn creates_lists_and_deletes_tunnels() {
-        let (tunnels, _dir) = registry("alice=alice-token", Some(ADMIN_KEY)).await;
-        let tunnels = Arc::new(tunnels);
-        let router = router(Arc::clone(&tunnels), tunnels.verifier());
+        let (router, tunnels, _, _dir) = router_with_alice().await;
 
         let (status, body) = send(
             &router,
@@ -300,20 +295,18 @@ mod tests {
         let listed = json(&body);
         let listed = listed.as_array().unwrap();
         assert_eq!(listed.len(), 3);
+        assert_eq!(listed[0]["name"], "alice");
+        let bob = listed.iter().find(|t| t["name"] == "bob").unwrap();
+        let created_at = bob["created_at"].as_i64().unwrap();
         assert_eq!(
-            listed[0],
+            *bob,
             serde_json::json!({
-                "name": "alice",
-                "email": null,
-                "public_host": "alice.relay.example.com",
-                "created_at": null,
-                "source": "env",
+                "name": "bob",
+                "email": "bob@example.com",
+                "public_host": "bob.relay.example.com",
+                "created_at": created_at,
             })
         );
-        let bob = listed.iter().find(|t| t["name"] == "bob").unwrap();
-        assert_eq!(bob["email"], "bob@example.com");
-        assert_eq!(bob["source"], "store");
-        assert!(bob["created_at"].is_i64());
         assert!(listed.iter().all(|t| t.get("token").is_none()));
 
         let (status, _) = send(
@@ -330,10 +323,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refuses_bad_names_reserved_names_conflicts_and_env_deletes() {
-        let (tunnels, _dir) = registry("alice=alice-token", Some(ADMIN_KEY)).await;
-        let tunnels = Arc::new(tunnels);
-        let router = router(Arc::clone(&tunnels), tunnels.verifier());
+    async fn refuses_bad_names_reserved_names_conflicts_and_unknown_deletes() {
+        let (router, tunnels, _, _dir) = router_with_alice().await;
         let post =
             |body: serde_json::Value| admin_request("POST", &format!("{ADMIN}/api/tunnels"), &body);
         for (body, expected) in [
@@ -361,26 +352,19 @@ mod tests {
             let (status, _) = send(&router, post(body.clone())).await;
             assert_eq!(status, expected, "{body}");
         }
-        for (name, expected) in [
-            ("alice", StatusCode::CONFLICT),
-            ("nobody", StatusCode::NOT_FOUND),
-        ] {
-            let uri = format!("{ADMIN}/api/tunnels/{name}");
-            let (status, _) = send(
-                &router,
-                admin_request("DELETE", &uri, &serde_json::Value::Null),
-            )
-            .await;
-            assert_eq!(status, expected, "{name}");
-        }
+        let uri = format!("{ADMIN}/api/tunnels/nobody");
+        let (status, _) = send(
+            &router,
+            admin_request("DELETE", &uri, &serde_json::Value::Null),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(tunnels.list().await.len(), 1);
     }
 
     #[tokio::test]
     async fn refuses_unsigned_wrongly_signed_and_tunnel_signed_requests() {
-        let (tunnels, _dir) = registry("alice=alice-token", Some(ADMIN_KEY)).await;
-        let tunnels = Arc::new(tunnels);
-        let router = router(Arc::clone(&tunnels), tunnels.verifier());
+        let (router, tunnels, alice, _dir) = router_with_alice().await;
         let uri = format!("{ADMIN}/api/tunnels");
         let now = unix_now().unwrap();
         let unsigned = Request::builder()
@@ -391,14 +375,14 @@ mod tests {
         for request in [
             unsigned,
             signed_request("GET", &uri, b"", "admin", "not-the-admin-key", now, "a"),
-            signed_request("GET", &uri, b"", "alice", "alice-token", now, "b"),
-            signed_request("POST", &uri, b"not json", "alice", "alice-token", now, "d"),
+            signed_request("GET", &uri, b"", "alice", &alice, now, "b"),
+            signed_request("POST", &uri, b"not json", "alice", &alice, now, "d"),
             signed_request(
                 "DELETE",
                 &format!("{uri}/alice"),
                 b"",
                 "alice",
-                "alice-token",
+                &alice,
                 now,
                 "c",
             ),
@@ -407,14 +391,14 @@ mod tests {
             assert_eq!(status, StatusCode::UNAUTHORIZED);
             assert!(body.is_empty(), "a 401 carries no detail");
         }
+        assert_eq!(tunnels.list().await.len(), 1, "alice is still there");
     }
 
     /// On the apex (or any other host) the admin paths do not exist, even
     /// for a request properly signed for that host.
     #[tokio::test]
     async fn the_admin_api_is_only_on_the_admin_hostname() {
-        let (tunnels, _dir) = registry("", Some(ADMIN_KEY)).await;
-        let tunnels = Arc::new(tunnels);
+        let (tunnels, _dir) = registry(Some(ADMIN_KEY)).await;
         let router = router(Arc::clone(&tunnels), tunnels.verifier());
         for host in ["https://relay.example.com", "https://other.example.com"] {
             let request = admin_request(

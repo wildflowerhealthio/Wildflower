@@ -15,7 +15,7 @@ use shared_structures_rust::health_check::{health_router, AlwaysHealthy};
 
 use super::admin;
 use super::signature::{require_signature, SignedBy, Verifier};
-use crate::tunnel_registry::TunnelRegistry;
+use crate::live_bindings::state::TunnelRegistry;
 
 /// `GET /rathole` changes only when the relay restarts with a new
 /// environment, so clients may reuse it for a minute.
@@ -83,10 +83,12 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::settings::{RelaySettings, Secret, Tunnel};
+    use crate::domain::Tunnel;
+    use crate::live_bindings::{LiveTunnelsCreator, LiveTunnelsDeleter};
+    use crate::settings::{RelaySettings, Secret};
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
-    use crate::test_support::registry;
+    use crate::test_support::{admin, registry};
 
     #[tokio::test]
     async fn rathole_serves_the_settings_from_the_environment() {
@@ -253,22 +255,23 @@ mod tests {
     /// verifying at once, without a restart.
     #[tokio::test]
     async fn created_tunnels_sign_at_once_and_deleted_ones_stop() {
-        let (tunnels, _dir) = registry("", Some("an-admin-key-of-thirty-two-bytes")).await;
-        let tunnels = Arc::new(tunnels);
+        let (tunnels, _dir) = registry(Some("an-admin-key-of-thirty-two-bytes")).await;
         let router = router(
             rathole_settings(),
             tunnels.verifier(),
             Some(Arc::clone(&tunnels)),
         );
-        let created = tunnels
-            .create("bob@example.com", Some("bob"))
+        let creator: LiveTunnelsCreator = admin(&tunnels);
+        let created = creator
+            .create("bob@example.com".to_owned(), Some("bob".to_owned()))
             .await
             .unwrap();
         let token = created.tunnel.token.expose();
         let response = router.clone().oneshot(me(token, "1")).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        tunnels.delete("bob").await.unwrap();
+        let deleter: LiveTunnelsDeleter = admin(&tunnels);
+        deleter.delete("bob".to_owned()).await.unwrap();
         let response = router.oneshot(me(token, "2")).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }

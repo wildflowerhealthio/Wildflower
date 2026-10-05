@@ -29,9 +29,9 @@ pub fn render(control: &ControlSettings, tunnels: &TunnelSet) -> anyhow::Result<
         entry.insert("bind_addr".into(), Value::String(live.addr().to_string()));
         entry.insert(
             "token".into(),
-            Value::String(live.tunnel.token.expose().to_owned()),
+            Value::String(live.stored.tunnel.token.expose().to_owned()),
         );
-        services.insert(live.tunnel.name.clone(), Value::Table(entry));
+        services.insert(live.stored.tunnel.name.clone(), Value::Table(entry));
     }
 
     let mut noise = Table::new();
@@ -126,6 +126,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::domain::test_fake::stored_tunnel;
     use crate::route::{Destination, RouteTable, Router};
     use crate::settings::RelaySettings;
 
@@ -152,9 +153,10 @@ mod tests {
         RelaySettings::from_lookup(|name| env.get(name).cloned()).expect("example settings")
     }
 
-    /// The environment's tunnels, with nothing stored.
-    fn env_tunnels(control: &ControlSettings) -> TunnelSet {
-        TunnelSet::new(control, Vec::new()).expect("tunnel set")
+    /// The stored tunnels `names`, from `control`'s port base.
+    fn tunnel_set(control: &ControlSettings, names: &[&str]) -> TunnelSet {
+        let stored = names.iter().copied().map(stored_tunnel).collect();
+        TunnelSet::new(control.tunnel_port_base, stored).expect("tunnel set")
     }
 
     async fn parse(text: &str) -> rathole::Config {
@@ -178,13 +180,13 @@ mod tests {
             "commented defaults in relay.example.env must match the code"
         );
 
-        let tunnels = env_tunnels(&example.control);
+        let tunnels = tunnel_set(&example.control, &["wildflower-device-1"]);
         let server = parse(&render(&example.control, &tunnels).unwrap())
             .await
             .server
             .expect("[server]");
         assert!(server.default_token.is_none());
-        assert!(!server.services.is_empty(), "the example lists a tunnel");
+        assert_eq!(server.services.len(), 1);
         for (name, addr) in tunnels.addrs() {
             let service = &server.services[&name];
             assert_eq!(service.bind_addr, addr.to_string());
@@ -203,13 +205,9 @@ mod tests {
                 "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY".to_owned(),
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
             ),
-            (
-                "WILDFLOWER_RELAY_TUNNELS".to_owned(),
-                "bob=t2,alice=t1".to_owned(),
-            ),
         ]);
         let control = settings(&env).control;
-        let tunnels = env_tunnels(&control);
+        let tunnels = tunnel_set(&control, &["bob", "alice"]);
         let server = parse(&render(&control, &tunnels).unwrap())
             .await
             .server
@@ -217,9 +215,12 @@ mod tests {
         assert_eq!(server.bind_addr, "0.0.0.0:2333");
         assert_eq!(server.services.len(), 2);
         assert_eq!(server.services["alice"].bind_addr, "127.0.0.1:5201");
-        assert_eq!(server.services["alice"].token.as_deref(), Some("t1"));
+        assert_eq!(
+            server.services["alice"].token.as_deref(),
+            Some("alice-token")
+        );
         assert_eq!(server.services["bob"].bind_addr, "127.0.0.1:5202");
-        assert_eq!(server.services["bob"].token.as_deref(), Some("t2"));
+        assert_eq!(server.services["bob"].token.as_deref(), Some("bob-token"));
         let noise = server.transport.noise.expect("[server.transport.noise]");
         assert!(noise.local_private_key.is_some());
         // `GET /rathole` tells clients the pattern the server runs.
@@ -253,7 +254,7 @@ mod tests {
             ),
         ]);
         let control = settings(&env).control;
-        let server = parse(&render(&control, &env_tunnels(&control)).unwrap())
+        let server = parse(&render(&control, &tunnel_set(&control, &[])).unwrap())
             .await
             .server
             .expect("[server]");
@@ -267,7 +268,7 @@ mod tests {
         std::fs::write(&path, "stale contents from a previous run").unwrap();
 
         let control = settings(&example_env(false)).control;
-        let tunnels = env_tunnels(&control);
+        let tunnels = tunnel_set(&control, &["alice"]);
         write_config(&path, &control, &tunnels).await.unwrap();
         let written = std::fs::read_to_string(&path).unwrap();
         assert_eq!(written, render(&control, &tunnels).unwrap());

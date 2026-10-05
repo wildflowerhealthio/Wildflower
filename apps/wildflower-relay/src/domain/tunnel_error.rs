@@ -1,5 +1,5 @@
 //! [`TunnelError`] — why a tunnel change was refused or failed. The
-//! [`actions`](crate::domain::actions) and the store speak it; the admin API
+//! [`capabilities`](crate::domain::capabilities) and the store speak it; the admin API
 //! (`crate::site::admin`) renders each variant to a status and a short
 //! plain-text reason, or a logged empty `500` for
 //! [`Infrastructure`](TunnelError::Infrastructure). Nothing here knows about
@@ -22,9 +22,6 @@ pub enum TunnelError {
     Taken,
     /// No tunnel has the name.
     NotFound,
-    /// The tunnel comes from `WILDFLOWER_RELAY_TUNNELS`, so only the
-    /// environment can remove it.
-    FromEnvironment,
     /// No free name or port is left.
     Exhausted(&'static str),
     /// Storing, rendering or the clock failed — opaque to clients: the admin
@@ -59,9 +56,6 @@ impl std::fmt::Display for TunnelError {
             TunnelError::Reserved => f.write_str("the name is reserved"),
             TunnelError::Taken => f.write_str("a tunnel already has the name"),
             TunnelError::NotFound => f.write_str("no tunnel has the name"),
-            TunnelError::FromEnvironment => {
-                f.write_str("the tunnel is in WILDFLOWER_RELAY_TUNNELS; remove it there")
-            }
             TunnelError::Exhausted(reason) => f.write_str(reason),
             TunnelError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }

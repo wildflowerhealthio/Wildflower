@@ -99,9 +99,11 @@
 //! ### Admin API
 //!
 //! With `WILDFLOWER_RELAY_ADMIN_KEY` set, `https://admin.<domain>` serves an
-//! API for tunnels, to requests signed with `keyid="admin"`. Without the
-//! key it is not served. On any other hostname its paths are `404`, and a
-//! request signed by a tunnel, or not verified, is a bare `401`.
+//! API for tunnels, to requests signed with `keyid="admin"`. It is the only
+//! way to create a tunnel: without the key it is not served, and the relay
+//! serves only the tunnels already stored. On any other hostname its paths
+//! are `404`, and a request signed by a tunnel, or not verified, is a bare
+//! `401`.
 //!
 //! - `POST /api/tunnels` with `Content-Type: application/json` and
 //!   `{"email": "<owner>", "name": "<tunnel name>"}` creates a tunnel and
@@ -112,13 +114,11 @@
 //!   email, since names appear in cleartext SNI and in Certificate
 //!   Transparency logs. A given name must be a lowercase DNS label (`422`
 //!   otherwise), and not reserved or in use (`409`). `admin` is reserved.
-//! - `GET /api/tunnels` lists every live tunnel as `{"name", "email",
-//!   "public_host", "created_at", "source"}`, without tokens. `created_at`
-//!   is Unix epoch seconds. `source` is `"store"`, or `"env"` for a tunnel
-//!   from `WILDFLOWER_RELAY_TUNNELS`, whose `email` and `created_at` are
-//!   `null`.
-//! - `DELETE /api/tunnels/{name}` deletes a stored tunnel (`204`). A tunnel
-//!   from the environment is `409`: remove it there.
+//! - `GET /api/tunnels` lists every tunnel as `{"name", "email",
+//!   "public_host", "created_at"}`, without tokens. `created_at` is Unix
+//!   epoch seconds.
+//! - `DELETE /api/tunnels/{name}` deletes a tunnel (`204`), or is `404` when
+//!   no tunnel has the name.
 //!
 //! A created tunnel's device can connect and sign at once. A deleted one can
 //! no longer sign, and its tunnel drops when rathole reloads its config.
@@ -129,27 +129,29 @@
 //!
 //! The environment is the only source of settings: every setting is a
 //! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
-//! for a commented list). Tunnels come from `WILDFLOWER_RELAY_TUNNELS`, one
-//! `name=token` each, with no shared token, and from the admin API, which
-//! keeps them in SQLite at `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`; a
-//! name in both is a startup error. The relay renders a fresh rathole TOML
-//! for all of them to `WILDFLOWER_RELAY_CONFIG` on every start and after
-//! every change (see [`config`]), and never reads it back; the front's routes
-//! and the signing keys follow the same tunnel set (see [`tunnel_registry`]).
+//! for a commented list). Tunnels come only from the admin API, which keeps
+//! them, each with its own token, in SQLite at
+//! `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`; at startup they take loopback
+//! ports from `WILDFLOWER_RELAY_TUNNEL_PORT_BASE` in name order. The relay
+//! renders a fresh rathole TOML for them to `WILDFLOWER_RELAY_CONFIG` on
+//! every start and after every change (see [`config`]), and never reads it
+//! back; the front's routes and the signing keys follow the same tunnel set
+//! (see [`TunnelRegistry`]).
 //!
 //! The tunnels are layered like the slices' stores:
 //!
 //!  - [`domain`] — pure: the live [`TunnelSet`], the [`TunnelStore`]
 //!    persistence *port*, the failure vocabulary
-//!    ([`TunnelError`](domain::TunnelError)), and the
-//!    [`actions`](domain::actions) that decide a create or delete and drive
-//!    the store through the port.
+//!    ([`TunnelError`](domain::TunnelError)), and the admin-gated
+//!    capabilities (`domain::capabilities`) that decide a read, create or
+//!    delete and drive the store through the port.
 //!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing that port with
 //!    Diesel over a `persistence_rust::DieselPool` onto `tunnels.db`, and its
 //!    migrations (`migrations/`).
-//!  - [`tunnel_registry`] — the [`TunnelRegistry`] that holds the live set,
-//!    runs the actions off the async runtime and serves each change: the
-//!    rathole TOML, the front's routes and the signing keys.
+//!  - [`live_bindings`] — the [`TunnelRegistry`] router state that holds the
+//!    live set, and the bindings that build each capability from it for an
+//!    admin-signed request, run it off the async runtime and serve the
+//!    change: the rathole TOML, the front's routes and the signing keys.
 //!
 //! ## Deploying
 //!
@@ -166,7 +168,7 @@
 //! release binary on `ubuntu-24.04`, then, in the `relay` GitHub
 //! environment, writes the environment file from that environment's secrets
 //! (`WILDFLOWER_RELAY_DOMAIN`, `WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`,
-//! `WILDFLOWER_RELAY_TUNNELS`, `WILDFLOWER_RELAY_ADMIN_KEY`) and
+//! `WILDFLOWER_RELAY_ADMIN_KEY`) and
 //! variables (any other setting, left out when unset). It copies the binary,
 //! environment file and unit to the host over SSH as the `deploy` user
 //! (secrets `RELAY_HOST`, `RELAY_SSH_KEY`, `RELAY_SSH_KNOWN_HOSTS`) and runs
@@ -189,12 +191,12 @@ pub mod config;
 pub mod db;
 pub mod domain;
 pub mod front;
+pub mod live_bindings;
 pub mod route;
 pub mod settings;
 pub mod site;
 #[cfg(test)]
 mod test_support;
-pub mod tunnel_registry;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -204,13 +206,13 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
 pub use db::SqliteTunnelStore;
-pub use domain::{TunnelSet, TunnelStore};
+pub use domain::{StoredTunnel, Tunnel, TunnelSet, TunnelStore};
 pub use front::{Front, Limits};
+pub use live_bindings::state::TunnelRegistry;
 pub use route::{Route, RouteTable, Router};
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
 pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;
-pub use tunnel_registry::TunnelRegistry;
 
 /// Build the [`rathole::Cli`] that runs the relay in server mode against the
 /// config at `config_path`.
@@ -229,10 +231,9 @@ pub fn build_server_cli(config_path: PathBuf) -> rathole::Cli {
     }
 }
 
-/// Load the live tunnels from the environment and the store, write the
-/// rathole TOML for them, then run the relay — rathole, the `:443`/`:80`
-/// front and the site's certificate upkeep — until `shutdown_rx` receives
-/// `true`.
+/// Load the stored tunnels, write the rathole TOML for them, then run the
+/// relay — rathole, the `:443`/`:80` front and the site's certificate
+/// upkeep — until `shutdown_rx` receives `true`.
 ///
 /// # Errors
 ///
@@ -252,7 +253,8 @@ pub async fn run_relay(
         &settings.acme,
         &settings.state_dir,
     );
-    // Without an admin key nothing could sign for the admin API.
+    // Without an admin key nothing could sign for the admin API, and no
+    // tunnel can be created: the relay serves only the stored ones.
     let admin = settings.admin_key.is_some().then(|| Arc::clone(&tunnels));
     tracing::info!(enabled = admin.is_some(), "admin API");
     let site = Site::new(

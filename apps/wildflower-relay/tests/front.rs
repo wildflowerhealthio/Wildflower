@@ -17,7 +17,8 @@ use tokio::sync::broadcast;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use wildflower_relay::{
-    Front, Limits, RelaySettings, RouteTable, Router, Site, TunnelRegistry, Verifier,
+    Front, Limits, RelaySettings, RouteTable, Router, Secret, Site, SqliteTunnelStore,
+    StoredTunnel, Tunnel, TunnelRegistry, TunnelStore, Verifier,
 };
 
 const DOMAIN: &str = "relay.example.com";
@@ -388,12 +389,13 @@ async fn acme_tls_alpn_handshake_for_own_hostname_reaches_the_site() {
     let _ = harness.shutdown_tx.send(true);
 }
 
-/// A tunnel created through the registry routes on the running front at
-/// once, and stops routing once it is deleted.
+/// A stored tunnel routes on the running front. (Creating and deleting one
+/// while the relay runs is only reachable through the admin API's
+/// capabilities; the creator binding's unit test checks the route swap.)
 #[tokio::test]
-async fn created_tunnels_route_without_a_restart_and_deleted_ones_stop() {
-    // With no tunnels in the environment, the first created tunnel gets the
-    // port base, where this backend already listens.
+async fn stored_tunnels_route_on_the_front() {
+    // The only stored tunnel gets the port base, where this backend
+    // already listens.
     let backend = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port_base = backend.local_addr().unwrap().port().to_string();
     let state_dir = tempfile::tempdir().unwrap();
@@ -408,18 +410,25 @@ async fn created_tunnels_route_without_a_restart_and_deleted_ones_stop() {
         _ => None,
     })
     .unwrap();
+    let store =
+        SqliteTunnelStore::open(&state_dir.path().join(SqliteTunnelStore::FILE_NAME)).unwrap();
+    store
+        .insert_tunnel(&StoredTunnel {
+            tunnel: Tunnel {
+                name: "alice".to_owned(),
+                token: Secret::new("alice-token"),
+            },
+            email: "alice@example.com".to_owned(),
+            created_at: 1_700_000_000,
+        })
+        .unwrap();
+    drop(store);
     let tunnels = TunnelRegistry::open(state_dir.path().join("relay.toml"), &settings)
         .await
         .unwrap();
     let harness = start_front(tunnels.router()).await;
 
-    let created = tunnels.create("ops@example.com", None).await.unwrap();
-    let public_host = tunnels.public_host(&created.tunnel.name);
+    let public_host = format!("alice.{DOMAIN}");
     let (_client, _upstream) = pipe_through(&harness, &backend, &public_host, b"").await;
-
-    tunnels.delete(&created.tunnel.name).await.unwrap();
-    let mut client = TcpStream::connect(harness.https).await.unwrap();
-    client.write_all(&client_hello(&public_host)).await.unwrap();
-    assert_closed_silently(client).await;
     let _ = harness.shutdown_tx.send(true);
 }

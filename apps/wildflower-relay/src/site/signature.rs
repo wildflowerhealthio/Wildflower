@@ -46,7 +46,8 @@ use hmac::{Hmac, Mac};
 use sfv::{BareItem, Dictionary, FieldType, InnerList, ListEntry, Parser};
 use sha2::{Digest, Sha256};
 
-use crate::settings::{Secret, Tunnel};
+use crate::domain::Tunnel;
+use crate::settings::Secret;
 
 /// The `keyid` signed with `WILDFLOWER_RELAY_ADMIN_KEY`; no tunnel may take
 /// this name.

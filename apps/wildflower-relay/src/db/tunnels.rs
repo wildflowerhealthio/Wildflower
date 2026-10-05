@@ -7,8 +7,9 @@ use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
 
 use crate::db::schema::tunnels;
+use crate::domain::Tunnel;
 use crate::domain::{StoredTunnel, TunnelError};
-use crate::settings::{Secret, Tunnel};
+use crate::settings::Secret;
 
 /// The `tunnels` row as diesel loads it, before it's folded into the domain
 /// [`StoredTunnel`] (which nests the name and token as a [`Tunnel`]).
