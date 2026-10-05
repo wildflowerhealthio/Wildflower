@@ -1,4 +1,4 @@
-//! The admin UI on `admin.<domain>`: the static files `apps/relay/web`
+//! The admin UI on `admin.<domain>`: the static files `apps/relay/admin-web`
 //! builds, embedded in the binary at compile time (see `build.rs`).
 //!
 //! - `GET /` serves `index.html`; `GET /<path>` the embedded file at that
@@ -27,8 +27,8 @@ use include_dir::{include_dir, Dir};
 
 use super::admin::require_admin_host;
 
-/// `apps/relay/web/dist`, as it was when the relay was compiled.
-static WEB_DIST: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../web/dist");
+/// `apps/relay/admin-web/dist`, as it was when the relay was compiled.
+static WEB_DIST: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../admin-web/dist");
 
 /// Only the page's own files: no inline script or style, no other origin, no
 /// `<base>`, no form submissions, and no framing.

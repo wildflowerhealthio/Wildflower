@@ -5,7 +5,7 @@ signer every admin call goes through, the key it signs with, and the admin
 screen. The relay itself is the Rust binary in
 [`apps/relay/server`](../../apps/relay/server) (`wildflower-relay`), and the
 page it serves at `https://admin.<domain>/` is
-[`apps/relay/web`](../../apps/relay/web/AGENTS.md).
+[`apps/relay/admin-web`](../../apps/relay/admin-web/AGENTS.md).
 
 ## Packages
 
@@ -66,7 +66,7 @@ page it serves at `https://admin.<domain>/` is
 ## References
 
 - [Architecture / slice layering](../AGENTS.md)
-- [apps/relay/web AGENTS.md](../../apps/relay/web/AGENTS.md) — the page
+- [apps/relay/admin-web AGENTS.md](../../apps/relay/admin-web/AGENTS.md) — the page
 - `apps/relay/server/src/lib.rs` — the relay, its signed requests and admin
   API
 - [Testing Reference](../../docs/Testing/Testing%20Reference.md) — the

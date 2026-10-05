@@ -30,8 +30,8 @@ diesel.workspace = true
 diesel_migrations.workspace = true
 # Polls the `AcmeState` stream (`StreamExt::next`).
 futures-util = { version = "0.3", default-features = false }
-# Embeds the admin UI's build (`apps/relay/web/dist`): an `index.html` and
-# Vite's hashed assets, fonts included, too many to list one by one.
+# Embeds the admin UI's build (`apps/relay/admin-web/dist`): an `index.html`
+# and Vite's hashed assets, fonts included, too many to list one by one.
 include_dir = "0.7"
 # `hmac-sha256` HTTP message signatures (RFC 9421), with a constant-time
 # MAC check. Already in the tree.

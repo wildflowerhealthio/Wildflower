@@ -1,4 +1,4 @@
-# AGENTS.md — apps/relay/web
+# AGENTS.md — apps/relay/admin-web
 
 The tunnel relay's admin page. The relay
 ([`apps/relay/server`](../server), `wildflower-relay`) embeds this package's
@@ -39,7 +39,7 @@ and asks for it again.
   stylesheet and the fonts, all under `assets/`) fits; keep it that way.
 - **`dist/` is embedded at compile time.** `cargo build -p wildflower-relay`
   needs it: run `vp build` here first, or
-  `scripts/ci/stub-embedded-bundles.sh relay-web` for a placeholder. The
+  `scripts/ci/stub-embedded-bundles.sh relay-admin-web` for a placeholder. The
   relay's `build.rs` rebuilds the crate when `dist/` changes.
 - **The admin API is same-origin only.** `vp dev` serves the page but has no
   relay behind it, so any API call fails; the screen's behaviour is covered

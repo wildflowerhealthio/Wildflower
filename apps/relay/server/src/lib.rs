@@ -131,7 +131,7 @@
 //! ### Admin UI
 //!
 //! `https://admin.<domain>/` also serves a page for the admin API: the
-//! static build of `apps/relay/web`, embedded in the binary (see
+//! static build of `apps/relay/admin-web`, embedded in the binary (see
 //! [`site`]'s `admin_ui`), under a `Content-Security-Policy` that allows
 //! only its own files. To manage tunnels, the operator opens it and pastes
 //! `WILDFLOWER_RELAY_ADMIN_KEY` once; the browser keeps a non-extractable
@@ -182,7 +182,7 @@
 //! `.github/workflows/deploy-relay.yml` deploys it to an Ubuntu 24.04
 //! droplet on every push to `main` that touches this crate, one of its path
 //! dependencies (`shared-structures-rust`, `rathole-settings-rust`,
-//! `persistence-rust`), the admin UI (`apps/relay/web`, `slices/relay`),
+//! `persistence-rust`), the admin UI (`apps/relay/admin-web`, `slices/relay`),
 //! `Cargo.lock` or `pnpm-lock.yaml`, and on manual dispatch. It builds the
 //! admin UI and then the release binary, which embeds it, on
 //! `ubuntu-24.04`, then, in the `relay` GitHub

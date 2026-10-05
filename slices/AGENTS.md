@@ -54,7 +54,7 @@ watch, as pure functions; `apps/watch-lifts-web` is the page.
 [relay/AGENTS.md](./relay/AGENTS.md). Its `relay-core` is the relay's admin
 API as an `HttpApi`, the RFC 9421 signer every admin call goes through, and
 the store that keeps the admin key as a non-extractable `CryptoKey`; its
-`relay-react` is the admin screen; `apps/relay/web` is the page the relay
+`relay-react` is the admin screen; `apps/relay/admin-web` is the page the relay
 (`apps/relay/server`) embeds and serves at `admin.<domain>`.
 
 `synthetic-data` is tooling for synthetic health data — see

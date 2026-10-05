@@ -80,7 +80,7 @@ jobs:
       # they define themselves, so a placeholder page is all it needs here;
       # the UI is tested by the TypeScript workflow.
       - name: Stub relay admin UI
-        run: ./scripts/ci/stub-embedded-bundles.sh relay-web
+        run: ./scripts/ci/stub-embedded-bundles.sh relay-admin-web
 
       - name: Set up Rust toolchain
         # Reads rust-toolchain.toml, caches the cargo registry + `target/`, and

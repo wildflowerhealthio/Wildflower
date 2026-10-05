@@ -1,7 +1,7 @@
 name: Deploy Relay
 
-# Builds the relay's admin UI (apps/relay/web), then wildflower-relay, which
-# embeds it, and deploys the binary to its droplet, where it runs under
+# Builds the relay's admin UI (apps/relay/admin-web), then wildflower-relay,
+# which embeds it, and deploys the binary to its droplet, where it runs under
 # apps/relay/server/wildflower-relay.service. The relay has to own public
 # :443 and :80 and see raw TCP (it routes ciphertext by SNI and puts the
 # visitor's address in a PROXY header), so it runs alone on the host rather
@@ -29,7 +29,7 @@ on:
     paths:
       - 'apps/relay/server/**'
       # The admin UI the binary embeds, and the slice it is built from.
-      - 'apps/relay/web/**'
+      - 'apps/relay/admin-web/**'
       - 'slices/relay/**'
       - 'pnpm-lock.yaml'
       - 'slices/shared-structures/shared-structures-rust/**'
@@ -67,8 +67,8 @@ jobs:
         run: |
           set -euo pipefail
           corepack enable
-          pnpm install --frozen-lockfile --filter relay-web...
-          pnpm --filter relay-web run build
+          pnpm install --frozen-lockfile --filter relay-admin-web...
+          pnpm --filter relay-admin-web run build
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2

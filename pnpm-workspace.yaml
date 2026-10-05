@@ -6,7 +6,7 @@ packages:
   - apps/fhir-sync-pebble/pkjs
   - apps/fhir-sync-pebble/test
   # The relay's admin UI. Its sibling apps/relay/server is the Rust crate.
-  - apps/relay/web
+  - apps/relay/admin-web
   - apps/watch-lifts/pkjs
   - apps/watch-lifts/test
   - global/*
