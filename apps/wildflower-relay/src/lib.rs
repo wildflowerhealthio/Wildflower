@@ -137,10 +137,10 @@
 //! `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`. On every start the relay
 //! builds rathole's config for them in memory (see [`config`]); no rathole
 //! file is written or read. Each change through the admin API reaches the
-//! running rathole server as one service added or deleted (see
-//! [`TunnelRegistry`]). The front routes by, and the site verifies
-//! signatures against, the store's in-memory cache of names and tokens
-//! ([`CachedTunnelStore`]), so both follow each change as it is stored.
+//! running rathole server as one service added or deleted, and the same
+//! change inserts or removes the tunnel in the [`ServedTunnels`] the front
+//! routes by and the site verifies signatures against (see
+//! [`TunnelRegistry`]).
 //!
 //! The tunnels are layered like the slices' stores:
 //!
@@ -152,13 +152,11 @@
 //!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing that port with
 //!    Diesel over a `persistence_rust::DieselPool` onto `tunnels.db`, and its
 //!    migrations (`migrations/`).
-//!  - [`cached_store`] — the [`CachedTunnelStore`] wrapping that adapter,
-//!    which keeps the stored tunnels' names and tokens in memory as
-//!    [`ServedTunnels`] for the front's router and the site's verifier.
 //!  - [`live_bindings`] — the [`TunnelRegistry`] router state that holds the
 //!    store and what serves the stored tunnels, and the bindings that build
 //!    each capability from it for an admin-signed request, run it off the
-//!    async runtime and send rathole the change.
+//!    async runtime and serve the change: rathole's services and the
+//!    [`ServedTunnels`].
 //!
 //! ## Deploying
 //!
@@ -193,13 +191,13 @@
 //! `PATH`, since `deploy` decides its contents.
 //! A restart drops open connections; devices reconnect their tunnels.
 
-pub mod cached_store;
 pub mod config;
 pub mod db;
 pub mod domain;
 pub mod front;
 pub mod live_bindings;
 pub mod route;
+pub mod served;
 pub mod settings;
 pub mod site;
 #[cfg(test)]
@@ -213,12 +211,12 @@ use anyhow::Context;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
-pub use cached_store::{CachedTunnelStore, ServedTunnels};
 pub use db::SqliteTunnelStore;
 pub use domain::{StoredTunnel, Tunnel, TunnelStore};
 pub use front::{Front, Limits};
 pub use live_bindings::state::{RatholeFeed, TunnelRegistry};
 pub use route::{Route, Router};
+pub use served::ServedTunnels;
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
 pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;

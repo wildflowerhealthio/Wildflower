@@ -5,13 +5,13 @@
 //! other public hostname `<tunnel name>.<domain>` names a stored tunnel,
 //! whose visitors the front puts into rathole's visitor queue for the
 //! service of that name (see [`crate::tunnels`]). Which tunnels exist is
-//! the tunnel store's cache, [`ServedTunnels`], so a deleted tunnel stops
-//! routing as soon as it is deleted.
+//! the [`ServedTunnels`] the router shares with the site's verifier, so a
+//! deleted tunnel stops routing as soon as it is deleted.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::cached_store::ServedTunnels;
+use crate::served::ServedTunnels;
 
 /// One routable tunnel: the rathole service its visitors are handed to.
 #[derive(Debug, Clone, PartialEq, Eq)]

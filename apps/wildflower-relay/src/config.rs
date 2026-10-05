@@ -95,9 +95,9 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::cached_store::ServedTunnels;
     use crate::domain::test_fake::stored_tunnel;
     use crate::route::{Destination, Router};
+    use crate::served::ServedTunnels;
     use crate::settings::RelaySettings;
 
     /// The `KEY=value` lines of `relay.example.env`, optionally including

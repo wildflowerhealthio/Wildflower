@@ -46,7 +46,7 @@ use hmac::{Hmac, Mac};
 use sfv::{BareItem, Dictionary, FieldType, InnerList, ListEntry, Parser};
 use sha2::{Digest, Sha256};
 
-use crate::cached_store::ServedTunnels;
+use crate::served::ServedTunnels;
 use crate::settings::Secret;
 
 /// The `keyid` signed with `WILDFLOWER_RELAY_ADMIN_KEY`; no tunnel may take
@@ -82,10 +82,10 @@ pub enum SignedBy {
     Admin,
 }
 
-/// Checks signatures against the stored tunnels' tokens and the admin key,
+/// Checks signatures against the served tunnels' tokens and the admin key,
 /// and remembers the nonces of the requests it has accepted. The tunnels
-/// that can sign are the tunnel store's cache, [`ServedTunnels`];
-/// [`Verifier::forget`] drops a deleted tunnel's nonces.
+/// that can sign are the [`ServedTunnels`] it shares with the front's
+/// router; [`Verifier::forget`] drops a removed tunnel's nonces.
 pub struct Verifier {
     tunnels: Arc<ServedTunnels>,
     /// Signs for [`ADMIN_KEY_ID`], when set.
@@ -114,7 +114,7 @@ impl Verifier {
     }
 
     /// Forget the nonces of the tunnel named `name`, once it has been
-    /// deleted from the store. The other signers keep theirs.
+    /// removed from the served tunnels. The other signers keep theirs.
     pub fn forget(&self, name: &str) {
         self.nonces
             .lock()

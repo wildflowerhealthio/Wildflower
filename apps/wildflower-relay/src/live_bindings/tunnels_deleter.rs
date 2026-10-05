@@ -1,19 +1,18 @@
 //! The [`LiveTunnelsDeleter`] binding — deletes a tunnel through the
-//! cached `SqliteTunnelStore` and stops serving it through the registry.
+//! concrete `SqliteTunnelStore` and stops serving it through the registry.
 //! See the [module docs](super) for the binding seam.
 
 use std::sync::Arc;
 
 use super::state::{Change, TunnelRegistry};
 use super::AdminCapability;
-use crate::cached_store::CachedTunnelStore;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::TunnelsDeleter;
 use crate::domain::TunnelError;
 
 /// Delete a tunnel — `Admin<LiveTunnelsDeleter>` in the delete handler.
 pub(crate) struct LiveTunnelsDeleter {
-    deleter: Arc<TunnelsDeleter<CachedTunnelStore<SqliteTunnelStore>>>,
+    deleter: Arc<TunnelsDeleter<SqliteTunnelStore>>,
     registry: Arc<TunnelRegistry>,
 }
 

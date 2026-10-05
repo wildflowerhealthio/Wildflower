@@ -1,5 +1,5 @@
 //! The [`LiveTunnelsCreator`] binding — creates a tunnel through the
-//! cached `SqliteTunnelStore` and serves it through the registry. See the
+//! concrete `SqliteTunnelStore` and serves it through the registry. See the
 //! [module docs](super) for the binding seam.
 
 use std::sync::Arc;
@@ -9,7 +9,6 @@ use rand::rngs::SysRng;
 
 use super::state::{Change, TunnelRegistry};
 use super::AdminCapability;
-use crate::cached_store::CachedTunnelStore;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::TunnelsCreator;
 use crate::domain::{StoredTunnel, TunnelError};
@@ -17,7 +16,7 @@ use crate::site::signature::unix_now;
 
 /// Create a tunnel — `Admin<LiveTunnelsCreator>` in the create handler.
 pub(crate) struct LiveTunnelsCreator {
-    creator: Arc<TunnelsCreator<CachedTunnelStore<SqliteTunnelStore>>>,
+    creator: Arc<TunnelsCreator<SqliteTunnelStore>>,
     registry: Arc<TunnelRegistry>,
 }
 
