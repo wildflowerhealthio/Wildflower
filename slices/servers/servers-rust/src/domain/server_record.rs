@@ -17,6 +17,7 @@ use url::Url;
 /// so serialising a record anywhere other than `servers.json` cannot leak it.
 /// The registry adapter writes the file through its own representation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerRecord {
     /// The relay this server's tunnel runs through.
     pub relay: Relay,
@@ -24,9 +25,10 @@ pub struct ServerRecord {
     pub tunnel_name: TunnelName,
     /// The tunnel's token at the relay.
     pub token: TunnelToken,
-    /// What the relay returned from `GET /rathole` when the server was added:
-    /// the only copy of the relay's dial address and noise key, which the
-    /// tunnel client always dials.
+    /// What the relay returned from `GET /rathole` when the server was added,
+    /// or, for a [`Relay::Manual`] one, what was entered: the only copy of
+    /// the relay's dial address and noise key, which the tunnel client always
+    /// dials.
     pub public_settings: PublicRatholeSettings,
     /// The page the base opens to launch apps against this server, with `iss`
     /// and `launch` in its query. A new server gets
@@ -60,39 +62,56 @@ impl ServerRecord {
     }
 }
 
-/// The relay a server's tunnel runs through.
+/// The relay a server's tunnel runs through, as the record stores it.
+///
+/// Serialised as `{"kind": "wildflower"}`, `{"kind": "custom", "baseUrl"}`
+/// or `{"kind": "manual"}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 pub enum Relay {
     /// The relay Wildflower runs.
     Wildflower,
-    /// A relay the user runs or chose, entered by hand. What its rathole
-    /// client dials comes from its `GET /rathole`, kept in the record's
-    /// `public_settings`.
+    /// A relay with a Wildflower relay site, entered by its base URL. What
+    /// its rathole client dials comes from its `GET /rathole`, kept in the
+    /// record's `public_settings`.
     Custom {
-        /// The relay's site, where it serves `GET /rathole`.
+        /// The relay's site, where it serves `GET /rathole` and `GET /me`.
         base_url: Url,
     },
+    /// A rathole server with no relay site, whose settings were entered by
+    /// hand. They are kept only in the record's `public_settings`.
+    Manual,
 }
 
 impl Relay {
     /// The site of the relay Wildflower runs.
     pub const WILDFLOWER_BASE_URL: &'static str = "https://relay.wildflowerhealth.io";
 
-    /// The relay's site, where it serves `GET /rathole` and `GET /me`:
-    /// [`WILDFLOWER_BASE_URL`](Self::WILDFLOWER_BASE_URL) for
-    /// [`Relay::Wildflower`], the entered `base_url` for [`Relay::Custom`].
+    /// [`WILDFLOWER_BASE_URL`](Self::WILDFLOWER_BASE_URL) as a [`Url`].
     ///
     /// # Panics
     ///
-    /// Never: [`WILDFLOWER_BASE_URL`](Self::WILDFLOWER_BASE_URL) is an
-    /// absolute URL, which a test checks.
+    /// Never: the constant is an absolute URL, which a test checks.
     #[must_use]
-    pub fn base_url(&self) -> Url {
+    pub fn wildflower_base_url() -> Url {
+        Url::parse(Self::WILDFLOWER_BASE_URL).expect("WILDFLOWER_BASE_URL is an absolute URL")
+    }
+
+    /// The relay's site, where it serves `GET /rathole` and `GET /me`:
+    /// [`WILDFLOWER_BASE_URL`](Self::WILDFLOWER_BASE_URL) for
+    /// [`Relay::Wildflower`], the entered `base_url` for [`Relay::Custom`],
+    /// and none for [`Relay::Manual`].
+    #[must_use]
+    pub fn site_base_url(&self) -> Option<Url> {
         match self {
-            Self::Wildflower => Url::parse(Self::WILDFLOWER_BASE_URL)
-                .expect("WILDFLOWER_BASE_URL is an absolute URL"),
-            Self::Custom { base_url } => base_url.clone(),
+            Self::Wildflower => Some(Self::wildflower_base_url()),
+            Self::Custom { base_url } => Some(base_url.clone()),
+            Self::Manual => None,
         }
     }
 }
@@ -169,7 +188,7 @@ pub(crate) mod tests {
                 remote_addr: "relay.example.com:2333".to_owned(),
                 transport: Transport::Noise,
                 noise_pattern: NoisePattern::Nk25519ChaChaPolyBlake2s,
-                public_key: "AAAAC3NzaC1lZDI1NTE5AAAAIExampleNoiseKey=".to_owned(),
+                public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
                 domain: "relay.example.com".to_owned(),
             },
             launcher_url: Url::parse("https://launcher.example.com/").unwrap(),
@@ -186,15 +205,35 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_relay_s_base_url_is_wildflower_s_site_or_the_entered_one() {
+    fn a_relay_s_site_is_wildflower_s_the_entered_one_or_none() {
         assert_eq!(
-            Relay::Wildflower.base_url().as_str(),
+            Relay::Wildflower.site_base_url().unwrap().as_str(),
             "https://relay.wildflowerhealth.io/"
         );
         assert_eq!(
-            custom_record("lab").relay.base_url().as_str(),
+            custom_record("lab").relay.site_base_url().unwrap().as_str(),
             "https://relay.example.com/"
         );
+        assert_eq!(Relay::Manual.site_base_url(), None);
+    }
+
+    #[test]
+    fn a_relay_serialises_camel_case_by_kind() {
+        for (relay, json) in [
+            (Relay::Wildflower, serde_json::json!({"kind": "wildflower"})),
+            (
+                custom_record("lab").relay,
+                serde_json::json!({"kind": "custom", "baseUrl": "https://relay.example.com/"}),
+            ),
+            (Relay::Manual, serde_json::json!({"kind": "manual"})),
+        ] {
+            assert_eq!(serde_json::to_value(&relay).unwrap(), json);
+            assert_eq!(serde_json::from_value::<Relay>(json).unwrap(), relay);
+        }
+        assert!(serde_json::from_value::<Relay>(
+            serde_json::json!({"kind": "custom", "base_url": "https://relay.example.com/"})
+        )
+        .is_err());
     }
 
     #[test]
@@ -224,6 +263,10 @@ pub(crate) mod tests {
         assert!(
             rendered.contains(r#""token":"<redacted>""#),
             "no redaction marker: {rendered}"
+        );
+        assert!(
+            rendered.contains(r#""tunnelName":"lab""#),
+            "not camelCase: {rendered}"
         );
     }
 }

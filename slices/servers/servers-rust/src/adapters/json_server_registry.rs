@@ -1,7 +1,8 @@
 //! [`JsonServerRegistry`]: the [`ServerRegistry`] kept in
 //! `<data root>/servers.json`.
 //!
-//! The file is `{"version": 1, "servers": [...]}`. Its version is read before
+//! The file is `{"version": 1, "servers": [...]}`, each server's fields in
+//! camelCase. Its version is read before
 //! anything else, and a version other than [`FORMAT_VERSION`] is
 //! [`RegistryError::UnsupportedVersion`]: the registry neither reads nor
 //! overwrites a file it doesn't understand. A missing file is an empty
@@ -17,7 +18,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use parking_lot::Mutex;
-use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
+use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -230,15 +231,15 @@ impl RegistryDocument {
     }
 }
 
-/// A [`ServerRecord`] as `servers.json` stores it: the one place its token is
-/// written in full.
+/// A [`ServerRecord`] as `servers.json` stores it, in camelCase: the one
+/// place its token is written in full.
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StoredServer {
     relay: Relay,
     tunnel_name: TunnelName,
     token: String,
-    public_settings: PublicRatholeSettings,
+    public_settings: StoredPublicSettings,
     launcher_url: Url,
     staging_certificates: bool,
 }
@@ -257,7 +258,7 @@ impl StoredServer {
             relay: relay.clone(),
             tunnel_name: tunnel_name.clone(),
             token: token.expose().to_owned(),
-            public_settings: public_settings.clone(),
+            public_settings: StoredPublicSettings::from_settings(public_settings),
             launcher_url: launcher_url.clone(),
             staging_certificates: *staging_certificates,
         }
@@ -276,9 +277,58 @@ impl StoredServer {
             relay,
             tunnel_name,
             token: TunnelToken::new(token),
-            public_settings,
+            public_settings: public_settings.into_settings(),
             launcher_url,
             staging_certificates,
+        }
+    }
+}
+
+/// A record's [`PublicRatholeSettings`] as `servers.json` stores them, in
+/// camelCase; the relay's `GET /rathole` serves the same fields in its own
+/// snake_case wire shape.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredPublicSettings {
+    remote_addr: String,
+    transport: Transport,
+    noise_pattern: NoisePattern,
+    public_key: String,
+    domain: String,
+}
+
+impl StoredPublicSettings {
+    fn from_settings(public_settings: &PublicRatholeSettings) -> Self {
+        let PublicRatholeSettings {
+            remote_addr,
+            transport,
+            noise_pattern,
+            public_key,
+            domain,
+        } = public_settings.clone();
+        Self {
+            remote_addr,
+            transport,
+            noise_pattern,
+            public_key,
+            domain,
+        }
+    }
+
+    fn into_settings(self) -> PublicRatholeSettings {
+        let Self {
+            remote_addr,
+            transport,
+            noise_pattern,
+            public_key,
+            domain,
+        } = self;
+        PublicRatholeSettings {
+            remote_addr,
+            transport,
+            noise_pattern,
+            public_key,
+            domain,
         }
     }
 }
@@ -360,17 +410,17 @@ mod tests {
               "version": 1,
               "servers": [{{
                 "relay": {{"kind": "wildflower"}},
-                "tunnel_name": "{tunnel_name}",
+                "tunnelName": "{tunnel_name}",
                 "token": "{TOKEN}",
-                "public_settings": {{
-                  "remote_addr": "relay.wildflowerhealth.io:2333",
+                "publicSettings": {{
+                  "remoteAddr": "relay.wildflowerhealth.io:2333",
                   "transport": "noise",
-                  "noise_pattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
-                  "public_key": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
+                  "noisePattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
+                  "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
                   "domain": "relay.wildflowerhealth.io"
                 }},
-                "launcher_url": "https://wildflowerhealth.io/app",
-                "staging_certificates": false
+                "launcherUrl": "https://wildflowerhealth.io/app",
+                "stagingCertificates": false
               }}]
             }}"#
         )
@@ -388,6 +438,42 @@ mod tests {
             registry.read_all().unwrap(),
             vec![wildflower_record("ruth")]
         );
+    }
+
+    #[test]
+    fn writes_the_version_1_format() {
+        let (data_root, registry) = registry();
+        registry.insert(wildflower_record("ruth")).unwrap();
+        let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
+        let by_hand: serde_json::Value = serde_json::from_str(&version_1_file("ruth")).unwrap();
+        assert_eq!(written, by_hand);
+    }
+
+    #[test]
+    fn a_snake_case_file_is_refused() {
+        let (data_root, registry) = registry();
+        let snake_case = version_1_file("ruth")
+            .replace("tunnelName", "tunnel_name")
+            .replace("publicSettings", "public_settings");
+        fs::write(data_root.path().join(SERVERS_FILE_NAME), snake_case).unwrap();
+        assert!(matches!(
+            registry.read_all(),
+            Err(RegistryError::Storage { .. })
+        ));
+    }
+
+    #[test]
+    fn a_manual_relay_round_trips_with_no_settings_of_its_own() {
+        let (data_root, registry) = registry();
+        let mut manual = custom_record("lab");
+        manual.relay = Relay::Manual;
+        registry.insert(manual.clone()).unwrap();
+        let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
+        assert_eq!(
+            written["servers"][0]["relay"],
+            serde_json::json!({"kind": "manual"})
+        );
+        assert_eq!(registry.read_all().unwrap(), vec![manual]);
     }
 
     /// The tunnel name becomes the server's folder name, so one read from the

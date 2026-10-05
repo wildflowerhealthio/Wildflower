@@ -1,10 +1,10 @@
-//! [`ReqwestRelaySite`]: the [`RelaySite`] over HTTPS.
+//! [`RelaySiteClient`]: the [`RelaySite`] over HTTPS, for one relay's site.
 //!
 //! The relay's site has a publicly trusted certificate for its own hostname,
 //! so requests are TLS-only and checked against the bundled web PKI roots.
 //! It answers both paths itself, so a redirect is a bad response rather than
-//! followed. `GET /me` is signed with the tunnel's token (see [`RequestSignature`]); the
-//! token is never sent.
+//! followed. `GET /me` is signed with the tunnel's token (see
+//! [`RequestSignature`]); the token is never sent.
 
 use std::time::Duration;
 
@@ -19,43 +19,50 @@ use crate::ports::RelaySite;
 /// How long one request to the relay's site may take, connection included.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The [`RelaySite`] over `reqwest`, with `rustls` (no openssl).
-pub struct ReqwestRelaySite {
+/// The [`RelaySite`] at one relay's base URL, over `reqwest` with `rustls`
+/// (no openssl). Enrolment builds one for each relay it asks.
+pub struct RelaySiteClient {
+    relay_base: Url,
     client: reqwest::Client,
 }
 
-impl ReqwestRelaySite {
-    /// # Panics
+impl RelaySiteClient {
+    /// The site at `relay_base`, with its own HTTP client.
     ///
-    /// If the TLS backend can't be built, which only a broken build does.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::with_client(
-            client_builder()
-                .build()
-                .expect("failed to build the relay site's HTTP client"),
-        )
+    /// # Errors
+    ///
+    /// [`EnrolmentError::RelayUnreachable`] if the HTTP client can't be
+    /// built, which only a broken TLS backend does.
+    pub fn new(relay_base: Url) -> Result<Self, EnrolmentError> {
+        match client_builder().build() {
+            Ok(client) => Ok(Self::with_client(relay_base, client)),
+            Err(error) => Err(EnrolmentError::RelayUnreachable {
+                relay_base,
+                source: error.into(),
+            }),
+        }
     }
 
-    /// Over `client`, e.g. one that trusts a test relay's certificate.
-    pub(crate) fn with_client(client: reqwest::Client) -> Self {
-        Self { client }
+    /// The site at `relay_base` over `client`, e.g. one that trusts a test
+    /// relay's certificate.
+    pub(crate) fn with_client(relay_base: Url, client: reqwest::Client) -> Self {
+        Self { relay_base, client }
     }
 
-    /// `GET {relay_base}{path}`, signed as the tunnel in `sign_as` when there
+    /// `GET {relay base}{path}`, signed as the tunnel in `sign_as` when there
     /// is one, or why no response came back.
     async fn get(
         &self,
-        relay_base: &Url,
         path: &'static str,
         sign_as: Option<(&TunnelName, &TunnelToken)>,
     ) -> Result<reqwest::Response, EnrolmentError> {
         let unreachable =
             |source: Box<dyn std::error::Error + Send + Sync>| EnrolmentError::RelayUnreachable {
-                relay_base: relay_base.clone(),
+                relay_base: self.relay_base.clone(),
                 source,
             };
-        let target_uri = relay_base
+        let target_uri = self
+            .relay_base
             .join(path)
             .map_err(|error| unreachable(error.into()))?;
         let mut request = self.client.get(target_uri.clone());
@@ -79,33 +86,21 @@ impl ReqwestRelaySite {
     }
 }
 
-impl Default for ReqwestRelaySite {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[async_trait::async_trait]
-impl RelaySite for ReqwestRelaySite {
-    async fn fetch_public_settings(
-        &self,
-        relay_base: &Url,
-    ) -> Result<PublicRatholeSettings, EnrolmentError> {
+impl RelaySite for RelaySiteClient {
+    async fn fetch_public_settings(&self) -> Result<PublicRatholeSettings, EnrolmentError> {
         const PATH: &str = "/rathole";
-        let response = self.get(relay_base, PATH, None).await?;
+        let response = self.get(PATH, None).await?;
         decode_success(PATH, response).await
     }
 
     async fn fetch_tunnel_host(
         &self,
-        relay_base: &Url,
         tunnel_name: &TunnelName,
         token: &TunnelToken,
     ) -> Result<TunnelHost, EnrolmentError> {
         const PATH: &str = "/me";
-        let response = self
-            .get(relay_base, PATH, Some((tunnel_name, token)))
-            .await?;
+        let response = self.get(PATH, Some((tunnel_name, token))).await?;
         if response.status() == StatusCode::UNAUTHORIZED {
             return Err(EnrolmentError::CredentialsRejected {
                 tunnel_name: tunnel_name.clone(),
@@ -164,8 +159,8 @@ mod tests {
     use wildflower_relay::{Secret, Site, Verifier};
 
     use super::*;
-    use crate::domain::{add_server, RegistryError};
-    use crate::{JsonServerRegistry, Relay, ServerRecord, ServerRegistry};
+    use crate::domain::{add_server, EnteredRelay, RegistryError};
+    use crate::{JsonServerRegistry, ServerRecord, ServerRegistry};
 
     /// A hostname the test resolves to the loopback relay itself.
     const RELAY_DOMAIN: &str = "relay.test";
@@ -237,9 +232,10 @@ mod tests {
         }
 
         /// The relay as the user would enter it.
-        fn relay(&self) -> Relay {
-            Relay::Custom {
+        fn relay(&self) -> EnteredRelay {
+            EnteredRelay::Custom {
                 base_url: self.base_url(),
+                pin: None,
             }
         }
 
@@ -247,10 +243,16 @@ mod tests {
             Url::parse(&format!("https://{RELAY_DOMAIN}:{}", self.addr.port())).unwrap()
         }
 
-        /// A [`ReqwestRelaySite`] that trusts only this relay's certificate
-        /// and resolves [`RELAY_DOMAIN`] to it.
-        fn relay_site(&self) -> ReqwestRelaySite {
-            ReqwestRelaySite::with_client(
+        /// A [`RelaySiteClient`] for this relay's site.
+        fn relay_site(&self) -> RelaySiteClient {
+            self.site_at(self.base_url())
+        }
+
+        /// A [`RelaySiteClient`] at `relay_base` that trusts only this
+        /// relay's certificate and resolves [`RELAY_DOMAIN`] to it.
+        fn site_at(&self, relay_base: Url) -> RelaySiteClient {
+            RelaySiteClient::with_client(
+                relay_base,
                 client_builder()
                     .tls_built_in_root_certs(false)
                     .add_root_certificate(reqwest::Certificate::from_der(&self.cert).unwrap())
@@ -265,11 +267,7 @@ mod tests {
     async fn fetches_the_relay_s_public_settings() {
         let relay = TestRelay::start().await;
         assert_eq!(
-            relay
-                .relay_site()
-                .fetch_public_settings(&relay.base_url())
-                .await
-                .unwrap(),
+            relay.relay_site().fetch_public_settings().await.unwrap(),
             served_settings()
         );
     }
@@ -281,7 +279,7 @@ mod tests {
         let relay = TestRelay::start().await;
         let tunnel_host = relay
             .relay_site()
-            .fetch_tunnel_host(&relay.base_url(), &ruth(), &TunnelToken::new(TOKEN))
+            .fetch_tunnel_host(&ruth(), &TunnelToken::new(TOKEN))
             .await
             .unwrap();
         assert_eq!(
@@ -301,7 +299,7 @@ mod tests {
         let relay_site = relay.relay_site();
         for _ in 0..3 {
             relay_site
-                .fetch_tunnel_host(&relay.base_url(), &ruth(), &TunnelToken::new(TOKEN))
+                .fetch_tunnel_host(&ruth(), &TunnelToken::new(TOKEN))
                 .await
                 .unwrap();
         }
@@ -314,7 +312,7 @@ mod tests {
         for (tunnel_name, token) in [("ruth", "not-the-token"), ("someone-else", TOKEN)] {
             let tunnel_name = TunnelName::parse(tunnel_name).unwrap();
             let result = relay_site
-                .fetch_tunnel_host(&relay.base_url(), &tunnel_name, &TunnelToken::new(token))
+                .fetch_tunnel_host(&tunnel_name, &TunnelToken::new(token))
                 .await;
             assert!(
                 matches!(&result, Err(EnrolmentError::CredentialsRejected { tunnel_name: rejected }) if *rejected == tunnel_name),
@@ -326,21 +324,20 @@ mod tests {
     #[tokio::test]
     async fn a_relay_that_is_not_listening_is_unreachable() {
         let relay = TestRelay::start().await;
-        let relay_site = relay.relay_site();
         // A port nothing listens on.
         let closed = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let closed_port = closed.local_addr().unwrap().port();
         drop(closed);
         let relay_base = Url::parse(&format!("https://127.0.0.1:{closed_port}")).unwrap();
         assert!(matches!(
-            relay_site.fetch_public_settings(&relay_base).await,
+            relay.site_at(relay_base).fetch_public_settings().await,
             Err(EnrolmentError::RelayUnreachable { .. })
         ));
         // Plain HTTP is never sent.
         let plain_http =
             Url::parse(&format!("http://{RELAY_DOMAIN}:{}", relay.addr.port())).unwrap();
         assert!(matches!(
-            relay_site.fetch_public_settings(&plain_http).await,
+            relay.site_at(plain_http).fetch_public_settings().await,
             Err(EnrolmentError::RelayUnreachable { .. })
         ));
     }
@@ -348,21 +345,13 @@ mod tests {
     #[tokio::test]
     async fn a_path_the_relay_does_not_serve_is_a_bad_response() {
         let relay = TestRelay::start().await;
-        let response = relay
-            .relay_site()
-            .get(&relay.base_url(), "/nothing", None)
-            .await
-            .unwrap();
+        let response = relay.relay_site().get("/nothing", None).await.unwrap();
         assert!(matches!(
             decode_success::<PublicRatholeSettings>("/nothing", response).await,
             Err(EnrolmentError::BadRelayResponse { path: "/nothing", reason }) if reason.contains("404")
         ));
         // `GET /health` answers, but not with rathole settings.
-        let response = relay
-            .relay_site()
-            .get(&relay.base_url(), "/health", None)
-            .await
-            .unwrap();
+        let response = relay.relay_site().get("/health", None).await.unwrap();
         assert!(matches!(
             decode_success::<PublicRatholeSettings>("/health", response).await,
             Err(EnrolmentError::BadRelayResponse {
@@ -382,11 +371,10 @@ mod tests {
 
         let record = add_server(
             Arc::clone(&registry),
-            &relay.relay_site(),
             relay.relay(),
-            None,
             ruth(),
             TunnelToken::new(TOKEN),
+            |relay_base| Ok(relay.site_at(relay_base)),
         )
         .await
         .unwrap();
@@ -399,11 +387,10 @@ mod tests {
         assert!(matches!(
             add_server(
                 Arc::clone(&registry),
-                &relay.relay_site(),
                 relay.relay(),
-                None,
                 ruth(),
                 TunnelToken::new(TOKEN),
+                |relay_base| Ok(relay.site_at(relay_base)),
             )
             .await,
             Err(EnrolmentError::Registry(
@@ -431,13 +418,13 @@ mod tests {
             errors.push(
                 add_server(
                     Arc::clone(&registry),
-                    &relay.relay_site(),
-                    Relay::Custom {
+                    EnteredRelay::Custom {
                         base_url: relay_base,
+                        pin: None,
                     },
-                    None,
                     ruth(),
                     TunnelToken::new(token),
+                    |relay_base| Ok(relay.site_at(relay_base)),
                 )
                 .await
                 .unwrap_err(),

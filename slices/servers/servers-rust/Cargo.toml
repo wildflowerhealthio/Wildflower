@@ -8,7 +8,7 @@ publish.workspace = true
 # behind the `ServerRegistry` port, and enrolment, which checks a tunnel's
 # credentials with its relay's site behind the `RelaySite` port before a record
 # is written. No `tauri` dependency; the host builds a `JsonServerRegistry` over
-# its data root and a `ReqwestRelaySite`.
+# its data root and a `RelaySiteClient` for each relay site enrolment asks.
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
@@ -34,7 +34,8 @@ reqwest = { version = "0.12", default-features = false, features = [
   "json",
 ] }
 # `hmac-sha256` HTTP message signatures (RFC 9421) keyed by the tunnel's
-# token, the scheme the relay verifies. All three are already in the tree.
+# token, the scheme the relay verifies, and `base64` also checks a relay's
+# noise key. All three are already in the tree.
 hmac = "0.12"
 sha2 = "0.10"
 base64.workspace = true

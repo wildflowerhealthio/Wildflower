@@ -8,13 +8,13 @@ The **servers** this install knows about. Rust-only, no `-core`.
   and the `ServerRegistry` port over the list of them, with its
   `JsonServerRegistry` adapter at `<data root>/servers.json`; and enrolment,
   which checks a tunnel's credentials with its relay's site through the
-  `RelaySite` port, with its `ReqwestRelaySite` adapter.
+  `RelaySite` port, with its `RelaySiteClient` adapter.
   - Layout: `domain/` the record (`ServerRecord`, `Relay`, `TunnelToken`),
     `RegistryError`, and enrolment (`add_server`, `set_server_credentials`,
-    `RelayPin`, `EnrolmentError`); `ports/` the `ServerRegistry` port (read
-    all, insert, update, remove) and the `RelaySite` port (`GET /rathole`,
-    signed `GET /me`); `adapters/` `JsonServerRegistry`, `ReqwestRelaySite`
-    and the request signer it uses.
+    `EnteredRelay`, `RelayPin`, `EnrolmentError`); `ports/` the
+    `ServerRegistry` port (read all, insert, update, remove) and the
+    `RelaySite` port (`GET /rathole`, signed `GET /me`); `adapters/`
+    `JsonServerRegistry`, `RelaySiteClient` and the request signer it uses.
 - **`servers-tauri-rust`** — the base's Tauri commands over `servers-rust`:
   `server_add` and `server_set_credentials`, and `manage_servers`, which puts
   their `ServersState` in the app's managed state. Only glue; every decision
@@ -31,26 +31,48 @@ The **servers** this install knows about. Rust-only, no `-core`.
   `TunnelName` from `rathole-settings-rust`, the same check the relay applies
   to its tunnels: one lowercase DNS label, never `admin`. It is checked on
   construction and again when `servers.json` is read.
+- **A relay is Wildflower's, custom or manual.** `Relay::Wildflower` is the
+  relay at `https://relay.wildflowerhealth.io`; `Relay::Custom` one with a
+  relay site at its `base_url`, whose host needn't match the domain its
+  `GET /rathole` serves; `Relay::Manual` a rathole server with no relay site,
+  whose settings were entered by hand. `Relay::site_base_url()` is `None`
+  only for a manual relay.
 - **`public_settings` is the only copy of the relay's dial settings.** The
   rathole client always dials the `remote_addr` and `public_key` the relay's
-  `GET /rathole` returned. `Relay::Custom` holds only the relay's `base_url`.
+  `GET /rathole` returned, or that were entered for a manual relay.
+  `Relay::Custom` holds only the relay's `base_url`, and `Relay::Manual`
+  nothing.
 - **A new server launches from `ServerRecord::DEFAULT_LAUNCHER_URL`**,
   `https://wildflowerhealth.io/app`.
 - **The token is a secret.** `TunnelToken`'s `Debug` and `Serialize` write
   `<redacted>`, and it has no `Deserialize`. `JsonServerRegistry`'s own file
   representation is the only place the token is written in full, and the file
   is created readable by its owner only.
-- **A server is written only once its relay accepts it.** `add_server`
-  fetches `GET {relay base}/rathole` (the Wildflower relay's base is
-  `https://relay.wildflowerhealth.io`, a custom relay's its `base_url`),
-  checks its `domain` is a lowercase DNS name and its `remote_addr` a
-  `host:port`, compares it with the user's `RelayPin` when there is one, then
-  confirms the tunnel name and token with a signed `GET /me`. The record gets
-  that response as `public_settings`, the default launcher and production
-  certificates. `set_server_credentials` replaces a server's token the same
-  way, taking the relay's current `GET /rathole`, and refuses a relay that now
-  serves another domain. A `401` from `GET /me` is
+- **A relay with a site accepts a server before it is written.** For an
+  `EnteredRelay::Wildflower` or `EnteredRelay::Custom`, `add_server` builds a
+  `RelaySite` for the relay's base URL, fetches its `GET /rathole`, checks
+  its relay settings, compares them with the user's `RelayPin` when there is
+  one, then confirms the tunnel name and token with a signed `GET /me`. The
+  record gets that response as `public_settings`, the default launcher and
+  production certificates. `set_server_credentials` replaces a server's token
+  the same way, taking the relay's current `GET /rathole`, and refuses a
+  relay that now serves another domain. A `401` from `GET /me` is
   `EnrolmentError::CredentialsRejected`.
+- **A manual relay is checked by its settings alone.** An
+  `EnteredRelay::Manual` carries `remoteAddr`, `publicKey` and `domain`; they
+  become `public_settings` with the one transport and noise pattern a device
+  runs, and no request is made: the tunnel coming up is the check.
+  `set_server_credentials` replaces a manual server's token without a
+  request.
+- **Relay settings get one check, served or entered.** The `domain` is a
+  lowercase DNS name, the `remoteAddr` a `host:port`, and the `publicKey` 32
+  bytes of base64. A `GET /rathole` that fails it is
+  `EnrolmentError::BadRelayResponse`; an entered setting that fails it is
+  `EnrolmentError::InvalidRelaySetting`, naming the setting.
+- **Enrolment builds the relay site it asks.** `add_server` and
+  `set_server_credentials` take a builder from the relay's base URL to a
+  `RelaySite`, called only for a relay with a site; the commands pass
+  `RelaySiteClient::new`, and tests a fake.
 - **The pin is checked, never stored.** A `RelayPin` (the remote address and
   noise key entered by hand) only has to match the relay's `GET /rathole`;
   a mismatch is `EnrolmentError::PinMismatch`.
@@ -58,6 +80,17 @@ The **servers** this install knows about. Rust-only, no `-core`.
   Signatures (RFC 9421), `alg="hmac-sha256"`, keyed by the token with the
   tunnel name as `keyid`, which the relay verifies with its own copy. The
   adapter's tests run against the relay's real site and verifier.
+- **Everything on the wire and on disk is camelCase.** `server_add` takes
+  `{relay, tunnelName, token}`, the relay one of `{kind: "wildflower"}`,
+  `{kind: "custom", baseUrl, pin?}` with `pin` `{remoteAddr, publicKey}`, or
+  `{kind: "manual", remoteAddr, publicKey, domain}`; `server_set_credentials`
+  takes `{domain, token}`. An `EnrolmentError`'s `kind` is camelCase
+  (`credentialsRejected`, `alreadyRegistered`, ...), and so is every field of
+  `servers.json`. Only the relay's own `GET /rathole` and `GET /me` keep its
+  snake_case wire shape.
+- **The commands trim the token.** Its surrounding whitespace is dropped, as
+  the relay drops it from its own copy, and a token left empty is
+  `EnrolmentError::EmptyToken`.
 - **Commands answer without the token.** `server_add` answers with the
   server's domain and `server_set_credentials` with nothing; a failure is the
   `EnrolmentError` as `{"kind", "message"}`. Their arguments have no `Debug`,

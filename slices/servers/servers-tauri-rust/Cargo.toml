@@ -14,6 +14,8 @@ serde.workspace = true
 servers-rust = { path = "../servers-rust" }
 # `TunnelName`, which the commands parse the entered tunnel name into.
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
+# The relay base URL enrolment builds a relay site client for.
+url = "2"
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
@@ -24,4 +26,3 @@ async-trait = "0.1"
 serde_json.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["rt", "macros"] }
-url = "2"

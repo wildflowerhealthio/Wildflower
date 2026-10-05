@@ -21,6 +21,17 @@ pub enum EnrolmentError {
     /// The entered tunnel name isn't one lowercase DNS label, or is reserved.
     #[error(transparent)]
     InvalidTunnelName(#[from] InvalidTunnelName),
+    /// The entered token is empty once its surrounding whitespace is trimmed.
+    #[error("the tunnel token is empty")]
+    EmptyToken,
+    /// A relay setting entered by hand for a [`Relay::Manual`](crate::Relay::Manual)
+    /// relay is one a server can't be built on; `setting` names it as the
+    /// command's arguments do.
+    #[error("the entered {setting} {reason}")]
+    InvalidRelaySetting {
+        setting: &'static str,
+        reason: String,
+    },
     /// No response came back from the relay's site: it couldn't be
     /// connected to, its TLS failed, or it didn't answer in time.
     #[error("the relay at {relay_base} couldn't be reached: {source}")]
@@ -56,21 +67,23 @@ pub enum EnrolmentError {
 }
 
 impl EnrolmentError {
-    /// What went wrong, as a stable `snake_case` name a caller can branch on:
+    /// What went wrong, as a stable `camelCase` name a caller can branch on:
     /// one per variant, except that [`EnrolmentError::Registry`] is
-    /// `already_registered`, `not_registered` or, for a registry that can't
-    /// be read or written, `registry`.
+    /// `alreadyRegistered`, `notRegistered` or, for a registry that can't be
+    /// read or written, `registry`.
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::InvalidTunnelName(_) => "invalid_tunnel_name",
-            Self::RelayUnreachable { .. } => "relay_unreachable",
-            Self::BadRelayResponse { .. } => "bad_relay_response",
-            Self::PinMismatch { .. } => "pin_mismatch",
-            Self::CredentialsRejected { .. } => "credentials_rejected",
-            Self::DomainChanged { .. } => "domain_changed",
-            Self::Registry(RegistryError::AlreadyRegistered { .. }) => "already_registered",
-            Self::Registry(RegistryError::NotRegistered { .. }) => "not_registered",
+            Self::InvalidTunnelName(_) => "invalidTunnelName",
+            Self::EmptyToken => "emptyToken",
+            Self::InvalidRelaySetting { .. } => "invalidRelaySetting",
+            Self::RelayUnreachable { .. } => "relayUnreachable",
+            Self::BadRelayResponse { .. } => "badRelayResponse",
+            Self::PinMismatch { .. } => "pinMismatch",
+            Self::CredentialsRejected { .. } => "credentialsRejected",
+            Self::DomainChanged { .. } => "domainChanged",
+            Self::Registry(RegistryError::AlreadyRegistered { .. }) => "alreadyRegistered",
+            Self::Registry(RegistryError::NotRegistered { .. }) => "notRegistered",
             Self::Registry(
                 RegistryError::UnsupportedVersion { .. } | RegistryError::Storage { .. },
             ) => "registry",
@@ -97,56 +110,64 @@ mod tests {
         for (error, kind) in [
             (
                 EnrolmentError::from(TunnelName::parse("Ruth").unwrap_err()),
-                "invalid_tunnel_name",
+                "invalidTunnelName",
+            ),
+            (EnrolmentError::EmptyToken, "emptyToken"),
+            (
+                EnrolmentError::InvalidRelaySetting {
+                    setting: "remoteAddr",
+                    reason: "\"relay\" is not host:port".to_owned(),
+                },
+                "invalidRelaySetting",
             ),
             (
                 EnrolmentError::RelayUnreachable {
                     relay_base: Url::parse("https://relay.example.com").unwrap(),
                     source: "connection refused".into(),
                 },
-                "relay_unreachable",
+                "relayUnreachable",
             ),
             (
                 EnrolmentError::BadRelayResponse {
                     path: "/rathole",
                     reason: "status 404 Not Found".to_owned(),
                 },
-                "bad_relay_response",
+                "badRelayResponse",
             ),
             (
                 EnrolmentError::PinMismatch {
-                    setting: "public_key",
+                    setting: "publicKey",
                     pinned: "a".to_owned(),
                     served: "b".to_owned(),
                 },
-                "pin_mismatch",
+                "pinMismatch",
             ),
             (
                 EnrolmentError::CredentialsRejected {
                     tunnel_name: tunnel_name.clone(),
                 },
-                "credentials_rejected",
+                "credentialsRejected",
             ),
             (
                 EnrolmentError::DomainChanged {
                     registered: "old.example.com".to_owned(),
                     served: "relay.example.com".to_owned(),
                 },
-                "domain_changed",
+                "domainChanged",
             ),
             (
                 RegistryError::AlreadyRegistered {
                     domain: "ruth.relay.example.com".to_owned(),
                 }
                 .into(),
-                "already_registered",
+                "alreadyRegistered",
             ),
             (
                 RegistryError::NotRegistered {
                     domain: "ruth.relay.example.com".to_owned(),
                 }
                 .into(),
-                "not_registered",
+                "notRegistered",
             ),
             (
                 RegistryError::UnsupportedVersion { version: 2 }.into(),

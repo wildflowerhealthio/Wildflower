@@ -10,7 +10,7 @@ mod enrolment_error;
 mod registry_error;
 mod server_record;
 
-pub use enrolment::{add_server, set_server_credentials, RelayPin};
+pub use enrolment::{add_server, set_server_credentials, EnteredRelay, RelayPin};
 pub use enrolment_error::EnrolmentError;
 pub use registry_error::RegistryError;
 pub use server_record::{Relay, ServerRecord, TunnelToken};

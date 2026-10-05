@@ -12,22 +12,24 @@
 //! The list lives in `<data root>/servers.json`, behind the
 //! [`ServerRegistry`] port, and holds any number of servers.
 //!
-//! A server is added by enrolment ([`add_server`]): the relay's
-//! `GET /rathole` is fetched and checked, a signed `GET /me` confirms the
-//! relay holds the tunnel name and token, and only then is the record
-//! written. [`set_server_credentials`] replaces a server's token the same
-//! way.
+//! A server is added by enrolment ([`add_server`]). For a relay with a site,
+//! the relay's `GET /rathole` is fetched and checked, a signed `GET /me`
+//! confirms the relay holds the tunnel name and token, and only then is the
+//! record written. A manual relay, a rathole server with no site, is entered
+//! as its settings, which get the same checks. [`set_server_credentials`]
+//! replaces a server's token the same way, and a manual server's without a
+//! request.
 //!
 //!  - [`domain`] — [`ServerRecord`], its [`Relay`] and [`TunnelToken`],
-//!    [`RegistryError`], and enrolment with its [`RelayPin`] and
-//!    [`EnrolmentError`]. The token is a secret: its `Debug` and `Serialize`
+//!    [`RegistryError`], and enrolment with its [`EnteredRelay`],
+//!    [`RelayPin`] and [`EnrolmentError`]. The token is a secret: its `Debug` and `Serialize`
 //!    write a redaction marker, and only `servers.json` holds it in full.
 //!  - `ports` — the [`ServerRegistry`] port (read all, insert, update,
 //!    remove) and the [`RelaySite`] port (`GET /rathole`, signed
 //!    `GET /me`).
 //!  - `adapters` — [`JsonServerRegistry`], which replaces `servers.json`
 //!    atomically on every change and refuses a file whose `version` it
-//!    doesn't read, and [`ReqwestRelaySite`], which signs `GET /me` with
+//!    doesn't read, and [`RelaySiteClient`], which signs `GET /me` with
 //!    HTTP Message Signatures (RFC 9421) keyed by the token, so the token is
 //!    never sent.
 
@@ -36,9 +38,9 @@ pub mod domain;
 mod adapters;
 mod ports;
 
-pub use adapters::{JsonServerRegistry, ReqwestRelaySite, SERVERS_FILE_NAME};
+pub use adapters::{JsonServerRegistry, RelaySiteClient, SERVERS_FILE_NAME};
 pub use domain::{
-    add_server, set_server_credentials, EnrolmentError, RegistryError, Relay, RelayPin,
-    ServerRecord, TunnelToken,
+    add_server, set_server_credentials, EnrolmentError, EnteredRelay, RegistryError, Relay,
+    RelayPin, ServerRecord, TunnelToken,
 };
 pub use ports::{RelaySite, ServerRegistry};
