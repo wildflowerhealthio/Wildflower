@@ -1,0 +1,28 @@
+[package]
+name = "servers-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The install's list of servers: `ServerRecord`s kept in `<data root>/servers.json`
+# behind the `ServerRegistry` port. No `tauri` dependency; the host builds a
+# `JsonServerRegistry` over its data root.
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# The relay's `GET /rathole` response a `ServerRecord` keeps as its
+# `public_settings`; its `domain` is the relay domain a server's domain ends in.
+rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
+# `launcher_url` and a custom relay's `base_url`, stored as URLs in the file.
+url = { version = "2", features = ["serde"] }
+# Serialises read-modify-write cycles on `servers.json` within the process.
+parking_lot = "0.12"
+# `RegistryError`'s `Display`/`source` wiring.
+thiserror = "2"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The registry's atomic replace only exists against a real filesystem.
+tempfile = "3"
