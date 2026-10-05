@@ -3,8 +3,8 @@
 //!
 //! A signed route sits behind [`require_signature`], which buffers the body,
 //! verifies the request with the site's [`Verifier`] and records who signed
-//! it for the [`SignedBy`] extractor. Every failure is a bare `401`; the
-//! reason is logged at `debug`, never the key.
+//! it for the [`SignedBy`] extractor. Every verification failure is a bare
+//! `401`; the reason is logged at `debug`, never the key.
 //!
 //! ## What a request must carry
 //!
@@ -23,7 +23,8 @@
 //!
 //! The key for `keyid="<tunnel name>"` is that tunnel's token, and for
 //! `keyid="admin"` ([`ADMIN_KEY_ID`]) `WILDFLOWER_RELAY_ADMIN_KEY`; either
-//! is used as its UTF-8 bytes, exactly as written in the environment.
+//! is used as its UTF-8 bytes, as written in the environment less
+//! surrounding whitespace, not decoded.
 //!
 //! `@target-uri` is `https://<authority><path>[?<query>]`, where the
 //! authority is the request's `Host`, lowercased and without `:443`, and
@@ -65,9 +66,10 @@ const MAX_BODY_BYTES: usize = 64 * 1024;
 const MAX_NONCE_LEN: usize = 128;
 
 /// How many nonces are remembered at once for each `keyid`. Only verified
-/// requests add one, so this bounds each signer to this many signed requests
-/// per `2 × CLOCK_SKEW_SECS`; beyond it, that signer's requests are refused
-/// until its old nonces expire. Other signers are unaffected.
+/// requests add one, and each is kept until its `created` is stale, so this
+/// bounds each signer to about this many signed requests per
+/// `CLOCK_SKEW_SECS`; beyond it, that signer's requests are refused until
+/// its old nonces expire. Other signers are unaffected.
 const MAX_NONCES_PER_KEY: usize = 4_096;
 
 /// Who signed a verified request.
@@ -157,7 +159,7 @@ impl Verifier {
         }
         let key = self.keys.get(keyid).ok_or("unknown keyid")?;
         let base = signature_base(parts, &signature.input).ok_or("components unavailable")?;
-        if !mac_is_valid(key.expose().as_bytes(), &base, &signature.mac) {
+        if !mac_is_valid(key.expose().as_bytes(), &base, &signature.mac)? {
             return Err("MAC mismatch");
         }
         if covers("content-digest") && !content_digest_matches(&parts.headers, body) {
@@ -205,12 +207,19 @@ pub async fn require_signature(
     request: Request,
     next: Next,
 ) -> Response {
+    let now = match unix_now() {
+        Ok(now) => now,
+        Err(error) => {
+            tracing::error!("cannot verify a signed request: reading the clock failed: {error:#}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
     let (mut parts, body) = request.into_parts();
     let Ok(body) = axum::body::to_bytes(body, MAX_BODY_BYTES).await else {
         tracing::debug!("signed request rejected: body unreadable or too large");
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    match verifier.verify(&parts, &body, unix_now()) {
+    match verifier.verify(&parts, &body, now) {
         Ok(signed_by) => {
             parts.extensions.insert(signed_by);
             next.run(Request::from_parts(parts, Body::from(body))).await
@@ -222,13 +231,14 @@ pub async fn require_signature(
     }
 }
 
-/// Seconds since the unix epoch; a clock before it reads as 0.
-fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| {
-            i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
-        })
+/// Seconds since the unix epoch.
+///
+/// # Errors
+///
+/// Returns an error if the clock reads before the epoch or past `i64`.
+pub(super) fn unix_now() -> anyhow::Result<i64> {
+    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH)?;
+    Ok(i64::try_from(elapsed.as_secs())?)
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for SignedBy {
@@ -385,13 +395,10 @@ fn signature_base(parts: &Parts, input: &SignatureInput) -> Option<String> {
 
 /// Whether `mac` is the `hmac-sha256` of `base` under `key`, compared in
 /// constant time.
-fn mac_is_valid(key: &[u8], base: &str, mac: &[u8]) -> bool {
-    let Ok(mut hmac) = Hmac::<Sha256>::new_from_slice(key) else {
-        // HMAC takes keys of any length.
-        return false;
-    };
+fn mac_is_valid(key: &[u8], base: &str, mac: &[u8]) -> Result<bool, &'static str> {
+    let mut hmac = Hmac::<Sha256>::new_from_slice(key).map_err(|_| "unusable key")?;
     hmac.update(base.as_bytes());
-    hmac.verify_slice(mac).is_ok()
+    Ok(hmac.verify_slice(mac).is_ok())
 }
 
 /// Whether `Content-Digest` (RFC 9530) has a `sha-256` member equal to the
@@ -524,8 +531,11 @@ pub(crate) mod tests {
              \"content-type\": application/json\n\
              \"@signature-params\": (\"date\" \"@authority\" \"content-type\");created=1618884473;keyid=\"test-shared-secret\""
         );
-        assert!(mac_is_valid(&key, &base, &signature.mac));
-        assert!(!mac_is_valid(b"another key", &base, &signature.mac));
+        assert_eq!(mac_is_valid(&key, &base, &signature.mac), Ok(true));
+        assert_eq!(
+            mac_is_valid(b"another key", &base, &signature.mac),
+            Ok(false)
+        );
     }
 
     #[tokio::test]

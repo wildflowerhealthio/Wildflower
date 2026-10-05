@@ -60,8 +60,8 @@
 //! as the key. The operator signs with `keyid="admin"` and
 //! `WILDFLOWER_RELAY_ADMIN_KEY`, so `admin` is not a valid tunnel name.
 //! `GET /me` answers a tunnel's signed request with `{"tunnel_name":
-//! "<tunnel name>", "public_host": "<tunnel name>.<domain>"}`; any failure
-//! is a bare `401`.
+//! "<tunnel name>", "public_host": "<tunnel name>.<domain>"}`; a request
+//! that fails verification gets a bare `401`.
 //!
 //! To sign `GET https://relay.example.com/me` as tunnel `alice` at unix
 //! time `1700000000`, a client builds this signature base (lines joined

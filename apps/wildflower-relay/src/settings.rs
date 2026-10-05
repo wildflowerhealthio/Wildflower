@@ -105,10 +105,7 @@ impl RelaySettings {
     /// empty, one that is set does not parse, or the admin key is shorter
     /// than [`Self::ADMIN_KEY_MIN_LEN`].
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
-        let admin_key = lookup(Self::ADMIN_KEY_VAR)
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty())
-            .map(Secret);
+        let admin_key = optional(&lookup, Self::ADMIN_KEY_VAR).map(Secret);
         if let Some(admin_key) = &admin_key {
             anyhow::ensure!(
                 admin_key.expose().len() >= Self::ADMIN_KEY_MIN_LEN,
@@ -405,9 +402,7 @@ impl AcmeSettings {
     /// Returns an error naming the variable if the staging flag is not
     /// `true` or `false`, or the contact does not start with `mailto:`.
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
-        let contact = lookup(Self::CONTACT_VAR)
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty());
+        let contact = optional(&lookup, Self::CONTACT_VAR);
         if let Some(contact) = &contact {
             anyhow::ensure!(
                 contact.starts_with("mailto:") && contact.len() > "mailto:".len(),
@@ -429,10 +424,14 @@ fn required(
     name: &str,
     what: &str,
 ) -> anyhow::Result<String> {
+    optional(lookup, name).with_context(|| format!("{name} is not set — {what}"))
+}
+
+/// An optional variable, trimmed; `None` when unset or blank.
+fn optional(lookup: &impl Fn(&str) -> Option<String>, name: &str) -> Option<String> {
     lookup(name)
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
-        .with_context(|| format!("{name} is not set — {what}"))
 }
 
 /// An optional variable parsed as `T`, or `default` when unset.

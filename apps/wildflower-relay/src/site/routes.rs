@@ -74,6 +74,7 @@ mod tests {
     use super::*;
     use crate::settings::{RelaySettings, Secret, Tunnel};
     use crate::site::signature::tests::signed_request;
+    use crate::site::signature::unix_now;
 
     #[tokio::test]
     async fn rathole_serves_the_settings_from_the_environment() {
@@ -143,16 +144,6 @@ mod tests {
         )
     }
 
-    fn unix_now() -> i64 {
-        i64::try_from(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        )
-        .unwrap()
-    }
-
     #[tokio::test]
     async fn me_names_the_signing_tunnel_and_its_public_host() {
         let request = signed_request(
@@ -161,7 +152,7 @@ mod tests {
             b"",
             "alice",
             "alice-token",
-            unix_now(),
+            unix_now().unwrap(),
             "me-round-trip",
         );
         let response = signing_router().oneshot(request).await.unwrap();
@@ -179,7 +170,7 @@ mod tests {
 
     #[tokio::test]
     async fn me_refuses_unsigned_wrongly_signed_and_admin_requests() {
-        let now = unix_now();
+        let now = unix_now().unwrap();
         let unsigned = Request::builder()
             .uri("/me")
             .header(header::HOST, "relay.example.com")
@@ -196,6 +187,23 @@ mod tests {
             let body = response.into_body().collect().await.unwrap().to_bytes();
             assert!(body.is_empty(), "a 401 carries no detail");
         }
+    }
+
+    /// A body over the buffering limit is refused before it is verified.
+    #[tokio::test]
+    async fn me_refuses_a_body_over_the_limit() {
+        let body = vec![b'x'; 64 * 1024 + 1];
+        let request = signed_request(
+            "GET",
+            "https://relay.example.com/me",
+            &body,
+            "alice",
+            "alice-token",
+            unix_now().unwrap(),
+            "too-big",
+        );
+        let response = signing_router().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     /// Unknown paths still 404 rather than demanding a signature.
