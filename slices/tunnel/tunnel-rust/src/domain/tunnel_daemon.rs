@@ -44,7 +44,7 @@ use tokio_util::sync::CancellationToken;
 
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelStatus};
 
-use crate::domain::{RelayClient, RelaySettings, TunnelConnection, TunnelSettings};
+use crate::domain::{RelayClient, RelaySettings, TunnelSettings, TunnelStream};
 use crate::health::HealthProbe;
 
 /// Message shown when the tunnel is requested on but the relay isn't configured.
@@ -142,7 +142,7 @@ pub struct TunnelDaemon {
     loopback_origin: String,
     /// Where each dial hands its tunnel connections: the server's tunnel
     /// listener.
-    connections: mpsc::Sender<TunnelConnection>,
+    connections: mpsc::Sender<TunnelStream>,
     state_tx: watch::Sender<TunnelLiveness>,
     state_rx: watch::Receiver<TunnelLiveness>,
     /// The live supervisor's cancel token + join handle. Taken and replaced on
@@ -178,7 +178,7 @@ impl TunnelDaemon {
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
         loopback_origin: impl Into<String>,
-        connections: mpsc::Sender<TunnelConnection>,
+        connections: mpsc::Sender<TunnelStream>,
     ) -> Self {
         Self::with_tuning(
             client,
@@ -194,7 +194,7 @@ impl TunnelDaemon {
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
         loopback_origin: impl Into<String>,
-        connections: mpsc::Sender<TunnelConnection>,
+        connections: mpsc::Sender<TunnelStream>,
         backoff: Backoff,
         probe_timing: ProbeTiming,
     ) -> Self {
@@ -404,7 +404,7 @@ struct SupervisorJob {
     state: watch::Sender<TunnelLiveness>,
     client: Arc<dyn RelayClient>,
     probe: Arc<dyn HealthProbe>,
-    connections: mpsc::Sender<TunnelConnection>,
+    connections: mpsc::Sender<TunnelStream>,
     /// The public `https://{host}` this revision serves at when `Verified`.
     public_origin: String,
     loopback_origin: String,
@@ -714,7 +714,7 @@ mod tests {
         async fn run_once(
             &self,
             _relay: &RelaySettings,
-            _connections: mpsc::Sender<TunnelConnection>,
+            _connections: mpsc::Sender<TunnelStream>,
             _cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             Ok(())
@@ -729,7 +729,7 @@ mod tests {
         async fn run_once(
             &self,
             _relay: &RelaySettings,
-            _connections: mpsc::Sender<TunnelConnection>,
+            _connections: mpsc::Sender<TunnelStream>,
             _cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             Err(anyhow::anyhow!("relay unreachable"))
@@ -915,7 +915,7 @@ mod tests {
             async fn run_once(
                 &self,
                 _relay: &RelaySettings,
-                _connections: mpsc::Sender<TunnelConnection>,
+                _connections: mpsc::Sender<TunnelStream>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 if !self.0.swap(true, Ordering::SeqCst) {
@@ -964,7 +964,7 @@ mod tests {
             async fn run_once(
                 &self,
                 _relay: &RelaySettings,
-                _connections: mpsc::Sender<TunnelConnection>,
+                _connections: mpsc::Sender<TunnelStream>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 self.0.fetch_add(1, Ordering::SeqCst);
@@ -1027,7 +1027,7 @@ mod tests {
             async fn run_once(
                 &self,
                 _relay: &RelaySettings,
-                _connections: mpsc::Sender<TunnelConnection>,
+                _connections: mpsc::Sender<TunnelStream>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 self.0.fetch_add(1, Ordering::SeqCst);

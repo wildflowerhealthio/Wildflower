@@ -22,7 +22,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tunnel_rust::TunnelConnection;
+use tunnel_rust::TunnelStream;
 use url::Url;
 use wildflower_server_rust::{set_up, HostPorts, ServerObservers, WildflowerServerConfig};
 
@@ -199,16 +199,13 @@ const PUBLIC_HOST: &str = "demo.example.com";
 /// after `proxy_header` if given. Returns the response's status code and body;
 /// `None` when the server closes the connection without answering.
 async fn raw_exchange(
-    tunnel_connection_sender: &mpsc::Sender<TunnelConnection>,
+    tunnel_connection_sender: &mpsc::Sender<TunnelStream>,
     proxy_header: Option<&[u8]>,
     request: &str,
 ) -> Option<(u16, String)> {
     let (mut stream, server_end) = tokio::io::duplex(64 * 1024);
     tunnel_connection_sender
-        .send(TunnelConnection {
-            service_name: "demo".to_owned(),
-            stream: Box::new(server_end),
-        })
+        .send(Box::new(server_end))
         .await
         .expect("the tunnel listener takes connections");
     if let Some(proxy_header) = proxy_header {

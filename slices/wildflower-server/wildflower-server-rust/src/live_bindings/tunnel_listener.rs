@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use tokio::io::BufReader;
 use tokio::sync::mpsc;
-use tunnel_rust::{TunnelConnection, TunnelStream};
+use tunnel_rust::TunnelStream;
 
 /// How long a tunnel connection has to send its first bytes, and its whole
 /// PROXY header when it opens with one, before it is closed. The relay front
@@ -59,7 +59,7 @@ pub(crate) struct TunnelListener {
 impl TunnelListener {
     /// Start admitting the connections on `tunnel_connections`, on the current
     /// runtime.
-    pub(crate) fn new(tunnel_connections: mpsc::Receiver<TunnelConnection>) -> Self {
+    pub(crate) fn new(tunnel_connections: mpsc::Receiver<TunnelStream>) -> Self {
         let (admitted_sender, admitted_connections) = mpsc::channel(ADMITTED_CONNECTION_BACKLOG);
         tokio::spawn(accept_connections(tunnel_connections, admitted_sender));
         Self {
@@ -92,7 +92,7 @@ impl axum::serve::Listener for TunnelListener {
 /// Take each connection on `tunnel_connections` until `admitted_sender`'s
 /// receiver is dropped, admitting each on a task of its own.
 async fn accept_connections(
-    mut tunnel_connections: mpsc::Receiver<TunnelConnection>,
+    mut tunnel_connections: mpsc::Receiver<TunnelStream>,
     admitted_sender: mpsc::Sender<(AdmittedStream, TunnelPeer)>,
 ) {
     loop {
@@ -105,7 +105,7 @@ async fn accept_connections(
             return;
         };
         tokio::spawn(admit_connection(
-            proxy_header::peekable(tunnel_connection.stream),
+            proxy_header::peekable(tunnel_connection),
             admitted_sender.clone(),
             PROXY_HEADER_TIMEOUT,
         ));
@@ -229,10 +229,7 @@ mod tests {
         let (mut client, server) = tokio::io::duplex(1024);
         client.write_all(b"GET").await.expect("write");
         tunnel_connection_sender
-            .send(TunnelConnection {
-                service_name: "dev1".to_owned(),
-                stream: Box::new(server),
-            })
+            .send(Box::new(server))
             .await
             .expect("the listener takes connections");
 
