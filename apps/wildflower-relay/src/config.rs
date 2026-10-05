@@ -1,21 +1,21 @@
-//! Builds rathole's server config in memory from the settings and the live
-//! tunnel set, on every start. Nothing is written to disk: rathole runs on
-//! the built [`rathole::Config`], and a change through the admin API reaches
-//! it as one service added or deleted (see
+//! Builds rathole's server config in memory from the settings and the stored
+//! tunnels, on every start. Nothing is written to disk: rathole runs on the
+//! built [`rathole::Config`], and a change through the admin API reaches it
+//! as one service added or deleted (see
 //! [`TunnelRegistry`](crate::TunnelRegistry)).
 //!
 //! The `[server]` table holds the control address and the noise transport,
 //! pattern and key. It is rendered as TOML and parsed with rathole's own
-//! parser, since rathole builds its server config no other way. Each live
-//! tunnel (see [`crate::domain::TunnelSet`]) is a rathole service of the
-//! same name, `[server.services.<tunnel name>]`, built by [`service`]: TCP
-//! with the tunnel's own `token`. There is no `default_token`, so a device
+//! parser, since rathole builds its server config no other way. Each stored
+//! tunnel is a rathole service of the same name,
+//! `[server.services.<tunnel name>]`, built by [`service`]: TCP with the
+//! tunnel's own `token`. There is no `default_token`, so a device
 //! needs its own token to connect.
 
 use anyhow::Context;
 use toml::{Table, Value};
 
-use crate::domain::{Tunnel, TunnelSet};
+use crate::domain::Tunnel;
 use crate::settings::ControlSettings;
 
 /// The rathole `[server]` TOML for `control`, with no services.
@@ -58,7 +58,7 @@ pub fn render(control: &ControlSettings) -> anyhow::Result<String> {
 ///
 /// Returns an error if the rendered `[server]` table is not a valid rathole
 /// server config.
-pub fn build(control: &ControlSettings, tunnels: &TunnelSet) -> anyhow::Result<rathole::Config> {
+pub fn build(control: &ControlSettings, tunnels: &[Tunnel]) -> anyhow::Result<rathole::Config> {
     let mut config = render(control)?
         .parse::<rathole::Config>()
         .context("the rendered relay config was rejected")?;
@@ -67,7 +67,6 @@ pub fn build(control: &ControlSettings, tunnels: &TunnelSet) -> anyhow::Result<r
         .as_mut()
         .context("the rendered relay config has no [server] section")?;
     server.services = tunnels
-        .tunnels()
         .iter()
         .map(|tunnel| (tunnel.name.clone(), service(tunnel)))
         .collect();
@@ -135,9 +134,12 @@ mod tests {
         ])
     }
 
-    /// The stored tunnels `names`.
-    fn tunnel_set(names: &[&str]) -> TunnelSet {
-        TunnelSet::new(names.iter().copied().map(stored_tunnel).collect()).expect("tunnel set")
+    /// The tunnels `names`, as stored.
+    fn tunnels(names: &[&str]) -> Vec<Tunnel> {
+        names
+            .iter()
+            .map(|name| stored_tunnel(name).tunnel)
+            .collect()
     }
 
     /// Golden check on `relay.example.env`: its values give settings that
@@ -152,7 +154,7 @@ mod tests {
             "commented defaults in relay.example.env must match the code"
         );
 
-        let server = build(&example.control, &tunnel_set(&["wildflower-device-1"]))
+        let server = build(&example.control, &tunnels(&["wildflower-device-1"]))
             .unwrap()
             .server
             .expect("[server]");
@@ -167,7 +169,7 @@ mod tests {
     fn build_makes_each_tunnel_a_service_with_its_token() {
         let env = minimal_env();
         let control = settings(&env).control;
-        let server = build(&control, &tunnel_set(&["bob", "alice"]))
+        let server = build(&control, &tunnels(&["bob", "alice"]))
             .unwrap()
             .server
             .expect("[server]");
@@ -191,7 +193,7 @@ mod tests {
         let router = Router::new(
             "relay.example.com",
             ["relay.example.com".to_owned()],
-            RouteTable::from_names(tunnel_set(&["bob", "alice"]).names()),
+            RouteTable::from_names(["bob".to_owned(), "alice".to_owned()]),
         );
         let Some(Destination::Tunnel(route)) = router.resolve("bob.relay.example.com") else {
             panic!("bob routes to a tunnel");
@@ -201,7 +203,7 @@ mod tests {
 
     #[test]
     fn build_with_no_tunnels_is_still_valid() {
-        let server = build(&settings(&minimal_env()).control, &TunnelSet::default())
+        let server = build(&settings(&minimal_env()).control, &[])
             .unwrap()
             .server
             .expect("[server]");

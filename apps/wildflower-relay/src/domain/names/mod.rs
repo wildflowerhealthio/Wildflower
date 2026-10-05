@@ -46,18 +46,27 @@ pub fn generate<R: Rng + ?Sized>(rng: &mut R) -> String {
 
 /// A name for which `is_taken` is false, drawing again on a collision, or
 /// `None` if [`MAX_DRAWS`] draws all collide.
-pub fn generate_unused<R: Rng + ?Sized>(
+///
+/// # Errors
+///
+/// Whatever `is_taken` fails with, drawing no further.
+pub fn generate_unused<R: Rng + ?Sized, E>(
     rng: &mut R,
-    is_taken: impl Fn(&str) -> bool,
-) -> Option<String> {
-    (0..MAX_DRAWS)
-        .map(|_| generate(rng))
-        .find(|name| !is_taken(name))
+    mut is_taken: impl FnMut(&str) -> Result<bool, E>,
+) -> Result<Option<String>, E> {
+    for _ in 0..MAX_DRAWS {
+        let name = generate(rng);
+        if !is_taken(&name)? {
+            return Ok(Some(name));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+    use std::convert::Infallible;
 
     use proptest::prelude::*;
     use rand::rngs::StdRng;
@@ -91,8 +100,11 @@ mod tests {
             let mut rng = StdRng::seed_from_u64(seed);
             let mut names = HashSet::new();
             for _ in 0..2_000 {
-                let name = generate_unused(&mut rng, |name| names.contains(name))
-                    .expect("a free name");
+                let name = generate_unused(&mut rng, |name| {
+                    Ok::<_, Infallible>(names.contains(name))
+                })
+                .unwrap()
+                .expect("a free name");
                 prop_assert!(names.insert(name));
             }
         }
@@ -101,6 +113,9 @@ mod tests {
     #[test]
     fn generate_unused_gives_up_when_every_name_is_taken() {
         let mut rng = StdRng::seed_from_u64(0);
-        assert_eq!(generate_unused(&mut rng, |_| true), None);
+        assert_eq!(
+            generate_unused(&mut rng, |_| Ok::<_, Infallible>(true)),
+            Ok(None)
+        );
     }
 }

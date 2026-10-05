@@ -110,11 +110,15 @@ impl TunnelStore for SqliteTunnelStore {
         tunnels::list_tunnels(&mut self.connection()?)
     }
 
-    fn insert_tunnel(&self, stored: &StoredTunnel) -> Result<(), TunnelError> {
+    fn contains_tunnel(&self, name: &str) -> Result<bool, TunnelError> {
+        tunnels::contains_tunnel(&mut self.connection()?, name)
+    }
+
+    fn insert_tunnel(&self, stored: &StoredTunnel) -> Result<bool, TunnelError> {
         tunnels::insert_tunnel(&mut self.connection()?, stored)
     }
 
-    fn delete_tunnel(&self, name: &str) -> Result<bool, TunnelError> {
+    fn delete_tunnel(&self, name: &str) -> Result<Option<StoredTunnel>, TunnelError> {
         tunnels::delete_tunnel(&mut self.connection()?, name)
     }
 }
@@ -137,22 +141,30 @@ mod tests {
     #[test]
     fn inserts_lists_by_name_and_deletes() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
-        store.insert_tunnel(&stored_tunnel("bob")).unwrap();
-        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        assert!(store.insert_tunnel(&stored_tunnel("bob")).unwrap());
+        assert!(store.insert_tunnel(&stored_tunnel("alice")).unwrap());
         assert_eq!(
             store.list_tunnels().unwrap(),
             [stored_tunnel("alice"), stored_tunnel("bob")]
         );
-        assert!(
-            matches!(
-                store.insert_tunnel(&stored_tunnel("alice")),
-                Err(TunnelError::Infrastructure { .. })
-            ),
-            "names are unique"
+        assert!(store.contains_tunnel("alice").unwrap());
+        assert!(!store.contains_tunnel("carol").unwrap());
+
+        let mut taken = stored_tunnel("alice");
+        taken.email = "someone-else@example.com".to_owned();
+        assert!(!store.insert_tunnel(&taken).unwrap(), "names are unique");
+        assert_eq!(
+            store.list_tunnels().unwrap()[0],
+            stored_tunnel("alice"),
+            "a refused insert stores nothing"
         );
 
-        assert!(store.delete_tunnel("alice").unwrap());
-        assert!(!store.delete_tunnel("alice").unwrap());
+        assert_eq!(
+            store.delete_tunnel("alice").unwrap(),
+            Some(stored_tunnel("alice"))
+        );
+        assert_eq!(store.delete_tunnel("alice").unwrap(), None);
+        assert!(!store.contains_tunnel("alice").unwrap());
         assert_eq!(store.list_tunnels().unwrap(), [stored_tunnel("bob")]);
     }
 

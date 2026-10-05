@@ -21,9 +21,8 @@
 //!
 //! One capability per file — [`TunnelsReader`], [`TunnelsCreator`],
 //! [`TunnelsDeleter`] — each with its store logic and its own tests. A
-//! change takes the live [`TunnelSet`](crate::domain::TunnelSet), decides
-//! against it, writes the store and returns the set to serve next, with an
-//! `undo` for when serving fails.
+//! change decides against the store, writes it and returns the tunnel it
+//! created or deleted, with an `undo` for when serving fails.
 //!
 //! [`TunnelStore`]: crate::domain::TunnelStore
 

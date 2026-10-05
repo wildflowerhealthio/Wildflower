@@ -1,7 +1,7 @@
 //! The delete capability — [`TunnelsDeleter`], for
 //! `DELETE /api/tunnels/{name}`.
 
-use crate::domain::{StoredTunnel, TunnelError, TunnelSet, TunnelStore};
+use crate::domain::{StoredTunnel, TunnelError, TunnelStore};
 
 /// Removal — `DELETE /api/tunnels/{name}`. Holds the store, lifted from the
 /// state.
@@ -15,23 +15,14 @@ impl<S: TunnelStore> TunnelsDeleter<S> {
     }
 
     /// Delete the tunnel named `name` from the store. Returns what was
-    /// stored (for [`Self::undo`]) and `live` without it.
+    /// stored, for [`Self::undo`].
     ///
     /// # Errors
     ///
-    /// [`TunnelError::NotFound`] when no live tunnel has the name, with
-    /// nothing deleted; [`TunnelError::Infrastructure`] if the store write
-    /// fails.
-    pub(crate) fn delete(
-        &self,
-        live: &TunnelSet,
-        name: &str,
-    ) -> Result<(StoredTunnel, TunnelSet), TunnelError> {
-        let mut next = live.clone();
-        let deleted = next.remove(name).ok_or(TunnelError::NotFound)?;
-        // A miss means the row is already gone, which is what deleting wants.
-        self.store.delete_tunnel(name)?;
-        Ok((deleted, next))
+    /// [`TunnelError::NotFound`] when no stored tunnel has the name;
+    /// [`TunnelError::Infrastructure`] if the store write fails.
+    pub(crate) fn delete(&self, name: &str) -> Result<StoredTunnel, TunnelError> {
+        self.store.delete_tunnel(name)?.ok_or(TunnelError::NotFound)
     }
 
     /// Put back a tunnel [`Self::delete`] removed, when serving the change
@@ -39,9 +30,13 @@ impl<S: TunnelStore> TunnelsDeleter<S> {
     ///
     /// # Errors
     ///
+    /// [`TunnelError::Taken`] if a tunnel of that name has been stored since;
     /// [`TunnelError::Infrastructure`] if the store write fails.
     pub(crate) fn undo(&self, deleted: &StoredTunnel) -> Result<(), TunnelError> {
-        self.store.insert_tunnel(deleted)
+        if !self.store.insert_tunnel(deleted)? {
+            return Err(TunnelError::Taken);
+        }
+        Ok(())
     }
 }
 
@@ -55,25 +50,25 @@ mod tests {
         let store = FakeTunnelStore::default();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
         store.insert_tunnel(&stored_tunnel("bob")).unwrap();
-        let live = TunnelSet::new(store.list_tunnels().unwrap()).unwrap();
         let deleter = TunnelsDeleter::new(store);
 
-        assert_eq!(
-            deleter.delete(&live, "nobody").unwrap_err(),
-            TunnelError::NotFound
-        );
+        assert_eq!(deleter.delete("nobody").unwrap_err(), TunnelError::NotFound);
         assert_eq!(deleter.store.list_tunnels().unwrap().len(), 2);
 
-        let (deleted, next) = deleter.delete(&live, "bob").unwrap();
+        let deleted = deleter.delete("bob").unwrap();
         assert_eq!(deleted, stored_tunnel("bob"));
         assert_eq!(
             deleter.store.list_tunnels().unwrap(),
             [stored_tunnel("alice")]
         );
-        assert!(next.get("bob").is_none());
-        assert!(next.get("alice").is_some());
+        assert_eq!(
+            deleter.delete("bob").unwrap_err(),
+            TunnelError::NotFound,
+            "a deleted tunnel is gone"
+        );
 
         deleter.undo(&deleted).unwrap();
         assert_eq!(deleter.store.list_tunnels().unwrap().len(), 2);
+        assert_eq!(deleter.undo(&deleted).unwrap_err(), TunnelError::Taken);
     }
 }

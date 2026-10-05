@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use super::state::TunnelRegistry;
+use super::state::{Change, TunnelRegistry};
 use super::AdminCapability;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::TunnelsDeleter;
@@ -39,7 +39,8 @@ impl LiveTunnelsDeleter {
         let deleted = self
             .registry
             .change(
-                move |live| deleter.delete(live, &name),
+                Change::Deleted,
+                move || deleter.delete(&name),
                 move |deleted| undoer.undo(deleted),
                 "tunnel served but no longer stored",
             )

@@ -1,16 +1,17 @@
 //! The create capability — [`TunnelsCreator`], for `POST /api/tunnels`.
 //!
 //! It holds the decisions a create makes before anything is served: whether
-//! the email is usable, whether the name is a usable, unreserved, untaken
-//! DNS label (or a fresh default from [`names`]), and minting the token. Only then does it read the clock and write the
-//! store, so a refused request never depends on the clock. Serving the new
-//! set, and undoing the store write if that fails, is the registry's.
+//! the email is usable, whether the name is a usable, unreserved DNS label
+//! not already stored (or a fresh default from [`names`]), and minting the
+//! token. Only then does it read the clock and write the store, so a refused
+//! request never depends on the clock. Serving the new tunnel, and undoing
+//! the store write if that fails, is the registry's.
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL;
 use base64::Engine;
 use rand::Rng;
 
-use crate::domain::{names, StoredTunnel, Tunnel, TunnelError, TunnelSet, TunnelStore};
+use crate::domain::{names, StoredTunnel, Tunnel, TunnelError, TunnelStore};
 use crate::route::is_dns_label;
 use crate::settings::{FrontSettings, Secret};
 
@@ -35,34 +36,35 @@ impl<S: TunnelStore> TunnelsCreator<S> {
     /// Create and store a tunnel for `email`, named `name` or, without one,
     /// two random words (see [`names`]), with a random token from `rng`,
     /// created at the time `now` reads (Unix epoch seconds). Returns the
-    /// stored tunnel (whose token is shown only to the caller of
-    /// `POST /api/tunnels`) and `live` with it added.
+    /// stored tunnel, whose token is shown only to the caller of
+    /// `POST /api/tunnels`.
     ///
     /// # Errors
     ///
     /// [`TunnelError::InvalidEmail`], [`InvalidName`](TunnelError::InvalidName),
     /// [`Reserved`](TunnelError::Reserved), [`Taken`](TunnelError::Taken) or
     /// [`Exhausted`](TunnelError::Exhausted), before `now` is read and with
-    /// nothing stored; then whatever `now` fails with, and
-    /// [`TunnelError::Infrastructure`] if the store write fails.
+    /// nothing stored; then whatever `now` fails with;
+    /// [`Taken`](TunnelError::Taken), with nothing stored, if the store
+    /// already has the name when it is written; and
+    /// [`TunnelError::Infrastructure`] if the store read or write fails.
     pub(crate) fn create<R: Rng + ?Sized>(
         &self,
-        live: &TunnelSet,
         email: &str,
         name: Option<&str>,
         rng: &mut R,
         now: impl FnOnce() -> Result<i64, TunnelError>,
-    ) -> Result<(StoredTunnel, TunnelSet), TunnelError> {
+    ) -> Result<StoredTunnel, TunnelError> {
         let email = valid_email(email).ok_or(TunnelError::InvalidEmail)?;
         let front = &self.front;
         let name = match name {
             Some(name) if !is_dns_label(name) => return Err(TunnelError::InvalidName),
             Some(name) if front.is_reserved(name) => return Err(TunnelError::Reserved),
-            Some(name) if live.get(name).is_some() => return Err(TunnelError::Taken),
+            Some(name) if self.store.contains_tunnel(name)? => return Err(TunnelError::Taken),
             Some(name) => name.to_owned(),
             None => names::generate_unused(rng, |name| {
-                live.get(name).is_some() || front.is_reserved(name)
-            })
+                Ok::<_, TunnelError>(front.is_reserved(name) || self.store.contains_tunnel(name)?)
+            })?
             .ok_or(TunnelError::Exhausted("no unused tunnel name was drawn"))?,
         };
         let mut token = [0; TOKEN_BYTES];
@@ -75,13 +77,10 @@ impl<S: TunnelStore> TunnelsCreator<S> {
             email,
             created_at: now()?,
         };
-
-        let mut next = live.clone();
-        if !next.add(stored.clone()) {
+        if !self.store.insert_tunnel(&stored)? {
             return Err(TunnelError::Taken);
         }
-        self.store.insert_tunnel(&stored)?;
-        Ok((stored, next))
+        Ok(stored)
     }
 
     /// Take back a tunnel [`Self::create`] stored, when serving the change
@@ -91,7 +90,7 @@ impl<S: TunnelStore> TunnelsCreator<S> {
     ///
     /// [`TunnelError::Infrastructure`] if the store write fails.
     pub(crate) fn undo(&self, created: &StoredTunnel) -> Result<(), TunnelError> {
-        self.store.delete_tunnel(&created.tunnel.name).map(|_| ())
+        self.store.delete_tunnel(&created.tunnel.name).map(drop)
     }
 
     /// `<name>.<domain>`, where the tunnel named `name` is served.
@@ -124,30 +123,32 @@ mod tests {
     use crate::domain::test_fake::{stored_tunnel, FakeTunnelStore};
     use crate::test_support::settings;
 
-    /// A creator for `relay.example.com` over `store`, and the live set of
-    /// what `store` holds.
-    fn creator(store: FakeTunnelStore) -> (TunnelsCreator<FakeTunnelStore>, TunnelSet) {
+    /// A creator for `relay.example.com` over `store`.
+    fn creator<S: TunnelStore>(store: S) -> TunnelsCreator<S> {
         let front = settings(std::path::Path::new("/nonexistent"), None).front;
-        let live = TunnelSet::new(store.list_tunnels().unwrap()).unwrap();
-        (TunnelsCreator::new(store, front), live)
+        TunnelsCreator::new(store, front)
     }
 
-    fn create(
-        creator: &TunnelsCreator<FakeTunnelStore>,
-        live: &TunnelSet,
+    /// A store holding `alice`.
+    fn with_alice() -> FakeTunnelStore {
+        let store = FakeTunnelStore::default();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        store
+    }
+
+    fn create<S: TunnelStore>(
+        creator: &TunnelsCreator<S>,
         email: &str,
         name: Option<&str>,
-    ) -> Result<(StoredTunnel, TunnelSet), TunnelError> {
+    ) -> Result<StoredTunnel, TunnelError> {
         let mut rng = StdRng::seed_from_u64(0);
-        creator.create(live, email, name, &mut rng, || Ok(1))
+        creator.create(email, name, &mut rng, || Ok(1))
     }
 
     #[test]
-    fn create_stores_the_tunnel_and_adds_it_to_the_set() {
-        let store = FakeTunnelStore::default();
-        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let (creator, live) = creator(store);
-        let (stored, next) = create(&creator, &live, " bob@example.com ", Some("bob")).unwrap();
+    fn create_stores_the_tunnel() {
+        let creator = creator(with_alice());
+        let stored = create(&creator, " bob@example.com ", Some("bob")).unwrap();
         assert_eq!(stored.tunnel.name, "bob");
         assert_eq!(stored.email, "bob@example.com");
         assert_eq!(stored.created_at, 1);
@@ -162,9 +163,6 @@ mod tests {
             creator.store.list_tunnels().unwrap(),
             [stored_tunnel("alice"), stored.clone()]
         );
-
-        assert_eq!(next.get("bob"), Some(&stored));
-        assert_eq!(next.len(), 2);
         assert_eq!(creator.public_host("bob"), "bob.relay.example.com");
 
         creator.undo(&stored).unwrap();
@@ -174,30 +172,75 @@ mod tests {
         );
     }
 
+    /// A default name already stored is drawn again.
+    #[test]
+    fn a_default_name_already_stored_is_drawn_again() {
+        let first = names::generate(&mut StdRng::seed_from_u64(0));
+        let store = FakeTunnelStore::default();
+        store.insert_tunnel(&stored_tunnel(&first)).unwrap();
+        let creator = creator(store);
+        let created = create(&creator, "bob@example.com", None).unwrap();
+        assert_ne!(created.tunnel.name, first);
+        assert_eq!(creator.store.list_tunnels().unwrap().len(), 2);
+    }
+
+    /// A store that has a tunnel but says it has none, as if another writer
+    /// stored it between the check and the write.
+    struct Racing(FakeTunnelStore);
+
+    impl TunnelStore for Racing {
+        fn list_tunnels(&self) -> Result<Vec<StoredTunnel>, TunnelError> {
+            self.0.list_tunnels()
+        }
+
+        fn contains_tunnel(&self, _: &str) -> Result<bool, TunnelError> {
+            Ok(false)
+        }
+
+        fn insert_tunnel(&self, stored: &StoredTunnel) -> Result<bool, TunnelError> {
+            self.0.insert_tunnel(stored)
+        }
+
+        fn delete_tunnel(&self, name: &str) -> Result<Option<StoredTunnel>, TunnelError> {
+            self.0.delete_tunnel(name)
+        }
+    }
+
+    /// A name the store refuses when it is written is taken, and nothing is
+    /// stored.
+    #[test]
+    fn a_name_the_store_already_has_is_taken() {
+        let creator = creator(Racing(with_alice()));
+        let result = create(&creator, "bob@example.com", Some("alice"));
+        assert_eq!(result.unwrap_err(), TunnelError::Taken);
+        assert_eq!(
+            creator.store.list_tunnels().unwrap(),
+            [stored_tunnel("alice")]
+        );
+    }
+
     #[test]
     fn create_validates_the_name_and_email() {
-        let store = FakeTunnelStore::default();
-        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let (creator, live) = creator(store);
+        let creator = creator(with_alice());
         for (email, name) in [
             ("bob@example.com", "Bob"),
             ("bob@example.com", "bob.example"),
             ("bob@example.com", "-bob"),
             ("bob@example.com", ""),
         ] {
-            let result = create(&creator, &live, email, Some(name));
+            let result = create(&creator, email, Some(name));
             assert_eq!(result.unwrap_err(), TunnelError::InvalidName, "{name:?}");
         }
         for email in ["", "bob", "@example.com", "bob@", "bob @example.com"] {
-            let result = create(&creator, &live, email, Some("bob"));
+            let result = create(&creator, email, Some("bob"));
             assert_eq!(result.unwrap_err(), TunnelError::InvalidEmail, "{email:?}");
         }
         let long_local = "b".repeat(MAX_EMAIL_LEN);
-        let result = create(&creator, &live, &format!("{long_local}@x"), Some("bob"));
+        let result = create(&creator, &format!("{long_local}@x"), Some("bob"));
         assert_eq!(result.unwrap_err(), TunnelError::InvalidEmail);
-        let result = create(&creator, &live, "bob@example.com", Some("admin"));
+        let result = create(&creator, "bob@example.com", Some("admin"));
         assert_eq!(result.unwrap_err(), TunnelError::Reserved);
-        let result = create(&creator, &live, "bob@example.com", Some("alice"));
+        let result = create(&creator, "bob@example.com", Some("alice"));
         assert_eq!(result.unwrap_err(), TunnelError::Taken);
         assert_eq!(
             creator.store.list_tunnels().unwrap().len(),
@@ -210,9 +253,7 @@ mod tests {
     /// failure can't turn a `422` or `409` into a `500`.
     #[test]
     fn refusals_come_before_the_clock() {
-        let store = FakeTunnelStore::default();
-        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let (creator, live) = creator(store);
+        let creator = creator(with_alice());
         let clock_failed = || -> Result<i64, TunnelError> {
             Err(TunnelError::infrastructure(
                 "reading the clock failed",
@@ -226,17 +267,11 @@ mod tests {
             ("bob@example.com", Some("alice"), TunnelError::Taken),
         ] {
             let mut rng = StdRng::seed_from_u64(0);
-            let result = creator.create(&live, email, name, &mut rng, clock_failed);
+            let result = creator.create(email, name, &mut rng, clock_failed);
             assert_eq!(result.unwrap_err(), expected, "{email:?} {name:?}");
         }
         let mut rng = StdRng::seed_from_u64(0);
-        let result = creator.create(
-            &live,
-            "bob@example.com",
-            Some("bob"),
-            &mut rng,
-            clock_failed,
-        );
+        let result = creator.create("bob@example.com", Some("bob"), &mut rng, clock_failed);
         assert!(matches!(
             result.unwrap_err(),
             TunnelError::Infrastructure { .. }
@@ -260,10 +295,10 @@ mod tests {
             domain in "[a-z0-9]{6,20}",
             seed: u64,
         ) {
-            let (creator, live) = creator(FakeTunnelStore::default());
+            let creator = creator(FakeTunnelStore::default());
             let email = format!("{local}@{domain}.example");
             let mut rng = StdRng::seed_from_u64(seed);
-            let (created, _) = creator.create(&live, &email, None, &mut rng, || Ok(1)).unwrap();
+            let created = creator.create(&email, None, &mut rng, || Ok(1)).unwrap();
             let name = &created.tunnel.name;
             prop_assert!(is_dns_label(name));
             prop_assert!(!name.contains(&local), "{}", name);

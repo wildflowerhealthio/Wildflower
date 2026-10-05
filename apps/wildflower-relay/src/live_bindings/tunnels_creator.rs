@@ -7,7 +7,7 @@ use std::sync::Arc;
 use rand::rand_core::UnwrapErr;
 use rand::rngs::SysRng;
 
-use super::state::TunnelRegistry;
+use super::state::{Change, TunnelRegistry};
 use super::AdminCapability;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::TunnelsCreator;
@@ -51,10 +51,11 @@ impl LiveTunnelsCreator {
         let created = self
             .registry
             .change(
-                move |live| {
+                Change::Created,
+                move || {
                     // Panics only if the OS has no randomness to give.
                     let mut rng = UnwrapErr(SysRng);
-                    creator.create(live, &email, name.as_deref(), &mut rng, || {
+                    creator.create(&email, name.as_deref(), &mut rng, || {
                         unix_now()
                             .map_err(|e| TunnelError::infrastructure("reading the clock failed", e))
                     })
@@ -81,6 +82,7 @@ mod tests {
 
     use super::*;
     use crate::config;
+    use crate::domain::TunnelStore;
     use crate::live_bindings::LiveTunnelsDeleter;
     use crate::test_support::{admin, registry};
 
@@ -117,11 +119,11 @@ mod tests {
         assert!(router.resolve("bob.relay.example.com").is_none());
     }
 
-    /// A refused create leaves the live set and the store alone; the full
+    /// A refused create leaves the store and what is served alone; the full
     /// matrix of refusals is the capability's tests.
     #[tokio::test]
     async fn refused_creates_change_nothing() {
-        let (registry, _fixture) = registry(None).await;
+        let (registry, mut fixture) = registry(None).await;
         let creator: LiveTunnelsCreator = admin(&registry);
         let create =
             |email: &str, name: &str| creator.create(email.to_owned(), Some(name.to_owned()));
@@ -138,6 +140,11 @@ mod tests {
             create("carol@example.com", "bob").await.unwrap_err(),
             TunnelError::Taken
         );
-        assert_eq!(registry.list().await.len(), 1);
+        assert_eq!(registry.store.list_tunnels().unwrap().len(), 1);
+        assert!(fixture.rathole.changes.try_recv().is_ok(), "bob was served");
+        assert!(
+            fixture.rathole.changes.try_recv().is_err(),
+            "nothing else was"
+        );
     }
 }

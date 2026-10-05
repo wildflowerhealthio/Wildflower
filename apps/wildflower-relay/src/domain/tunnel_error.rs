@@ -18,7 +18,7 @@ pub enum TunnelError {
     /// The name is one the relay keeps for itself
     /// ([`FrontSettings::is_reserved`](crate::settings::FrontSettings::is_reserved)).
     Reserved,
-    /// A live tunnel already has the name.
+    /// A stored tunnel already has the name.
     Taken,
     /// No tunnel has the name.
     NotFound,

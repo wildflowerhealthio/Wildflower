@@ -138,13 +138,13 @@
 //! builds rathole's config for them in memory (see [`config`]); no rathole
 //! file is written or read. Each change through the admin API reaches the
 //! running rathole server as one service added or deleted, and the front's
-//! routes and the signing keys follow the same tunnel set (see
+//! routes and the signing keys follow the same change (see
 //! [`TunnelRegistry`]).
 //!
 //! The tunnels are layered like the slices' stores:
 //!
-//!  - [`domain`] — pure: the live [`TunnelSet`], the [`TunnelStore`]
-//!    persistence *port*, the failure vocabulary
+//!  - [`domain`] — pure: the [`Tunnel`] and [`StoredTunnel`] types, the
+//!    [`TunnelStore`] persistence *port*, the failure vocabulary
 //!    ([`TunnelError`](domain::TunnelError)), and the admin-gated
 //!    capabilities (`domain::capabilities`) that decide a read, create or
 //!    delete and drive the store through the port.
@@ -152,9 +152,10 @@
 //!    Diesel over a `persistence_rust::DieselPool` onto `tunnels.db`, and its
 //!    migrations (`migrations/`).
 //!  - [`live_bindings`] — the [`TunnelRegistry`] router state that holds the
-//!    live set, and the bindings that build each capability from it for an
-//!    admin-signed request, run it off the async runtime and serve the
-//!    change: rathole's services, the front's routes and the signing keys.
+//!    store and what serves the stored tunnels, and the bindings that build
+//!    each capability from it for an admin-signed request, run it off the
+//!    async runtime and serve the change: rathole's services, the front's
+//!    routes and the signing keys.
 //!
 //! ## Deploying
 //!
@@ -209,7 +210,7 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
 pub use db::SqliteTunnelStore;
-pub use domain::{StoredTunnel, Tunnel, TunnelSet, TunnelStore};
+pub use domain::{StoredTunnel, Tunnel, TunnelStore};
 pub use front::{Front, Limits};
 pub use live_bindings::state::{RatholeFeed, TunnelRegistry};
 pub use route::{Route, RouteTable, Router};
@@ -251,11 +252,7 @@ pub async fn run_relay(
         admin,
     );
     let settings = settings.front;
-    tracing::info!(
-        domain = %settings.domain,
-        tunnels = registry.list().await.len(),
-        "routes built"
-    );
+    tracing::info!(domain = %settings.domain, "routes built");
     let tunnels = Tunnels::default();
     let front = Front::new(registry.router(), tunnels.clone(), site, settings.limits);
 

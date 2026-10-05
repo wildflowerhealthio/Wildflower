@@ -192,6 +192,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+    use crate::domain::TunnelStore;
     use crate::live_bindings::LiveTunnelsCreator;
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
@@ -319,7 +320,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::NO_CONTENT);
-        assert_eq!(tunnels.list().await.len(), 2);
+        assert_eq!(tunnels.store.list_tunnels().unwrap().len(), 2);
     }
 
     #[tokio::test]
@@ -359,7 +360,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(tunnels.list().await.len(), 1);
+        assert_eq!(tunnels.store.list_tunnels().unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -391,7 +392,11 @@ mod tests {
             assert_eq!(status, StatusCode::UNAUTHORIZED);
             assert!(body.is_empty(), "a 401 carries no detail");
         }
-        assert_eq!(tunnels.list().await.len(), 1, "alice is still there");
+        assert_eq!(
+            tunnels.store.list_tunnels().unwrap().len(),
+            1,
+            "alice is still there"
+        );
     }
 
     /// On the apex (or any other host) the admin paths do not exist, even

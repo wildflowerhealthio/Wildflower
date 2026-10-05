@@ -2,15 +2,15 @@
 //!
 //! The relay's local hostnames (its domain itself and `admin.<domain>`) are
 //! served by the relay's own site, which terminates TLS in-process. Any
-//! other public hostname `<tunnel name>.<domain>` names a live tunnel (see
-//! [`crate::domain::TunnelSet`]), whose visitors the front puts into
-//! rathole's visitor queue for the service of that name (see
-//! [`crate::tunnels`]). The [`RouteTable`] is built from the same tunnel set
-//! as rathole's services, and [`Router::replace`] swaps in a new one whole
-//! when a tunnel is created or deleted.
+//! other public hostname `<tunnel name>.<domain>` names a stored tunnel,
+//! whose visitors the front puts into rathole's visitor queue for the
+//! service of that name (see [`crate::tunnels`]). The [`RouteTable`] starts
+//! with the tunnels stored at startup, as rathole's services do, and
+//! [`Router::insert`] and [`Router::remove`] follow each tunnel created or
+//! deleted, so a deleted tunnel stops routing as soon as it is deleted.
 
 use std::collections::BTreeSet;
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{PoisonError, RwLock, RwLockWriteGuard};
 
 /// One routable tunnel: the rathole service its visitors are handed to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,7 +35,7 @@ pub struct RouteTable {
 }
 
 impl RouteTable {
-    /// Build a table from tunnel names, e.g. [`crate::TunnelSet::names`].
+    /// Build a table from tunnel names.
     #[must_use]
     pub fn from_names(tunnel_names: impl IntoIterator<Item = String>) -> Self {
         Self {
@@ -56,12 +56,13 @@ impl RouteTable {
 
 /// The front's view of routing: the public domain suffix and the relay's
 /// local hostnames (relay-only settings) plus the current [`RouteTable`],
-/// which [`Router::replace`] can swap while connections are being routed.
+/// which [`Router::insert`] and [`Router::remove`] change while connections
+/// are being routed.
 #[derive(Debug)]
 pub struct Router {
     domain: String,
     local_hostnames: BTreeSet<String>,
-    table: RwLock<Arc<RouteTable>>,
+    table: RwLock<RouteTable>,
 }
 
 impl Router {
@@ -81,7 +82,7 @@ impl Router {
                 .into_iter()
                 .map(|hostname| normalize_hostname(&hostname))
                 .collect(),
-            table: RwLock::new(Arc::new(table)),
+            table: RwLock::new(table),
         }
     }
 
@@ -90,16 +91,21 @@ impl Router {
         &self.domain
     }
 
-    /// Swap in a new table. Connections already piped are unaffected; only
-    /// lookups after the swap see it.
-    pub fn replace(&self, table: RouteTable) {
-        // A poisoned lock only means a writer panicked mid-swap of an `Arc`;
-        // the value inside is still a whole table.
-        *self.table.write().unwrap_or_else(PoisonError::into_inner) = Arc::new(table);
+    /// Route the tunnel named `tunnel_name`, for lookups from now on.
+    pub fn insert(&self, tunnel_name: String) {
+        self.table_mut().tunnel_names.insert(tunnel_name);
     }
 
-    fn table(&self) -> Arc<RouteTable> {
-        Arc::clone(&self.table.read().unwrap_or_else(PoisonError::into_inner))
+    /// Stop routing the tunnel named `tunnel_name`. Connections already
+    /// piped are unaffected; only lookups from now on miss it.
+    pub fn remove(&self, tunnel_name: &str) {
+        self.table_mut().tunnel_names.remove(tunnel_name);
+    }
+
+    fn table_mut(&self) -> RwLockWriteGuard<'_, RouteTable> {
+        // A poisoned lock only means a writer panicked mid-insert or -remove
+        // of one name; the set inside is still whole.
+        self.table.write().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Resolve a public hostname (SNI or HTTP `Host`, without port) to where
@@ -113,7 +119,9 @@ impl Router {
             return Some(Destination::Local(hostname));
         }
         let tunnel_name = tunnel_name_for_host(&hostname, &self.domain)?;
-        self.table()
+        self.table
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
             .tunnel_names
             .contains(&tunnel_name)
             .then_some(Destination::Tunnel(Route { tunnel_name }))
@@ -219,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn router_resolves_known_tunnels_and_sees_replacements() {
+    fn router_resolves_known_tunnels_and_follows_inserts_and_removes() {
         let router = Router::new(
             DOMAIN,
             [DOMAIN.to_owned()],
@@ -228,7 +236,10 @@ mod tests {
         assert_eq!(router.resolve("A.relay.example.com"), tunnel("a"));
         assert_eq!(router.resolve("b.relay.example.com"), None);
 
-        router.replace(RouteTable::from_names(["a".to_owned(), "b".to_owned()]));
+        router.insert("b".to_owned());
+        assert_eq!(router.resolve("b.relay.example.com"), tunnel("b"));
+        router.remove("a");
+        assert_eq!(router.resolve("a.relay.example.com"), None);
         assert_eq!(router.resolve("b.relay.example.com"), tunnel("b"));
     }
 

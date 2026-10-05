@@ -74,26 +74,43 @@ pub(super) fn list_tunnels(
         .map_err(|e| TunnelError::infrastructure("reading the stored tunnels failed", e))
 }
 
-/// Add `stored`. Backs
+/// Whether a tunnel named `name` is stored. Backs
+/// [`SqliteTunnelStore::contains_tunnel`](crate::db::SqliteTunnelStore).
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] on a read failure.
+pub(super) fn contains_tunnel(
+    conn: &mut PooledDieselConnection,
+    name: &str,
+) -> Result<bool, TunnelError> {
+    diesel::select(diesel::dsl::exists(tunnels::table.find(name)))
+        .get_result(conn)
+        .map_err(|e| TunnelError::infrastructure("reading the stored tunnels failed", e))
+}
+
+/// Add `stored`; `false`, storing nothing, if the name is already stored
+/// (the primary key). Backs
 /// [`SqliteTunnelStore::insert_tunnel`](crate::db::SqliteTunnelStore).
 ///
 /// # Errors
 ///
-/// [`TunnelError::Infrastructure`] on an insert failure, including a name
-/// that is already stored (the primary key rejects it).
+/// [`TunnelError::Infrastructure`] on an insert failure.
 pub(super) fn insert_tunnel(
     conn: &mut PooledDieselConnection,
     stored: &StoredTunnel,
-) -> Result<(), TunnelError> {
+) -> Result<bool, TunnelError> {
     diesel::insert_into(tunnels::table)
         .values(NewTunnelRow::from(stored))
+        .on_conflict(tunnels::name)
+        .do_nothing()
         .execute(conn)
-        .map(drop)
+        .map(|inserted| inserted > 0)
         .map_err(|e| TunnelError::infrastructure("storing the tunnel failed", e))
 }
 
-/// Remove the tunnel named `name`; `false` if there was none. Backs
-/// [`SqliteTunnelStore::delete_tunnel`](crate::db::SqliteTunnelStore).
+/// Remove the tunnel named `name`, returning it; `None` if there was none.
+/// Backs [`SqliteTunnelStore::delete_tunnel`](crate::db::SqliteTunnelStore).
 ///
 /// # Errors
 ///
@@ -101,9 +118,11 @@ pub(super) fn insert_tunnel(
 pub(super) fn delete_tunnel(
     conn: &mut PooledDieselConnection,
     name: &str,
-) -> Result<bool, TunnelError> {
+) -> Result<Option<StoredTunnel>, TunnelError> {
     diesel::delete(tunnels::table.find(name))
-        .execute(conn)
-        .map(|deleted| deleted > 0)
+        .returning(TunnelRow::as_returning())
+        .get_result(conn)
+        .optional()
+        .map(|row| row.map(StoredTunnel::from))
         .map_err(|e| TunnelError::infrastructure("deleting the stored tunnel failed", e))
 }

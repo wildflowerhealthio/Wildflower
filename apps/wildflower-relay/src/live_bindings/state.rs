@@ -1,19 +1,19 @@
-//! The [`TunnelRegistry`] — the admin API's router state: the live
-//! [`TunnelSet`] and everything built from it, changed together while the
-//! relay runs, and the [`SqliteTunnelStore`] the capabilities are lifted
-//! from.
+//! The [`TunnelRegistry`] — the admin API's router state: the
+//! [`SqliteTunnelStore`] the capabilities are lifted from, and what serves
+//! the stored tunnels while the relay runs, changed together with the store.
 //!
-//! At startup it opens the store, builds the live set from the stored
-//! tunnels, and builds rathole's config (see [`crate::config`]), the front's
-//! route table and the [`Verifier`]'s keys from it. A capability binding
-//! changes it through `TunnelRegistry::change`: the capability decides the
-//! change and writes the store, then the registry sends rathole the service
-//! it adds or deletes ([`ServerServiceChange`]), and swaps the routes
-//! ([`Router::replace`]) and keys ([`Verifier::replace`]). If rathole has
-//! stopped taking changes the capability's undo puts the store back, so on
-//! an error nothing has changed. A created tunnel's device can connect and
-//! sign requests at once. A deleted one stops routing and signing at once,
-//! and its tunnel drops as rathole takes the change.
+//! At startup it opens the store and builds rathole's config (see
+//! [`crate::config`]), the front's route table and the [`Verifier`]'s keys
+//! from the stored tunnels. A capability binding changes it through
+//! `TunnelRegistry::change`: the capability decides the change and writes
+//! the store, then the registry sends rathole the service the change adds
+//! or deletes ([`ServerServiceChange`]), and adds or removes the tunnel's
+//! route ([`Router::insert`], [`Router::remove`]) and key
+//! ([`Verifier::insert`], [`Verifier::remove`]). If rathole has stopped
+//! taking changes the capability's undo puts the store back, so on an error
+//! nothing has changed. A created tunnel's device can connect and sign
+//! requests at once. A deleted one stops routing and signing at once, and
+//! its tunnel drops as rathole takes the change.
 
 use std::sync::Arc;
 
@@ -24,7 +24,7 @@ use tokio::sync::{mpsc, Mutex};
 use super::on_blocking;
 use crate::config;
 use crate::db::SqliteTunnelStore;
-use crate::domain::{StoredTunnel, TunnelError, TunnelSet, TunnelStore};
+use crate::domain::{StoredTunnel, Tunnel, TunnelError, TunnelStore};
 use crate::route::{RouteTable, Router};
 use crate::settings::{FrontSettings, RelaySettings};
 use crate::site::signature::Verifier;
@@ -44,7 +44,16 @@ pub struct RatholeFeed {
     pub changes: mpsc::Receiver<ConfigChange>,
 }
 
-/// The live [`TunnelSet`] and everything built from it, changed together.
+/// What a change does to the tunnel it returns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Change {
+    /// The tunnel was stored, and is served from now on.
+    Created,
+    /// The tunnel was deleted, and is no longer served.
+    Deleted,
+}
+
+/// The tunnel store and what serves the stored tunnels, changed together.
 pub struct TunnelRegistry {
     /// The store the capabilities are lifted from.
     pub(crate) store: SqliteTunnelStore,
@@ -54,7 +63,7 @@ pub struct TunnelRegistry {
     router: Arc<Router>,
     verifier: Arc<Verifier>,
     /// Held across a whole change, so changes apply one at a time.
-    set: Mutex<TunnelSet>,
+    changing: Mutex<()>,
 }
 
 impl std::fmt::Debug for TunnelRegistry {
@@ -64,14 +73,13 @@ impl std::fmt::Debug for TunnelRegistry {
 }
 
 impl TunnelRegistry {
-    /// Open the store in `settings.state_dir`, which must exist, build the
-    /// live set from it, and the [`RatholeFeed`] that serves it.
+    /// Open the store in `settings.state_dir`, which must exist, and build
+    /// the [`RatholeFeed`] that serves the tunnels stored in it.
     ///
     /// # Errors
     ///
-    /// Returns an error if the store cannot be opened or read, the live set
-    /// cannot be built (see [`TunnelSet::new`]) or rathole's config cannot
-    /// be built (see [`config::build`]).
+    /// Returns an error if the store cannot be opened or read, or rathole's
+    /// config cannot be built (see [`config::build`]).
     pub async fn open(settings: &RelaySettings) -> anyhow::Result<(Self, RatholeFeed)> {
         let store_path = settings.state_dir.join(SqliteTunnelStore::FILE_NAME);
         let (store, stored) = tokio::task::spawn_blocking(move || {
@@ -83,33 +91,33 @@ impl TunnelRegistry {
         })
         .await
         .context("opening the tunnel store panicked")??;
-        let set = TunnelSet::new(stored)?;
-        let config = config::build(&settings.control, &set)?;
+        let tunnels: Vec<Tunnel> = stored.into_iter().map(|stored| stored.tunnel).collect();
+        let config = config::build(&settings.control, &tunnels)?;
         let (rathole, changes) = mpsc::channel(RATHOLE_CHANGES);
         let router = Router::new(
             &settings.front.domain,
             settings.front.local_hostnames(),
-            RouteTable::from_names(set.names()),
+            RouteTable::from_names(tunnels.iter().map(|tunnel| tunnel.name.clone())),
         );
-        let verifier = Verifier::new(&set.tunnels(), settings.admin_key.clone());
+        let verifier = Verifier::new(&tunnels, settings.admin_key.clone());
         let registry = Self {
             store,
             front: settings.front.clone(),
             rathole,
             router: Arc::new(router),
             verifier: Arc::new(verifier),
-            set: Mutex::new(set),
+            changing: Mutex::new(()),
         };
         Ok((registry, RatholeFeed { config, changes }))
     }
 
-    /// The front's router, whose table follows the live set.
+    /// The front's router, whose table follows the stored tunnels.
     #[must_use]
     pub fn router(&self) -> Arc<Router> {
         Arc::clone(&self.router)
     }
 
-    /// The site's verifier, whose keys follow the live set.
+    /// The site's verifier, whose keys follow the stored tunnels.
     #[must_use]
     pub fn verifier(&self) -> Arc<Verifier> {
         Arc::clone(&self.verifier)
@@ -121,59 +129,57 @@ impl TunnelRegistry {
         self.front.admin_hostname()
     }
 
-    /// Every live tunnel, by name.
-    pub async fn list(&self) -> Vec<StoredTunnel> {
-        self.set.lock().await.iter().cloned().collect()
-    }
-
-    /// Change the live set, one change at a time: run `decide` against it on
-    /// a blocking thread, where it writes the store and returns the tunnel
-    /// it changed and the set to serve next; serve that set; and if serving
+    /// Change the tunnels, one change at a time: run `decide` on a blocking
+    /// thread, where it writes the store and returns the tunnel it created
+    /// or deleted (as `change` says); serve that change; and if serving
     /// fails, run `undo` on a blocking thread to put the store back (logging
     /// `undo_failed` if that fails too).
     ///
     /// # Errors
     ///
     /// Whatever `decide` refuses or fails with, or
-    /// [`TunnelError::Infrastructure`] if serving fails. On an error the
-    /// live set has not changed.
+    /// [`TunnelError::Infrastructure`] if serving fails. On an error what is
+    /// served has not changed.
     pub(crate) async fn change(
         &self,
-        decide: impl FnOnce(&TunnelSet) -> Result<(StoredTunnel, TunnelSet), TunnelError>
-            + Send
-            + 'static,
+        change: Change,
+        decide: impl FnOnce() -> Result<StoredTunnel, TunnelError> + Send + 'static,
         undo: impl FnOnce(&StoredTunnel) -> Result<(), TunnelError> + Send + 'static,
         undo_failed: &'static str,
     ) -> Result<StoredTunnel, TunnelError> {
-        let mut set = self.set.lock().await;
-        let live = set.clone();
-        let (changed, next) = on_blocking(move || decide(&live)).await?;
-        if let Err(error) = self.apply(&changed, &next).await {
+        let _changing = self.changing.lock().await;
+        let changed = on_blocking(decide).await?;
+        if let Err(error) = self.serve(change, &changed.tunnel).await {
             let name = changed.tunnel.name.clone();
             if let Err(undo_error) = on_blocking(move || undo(&changed)).await {
                 tracing::error!(tunnel = %name, "{undo_failed}: {undo_error}");
             }
             return Err(error);
         }
-        *set = next;
         Ok(changed)
     }
 
-    /// Send rathole the service `changed` adds to or deletes from the live
-    /// set to make `next`, then swap the routes and keys to `next`.
-    async fn apply(&self, changed: &StoredTunnel, next: &TunnelSet) -> Result<(), TunnelError> {
-        let tunnel = &changed.tunnel;
-        let change = if next.get(&tunnel.name).is_some() {
-            ServerServiceChange::Add(config::service(tunnel))
-        } else {
-            ServerServiceChange::Delete(tunnel.name.clone())
+    /// Send rathole the service `change` adds or deletes for `tunnel`, then
+    /// add or remove its route and key.
+    async fn serve(&self, change: Change, tunnel: &Tunnel) -> Result<(), TunnelError> {
+        let service_change = match change {
+            Change::Created => ServerServiceChange::Add(config::service(tunnel)),
+            Change::Deleted => ServerServiceChange::Delete(tunnel.name.clone()),
         };
         self.rathole
-            .send(ConfigChange::ServerChange(change))
+            .send(ConfigChange::ServerChange(service_change))
             .await
             .map_err(|e| TunnelError::infrastructure("rathole has stopped taking changes", e))?;
-        self.router.replace(RouteTable::from_names(next.names()));
-        self.verifier.replace(&next.tunnels());
+        match change {
+            Change::Created => {
+                self.router.insert(tunnel.name.clone());
+                self.verifier.insert(tunnel);
+            }
+            Change::Deleted => {
+                self.router.remove(&tunnel.name);
+                self.verifier.remove(&tunnel.name);
+            }
+        }
         Ok(())
     }
 }
@@ -192,10 +198,6 @@ mod tests {
     use crate::test_support::{admin, device, open_registry, registry, settings, until_connected};
     use crate::tunnels::{TunnelDown, Tunnels};
 
-    fn names(tunnels: &[StoredTunnel]) -> Vec<&str> {
-        tunnels.iter().map(|t| t.tunnel.name.as_str()).collect()
-    }
-
     /// At startup the stored tunnels are served: as rathole's services, in
     /// the routes and in the verifier's keys.
     #[tokio::test]
@@ -209,14 +211,12 @@ mod tests {
         drop(store);
 
         let (registry, rathole) = open_registry(&settings(dir.path(), None)).await;
-        assert_eq!(names(&registry.list().await), ["alice", "carol"]);
         let services = rathole.config.server.expect("[server]").services;
         assert_eq!(services.len(), 2);
         assert_eq!(services["carol"].token.as_deref(), Some("carol-token"));
-        assert!(registry
-            .router()
-            .resolve("alice.relay.example.com")
-            .is_some());
+        for host in ["alice.relay.example.com", "carol.relay.example.com"] {
+            assert!(registry.router().resolve(host).is_some(), "{host}");
+        }
     }
 
     /// Once rathole has stopped, a change is undone: nothing is stored,
@@ -231,7 +231,6 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(refused, TunnelError::Infrastructure { .. }));
-        assert!(registry.list().await.is_empty());
         assert!(registry.store.list_tunnels().unwrap().is_empty());
         assert!(registry.router().resolve("bob.relay.example.com").is_none());
     }
