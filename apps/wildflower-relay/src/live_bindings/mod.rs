@@ -1,10 +1,11 @@
 //! The capability bindings — where the generic, store-agnostic capabilities
 //! in `crate::domain::capabilities` meet the concrete
-//! [`SqliteTunnelStore`](crate::db::SqliteTunnelStore) adapter and the
+//! [`SqliteTunnelStore`](crate::db::SqliteTunnelStore) adapter, behind its
+//! [`CachedTunnelStore`](crate::CachedTunnelStore), and the
 //! `Arc<TunnelRegistry>` router state (in [`state`]). Each binding lives in
 //! its own file and lifts what its capability needs out of the state. The
 //! ones that change tunnels also keep the registry, through which they serve
-//! the change (rathole's services, the served tunnels);
+//! the change to rathole's services;
 //! those side effects stay here, out of `domain/`. Store calls block on
 //! SQLite, so the bindings run them on blocking threads.
 //!

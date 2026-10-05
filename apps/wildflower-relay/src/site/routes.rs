@@ -83,9 +83,9 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+    use crate::cached_store::ServedTunnels;
     use crate::domain::Tunnel;
     use crate::live_bindings::{LiveTunnelsCreator, LiveTunnelsDeleter};
-    use crate::served::ServedTunnels;
     use crate::settings::{RelaySettings, Secret};
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;

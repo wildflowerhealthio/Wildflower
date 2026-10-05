@@ -1,18 +1,19 @@
 //! The [`LiveTunnelsReader`] binding — lists the tunnels through the
-//! concrete `SqliteTunnelStore`. See the [module docs](super) for the
+//! cached `SqliteTunnelStore`. See the [module docs](super) for the
 //! binding seam.
 
 use std::sync::Arc;
 
 use super::state::TunnelRegistry;
 use super::{on_blocking, AdminCapability};
+use crate::cached_store::CachedTunnelStore;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::TunnelsReader;
 use crate::domain::{StoredTunnel, TunnelError};
 
 /// Read the tunnels — `Admin<LiveTunnelsReader>` in the list handler.
 pub(crate) struct LiveTunnelsReader {
-    reader: Arc<TunnelsReader<SqliteTunnelStore>>,
+    reader: Arc<TunnelsReader<CachedTunnelStore<SqliteTunnelStore>>>,
 }
 
 impl AdminCapability for LiveTunnelsReader {

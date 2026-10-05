@@ -1,18 +1,19 @@
-//! The [`TunnelRegistry`] — the admin API's router state: the
-//! [`SqliteTunnelStore`] the capabilities are lifted from, and what serves
-//! the stored tunnels while the relay runs, changed together with the store.
+//! The [`TunnelRegistry`] — the admin API's router state: the tunnel store
+//! the capabilities are lifted from, and the rathole server that serves the
+//! stored tunnels, changed together with the store.
 //!
-//! At startup it opens the store and builds rathole's config (see
-//! [`crate::config`]) and the [`ServedTunnels`] the front's [`Router`] and
-//! the site's [`Verifier`] share from the stored tunnels. A capability
-//! binding changes it through `TunnelRegistry::change`: the capability
-//! writes the store, then the registry sends rathole the service the change
-//! adds or deletes ([`ServerServiceChange`]) and inserts or removes the
-//! tunnel in the [`ServedTunnels`]. If rathole has stopped taking changes
-//! the capability's undo puts the store back, so on an error nothing has
-//! changed. A created tunnel's device can connect and sign requests at
-//! once. A deleted one stops routing and signing at once, and its tunnel
-//! drops as rathole takes the change.
+//! At startup it opens the [`SqliteTunnelStore`] behind a
+//! [`CachedTunnelStore`], whose [`ServedTunnels`](crate::ServedTunnels) the front's [`Router`]
+//! and the site's [`Verifier`] read, and builds rathole's config (see
+//! [`crate::config`]) from the stored tunnels. A capability binding changes
+//! them through `TunnelRegistry::change`: the capability writes the store,
+//! which routing and signing follow at once, then the registry sends
+//! rathole the service the change adds or deletes ([`ServerServiceChange`]).
+//! If rathole has stopped taking changes the capability's undo puts the
+//! store back, so on an error nothing has changed. A created tunnel's
+//! device can connect and sign requests at once. A deleted one stops
+//! routing and signing at once, and its tunnel drops as rathole takes the
+//! change.
 
 use std::sync::Arc;
 
@@ -21,11 +22,11 @@ use rathole::{ConfigChange, ServerServiceChange};
 use tokio::sync::{mpsc, Mutex};
 
 use super::on_blocking;
+use crate::cached_store::CachedTunnelStore;
 use crate::config;
 use crate::db::SqliteTunnelStore;
 use crate::domain::{StoredTunnel, Tunnel, TunnelError, TunnelStore};
 use crate::route::Router;
-use crate::served::ServedTunnels;
 use crate::settings::{FrontSettings, RelaySettings};
 use crate::site::signature::Verifier;
 
@@ -55,13 +56,12 @@ pub(crate) enum Change {
 
 /// The tunnel store and what serves the stored tunnels, changed together.
 pub struct TunnelRegistry {
-    /// The store the capabilities are lifted from.
-    pub(crate) store: SqliteTunnelStore,
+    /// The store the capabilities are lifted from, whose cache `router` and
+    /// `verifier` read.
+    pub(crate) store: CachedTunnelStore<SqliteTunnelStore>,
     pub(crate) front: FrontSettings,
     /// Where each change goes to rathole.
     rathole: mpsc::Sender<ConfigChange>,
-    /// Shared by `router` and `verifier`.
-    tunnels: Arc<ServedTunnels>,
     router: Arc<Router>,
     verifier: Arc<Verifier>,
     /// Held across a whole change, so changes apply one at a time.
@@ -85,10 +85,10 @@ impl TunnelRegistry {
     pub async fn open(settings: &RelaySettings) -> anyhow::Result<(Self, RatholeFeed)> {
         let store_path = settings.state_dir.join(SqliteTunnelStore::FILE_NAME);
         let (store, stored) = tokio::task::spawn_blocking(move || {
-            let store = SqliteTunnelStore::open(&store_path)?;
-            let stored = store
-                .list_tunnels()
-                .with_context(|| format!("reading {}", store_path.display()))?;
+            let reading = || format!("reading {}", store_path.display());
+            let store = CachedTunnelStore::new(SqliteTunnelStore::open(&store_path)?)
+                .with_context(reading)?;
+            let stored = store.list_tunnels().with_context(reading)?;
             anyhow::Ok((store, stored))
         })
         .await
@@ -96,18 +96,16 @@ impl TunnelRegistry {
         let tunnels: Vec<Tunnel> = stored.into_iter().map(|stored| stored.tunnel).collect();
         let initial_config = config::build(&settings.control, &tunnels)?;
         let (rathole, changes) = mpsc::channel(RATHOLE_CHANGES);
-        let served = Arc::new(ServedTunnels::new(&tunnels));
         let router = Router::new(
             &settings.front.domain,
             settings.front.local_hostnames(),
-            Arc::clone(&served),
+            store.served(),
         );
-        let verifier = Verifier::new(Arc::clone(&served), settings.admin_key.clone());
+        let verifier = Verifier::new(store.served(), settings.admin_key.clone());
         let registry = Self {
             store,
             front: settings.front.clone(),
             rathole,
-            tunnels: served,
             router: Arc::new(router),
             verifier: Arc::new(verifier),
             changing: Mutex::new(()),
@@ -143,14 +141,13 @@ impl TunnelRegistry {
     ///
     /// 1. `write_store` creates or deletes the tunnel in the store and
     ///    returns it, or refuses (a taken name, an unknown tunnel). It runs
-    ///    on a blocking thread, as SQLite blocks.
-    /// 2. The registry serves the change: rathole adds or deletes the
-    ///    tunnel's service, then the tunnel is inserted into or removed
-    ///    from the [`ServedTunnels`].
+    ///    on a blocking thread, as SQLite blocks. Routing and signing follow
+    ///    the store's cache, so they change here.
+    /// 2. The registry sends rathole the tunnel's service to add or delete.
     /// 3. If rathole has stopped taking changes, `undo_write` puts the store
-    ///    back, so the store never holds a tunnel that is not served or
-    ///    lacks one that is. Should that fail too, `undo_failed` is logged
-    ///    with the error, as the two now disagree until a restart.
+    ///    back, so the store never holds a tunnel rathole lacks or lacks one
+    ///    rathole has. Should that fail too, `undo_failed` is logged with
+    ///    the error, as the two now disagree until a restart.
     ///
     /// Changes run one at a time, so two cannot interleave between the
     /// store and rathole. Each runs on its own task, so a caller that stops
@@ -186,8 +183,8 @@ impl TunnelRegistry {
         .map_err(|e| TunnelError::infrastructure("a tunnel change task panicked", e))?
     }
 
-    /// Send rathole the service `change` adds or deletes for `tunnel`, then
-    /// insert or remove it in the [`ServedTunnels`].
+    /// Send rathole the service `change` adds or deletes for `tunnel`, and
+    /// once a deletion is sent, forget the deleted tunnel's nonces.
     async fn serve(&self, change: Change, tunnel: &Tunnel) -> Result<(), TunnelError> {
         let service_change = match change {
             Change::Created => ServerServiceChange::Add(config::service(tunnel)),
@@ -197,14 +194,10 @@ impl TunnelRegistry {
             .send(ConfigChange::ServerChange(service_change))
             .await
             .map_err(|e| TunnelError::infrastructure("rathole has stopped taking changes", e))?;
-        match change {
-            Change::Created => self.tunnels.insert(tunnel),
-            Change::Deleted => {
-                self.tunnels.remove(&tunnel.name);
-                // After the removal, so no request still being verified with
-                // the old token can record a nonce for it.
-                self.verifier.forget(&tunnel.name);
-            }
+        // The store has already dropped the tunnel's token, so no request
+        // still being verified with it can record a nonce after this.
+        if change == Change::Deleted {
+            self.verifier.forget(&tunnel.name);
         }
         Ok(())
     }
