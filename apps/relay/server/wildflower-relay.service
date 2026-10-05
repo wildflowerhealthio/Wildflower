@@ -9,7 +9,7 @@
 #   2. Write the settings, readable by root only, starting from
 #      relay.example.env (it lists every variable):
 #        sudo install -d -m 0755 /etc/wildflower-relay
-#        sudo install -m 0600 apps/wildflower-relay/relay.example.env /etc/wildflower-relay/env
+#        sudo install -m 0600 apps/relay/server/relay.example.env /etc/wildflower-relay/env
 #        sudoedit /etc/wildflower-relay/env
 #      Set WILDFLOWER_RELAY_DOMAIN, WILDFLOWER_RELAY_NOISE_PRIVATE_KEY and
 #      WILDFLOWER_RELAY_ADMIN_KEY, which creates the tunnels. The domain must
@@ -17,7 +17,7 @@
 #      for it on :443. After changing it:
 #        sudo systemctl restart wildflower-relay
 #   3. Install and start the unit:
-#        sudo install -m 0644 apps/wildflower-relay/wildflower-relay.service /etc/systemd/system/
+#        sudo install -m 0644 apps/relay/server/wildflower-relay.service /etc/systemd/system/
 #        sudo systemctl daemon-reload
 #        sudo systemctl enable --now wildflower-relay
 #
@@ -28,7 +28,7 @@
 
 [Unit]
 Description=Wildflower relay (rathole tunnels and SNI front)
-Documentation=https://github.com/wildflowerhealthio/Wildflower/tree/main/apps/wildflower-relay
+Documentation=https://github.com/wildflowerhealthio/Wildflower/tree/main/apps/relay/server
 Wants=network-online.target
 After=network-online.target
 

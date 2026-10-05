@@ -114,7 +114,7 @@ install_new() {
 # The unit is installed by hand, since a unit can run anything as root. Stop
 # before changing anything if the installed one is not the repository's.
 if ! cmp -s "$upload/wildflower-relay.service" "$unit"; then
-  echo "::error::$unit differs from apps/wildflower-relay/wildflower-relay.service; install it on the host and run 'sudo systemctl daemon-reload', then re-run this deploy"
+  echo "::error::$unit differs from apps/relay/server/wildflower-relay.service; install it on the host and run 'sudo systemctl daemon-reload', then re-run this deploy"
   exit 1
 fi
 
