@@ -1,0 +1,20 @@
+/*
+ * The create form: the owner's email and an optional name side by side when
+ * there is room, then any refusal and the submit button.
+ */
+.create-tunnel-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.create-tunnel-form__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-5);
+}
+
+.create-tunnel-form__actions {
+  display: flex;
+  justify-content: flex-start;
+}

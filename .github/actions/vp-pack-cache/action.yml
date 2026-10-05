@@ -13,6 +13,7 @@ runs:
         path: |
           node_modules/.vite/task-cache
           apps/*/dist
+          apps/relay/*/dist
           global/**/dist
           slices/**/dist
         key: vp-pack-${{ runner.os }}-${{ github.sha }}

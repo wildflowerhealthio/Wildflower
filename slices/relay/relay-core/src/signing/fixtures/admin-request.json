@@ -1,0 +1,14 @@
+{
+  "key": "an-admin-key-of-thirty-two-bytes",
+  "created": 1700000000,
+  "nonce": "fixture-nonce",
+  "method": "POST",
+  "url": "https://admin.relay.example.com/api/tunnels",
+  "body": "{\"email\":\"alice@example.com\",\"name\":\"alice\"}",
+  "headers": {
+    "content-type": "application/json",
+    "content-digest": "sha-256=:78pbWRilgIycC4dd1dfUHrWaCgzqf/KgJo0xyOk7dJc=:",
+    "signature-input": "sig=(\"@method\" \"@target-uri\" \"content-digest\");created=1700000000;nonce=\"fixture-nonce\";keyid=\"admin\";alg=\"hmac-sha256\"",
+    "signature": "sig=:38rpWIh2+/waUMeHdbraSa5SmTeYWl9da+JXuyll8Hg=:"
+  }
+}
