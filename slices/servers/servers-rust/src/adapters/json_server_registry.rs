@@ -166,13 +166,16 @@ impl StagedRegistryFile {
 }
 
 /// Create or truncate `path`, readable by the owner only since it holds
-/// tunnel tokens, write `bytes` and fsync.
+/// tunnel tokens, write `bytes` and fsync. A leftover file at `path` is
+/// narrowed to the owner too, since `mode` only applies to a file it creates.
 fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut options = fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let mut file = options.open(path)?;
+    #[cfg(unix)]
+    file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
     file.write_all(bytes)?;
     file.sync_all()
 }
@@ -329,6 +332,22 @@ mod tests {
 
         let (data_root, registry) = registry();
         registry.insert(wildflower_record("ruth")).unwrap();
+        let metadata = fs::metadata(data_root.path().join(SERVERS_FILE_NAME)).unwrap();
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_leftover_readable_temporary_file_is_narrowed_to_its_owner() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (data_root, registry) = registry();
+        let temp_path = data_root.path().join(format!(".{SERVERS_FILE_NAME}.tmp"));
+        fs::write(&temp_path, "").unwrap();
+        fs::set_permissions(&temp_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        registry.insert(wildflower_record("ruth")).unwrap();
+
         let metadata = fs::metadata(data_root.path().join(SERVERS_FILE_NAME)).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
     }
