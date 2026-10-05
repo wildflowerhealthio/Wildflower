@@ -1,7 +1,7 @@
 name: Deploy Relay
 
 # Builds wildflower-relay and deploys it to its droplet, where it runs under
-# apps/wildflower-relay/wildflower-relay.service. The relay has to own public
+# apps/relay/server/wildflower-relay.service. The relay has to own public
 # :443 and :80 and see raw TCP (it routes ciphertext by SNI and puts the
 # visitor's address in a PROXY header), so it runs alone on the host rather
 # than behind a platform's proxy.
@@ -16,7 +16,7 @@ name: Deploy Relay
 #   - optionally, variables for the other settings in relay.example.env;
 #     those left unset keep the relay's defaults.
 # The host's `deploy` user may run only the commands in
-# apps/wildflower-relay/deploy/sudoers as root, which don't include
+# apps/relay/server/deploy/sudoers as root, which don't include
 # installing the systemd unit.
 #
 # A restart drops open connections; devices reconnect their tunnels. A run
@@ -26,7 +26,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/wildflower-relay/**'
+      - 'apps/relay/server/**'
       - 'slices/shared-structures/shared-structures-rust/**'
       - 'slices/tunnel/rathole-settings-rust/**'
       - 'slices/persistence/persistence-rust/**'
@@ -86,8 +86,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           sparse-checkout: |
-            apps/wildflower-relay/deploy/install.sh
-            apps/wildflower-relay/wildflower-relay.service
+            apps/relay/server/deploy/install.sh
+            apps/relay/server/wildflower-relay.service
           sparse-checkout-cone-mode: false
 
       - name: Download binary
@@ -165,7 +165,7 @@ jobs:
         id: upload
         run: |
           set -euo pipefail
-          cp apps/wildflower-relay/deploy/install.sh apps/wildflower-relay/wildflower-relay.service "$RUNNER_TEMP/upload/"
+          cp apps/relay/server/deploy/install.sh apps/relay/server/wildflower-relay.service "$RUNNER_TEMP/upload/"
           dir="$(ssh relay mktemp -d)"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
           scp -q "$RUNNER_TEMP"/upload/* "relay:$dir/"

@@ -40,7 +40,7 @@ hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
 # The tunnel store's diesel connection pool and namespaced migration runner,
 # as the slices use them. The relay names the pool type but not rusqlite.
-persistence-rust = { path = "../../slices/persistence/persistence-rust" }
+persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
 ppp = "2.3"
@@ -55,7 +55,7 @@ rathole = { version = "0.5", default-features = false, features = [
   "noise",
 ] }
 # The wire shape of `GET /rathole`, shared with the device's rathole client.
-rathole-settings-rust = { path = "../../slices/tunnel/rathole-settings-rust" }
+rathole-settings-rust = { path = "../../../slices/tunnel/rathole-settings-rust" }
 # `rustls::server::Acceptor` reads the ClientHello's server name for routing.
 # `ring` is the provider for the site's TLS, the same one rustls-acme uses;
 # aws-lc-rs would need cmake to build.
@@ -80,7 +80,7 @@ sha2 = "0.10"
 # structured fields (RFC 9651), and serializes `@signature-params`.
 sfv = "0.15"
 # `GET /health` on the site.
-shared-structures-rust = { path = "../../slices/shared-structures/shared-structures-rust", features = [
+shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
 ] }
 # TCP keepalive on piped sockets (tokio has no setter); already in the tree

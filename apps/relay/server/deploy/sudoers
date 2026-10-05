@@ -2,7 +2,7 @@
 # /etc/sudoers.d/wildflower-relay. On the host:
 #
 #   curl -fsSL -o /tmp/wildflower-relay.sudoers \
-#     https://raw.githubusercontent.com/wildflowerhealthio/Wildflower/main/apps/wildflower-relay/deploy/sudoers
+#     https://raw.githubusercontent.com/wildflowerhealthio/Wildflower/main/apps/relay/server/deploy/sudoers
 #   sudo visudo -cf /tmp/wildflower-relay.sudoers \
 #     && sudo install -m 0440 -o root -g root /tmp/wildflower-relay.sudoers /etc/sudoers.d/wildflower-relay
 #
