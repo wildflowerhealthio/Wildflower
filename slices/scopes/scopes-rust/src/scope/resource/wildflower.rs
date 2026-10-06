@@ -53,6 +53,9 @@ pub enum WildflowerResource {
     /// The tunnel/relay settings singleton (`/tunnel`): read state (`.r`) and
     /// replace settings (`.u`).
     TunnelSettings,
+    /// The request log (`/requests`): each request the trusted front relayed to
+    /// the server. Read it (`.r`).
+    RequestLog,
 }
 
 impl WildflowerResourceScope {
@@ -131,6 +134,7 @@ impl WildflowerResource {
             "Apps" => Some(WildflowerResource::Apps),
             "Accounts" => Some(WildflowerResource::Accounts),
             "TunnelSettings" => Some(WildflowerResource::TunnelSettings),
+            "RequestLog" => Some(WildflowerResource::RequestLog),
             _ => None,
         }
     }
@@ -144,6 +148,7 @@ impl WildflowerResource {
             WildflowerResource::Apps => "Apps",
             WildflowerResource::Accounts => "Accounts",
             WildflowerResource::TunnelSettings => "TunnelSettings",
+            WildflowerResource::RequestLog => "RequestLog",
         }
     }
 }

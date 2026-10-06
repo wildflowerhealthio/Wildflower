@@ -7,9 +7,9 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 
 - **`wildflower-server-rust`** — `set_up(config, host, observers)` opens the
   host's databases, sets up every server slice (gatekeeper, emr, OHIF, collector,
-  tunnel, apps, databases), gates them, wraps them in the loopback owner trust,
-  the loopback-peer gate, the CORS policy and the forwarded-request observer,
-  and binds the loopback port;
+  tunnel, request log, apps, databases), gates them, wraps them in the loopback
+  owner trust, the loopback-peer gate, the CORS policy and the forwarded-request
+  observer, and binds the loopback port;
   `WildflowerServer::serve(shutdown)` serves the result until `shutdown` is
   cancelled. It also holds the server-side adapters that join two slices: the
   gatekeeper-backed `AppLaunchScopes` for apps, the reqwest `HealthProbe` for the
@@ -40,7 +40,7 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   tunnel, reported by the outermost layer as a `ForwardedRequest` record: the
   visitor's address, the path reduced to its route, the status, and the
   `RequestCaller` or `RequestRefusal` the gatekeeper bearer gates stamped on the
-  response. The layer sends the same record to the tunnel slice's request log.
+  response. The layer sends the same record to the request-log slice.
   A full report channel drops the report; it never delays a response.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the

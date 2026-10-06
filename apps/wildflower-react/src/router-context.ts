@@ -4,6 +4,7 @@ import type { DatabasesRouterContext } from 'databases-react'
 import type { Layer } from 'effect'
 import type { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import type { GatekeeperRouterContext } from 'gatekeeper-react'
+import type { RequestLogRouterContext } from 'request-log-react'
 import type { BaseRouterContext } from 'shared-structures-react'
 import type { TunnelRouterContext } from 'tunnel-react'
 
@@ -27,6 +28,7 @@ type SliceServices =
   | Layer.Layer.Success<CollectorRouterContext.RuntimeLayer>
   | Layer.Layer.Success<FhirR4ResourcesRouterContext.RuntimeLayer>
   | Layer.Layer.Success<DatabasesRouterContext.RuntimeLayer>
+  | Layer.Layer.Success<RequestLogRouterContext.RuntimeLayer>
 
 type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<SliceServices>
 type RunAuthed = BaseRouterContext.RunAuthedWith<SliceServices>

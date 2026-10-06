@@ -5,10 +5,10 @@ edition.workspace = true
 publish.workspace = true
 
 # The Wildflower server: `serve` composes every server slice (gatekeeper, emr,
-# OHIF, collector, tunnel, apps, databases) into the loopback API and serves it
-# until its shutdown token is cancelled. No `tauri` dependency — the Tauri host
-# hands in its native adapters as trait objects — so it compiles and tests
-# without GTK.
+# OHIF, collector, tunnel, request log, apps, databases) into the loopback API
+# and serves it until its shutdown token is cancelled. No `tauri` dependency —
+# the Tauri host hands in its native adapters as trait objects — so it compiles
+# and tests without GTK.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
@@ -38,6 +38,7 @@ emr-rust = { path = "../../emr/emr-rust" }
 gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 ohif-server-rust = { path = "../../dicom/ohif-server-rust" }
 persistence-rust = { path = "../../persistence/persistence-rust" }
+request-log-rust = { path = "../../request-log/request-log-rust" }
 # Names the per-database export/delete `Scope`s the databases catalogue declares.
 scopes-rust = { path = "../../scopes/scopes-rust" }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
@@ -56,6 +57,8 @@ tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 workspace = true
 
 [dev-dependencies]
+# The lifetime of the client tokens the request-log test in `tests/serve.rs` mints.
+chrono.workspace = true
 serde_json.workspace = true
 # A throwaway app-data dir for the `serve` lifecycle test.
 tempfile = "3"

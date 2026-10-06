@@ -22,10 +22,7 @@ serde = { workspace = true }
 serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
-# `chrono` maps the request log's `DateTime<Utc>` `received_at` column.
-diesel = { workspace = true, features = ["chrono"] }
-# The request log's timestamps, its retention cutoff, and its wire timestamps.
-chrono = { workspace = true, features = ["clock", "serde"] }
+diesel = { workspace = true }
 diesel_migrations.workspace = true
 # The loopback origin flows in as a typed `Url` (from `ServerRuntimeConfig`); the
 # daemon takes its bare origin string at construction.

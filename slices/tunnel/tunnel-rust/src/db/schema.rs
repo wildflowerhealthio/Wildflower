@@ -1,6 +1,5 @@
-//! Diesel table definitions for `tunnel_settings`, mirroring the STRICT table
-//! created by migration `0001_initial_schema`, and `tunnel_requests`, the request
-//! log created by `0002_tunnel_requests`. The singleton settings row
+//! Diesel table definition for `tunnel_settings`, mirroring the STRICT table
+//! created by migration `0001_initial_schema`. The singleton settings row
 //! (`id = 'tunnel'`) is addressed by `id`; `revision` is the optimistic-
 //! concurrency token, `requested_running` the on/off intent, and the nullable
 //! `relay_*` / `service_name` columns the write-only relay connection.
@@ -21,21 +20,5 @@ diesel::table! {
         relay_token -> Nullable<Text>,
         relay_public_key -> Nullable<Text>,
         service_name -> Nullable<Text>,
-    }
-}
-
-diesel::table! {
-    tunnel_requests (id) {
-        id -> BigInt,
-        received_at -> TimestamptzSqlite,
-        client_id -> Nullable<Text>,
-        address -> Nullable<Text>,
-        served_host -> Nullable<Text>,
-        method -> Text,
-        path -> Text,
-        status -> Integer,
-        response_bytes -> Nullable<BigInt>,
-        duration_ms -> BigInt,
-        refusal -> Nullable<Text>,
     }
 }

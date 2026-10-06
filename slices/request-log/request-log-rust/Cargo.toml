@@ -1,0 +1,63 @@
+[package]
+name = "request-log-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The request-log slice, host-side: each request the trusted front relayed to
+# the server, kept in the shared database, and the `/requests` HTTP surface the
+# request-log-react activity page reads it through. The server's
+# forwarded-request layer feeds it over a channel; a writer task records the
+# reports in batches, and a sweep drops rows past the retention window. Layered
+# like collector-rust: pure `domain`, `db`, and `http`.
+#
+# Persistence is Diesel over the host-owned `persistence_rust::DieselPool` (see
+# docs/Persistence/Shared Diesel Pool Explanation.md); this crate depends on
+# `persistence-rust` ONLY for the pool type — it does not touch `rusqlite`
+# directly.
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+serde = { workspace = true }
+utoipa.workspace = true
+utoipa-axum.workspace = true
+# `chrono` maps the log's `DateTime<Utc>` `received_at` column.
+diesel = { workspace = true, features = ["chrono"] }
+diesel_migrations.workspace = true
+# The log's timestamps, its retention cutoff, and its wire timestamps.
+chrono = { workspace = true, features = ["clock", "serde"] }
+# The app-wide diesel connection pool (`DieselPool` / `open_pool`) shared across
+# diesel-backed slices; this crate names the pool type but not rusqlite.
+persistence-rust = { path = "../../persistence/persistence-rust" }
+# The `ForwardedRequest` record the server reports, and the shared opaque-500
+# `InternalError` the handlers 500 with (`http-errors`).
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
+  "http-errors",
+] }
+# The scope grammar (`Scope`, `Permission`, `WildflowerResource`) the
+# `/requests` scope gate builds its required scope from — `wildflower/RequestLog.r`.
+scopes-rust = { path = "../../scopes/scopes-rust" }
+# The generic scope-gated capability machinery (`Scoped<F>`,
+# `FixedScopeCapability`, `ScopeClaims`, `insufficient_scope` +
+# `InsufficientScopeBody`) the `/requests` surface gates on; the `openapi`
+# feature derives `ToSchema` on the 403 body so the handlers can declare it in
+# utoipa.
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = [
+  "openapi",
+] }
+# `rt` runs the writer and the sweep, `sync` carries the reports, `time` paces
+# the sweep.
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tracing = "0.1"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The shared OpenAPI snapshot helper (assert/regenerate the committed spec); only
+# the snapshot test uses it, so it's a dev-dependency with the opt-in feature.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+http-body-util = { workspace = true }
+tower = { workspace = true, features = ["util"] }
