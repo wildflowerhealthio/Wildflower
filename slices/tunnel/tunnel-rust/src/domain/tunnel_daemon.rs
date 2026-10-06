@@ -12,7 +12,7 @@
 //! ## TunnelLiveness state machine
 //!
 //! One [`TunnelStatus`] and its error, published on a `watch` so every consumer
-//! (the HTTP `GET /tunnel`, the host's tunnel-drop notifications) reads one
+//! (the host's tunnel-drop notifications) reads one
 //! coherent value:
 //!
 //! ```text
@@ -148,14 +148,9 @@ impl TunnelDaemon {
         Self { state_tx, cancel }
     }
 
-    /// A snapshot of the current liveness.
-    pub(crate) fn liveness(&self) -> TunnelLiveness {
-        self.state_tx.borrow().clone()
-    }
-
     /// Subscribe to liveness transitions. Consumers `borrow()` for the live
     /// value or `await changed()` for transitions.
-    pub(crate) fn watch_liveness(&self) -> watch::Receiver<TunnelLiveness> {
+    pub fn watch_liveness(&self) -> watch::Receiver<TunnelLiveness> {
         self.state_tx.subscribe()
     }
 }
@@ -356,6 +351,11 @@ fn set_state(state: &watch::Sender<TunnelLiveness>, status: TunnelStatus, error:
 
 #[cfg(test)]
 impl TunnelDaemon {
+    /// A snapshot of the current liveness.
+    pub(crate) fn liveness(&self) -> TunnelLiveness {
+        self.state_tx.borrow().clone()
+    }
+
     /// Spawn with a near-zero backoff and fast probe timing so reconnect/probe
     /// tests don't wait on wall time. 1ms (not zero) keeps the retry loop from
     /// busy-spinning the runtime.

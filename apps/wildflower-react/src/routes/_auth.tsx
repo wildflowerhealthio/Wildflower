@@ -4,7 +4,6 @@ import { remotesQueryOptions } from 'collector-react'
 import { Effect } from 'effect'
 import type { JSX } from 'react'
 import { Sentry } from 'telemetry-web'
-import { tunnelStateQueryOptions } from 'tunnel-react'
 
 import type { RouterContext } from '../router-context.ts'
 import { wildflowerRouteOptions } from '../session/auth-gated-route-options.ts'
@@ -24,8 +23,8 @@ import { AppTabShell } from '../session/tab-bar.tsx'
  *
  * The route's `loader` runs once per gate-pass and:
  *
- *   1. Warms the key startup queries (tunnel state, apps list,
- *      collector remotes list) so every main destination renders
+ *   1. Warms the key startup queries (apps list, collector
+ *      remotes list) so every main destination renders
  *      without a network spinner — hiding the web-app nature of these
  *      pages in the embedded WebView.
  *   2. Emits the embedded `UIReady` nav-bridge message so the host
@@ -45,7 +44,6 @@ import { AppTabShell } from '../session/tab-bar.tsx'
 const authLoader = async ({ context }: { readonly context: RouterContext }): Promise<void> => {
   const transport = await context.transport
   await Promise.allSettled([
-    context.queryClient.query(tunnelStateQueryOptions(context.runAuthed)),
     context.queryClient.query(appsListQueryOptions(context.runAuthed)),
     context.queryClient.query(remotesQueryOptions(context.runAuthed)),
   ])

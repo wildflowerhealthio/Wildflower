@@ -108,8 +108,8 @@ type BackgroundServerServiceBridge = Bridge.Bridge<
  *
  * @remarks
  * One snapshot host → web and one request web → host. The tunnel's state is
- * not on this bridge: while the server runs, the page reads it over
- * `GET /tunnel`.
+ * not on this bridge: the tunnel belongs to the host, which reads its
+ * liveness in-process.
  */
 const BackgroundServerServiceBridge: BackgroundServerServiceBridge = Bridge.make({
   name: 'BackgroundServerService',

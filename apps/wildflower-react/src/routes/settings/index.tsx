@@ -6,7 +6,6 @@ import type { JSX } from 'react'
 import { ItemList, PageHeader } from 'react-tundraish'
 import { requestLogSettingsItemsFragment } from 'request-log-react'
 import type { SettingsItem } from 'shared-structures-react'
-import { tunnelSettingsItemsFragment } from 'tunnel-react'
 
 import { usePlatformSettingsItems } from '../../session/platform-settings-items-context.ts'
 import { useTelemetrySettingsItems } from '../../session/telemetry-settings-items.ts'
@@ -19,7 +18,6 @@ import { useTelemetrySettingsItems } from '../../session/telemetry-settings-item
  * appended after these — the entry, not this route, decides those.
  */
 const sliceSettingsItems: readonly SettingsItem[] = [
-  ...tunnelSettingsItemsFragment,
   ...requestLogSettingsItemsFragment,
   ...gatekeeperSettingsItemsFragment,
   ...databasesSettingsItemsFragment,

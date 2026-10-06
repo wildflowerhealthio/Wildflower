@@ -7,13 +7,14 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 
 - **`wildflower-server-rust`** — `set_up(config, host, observers)` opens the
   host's databases, sets up every server slice (gatekeeper, emr, OHIF, collector,
-  tunnel, request log, apps, databases), gates them, wraps them in the loopback
-  owner trust, the loopback-peer gate, the CORS policy and the forwarded-request
-  observer, and binds the loopback port;
+  request log, apps, databases), gates them, wraps them in the loopback owner
+  trust, the loopback-peer gate, the CORS policy and the forwarded-request
+  observer, starts the tunnel, and binds the loopback port;
   `WildflowerServer::serve(shutdown)` serves the result until `shutdown` is
-  cancelled. It also holds the server-side adapters that join two slices: the
-  gatekeeper-backed `AppLaunchScopes` for apps and the reqwest `HealthProbe` for
-  the tunnel. It derives the server's public origin from its public host once and
+  cancelled. The tunnel has no route on the server: `WildflowerServer` holds
+  its daemon, so it dials for exactly as long as the server serves. It also
+  holds the server-side adapters that join two slices: the gatekeeper-backed
+  `AppLaunchScopes` for apps and the reqwest `HealthProbe` for the tunnel. It derives the server's public origin from its public host once and
   hands it to emr (HFS's `base_url`) and apps (every launch's origin). The
   unmatched-route `404` is here too.
   - Layout: `config.rs` at the crate root, the host's inputs
@@ -45,9 +46,10 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   A full report channel drops the report; it never delays a response.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
-  listener, not those tasks. `background-server-service` runs each server on a
-  dedicated runtime it shuts down when the server stops, which is what ends
-  them.
+  listener, not those tasks (the tunnel's supervisor and its liveness copy are
+  the exception: they stop when `serve` returns). `background-server-service`
+  runs each server on a dedicated runtime it shuts down when the server stops,
+  which is what ends them.
 
 ## References
 

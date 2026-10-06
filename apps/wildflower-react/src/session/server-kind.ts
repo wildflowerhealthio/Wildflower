@@ -6,7 +6,7 @@ import { createContext, useContext } from 'react'
  * shell offers:
  *
  *  - `Wildflower` — a Wildflower server, with every Wildflower-only endpoint
- *    the shell calls (tunnel, apps, collector, settings). `main-tauri` is
+ *    the shell calls (apps, collector, settings). `main-tauri` is
  *    always this, and so is `main-web` unless its sign-in found otherwise.
  *  - `PlainSmart` — a plain SMART on FHIR server (SMART Health IT's, say) that
  *    `main-web` signed in to. It has none of those endpoints, so the shell

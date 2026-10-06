@@ -4,7 +4,6 @@ import databasesSpec from '../../../slices/databases/databases-rust/openapi/data
 import fhirSpec from '../../../slices/emr/emr-rust/openapi/fhir-r4.openapi.json'
 import gatekeeperSpec from '../../../slices/gatekeeper/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json'
 import requestLogSpec from '../../../slices/request-log/request-log-rust/openapi/request-log.openapi.json'
-import tunnelSpec from '../../../slices/tunnel/tunnel-rust/openapi/tunnel-admin.openapi.json'
 
 import type { OpenApiDocument } from './spec.ts'
 
@@ -30,7 +29,6 @@ export const docSources: readonly DocSource[] = [
   { title: 'Apps', slug: 'apps', spec: appsSpec },
   { title: 'Databases', slug: 'databases', spec: databasesSpec },
   { title: 'Collector', slug: 'collector', spec: collectorSpec },
-  { title: 'Tunnel', slug: 'tunnel', spec: tunnelSpec },
   { title: 'Request log', slug: 'request-log', spec: requestLogSpec },
   { title: 'FHIR R4', slug: 'fhir-r4', spec: fhirSpec },
 ]

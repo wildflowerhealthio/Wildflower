@@ -60,14 +60,14 @@ describe('prependApiBaseUrl', () => {
       const innerClient = htmlClientLayer()
 
       // Act
-      await Effect.flatMap(HttpClient.HttpClient, (client) => client.get('/tunnel')).pipe(
+      await Effect.flatMap(HttpClient.HttpClient, (client) => client.get('/apps')).pipe(
         Effect.provide(prependApiBaseUrl(innerClient, 'http://127.0.0.1:8080')),
         Effect.runPromise
       )
 
       // Assert
       expect(warnSpy).toHaveBeenCalledWith(
-        '[api] non-JSON response: GET http://127.0.0.1:8080/tunnel -> 200 text/html'
+        '[api] non-JSON response: GET http://127.0.0.1:8080/apps -> 200 text/html'
       )
     } finally {
       warnSpy.mockRestore()

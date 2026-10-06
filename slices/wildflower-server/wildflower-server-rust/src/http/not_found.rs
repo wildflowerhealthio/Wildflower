@@ -197,7 +197,7 @@ mod tests {
 
     #[tokio::test]
     async fn api_clients_get_the_structured_route_not_found_body() {
-        let uri: Uri = "/settings/tunnel?tab=a".parse().expect("uri");
+        let uri: Uri = "/settings/requests?tab=a".parse().expect("uri");
         let response = respond(&config(), &Method::GET, &headers(&[]), &uri);
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body: serde_json::Value =
@@ -206,17 +206,17 @@ mod tests {
             body,
             serde_json::json!({
                 "error": "RouteNotFound",
-                "path": "/settings/tunnel?tab=a",
+                "path": "/settings/requests?tab=a",
                 "openInApp": "https://owner-ui.test/app/\
                     ?server=http%3A%2F%2F127.0.0.1%3A8080\
-                    &returnTo=%2Fsettings%2Ftunnel%3Ftab%3Da",
+                    &returnTo=%2Fsettings%2Frequests%3Ftab%3Da",
             })
         );
     }
 
     #[tokio::test]
     async fn browsers_get_an_html_page_linking_to_the_hosted_ui() {
-        let uri: Uri = "/settings/tunnel".parse().expect("uri");
+        let uri: Uri = "/settings/requests".parse().expect("uri");
         let response = respond(
             &config(),
             &Method::GET,
@@ -231,7 +231,7 @@ mod tests {
             .is_some_and(|v| v.starts_with("text/html")));
         let html = body_text(response).await;
         assert!(html.contains(
-            "href=\"https://owner-ui.test/app/?server=http%3A%2F%2F127.0.0.1%3A8080&amp;returnTo=%2Fsettings%2Ftunnel\""
+            "href=\"https://owner-ui.test/app/?server=http%3A%2F%2F127.0.0.1%3A8080&amp;returnTo=%2Fsettings%2Frequests\""
         ));
     }
 

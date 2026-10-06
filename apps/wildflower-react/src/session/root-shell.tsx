@@ -5,7 +5,7 @@ import type { JSX } from 'react'
 import { usePlatformBanner } from './platform-banner-context.ts'
 import styles from './root-shell.module.css'
 
-// Every slice's client DI (tunnel, apps, gatekeeper, collector, fhir-r4) has
+// Every slice's client DI (apps, gatekeeper, collector, fhir-r4) has
 // migrated to TanStack Query + the router-context runAuthed/runtimeLayer, so no
 // slice client providers nest here anymore. Auth/runtime/transport/sender
 // providers wrap the router from above (app-root.tsx's InnerWrap).

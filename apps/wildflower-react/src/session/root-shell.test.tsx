@@ -113,11 +113,6 @@ vi.mock('fhir-r4-react', () => ({
 vi.mock('apps-react', () => ({
   AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
-// Prefetch is gated off (null token); these stubs keep the import light.
-vi.mock('tunnel-react', () => ({
-  tunnelStateQueryOptions: () => ({ queryKey: ['tunnel', 'state'], queryFn: () => null }),
-  TunnelRouterContext: { sliceRuntimeLayer: Layer.empty },
-}))
 vi.mock('../bridges/collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: makePassthrough('CollectorSenderForwarder'),
 }))

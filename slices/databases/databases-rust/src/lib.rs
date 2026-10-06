@@ -13,7 +13,7 @@
 //! Matching an incoming id against that catalogue both resolves the file and
 //! closes path traversal (only catalogued filenames ever reach the filesystem).
 //!
-//! Layered like `apps-rust` / `tunnel-rust`:
+//! Layered like `apps-rust` / `request-log-rust`:
 //!
 //!  - [`config`] — the host-supplied [`DatabaseDescriptor`] catalogue.
 //!  - [`domain`] — the failure vocabulary ([`domain::DatabaseError`]), the wire

@@ -8924,28 +8924,18 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "axum",
- "http",
- "http-body-util",
  "parking_lot",
- "proptest",
  "rand 0.10.3",
  "rathole",
  "rathole-settings-rust",
- "scope-capabilities-rust",
- "scopes-rust",
  "serde",
  "serde_json",
- "shared-structures-rust",
  "tempfile",
  "tokio",
  "tokio-util",
  "toml 0.9.6",
- "tower",
  "tracing",
  "url",
- "utoipa",
- "utoipa-axum",
 ]
 
 [[package]]

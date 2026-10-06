@@ -6,7 +6,6 @@ import type { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import type { GatekeeperRouterContext } from 'gatekeeper-react'
 import type { RequestLogRouterContext } from 'request-log-react'
 import type { BaseRouterContext } from 'shared-structures-react'
-import type { TunnelRouterContext } from 'tunnel-react'
 
 import type { ReactTransport } from './bridges/transport-context.ts'
 import type { ServerKind } from './session/server-kind.ts'
@@ -22,7 +21,6 @@ import type { SignInProblem } from './sign-in.ts'
  */
 
 type SliceServices =
-  | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
   | Layer.Layer.Success<AppsRouterContext.RuntimeLayer>
   | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>
   | Layer.Layer.Success<CollectorRouterContext.RuntimeLayer>

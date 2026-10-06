@@ -43,7 +43,7 @@ describe('signInEnvironment', () => {
     // directory-derived URI (what the server-docs console uses) would give
     // three different values here and only one could be the registered entry.
     const fromRoot = signInEnvironment(pageAt('https://wildflowerhealth.io/'))
-    const fromSection = signInEnvironment(pageAt('https://wildflowerhealth.io/settings/tunnel'))
+    const fromSection = signInEnvironment(pageAt('https://wildflowerhealth.io/settings/requests'))
     const fromDev = signInEnvironment(pageAt('http://127.0.0.1:5173/gatekeeper/grants'))
 
     // Assert
@@ -180,7 +180,7 @@ describe('finishSignIn', () => {
       sessionStorage: store,
     })
     const environment = signInEnvironment(page)
-    const started = await startSignIn(SERVER_URL, '/settings/tunnel', environment)
+    const started = await startSignIn(SERVER_URL, '/settings/requests', environment)
     expect(started.tag).toBe('Ok')
     if (started.tag !== 'Ok') return
     const state = new URL(started.value).searchParams.get('state') ?? ''
@@ -199,7 +199,7 @@ describe('finishSignIn', () => {
       smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER_URL}/fhir-r4` }),
       expiresInSeconds: 3600,
       patient: undefined,
-      returnTo: '/settings/tunnel',
+      returnTo: '/settings/requests',
     })
     // Single-use: the record is gone, so a replayed callback cannot look
     // legitimate.
@@ -412,10 +412,10 @@ describe('scheduleExpiry', () => {
 describe('returnToOnPage', () => {
   it('reads the path the auth gate bounced the reader from, raw', () => {
     // Arrange — raw: `main-web` sanitises what comes back, not this reader.
-    const href = `https://wildflowerhealth.io/app/?server=x&returnTo=${encodeURIComponent('/settings/tunnel?tab=logs')}`
+    const href = `https://wildflowerhealth.io/app/?server=x&returnTo=${encodeURIComponent('/settings/requests?tab=logs')}`
 
     // Act / Assert
-    expect(returnToOnPage(href)).toBe('/settings/tunnel?tab=logs')
+    expect(returnToOnPage(href)).toBe('/settings/requests?tab=logs')
   })
 
   it('names nothing when the page carries no returnTo, or an empty one', () => {
@@ -436,9 +436,9 @@ describe('postSignInUrl', () => {
   it('drops the server the gate carried into returnTo, keeping the rest of its query and hash', () => {
     // The gate preserves the whole path it bounced, including the retained
     // `?server=`; only that parameter leaves, and the fragment survives.
-    const returnTo = `/settings/tunnel?tab=logs&server=${encodeURIComponent(SERVER_URL)}#live`
+    const returnTo = `/settings/requests?tab=logs&server=${encodeURIComponent(SERVER_URL)}#live`
 
-    expect(postSignInUrl(returnTo, ORIGIN)).toBe('/settings/tunnel?tab=logs#live')
+    expect(postSignInUrl(returnTo, ORIGIN)).toBe('/settings/requests?tab=logs#live')
   })
 
   it('property: never names a server, whatever query returnTo brings', () => {

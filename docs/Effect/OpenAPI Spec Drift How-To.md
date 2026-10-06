@@ -21,7 +21,7 @@ server?", not a full diff). The shared test harnesses are
 [`shared-structures-core/openapi-drift/testing`](../../slices/shared-structures/shared-structures-core/src/openapi-drift/testing.ts)
 (`defineSpecDriftTest`) and
 [`shared-structures-rust`'s `openapi_snapshot`](../../slices/shared-structures/shared-structures-rust/src/openapi_snapshot.rs)
-(`assert_up_to_date`). `gatekeeper` and `tunnel` are the worked examples.
+(`assert_up_to_date`). `gatekeeper` and `request-log` are the worked examples.
 
 The `api-sync` CI workflow runs **both** halves whenever either side changes, so
 a one-sided change can't slip drift past the per-language `Rust` /
@@ -44,7 +44,7 @@ In `slices/<slice>/<slice>-rust`:
 3. `#[utoipa::path(...)]` on each handler (method + `path` + `responses` +
    `request_body`), and assemble them with `utoipa_axum`'s `OpenApiRouter` +
    `routes!` so the spec is collected from the same routes that serve traffic
-   (see `gatekeeper-rust`/`tunnel-rust` `http/mod.rs` → `documented_router()`).
+   (see `gatekeeper-rust`/`request-log-rust` `http/mod.rs` → `documented_router()`).
 4. Add the snapshot test, delegating to the shared helper with the **shared
    name** so CI's workspace-wide run picks it up:
 

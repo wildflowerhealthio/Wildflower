@@ -28,11 +28,6 @@
       "rendered": "wildflower/Accounts.cruds"
     },
     {
-      "scope": "wildflower/TunnelSettings.r",
-      "kind": "wildflower",
-      "rendered": "wildflower/TunnelSettings.r"
-    },
-    {
       "scope": "wildflower/RequestLog.r",
       "kind": "wildflower",
       "rendered": "wildflower/RequestLog.r"
@@ -105,17 +100,8 @@
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/Apps.r", "covers": true },
     { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Apps.r", "covers": true },
     { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Accounts.r", "covers": false },
-    {
-      "allowed": "wildflower/*.cruds",
-      "requested": "wildflower/TunnelSettings.r",
-      "covers": true
-    },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/RequestLog.r", "covers": true },
-    {
-      "allowed": "wildflower/TunnelSettings.cruds",
-      "requested": "wildflower/RequestLog.r",
-      "covers": false
-    },
+    { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/RequestLog.r", "covers": false },
     { "allowed": "wildflower/launch", "requested": "wildflower/launch", "covers": true },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/launch", "covers": false },
     { "allowed": "offline_access", "requested": "offline_access", "covers": true },

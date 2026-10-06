@@ -30,7 +30,6 @@ const RESOURCE_LABELS: Readonly<
   Token: { label: 'Token', plural: 'Tokens' },
   Apps: { label: 'App', plural: 'Apps' },
   Accounts: { label: 'Account', plural: 'Accounts' },
-  TunnelSettings: { label: 'Tunnel settings', plural: 'Tunnel settings' },
   RequestLog: { label: 'Request log', plural: 'Request log' },
 }
 
@@ -100,7 +99,6 @@ namespace WildflowerResourceType {
     | 'Token'
     | 'Apps'
     | 'Accounts'
-    | 'TunnelSettings'
     | 'RequestLog'
 
   namespace Resource {
@@ -111,7 +109,6 @@ namespace WildflowerResourceType {
       'Token',
       'Apps',
       'Accounts',
-      'TunnelSettings',
       'RequestLog',
     ]
 
