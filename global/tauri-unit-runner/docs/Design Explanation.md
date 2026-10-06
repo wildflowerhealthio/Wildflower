@@ -120,12 +120,16 @@ ignored.
 - **Run gate.** Each unit has its own run gate. A run waits at it until the
   unit's previous run has ended and published `Stopped`. So a unit's run state
   never goes backwards, and two runs of one unit never overlap. Units never wait
-  for each other. A run asked to stop while it waits never starts.
+  for each other. A run asked to stop while it waits never starts and publishes
+  nothing: the unit's status stays as its last run left it, or never run for a
+  unit that hasn't run yet. Statuses report runs that happened.
 - **States.**
   - `Starting` is published when the run begins.
   - `Running` is published when the unit calls `running()`.
   - `Stopped` is published once the runtime is gone, with the stop reason and,
-    for a failure, the error as its `{:#}` anyhow chain.
+    for a failure, the error as its `{:#}` anyhow chain. The runner has
+    recorded the end (and scheduled any restart) by then, so a `set_policy`
+    the app makes on seeing `Stopped` always cancels that restart.
   - The detail is cleared at both ends of the run. Once `Stopped` is
     published, nothing a leftover clone of the run's `RunContext` reports
     lands.

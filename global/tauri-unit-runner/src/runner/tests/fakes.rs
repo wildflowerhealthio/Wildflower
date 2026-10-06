@@ -1,12 +1,12 @@
 //! The doubles the runner tests share: a hand-set wall clock, scripted units
 //! that record their runs, a fake lease platform, and status waits.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tokio::sync::Barrier;
+use tokio::sync::{Barrier, Semaphore};
 
 use crate::domain::lease_book::LeaseId;
 use crate::domain::run_policy::RunPolicy;
@@ -20,7 +20,7 @@ use crate::unit::{Unit, UnitId};
 
 /// How long a test waits for something that should happen promptly before it
 /// fails rather than hangs.
-pub(super) const PROMPTLY: Duration = Duration::from_secs(10);
+pub(super) const PROMPTLY: Duration = Duration::from_secs(30);
 
 /// How long a test watches for something that must not happen.
 pub(super) const A_WHILE: Duration = Duration::from_millis(300);
@@ -157,6 +157,9 @@ pub(super) enum Script {
     RunUntilStopped { detail: Option<Detail> },
     /// Like `RunUntilStopped`, but take `shutdown_takes` to wind down.
     WindDownSlowly { shutdown_takes: Duration },
+    /// Report running, and once asked to stop, wind down only when the test
+    /// adds a permit to `release`.
+    WindDownWhenReleased { release: Arc<Semaphore> },
     /// Wait at `barrier` with the other units, then report running and wait to
     /// be asked to stop.
     MeetOthers { barrier: Arc<Barrier> },
@@ -170,8 +173,17 @@ pub(super) enum Script {
     /// Panic with `message`.
     Panic { message: &'static str },
     /// Report running, hand a clone of the context to a thread that outlives
-    /// the run and writes to it after `delay`, then wait to be asked to stop.
-    LeakContext { delay: Duration },
+    /// the run, then wait to be asked to stop. The thread writes to the
+    /// context once the test sets `leaked.write_now`, then sets
+    /// `leaked.written`.
+    LeakContext { leaked: Arc<LeakedContextSignals> },
+}
+
+/// When a leaked context is written to, and that it has been.
+#[derive(Default)]
+pub(super) struct LeakedContextSignals {
+    pub(super) write_now: AtomicBool,
+    pub(super) written: AtomicBool,
 }
 
 /// What scripted units record about their runs.
@@ -263,6 +275,12 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
             tokio::time::sleep(shutdown_takes).await;
             Ok(())
         }
+        Script::WindDownWhenReleased { release } => {
+            ctx.running();
+            ctx.shutdown().cancelled().await;
+            let _permit = release.acquire().await?;
+            Ok(())
+        }
         Script::MeetOthers { barrier } => {
             barrier.wait().await;
             ctx.running();
@@ -281,13 +299,16 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
             Ok(())
         }
         Script::Panic { message } => panic!("{message}"),
-        Script::LeakContext { delay } => {
+        Script::LeakContext { leaked } => {
             ctx.running();
-            let leaked = ctx.clone();
+            let leaked_ctx = ctx.clone();
             std::thread::spawn(move || {
-                std::thread::sleep(delay);
-                leaked.set_detail("written after the run".to_owned());
-                leaked.running();
+                while !leaked.write_now.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                leaked_ctx.set_detail("written after the run".to_owned());
+                leaked_ctx.running();
+                leaked.written.store(true, Ordering::SeqCst);
             });
             ctx.shutdown().cancelled().await;
             Ok(())

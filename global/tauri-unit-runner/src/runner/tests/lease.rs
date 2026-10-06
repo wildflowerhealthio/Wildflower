@@ -77,6 +77,7 @@ async fn a_unit_waiting_to_restart_keeps_the_lease() {
     harness
         .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)
         .await;
+    eventually("the lease is held", || lease.task_running()).await;
     tokio::time::sleep(A_WHILE).await;
     assert!(lease.task_running());
     assert_eq!(lease.releases(), 0);
@@ -170,6 +171,9 @@ async fn the_runner_s_own_release_stops_nothing() {
         Script::RunUntilStopped { detail: None },
         &probe,
     );
+    // Stopped only once its run is up: a run stopped before it passes its
+    // gate never starts, and leaves no stop of its own.
+    harness.wait_until_running("unit").await;
     eventually("the lease is held", || lease.task_running()).await;
     harness
         .core

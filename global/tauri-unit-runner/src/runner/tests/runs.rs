@@ -1,11 +1,14 @@
 //! Runs: isolation, concurrency, the run gate, panics, details and removal.
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::Barrier;
+use tokio::sync::{Barrier, Semaphore};
 
-use super::fakes::{eventually, last_stop, Harness, Probe, RunEvent, Script, A_WHILE};
+use super::fakes::{
+    eventually, last_stop, Harness, LeakedContextSignals, Probe, RunEvent, Script, A_WHILE,
+};
 use crate::domain::run_policy::RunPolicy;
 use crate::status::{RunState, StopReason, UnitStatus};
 use crate::unit::UnitId;
@@ -37,11 +40,12 @@ async fn every_unit_runs_at_once_with_no_cap() {
 async fn a_unit_s_next_run_waits_for_its_previous_run_to_end() {
     let harness = Harness::new();
     let slow = Probe::default();
+    let release = Arc::new(Semaphore::new(0));
     harness.set(
         "unit",
         RunPolicy::Always,
-        Script::WindDownSlowly {
-            shutdown_takes: Duration::from_millis(300),
+        Script::WindDownWhenReleased {
+            release: Arc::clone(&release),
         },
         &slow,
     );
@@ -56,6 +60,15 @@ async fn a_unit_s_next_run_waits_for_its_previous_run_to_end() {
         Script::RunUntilStopped { detail: None },
         &replacement,
     );
+    tokio::time::sleep(A_WHILE).await;
+    assert_eq!(replacement.starts(), 0, "the old run still holds the gate");
+    assert_eq!(
+        harness.status("unit").map(|status| status.run_state),
+        Some(RunState::Running),
+        "the old run's state stands until it has stopped"
+    );
+
+    release.add_permits(1);
     eventually("the replacement runs", || replacement.starts() == 1).await;
     assert_eq!(
         slow.events(),
@@ -72,11 +85,12 @@ async fn a_unit_s_next_run_waits_for_its_previous_run_to_end() {
 async fn units_never_wait_for_each_other() {
     let harness = Harness::new();
     let slow = Probe::default();
+    let release = Arc::new(Semaphore::new(0));
     harness.set(
         "slow",
         RunPolicy::Always,
-        Script::WindDownSlowly {
-            shutdown_takes: Duration::from_millis(500),
+        Script::WindDownWhenReleased {
+            release: Arc::clone(&release),
         },
         &slow,
     );
@@ -99,6 +113,10 @@ async fn units_never_wait_for_each_other() {
             .is_some_and(|status| status.run_state == RunState::Running),
         "the other unit started while the slow one was still winding down"
     );
+    release.add_permits(1);
+    harness
+        .wait_until_stopped_for("slow", StopReason::StoppedByRunner)
+        .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -195,11 +213,12 @@ async fn a_running_unit_reports_its_detail_until_its_run_ends() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_context_used_after_its_run_ended_changes_nothing() {
     let harness = Harness::new();
+    let leaked = Arc::new(LeakedContextSignals::default());
     harness.set(
         "unit",
         RunPolicy::Always,
         Script::LeakContext {
-            delay: Duration::from_millis(200),
+            leaked: Arc::clone(&leaked),
         },
         &Probe::default(),
     );
@@ -210,7 +229,11 @@ async fn a_context_used_after_its_run_ended_changes_nothing() {
     let stopped = harness
         .wait_for("unit", "stopped", |status| last_stop(status).is_some())
         .await;
-    tokio::time::sleep(A_WHILE + Duration::from_millis(200)).await;
+    leaked.write_now.store(true, Ordering::SeqCst);
+    eventually("the leaked context is written to", || {
+        leaked.written.load(Ordering::SeqCst)
+    })
+    .await;
     assert_eq!(harness.status("unit"), Some(stopped));
 }
 
@@ -246,27 +269,36 @@ async fn remove_waits_for_the_run_to_end_and_forgets_the_unit() {
 async fn a_unit_set_again_while_being_removed_stays() {
     let harness = Harness::new();
     let probe = Probe::default();
+    let release = Arc::new(Semaphore::new(0));
     harness.set(
         "unit",
         RunPolicy::Always,
-        Script::WindDownSlowly {
-            shutdown_takes: Duration::from_millis(300),
+        Script::WindDownWhenReleased {
+            release: Arc::clone(&release),
         },
         &probe,
     );
     harness.wait_until_running("unit").await;
-    let removing = {
-        let core = Arc::clone(&harness.core);
-        tokio::spawn(async move { core.remove(&UnitId::from("unit")).await })
-    };
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    let unit_id = UnitId::from("unit");
+    let mut removing = Box::pin(harness.core.remove(&unit_id));
+    // The first poll marks the unit as being removed and stops its run; the
+    // removal then waits for the run, which waits for `release`.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), &mut removing)
+            .await
+            .is_err(),
+        "the removal waits for the run"
+    );
     harness.set(
         "unit",
         RunPolicy::Always,
         Script::RunUntilStopped { detail: None },
         &probe,
     );
-    removing.await.expect("remove finishes");
+    release.add_permits(1);
+    tokio::time::timeout(Duration::from_secs(10), removing)
+        .await
+        .expect("remove finishes");
     eventually("the unit runs again", || probe.starts() == 2).await;
     harness.wait_until_running("unit").await;
 }
@@ -281,4 +313,31 @@ async fn a_new_unit_has_never_run() {
         &Probe::default(),
     );
     assert_eq!(harness.status("unit"), Some(UnitStatus::never_run()));
+}
+
+/// On a current-thread runtime the run spawned by `set` can't pass its gate
+/// before the test yields, so the stop lands on a run that hasn't started.
+#[tokio::test]
+async fn a_run_stopped_before_it_starts_publishes_nothing() {
+    let harness = Harness::new();
+    let probe = Probe::default();
+    harness.set(
+        "unit",
+        RunPolicy::Always,
+        Script::RunUntilStopped { detail: None },
+        &probe,
+    );
+    harness
+        .core
+        .set_policy(&UnitId::from("unit"), RunPolicy::Off);
+    tokio::time::sleep(A_WHILE).await;
+    assert_eq!(probe.starts(), 0, "the stopped run never started");
+    assert_eq!(harness.status("unit"), Some(UnitStatus::never_run()));
+
+    // The runner's record of the unit is whole: it starts when set to.
+    harness
+        .core
+        .set_policy(&UnitId::from("unit"), RunPolicy::Always);
+    harness.wait_until_running("unit").await;
+    assert_eq!(probe.starts(), 1);
 }

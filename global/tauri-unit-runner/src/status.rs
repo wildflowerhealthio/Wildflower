@@ -45,7 +45,8 @@ pub enum RunState {
     /// The run's unit has called [`RunContext::running`](crate::RunContext::running).
     Running,
     /// No run is in progress. `last_stop` is how the latest run stopped, or
-    /// `None` when the unit has never run.
+    /// `None` when the unit has never run. A run stopped while it waits for
+    /// its unit's previous run never starts and changes nothing here.
     Stopped { last_stop: Option<RunStop> },
 }
 

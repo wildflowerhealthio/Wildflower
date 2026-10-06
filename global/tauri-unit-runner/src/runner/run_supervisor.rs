@@ -30,8 +30,8 @@ pub(crate) struct RunSpec<D> {
 ///
 /// Waits at the unit's run gate for its previous run to end, then publishes
 /// `Starting` and runs the unit on its own thread and runtime. Once that
-/// runtime is gone it publishes `Stopped` with the run's stop reason and
-/// error, opens the gate, and tells the runner the run ended.
+/// runtime is gone it tells the runner the run ended, publishes `Stopped` with
+/// the run's stop reason and error, and opens the gate.
 ///
 /// A run asked to stop while it waits at the gate never starts and publishes
 /// nothing; it still waits its turn, so its end implies its predecessors'.
@@ -69,8 +69,12 @@ pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
     } else {
         log::info!("[unit-runner] {unit_id} stopped ({reason:?})");
     }
+    // The runner records the end (scheduling a restart, or starting the next
+    // run behind the gate) before anyone can see `Stopped`, so whatever the
+    // app does on seeing it, a `set_policy` included, acts on a run that has
+    // ended.
+    core.run_ended(&unit_id, number, reason);
     core.board().publish_stopped(&unit_id, &run, reason, error);
     drop(run_gate_guard);
-    core.run_ended(&unit_id, number, reason);
     ended_tx.send_replace(true);
 }
