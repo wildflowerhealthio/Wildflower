@@ -42,6 +42,9 @@ impl IntoResponse for DicomFileError {
                 }),
             )
                 .into_response(),
+            DicomFileError::InsufficientScope { missing_scopes } => {
+                scope_capabilities_rust::insufficient_scope(missing_scopes)
+            }
             DicomFileError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }

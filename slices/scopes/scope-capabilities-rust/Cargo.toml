@@ -6,8 +6,8 @@ publish.workspace = true
 
 # The enforcement half of the scope system — the generic scope-gated capability
 # extractors (`Scoped<F>`, `Capability`, `FixedScopeCapability`, `ScopeClaims`,
-# the shared 403 `insufficient_scope`) every HTTP slice copies to gate its
-# endpoints. Lives in the scopes slice, beside the grammar it enforces
+# `MissingScopes`, the shared 403 `insufficient_scope`) every HTTP slice copies
+# to gate its endpoints. Lives in the scopes slice, beside the grammar it enforces
 # (`scopes-rust`), as its own crate rather than a feature of `scopes-rust`: the
 # fail-closed 500 reuses shared-structures' `InternalError`, and shared-structures
 # already depends on `scopes-rust`, so folding this into `scopes-rust` would be a

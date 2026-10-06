@@ -10,6 +10,7 @@ use scopes_rust::{Grant, Scope};
 use super::state::DatabasesState;
 use crate::adapters::FilesystemDatabaseFiles;
 use crate::domain::capabilities::DatabasesDeleter;
+use crate::domain::DatabaseError;
 
 /// Delete a catalogued database — `Scoped<LiveDatabasesDeleter>` in the delete
 /// handler.
@@ -18,6 +19,7 @@ pub(crate) type LiveDatabasesDeleter = DatabasesDeleter<FilesystemDatabaseFiles>
 impl Capability for LiveDatabasesDeleter {
     type State = Arc<DatabasesState>;
     type Claims = ScopeClaims;
+    type Error = DatabaseError;
 
     // Empty — the data-dependent flavour; see `LiveDatabasesReader`'s binding.
     fn required_scopes() -> Vec<Scope> {

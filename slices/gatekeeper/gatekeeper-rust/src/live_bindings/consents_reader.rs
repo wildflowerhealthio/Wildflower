@@ -13,6 +13,7 @@ use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::access::consents::consent_reader_scopes;
 use crate::domain::capabilities::{ConsentReader, FixedScopeCapability};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifiedClaims;
 
 /// Read pending consent prompts.
@@ -21,6 +22,7 @@ pub(crate) type LiveConsentReader = ConsentReader<SqliteGatekeeperStore>;
 impl FixedScopeCapability for LiveConsentReader {
     type State = Arc<GatekeeperState>;
     type Claims = VerifiedClaims;
+    type Error = GatekeeperError;
 
     fn required_scopes() -> Vec<Scope> {
         consent_reader_scopes()

@@ -10,6 +10,7 @@ use scopes_rust::Scope;
 use super::state::AppsState;
 use crate::db::SqliteAppsStore;
 use crate::domain::capabilities::{apps_reader_scopes, AppsReader};
+use crate::domain::AppsError;
 
 /// Read the catalogue + an app — `Scoped<LiveAppsReader>` in the handler.
 pub(crate) type LiveAppsReader = AppsReader<SqliteAppsStore>;
@@ -17,6 +18,7 @@ pub(crate) type LiveAppsReader = AppsReader<SqliteAppsStore>;
 impl FixedScopeCapability for LiveAppsReader {
     type State = Arc<AppsState>;
     type Claims = ScopeClaims;
+    type Error = AppsError;
 
     fn required_scopes() -> Vec<Scope> {
         apps_reader_scopes()

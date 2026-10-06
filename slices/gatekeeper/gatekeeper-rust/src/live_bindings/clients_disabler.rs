@@ -11,6 +11,7 @@ use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::access::clients::clients_disabler_scopes;
 use crate::domain::capabilities::{ClientsDisabler, FixedScopeCapability};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifiedClaims;
 
 /// Disable or re-enable a registered client (never the first-party host).
@@ -19,6 +20,7 @@ pub(crate) type LiveClientsDisabler = ClientsDisabler<SqliteGatekeeperStore>;
 impl FixedScopeCapability for LiveClientsDisabler {
     type State = Arc<GatekeeperState>;
     type Claims = VerifiedClaims;
+    type Error = GatekeeperError;
 
     fn required_scopes() -> Vec<Scope> {
         clients_disabler_scopes()

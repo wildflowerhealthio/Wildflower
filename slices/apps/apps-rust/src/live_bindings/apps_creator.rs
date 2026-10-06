@@ -9,6 +9,7 @@ use scopes_rust::Scope;
 use super::state::AppsState;
 use crate::db::SqliteAppsStore;
 use crate::domain::capabilities::{apps_creator_scopes, AppsCreator};
+use crate::domain::AppsError;
 
 /// Register a new app — `Scoped<LiveAppsCreator>` in the create handler.
 pub(crate) type LiveAppsCreator = AppsCreator<SqliteAppsStore>;
@@ -16,6 +17,7 @@ pub(crate) type LiveAppsCreator = AppsCreator<SqliteAppsStore>;
 impl FixedScopeCapability for LiveAppsCreator {
     type State = Arc<AppsState>;
     type Claims = ScopeClaims;
+    type Error = AppsError;
 
     fn required_scopes() -> Vec<Scope> {
         apps_creator_scopes()

@@ -9,6 +9,7 @@ use scopes_rust::Scope;
 use super::state::CollectorState;
 use crate::db::SqliteRemotesStore;
 use crate::domain::capabilities::{remotes_reader_scopes, RemotesReader};
+use crate::domain::RemoteError;
 
 /// Read remotes — `Scoped<LiveRemotesReader>` in the list/get handlers.
 pub(crate) type LiveRemotesReader = RemotesReader<SqliteRemotesStore>;
@@ -16,6 +17,7 @@ pub(crate) type LiveRemotesReader = RemotesReader<SqliteRemotesStore>;
 impl FixedScopeCapability for LiveRemotesReader {
     type State = Arc<CollectorState>;
     type Claims = ScopeClaims;
+    type Error = RemoteError;
 
     fn required_scopes() -> Vec<Scope> {
         remotes_reader_scopes()

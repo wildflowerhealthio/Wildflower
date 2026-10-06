@@ -11,6 +11,7 @@ use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::access::clients::clients_reader_scopes;
 use crate::domain::capabilities::{ClientsReader, FixedScopeCapability};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifiedClaims;
 
 /// List registered clients — `Scoped<LiveClientsReader>` in the handler.
@@ -19,6 +20,7 @@ pub(crate) type LiveClientsReader = ClientsReader<SqliteGatekeeperStore>;
 impl FixedScopeCapability for LiveClientsReader {
     type State = Arc<GatekeeperState>;
     type Claims = VerifiedClaims;
+    type Error = GatekeeperError;
 
     fn required_scopes() -> Vec<Scope> {
         clients_reader_scopes()

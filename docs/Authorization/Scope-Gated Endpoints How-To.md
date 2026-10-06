@@ -18,21 +18,28 @@ The building blocks (`scope_capabilities_rust`):
 
 - **`FixedScopeCapability`** — the trait a capability implements when one static
   scope set gates it (the common case): its router `State`, the `Claims` its authN
-  layer inserts, the `required_scopes()` it gates on, and a `build(state)`
-  constructor. A blanket impl lifts it into `Capability`.
+  layer inserts, the slice's domain `Error` it rejects with, the
+  `required_scopes()` it gates on, and a `build(state)` constructor. A blanket
+  impl lifts it into `Capability`.
 - **`Capability`** — the trait the `Scoped` extractor drives, and the one a
   **data-dependent** capability implements directly (empty `required_scopes()`,
   `build(state, granted)` stores the caller's `Grant`).
 - **`Scoped<F>`** — an axum extractor that yields capability `F` only if the
-  caller's claims cover `F::required_scopes()`, else a `403` naming the missing
-  scopes.
+  caller's claims cover `F::required_scopes()`, else rejects with `F::Error`
+  built from the `MissingScopes` — the slice's `InsufficientScope`, rendered as a
+  `403` naming them.
+- **`MissingScopes`** — the rendered scopes a token failed to cover. A
+  capability's `Error` implements `From<MissingScopes>` (mapping it onto the
+  slice's `InsufficientScope` variant) and `IntoResponse`, so the rejection
+  travels the slice's domain error channel like any other failure.
 - **`AuthenticatedCapability`** / **`Authenticated<F>`** — the authenticated-only
   flavour: no scope, the caller's own claims handed to `build` whole.
 - **`ScopeClaims`** / **`GrantedScopes`** — the claims contract. `ScopeClaims` is
   the ready-made value an authN middleware inserts; a slice with a richer claims
   type implements `GrantedScopes` on it instead (via `grant_from_scope_claim`).
 - **`insufficient_scope(missing)`** / **`InsufficientScopeBody`** — the shared
-  `403` body (derive `utoipa::ToSchema` via the `openapi` feature to document it).
+  `403` body a slice's `InsufficientScope` variant renders through (derive
+  `utoipa::ToSchema` via the `openapi` feature to document it).
 
 ## Recipe
 
@@ -79,6 +86,7 @@ pub(crate) struct WidgetsReader {
 impl FixedScopeCapability for WidgetsReader {
     type State = Arc<WidgetsState>;
     type Claims = ScopeClaims;
+    type Error = WidgetError;
 
     fn required_scopes() -> Vec<Scope> {
         vec![Scope::wildflower(WildflowerResource::Widget, Permission::READ)]
@@ -95,6 +103,27 @@ impl WidgetsReader {
     }
 }
 ```
+
+The capability's `Error` is the slice's domain error, which carries an
+`InsufficientScope { missing_scopes }` variant rendered (in `http/errors.rs`)
+through the shared `insufficient_scope`. It converts the extractor's
+`MissingScopes` into that variant, beside the error's definition:
+
+```rust
+use scope_capabilities_rust::MissingScopes;
+
+impl From<MissingScopes> for WidgetError {
+    fn from(missing: MissingScopes) -> Self {
+        WidgetError::InsufficientScope {
+            missing_scopes: missing.into_rendered(),
+        }
+    }
+}
+```
+
+An under-scoped request then fails with the same `WidgetError` the handler
+returns, and a data-dependent capability method raises the same variant for a
+per-resource shortfall.
 
 Build required scopes with the typed constructors in `scopes-rust`
 (`Scope::wildflower`, `Scope::wildflower_all`, `Scope::fhir_system_all`) rather
@@ -181,7 +210,8 @@ databases' `DeleteDatabase`, since `ListDatabases` is authenticated-only). Keep
 the Rust-documented set and the TS-declared set the same, or the per-slice
 OpenAPI drift snapshot test fails. A surface with no `utoipa` documentation (e.g.
 gatekeeper's `/access`, which isn't in any committed spec) still returns the 403
-at runtime via the extractor — only the TS declaration is needed there.
+at runtime through the extractor's rejection — only the TS declaration is needed
+there.
 
 ## What the caller sees: the 403 surface and step-up
 

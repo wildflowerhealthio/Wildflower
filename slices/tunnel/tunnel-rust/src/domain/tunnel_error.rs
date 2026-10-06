@@ -12,6 +12,8 @@
 //! routes, and [`std::error::Error`] lets the composition root fold it into an
 //! `anyhow` context chain.
 
+use scope_capabilities_rust::MissingScopes;
+
 /// The ways a tunnel settings operation can fail — the domain's failure
 /// vocabulary. [`InsufficientScope`](TunnelError::InsufficientScope) is a
 /// **semantic**, client-facing authorization failure (a `403`), and
@@ -27,9 +29,8 @@ pub enum TunnelError {
     /// `/tunnel` surface requires (`wildflower/TunnelSettings.r` to read,
     /// `.u` to replace). Rendered as a `403` naming the missing scope(s) — the
     /// same shape gatekeeper's `/access` and databases' surfaces return. The
-    /// `Scoped` extractor renders this shape directly when it rejects; the
-    /// variant lets a capability method surface the same failure through the
-    /// domain error channel.
+    /// [`Scoped`](scope_capabilities_rust::Scoped) extractor rejects an
+    /// under-scoped caller with this variant (via `From<MissingScopes>`).
     InsufficientScope { missing_scopes: Vec<String> },
     /// A settings write whose `public_host` isn't a bare `host[:port]` naming an
     /// `https://` origin (see [`public_origin_url`](crate::domain::public_origin_url)).
@@ -76,3 +77,15 @@ impl std::fmt::Display for TunnelError {
 }
 
 impl std::error::Error for TunnelError {}
+
+/// The [`Scoped`](scope_capabilities_rust::Scoped) extractor's rejection — the
+/// caller's token doesn't cover the capability's required scopes — becomes
+/// [`InsufficientScope`](TunnelError::InsufficientScope), so it reaches the wire
+/// through this error's rendering like any other failure.
+impl From<MissingScopes> for TunnelError {
+    fn from(missing: MissingScopes) -> Self {
+        TunnelError::InsufficientScope {
+            missing_scopes: missing.into_rendered(),
+        }
+    }
+}

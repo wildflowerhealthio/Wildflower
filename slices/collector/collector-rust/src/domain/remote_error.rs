@@ -1,6 +1,8 @@
 //! [`RemoteError`] — the collector domain's failure vocabulary the HTTP layer
 //! renders.
 
+use scope_capabilities_rust::MissingScopes;
+
 /// The ways a remotes operation can fail — the domain's failure vocabulary. The
 /// first three are **semantic**, client-facing outcomes that are part of the
 /// wire contract; [`Infrastructure`](RemoteError::Infrastructure) is an opaque
@@ -28,9 +30,8 @@ pub enum RemoteError {
     ///
     /// The scope-gated handlers acquire a
     /// [`Scoped`](scope_capabilities_rust::Scoped) capability whose extractor
-    /// produces this `403` directly, so this variant is part of the failure
-    /// *vocabulary* the HTTP layer models uniformly (and the OpenAPI `403`
-    /// documents) rather than one the handler bodies construct.
+    /// rejects an under-scoped caller with this variant (via
+    /// `From<MissingScopes>`); the handler bodies never construct it.
     InsufficientScope { missing_scopes: Vec<String> },
     /// An infrastructure failure in the backing store (a checkout or query
     /// error) — opaque to clients: the HTTP layer logs `context` + `source` and
@@ -52,6 +53,18 @@ impl RemoteError {
         RemoteError::Infrastructure {
             context,
             source: source.to_string(),
+        }
+    }
+}
+
+/// The [`Scoped`](scope_capabilities_rust::Scoped) extractor's rejection — the
+/// caller's token doesn't cover the capability's required scopes — becomes
+/// [`InsufficientScope`](RemoteError::InsufficientScope), so it reaches the wire
+/// through this error's rendering like any other failure.
+impl From<MissingScopes> for RemoteError {
+    fn from(missing: MissingScopes) -> Self {
+        RemoteError::InsufficientScope {
+            missing_scopes: missing.into_rendered(),
         }
     }
 }

@@ -11,6 +11,7 @@ use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::access::grants::grants_revoker_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, GrantsRevoker};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifiedClaims;
 
 /// Revoke a standing grant (with the token-kill cascade).
@@ -19,6 +20,7 @@ pub(crate) type LiveGrantsRevoker = GrantsRevoker<SqliteGatekeeperStore>;
 impl FixedScopeCapability for LiveGrantsRevoker {
     type State = Arc<GatekeeperState>;
     type Claims = VerifiedClaims;
+    type Error = GatekeeperError;
 
     fn required_scopes() -> Vec<Scope> {
         grants_revoker_scopes()
