@@ -93,7 +93,7 @@ const requestOriginFromConnection = (
  * effect therefore assumes a trusted caller and cannot fail.
  *
  * Distinct from {@link Origin}, which is the server's canonical served
- * origin (single Subscribable, swapped by tunnel toggles). Use `Origin`
+ * origin (a single Subscribable the composing app provides). Use `Origin`
  * for signing/verifying tokens and other places where the value must
  * be stable across callers.
  */

@@ -11,7 +11,7 @@ publish.workspace = true
 # for the settings screen. Unlike the other `-rust` slices it owns no store and
 # runs no migrations — it works at the file level on databases other slices own,
 # so the host passes it only the data directory. Layered like `apps-rust` /
-# `tunnel-rust`: pure `catalog`/`metadata`/`files` helpers behind the `http`
+# `request-log-rust`: pure `catalog`/`metadata`/`files` helpers behind the `http`
 # surface; authN comes from the consumer (the gatekeeper bearer gate) and
 # download/delete are scope-gated per database (`http::scoped`).
 [dependencies]
