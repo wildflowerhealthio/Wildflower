@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite-plus'
-import base, { tsgoDts } from '../../../vite.config.base.ts'
+import base, { cpuBoundTest, tsgoDts } from '../../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,
@@ -17,6 +17,7 @@ export default defineConfig({
     },
   },
   test: {
+    ...cpuBoundTest,
     include: ['src/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },

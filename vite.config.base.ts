@@ -1,6 +1,7 @@
 /*
  * What every package's `vite.config.ts` pulls from the repo root: the shared
- * `base` config it spreads (below), `tsgoDts` for its `pack.dts`, and — for
+ * `base` config it spreads (below), `tsgoDts` for its `pack.dts`, `cpuBoundTest`
+ * for a package whose tests are CPU-bound, and — for
  * apps — `devAppServer(id)`, the single TypeScript reader of
  * `slices/apps/dev-app-ports.json`.
  */
@@ -136,6 +137,26 @@ const typescript7Exe = (): string => {
 const tsgoDts = { generator: 'tsgo', tsgo: { path: typescript7Exe() } } as const
 
 /**
+ * The `test` settings for a package whose tests are CPU-bound — property
+ * tests that render or decode many generated cases. Run beside the rest of the
+ * workspace they starve and hit the 5 s timeout, so they run as a second group
+ * once every other project has finished — on CI, on half the runner's cores
+ * (laptops keep Vitest's default of all but one).
+ *
+ * Vitest requires every project in a `groupOrder` to share `maxWorkers`, so a
+ * CPU-bound package takes both from here rather than setting either itself.
+ *
+ * @example
+ * ```ts
+ * export default defineConfig({ ...base, test: { ...base.test, ...cpuBoundTest, environment: 'jsdom' } })
+ * ```
+ */
+const cpuBoundTest = {
+  sequence: { groupOrder: 1 },
+  maxWorkers: process.env.CI ? '50%' : undefined,
+}
+
+/**
  * Shared defaults every per-package `vite.config.ts` in this monorepo
  * spreads into its own config. Lives at the repo root rather than under
  * `global/` so the relative-import depth is uniform (`../...n.../
@@ -212,5 +233,5 @@ const base = defineConfig({
 })
 
 export type { DevAppId, DevAppServerOptions }
-export { devAppIds, devAppPort, devAppPortsPath, devAppServer, tsgoDts }
+export { cpuBoundTest, devAppIds, devAppPort, devAppPortsPath, devAppServer, tsgoDts }
 export default base
