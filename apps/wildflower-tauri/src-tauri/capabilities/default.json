@@ -10,6 +10,8 @@
     "dialog:default",
     "native-webview:default",
     "background-service:allow-configure-recovery",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
     "allow-server-enrolment"
   ]
 }

@@ -1,6 +1,7 @@
 # AGENTS.md — slices/servers
 
-The **servers** this install knows about. Rust-only, no `-core`.
+The **servers** this install knows about, and the **base**: the UI the Tauri
+host's webview mounts to manage them.
 
 ## Package roles
 
@@ -19,6 +20,15 @@ The **servers** this install knows about. Rust-only, no `-core`.
   `server_add` and `server_set_credentials`, and `manage_servers`, which puts
   their `ServersState` in the app's managed state. Only glue; every decision
   and its tests are in `servers-rust`.
+- **`servers-core`** — the host commands the base calls, as Effects over the
+  `TauriInvoke` port (`invokeHostCommand`), each answer decoded by an Effect
+  Schema: the app's version and the notification permission. No DOM, no
+  React, no `@tauri-apps/api`.
+- **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
+  mounts with `@tauri-apps/api/core`'s `invoke`: the base's telemetry consent
+  gate, then its router over `routes/`, `/` the server list and `/settings`
+  Host Settings, for the app on this device rather than any one server
+  (Notifications, Telemetry, About).
 
 ## Rules
 
@@ -155,6 +165,18 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   `.servers.json.tmp` beside the file, fsyncs it, renames it over
   `servers.json` and fsyncs the directory, so a crash leaves either the old
   file or the new one.
+- **The base reaches the host only through Tauri commands.** Every call goes
+  through `servers-core`'s `invokeHostCommand`, which decodes the answer with
+  the command's schema, so nothing the host sends is trusted by its static
+  type. The base mounts no effect-messaging transport. A command the base
+  calls is granted to the `main` webview in
+  `apps/wildflower-tauri/src-tauri/capabilities/default.json`.
+- **The base asks for its own telemetry consent.** `BaseRoot` is a
+  `TelemetryConsentGate` with `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY`; until
+  it is answered no router or query cache exists and no host command is
+  called. The answer starts telemetry with the DSN the app passes, from
+  `VITE_SENTRY_DSN_WILDFLOWER_TAURI`, tagged `app: wildflower-tauri`. The web
+  app's consent is its own, on its own origin.
 - **`servers-rust` has no `tauri` dependency**, so it builds and tests in the
   non-Tauri partition of `scripts/checks/rust.sh`. `servers-tauri-rust` is in
   the Tauri partition.

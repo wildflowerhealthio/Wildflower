@@ -163,6 +163,71 @@ describe('ItemList', () => {
     expect(row?.className).toMatch(/tone-danger/)
   })
 
+  it('should truncate the subtitle to one line by default', () => {
+    // Arrange
+    const items: ItemListItem[] = [
+      {
+        id: '1',
+        title: 'Notifications',
+        subtitle: 'A sentence long enough to need a second line in a narrow row.',
+      },
+    ]
+
+    // Act
+    render(<ItemList items={items} />)
+
+    // Assert — CSS-modules hashing keeps the unhashed token in the class.
+    const subtitle = screen.getByText(
+      'A sentence long enough to need a second line in a narrow row.'
+    )
+    expect(subtitle.className).not.toMatch(/subtitle--wrap/)
+    expect(subtitle.style.webkitLineClamp).toBe('')
+  })
+
+  it.each([2, 3, 5])('should let the subtitle wrap to maxLines=%i lines', (maxLines) => {
+    // Arrange
+    const items: ItemListItem[] = [
+      {
+        id: '1',
+        title: 'Notifications',
+        subtitle: 'A sentence long enough to need a second line in a narrow row.',
+      },
+    ]
+
+    // Act
+    render(<ItemList items={items} maxLines={maxLines} />)
+
+    // Assert
+    const subtitle = screen.getByText(
+      'A sentence long enough to need a second line in a narrow row.'
+    )
+    expect(subtitle.className).toMatch(/subtitle--wrap/)
+    expect(subtitle.className).toMatch(/subtitle--clamp/)
+    expect(subtitle.style.webkitLineClamp).toBe(String(maxLines))
+  })
+
+  it('should let the subtitle wrap without truncating when maxLines is null', () => {
+    // Arrange
+    const items: ItemListItem[] = [
+      {
+        id: '1',
+        title: 'Notifications',
+        subtitle: 'A sentence long enough to need a second line in a narrow row.',
+      },
+    ]
+
+    // Act
+    render(<ItemList items={items} maxLines={null} />)
+
+    // Assert
+    const subtitle = screen.getByText(
+      'A sentence long enough to need a second line in a narrow row.'
+    )
+    expect(subtitle.className).toMatch(/subtitle--wrap/)
+    expect(subtitle.className).not.toMatch(/subtitle--clamp/)
+    expect(subtitle.style.webkitLineClamp).toBe('')
+  })
+
   it('does not fire the row onClick when an interactive element inside actions is clicked', async () => {
     // Arrange — interactive `actions` (e.g. a meatball menu trigger) sit
     // inside the row's wrapping `<button>`. Without click-bubble
