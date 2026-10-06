@@ -231,6 +231,37 @@ pub fn start_background_server_service<R: Runtime>(
     });
 }
 
+/// Report that there is no server to run, instead of
+/// [`start_background_server_service`]: nothing starts, and every `__Ready`
+/// from the page is answered with a [`ServerServiceStatus`] that is stopped with
+/// no error, so the page shows a stopped server rather than waiting on one.
+/// No run means no failure: there's no notification or error dialog, and a
+/// `RestartServer` has nothing to restart.
+///
+/// Registers its listener synchronously, so call it from `setup()` before the
+/// page can send `__Ready`. Call once per app lifecycle, and never alongside
+/// [`start_background_server_service`].
+pub fn report_no_server<R: Runtime>(app: &AppHandle<R>) {
+    log::info!("[background-server-service] no server is set to run; none started");
+    let handle = app.clone();
+    app.listen(BRIDGE_EVENT, move |event| {
+        let is_ready = serde_json::from_str::<BridgeEnvelope>(event.payload())
+            .is_ok_and(|envelope| envelope.tag == READY_TAG);
+        if !is_ready {
+            return;
+        }
+        let status = ServerServiceStatus::new(
+            &ServerRunState::Stopped { error: None },
+            None,
+            notification_permission(&handle),
+        );
+        let message = BackgroundServerServiceHostToWeb::ServerServiceStatus(status);
+        if let Err(error) = handle.emit(BRIDGE_EVENT, &message) {
+            log::error!("[background-server-service] failed to emit {message:?}: {error}");
+        }
+    });
+}
+
 /// Route the page's `__Ready` (a status snapshot is wanted) and `RestartServer`
 /// (a restart as `start_config` says). Sibling slices' tags and this slice's
 /// own `ServerServiceStatus` echo are dropped.

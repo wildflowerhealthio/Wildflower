@@ -29,7 +29,7 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   non-Tauri partition of `scripts/checks/rust.sh`.
 - **The host hands in what it owns.** `WildflowerServerConfig` carries the values
   `apps/wildflower-tauri` derives at build time (`tauri-shared-config.json`,
-  build-time env) or from its platform paths (the app-data dir, the FHIR
+  build-time env) or from its platform paths (the server's folder, the FHIR
   SearchParameter bundle dir). `HostPorts` carries its native adapters as trait
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time

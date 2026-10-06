@@ -1,13 +1,33 @@
 # Data Directory Explanation
 
-The host keeps everything it owns in one directory: both SQLite databases
-(`wildflower.sqlite` and `health-data.sqlite`), saved HAR recordings under `saved_data/`, and on
-Android the materialized FHIR SearchParameter bundle under `fhir-search-params/`.
-`setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves that one
-directory and threads it through `ServerRuntimeConfig.app_data_dir`; every slice
-that needs a path joins onto it rather than resolving its own.
+The host keeps everything it owns under one directory, the data root:
 
-Where that directory lands is a per-platform decision, and on iOS it is a
+```text
+<data root>/
+  servers.json            the install's servers
+  saved_data/             saved HAR recordings, shared by every server
+  fhir-search-params/     Android only: the materialized FHIR SearchParameter bundle
+  servers/<domain>/       one folder per server, named by its domain
+    wildflower.sqlite
+    health-data.sqlite
+```
+
+What belongs to the install sits in the data root, and the install's ACME
+account joins it with #893. What belongs to one server sits in that server's
+folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir` in
+`servers-rust`), so servers never share a database.
+
+`setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves the data
+root, hands it to the slices that keep install-wide files, and reads
+`servers.json`. The first server set `running` there is the one that starts: its
+folder goes to the server as `ServerRuntimeConfig.server_dir`, and the server
+creates the folder, applies scheduled database deletions in it, and opens both
+databases there; the data-management screen (`/databases`) exports and deletes
+that server's databases only. With no server set running, nothing starts and the
+host reports the server stopped, with no error. Every slice that needs a path
+joins onto the data root or the server's folder rather than resolving its own.
+
+Where the data root lands is a per-platform decision, and on iOS it is a
 deliberate one.
 
 ## Where it lands

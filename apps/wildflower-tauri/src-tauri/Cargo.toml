@@ -39,11 +39,14 @@ background-server-service-rust = { path = "../../../slices/background-server-ser
 background-server-service-tauri-rust = { path = "../../../slices/background-server-service/background-server-service-tauri-rust" }
 browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
 # Host glue for the HAR Recorder: the `BRIDGE_EVENT` listener that writes a
-# recorded archive into `<app data dir>/saved_data`.
+# recorded archive into `<data root>/saved_data`.
 har-recorder-tauri-rust = { path = "../../../slices/har-recorder/har-recorder-tauri-rust" }
 # The base's commands for adding a server and re-entering its token, over the
 # install's `servers.json`. Registered in `run()`.
 servers-tauri-rust = { path = "../../../slices/servers/servers-tauri-rust" }
+# The install's `servers.json`, which `.setup()` reads to choose the server it
+# runs, and the folder that server runs from.
+servers-rust = { path = "../../../slices/servers/servers-rust" }
 # Native, JS-injectable web view (iOS, Android, desktop); runs in parallel
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
 tauri-plugin-native-webview = { path = "../../../plugins/tauri-plugin-native-webview" }
@@ -83,3 +86,5 @@ workspace = true
 chrono = { version = "0.4", default-features = false }
 # Parses the Android manifest the merge-override tests read.
 roxmltree = "0.20"
+# A throwaway data root for the tests of which server `.setup()` runs.
+tempfile = "3"

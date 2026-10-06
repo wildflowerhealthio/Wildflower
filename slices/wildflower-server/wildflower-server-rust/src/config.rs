@@ -17,8 +17,8 @@ use tunnel_rust::TunnelLiveness;
 /// paths.
 #[derive(Debug, Clone)]
 pub struct WildflowerServerConfig {
-    /// The loopback base URL the API binds and the app-data dir the databases live
-    /// under.
+    /// The loopback base URL the API binds and the server's own folder, which
+    /// its databases live in.
     pub runtime: ServerRuntimeConfig,
     /// The directory holding the FHIR R4 SearchParameter bundle HFS indexes from
     /// (see

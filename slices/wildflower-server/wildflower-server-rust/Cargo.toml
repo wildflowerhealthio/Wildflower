@@ -57,7 +57,7 @@ workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
-# A throwaway app-data dir for the `serve` lifecycle test.
+# A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
 # `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.

@@ -251,6 +251,7 @@ struct StoredServerFields {
     public_settings: PublicRatholeSettings,
     launcher_url: Url,
     staging_certificates: bool,
+    running: bool,
 }
 
 /// [`PublicRatholeSettings`]' fields as `servers.json` names them, in
@@ -388,7 +389,8 @@ mod tests {
                   "domain": "relay.wildflowerhealth.io"
                 }},
                 "launcherUrl": "https://wildflowerhealth.io/app",
-                "stagingCertificates": false
+                "stagingCertificates": false,
+                "running": false
               }}]
             }}"#
         )
@@ -439,6 +441,22 @@ mod tests {
             serde_json::json!({"kind": "rathole"})
         );
         assert_eq!(registry.read_all().unwrap(), vec![rathole]);
+    }
+
+    #[test]
+    fn whether_a_server_is_wanted_running_is_stored_per_server() {
+        let (data_root, registry) = registry();
+        let mut running = official_record("ruth");
+        running.running = true;
+        registry.insert(running.clone()).unwrap();
+        registry.insert(self_hosted_record("lab")).unwrap();
+        let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
+        assert_eq!(written["servers"][0]["running"], serde_json::json!(true));
+        assert_eq!(written["servers"][1]["running"], serde_json::json!(false));
+        assert_eq!(
+            registry.read_all().unwrap(),
+            vec![running, self_hosted_record("lab")]
+        );
     }
 
     /// The tunnel name becomes the server's folder name, so one read from the
