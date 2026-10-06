@@ -1,0 +1,41 @@
+[package]
+name = "tauri-unit-runner"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# Runs a Tauri app's long-lived background work as units, each on its own
+# thread and runtime, under one background-service lease. Knows nothing about
+# what a unit does; see `docs/Design Explanation.md`.
+[dependencies]
+anyhow.workspace = true
+# `BackgroundService` is an `#[async_trait]`.
+async-trait = "0.1"
+# `RunPolicy::Until`'s instant, the wall clock policies and grace are read on,
+# and its RFC 3339 serde.
+chrono = { workspace = true, features = ["clock", "serde", "std"] }
+# Tauri apps collect `log` records (`tauri-plugin-log`).
+log = "0.4"
+serde.workspace = true
+# Decoding the background-service plugin's event payloads.
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+# Pinned exactly, like the app's own dependency: the lease is this plugin's one
+# `BackgroundService`, started and stopped through `ServiceManagerHandle`. The
+# `desktop-service` feature (an OS daemon) stays off.
+tauri-plugin-background-service = "=1.0.1"
+# Reading and asking for the notification permission before the first start.
+tauri-plugin-notification = "2"
+# `rt-multi-thread` builds each run's dedicated runtime; `sync` carries the run
+# gates, the statuses and the lease demand; `time` the restart delay and the
+# wall-clock reconcile; `macros` for `select!`.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+# `CancellationToken`, each run's shutdown signal.
+tokio-util = "0.7"
+
+[dev-dependencies]
+proptest = "1"
+
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true

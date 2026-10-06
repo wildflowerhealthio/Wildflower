@@ -8316,6 +8316,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-unit-runner"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "log",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-background-service",
+ "tauri-plugin-notification",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "tauri-utils"
 version = "2.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
