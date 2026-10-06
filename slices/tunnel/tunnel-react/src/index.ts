@@ -10,15 +10,9 @@ export { TunnelStatusHero, type TunnelStatusHeroProps } from './components/Tunne
 export * as TunnelRouterContext from './router-context.ts'
 
 export {
-  applyTunnelOptimistic,
-  buildReplacePayload,
   TUNNEL_STATE_QUERY_KEY,
   tunnelStateQueryOptions,
-  useTunnelReplaceMutation,
   useTunnelStateQuery,
-  type RelayInput,
   type RunAuthed,
-  type TunnelReplaceInput,
-  type TunnelReplaceResult,
   type TunnelState,
 } from './queries/index.ts'

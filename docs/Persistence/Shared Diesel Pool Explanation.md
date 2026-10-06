@@ -1,6 +1,6 @@
 # Shared Diesel Pool Explanation
 
-How the diesel-backed slices (apps, collector, gatekeeper, request log and tunnel) persist to the app's
+How the diesel-backed slices (apps, collector, gatekeeper and request log) persist to the app's
 one SQLite database. This is a **convention, not a library**: the host builds a
 single connection pool and hands it to each slice's store, and each store follows
 the same small shape by hand. The pool primitive itself lives in `persistence-rust`
@@ -36,7 +36,7 @@ the pool is built and the trade-off is accepted.
 ## The store holds the pool
 
 Each slice's SQLite store (`SqliteAppsStore`, `SqliteRemotesStore`,
-`SqliteGatekeeperStore`, `SqliteTunnelStore`) holds the `DieselPool` — an `Arc`
+`SqliteGatekeeperStore`, `SqliteRequestLogStore`) holds the `DieselPool` — an `Arc`
 inside, so the store is cheap to clone into the axum state — and implements the
 slice's domain persistence port. Diesel's connection API is `&mut`, so each query
 **checks a connection out of the pool** rather than sharing one behind a mutex;
@@ -55,8 +55,8 @@ tracks `(namespace, version)` in `diesel_slice_migrations` so each slice's `0001
 is distinct. The full rationale is in
 `persistence-rust/src/namespaced_migrations.rs`.
 
-A table that predates the diesel move (like tunnel's `tunnel_settings`, once
-created by the retired rusqlite `run_migrations` runner) uses **idempotent DDL**
+A table that predates the diesel move (one created by the retired rusqlite
+`run_migrations` runner) uses **idempotent DDL**
 (`CREATE TABLE IF NOT EXISTS` / `INSERT OR IGNORE`) in its `0001` so the migration
 is a no-op on an already-populated database while still creating the table on a
 fresh one. A genuinely new table keeps plain `CREATE TABLE`.
@@ -71,6 +71,5 @@ fresh one. A genuinely new table keeps plain `CREATE TABLE`.
   (`apps-rust/src/db/apps_store.rs`), collector's `SqliteRemotesStore`
   (`collector-rust/src/db/remotes_store.rs`), gatekeeper's
   `SqliteGatekeeperStore` (`gatekeeper-rust/src/db/gatekeeper_store.rs`),
-  the request log's `SqliteRequestLogStore`
-  (`request-log-rust/src/db/request_log_store.rs`) and tunnel's
-  `SqliteTunnelStore` (`tunnel-rust/src/db/tunnel_store.rs`).
+  and the request log's `SqliteRequestLogStore`
+  (`request-log-rust/src/db/request_log_store.rs`).

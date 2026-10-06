@@ -12,25 +12,26 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   observer, and binds the loopback port;
   `WildflowerServer::serve(shutdown)` serves the result until `shutdown` is
   cancelled. It also holds the server-side adapters that join two slices: the
-  gatekeeper-backed `AppLaunchScopes` for apps, the reqwest `HealthProbe` for the
-  tunnel, and HFS's base URL following the tunnel's public host. The
+  gatekeeper-backed `AppLaunchScopes` for apps and the reqwest `HealthProbe` for
+  the tunnel. It derives the server's public origin from its public host once and
+  hands it to emr (HFS's `base_url`) and apps (every launch's origin). The
   unmatched-route `404` is here too.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig`, `HostPorts`, `ServerObservers`); `adapters/`
     other slices' ports implemented here (apps' `AppLaunchScopes`, the tunnel's
     `HealthProbe`); `http/` the server's own middleware (CORS, the loopback
     owner trust, the forwarded-request report) and the `404`; `live_bindings/`
-    `set_up`, `WildflowerServer`, the database catalogue and HFS's base URL
-    following the tunnel.
+    `set_up`, `WildflowerServer` and the database catalogue.
 
 ## Layering
 
 - **No `tauri` dependency**, so the crate compiles and tests without GTK, in the
   non-Tauri partition of `scripts/checks/rust.sh`.
 - **The host hands in what it owns.** `WildflowerServerConfig` carries the values
-  `apps/wildflower-tauri` derives at build time (`tauri-shared-config.json`,
-  build-time env) or from its platform paths (the server's folder, the FHIR
-  SearchParameter bundle dir). `HostPorts` carries its native adapters as trait
+  `apps/wildflower-tauri` derives at build time (`tauri-shared-config.json`),
+  from its platform paths (the server's folder, the FHIR SearchParameter bundle
+  dir) or from the server's record (the tunnel's relay settings and the public
+  host). `HostPorts` carries its native adapters as trait
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time
   configuration or platform paths itself.

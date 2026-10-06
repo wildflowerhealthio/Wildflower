@@ -20,8 +20,5 @@ defineSpecDriftTest({
   serverSpec: new URL('../../../tunnel-rust/openapi/tunnel-admin.openapi.json', import.meta.url),
   clientApi: TunnelAdminApi,
   /** Endpoints compared — `(path, lowercase method)`. */
-  scope: [
-    ['/tunnel', 'get'],
-    ['/tunnel', 'put'],
-  ],
+  scope: [['/tunnel', 'get']],
 })

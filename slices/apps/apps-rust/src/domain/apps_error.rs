@@ -22,9 +22,6 @@ pub enum AppsError {
     InvalidUrl { message: String },
     /// 400 — the submitted name was empty / unusable.
     InvalidName { message: String },
-    /// 503 — the launch can't resolve a reachable target (a `requires_tunnel` app
-    /// while the tunnel is down).
-    Unavailable { reason: String },
     /// 400 — the `PUT /home-screen` body wasn't an exact permutation of the
     /// registry (missing / duplicated / unknown id).
     InvalidHomeScreen { message: String },
@@ -52,7 +49,6 @@ impl std::fmt::Display for AppsError {
             AppsError::NotFound { id } => write!(f, "no app has id {id}"),
             AppsError::InvalidUrl { message } => write!(f, "invalid url: {message}"),
             AppsError::InvalidName { message } => write!(f, "invalid name: {message}"),
-            AppsError::Unavailable { reason } => write!(f, "launch unavailable: {reason}"),
             AppsError::InvalidHomeScreen { message } => write!(f, "invalid home screen: {message}"),
             AppsError::InsufficientScope { missing_scopes } => {
                 write!(

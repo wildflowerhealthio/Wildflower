@@ -4,9 +4,9 @@
 mod dedicated_runtime;
 
 use shared_structures_rust::request_caller::ForwardedRequest;
-use shared_structures_rust::tunnel_service::TunnelLiveness;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
+use tunnel_rust::TunnelLiveness;
 use wildflower_server_rust::{HostPorts, ServerObservers, WildflowerServerConfig};
 
 use crate::domain::run_gate::RunGate;

@@ -1,19 +1,16 @@
 //! `POST /apps/{id}` — resolve an app id to a launch target.
 //!
-//! Two orthogonal axes meet here: the app's `requires_tunnel` flag fixes which
-//! origin its launch template is *resolved* against, while the *request's*
-//! [`RequestProvenance`] (loopback vs. forwarded) fixes how it's *dispatched*. The
-//! flow:
+//! Every launch resolves its template's `{origin}` to the server's public origin,
+//! whoever calls; the *request's* [`RequestProvenance`] (loopback vs. forwarded)
+//! fixes only how the launch is *dispatched*. The flow:
 //!
 //!   1. Read the request's [`RequestProvenance`] *once*, so an empty/spoofed
-//!      `Forwarded` host can't make the gate-vs-resolve and which-origin
-//!      decisions disagree.
+//!      `Forwarded` host can't make the gate and dispatch decisions disagree.
 //!   2. The `wildflower/launch` umbrella is enforced *before this handler runs* by
 //!      the [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher) extractor
 //!      (the host wraps the apps router with the bearer gate that inserts the
 //!      caller's scope claims). An under-umbrella caller `403`s before `find_app`
-//!      or target resolution, so it triggers no `tunnel.try_start()` and learns
-//!      nothing about existence (`404`) or reachability (`503`).
+//!      or target resolution, so it learns nothing about existence (`404`).
 //!   3. Look up the app (`404 AppNotFound` if absent).
 //!   4. Per-app SMART gate: a **SMART** app additionally requires the caller's
 //!      grant to cover its OAuth client's requested *resource* scopes (the OIDC /
@@ -21,8 +18,8 @@
 //!      shortfall `403`s with the shared `InsufficientScope` JSON body naming the
 //!      missing scopes, before any side-effect. A non-SMART app needs only the
 //!      umbrella.
-//!   5. Resolve the launch target from the stored template. Fails
-//!      `503 LaunchUnavailable` when no *reachable* target exists.
+//!   5. Resolve the launch target from the stored template against the public
+//!      origin.
 //!   6. Dispatch on the request's provenance: a loopback launch `204`s after
 //!      handing the URL to the host webview; a forwarded launch answers `200` with
 //!      the URL ([`LaunchTargetBody`]) for the caller's page to navigate to — the
@@ -47,7 +44,7 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
 use crate::domain::{AppRegistration, AppsError, AppsStore, LaunchParams};
-use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
+use crate::http::errors::AppNotFoundBody;
 use crate::id_utils::mint_launch_nonce;
 use crate::live_bindings::state::AppsState;
 use crate::live_bindings::LiveAppLauncher;
@@ -68,7 +65,6 @@ use crate::live_bindings::LiveAppLauncher;
         (status = 204, description = "Host sink opened the launch URL for a loopback caller"),
         (status = 403, description = "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes", body = InsufficientScopeBody),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
-        (status = 503, description = "No reachable launch target (a requires_tunnel app while the tunnel is down)", body = LaunchUnavailableBody),
     ),
 )]
 pub(crate) async fn handle_launch_app(
@@ -115,9 +111,7 @@ pub(crate) async fn handle_launch_app(
         });
     }
 
-    // Resolve before dispatching: an unreachable target bails here with
-    // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
-    let target_url = resolve_launch(&registration, &state, &provenance).await?;
+    let target_url = resolve_launch(&registration, &state);
 
     match &provenance {
         // The loopback caller cleared the umbrella + SMART gates above; hand the URL
@@ -134,61 +128,20 @@ pub(crate) async fn handle_launch_app(
     }
 }
 
-/// Resolve an app to its provenance-aware launch URL: resolve the served origin
-/// (or the tunnel's verified origin for a `requires_tunnel` launch), then
-/// substitute `{origin}` / `{launch}` in the stored [`AppUrl`](crate::domain::AppUrl)
-/// template. The `url` was validated at the store read (the column decode), so no
-/// parse can fail here. Fails `503 LaunchUnavailable` when a `requires_tunnel`
-/// launch can't bring the tunnel up (see [`resolve_origin`]).
+/// Resolve an app to its launch URL: substitute the server's public origin for
+/// `{origin}` and a fresh nonce for `{launch}` in the stored
+/// [`AppUrl`](crate::domain::AppUrl) template. The `url` was validated at the
+/// store read (the column decode), so no parse can fail here.
 ///
 /// Lives beside the launch handler rather than in `domain` on purpose: the
-/// resolution reaches into `AppsState` (the tunnel, the loopback config) and yields
-/// an http [`AppsError`], so keeping it in the HTTP layer leaves the domain free of
-/// that http/runtime coupling.
-async fn resolve_launch(
-    registration: &AppRegistration,
-    state: &AppsState,
-    provenance: &RequestProvenance,
-) -> Result<String, AppsError> {
-    let origin = resolve_origin(state, provenance, registration.requires_tunnel).await?;
+/// resolution reads `AppsState`'s public origin, so keeping it in the HTTP layer
+/// leaves the domain free of that runtime coupling.
+fn resolve_launch(registration: &AppRegistration, state: &AppsState) -> String {
+    let origin = state.public_origin();
     let launch = mint_launch_nonce();
-    Ok(registration.url.to_url_with_params(&LaunchParams {
+    registration.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
-    }))
-}
-
-/// The served origin for a non-tunnel launch: the forwarded public origin when
-/// the trusted front relayed the request, else loopback.
-fn served_origin(state: &AppsState, provenance: &RequestProvenance) -> String {
-    match provenance {
-        RequestProvenance::Forwarded { base_url } => {
-            shared_structures_rust::origin_string(base_url)
-        }
-        RequestProvenance::Loopback => state.loopback_origin(),
-    }
-}
-
-/// Resolve the launch origin for an app.
-///
-/// A non-tunnel launch resolves to the *served* origin (see [`served_origin`]) so
-/// the launch URL is something the caller can actually reach. A
-/// `requires_tunnel` launch asks the `TunnelService` to start: `Ok(origin)` is the
-/// live verified origin; `Err(reason)` means the tunnel couldn't be brought up —
-/// and since the third-party app needs the tunnel to reach the user's FHIR server,
-/// there is no reachable origin to fall back to, so the launch fails with
-/// `503 LaunchUnavailable`.
-async fn resolve_origin(
-    state: &AppsState,
-    provenance: &RequestProvenance,
-    requires_tunnel: bool,
-) -> Result<String, AppsError> {
-    if !requires_tunnel {
-        return Ok(served_origin(state, provenance));
-    }
-    state.tunnel.try_start().await.map_err(|reason| {
-        tracing::warn!(%reason, "requires_tunnel launch failed: tunnel unavailable");
-        AppsError::Unavailable { reason }
     })
 }
 

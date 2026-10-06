@@ -5,8 +5,8 @@
 //! construction (under this slice's [`MIGRATION_NAMESPACE`]), and implements the
 //! port by checking a connection out of the pool and delegating to the
 //! per-concern query bodies in the sibling `db/*` modules. Mirrors
-//! `collector-rust`'s `SqliteRemotesStore` and `tunnel-rust`'s
-//! `SqliteTunnelStore`, scaled to the gatekeeper's six persistence concerns.
+//! `collector-rust`'s `SqliteRemotesStore`, scaled to the gatekeeper's six
+//! persistence concerns.
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
@@ -52,11 +52,11 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 #[derive(Clone)]
 pub struct SqliteGatekeeperStore {
     // The app-wide r2d2 pool onto the shared database file, built and owned by
-    // the host (`persistence_rust::open_pool`) — the same pool collector's and
-    // tunnel's stores ride. Diesel's connection API is `&mut`, so each call
-    // checks a connection out of the pool rather than sharing one behind a
-    // mutex; the pool (an `Arc` inside) makes the store cheap to clone into the
-    // axum state. These are additional openers onto the same file the host's
+    // the host (`persistence_rust::open_pool`) — the same pool the other
+    // diesel-backed slices' stores ride. Diesel's connection API is `&mut`, so
+    // each call checks a connection out of the pool rather than sharing one
+    // behind a mutex; the pool (an `Arc` inside) makes the store cheap to clone
+    // into the axum state. These are additional openers onto the same file the host's
     // rusqlite `persistence-rust::Connection` serves the remaining rusqlite
     // slices from — SQLite permits multiple connections per file; the pool's
     // `busy_timeout` pragma rides out the brief write locks any connection takes

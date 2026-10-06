@@ -12,7 +12,7 @@ Explanation](./Shared%20Diesel%20Pool%20Explanation.md) first. The pool and
 migration primitives live in `persistence-rust`
 (`open_pool` / `open_in_memory_pool` / `DieselPool` in
 `persistence-rust/src/diesel_pool.rs`, `run_diesel_migrations` in
-`persistence-rust/src/namespaced_migrations.rs`); `collector`, `tunnel`, and
+`persistence-rust/src/namespaced_migrations.rs`); `collector` and
 `gatekeeper` are the worked examples.
 
 ## Which diesel
@@ -155,7 +155,7 @@ version)` in `diesel_slice_migrations`, applying each migration and its
 bookkeeping row in one transaction. Call it with a per-slice constant:
 
 ```rust
-// collector-rust/src/db/remotes_store.rs, tunnel-rust/src/db/tunnel_store.rs
+// collector-rust/src/db/remotes_store.rs
 persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
 ```
 
@@ -164,8 +164,7 @@ persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIO
 rusqlite `run_migrations` runner already created on shipped databases — must use
 **idempotent DDL** (`CREATE TABLE IF NOT EXISTS` + `INSERT OR IGNORE` for a
 seeded singleton) so `0001` is a no-op on an upgraded database while still
-creating the table on a fresh one (tunnel's `tunnel_settings`,
-`tunnel-rust/migrations/0001_initial_schema/up.sql`). The
+creating the table on a fresh one. The
 [Shared Diesel Pool Explanation](./Shared%20Diesel%20Pool%20Explanation.md#migrations-are-namespaced-per-slice)
 covers why both bookkeepers coexist; `persistence-rust/src/namespaced_migrations.rs`
 carries the full rationale and a regression test running two same-version fixture
@@ -173,7 +172,7 @@ trees under different namespaces.
 
 ## Add a transaction seam only when compound operations need one
 
-A CRUD-only store (collector, tunnel) needs **no** transaction seam — each query
+A CRUD-only store (collector) needs **no** transaction seam — each query
 checks out a connection and autocommits. Reach for a seam only when a slice has
 multi-statement operations that must be atomic (read-merge-write, delete-both-
 then-expire, a three-state consume) and you don't want that business logic

@@ -135,20 +135,13 @@ mod tests {
     }
 
     /// The request log is gated by `wildflower/RequestLog.r`: a token without
-    /// it — here one holding every tunnel settings scope — is refused with the
+    /// it — here one holding the tunnel's read scope — is refused with the
     /// shared `403` before anything is read.
     #[tokio::test]
     async fn the_request_log_without_the_read_scope_is_403() {
         let st = state_with_logged_requests();
         for uri in ["/requests/callers", "/requests"] {
-            let (status, body) = send(
-                &st,
-                get_as(
-                    uri,
-                    "wildflower/TunnelSettings.r wildflower/TunnelSettings.u",
-                ),
-            )
-            .await;
+            let (status, body) = send(&st, get_as(uri, "wildflower/TunnelSettings.r")).await;
             assert_eq!(status, StatusCode::FORBIDDEN, "{uri}: {body}");
             assert_eq!(body["error"], serde_json::json!("InsufficientScope"));
             assert_eq!(

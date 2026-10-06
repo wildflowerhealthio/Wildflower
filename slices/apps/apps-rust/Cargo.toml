@@ -7,8 +7,8 @@ publish.workspace = true
 # The apps slice, host-side: SQLite-backed selection of bundled apps plus a
 # CRUD surface for user-defined custom apps, the `/apps` HTTP routes the
 # webview consumes (list + launch redirect), and the owner-gated admin routes
-# the consumer wraps with the gatekeeper. Layered like `tunnel-rust` and
-# `gatekeeper-rust`: pure `domain`, `db`, and `http`.
+# the consumer wraps with the gatekeeper. Layered like `gatekeeper-rust`: pure
+# `domain`, `db`, and `http`.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
@@ -32,18 +32,16 @@ scopes-rust = { path = "../../scopes/scopes-rust" }
 scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = [
   "openapi",
 ] }
-# The tunnel service contract a `requires_tunnel` launch resolves through,
-# plus the shared forwarding-header provenance helper (`request_provenance`,
+# The shared forwarding-header provenance helper (`request_provenance`,
 # `served_base_url_for`) the launch handler dispatches and renders against —
 # same contract gatekeeper-rust uses to resolve token issuer URLs.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
-  "tunnel-service",
   "served-origin",
   "http-errors",
 ] }
 rand = "0.10"
-# The loopback base URL `AppsConfig` / `AppsState` carry; the origin accessor
-# derives from it (same crate/version gatekeeper-rust uses).
+# The loopback base URL and public origin `AppsConfig` / `AppsState` carry; the
+# origin accessors derive from them (same crate/version gatekeeper-rust uses).
 url = "2"
 
 tracing = "0.1"
@@ -52,10 +50,8 @@ tracing = "0.1"
 workspace = true
 
 [dev-dependencies]
-# The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature;
-# `async-trait` is only used by the `TunnelService` test stubs.
+# The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
-async-trait = "0.1"
 # The integration crate injects the owner `ScopeClaims` the host's bearer gate
 # would insert, so the scope-gated `/apps` admin handlers pass end-to-end.
 scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust" }

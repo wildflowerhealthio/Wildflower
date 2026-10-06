@@ -3,9 +3,9 @@
 //!
 //! The Tauri app opens one shared rusqlite [`Connection`](crate::Connection) and
 //! builds one [`DieselPool`] on the SAME database file, then hands the pool to
-//! every diesel-backed slice (collector and tunnel today). The pool's connections
-//! are additional openers onto that one file — SQLite permits multiple
-//! connections per file — and the per-connection pragmas below mirror
+//! every diesel-backed slice (apps, collector, gatekeeper and the request
+//! log). The pool's connections are additional openers onto that one file —
+//! SQLite permits multiple connections per file — and the per-connection pragmas below mirror
 //! [`Connection::configured`](crate::Connection) so a diesel connection behaves
 //! identically to the rusqlite one under contention. See
 //! `docs/Persistence/Shared Diesel Pool Explanation.md` for the cross-slice

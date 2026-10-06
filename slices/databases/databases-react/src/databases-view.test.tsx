@@ -45,7 +45,7 @@ const scheduled: DatabaseMetadata = {
 const noop = (): void => {}
 
 // `DatabasesView`'s `PageHeader` back-link renders a TanStack `<Link>`, so it
-// must mount inside a router. Mirrors `RelaySettingsEntry.test.tsx`. An optional
+// must mount inside a router. An optional
 // `renderer` provides the ambient `ErrorBodyRenderer` the view's `ErrorBanner`
 // consults (the app supplies the real one for `403 InsufficientScope`).
 const renderView = (

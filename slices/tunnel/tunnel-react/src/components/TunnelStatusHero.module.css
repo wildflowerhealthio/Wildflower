@@ -1,7 +1,7 @@
 /*
  * The Tunnel screen's "status hero" — a card immediately under the page
- * explainer with the live on/off control, status badge, and a connection
- * summary that dims when the tunnel is off.
+ * explainer with the status badge and a connection summary that dims when the
+ * tunnel isn't running.
  */
 .hero {
   background: var(--card-color-background);
@@ -23,10 +23,8 @@
 
 /*
  * Address block — public host, sub-line, connection path. Dims when the
- * tunnel isn't open (neither running nor about to be), since the path and
- * "N apps connected now" don't describe anything actionable in that state.
- * The 0.25s opacity transition matches the toggle's track transition, so
- * flipping Run-tunnel reads as one motion.
+ * tunnel isn't running, since the path and "N apps connected now" don't
+ * describe anything actionable in that state.
  */
 .hero__address {
   display: flex;
@@ -44,53 +42,6 @@
   .hero__address {
     transition: none;
   }
-}
-
-.hero__address-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-5);
-}
-
-.hero__host {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-3);
-  font-weight: var(--font-weight-2);
-  color: var(--color-foreground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/*
- * Bare icon button — no fill, no border. Sized to match the host line's
- * cap height so the glyph sits on the same baseline as the URL.
- */
-.hero__copy {
-  flex: 0 0 auto;
-  background: none;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  font-size: var(--font-size-4);
-  line-height: var(--line-height-1);
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.hero__copy:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.hero__copy:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-1);
 }
 
 .hero__meta {
@@ -126,8 +77,8 @@
 .path__node {
   flex: 0 0 auto;
   border-radius: 999px;
-  /* Smooth the active/inactive/error swap so flipping Run-tunnel reads
-   * as a continuous state change rather than a hard color flip. */
+  /* Smooth the active/inactive/error swap so a status change reads as a
+   * continuous change rather than a hard color flip. */
   transition:
     background 1s ease,
     box-shadow 1s ease;

@@ -29,6 +29,9 @@ async fn main() -> anyhow::Result<()> {
         // crate's vendored copy so searches index (see `assets/README.md`).
         search_parameter_data_dir: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("assets"),
+        // Dev binary: no relay, so HFS's links point back at the loopback
+        // server itself.
+        public_origin: "http://127.0.0.1:8080".parse()?,
     };
 
     // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is

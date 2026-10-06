@@ -209,7 +209,6 @@ name = "apps-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "axum",
  "diesel",
  "diesel_migrations",
@@ -874,6 +873,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-notification",
  "tokio",
+ "tunnel-rust",
 ]
 
 [[package]]
@@ -2273,12 +2273,6 @@ dependencies = [
  "selectors 0.38.0",
  "tendril",
 ]
-
-[[package]]
-name = "dotenvy"
-version = "0.15.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "downcast-rs"
@@ -8931,12 +8925,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
- "diesel",
- "diesel_migrations",
  "http",
  "http-body-util",
  "parking_lot",
- "persistence-rust",
  "proptest",
  "rand 0.10.3",
  "rathole",
@@ -9523,7 +9514,6 @@ dependencies = [
  "background-server-service-tauri-rust",
  "browser-sniffer-tauri-rust",
  "chrono",
- "dotenvy",
  "gatekeeper-rust",
  "har-recorder-tauri-rust",
  "openssl",

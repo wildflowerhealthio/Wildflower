@@ -38,14 +38,6 @@ pub(crate) struct InvalidFieldBody {
     pub(crate) message: String,
 }
 
-/// Wire shape for a 503 `LaunchUnavailable` — a launch with no *reachable*
-/// target. The SPA surfaces the failure rather than following a dead redirect.
-#[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct LaunchUnavailableBody {
-    pub(crate) error: &'static str,
-    pub(crate) reason: String,
-}
-
 /// Wire shape for a 400 `InvalidHomeScreen` — the `PUT /home-screen` body wasn't
 /// an exact permutation of the registry. Matches the TS `InvalidHomeScreenSchema`.
 #[derive(Debug, Serialize, ToSchema)]
@@ -72,14 +64,6 @@ impl IntoResponse for AppsError {
                 .into_response(),
             AppsError::InvalidUrl { message } => invalid_field("InvalidUrl", message),
             AppsError::InvalidName { message } => invalid_field("InvalidName", message),
-            AppsError::Unavailable { reason } => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(LaunchUnavailableBody {
-                    error: "LaunchUnavailable",
-                    reason,
-                }),
-            )
-                .into_response(),
             AppsError::InvalidHomeScreen { message } => (
                 StatusCode::BAD_REQUEST,
                 Json(InvalidHomeScreenBody {

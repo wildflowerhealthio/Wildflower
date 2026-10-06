@@ -16,13 +16,10 @@ import { makeRecordingSender, storeHolding } from './test-support.ts'
 
 type TunnelState = typeof Tunnel.TunnelStateViewSchema.Type
 
-const ONLINE_TUNNEL: TunnelState = {
-  ...Tunnel.freshTunnelState,
-  publicHost: 'ruth.wildflowerhealth.io',
-  requestedRunning: true,
-  running: true,
-  status: 'verified',
-}
+const ONLINE_TUNNEL: TunnelState = { ...Tunnel.freshTunnelState, status: 'verified' }
+
+/** A previous run's tunnel, as the cache can still hold it. */
+const PREVIOUS_RUN_TUNNEL: TunnelState = { status: 'unreachable', error: 'previous run’s error' }
 
 const statusIn = (
   state: ServerServiceStatus['state'],
@@ -177,13 +174,12 @@ describe('/settings/server', () => {
     expect(tunnelRequests()).toBe(0)
   })
 
-  it('should show the tunnel’s status and public host while the server runs', async () => {
+  it('should show the tunnel’s status while the server runs', async () => {
     // Act
     const { tunnelRequests } = renderServerSettings(statusIn('running'))
 
     // Assert
-    expect(await screen.findByText('ruth.wildflowerhealth.io')).toBeDefined()
-    expect(screen.getByText('Online')).toBeDefined()
+    expect(await screen.findByText('Online')).toBeDefined()
     expect(screen.getByText('None yet')).toBeDefined()
     expect(tunnelRequests()).toBe(1)
   })
@@ -207,19 +203,19 @@ describe('/settings/server', () => {
       answerTunnelRequest = resolve
     })
     renderServerSettings(statusIn('running'), {
-      cachedTunnel: { ...ONLINE_TUNNEL, publicHost: 'previous-run.wildflowerhealth.io' },
+      cachedTunnel: PREVIOUS_RUN_TUNNEL,
       tunnelResponseGate,
     })
 
     // Assert — loading while the fetch is out
     expect(await screen.findByText('Loading the tunnel…')).toBeDefined()
-    expect(screen.queryByText('previous-run.wildflowerhealth.io')).toBeNull()
+    expect(screen.queryByText('previous run’s error')).toBeNull()
 
     // Act
     answerTunnelRequest()
 
     // Assert — this run's tunnel once it answers
-    expect(await screen.findByText('ruth.wildflowerhealth.io')).toBeDefined()
-    expect(screen.queryByText('previous-run.wildflowerhealth.io')).toBeNull()
+    expect(await screen.findByText('Online')).toBeDefined()
+    expect(screen.queryByText('previous run’s error')).toBeNull()
   })
 })

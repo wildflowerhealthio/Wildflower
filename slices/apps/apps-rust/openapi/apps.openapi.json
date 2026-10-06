@@ -259,16 +259,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "No reachable launch target (a requires_tunnel app while the tunnel is down)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LaunchUnavailableBody"
-                }
-              }
-            }
           }
         }
       },
@@ -451,7 +441,7 @@
           },
           "url": {
             "type": "string",
-            "description": "The launch URL template: `{origin}` is replaced with the served origin at\nlaunch time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]). It\nis origin-independent, never a request-resolved redirect target — see\n`docs/Apps/Explanation.md`. Serialized as its canonical string."
+            "description": "The launch URL template: `{origin}` is replaced with the server's public\norigin at launch time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]). It\nis origin-independent, never a request-resolved redirect target — see\n`docs/Apps/Explanation.md`. Serialized as its canonical string."
           },
           "isSmart": {
             "type": "boolean",
@@ -459,7 +449,7 @@
           },
           "requiresTunnel": {
             "type": "boolean",
-            "description": "Whether a launch must bring the tunnel up first (a launch-readiness pill)."
+            "description": "The app's Tunnel pill. It has no effect on launch (every launch resolves\n`{origin}` to the server's public origin); #967 removes it."
           }
         }
       },
@@ -542,22 +532,6 @@
           "url": {
             "type": "string",
             "description": "The absolute launch URL (the app's rendered template)."
-          }
-        }
-      },
-      "LaunchUnavailableBody": {
-        "type": "object",
-        "description": "Wire shape for a 503 `LaunchUnavailable` — a launch with no *reachable*\ntarget. The SPA surfaces the failure rather than following a dead redirect.",
-        "required": [
-          "error",
-          "reason"
-        ],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
           }
         }
       }

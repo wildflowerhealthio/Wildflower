@@ -149,7 +149,7 @@ mod tests {
     ///
     /// The routes tree is enumerated at test time, so a NEW handler file is
     /// guarded by default. `launch.rs` is the one exempted file: the launch
-    /// response glue (tunnel / loopback / webview seams) legitimately reaches the
+    /// response glue (public origin / webview seams) legitimately reaches the
     /// state, while its scope check rides the `Scoped<AppLauncher>` umbrella +
     /// the in-handler SMART gate. (Advisory-strength: the needles are textual.)
     #[test]
