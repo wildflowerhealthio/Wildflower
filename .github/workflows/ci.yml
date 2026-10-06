@@ -88,6 +88,10 @@ jobs:
               - 'slices/browser-sniffer/browser-sniffer-tauri/**'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
+              # wildflower-relay's signature test verifies the request the
+              # admin UI's TypeScript signer committed here. (The UI itself
+              # is stubbed for the Rust job, so its sources don't count.)
+              - 'slices/relay/relay-core/src/signing/fixtures/*.json'
               # What the job runs, and the stub placeholders it compiles against.
               - 'scripts/checks/rust.sh'
               - 'scripts/ci/stub-embedded-bundles.sh'

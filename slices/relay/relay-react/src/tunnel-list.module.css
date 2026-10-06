@@ -1,0 +1,15 @@
+/*
+ * The tunnel list: a heading, any delete failure, then one row per tunnel
+ * with its public host and owner's email on the line under its name.
+ */
+.tunnel-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.tunnel-list__details {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-4);
+}

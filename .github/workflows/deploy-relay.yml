@@ -1,7 +1,8 @@
 name: Deploy Relay
 
-# Builds wildflower-relay and deploys it to its droplet, where it runs under
-# apps/wildflower-relay/wildflower-relay.service. The relay has to own public
+# Builds the relay's admin UI (apps/relay/admin-web), then wildflower-relay,
+# which embeds it, and deploys the binary to its droplet, where it runs under
+# apps/relay/server/wildflower-relay.service. The relay has to own public
 # :443 and :80 and see raw TCP (it routes ciphertext by SNI and puts the
 # visitor's address in a PROXY header), so it runs alone on the host rather
 # than behind a platform's proxy.
@@ -16,7 +17,7 @@ name: Deploy Relay
 #   - optionally, variables for the other settings in relay.example.env;
 #     those left unset keep the relay's defaults.
 # The host's `deploy` user may run only the commands in
-# apps/wildflower-relay/deploy/sudoers as root, which don't include
+# apps/relay/server/deploy/sudoers as root, which don't include
 # installing the systemd unit.
 #
 # A restart drops open connections; devices reconnect their tunnels. A run
@@ -26,7 +27,20 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/wildflower-relay/**'
+      - 'apps/relay/server/**'
+      # The admin UI the binary embeds, and the slice it is built from.
+      - 'apps/relay/admin-web/**'
+      - 'slices/relay/**'
+      # The UI's other sources: the workspace packages it is built from
+      # (relay-admin-web's dependency closure; the build resolves them by
+      # their `source` export), the catalog and the shared Vite config.
+      - 'global/kitchen-sink/**'
+      - 'global/react-kitchen-sink/**'
+      - 'global/react-tundraish/**'
+      - 'slices/shared-structures/shared-structures-core/**'
+      - 'pnpm-workspace.yaml'
+      - 'vite.config.base.ts'
+      - 'pnpm-lock.yaml'
       - 'slices/shared-structures/shared-structures-rust/**'
       - 'slices/tunnel/rathole-settings-rust/**'
       - 'slices/persistence/persistence-rust/**'
@@ -51,6 +65,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
+      # The admin UI is static files that `cargo build` embeds, so they are
+      # built first. Only its own workspace packages are installed.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+      - name: Build admin UI
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile --filter relay-admin-web...
+          pnpm --filter relay-admin-web run build
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
@@ -86,8 +113,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           sparse-checkout: |
-            apps/wildflower-relay/deploy/install.sh
-            apps/wildflower-relay/wildflower-relay.service
+            apps/relay/server/deploy/install.sh
+            apps/relay/server/wildflower-relay.service
           sparse-checkout-cone-mode: false
 
       - name: Download binary
@@ -165,7 +192,7 @@ jobs:
         id: upload
         run: |
           set -euo pipefail
-          cp apps/wildflower-relay/deploy/install.sh apps/wildflower-relay/wildflower-relay.service "$RUNNER_TEMP/upload/"
+          cp apps/relay/server/deploy/install.sh apps/relay/server/wildflower-relay.service "$RUNNER_TEMP/upload/"
           dir="$(ssh relay mktemp -d)"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
           scp -q "$RUNNER_TEMP"/upload/* "relay:$dir/"

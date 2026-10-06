@@ -19,7 +19,7 @@ slices/<name>/
 
 Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `wildflower-server`).
 
-Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `relay`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
 
 `http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
 
@@ -49,6 +49,13 @@ that runs them.
 is the exercises, people and default weights the watch mirrors, the weights
 as the page edits them, and the phone's decoding, storage and message to the
 watch, as pure functions; `apps/watch-lifts-web` is the page.
+
+`relay` is the TypeScript side of the tunnel relay — see
+[relay/AGENTS.md](./relay/AGENTS.md). Its `relay-core` is the relay's admin
+API as an `HttpApi`, the RFC 9421 signer every admin call goes through, and
+the store that keeps the admin key as a non-extractable `CryptoKey`; its
+`relay-react` is the admin screen; `apps/relay/admin-web` is the page the relay
+(`apps/relay/server`) embeds and serves at `admin.<domain>`.
 
 `synthetic-data` is tooling for synthetic health data — see
 [synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md). Like `health-viewer`, it

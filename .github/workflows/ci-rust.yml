@@ -10,8 +10,9 @@ on:
   # har-recorder-tauri-rust, shared-structures-tauri-rust,
   # tauri-plugin-native-webview). Those need GTK/webkit system libs, so the
   # job installs them and stubs the generated web bundles the Tauri crates
-  # `include_str!`. (This used to be a separate ci-rust-tauri.yml; the split
-  # saved little because most Rust PRs touch a Tauri crate anyway.)
+  # `include_str!` (and the relay's admin UI, which wildflower-relay embeds).
+  # (This used to be a separate ci-rust-tauri.yml; the split saved little
+  # because most Rust PRs touch a Tauri crate anyway.)
   #
   # The full-workspace test pass also runs each slice's
   # `openapi_spec_snapshot_is_up_to_date` test — the Rust half of the OpenAPI
@@ -75,6 +76,11 @@ jobs:
       - name: Stub Sniffer bootstrap
         if: steps.filter.outputs.bootstrap != 'true'
         run: ./scripts/ci/stub-embedded-bundles.sh sniffer
+      # wildflower-relay embeds the admin UI's build. Its tests serve a build
+      # they define themselves, so a placeholder page is all it needs here;
+      # the UI is tested by the TypeScript workflow.
+      - name: Stub relay admin UI
+        run: ./scripts/ci/stub-embedded-bundles.sh relay-admin-web
 
       - name: Set up Rust toolchain
         # Reads rust-toolchain.toml, caches the cargo registry + `target/`, and

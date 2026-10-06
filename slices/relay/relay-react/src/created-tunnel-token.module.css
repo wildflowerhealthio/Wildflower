@@ -1,0 +1,32 @@
+/*
+ * A created tunnel's token, shown once: the token in a monospace block that
+ * wraps rather than scrolls, the warning, and Copy / Done.
+ */
+.created-tunnel-token {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-radius: var(--radius-4);
+  border: 1px solid var(--card-color-border);
+  background: var(--card-color-background);
+}
+
+.created-tunnel-token__token {
+  display: block;
+  padding: var(--space-3);
+  border-radius: var(--radius-3);
+  background: var(--color-background);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.created-tunnel-token__warning {
+  margin: 0;
+  font-weight: 600;
+}
+
+.created-tunnel-token__actions {
+  display: flex;
+  gap: var(--space-3);
+}

@@ -43,8 +43,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The Tauri crates `include_str!` generated web bundles that a fresh
-      # checkout doesn't have; same placeholders ci-rust.yml compiles against.
+      # The Tauri crates and wildflower-relay embed generated web bundles that
+      # a fresh checkout doesn't have; same placeholders ci-rust.yml compiles
+      # against.
       - name: Stub the embedded web bundles
         run: ./scripts/ci/stub-embedded-bundles.sh all
 

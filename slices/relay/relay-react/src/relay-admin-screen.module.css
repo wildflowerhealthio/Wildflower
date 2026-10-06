@@ -1,0 +1,17 @@
+/*
+ * The admin site's page: a single centred column under the header.
+ */
+.relay-admin-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5);
+}
+
+.relay-admin-screen__signed-in {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
