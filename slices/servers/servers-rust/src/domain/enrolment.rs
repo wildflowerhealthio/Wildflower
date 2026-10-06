@@ -123,7 +123,9 @@ impl RelayIdentity {
 }
 
 /// Enrol `tunnel_name` at `relay` with `token` and register the server, with
-/// the default launcher and production certificates.
+/// the default launcher and production certificates. The server is set
+/// [`running`](ServerRecord::running) when no registered server is, so the
+/// first server added is the one the host starts; a later one isn't.
 ///
 /// `relay_client` builds the [`RelayClient`] for a Wildflower relay from its
 /// base URL; it is called once for an official or self-hosted Wildflower
@@ -190,16 +192,18 @@ pub async fn add_server<S: RelayClient>(
             (RelayKind::Rathole, public_settings)
         }
     };
-    let record = ServerRecord {
-        relay,
-        tunnel_name,
-        token,
-        public_settings,
-        launcher_url: ServerRecord::default_launcher_url(),
-        staging_certificates: false,
-    };
-    let inserted = record.clone();
-    run_blocking(registry, move |registry| registry.insert(inserted)).await?;
+    let record = run_blocking(registry, move |registry| {
+        registry.insert(Box::new(|registered| ServerRecord {
+            relay,
+            tunnel_name,
+            token,
+            public_settings,
+            launcher_url: ServerRecord::default_launcher_url(),
+            staging_certificates: false,
+            running: !registered.iter().any(|server| server.running),
+        }))
+    })
+    .await?;
     Ok(record)
 }
 
@@ -570,6 +574,7 @@ mod tests {
                 public_settings: served_settings(),
                 launcher_url: ServerRecord::default_launcher_url(),
                 staging_certificates: false,
+                running: true,
             }
         );
         assert_eq!(record.domain(), "ruth.relay.example.com");
@@ -826,6 +831,48 @@ mod tests {
         assert_eq!(registry.read_all().unwrap(), vec![existing]);
     }
 
+    /// The first server added is the one the host starts; a later one isn't.
+    #[tokio::test]
+    async fn only_the_first_server_added_is_set_running() {
+        let (_data_root, registry) = registry();
+        let relay_client = FakeRelayClient::serving(served_settings());
+
+        let first = add(&registry, &relay_client, self_hosted_relay(None), TOKEN)
+            .await
+            .unwrap();
+        let second = add_server(
+            Arc::clone(&registry),
+            rathole_relay(),
+            TunnelName::parse("lab").unwrap(),
+            TunnelToken::new("any-token"),
+            no_client,
+        )
+        .await
+        .unwrap();
+
+        assert!(first.running);
+        assert!(!second.running);
+        assert_eq!(registry.read_all().unwrap(), vec![first, second]);
+    }
+
+    /// Servers registered with none set running don't stop the next one
+    /// added from being set.
+    #[tokio::test]
+    async fn a_server_added_while_none_is_running_is_set_running() {
+        let (_data_root, registry) = registry();
+        let stopped = official_record("lab");
+        assert!(!stopped.running);
+        registry.insert(Box::new(|_| stopped.clone())).unwrap();
+        let relay_client = FakeRelayClient::serving(served_settings());
+
+        let added = add(&registry, &relay_client, self_hosted_relay(None), TOKEN)
+            .await
+            .unwrap();
+
+        assert!(added.running);
+        assert_eq!(registry.read_all().unwrap(), vec![stopped, added]);
+    }
+
     #[tokio::test]
     async fn a_rathole_relay_is_added_from_its_entered_settings_without_a_request() {
         let (_data_root, registry) = registry();
@@ -849,6 +896,7 @@ mod tests {
                 public_settings: served_settings(),
                 launcher_url: ServerRecord::default_launcher_url(),
                 staging_certificates: false,
+                running: true,
             }
         );
         assert_eq!(record.domain(), "ruth.relay.example.com");
@@ -959,7 +1007,7 @@ mod tests {
         registered.public_settings = served_settings();
         registered.staging_certificates = true;
         registered.launcher_url = Url::parse("http://localhost:5200/").unwrap();
-        registry.insert(registered.clone()).unwrap();
+        registry.insert(Box::new(|_| registered.clone())).unwrap();
         let relay_client = FakeRelayClient::serving(served_settings());
 
         let record = set_server_credentials(
@@ -1013,8 +1061,8 @@ mod tests {
         };
         let mut same = official_record("lab");
         same.public_settings = served_settings();
-        registry.insert(moved.clone()).unwrap();
-        registry.insert(same.clone()).unwrap();
+        registry.insert(Box::new(|_| moved.clone())).unwrap();
+        registry.insert(Box::new(|_| same.clone())).unwrap();
         let relay_client = FakeRelayClient::serving(served_settings());
 
         assert!(matches!(

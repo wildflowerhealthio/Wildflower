@@ -37,11 +37,11 @@ fn free_loopback_port() -> u16 {
     probe.local_addr().expect("ephemeral port address").port()
 }
 
-fn server_config(app_data_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {
+fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {
     WildflowerServerConfig {
         runtime: ServerRuntimeConfig {
             loopback_base_url,
-            app_data_dir: app_data_dir.clone(),
+            server_dir,
         },
         search_parameter_data_dir: PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -94,7 +94,7 @@ async fn health_status(loopback_base_url: &Url) -> reqwest::StatusCode {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_restart_waits_for_the_previous_run_and_serves_again() {
-    let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
+    let server_dir = tempfile::tempdir().expect("temp server folder");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
     let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
@@ -107,7 +107,7 @@ async fn a_restart_waits_for_the_previous_run_and_serves_again() {
         active_pending_consent_sender,
     };
     let (context, receivers) = ServerHostContext::new(
-        server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
+        server_config(server_dir.path().to_owned(), loopback_base_url.clone()),
         host_ports,
     );
     let mut run_state = receivers.run_state;
@@ -195,14 +195,14 @@ async fn a_restart_waits_for_the_previous_run_and_serves_again() {
 /// A run cancelled while an earlier run still holds the gate never starts.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_cancelled_at_the_gate_never_starts() {
-    let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
+    let server_dir = tempfile::tempdir().expect("temp server folder");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
     let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
     let (active_pending_consent_sender, _pending_consents) =
         watch::channel::<Option<PendingConsentHead>>(None);
     let (context, receivers) = ServerHostContext::new(
-        server_config(app_data_dir.path().to_owned(), loopback_base_url),
+        server_config(server_dir.path().to_owned(), loopback_base_url),
         HostPorts {
             loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
             on_device_webview_handle: Arc::new(NoOnDeviceWebview),

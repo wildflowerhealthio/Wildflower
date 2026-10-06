@@ -13,7 +13,7 @@ mod server_record;
 pub use enrolment::{add_server, set_server_credentials, EnteredRelay, RelayIdentity};
 pub use enrolment_error::EnrolmentError;
 pub use registry_error::RegistryError;
-pub use server_record::{RelayKind, ServerRecord, TunnelToken};
+pub use server_record::{RelayKind, ServerRecord, TunnelToken, SERVERS_DIR_NAME};
 
 #[cfg(test)]
 pub(crate) use server_record::tests as fixtures;

@@ -1,4 +1,4 @@
-//! The server's composition: [`set_up`] opens the host's databases, sets up
+//! The server's composition: [`set_up`] opens the server's databases, sets up
 //! every server slice, joins them through [`crate::adapters`], wraps them in
 //! the [`crate::http`] layers and binds the loopback port; [`WildflowerServer`]
 //! serves the result.
@@ -30,7 +30,7 @@ use crate::http::middleware::loopback_owner_trust::{
 use crate::http::not_found;
 use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 
-// Filenames of the host's SQLite databases under the shared app-data dir. These
+// Filenames of the server's SQLite databases in its folder. These
 // are the single source of truth for each database's on-disk name: the slice
 // that opens it AND the data-management catalogue (`/databases`) reference the
 // same const, so adding or renaming a database is one edit here. The server owns
@@ -74,8 +74,8 @@ impl WildflowerServer {
 ///
 /// # Errors
 ///
-/// Returns an error if a scheduled database deletion can't be applied, a
-/// database or store can't be opened, the loopback port can't be bound, a
+/// Returns an error if the server's folder can't be created, a scheduled
+/// database deletion can't be applied, a database or store can't be opened, the loopback port can't be bound, a
 /// slice's setup fails, or the tunnel's stored public host can't be FHIR's base
 /// URL.
 ///
@@ -99,11 +99,20 @@ pub async fn set_up(
         tunnel_seed,
     } = config;
 
+    // The server's folder holds its databases, and a server added since the
+    // last start has none yet.
+    std::fs::create_dir_all(&runtime.server_dir).with_context(|| {
+        format!(
+            "failed to create the server's folder {}",
+            runtime.server_dir.display()
+        )
+    })?;
+
     // Apply any deletions the Owner scheduled from the data-management screen
     // BEFORE opening the databases below: the `/databases` DELETE can't remove a
     // file the owning slice holds open, so it drops a marker that we purge here,
     // while nothing has the file open yet.
-    databases_rust::purge_pending_deletions(&runtime.app_data_dir)
+    databases_rust::purge_pending_deletions(&runtime.server_dir)
         .context("failed to purge scheduled database deletions")?;
 
     let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
@@ -114,7 +123,7 @@ pub async fn set_up(
     let loopback_origin = shared_structures_rust::origin_string(&loopback_base_url);
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
-        db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
+        db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
         // HFS-enforced auth: every FHIR request must carry a Bearer JWT
         // signed by a gatekeeper-issued key. `iss` is pinned to
         // [`shared_structures_rust::CANONICAL_ISSUER`] by both gatekeeper
@@ -133,7 +142,7 @@ pub async fn set_up(
     // (gatekeeper, and the tunnel slice); each runs its own namespaced
     // migrations on it. (The FHIR/emr store is managed separately by
     // helios-persistence.)
-    let db_path = runtime.app_data_dir.join(WILDFLOWER_DB);
+    let db_path = runtime.server_dir.join(WILDFLOWER_DB);
     let db =
         persistence_rust::Connection::open(&db_path).context("failed to open shared database")?;
 
@@ -320,9 +329,9 @@ pub async fn set_up(
     // runs in-handler).
     let gated_apps = apps.router.layer(gatekeeper_auth_layer.clone());
 
-    // The data-management surface (`/databases`): export + delete the host's
+    // The data-management surface (`/databases`): export + delete the server's
     // SQLite databases. It owns no store — it works at the file level on the
-    // same `app_data_dir` the databases above live in — so the server passes the
+    // folder the databases above live in — so the server passes the
     // directory plus the catalogue (the slice has no built-in knowledge of which
     // databases exist; the user-facing strings live here). Authenticated behind
     // the gatekeeper bearer gate, then authorized per database (NOT a blanket
@@ -336,7 +345,7 @@ pub async fn set_up(
     // typed constructors (tested there) rather than parsed from strings, so a
     // typo is a compile error, never a silent `Unknown` scope.
     let databases_config = databases_rust::DatabasesConfig {
-        data_dir: runtime.app_data_dir.clone(),
+        data_dir: runtime.server_dir.clone(),
         databases: vec![
             databases_rust::DatabaseDescriptor {
                 id: HEALTH_DATA_DB.to_owned(),

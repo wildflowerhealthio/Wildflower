@@ -3,7 +3,11 @@ use url::Url;
 #[derive(Debug, Clone)]
 pub struct ServerRuntimeConfig {
     pub loopback_base_url: Url,
-    pub app_data_dir: std::path::PathBuf,
+    /// The folder this server runs from, `<data root>/servers/<domain>/`: its
+    /// databases live here and nowhere else. Install-wide files (the server
+    /// registry, saved recordings) stay in the data root above it, which the
+    /// server never sees.
+    pub server_dir: std::path::PathBuf,
 }
 
 impl ServerRuntimeConfig {

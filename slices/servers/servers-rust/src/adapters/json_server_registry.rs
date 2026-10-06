@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::domain::{RegistryError, RelayKind, ServerRecord, TunnelToken};
-use crate::ports::ServerRegistry;
+use crate::ports::{NewRecord, ServerRegistry};
 
 /// The registry's file name in the data root.
 pub const SERVERS_FILE_NAME: &str = "servers.json";
@@ -72,16 +72,17 @@ impl JsonServerRegistry {
     }
 
     /// Read the registry, apply `change` to its servers, and replace the file
-    /// with the result.
-    fn modify(
+    /// with the result. Returns what `change` returns.
+    fn modify<T>(
         &self,
-        change: impl FnOnce(&mut Vec<ServerRecord>) -> Result<(), RegistryError>,
-    ) -> Result<(), RegistryError> {
+        change: impl FnOnce(&mut Vec<ServerRecord>) -> Result<T, RegistryError>,
+    ) -> Result<T, RegistryError> {
         let _guard = self.write_lock.lock();
         let mut servers = self.read_document()?.into_records();
-        change(&mut servers)?;
+        let changed = change(&mut servers)?;
         self.stage(&RegistryDocument::from_records(&servers))?
-            .commit()
+            .commit()?;
+        Ok(changed)
     }
 
     /// Write `document` to the temporary file and fsync it, without touching
@@ -109,14 +110,15 @@ impl ServerRegistry for JsonServerRegistry {
         Ok(self.read_document()?.into_records())
     }
 
-    fn insert(&self, record: ServerRecord) -> Result<(), RegistryError> {
+    fn insert(&self, new_record: NewRecord<'_>) -> Result<ServerRecord, RegistryError> {
         self.modify(|servers| {
+            let record = new_record(servers);
             let domain = record.domain();
             if servers.iter().any(|server| server.domain() == domain) {
                 return Err(RegistryError::AlreadyRegistered { domain });
             }
-            servers.push(record);
-            Ok(())
+            servers.push(record.clone());
+            Ok(record)
         })
     }
 
@@ -251,6 +253,7 @@ struct StoredServerFields {
     public_settings: PublicRatholeSettings,
     launcher_url: Url,
     staging_certificates: bool,
+    running: bool,
 }
 
 /// [`PublicRatholeSettings`]' fields as `servers.json` names them, in
@@ -326,8 +329,12 @@ mod tests {
     #[test]
     fn records_round_trip_through_the_file() {
         let (data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
-        registry.insert(self_hosted_record("lab")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
+        registry
+            .insert(Box::new(|_| self_hosted_record("lab")))
+            .unwrap();
 
         let reopened = JsonServerRegistry::in_data_root(data_root.path());
         assert_eq!(
@@ -339,7 +346,9 @@ mod tests {
     #[test]
     fn the_file_holds_the_token_in_full() {
         let (data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
         assert!(file_text(&data_root).contains(TOKEN));
     }
 
@@ -349,7 +358,9 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let (data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
         let metadata = fs::metadata(data_root.path().join(SERVERS_FILE_NAME)).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
     }
@@ -364,7 +375,9 @@ mod tests {
         fs::write(&temp_path, "").unwrap();
         fs::set_permissions(&temp_path, fs::Permissions::from_mode(0o644)).unwrap();
 
-        registry.insert(official_record("ruth")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
 
         let metadata = fs::metadata(data_root.path().join(SERVERS_FILE_NAME)).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
@@ -388,7 +401,8 @@ mod tests {
                   "domain": "relay.wildflowerhealth.io"
                 }},
                 "launcherUrl": "https://wildflowerhealth.io/app",
-                "stagingCertificates": false
+                "stagingCertificates": false,
+                "running": false
               }}]
             }}"#
         )
@@ -408,7 +422,9 @@ mod tests {
     #[test]
     fn writes_the_version_1_format() {
         let (data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
         let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
         let by_hand: serde_json::Value = serde_json::from_str(&version_1_file("ruth")).unwrap();
         assert_eq!(written, by_hand);
@@ -432,13 +448,50 @@ mod tests {
         let (data_root, registry) = registry();
         let mut rathole = self_hosted_record("lab");
         rathole.relay = RelayKind::Rathole;
-        registry.insert(rathole.clone()).unwrap();
+        registry.insert(Box::new(|_| rathole.clone())).unwrap();
         let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
         assert_eq!(
             written["servers"][0]["relay"],
             serde_json::json!({"kind": "rathole"})
         );
         assert_eq!(registry.read_all().unwrap(), vec![rathole]);
+    }
+
+    #[test]
+    fn a_new_record_is_built_from_the_servers_registered_and_returned() {
+        let (_data_root, registry) = registry();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
+        let inserted = registry
+            .insert(Box::new(|registered| {
+                assert_eq!(registered, [official_record("ruth")]);
+                self_hosted_record("lab")
+            }))
+            .unwrap();
+        assert_eq!(inserted, self_hosted_record("lab"));
+        assert_eq!(
+            registry.read_all().unwrap(),
+            vec![official_record("ruth"), self_hosted_record("lab")]
+        );
+    }
+
+    #[test]
+    fn whether_a_server_is_wanted_running_is_stored_per_server() {
+        let (data_root, registry) = registry();
+        let mut running = official_record("ruth");
+        running.running = true;
+        registry.insert(Box::new(|_| running.clone())).unwrap();
+        registry
+            .insert(Box::new(|_| self_hosted_record("lab")))
+            .unwrap();
+        let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
+        assert_eq!(written["servers"][0]["running"], serde_json::json!(true));
+        assert_eq!(written["servers"][1]["running"], serde_json::json!(false));
+        assert_eq!(
+            registry.read_all().unwrap(),
+            vec![running, self_hosted_record("lab")]
+        );
     }
 
     /// The tunnel name becomes the server's folder name, so one read from the
@@ -520,7 +573,7 @@ mod tests {
             Err(RegistryError::UnsupportedVersion { version: 2 })
         ));
         assert!(matches!(
-            registry.insert(official_record("ruth")),
+            registry.insert(Box::new(|_| official_record("ruth"))),
             Err(RegistryError::UnsupportedVersion { version: 2 })
         ));
         assert_eq!(file_text(&data_root), future);
@@ -529,7 +582,9 @@ mod tests {
     #[test]
     fn a_crash_before_the_rename_leaves_the_previous_file() {
         let (data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
         let before = file_text(&data_root);
 
         let staged = registry
@@ -545,7 +600,9 @@ mod tests {
         assert_eq!(registry.read_all().unwrap(), vec![official_record("ruth")]);
 
         // The next change writes over the leftover temporary file.
-        registry.insert(self_hosted_record("lab")).unwrap();
+        registry
+            .insert(Box::new(|_| self_hosted_record("lab")))
+            .unwrap();
         assert_eq!(
             registry.read_all().unwrap(),
             vec![official_record("ruth"), self_hosted_record("lab")]
@@ -555,7 +612,9 @@ mod tests {
     #[test]
     fn a_committed_stage_replaces_the_file() {
         let (data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
 
         let staged = registry
             .stage(&RegistryDocument::from_records(&[self_hosted_record(
@@ -576,12 +635,14 @@ mod tests {
     #[test]
     fn inserting_a_registered_domain_is_refused() {
         let (_data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
         let mut same_domain = official_record("ruth");
         same_domain.staging_certificates = true;
 
         assert!(matches!(
-            registry.insert(same_domain),
+            registry.insert(Box::new(|_| same_domain)),
             Err(RegistryError::AlreadyRegistered { domain }) if domain == "ruth.relay.wildflowerhealth.io"
         ));
         assert_eq!(registry.read_all().unwrap(), vec![official_record("ruth")]);
@@ -590,8 +651,12 @@ mod tests {
     #[test]
     fn update_replaces_the_record_with_the_same_domain() {
         let (_data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
-        registry.insert(self_hosted_record("lab")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
+        registry
+            .insert(Box::new(|_| self_hosted_record("lab")))
+            .unwrap();
         let mut updated = official_record("ruth");
         updated.staging_certificates = true;
         updated.launcher_url = Url::parse("http://localhost:5200/").unwrap();
@@ -617,8 +682,12 @@ mod tests {
     #[test]
     fn remove_drops_only_the_named_server() {
         let (_data_root, registry) = registry();
-        registry.insert(official_record("ruth")).unwrap();
-        registry.insert(self_hosted_record("lab")).unwrap();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
+        registry
+            .insert(Box::new(|_| self_hosted_record("lab")))
+            .unwrap();
 
         registry.remove("ruth.relay.wildflowerhealth.io").unwrap();
 

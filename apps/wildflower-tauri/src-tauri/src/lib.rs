@@ -5,13 +5,18 @@ mod native_webview_handle;
 use anyhow::Context;
 use background_server_service_rust::ServerHostContext;
 use background_server_service_tauri_rust::{
-    report_server_failure, start_background_server_service, WildflowerServerService,
+    report_no_server, report_server_failure, start_background_server_service,
+    WildflowerServerService,
 };
+use parking_lot::Mutex;
+use servers_rust::{JsonServerRegistry, RegistryError, ServerRecord, ServerRegistry};
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::ServerRuntimeConfig;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_background_service::StartConfig;
+use tauri_plugin_log::log;
 use tokio::sync::watch;
 use url::Url;
 use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
@@ -66,20 +71,20 @@ const BACKGROUND_SERVICE_LABEL: &str = env!("WILDFLOWER_BACKGROUND_SERVICE_LABEL
 const BACKGROUND_SERVICE_FOREGROUND_TYPE: &str =
     env!("WILDFLOWER_BACKGROUND_SERVICE_FOREGROUND_TYPE");
 
-/// Resolves the directory the host keeps its databases and saved files in:
-/// `Documents` on iOS, where it is the only part of the app container the Files
-/// app will show, and Tauri's `app_data_dir()` everywhere else. The iOS bundle
-/// has to opt in as well (see the [Data Directory Explanation] for both halves,
-/// and what each platform resolves to).
+/// Resolves the data root, the directory the host keeps everything in: the
+/// server registry, saved files, and each server's own folder under
+/// `servers/`. `Documents` on iOS, where it is the only part of the app
+/// container the Files app will show, and Tauri's `app_data_dir()` everywhere
+/// else. The iOS bundle has to opt in as well (see the [Data Directory
+/// Explanation] for both halves, the layout, and what each platform resolves
+/// to).
 ///
 /// Only the platform's own candidate is resolved — `document_dir()` fails
 /// outright on a desktop with no such user directory, and a platform that never
 /// reads it must not be able to fail startup on it.
 ///
 /// [Data Directory Explanation]: ../../Data%20Directory%20Explanation.md
-fn resolve_data_dir<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-) -> tauri::Result<std::path::PathBuf> {
+fn resolve_data_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<PathBuf> {
     #[cfg(target_os = "ios")]
     return app.path().document_dir();
     #[cfg(not(target_os = "ios"))]
@@ -136,9 +141,12 @@ fn host_owner_scopes() -> Vec<String> {
 ///
 /// Only the desktop/iOS release build asks `app_handle` for Tauri's
 /// bundled-resource dir, where it reads the FHIR SearchParameter bundle; the dev
-/// build reads the workspace source tree, and Android the embedded copy.
+/// build reads the workspace source tree, and Android the embedded copy, which
+/// it writes into `data_root`: the bundle belongs to the install, not to one
+/// server.
 fn server_config(
     runtime: ServerRuntimeConfig,
+    #[cfg_attr(not(target_os = "android"), allow(unused_variables))] data_root: &Path,
     #[cfg_attr(target_os = "android", allow(unused_variables))] app_handle: &tauri::AppHandle,
 ) -> anyhow::Result<WildflowerServerConfig> {
     let owner_ui_base = OwnerUiBase::parse(OWNER_UI_BASE_URL)
@@ -153,7 +161,7 @@ fn server_config(
     // exposes no Rust-side reader for bundle resources (`AssetResolver` covers only
     // `frontendDist`), and reading the APK asset directly needs the `unsafe` JNI
     // `AssetManager` the workspace forbids. So on Android we embed the ~2.3 MB
-    // bundle in the binary and materialize it to a real app-data dir at startup.
+    // bundle in the binary and materialize it into the data root at startup.
     // Because the APK-asset copy is never read on Android, `tauri.android.conf.json`
     // drops it from `bundle.resources` (a `null` merge-patch override) so the APK
     // ships the bundle once (the binary embed) rather than twice.
@@ -167,7 +175,7 @@ fn server_config(
         ));
         // Filename matches `emr_rust`'s `SEARCH_PARAMETERS_R4_FILENAME` and the
         // `tauri.conf.json` resource mapping.
-        let dir = runtime.app_data_dir.join("fhir-search-params");
+        let dir = data_root.join("fhir-search-params");
         std::fs::create_dir_all(&dir).with_context(|| {
             format!("failed to create fhir-search-params dir {}", dir.display())
         })?;
@@ -211,6 +219,80 @@ fn server_config(
     })
 }
 
+/// Find the registered server `setup()` runs: the first one set
+/// [`running`](ServerRecord::running). `None` when no server is set running,
+/// an empty registry included.
+///
+/// One server runs at a time for now; starting and stopping servers arrives
+/// with the base's server commands in #955.
+fn find_server_to_run(
+    registry: &dyn ServerRegistry,
+) -> Result<Option<ServerRecord>, RegistryError> {
+    Ok(registry
+        .read_all()?
+        .into_iter()
+        .find(|server| server.running))
+}
+
+/// Start `server` from its folder under `data_root`: wire the background
+/// service's status, restart and notifications, start it, and publish the
+/// context its runs wait for on `host_context_sender`. A config that can't be
+/// built is reported the way a failed run is, and nothing starts.
+fn start_server(
+    app_handle: &tauri::AppHandle,
+    data_root: &Path,
+    server: &ServerRecord,
+    publishers: bridge::BridgePublishers,
+    host_context_sender: &watch::Sender<Option<ServerHostContext>>,
+) {
+    let server_dir = server.server_dir(data_root);
+    log::info!(
+        "[servers] starting {} from {}",
+        server.domain(),
+        server_dir.display()
+    );
+    // Hostname/port come from the shared `tauri-shared-config.json` (see
+    // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the TS `apiBaseUrl`
+    // reads.
+    let loopback_base_url = match Url::parse(&format!("http://{LOOPBACK_HOSTNAME}:{LOOPBACK_PORT}"))
+    {
+        Ok(url) => url,
+        Err(error) => {
+            report_server_failure(app_handle, &format!("bad loopback base URL: {error}"));
+            return;
+        }
+    };
+    let runtime = ServerRuntimeConfig {
+        // Loopback-only: the OS rejects non-local peers at the socket, so the
+        // bearer secret is never the only thing between LAN peers and FHIR
+        // health data.
+        loopback_base_url,
+        server_dir,
+    };
+    match server_config(runtime, data_root, app_handle) {
+        Ok(config) => {
+            let (server_host_context, server_receivers) =
+                ServerHostContext::new(config, host_ports(app_handle, publishers));
+            // Wire the server's status, restart and notifications before a run
+            // can begin, so no run-state change is missed, and start it from
+            // Rust, without waiting on the page. A run waits for the context
+            // published below.
+            start_background_server_service(
+                app_handle,
+                server_receivers,
+                StartConfig {
+                    service_label: BACKGROUND_SERVICE_LABEL.to_owned(),
+                    foreground_service_type: BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned(),
+                },
+            );
+            host_context_sender.send_replace(Some(server_host_context));
+        }
+        // Without a config there is no server to run; say so the way a failed
+        // run does, and keep the app up to show it.
+        Err(error) => report_server_failure(app_handle, &format!("{error:#}")),
+    }
+}
+
 /// Wraps the host's native adapters and bridge publishers as the server's
 /// [`HostPorts`].
 fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublishers) -> HostPorts {
@@ -244,7 +326,7 @@ fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublisher
 /// Panics if the Tauri runtime fails to start — an unrecoverable
 /// windowing/context failure with no app handle through which to surface a
 /// dialog, so dying with the error is the honest outcome. Recoverable startup
-/// failures (e.g. the app-data directory) are handled inside `.setup()` where a
+/// failures (e.g. the server registry) are handled inside `.setup()` where a
 /// handle still exists.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -336,8 +418,8 @@ pub fn run() {
             move || WildflowerServerService::new(host_context.clone()),
         ))
         .setup(move |app| {
-            let app_data_dir = resolve_data_dir(app.handle())?;
-            std::fs::create_dir_all(&app_data_dir)?;
+            let data_root = resolve_data_dir(app.handle())?;
+            std::fs::create_dir_all(&data_root)?;
 
             // Attach the bridge before the server starts: `listen` registers
             // synchronously, so the webview's `__Ready` (which fires much
@@ -357,49 +439,74 @@ pub fn run() {
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
             // Wire the HarRecorderBridge.webToHost listener that writes a
-            // finished recording into `<app data dir>/saved_data`, taking the
-            // directory this `setup()` already resolved rather than its own.
-            har_recorder_tauri_rust::attach_har_recorder(app.handle(), app_data_dir.clone());
+            // finished recording into `<data root>/saved_data`, shared by
+            // every server, taking the directory this `setup()` already
+            // resolved rather than its own.
+            har_recorder_tauri_rust::attach_har_recorder(app.handle(), data_root.clone());
 
             // The registry the enrolment commands write, `servers.json` in the
             // same data root.
-            servers_tauri_rust::manage_servers(app.handle(), &app_data_dir);
+            servers_tauri_rust::manage_servers(app.handle(), &data_root);
 
-            // Hostname/port come from the shared `tauri-shared-config.json`
-            // (see `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
-            // TS `apiBaseUrl` reads.
-            let loopback_base_url =
-                Url::parse(&format!("http://{}:{}", LOOPBACK_HOSTNAME, LOOPBACK_PORT))?;
-            let runtime = ServerRuntimeConfig {
-                // Loopback-only: the OS rejects non-local peers at the socket,
-                // so the bearer secret is never the only thing between LAN
-                // peers and FHIR health data.
-                loopback_base_url,
-                app_data_dir,
-            };
-
-            match server_config(runtime, app.handle()) {
-                Ok(config) => {
-                    let (server_host_context, server_receivers) =
-                        ServerHostContext::new(config, host_ports(app.handle(), publishers));
-                    // Wire the server's status, restart and notifications
-                    // before a run can begin, so no run-state change is
-                    // missed, and start it from Rust, without waiting on the
-                    // page. A run waits for the context published below.
-                    start_background_server_service(
-                        app.handle(),
-                        server_receivers,
-                        StartConfig {
-                            service_label: BACKGROUND_SERVICE_LABEL.to_owned(),
-                            foreground_service_type: BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned(),
-                        },
-                    );
-                    host_context_sender.send_replace(Some(server_host_context));
+            let server = match find_server_to_run(&JsonServerRegistry::in_data_root(&data_root)) {
+                Ok(Some(server)) => server,
+                // No server to run isn't a failure: the page shows the
+                // server stopped, with no error. A server set running since
+                // (the first one added is) starts on the page's restart; the
+                // publishers and the context sender wait here until then.
+                Ok(None) => {
+                    let waiting = Mutex::new(Some((publishers, host_context_sender)));
+                    report_no_server(app.handle(), move |app_handle| {
+                        let mut waiting = waiting.lock();
+                        let Some((publishers, host_context_sender)) = waiting.take() else {
+                            // Already started by an earlier restart.
+                            return true;
+                        };
+                        match find_server_to_run(&JsonServerRegistry::in_data_root(&data_root)) {
+                            Ok(Some(server)) => {
+                                start_server(
+                                    app_handle,
+                                    &data_root,
+                                    &server,
+                                    publishers,
+                                    &host_context_sender,
+                                );
+                                true
+                            }
+                            Ok(None) => {
+                                *waiting = Some((publishers, host_context_sender));
+                                false
+                            }
+                            Err(error) => {
+                                *waiting = Some((publishers, host_context_sender));
+                                report_server_failure(
+                                    app_handle,
+                                    &format!("failed to read the registered servers: {error}"),
+                                );
+                                false
+                            }
+                        }
+                    });
+                    return Ok(());
                 }
-                // Without a config there is no server to run; say so the way
-                // a failed run does, and keep the app up to show it.
-                Err(error) => report_server_failure(app.handle(), &format!("{error:#}")),
-            }
+                // Without the registry there is no server to run; say so
+                // the way a failed run does, and keep the app up to show
+                // it.
+                Err(error) => {
+                    report_server_failure(
+                        app.handle(),
+                        &format!("failed to read the registered servers: {error}"),
+                    );
+                    return Ok(());
+                }
+            };
+            start_server(
+                app.handle(),
+                &data_root,
+                &server,
+                publishers,
+                &host_context_sender,
+            );
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -408,6 +515,109 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
+    use servers_rust::{
+        NewRecord, RegistryError, RelayKind, ServerRecord, ServerRegistry, TunnelToken,
+    };
+    use std::path::Path;
+
+    /// A registry holding `servers`, or, without them, one that can't be read.
+    /// Only [`ServerRegistry::read_all`] is used by the code under test.
+    struct FakeRegistry(Option<Vec<ServerRecord>>);
+
+    impl ServerRegistry for FakeRegistry {
+        fn read_all(&self) -> Result<Vec<ServerRecord>, RegistryError> {
+            self.0
+                .clone()
+                .ok_or(RegistryError::UnsupportedVersion { version: 2 })
+        }
+
+        fn insert(&self, _new_record: NewRecord<'_>) -> Result<ServerRecord, RegistryError> {
+            unreachable!("choosing the server to run only reads the registry")
+        }
+
+        fn update(&self, _record: ServerRecord) -> Result<(), RegistryError> {
+            unreachable!("choosing the server to run only reads the registry")
+        }
+
+        fn remove(&self, _domain: &str) -> Result<(), RegistryError> {
+            unreachable!("choosing the server to run only reads the registry")
+        }
+    }
+
+    /// A server on the official relay for each `(tunnel name, running)`, in
+    /// order.
+    fn servers(servers: &[(&str, bool)]) -> FakeRegistry {
+        FakeRegistry(Some(
+            servers
+                .iter()
+                .map(|&(tunnel_name, running)| ServerRecord {
+                    relay: RelayKind::WildflowerOfficial,
+                    tunnel_name: TunnelName::parse(tunnel_name).expect("a valid tunnel name"),
+                    token: TunnelToken::new("s3cret-tunnel-token"),
+                    public_settings: PublicRatholeSettings {
+                        remote_addr: "relay.wildflowerhealth.io:2333".to_owned(),
+                        transport: Transport::Noise,
+                        noise_pattern: NoisePattern::Nk25519ChaChaPolyBlake2s,
+                        public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
+                        domain: "relay.wildflowerhealth.io".to_owned(),
+                    },
+                    launcher_url: ServerRecord::default_launcher_url(),
+                    staging_certificates: false,
+                    running,
+                })
+                .collect(),
+        ))
+    }
+
+    /// The domain of the server `setup()` would run from `registry`.
+    fn domain_to_run(registry: &FakeRegistry) -> Option<String> {
+        super::find_server_to_run(registry)
+            .expect("the registry reads")
+            .map(|server| server.domain())
+    }
+
+    #[test]
+    fn an_empty_registry_runs_no_server() {
+        assert_eq!(domain_to_run(&servers(&[])), None);
+    }
+
+    #[test]
+    fn a_registry_with_no_server_set_running_runs_none() {
+        assert_eq!(
+            domain_to_run(&servers(&[("ruth", false), ("lab", false)])),
+            None
+        );
+    }
+
+    #[test]
+    fn the_server_set_running_runs_from_its_own_folder() {
+        let server = super::find_server_to_run(&servers(&[("ruth", true)]))
+            .expect("the registry reads")
+            .expect("a server runs");
+        assert_eq!(server.domain(), "ruth.relay.wildflowerhealth.io");
+        let data_root = Path::new("/data");
+        assert_eq!(
+            server.server_dir(data_root),
+            data_root
+                .join("servers")
+                .join("ruth.relay.wildflowerhealth.io")
+        );
+    }
+
+    #[test]
+    fn the_first_server_set_running_is_the_one_that_runs() {
+        assert_eq!(
+            domain_to_run(&servers(&[("lab", false), ("ruth", true), ("demo", true)])),
+            Some("ruth.relay.wildflowerhealth.io".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_unreadable_registry_is_an_error() {
+        assert!(super::find_server_to_run(&FakeRegistry(None)).is_err());
+    }
+
     /// The plugin checks the type the service starts as against its config's
     /// allowlist on every platform, so a type missing from `tauri.conf.json`
     /// would stop the server starting at all. Read through the plugin's own

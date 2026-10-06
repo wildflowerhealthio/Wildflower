@@ -36,7 +36,7 @@ fn build_router() -> (Router, TempDb) {
 
     let runtime = ServerRuntimeConfig {
         loopback_base_url: "http://127.0.0.1:8080".parse().expect("parse loopback url"),
-        app_data_dir: dir.clone(),
+        server_dir: dir.clone(),
     };
     let config = EmrConfig {
         log_level: "error".to_string(),

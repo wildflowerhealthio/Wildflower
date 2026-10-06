@@ -25,8 +25,9 @@ The **servers** this install knows about. Rust-only, no `-core`.
 - **A server's domain is its identity.** `ServerRecord::domain()` is
   `<tunnel name>.<relay domain>`, the relay domain being the `domain` its
   `GET /rathole` returned. There's no separate display name; the registry is
-  keyed by the domain, and each server's data folder is
-  `<data root>/servers/<domain>/`.
+  keyed by the domain, and each server runs from its own folder,
+  `<data root>/servers/<domain>/` (`ServerRecord::server_dir`), which holds
+  its databases.
 - **The tunnel name is one DNS label.** `ServerRecord::tunnel_name` is a
   `TunnelName` from `rathole-settings-rust`, the same check the relay applies
   to its tunnels: one lowercase DNS label, never `admin`. It is checked on
@@ -137,9 +138,13 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   command: Tauri rejects it with the string
   ``invalid args `<parameter>` for command `<command>`: <reason>``. The app grants both to the `main` webview
   only, through its `allow-server-enrolment` permission.
-- **Configuration only.** Whether a server is running, its tunnel's liveness
-  and its certificate are live state, held by whatever runs the server, never
-  in a `ServerRecord`.
+- **Configuration only.** `ServerRecord::running` is whether the user wants
+  the server run, which the host reads at startup to choose what to start.
+  Whether a run is up, its tunnel's liveness and its certificate are live
+  state, held by whatever runs the server, never in a `ServerRecord`.
+- **The first server added is set running.** `add_server` sets `running` when
+  no registered server has it, and on no later server; nothing else changes
+  it yet.
 - **`servers.json` is versioned.** The file is
   `{"version": 1, "servers": [...]}`, its server fields `serde(remote)`
   mirrors of `ServerRecord` and `PublicRatholeSettings` renamed to camelCase,
