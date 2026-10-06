@@ -22,7 +22,7 @@ axum.workspace = true
 base64.workspace = true
 # Derives the noise public key from the private key (X25519). Already in the
 # tree through snow, rathole's noise implementation.
-curve25519-dalek = "4.1"
+curve25519-dalek = "5.0"
 # The tunnel store, `<state dir>/tunnels.db`: queries over the
 # `persistence_rust::DieselPool`, as the slices' stores do.
 diesel.workspace = true
