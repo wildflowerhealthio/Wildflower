@@ -218,25 +218,19 @@ fn server_config(
     })
 }
 
-/// The registered server `setup()` runs, with the folder it runs from
-/// (`<data_root>/servers/<domain>/`): the first one set
+/// Find the registered server `setup()` runs: the first one set
 /// [`running`](ServerRecord::running). `None` when no server is set running,
 /// an empty registry included.
 ///
 /// One server runs at a time for now; starting and stopping servers arrives
 /// with the base's server commands in #955.
-fn server_to_run(
-    data_root: &Path,
+fn find_server_to_run(
     registry: &dyn ServerRegistry,
-) -> Result<Option<(ServerRecord, PathBuf)>, RegistryError> {
+) -> Result<Option<ServerRecord>, RegistryError> {
     Ok(registry
         .read_all()?
         .into_iter()
-        .find(|server| server.running)
-        .map(|server| {
-            let server_dir = server.server_dir(data_root);
-            (server, server_dir)
-        }))
+        .find(|server| server.running))
 }
 
 /// Wraps the host's native adapters and bridge publishers as the server's
@@ -394,26 +388,26 @@ pub fn run() {
             // same data root.
             servers_tauri_rust::manage_servers(app.handle(), &data_root);
 
-            let (server, server_dir) =
-                match server_to_run(&data_root, &JsonServerRegistry::in_data_root(&data_root)) {
-                    Ok(Some(server_to_run)) => server_to_run,
-                    // No server to run isn't a failure: the page shows the
-                    // server stopped, with no error.
-                    Ok(None) => {
-                        report_no_server(app.handle());
-                        return Ok(());
-                    }
-                    // Without the registry there is no server to run; say so
-                    // the way a failed run does, and keep the app up to show
-                    // it.
-                    Err(error) => {
-                        report_server_failure(
-                            app.handle(),
-                            &format!("failed to read the registered servers: {error}"),
-                        );
-                        return Ok(());
-                    }
-                };
+            let server = match find_server_to_run(&JsonServerRegistry::in_data_root(&data_root)) {
+                Ok(Some(server)) => server,
+                // No server to run isn't a failure: the page shows the
+                // server stopped, with no error.
+                Ok(None) => {
+                    report_no_server(app.handle());
+                    return Ok(());
+                }
+                // Without the registry there is no server to run; say so
+                // the way a failed run does, and keep the app up to show
+                // it.
+                Err(error) => {
+                    report_server_failure(
+                        app.handle(),
+                        &format!("failed to read the registered servers: {error}"),
+                    );
+                    return Ok(());
+                }
+            };
+            let server_dir = server.server_dir(&data_root);
             log::info!(
                 "[servers] starting {} from {}",
                 server.domain(),
@@ -463,7 +457,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use servers_rust::{JsonServerRegistry, SERVERS_FILE_NAME};
+    use servers_rust::{JsonServerRegistry, ServerRecord, SERVERS_FILE_NAME};
     use std::path::Path;
 
     /// A `servers.json` in `data_root` holding a server on the official relay
@@ -497,12 +491,10 @@ mod tests {
         .expect("write servers.json");
     }
 
-    /// The domain of the server `setup()` would run from `data_root`, and the
-    /// folder it would run from.
-    fn server_to_run_in(data_root: &Path) -> Option<(String, std::path::PathBuf)> {
-        super::server_to_run(data_root, &JsonServerRegistry::in_data_root(data_root))
+    /// The server `setup()` would run from `data_root`.
+    fn server_to_run_in(data_root: &Path) -> Option<ServerRecord> {
+        super::find_server_to_run(&JsonServerRegistry::in_data_root(data_root))
             .expect("servers.json reads")
-            .map(|(server, server_dir)| (server.domain(), server_dir))
     }
 
     #[test]
@@ -524,15 +516,14 @@ mod tests {
     fn the_server_set_running_runs_from_its_own_folder() {
         let data_root = tempfile::tempdir().expect("temp data root");
         write_servers(data_root.path(), &[("ruth", true)]);
+        let server = server_to_run_in(data_root.path()).expect("a server runs");
+        assert_eq!(server.domain(), "ruth.relay.wildflowerhealth.io");
         assert_eq!(
-            server_to_run_in(data_root.path()),
-            Some((
-                "ruth.relay.wildflowerhealth.io".to_owned(),
-                data_root
-                    .path()
-                    .join("servers")
-                    .join("ruth.relay.wildflowerhealth.io")
-            ))
+            server.server_dir(data_root.path()),
+            data_root
+                .path()
+                .join("servers")
+                .join("ruth.relay.wildflowerhealth.io")
         );
     }
 
@@ -543,8 +534,8 @@ mod tests {
             data_root.path(),
             &[("lab", false), ("ruth", true), ("demo", true)],
         );
-        let (domain, _) = server_to_run_in(data_root.path()).expect("a server runs");
-        assert_eq!(domain, "ruth.relay.wildflowerhealth.io");
+        let server = server_to_run_in(data_root.path()).expect("a server runs");
+        assert_eq!(server.domain(), "ruth.relay.wildflowerhealth.io");
     }
 
     #[test]
@@ -555,11 +546,9 @@ mod tests {
             r#"{"version": 2, "servers": []}"#,
         )
         .expect("write servers.json");
-        assert!(super::server_to_run(
-            data_root.path(),
-            &JsonServerRegistry::in_data_root(data_root.path())
-        )
-        .is_err());
+        assert!(
+            super::find_server_to_run(&JsonServerRegistry::in_data_root(data_root.path())).is_err()
+        );
     }
 
     /// The plugin checks the type the service starts as against its config's

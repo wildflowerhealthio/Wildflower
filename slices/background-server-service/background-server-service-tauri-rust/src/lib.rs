@@ -250,15 +250,7 @@ pub fn report_no_server<R: Runtime>(app: &AppHandle<R>) {
         if !is_ready {
             return;
         }
-        let status = ServerServiceStatus::new(
-            &ServerRunState::Stopped { error: None },
-            None,
-            notification_permission(&handle),
-        );
-        let message = BackgroundServerServiceHostToWeb::ServerServiceStatus(status);
-        if let Err(error) = handle.emit(BRIDGE_EVENT, &message) {
-            log::error!("[background-server-service] failed to emit {message:?}: {error}");
-        }
+        emit_status(&handle, &ServerRunState::Stopped { error: None }, None);
     });
 }
 
@@ -370,15 +362,21 @@ async fn emit_status_changes<R: Runtime>(
         }
         let current_run_state = run_state.borrow_and_update().clone();
         let current_stop_reason = *last_stop_reason.borrow_and_update();
-        let status = ServerServiceStatus::new(
-            &current_run_state,
-            current_stop_reason,
-            notification_permission(&app),
-        );
-        let message = BackgroundServerServiceHostToWeb::ServerServiceStatus(status);
-        if let Err(error) = app.emit(BRIDGE_EVENT, &message) {
-            log::error!("[background-server-service] failed to emit {message:?}: {error}");
-        }
+        emit_status(&app, &current_run_state, current_stop_reason);
+    }
+}
+
+/// Emit a [`ServerServiceStatus`] for `run_state` and `stop_reason` on
+/// [`BRIDGE_EVENT`], with the current notification permission.
+fn emit_status<R: Runtime>(
+    app: &AppHandle<R>,
+    run_state: &ServerRunState,
+    stop_reason: Option<ServiceStopReason>,
+) {
+    let status = ServerServiceStatus::new(run_state, stop_reason, notification_permission(app));
+    let message = BackgroundServerServiceHostToWeb::ServerServiceStatus(status);
+    if let Err(error) = app.emit(BRIDGE_EVENT, &message) {
+        log::error!("[background-server-service] failed to emit {message:?}: {error}");
     }
 }
 
