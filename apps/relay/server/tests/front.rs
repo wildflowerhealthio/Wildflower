@@ -64,12 +64,12 @@ fn router(tunnel_names: &[&str]) -> Arc<Router> {
 /// The relay's site with a self-signed certificate for [`DOMAIN`], and that
 /// certificate for clients to trust.
 fn self_signed_site() -> (Site, CertificateDer<'static>) {
-    let rcgen::CertifiedKey { cert, key_pair } =
+    let rcgen::CertifiedKey { cert, signing_key } =
         rcgen::generate_simple_self_signed(vec![DOMAIN.to_owned()]).expect("self-signed cert");
     let cert = cert.der().clone();
     let key = CertifiedKey::from_der(
         vec![cert.clone()],
-        PrivateKeyDer::Pkcs8(key_pair.serialize_der().into()),
+        PrivateKeyDer::Pkcs8(signing_key.serialize_der().into()),
         &rustls::crypto::ring::default_provider(),
     )
     .expect("certified key");

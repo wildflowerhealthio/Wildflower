@@ -89,6 +89,8 @@ pub(crate) fn build_auth(
         audit_exclusion_filter: ExclusionFilter::new(vec![]),
         // FHIR is mounted at a fixed prefix with no tenant path segment.
         tenant_url_routing: false,
+        // No web-UI login: every caller presents its own bearer token.
+        sessions: None,
     });
 
     (config, Some(state))
