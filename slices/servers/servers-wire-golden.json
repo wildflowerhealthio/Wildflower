@@ -1,0 +1,55 @@
+{
+  "listedServers": [
+    {
+      "domain": "ruth.relay.example.com",
+      "relay": { "kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com/" },
+      "tunnelName": "ruth",
+      "launcherUrl": "https://wildflowerhealth.io/app",
+      "stagingCertificates": false,
+      "runPolicy": { "kind": "until", "at": "2026-10-06T17:42:00Z" },
+      "status": {
+        "domain": "ruth.relay.example.com",
+        "runState": { "state": "running" },
+        "tunnelLiveness": {
+          "settingsRevision": 3,
+          "status": "verified",
+          "origin": "https://ruth.relay.example.com",
+          "publicHost": "ruth.relay.example.com",
+          "error": null,
+          "dialAttempts": 1
+        },
+        "startedAt": "2026-10-06T17:00:00Z"
+      }
+    },
+    {
+      "domain": "lab.rathole.example.com",
+      "relay": { "kind": "rathole" },
+      "tunnelName": "lab",
+      "launcherUrl": "http://localhost:5200/app",
+      "stagingCertificates": true,
+      "runPolicy": { "kind": "off" },
+      "status": {
+        "domain": "lab.rathole.example.com",
+        "runState": { "state": "stopped", "error": "the server's config couldn't be built" },
+        "tunnelLiveness": null,
+        "startedAt": null
+      }
+    }
+  ],
+  "runPolicies": [
+    { "kind": "off" },
+    { "kind": "whileInUse" },
+    { "kind": "until", "at": "2026-10-06T17:42:00Z" },
+    { "kind": "always" }
+  ],
+  "runPolicyChoices": [
+    { "kind": "off" },
+    { "kind": "whileInUse" },
+    { "kind": "for", "seconds": 1800 },
+    { "kind": "always" }
+  ],
+  "commandError": {
+    "kind": "nonPositiveDuration",
+    "message": "a server can't be run for 0 seconds: the duration must be more than zero"
+  }
+}

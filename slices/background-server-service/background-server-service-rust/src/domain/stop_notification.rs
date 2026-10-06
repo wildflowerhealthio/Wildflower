@@ -7,16 +7,18 @@ use crate::plugin_event::ServiceStopReason;
 /// notification instead of stacking.
 pub const SERVER_STOPPED_NOTIFICATION_ID: &str = "server-stopped";
 
-/// The reason the host stops the service with for the stop half of a restart
-/// (from the page or on a foreground resume), so that stop's notification can
-/// be skipped: the server comes straight back.
+/// The reason the host stops the service with itself, so that stop's
+/// notification can be skipped: the stop half of a restart (from the page or
+/// on a foreground resume), where the server comes straight back, and a stop
+/// the base asked for, by changing a server's run policy or removing it, which
+/// the base shows already.
 ///
 /// The plugin never stops with this reason itself (its app-exit stop is a
-/// `UserStop`, or `ProcessExit` on iOS), and nothing else in this app does.
-pub const RESTART_STOP_REASON: ServiceStopReason = ServiceStopReason::AppStop;
+/// `UserStop`, or `ProcessExit` on iOS).
+pub const HOST_STOP_REASON: ServiceStopReason = ServiceStopReason::AppStop;
 
-/// The notification for a run that stopped for `reason`, or `None` for the
-/// stop half of a restart ([`RESTART_STOP_REASON`]). Every other stop notifies.
+/// The notification for a run that stopped for `reason`, or `None` for a stop
+/// the host made itself ([`HOST_STOP_REASON`]). Every other stop notifies.
 #[must_use]
 pub fn stop_notification(reason: ServiceStopReason) -> Option<LocalNotification> {
     let (title, body) = match reason {
@@ -87,11 +89,11 @@ mod tests {
     ];
 
     #[test]
-    fn every_stop_notifies_except_the_restart_s_own() {
+    fn every_stop_notifies_except_the_host_s_own() {
         for reason in EVERY_REASON {
             let notification = stop_notification(reason);
-            if reason == RESTART_STOP_REASON {
-                assert_eq!(notification, None, "a restart's stop must not notify");
+            if reason == HOST_STOP_REASON {
+                assert_eq!(notification, None, "a stop the host made must not notify");
             } else {
                 let notification = notification.expect("every other stop notifies");
                 assert_eq!(notification.id, SERVER_STOPPED_NOTIFICATION_ID);

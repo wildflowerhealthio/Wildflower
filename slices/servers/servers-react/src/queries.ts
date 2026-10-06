@@ -7,6 +7,8 @@ import {
 } from '@tanstack/react-query'
 import {
   type HostCommandError,
+  type ListedServer,
+  listServers,
   type NotificationPermission,
   readAppVersion,
   readNotificationPermission,
@@ -18,6 +20,22 @@ import type { RunHostCommand } from './router-context.ts'
 const NOTIFICATION_PERMISSION_QUERY_KEY = ['servers', 'notification-permission'] as const
 
 const APP_VERSION_QUERY_KEY = ['servers', 'app-version'] as const
+
+const SERVERS_QUERY_KEY = ['servers', 'list'] as const
+
+/** The servers on this device, each with its current status. */
+const serversQueryOptions = (
+  runHostCommand: RunHostCommand
+): UseQueryOptions<
+  readonly ListedServer[],
+  HostCommandError,
+  readonly ListedServer[],
+  typeof SERVERS_QUERY_KEY
+> =>
+  queryOptions({
+    queryKey: SERVERS_QUERY_KEY,
+    queryFn: () => runHostCommand(listServers),
+  })
 
 /** Whether the OS lets the app post notifications, read without asking. */
 const notificationPermissionQueryOptions = (
@@ -62,5 +80,6 @@ const useRequestNotificationPermission = (
 export {
   appVersionQueryOptions,
   notificationPermissionQueryOptions,
+  serversQueryOptions,
   useRequestNotificationPermission,
 }

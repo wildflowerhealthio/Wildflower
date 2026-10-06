@@ -130,8 +130,12 @@ confirms the tunnel before the record is written; a rathole server, with
 no Wildflower relay site, is entered as its settings, which get the same
 checks. A relay's identity (its dial address and noise key) is pinned when
 the server is added, and re-entering a token refuses a relay that presents
-another. `servers-tauri-rust` is the base's `server_add` and `server_set_credentials`
-commands over it. The base itself, the UI the Tauri host's webview mounts in
+another. Each server has a run policy (`off`, `whileInUse`, `until` or
+`always`), and at most one server's is active. `servers-tauri-rust` is the
+base's commands over it (list, add, re-enter credentials, set the run policy,
+update, remove), the reconciler that starts and stops servers to match their
+policies through the app's `ServerService`, and each server's status, emitted
+as the `server-status` event. The base itself, the UI the Tauri host's webview mounts in
 place of the owner UI, is `servers-react`'s `BaseRoot`: its own telemetry
 consent, then the server list and Host Settings, which reach the host
 only through `servers-core`'s Tauri commands (plain `invoke`, answers

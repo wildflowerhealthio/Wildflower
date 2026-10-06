@@ -12,6 +12,7 @@
     "background-service:allow-configure-recovery",
     "notification:allow-is-permission-granted",
     "notification:allow-request-permission",
-    "allow-server-enrolment"
+    "allow-server-enrolment",
+    "allow-server-management"
   ]
 }

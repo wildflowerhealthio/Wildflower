@@ -18,14 +18,16 @@ folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir` in
 `servers-rust`), so servers never share a database.
 
 `setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves the data
-root, hands it to the slices that keep install-wide files, and reads
-`servers.json`. The first server set `running` there is the one that starts: its
-folder goes to the server as `ServerRuntimeConfig.server_dir`, and the server
-creates the folder, applies scheduled database deletions in it, and opens both
-databases there; the data-management screen (`/databases`) exports and deletes
-that server's databases only. With no server set running, nothing starts and the
-host reports the server stopped, with no error. Every slice that needs a path
-joins onto the data root or the server's folder rather than resolving its own.
+root, hands it to the slices that keep install-wide files, and starts the
+servers' reconciler (`servers-tauri-rust`), which reads `servers.json` and starts
+the server whose run policy is active: its folder goes to the server as
+`ServerRuntimeConfig.server_dir`, and the server creates the folder, applies
+scheduled database deletions in it, and opens both databases there; the
+data-management screen (`/databases`) exports and deletes that server's
+databases only. With no active policy, nothing starts and every server's status
+is stopped, with no error. Removing a server deletes its folder. Every slice that
+needs a path joins onto the data root or the server's folder rather than
+resolving its own.
 
 Where the data root lands is a per-platform decision, and on iOS it is a
 deliberate one.

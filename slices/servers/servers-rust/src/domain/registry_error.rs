@@ -1,5 +1,12 @@
 //! [`RegistryError`]: how a [`ServerRegistry`](crate::ServerRegistry)
 //! operation fails.
+//!
+//! `Serialize` writes `{"kind": "<kind>", "message": "<Display>"}`, the shape
+//! the base's commands answer a failure with; [`RegistryError::kind`] lists
+//! the kinds.
+
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Serializer};
 
 /// The ways reading or changing the registry fails.
 #[derive(Debug, thiserror::Error)]
@@ -24,6 +31,18 @@ pub enum RegistryError {
 }
 
 impl RegistryError {
+    /// What went wrong, as a stable `camelCase` name a caller can branch on:
+    /// `alreadyRegistered`, `notRegistered`, or `registry` for a registry
+    /// that can't be read or written.
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::AlreadyRegistered { .. } => "alreadyRegistered",
+            Self::NotRegistered { .. } => "notRegistered",
+            Self::UnsupportedVersion { .. } | Self::Storage { .. } => "registry",
+        }
+    }
+
     /// Wrap a storage failure with what was being done when it happened.
     #[must_use]
     pub fn storage(
@@ -33,6 +52,48 @@ impl RegistryError {
         Self::Storage {
             context,
             source: source.into(),
+        }
+    }
+}
+
+impl Serialize for RegistryError {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut error = serializer.serialize_struct("RegistryError", 2)?;
+        error.serialize_field("kind", self.kind())?;
+        error.serialize_field("message", &self.to_string())?;
+        error.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serialises_as_its_kind_and_message() {
+        for (error, kind) in [
+            (
+                RegistryError::NotRegistered {
+                    domain: "ruth.relay.example.com".to_owned(),
+                },
+                "notRegistered",
+            ),
+            (
+                RegistryError::AlreadyRegistered {
+                    domain: "ruth.relay.example.com".to_owned(),
+                },
+                "alreadyRegistered",
+            ),
+            (RegistryError::UnsupportedVersion { version: 2 }, "registry"),
+            (
+                RegistryError::storage("reading servers.json", "disk on fire"),
+                "registry",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(&error).unwrap(),
+                serde_json::json!({"kind": kind, "message": error.to_string()})
+            );
         }
     }
 }

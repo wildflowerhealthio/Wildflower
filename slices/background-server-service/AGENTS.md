@@ -23,40 +23,48 @@ here.
   - The serde mirror of the bridge (`bridge.rs`: `ServerServiceStatus`,
     `RestartServer`) with golden tests, and of the plugin's lifecycle events
     (`plugin_event.rs`).
-  - `ServerHostContext::run_server` (`live_bindings/server_run.rs`): one run
-    of the server behind the `RunGate`, on a dedicated runtime, publishing its
-    `ServerRunState`. `tests/restart.rs` restarts the real server through it.
+  - `ServerHost` and `ServerHostContext::run_server`
+    (`live_bindings/server_run.rs`): what every run shares (the host's ports,
+    the run gate, the run-state and tunnel channels), and one run of a
+    server's config behind the `RunGate`, on a dedicated runtime, publishing
+    its `ServerRunState` (from `shared-structures-rust`). `ServerToRun` is
+    what the host publishes for the service's runs, and
+    `run_published_server` waits for it and runs it, or ends at once when
+    there is no server to run. `tests/restart.rs` restarts the real server,
+    and switches servers, through them.
   - The notification decisions: the per-caller request coalescer, the stop
     notification per reason, the tunnel-drop detector, and what a foreground
     resume does.
   - Layout: the wire mirrors (`bridge.rs`, `plugin_event.rs`) at the crate
-    root; `domain/` the run gate, `ServerRunState`, the foreground-resume rule
-    and the notification decisions, testable without I/O; `live_bindings/` a
+    root; `domain/` the run gate, the foreground-resume rule and the
+    notification decisions, testable without I/O; `live_bindings/` a
     server run bound to `wildflower-server-rust`, with its dedicated thread and
     runtime in `server_run/dedicated_runtime.rs`.
 - **`background-server-service-tauri-rust`** — the glue: the plugin's
   `BackgroundService` impl (`WildflowerServerService`), asking for the
-  notification permission, starting and restarting the service, the
-  plugin-event and bridge listeners, the status emitter, and posting
-  notifications and the native error dialog. Its tests pin the event
-  mirror against the plugin's own serializer.
+  notification permission, starting, stopping and restarting the service
+  (`ServerServiceHandle`), the plugin-event and bridge listeners, the status
+  emitter, and posting notifications and the native error dialog. Its tests
+  pin the event mirror against the plugin's own serializer.
 
 `apps/wildflower-tauri` registers the notification and background-service
-plugins, builds the `ServerHostContext` in `.setup()` for the server
-`servers.json` sets running, and hands it with the service's start config
-(label and foreground-service type, from `tauri-shared-config.json`) to
-`start_background_server_service`; with no server set running it calls
-`report_no_server` instead, whose `RestartServer` starts a server set running
-since. It also owns
+plugins, builds the `ServerHost` in `.setup()`, and attaches the glue with
+`attach_background_server_service`, passing the service's start config (label
+and foreground-service type, from `tauri-shared-config.json`); every setup path
+attaches it. Which server runs is the servers slice's reconciler's choice, by
+each server's run policy: the app's `ServerService` (`server_runner.rs`)
+publishes that server's `ServerHostContext` as the `ServerToRun` and starts the
+service through the handle, and to stop it publishes `ServerToRun::NoServer`,
+stops the service and waits for the run to end. It also owns
 the mobile packaging: the plugin's `background-service` config in
 `tauri.conf.json`, the Android manifest's overrides of the plugin's manifest,
 the iOS background modes and `BGTask` identifiers, and the Tauri entry's
 `configureRecovery` call, the one plugin command the webview may invoke.
 The workspace patches the plugin to our fork (see the Design Explanation's
 "Plugin fork").
-Its web entry also seeds the status handler into the transport, and passes the
-banner and the Settings row for `/settings/server` to `wildflower-react`, which
-mounts the route and provides the store.
+The Tauri webview mounts the base (`slices/servers`), which reads each
+server's status from the servers slice's `server-status` event rather than
+this slice's bridge snapshot.
 
 `bridge-wire-golden.json`, at the slice root, holds the exact wire strings and
 stop reasons both `-rust`'s golden tests and `-core`'s `bridge.test.ts` read.
@@ -72,8 +80,14 @@ stop reasons both `-rust`'s golden tests and `-core`'s `bridge.test.ts` read.
 - **Every start goes through the run gate.** Don't start the server any other
   way: the gate is what keeps a restart from binding the port while the
   previous runtime is still shutting down.
-- **A restart stops with `RESTART_STOP_REASON`**, so its stop half doesn't
-  notify. Don't use that reason for anything else.
+- **The host stops the service with `HOST_STOP_REASON`**, for a restart's
+  stop half and for a stop the base asked for, so neither notifies. Nothing
+  else stops with it.
+- **A run with no server to run ends at once.** A run the plugin or the OS
+  starts on its own waits for the host to decide, and with
+  `ServerToRun::NoServer` it logs the host's reason and ends, so nothing waits
+  on a server that isn't coming. A foreground resume starts a stopped server
+  only while one is published.
 - **One start config.** Every start uses the `StartConfig` the host passes in,
   and the Tauri entry's `configureRecovery` reads the same
   `tauri-shared-config.json` entries. Change the foreground-service type there,

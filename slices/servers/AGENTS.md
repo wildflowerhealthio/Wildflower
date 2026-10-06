@@ -6,29 +6,45 @@ host's webview mounts to manage them.
 ## Package roles
 
 - **`servers-rust`** — `ServerRecord`, one server as the install stores it,
-  and the `ServerRegistry` port over the list of them, with its
-  `JsonServerRegistry` adapter at `<data root>/servers.json`; and enrolment,
+  its `RunPolicy`, and the `ServerRegistry` port over the list of them, with
+  its `JsonServerRegistry` adapter at `<data root>/servers.json`; enrolment,
   which checks a tunnel's credentials with its Wildflower relay through the
-  `RelayClient` port, with its `ReqwestRelayClient` adapter.
-  - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
-    `RegistryError`, and enrolment (`add_server`, `set_server_credentials`,
-    `EnteredRelay`, `RelayIdentity`, `EnrolmentError`); `ports/` the
-    `ServerRegistry` port (read all, insert, update, remove) and the
-    `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
-    `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses.
-- **`servers-tauri-rust`** — the base's Tauri commands over `servers-rust`:
-  `server_add` and `server_set_credentials`, and `manage_servers`, which puts
-  their `ServersState` in the app's managed state. Only glue; every decision
-  and its tests are in `servers-rust`.
+  `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes to
+  a registered server, with `servers_to_run`, which servers should be running.
+  - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`,
+    `RunPolicy`), `RegistryError`, enrolment (`add_server`,
+    `set_server_credentials`, `EnteredRelay`, `RelayIdentity`,
+    `EnrolmentError`), and the server changes (`set_run_policy` from a
+    `RunPolicyChoice`, `update_server`, `remove_server`, `servers_to_run`,
+    `ServerChangeError`); `ports/` the `ServerRegistry` port (read all,
+    insert, modify, remove) and the `RelayClient` port (`GET /rathole`, signed
+    `GET /me`); `adapters/` `JsonServerRegistry`, `ReqwestRelayClient` and the
+    request signer it uses.
+- **`servers-tauri-rust`** — the host side of the base: its Tauri commands
+  over `servers-rust` (`servers_list`, `server_add`, `server_set_credentials`,
+  `server_set_run_policy`, `server_update`, `server_remove`); the reconciler,
+  which starts and stops servers to match their run policies through the
+  `ServerService` port the app implements; and `ServerStatuses`, each server's
+  `ServerStatus`, emitted as the `server-status` event. `manage_servers` puts
+  their `ServersState` in the app's managed state, and `reconcile_servers`
+  runs the reconciler's first pass. Decisions about a record are in
+  `servers-rust`.
+  - Layout: `commands.rs` the commands and `ListedServer`; `reconciler.rs`;
+    `server_service.rs` the `ServerService` port; `server_status.rs`
+    `ServerStatus` and `ServerStatuses`.
 - **`servers-core`** — the host commands the base calls, as Effects over the
   `TauriInvoke` port (`invokeHostCommand`), each answer decoded by an Effect
-  Schema: the app's version and the notification permission. No DOM, no
-  React, no `@tauri-apps/api`.
+  Schema: the app's version, the notification permission, and the server
+  commands (`listServers`, `setServerRunPolicy`, `updateServer`,
+  `removeServer`), with `decodeServerStatus` for the `server-status` event's
+  payload. A host refusal decodes as a `HostRefusal`, `{kind, message}`. No
+  DOM, no React, no `@tauri-apps/api`.
 - **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
   mounts with `@tauri-apps/api/core`'s `invoke`: the base's telemetry consent
-  gate, then its router over `routes/`, `/` the server list and `/settings`
-  Host Settings, for the app on this device rather than any one server
-  (Notifications, Telemetry, About).
+  gate, then its router over `routes/`, `/` the server list (each server's
+  domain, or the host's error when it can't read `servers.json`) and
+  `/settings` Host Settings, for the app on this device rather than any one
+  server (Notifications, Telemetry, About).
 
 ## Rules
 
@@ -128,10 +144,15 @@ host's webview mounts to manage them.
   relay one of `{kind: "wildflowerOfficial"}`,
   `{kind: "selfHostedWildflower", baseUrl, pin?}` with `pin`
   `{remoteAddr, publicKey}`, or `{kind: "rathole", remoteAddr, publicKey,
-domain}`; and `invoke('server_set_credentials', { domain, token })`. An
-  `EnrolmentError`'s `kind` is camelCase (`signedRequestRejected`,
-  `relayIdentityChanged`, `alreadyRegistered`, ...), and so is every field of
-  `servers.json`. Only the relay's own `GET /rathole` and `GET /me` keep its
+domain}`; `invoke('server_set_credentials', { domain, token })`;
+  `invoke('servers_list')`; `invoke('server_set_run_policy', { domain,
+policy })`, the policy one of `{kind: "off"}`, `{kind: "whileInUse"}`,
+  `{kind: "for", seconds}` or `{kind: "always"}`;
+  `invoke('server_update', { domain, launcherUrl, stagingCertificates })`; and
+  `invoke('server_remove', { domain })`. An error's `kind` is camelCase
+  (`signedRequestRejected`, `relayIdentityChanged`, `alreadyRegistered`,
+  `nonPositiveDuration`, ...), and so is every field of `servers.json` and of
+  the `server-status` event. Only the relay's own `GET /rathole` and `GET /me` keep its
   snake_case wire shape.
 - **The commands trim the token.** Its surrounding whitespace is dropped, as
   the relay drops it from its own copy, and a token left empty is
@@ -146,15 +167,68 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   can't decode into the parameters at all (a missing key, a value of the
   wrong JSON type, an unknown relay `kind` or field) never reaches the
   command: Tauri rejects it with the string
-  ``invalid args `<parameter>` for command `<command>`: <reason>``. The app grants both to the `main` webview
-  only, through its `allow-server-enrolment` permission.
-- **Configuration only.** `ServerRecord::running` is whether the user wants
-  the server run, which the host reads at startup to choose what to start.
-  Whether a run is up, its tunnel's liveness and its certificate are live
-  state, held by whatever runs the server, never in a `ServerRecord`.
-- **The first server added is set running.** `add_server` sets `running` when
-  no registered server has it, and on no later server; nothing else changes
-  it yet.
+  ``invalid args `<parameter>` for command `<command>`: <reason>``. The same
+  holds for the other commands: a launcher URL is taken as a string and
+  checked, so a bad one is a `ServerChangeError`, and an unknown policy
+  `kind` is Tauri's plain string.
+- **Every command grant is the `main` webview's only.** The app grants the
+  enrolment commands through its `allow-server-enrolment` permission, and
+  `servers_list`, `server_set_run_policy`, `server_update` and
+  `server_remove` through its `allow-server-management` permission, both in
+  `capabilities/default.json`.
+- **Configuration only.** `ServerRecord::run_policy` is when the user wants
+  the server run. Whether a run is up, its tunnel's liveness, when it started
+  and its certificate are live state, held by the host in each server's
+  `ServerStatus`, never in a `ServerRecord`.
+- **A run policy is `off`, `whileInUse`, `until` or `always`.** A policy is
+  active (`RunPolicy::is_active_at`) when it is `always`, `whileInUse`, or an
+  `until` whose `at` is still ahead. The host has no in-use tracking yet, so
+  `whileInUse` runs while the app's process is alive. The user picks a
+  `RunPolicyChoice`, which gives the window as `{kind: "for", seconds}`; it is
+  stored as `{kind: "until", at: now + seconds}`, and zero seconds or less is
+  `ServerChangeError::NonPositiveDuration`.
+- **An expired `until` stays as it is.** Nothing rewrites a policy when its
+  deadline passes: it stays in `servers.json`, counts as inactive, and the
+  server isn't started. Only the user's commands write a policy.
+- **A new server runs if nothing else does.** `add_server` gives it
+  `whileInUse` when no registered server's policy is active, and `off`
+  otherwise.
+- **One server runs at a time.** Setting a policy other than `off` on one
+  server sets every other server `off` in the same registry change, and
+  `servers_to_run` returns at most `MAX_RUNNING_SERVERS` (one) of the servers
+  whose policy is active. The command and event shapes are keyed by domain,
+  so running several only changes the cap and the app's `ServerService`.
+- **Registry changes are read-modify-write.** `ServerRegistry::modify` reads
+  the servers, applies a change and writes them as one change. A change edits
+  only the fields it is about on the record as it is then: re-entering
+  credentials writes only the token and `public_settings` once the relay has
+  answered, so a run policy set during the relay's round trip is kept.
+- **The reconciler starts and stops servers.** `ServersState::reconcile`
+  reads the registry, takes `servers_to_run` now, stops each server it started
+  that is no longer among them and starts each one it hasn't. It runs once at
+  setup (`reconcile_servers`) and after every command, and is what whatever
+  watches the policies' conditions calls. A server it started stays started
+  until it leaves that set, so one that failed isn't restarted on every pass.
+  A registry it can't read stops nothing; with nothing started it tells the
+  service why, and so does a pass that starts nothing, so a run the platform
+  or the OS starts on its own ends with that reason logged.
+- **Every server has a status, and every failure shows in one.**
+  `ServerStatus` is the server's `ServerRunState` (`starting`, `running`, or
+  `stopped` with its error), its `TunnelLiveness`, and `startedAt`, set when a
+  run reaches `running` and cleared when it stops. A server whose start fails
+  (its config can't be built, the service won't start) is `stopped` with the
+  error. Each change is emitted as the `server-status` event, and
+  `servers_list` answers with each server's current one. A `servers.json` that
+  can't be read is `servers_list`'s error, which the base shows.
+- **Removing a server stops it first.** `server_remove` stops the server
+  through the service, with the reconciler held so nothing starts it again,
+  then deletes its folder, which holds its databases and certificates, then
+  its record. A server that can't be stopped, or whose folder can't be
+  deleted, stays registered.
+- **The wire is pinned.** `slices/servers/servers-wire-golden.json` holds the
+  listed servers, run policies, run-policy choices and a command error as the
+  host sends and takes them; `servers-tauri-rust`'s tests serialise to it and
+  `servers-core`'s decoders read it, so neither side changes a field alone.
 - **`servers.json` is versioned.** The file is
   `{"version": 1, "servers": [...]}`, its server fields `serde(remote)`
   mirrors of `ServerRecord` and `PublicRatholeSettings` renamed to camelCase,
@@ -189,3 +263,8 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   `TunnelHost`, the `GET /me` response, and `TunnelName`.
 - `apps/relay/server` — the relay whose `GET /rathole` and `GET /me`
   enrolment calls; its crate docs give the signing rules.
+- `slices/shared-structures/shared-structures-rust` — `ServerRunState` and
+  `TunnelLiveness`, the run's state and its tunnel's liveness a
+  `ServerStatus` carries.
+- [background-server-service AGENTS.md](../background-server-service/AGENTS.md)
+  — the service the app's `ServerService` runs a server through.

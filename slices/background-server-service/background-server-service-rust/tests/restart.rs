@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use background_server_service_rust::{ServerHostContext, ServerRunState};
+use background_server_service_rust::{ServerHost, ServerHostContext, ServerRunState};
 use gatekeeper_rust::{NoLoopbackConsentPrompt, PendingConsentHead};
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
@@ -106,10 +106,11 @@ async fn a_restart_waits_for_the_previous_run_and_serves_again() {
         host_owner_token_sender,
         active_pending_consent_sender,
     };
-    let (context, receivers) = ServerHostContext::new(
-        server_config(server_dir.path().to_owned(), loopback_base_url.clone()),
-        host_ports,
-    );
+    let (host, receivers) = ServerHost::new(host_ports);
+    let context = host.context(server_config(
+        server_dir.path().to_owned(),
+        loopback_base_url.clone(),
+    ));
     let mut run_state = receivers.run_state;
     let tunnel_liveness = receivers.tunnel_liveness;
 
@@ -201,15 +202,16 @@ async fn a_run_cancelled_at_the_gate_never_starts() {
     let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
     let (active_pending_consent_sender, _pending_consents) =
         watch::channel::<Option<PendingConsentHead>>(None);
-    let (context, receivers) = ServerHostContext::new(
-        server_config(server_dir.path().to_owned(), loopback_base_url),
-        HostPorts {
-            loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-            on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-            host_owner_token_sender,
-            active_pending_consent_sender,
-        },
-    );
+    let (host, receivers) = ServerHost::new(HostPorts {
+        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
+        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
+        host_owner_token_sender,
+        active_pending_consent_sender,
+    });
+    let context = host.context(server_config(
+        server_dir.path().to_owned(),
+        loopback_base_url,
+    ));
     let mut run_state = receivers.run_state;
 
     let first_shutdown = CancellationToken::new();
@@ -251,4 +253,69 @@ async fn a_run_cancelled_at_the_gate_never_starts() {
         !history.contains(&ServerRunState::Starting),
         "the cancelled run must not start: {history:?}"
     );
+}
+
+/// Switching servers, as the host does: the first server's run is cancelled,
+/// `wait_for_runs_to_end` returns only once it has stopped, and another
+/// server's context from the same host then serves on the same port from its
+/// own folder.
+#[tokio::test(flavor = "multi_thread")]
+async fn another_server_runs_once_the_previous_run_has_ended() {
+    let first_server_dir = tempfile::tempdir().expect("temp server folder");
+    let second_server_dir = tempfile::tempdir().expect("temp server folder");
+    let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
+        .expect("loopback base URL");
+    let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
+    let (active_pending_consent_sender, _pending_consents) =
+        watch::channel::<Option<PendingConsentHead>>(None);
+    let (host, receivers) = ServerHost::new(HostPorts {
+        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
+        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
+        host_owner_token_sender,
+        active_pending_consent_sender,
+    });
+    let mut run_state = receivers.run_state;
+
+    let first_shutdown = CancellationToken::new();
+    let first_run = spawn_run(
+        &host.context(server_config(
+            first_server_dir.path().to_owned(),
+            loopback_base_url.clone(),
+        )),
+        &first_shutdown,
+    );
+    wait_until_running(&mut run_state).await;
+
+    first_shutdown.cancel();
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, host.wait_for_runs_to_end())
+        .await
+        .expect("the first run ends in time once cancelled");
+    assert_eq!(*run_state.borrow(), ServerRunState::Stopped { error: None });
+
+    let second_shutdown = CancellationToken::new();
+    let second_run = spawn_run(
+        &host.context(server_config(
+            second_server_dir.path().to_owned(),
+            loopback_base_url.clone(),
+        )),
+        &second_shutdown,
+    );
+    wait_until_running(&mut run_state).await;
+    assert_eq!(
+        health_status(&loopback_base_url).await,
+        reqwest::StatusCode::OK
+    );
+    assert!(
+        second_server_dir.path().join("wildflower.sqlite").is_file(),
+        "the second server runs from its own folder"
+    );
+
+    second_shutdown.cancel();
+    for run in [first_run, second_run] {
+        tokio::time::timeout(LIFECYCLE_TIMEOUT, run)
+            .await
+            .expect("each run returns in time once cancelled")
+            .expect("each run's task doesn't panic")
+            .expect("a cancelled run returns Ok");
+    }
 }

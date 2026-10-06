@@ -38,9 +38,9 @@ pub enum BackgroundServiceEvent {
 pub enum ServiceStopReason {
     /// A stop through the plugin's `stop` (the desktop app quitting included).
     UserStop,
-    /// The host stopped the service to restart it. Nothing else in this app,
-    /// and nothing in the plugin, stops with this reason (see
-    /// [`RESTART_STOP_REASON`](crate::domain::stop_notification::RESTART_STOP_REASON)).
+    /// The host stopped the service itself, to restart it or because the base
+    /// asked. Nothing in the plugin stops with this reason (see
+    /// [`HOST_STOP_REASON`](crate::domain::stop_notification::HOST_STOP_REASON)).
     AppStop,
     /// The platform's foreground-service time limit ran out (Android).
     PlatformTimeout,

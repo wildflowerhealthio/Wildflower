@@ -18,7 +18,7 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
 ] }
 # `rt-multi-thread` builds each run's dedicated runtime; `sync` carries the run
 # gate, the run-state watch and the result oneshot.
-tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 # `CancellationToken`, the server's shutdown signal.
 tokio-util = "0.7"
 tracing = "0.1"

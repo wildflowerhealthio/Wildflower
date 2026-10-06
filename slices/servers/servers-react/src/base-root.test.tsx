@@ -10,6 +10,7 @@ import { type ConsentStorage, type TelemetryConsent, writeConsent } from 'teleme
 import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import { BaseRoot } from './base-root.tsx'
 
 // Starting the SDK is the collaborator whose every touch the gate controls, so
@@ -81,17 +82,23 @@ const fakeHost = (answers: Readonly<Record<string, () => Promise<unknown>>>): Fa
   }
 }
 
-/** A host whose notification permission reads `permission` and whose version is `version`. */
+/**
+ * A host whose notification permission reads `permission`, whose version is
+ * `version`, and whose `servers_list` answers `servers`.
+ */
 const hostWith = ({
   permission = true,
   version = '0.4.0',
+  servers = () => Promise.resolve([]),
 }: {
   readonly permission?: boolean | null
   readonly version?: string
+  readonly servers?: () => Promise<unknown>
 } = {}): FakeHost =>
   fakeHost({
     'plugin:notification|is_permission_granted': () => Promise.resolve(permission),
     'plugin:app|version': () => Promise.resolve(version),
+    servers_list: servers,
   })
 
 const renderBase = ({
@@ -213,6 +220,49 @@ describe('BaseRoot', () => {
 
     // Act
     await user.click(screen.getByRole('link', { name: 'Servers' }))
+
+    // Assert
+    expect(await screen.findByText('No servers yet')).toBeDefined()
+  })
+})
+
+describe('the server list', () => {
+  it('should list each server the host answers by its domain', async () => {
+    // Arrange
+    const host = hostWith({ servers: () => Promise.resolve(golden.listedServers) })
+
+    // Act
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+    })
+
+    // Assert
+    expect(await screen.findByText('ruth.relay.example.com')).toBeDefined()
+    expect(screen.getByText('lab.rathole.example.com')).toBeDefined()
+    expect(screen.queryByText('No servers yet')).toBeNull()
+  })
+
+  it("should show the host's error when it can't read the servers, and read them again on retry", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const message = "the server registry has format version 2, which this build doesn't read"
+    let answer: () => Promise<unknown> = () => Promise.reject({ kind: 'registry', message })
+    const host = hostWith({ servers: () => answer() })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+    })
+
+    // Assert
+    expect(
+      await screen.findByRole('heading', { name: "The servers on this device couldn't be read" })
+    ).toBeDefined()
+    expect(screen.getByText(new RegExp(message))).toBeDefined()
+
+    // Act
+    answer = () => Promise.resolve([])
+    await user.click(screen.getByRole('button', { name: /retry/i }))
 
     // Assert
     expect(await screen.findByText('No servers yet')).toBeDefined()

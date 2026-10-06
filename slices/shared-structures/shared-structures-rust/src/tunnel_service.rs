@@ -54,7 +54,11 @@ impl TunnelStatus {
 /// and the reconnect counter the tunnel slice carries for its own bookkeeping
 /// (and surfaces on the `/tunnel` HTTP wire). They're part of the snapshot so
 /// the slice's supersession guard stays serialized with state writes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Serialize` writes its fields in camelCase: the base reads a server's
+/// tunnel liveness in that server's status.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TunnelLiveness {
     /// Which revision of the persisted tunnel *settings* this snapshot reflects
     /// — the optimistic-concurrency token bumped on each accepted settings

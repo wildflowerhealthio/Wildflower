@@ -1,7 +1,8 @@
 //! Tauri glue for the background server service: the plugin's
-//! [`BackgroundService`] that runs the Wildflower server, starting and
-//! restarting it, the status snapshot on the bridge, and the notifications and
-//! error dialog. See the [Design Explanation](../../docs/Design%20Explanation.md).
+//! [`BackgroundService`] that runs the server the host publishes, starting,
+//! stopping and restarting it ([`ServerServiceHandle`]), the status snapshot on
+//! the bridge, and the notifications and error dialog. See the
+//! [Design Explanation](../../docs/Design%20Explanation.md).
 //!
 //! Every decision lives in [`background_server_service_rust`], which needs no
 //! webview to be tested; this module only wires those decisions to the plugins'
@@ -10,18 +11,18 @@
 use std::time::Instant;
 
 use background_server_service_rust::{
-    failure_notification, stop_notification, BackgroundServerServiceHostToWeb,
-    BackgroundServerServiceWebToHost, BackgroundServiceEvent, LocalNotification,
-    NotificationPermission, RequestNotificationCoalescer, ServerHostContext, ServerRunState,
-    ServerServiceReceivers, ServerServiceStatus, ServiceStopReason, TunnelDropDetector,
-    BACKGROUND_SERVICE_EVENT, RESTART_SERVER, RESTART_STOP_REASON, TAGS,
+    failure_notification, run_published_server, stop_notification,
+    BackgroundServerServiceHostToWeb, BackgroundServerServiceWebToHost, BackgroundServiceEvent,
+    LocalNotification, NotificationPermission, RequestNotificationCoalescer, ServerRunState,
+    ServerServiceReceivers, ServerServiceStatus, ServerToRun, ServiceStopReason,
+    TunnelDropDetector, BACKGROUND_SERVICE_EVENT, HOST_STOP_REASON, RESTART_SERVER, TAGS,
 };
 use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT, READY_TAG};
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::tunnel_service::TunnelLiveness;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use tauri::plugin::PermissionState;
-use tauri::{AppHandle, Emitter, EventId, Listener, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Listener, Manager, Runtime};
 use tauri_plugin_background_service::{
     BackgroundService, ServiceContext, ServiceError, ServiceManagerHandle, StartConfig,
 };
@@ -37,38 +38,24 @@ mod stop_reason;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 const MAIN_WINDOW_LABEL: &str = "main";
 
-/// The plugin's service: each run runs the Wildflower server through the
-/// host's [`ServerHostContext`].
+/// The plugin's service: each run runs the server the host publishes as its
+/// [`ServerToRun`].
 ///
 /// The plugin builds a fresh instance for every start, from a factory the host
-/// registers before its `setup()` has built the context (the context needs the
-/// `AppHandle`). So the instance holds a receiver the host publishes the
-/// context on, and a run waits for it — which also covers a start the plugin
-/// makes on its own before `setup()` finishes.
+/// registers before its `setup()` has decided anything (a server's context
+/// needs the `AppHandle`). So the instance holds a receiver the host publishes
+/// on, and a run waits for the host to decide, which also covers a start the
+/// plugin or the OS makes on its own before `setup()` finishes. A run with no
+/// server to run ends at once with the host's reason logged.
 pub struct WildflowerServerService {
-    host_context: watch::Receiver<Option<ServerHostContext>>,
+    server_to_run: watch::Receiver<ServerToRun>,
 }
 
 impl WildflowerServerService {
-    /// A service whose runs use the context published on `host_context`.
+    /// A service whose runs run what the host publishes on `server_to_run`.
     #[must_use]
-    pub fn new(host_context: watch::Receiver<Option<ServerHostContext>>) -> Self {
-        Self { host_context }
-    }
-
-    async fn published_host_context(&mut self) -> Result<ServerHostContext, ServiceError> {
-        let published = self
-            .host_context
-            .wait_for(Option::is_some)
-            .await
-            .map_err(|_| {
-                ServiceError::Runtime(
-                    "the host dropped the server context without publishing it".to_owned(),
-                )
-            })?;
-        published
-            .clone()
-            .ok_or_else(|| ServiceError::Runtime("the host published no server context".to_owned()))
+    pub fn new(server_to_run: watch::Receiver<ServerToRun>) -> Self {
+        Self { server_to_run }
     }
 }
 
@@ -78,16 +65,12 @@ impl<R: Runtime> BackgroundService<R> for WildflowerServerService {
         Ok(())
     }
 
-    /// Run the server until the plugin stops the service or the server fails.
-    /// A failure is the server's `{:#}` chain, which the plugin reports as an
-    /// `Error` event.
+    /// Run the published server until the plugin stops the service or the
+    /// server fails, or end at once when the host has none to run. A failure
+    /// is the server's `{:#}` chain, which the plugin reports as an `Error`
+    /// event.
     async fn run(&mut self, ctx: &ServiceContext<R>) -> Result<(), ServiceError> {
-        let host_context = tokio::select! {
-            () = ctx.shutdown.cancelled() => return Ok(()),
-            published = self.published_host_context() => published?,
-        };
-        host_context
-            .run_server(&ctx.shutdown)
+        run_published_server(&mut self.server_to_run, &ctx.shutdown)
             .await
             .map_err(|error| ServiceError::Runtime(format!("{error:#}")))
     }
@@ -99,30 +82,65 @@ impl<R: Runtime> BackgroundService<R> for WildflowerServerService {
 /// run begins, so no plugin event follows: the stop reason becomes
 /// [`ServiceStopReason::Error`] here, which also replaces a restart's own
 /// `AppStop` so the page doesn't wait on a restart that isn't coming.
+///
+/// # Errors
+///
+/// What stopped the service from starting, as reported.
 async fn start_server_service<R: Runtime>(
     app: &AppHandle<R>,
     start_config: &StartConfig,
     last_stop_reason: &watch::Sender<Option<ServiceStopReason>>,
-) {
+) -> Result<(), String> {
     let Some(service_manager) = app.try_state::<ServiceManagerHandle<R>>() else {
+        let error = "the background-service plugin is not registered".to_owned();
         last_stop_reason.send_replace(Some(ServiceStopReason::Error));
-        report_server_failure(app, "the background-service plugin is not registered");
-        return;
+        report_server_failure(app, &error);
+        return Err(error);
     };
     match service_manager
         .start(app.clone(), start_config.clone())
         .await
     {
-        Ok(()) | Err(ServiceError::AlreadyRunning) => {}
+        Ok(()) | Err(ServiceError::AlreadyRunning) => Ok(()),
         Err(error) => {
+            let error = format!("failed to start: {error}");
             last_stop_reason.send_replace(Some(ServiceStopReason::Error));
-            report_server_failure(app, &format!("failed to start: {error}"));
+            report_server_failure(app, &error);
+            Err(error)
         }
     }
 }
 
+/// Stop the service if it is running, with [`HOST_STOP_REASON`], so it posts
+/// no stop notification. A service that isn't running counts as stopped. The
+/// plugin accepts the stop before the run has ended; a later run waits for it
+/// at the run gate.
+///
+/// # Errors
+///
+/// What stopped the service from stopping.
+async fn stop_server_service<R: Runtime>(
+    app: &AppHandle<R>,
+    last_stop_reason: &watch::Sender<Option<ServiceStopReason>>,
+) -> Result<(), String> {
+    let Some(service_manager) = app.try_state::<ServiceManagerHandle<R>>() else {
+        return Err("the background-service plugin is not registered".to_owned());
+    };
+    match service_manager
+        .stop_with_reason(stop_reason::to_plugin(HOST_STOP_REASON))
+        .await
+    {
+        Ok(()) => {
+            last_stop_reason.send_replace(Some(HOST_STOP_REASON));
+            Ok(())
+        }
+        Err(ServiceError::NotRunning) => Ok(()),
+        Err(error) => Err(format!("failed to stop: {error}")),
+    }
+}
+
 /// Stop the service if it is running, then start it as `start_config` says. The
-/// stop uses [`RESTART_STOP_REASON`], so it posts no stop notification; the new
+/// stop uses [`HOST_STOP_REASON`], so it posts no stop notification; the new
 /// run waits for the old one at the run gate.
 ///
 /// The stop reason is recorded here, once the stop is accepted, rather than
@@ -133,29 +151,64 @@ async fn restart_server_service<R: Runtime>(
     start_config: &StartConfig,
     last_stop_reason: &watch::Sender<Option<ServiceStopReason>>,
 ) {
-    let Some(service_manager) = app.try_state::<ServiceManagerHandle<R>>() else {
-        report_server_failure(app, "the background-service plugin is not registered");
-        return;
-    };
-    match service_manager
-        .stop_with_reason(stop_reason::to_plugin(RESTART_STOP_REASON))
-        .await
-    {
+    match stop_server_service(app, last_stop_reason).await {
+        // A failed start is reported where it fails; a restart has no caller
+        // to answer.
         Ok(()) => {
-            last_stop_reason.send_replace(Some(RESTART_STOP_REASON));
-            start_server_service(app, start_config, last_stop_reason).await;
+            let _ = start_server_service(app, start_config, last_stop_reason).await;
         }
-        Err(ServiceError::NotRunning) => {
-            start_server_service(app, start_config, last_stop_reason).await;
-        }
-        Err(error) => report_server_failure(app, &format!("failed to stop for a restart: {error}")),
+        Err(error) => report_server_failure(app, &format!("{error} for a restart")),
     }
 }
 
-/// Wire the service's status, its restart request, and its notifications, then
-/// start it. Every start, restarts included, uses `start_config`: the text of
-/// Android's persistent foreground-service notification, which the plugin can't
-/// change once the service has started, and the Android foreground-service type,
+/// Starts and stops the background service for the host's servers. Built by
+/// [`attach_background_server_service`]; `Clone` is cheap.
+#[derive(Clone)]
+pub struct ServerServiceHandle<R: Runtime> {
+    app: AppHandle<R>,
+    start_config: StartConfig,
+    last_stop_reason_sender: watch::Sender<Option<ServiceStopReason>>,
+    /// `true` once the notification permission has been asked about, which
+    /// every start waits for (see [`ask_for_notification_permission`]).
+    notification_permission_asked: watch::Receiver<bool>,
+}
+
+impl<R: Runtime> ServerServiceHandle<R> {
+    /// Start the service, which runs the server the host has published. A
+    /// service that is already running counts as started. Waits until the
+    /// notification permission has been asked about.
+    ///
+    /// # Errors
+    ///
+    /// What stopped the service from starting, which has also been reported
+    /// like a server failure.
+    pub async fn start(&self) -> Result<(), String> {
+        let mut notification_permission_asked = self.notification_permission_asked.clone();
+        notification_permission_asked
+            .wait_for(|asked| *asked)
+            .await
+            .map_err(|_| "the notification permission was never asked about".to_owned())?;
+        start_server_service(&self.app, &self.start_config, &self.last_stop_reason_sender).await
+    }
+
+    /// Stop the service, posting no stop notification. Returns once the
+    /// plugin has accepted the stop, before the run has ended. A service that
+    /// isn't running counts as stopped.
+    ///
+    /// # Errors
+    ///
+    /// What stopped the service from stopping.
+    pub async fn stop(&self) -> Result<(), String> {
+        stop_server_service(&self.app, &self.last_stop_reason_sender).await
+    }
+}
+
+/// Wire the service's status, its restart request, and its notifications, and
+/// ask for the notification permission; answers with the
+/// [`ServerServiceHandle`] the host starts and stops the service through.
+/// Every start, restarts included, uses `start_config`: the text of Android's
+/// persistent foreground-service notification, which the plugin can't change
+/// once the service has started, and the Android foreground-service type,
 /// which the plugin config's `androidForegroundServiceTypes` must allow (the
 /// plugin checks it on every platform).
 ///
@@ -169,19 +222,24 @@ async fn restart_server_service<R: Runtime>(
 /// - Posts the per-caller request notifications and the tunnel-drop
 ///   notification.
 /// - On a phone, starts the server when the app comes back to the foreground
-///   with it stopped, and on iOS restarts a running one.
+///   with it stopped and a server published on `server_to_run`, and on iOS
+///   restarts a running one.
 /// - Asks for permission to post notifications if the OS has never asked
-///   (see [`ask_for_notification_permission`]), then starts the service. The
-///   start comes from here rather than the page, so the server runs whether or
-///   not the webview loads.
+///   (see [`ask_for_notification_permission`]). Starts through the handle wait
+///   for the answer.
 ///
 /// Registers its listeners synchronously, so call it from `setup()` before the
 /// page can send `__Ready`. Call once per app lifecycle.
-pub fn start_background_server_service<R: Runtime>(
+pub fn attach_background_server_service<R: Runtime>(
     app: &AppHandle<R>,
     receivers: ServerServiceReceivers,
     start_config: StartConfig,
-) {
+    #[cfg_attr(
+        not(any(target_os = "ios", target_os = "android")),
+        allow(unused_variables)
+    )]
+    server_to_run: watch::Receiver<ServerToRun>,
+) -> ServerServiceHandle<R> {
     // The shared bridge channel has no automated cross-process tag guard, so
     // the boot log records who dispatches what.
     log::info!(
@@ -207,6 +265,7 @@ pub fn start_background_server_service<R: Runtime>(
     start_or_restart_on_foreground_resume(
         app,
         run_state.clone(),
+        server_to_run,
         start_config.clone(),
         last_stop_reason_sender.clone(),
     );
@@ -219,55 +278,24 @@ pub fn start_background_server_service<R: Runtime>(
     tauri::async_runtime::spawn(post_request_notifications(app.clone(), forwarded_requests));
     tauri::async_runtime::spawn(post_tunnel_notifications(app.clone(), tunnel_liveness));
 
-    let launch_handle = app.clone();
+    let (notification_permission_asked_sender, notification_permission_asked) =
+        watch::channel(false);
+    let asking_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         // Asked before the first start: the plugin's own start asks too, and on
         // Android a second ask while the first is on screen is cancelled, which
         // the notification plugin reports as a refusal. A grant answered here
         // leaves the plugin nothing to ask.
-        ask_for_notification_permission(&launch_handle).await;
+        ask_for_notification_permission(&asking_handle).await;
         status_wanted.notify_one();
-        start_server_service(&launch_handle, &start_config, &last_stop_reason_sender).await;
+        notification_permission_asked_sender.send_replace(true);
     });
-}
-
-/// Report that there is no server to run, instead of
-/// [`start_background_server_service`]: nothing starts, and every `__Ready`
-/// from the page is answered with a [`ServerServiceStatus`] that is stopped with
-/// no error, so the page shows a stopped server rather than waiting on one.
-/// No run means no failure: there's no notification or error dialog.
-///
-/// A `RestartServer` from the page calls `start_server_to_run`, which starts
-/// the server set running since (through [`start_background_server_service`])
-/// and returns `true`, or returns `false` when there is still none. Once it
-/// has started one, this stops answering the page, and the started service's
-/// own listeners take over; until then each restart is answered with the
-/// stopped status again.
-///
-/// Registers its listener synchronously, so call it from `setup()` before the
-/// page can send `__Ready`. Call once per app lifecycle, and never alongside
-/// [`start_background_server_service`].
-pub fn report_no_server<R: Runtime>(
-    app: &AppHandle<R>,
-    start_server_to_run: impl Fn(&AppHandle<R>) -> bool + Send + Sync + 'static,
-) {
-    log::info!("[background-server-service] no server is set to run; none started");
-    let handle = app.clone();
-    let listener: Arc<OnceLock<EventId>> = Arc::new(OnceLock::new());
-    let listener_in_handler = Arc::clone(&listener);
-    let id = app.listen(BRIDGE_EVENT, move |event| {
-        let Ok(envelope) = serde_json::from_str::<BridgeEnvelope>(event.payload()) else {
-            return;
-        };
-        if envelope.tag == RESTART_SERVER && start_server_to_run(&handle) {
-            if let Some(&id) = listener_in_handler.get() {
-                handle.unlisten(id);
-            }
-        } else if envelope.tag == READY_TAG || envelope.tag == RESTART_SERVER {
-            emit_status(&handle, &ServerRunState::Stopped { error: None }, None);
-        }
-    });
-    let _ = listener.set(id);
+    ServerServiceHandle {
+        app: app.clone(),
+        start_config,
+        last_stop_reason_sender,
+        notification_permission_asked,
+    }
 }
 
 /// Route the page's `__Ready` (a status snapshot is wanted) and `RestartServer`
@@ -327,9 +355,9 @@ fn listen_for_plugin_events<R: Runtime>(
             }
             Ok(BackgroundServiceEvent::Stopped { reason }) => {
                 log::info!("[background-server-service] service stopped: {reason:?}");
-                // A restart records its own stop reason (see
-                // `restart_server_service`).
-                if reason != RESTART_STOP_REASON {
+                // A stop the host made records its own stop reason (see
+                // `stop_server_service`).
+                if reason != HOST_STOP_REASON {
                     last_stop_reason_sender.send_replace(Some(reason));
                 }
                 if let Some(notification) = stop_notification(reason) {
@@ -453,7 +481,9 @@ async fn post_tunnel_notifications<R: Runtime>(
 
 /// Follow the main window's suspend and resume, and start or restart the
 /// server on a resume that follows a suspend (see
-/// [`background_server_service_rust::ForegroundResume`]).
+/// [`background_server_service_rust::ForegroundResume`]). A stopped server is
+/// started only while the host has one published in `server_to_run`: with
+/// none to run, a resume starts nothing.
 ///
 /// The window events, not `RunEvent::Resumed`: tauri-runtime-wry raises that
 /// one on an event-loop poll, not when the app comes back.
@@ -461,6 +491,7 @@ async fn post_tunnel_notifications<R: Runtime>(
 fn start_or_restart_on_foreground_resume<R: Runtime>(
     app: &AppHandle<R>,
     run_state: watch::Receiver<ServerRunState>,
+    server_to_run: watch::Receiver<ServerToRun>,
     start_config: StartConfig,
     last_stop_reason_sender: watch::Sender<Option<ServiceStopReason>>,
 ) {
@@ -493,12 +524,16 @@ fn start_or_restart_on_foreground_resume<R: Runtime>(
         let handle = handle.clone();
         let start_config = start_config.clone();
         let last_stop_reason_sender = last_stop_reason_sender.clone();
+        let server_published = matches!(*server_to_run.borrow(), ServerToRun::Server(_));
         match action {
-            Some(ResumeAction::Start) => {
+            Some(ResumeAction::Start) if server_published => {
                 tauri::async_runtime::spawn(async move {
-                    start_server_service(&handle, &start_config, &last_stop_reason_sender).await;
+                    // A failed start is reported where it fails.
+                    let _ = start_server_service(&handle, &start_config, &last_stop_reason_sender)
+                        .await;
                 });
             }
+            Some(ResumeAction::Start) => {}
             Some(ResumeAction::Restart) => {
                 tauri::async_runtime::spawn(async move {
                     restart_server_service(&handle, &start_config, &last_stop_reason_sender).await;

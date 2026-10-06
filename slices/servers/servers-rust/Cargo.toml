@@ -39,8 +39,9 @@ reqwest = { version = "0.12", default-features = false, features = [
 hmac = "0.12"
 sha2 = "0.10"
 base64.workspace = true
-# The signature's `created`, in unix seconds.
-chrono = { workspace = true, features = ["clock"] }
+# The signature's `created`, in unix seconds, and a run policy's deadline,
+# stored in `servers.json` as RFC 3339.
+chrono = { workspace = true, features = ["clock", "serde"] }
 # Each signature's nonce.
 rand = "0.10"
 

@@ -5,24 +5,38 @@ edition.workspace = true
 publish.workspace = true
 
 # Tauri host glue for the servers slice: the base's commands over
-# `servers-rust`, which holds every decision and its tests.
+# `servers-rust`, which holds every decision about a server's record, the
+# reconciler that starts and stops servers through the app's `ServerService`,
+# and each server's status, emitted as the `server-status` event.
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
-# The registry, enrolment and the relay client adapter the commands drive.
+# The registry, enrolment, the server changes and the relay client adapter the
+# commands drive.
 servers-rust = { path = "../servers-rust" }
 # `TunnelName`, which the commands parse the entered tunnel name into.
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
+# `ServerRunState` and `TunnelLiveness`, the run's state and its tunnel's
+# liveness each server's status carries.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
+  "tunnel-service",
+] }
 # The relay base URL enrolment builds a relay client for.
 url = "2"
+serde.workspace = true
+# A run's `startedAt`, and the moment a run-for duration counts from.
+chrono = { workspace = true, features = ["clock", "serde"] }
+# `ServerService` is an `#[async_trait]`, so the app's service is held as a
+# trait object.
+async-trait = "0.1"
+# `spawn_blocking` for the registry, and the reconciler's lock.
+tokio = { workspace = true, features = ["rt", "sync"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
 workspace = true
 
 [dev-dependencies]
-async-trait = "0.1"
-serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["rt", "macros"] }

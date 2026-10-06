@@ -7414,10 +7414,12 @@ name = "servers-tauri-rust"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "rathole-settings-rust",
  "serde",
  "serde_json",
  "servers-rust",
+ "shared-structures-rust",
  "tauri",
  "tauri-plugin-log",
  "tempfile",
@@ -9519,6 +9521,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "apps-rust",
+ "async-trait",
  "background-server-service-rust",
  "background-server-service-tauri-rust",
  "browser-sniffer-tauri-rust",
@@ -9527,8 +9530,6 @@ dependencies = [
  "gatekeeper-rust",
  "har-recorder-tauri-rust",
  "openssl",
- "parking_lot",
- "rathole-settings-rust",
  "roxmltree 0.21.1",
  "serde",
  "serde_json",

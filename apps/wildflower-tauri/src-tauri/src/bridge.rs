@@ -155,10 +155,10 @@ fn format_log_payload(payload: &[serde_json::Value]) -> String {
 /// field per state — slice crates never see this type, they take a bare
 /// `watch::Sender`.
 ///
-/// The channels outlive any server: dropping this struct, as a setup
-/// path that starts no server does, closes nothing, so the resident task
-/// keeps answering `__Ready` and a server started later publishes to the
-/// same webview.
+/// The host builds every server's ports from it once, at setup, so each
+/// server run publishes through the same channels. They outlive any
+/// server: the resident task keeps answering `__Ready` whether or not one
+/// runs.
 pub struct BridgePublishers {
     pub host_owner_token_sender: watch::Sender<Option<String>>,
     pub active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
@@ -282,8 +282,8 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
 
     let handle = app.clone();
     // The task's own senders keep both channels open for the life of the
-    // app, whether or not a server ever takes the publishers (see
-    // `BridgePublishers`), so its `changed` arms never see them close.
+    // app, whether or not a server ever runs (see `BridgePublishers`), so its
+    // `changed` arms never see them close.
     let channels_kept_open = (
         host_owner_token_sender.clone(),
         active_pending_consent_sender.clone(),
