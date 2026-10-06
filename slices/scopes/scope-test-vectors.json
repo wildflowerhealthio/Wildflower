@@ -28,9 +28,9 @@
       "rendered": "wildflower/Accounts.cruds"
     },
     {
-      "scope": "wildflower/TunnelSettings.u",
+      "scope": "wildflower/TunnelSettings.r",
       "kind": "wildflower",
-      "rendered": "wildflower/TunnelSettings.u"
+      "rendered": "wildflower/TunnelSettings.r"
     },
     {
       "scope": "wildflower/RequestLog.r",
@@ -107,7 +107,7 @@
     { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Accounts.r", "covers": false },
     {
       "allowed": "wildflower/*.cruds",
-      "requested": "wildflower/TunnelSettings.u",
+      "requested": "wildflower/TunnelSettings.r",
       "covers": true
     },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/RequestLog.r", "covers": true },

@@ -24,7 +24,7 @@ const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
       .addError(InsufficientScopeSchema, { status: 403 })
   )
   .add(
-    // `POST`: launching mutates host state (it can bring the tunnel up). The host
+    // `POST`: launching mutates host state (it opens a native popup). The host
     // answers `204` for a loopback caller, after it opened the app in a native
     // popup, or `200` with the launch URL (`LaunchTargetSchema`) for a forwarded
     // caller, whose page then navigates there — a redirect would be followed
@@ -33,8 +33,6 @@ const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
     // An endpoint's *default* success is `NoContent` (204), and the **first**
     // `addSuccess` replaces that default rather than unioning with it — so the
     // `200` comes first, then `NoContent` (204) unions back in.
-    // (The Rust server also answers `503`, modelled only on its side; the drift
-    // test exempts this endpoint's responses and pins only the path/method.)
     HttpApiEndpoint.post('LaunchApp', '/apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(LaunchTargetSchema)

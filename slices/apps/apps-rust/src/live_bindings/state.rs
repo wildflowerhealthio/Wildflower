@@ -1,8 +1,7 @@
 //! The shared apps runtime state — the router state every handler is built over,
 //! and the composition point that names the concrete [`SqliteAppsStore`] adapter.
-//! It also holds the loopback base URL the non-tunnel launch origin derives from,
-//! the tunnel-launch resolver, the on-device webview seam,
-//! and the host-seam port (per-app launch scopes).
+//! It also holds the public origin every launch's `{origin}` resolves to, the
+//! on-device webview seam, and the host-seam port (per-app launch scopes).
 //!
 //! It lives at the crate root (not under [`crate::http`]) deliberately: the
 //! scope-gated [`capabilities`](crate::domain::capabilities) in `domain/` are
@@ -13,7 +12,6 @@
 
 use std::sync::Arc;
 
-use shared_structures_rust::tunnel_service::TunnelService;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
@@ -29,14 +27,9 @@ use crate::OnDeviceWebviewHandle;
 pub struct AppsState {
     /// The apps store — serves the `app_registrations` registry.
     pub(crate) store: SqliteAppsStore,
-    /// The base URL clients reach when the tunnel is down. The non-tunnel launch
-    /// origin ([`Self::loopback_origin`]) derives from it. A `requires_tunnel`
-    /// launch does **not** fall back here (it fails `503`
-    /// instead — there's no reachable origin for it).
-    pub(crate) loopback_base_url: Url,
-    /// The tunnel service a `requires_tunnel` launch resolves its origin
-    /// through. The host wires the real tunnel slice; tests use a stub.
-    pub(crate) tunnel: Arc<dyn TunnelService>,
+    /// The server's public origin. Every launch resolves `{origin}` to it
+    /// ([`Self::public_origin`]).
+    pub(crate) public_origin: Url,
     /// The on-device launch seam — a loopback launch hands the resolved URL to
     /// it (the Tauri host opens a native webview popup). A host with no native
     /// popup supplies a no-op handle (only forwarded callers reach such a host,
@@ -52,24 +45,21 @@ impl AppsState {
     #[must_use]
     pub fn new(
         store: SqliteAppsStore,
-        loopback_base_url: Url,
-        tunnel: Arc<dyn TunnelService>,
+        public_origin: Url,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
         launch_scopes: Arc<dyn AppLaunchScopes>,
     ) -> Self {
         Self {
             store,
-            loopback_base_url,
-            tunnel,
+            public_origin,
             on_device_webview_handle: webview_handle,
             launch_scopes,
         }
     }
 
-    /// The loopback origin string for `{origin}` substitution and the non-tunnel
-    /// redirect target — e.g. `http://127.0.0.1:8080` (no trailing slash).
-    /// Derived from [`Self::loopback_base_url`].
-    pub(crate) fn loopback_origin(&self) -> String {
-        shared_structures_rust::origin_string(&self.loopback_base_url)
+    /// The public origin string for a launch's `{origin}` —
+    /// e.g. `https://ruth.relay.wildflowerhealth.io` (no trailing slash).
+    pub(crate) fn public_origin(&self) -> String {
+        shared_structures_rust::origin_string(&self.public_origin)
     }
 }

@@ -1,7 +1,7 @@
 //! The embedded rathole client that dials the relay.
 //!
 //! [`RelayClient`] is a one-attempt seam: `run_once` brings up a single rathole
-//! client and returns when it exits. The [`TunnelState`](crate::live_bindings::state::TunnelState)
+//! client and returns when it exits. The [`TunnelDaemon`](crate::domain::TunnelDaemon)
 //! supervisor owns the retry/backoff loop and cancellation, so this layer holds
 //! no run lifecycle of its own. The trait exists so the supervisor can be tested
 //! against a fake instead of a live relay.
@@ -62,8 +62,8 @@ impl RelayClient for RatholeRelayClient {
         // That drop happens on graceful shutdown (below) OR whenever this
         // `run_once` future is itself dropped on cancel. So that log line is a
         // teardown *symptom*, not a fault: when a tunnel flaps, chase what
-        // cancelled `run_once` (a reconcile — see `domain::tunnel_daemon`), not
-        // the rathole error.
+        // cancelled `run_once` (the daemon dropping — see
+        // `domain::tunnel_daemon`), not the rathole error.
         let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
         let run = rathole::run(cli, shutdown_rx);
         tokio::pin!(run);

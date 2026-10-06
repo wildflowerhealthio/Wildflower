@@ -707,7 +707,7 @@ mod migration_tests {
             assert!(
                 registration.requires_tunnel,
                 "{id} is launched from the published site, so its `iss={{origin}}` FHIR \
-                 target must resolve through the tunnel's verified origin",
+                 target must resolve to the server's public origin",
             );
             assert_eq!(registration.url.to_string(), url);
         }
@@ -736,7 +736,7 @@ mod migration_tests {
         assert!(
             registration.requires_tunnel,
             "the console fetches from `{{origin}}`, which must resolve through the \
-             tunnel's verified HTTPS origin",
+             server's public HTTPS origin",
         );
 
         let url = registration.url.to_string();
@@ -766,7 +766,7 @@ mod migration_tests {
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
-             tunnel's verified HTTPS origin",
+             server's public HTTPS origin",
         );
         assert_eq!(
             registration.url.to_string(),
@@ -793,7 +793,7 @@ mod migration_tests {
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
-             tunnel's verified HTTPS origin",
+             server's public HTTPS origin",
         );
         assert_eq!(
             registration.url.to_string(),
@@ -818,7 +818,7 @@ mod migration_tests {
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
-             tunnel's verified HTTPS origin",
+             server's public HTTPS origin",
         );
         assert_eq!(
             registration.url.to_string(),
@@ -871,7 +871,7 @@ mod migration_tests {
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
-             tunnel's verified HTTPS origin",
+             server's public HTTPS origin",
         );
         assert_eq!(
             registration.url.to_string(),

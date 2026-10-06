@@ -58,8 +58,7 @@ mod tests {
     use crate::domain::test_fake::registration;
     use crate::domain::{AppRegistration, AppsStore};
     use crate::http::test_support::{
-        state, state_with_launch_scopes, state_with_sink, state_with_tunnel_and_handle, tunnel_at,
-        tunnel_unavailable, FixedLaunchScopes,
+        state, state_with_launch_scopes, state_with_sink, FixedLaunchScopes, PUBLIC_ORIGIN,
     };
     use crate::live_bindings::state::AppsState;
     use scope_capabilities_rust::ScopeClaims;
@@ -209,8 +208,8 @@ mod tests {
             .expect("inserted");
     }
 
-    /// Seed a non-SMART app whose template names the served origin — the
-    /// fixture the provenance and umbrella tests drive.
+    /// Seed a non-SMART app whose template names `{origin}` — the fixture the
+    /// provenance and umbrella tests drive.
     fn seed_plain(store: &crate::db::SqliteAppsStore, id: &str) {
         seed_app(store, id, "https://app.example/y?iss={origin}", None);
     }
@@ -271,19 +270,18 @@ mod tests {
     }
 
     /// The umbrella gate runs *before* any lookup or side-effect: an under-scoped
-    /// caller `403`s without triggering the tunnel or revealing existence (an
-    /// unknown id is `403`, not `404`).
+    /// caller `403`s without revealing existence (an unknown id is `403`, not
+    /// `404`).
     #[tokio::test]
     async fn umbrella_gate_precedes_lookup_and_side_effects() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
 
-        // A requires_tunnel app: 403 before the (would-be) 503 tunnel probe.
         let res = send_raw_scoped(&st, post_launch("/apps/growth-chart"), None).await;
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
         assert!(
             handle.0.lock().expect("handle mutex").is_empty(),
-            "an under-scoped caller opens no popup and probes no tunnel",
+            "an under-scoped caller opens no popup",
         );
 
         // An unknown id under-scoped → 403, not 404 (no existence leak).
@@ -392,58 +390,39 @@ mod tests {
         }
     }
 
-    /// A `requires_tunnel` launch with the tunnel down is 503; no popup.
+    /// Every launch resolves `{origin}` to the server's public origin, from
+    /// loopback and forwarded callers alike, whatever the app's
+    /// `requires_tunnel` flag.
     #[tokio::test]
-    async fn launch_requires_tunnel_with_tunnel_down_is_503() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_tunnel_and_handle(
-            tunnel_unavailable(),
-            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
-        );
-        let (status, body) = send(&st, post_launch("/apps/growth-chart")).await;
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(body["error"], "LaunchUnavailable");
-        assert!(handle.0.lock().expect("handle mutex").is_empty());
-    }
-
-    /// A `requires_tunnel` launch resolves to the verified tunnel origin.
-    #[tokio::test]
-    async fn launch_resolves_to_the_verified_tunnel_origin() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_tunnel_and_handle(
-            tunnel_at("https://dev1.example.com"),
-            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
-        );
-        let res = send_raw(&st, post_launch("/apps/growth-chart")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        let opened = handle.0.lock().expect("handle mutex").clone();
-        let [url] = opened.as_slice() else {
-            panic!("exactly one URL, got {opened:?}");
-        };
-        assert!(
-            url.contains("iss=https://dev1.example.com/fhir-r4"),
-            "expected the verified tunnel origin in {url}",
-        );
-    }
-
-    /// A non-tunnel loopback launch substitutes the loopback origin.
-    #[tokio::test]
-    async fn launch_substitutes_the_loopback_origin() {
+    async fn launch_resolves_to_the_public_origin_for_every_caller() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         seed_plain(&st.store, "app-y");
+        let expected = format!("https://app.example/y?iss={PUBLIC_ORIGIN}");
+
         let res = send_raw(&st, post_launch("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
         assert_eq!(
             handle.0.lock().expect("handle mutex").clone(),
-            vec!["https://app.example/y?iss=http://127.0.0.1:8080".to_string()],
+            vec![expected.clone()],
+        );
+
+        let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(launch_url(res).await, expected);
+
+        let res = send_raw(&st, post_forwarded("/apps/growth-chart")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let url = launch_url(res).await;
+        assert!(
+            url.contains(&format!("iss={PUBLIC_ORIGIN}/fhir-r4")),
+            "expected the public origin in {url}",
         );
     }
 
-    /// A forwarded launch resolves `{origin}` against the served origin and
-    /// answers the URL rather than opening a host popup.
+    /// A forwarded launch answers the URL rather than opening a host popup.
     #[tokio::test]
-    async fn launch_forwarded_answers_the_served_origin_url() {
+    async fn launch_forwarded_answers_the_url_without_a_popup() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         seed_plain(&st.store, "app-y");
@@ -451,7 +430,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
             launch_url(res).await,
-            "https://app.example/y?iss=https://demo.example.com"
+            format!("https://app.example/y?iss={PUBLIC_ORIGIN}")
         );
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
@@ -463,11 +442,8 @@ mod tests {
 
         let st = state();
         let mut conn = st.store.pool().get().unwrap();
-        // growth-chart requires the tunnel; drop requires_tunnel too so the launch
-        // reaches the url read rather than 503-ing on the down tunnel.
         diesel::sql_query(
-            "UPDATE app_registrations SET url = 'javascript:alert(1)', requires_tunnel = 0 \
-             WHERE id = 'growth-chart'",
+            "UPDATE app_registrations SET url = 'javascript:alert(1)' WHERE id = 'growth-chart'",
         )
         .execute(&mut conn)
         .unwrap();

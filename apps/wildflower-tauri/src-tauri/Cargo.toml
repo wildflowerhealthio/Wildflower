@@ -22,7 +22,6 @@ tauri-build = { version = "2", features = [] }
 # vars for `src/lib.rs`.
 serde = { workspace = true }
 serde_json = { workspace = true }
-dotenvy = "0.15.7"
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -58,7 +57,7 @@ shared-structures-rust = { path = "../../../slices/shared-structures/shared-stru
 # gates its `RequestSandboxedWebView { url }` on before handing the URL to the
 # native-webview plugin.
 shared-structures-tauri-rust = { path = "../../../slices/shared-structures/shared-structures-tauri-rust" }
-# The build-time tunnel `SettingsSeed` the host hands the server.
+# The `RelaySettings` the host builds from the server's record for its tunnel.
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
 # The Wildflower server's config and ports, which the host builds.
 wildflower-server-rust = { path = "../../../slices/wildflower-server/wildflower-server-rust" }
@@ -77,7 +76,6 @@ tauri-plugin-notification = "2"
 # Runs the server as a background service (in-process on desktop). Pinned
 # exactly, as in `background-server-service-tauri-rust`.
 tauri-plugin-background-service = "=1.0.1"
-dotenvy = "0.15.7"
 
 # Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]

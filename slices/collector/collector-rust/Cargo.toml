@@ -9,7 +9,7 @@ publish.workspace = true
 # The per-collector config union is TS-owned (`collector-registry`'s registry);
 # this crate stores and serves each remote's tagged `CollectorConfig` JSON
 # verbatim, so adding a TS collector never requires a Rust change. Layered like
-# `tunnel-rust` / `apps-rust`: pure `domain`, `db`, and `http`.
+# `apps-rust` / `gatekeeper-rust`: pure `domain`, `db`, and `http`.
 #
 # Persistence is Diesel over the app-wide r2d2 connection pool
 # (`persistence_rust::DieselPool`), built by the host on the same shared database

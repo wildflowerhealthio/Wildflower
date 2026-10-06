@@ -7,8 +7,7 @@ handlers stay thin.
 
 ## Ports and adapters
 
-The slice follows the same ports-and-adapters shape as `collector-rust` and
-`tunnel-rust`:
+The slice follows the same ports-and-adapters shape as `collector-rust`:
 
 - **`AppsStore` (port)** — a domain trait (`domain/apps_store.rs`) speaking
   _primitive_ persistence over `AppRegistration`s. The insert/replace methods

@@ -1,7 +1,7 @@
 //! The embedded rathole client that dials the relay.
 //!
 //! [`RelayClient`] is a one-attempt seam: `run_once` brings up a single rathole
-//! client and returns when it exits. The [`TunnelState`](crate::live_bindings::state::TunnelState)
+//! client and returns when it exits. The [`TunnelDaemon`](crate::domain::TunnelDaemon)
 //! supervisor owns the retry/backoff loop and cancellation, so this layer holds
 //! no run lifecycle of its own. The trait exists so the supervisor can be tested
 //! against a fake instead of a live relay.
@@ -13,10 +13,12 @@
 use rathole_settings_rust::PublicRatholeSettings;
 use tokio_util::sync::CancellationToken;
 
-/// A fully-specified relay connection — produced only when every field the
-/// rathole client needs is present. Also the shape a PUT sets the relay block
-/// to (all four together, or none).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A fully-specified relay connection: every field the rathole client needs,
+/// built from the server's record.
+///
+/// `Debug` writes `<redacted>` in place of the `token`, as the record's own
+/// `TunnelToken` does, so logging a config that holds these can't leak it.
+#[derive(Clone, PartialEq, Eq)]
 pub struct RelaySettings {
     pub remote_addr: String,
     pub token: String,
@@ -42,6 +44,17 @@ impl RelaySettings {
     }
 }
 
+impl std::fmt::Debug for RelaySettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RelaySettings")
+            .field("remote_addr", &self.remote_addr)
+            .field("token", &"<redacted>")
+            .field("public_key", &self.public_key)
+            .field("service_name", &self.service_name)
+            .finish()
+    }
+}
+
 /// Runs a single rathole client attempt. The supervisor calls this in a loop.
 #[async_trait::async_trait]
 pub trait RelayClient: Send + Sync {
@@ -55,4 +68,28 @@ pub trait RelayClient: Send + Sync {
         local_addr: &str,
         cancel: CancellationToken,
     ) -> anyhow::Result<()>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RelaySettings;
+
+    #[test]
+    fn debug_redacts_the_token() {
+        let rendered = format!(
+            "{:?}",
+            RelaySettings {
+                remote_addr: "relay.example.com:2333".into(),
+                token: "s3cret-relay-token".into(),
+                public_key: "key".into(),
+                service_name: "dev1".into(),
+            }
+        );
+        assert!(
+            !rendered.contains("s3cret-relay-token"),
+            "token leaked: {rendered}"
+        );
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        assert!(rendered.contains("relay.example.com:2333"), "{rendered}");
+    }
 }

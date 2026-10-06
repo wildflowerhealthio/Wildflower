@@ -26,7 +26,8 @@ pub struct AppUrl(String);
 
 /// Substitution inputs for [`AppUrl::to_url_with_params`].
 pub struct LaunchParams<'a> {
-    /// The served origin, e.g. `http://127.0.0.1:8080`.
+    /// The origin substituted for `{origin}` — the server's public origin, e.g.
+    /// `https://ruth.relay.wildflowerhealth.io`.
     pub origin: &'a str,
     /// Per-launch nonce substituted for `{launch}`.
     pub launch: &'a str,

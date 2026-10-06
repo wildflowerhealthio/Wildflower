@@ -18,7 +18,6 @@ use background_server_service_rust::{
 };
 use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT, READY_TAG};
 use shared_structures_rust::request_caller::ForwardedRequest;
-use shared_structures_rust::tunnel_service::TunnelLiveness;
 use std::sync::{Arc, OnceLock};
 use tauri::plugin::PermissionState;
 use tauri::{AppHandle, Emitter, EventId, Listener, Manager, Runtime};
@@ -29,6 +28,7 @@ use tauri_plugin_dialog::{Dialog, MessageDialogKind};
 use tauri_plugin_log::log;
 use tauri_plugin_notification::Notification;
 use tokio::sync::{mpsc, watch, Notify};
+use tunnel_rust::TunnelLiveness;
 
 mod stop_reason;
 

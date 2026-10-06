@@ -49,6 +49,9 @@ fn build_router() -> (Router, TempDb) {
         // HFS at the crate's vendored copy (the host ships it as a bundled
         // resource in production).
         search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
+        public_origin: "https://dev1.example.com"
+            .parse()
+            .expect("parse public origin"),
     };
 
     // Auth is off here (jwks_url is None), so the revocation store is never

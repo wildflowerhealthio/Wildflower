@@ -1,4 +1,3 @@
-import { HttpClientError } from '@effect/platform'
 import { AppsHttpApiClient } from 'apps-core/clients'
 import { Schemas } from 'apps-core/http-api-definition'
 import { Effect, Either, Schema } from 'effect'
@@ -65,15 +64,11 @@ const isAppNotFound = Schema.is(Schemas.AppNotFoundSchema)
 const launchErrorBody = (error: unknown): LaunchErrorBody => {
   const cause = unwrapFiberFailure(error)
   // `LaunchApp` declares the shared `403 InsufficientScope`, so it decodes with the
-  // `missingScopes` the banner names; a declared `404` decodes to `AppNotFound`; an
-  // undeclared `503` arrives as a bare `ResponseError`.
+  // `missingScopes` the banner names; a declared `404` decodes to `AppNotFound`.
   if (isInsufficientScopeBody(cause)) {
     return { error: 'InsufficientScope', missingScopes: cause.missingScopes }
   }
   if (isAppNotFound(cause)) return { error: 'AppNotFound' }
-  if (cause instanceof HttpClientError.ResponseError && cause.response.status === 503) {
-    return { error: 'LaunchUnavailable' }
-  }
   return { error: 'LaunchFailed' }
 }
 

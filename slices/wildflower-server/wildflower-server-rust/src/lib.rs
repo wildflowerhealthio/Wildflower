@@ -23,8 +23,7 @@
 //!    the tunnel's `HealthProbe` over `reqwest`.
 //!  - `http` — the server's own middleware (CORS, the loopback owner trust,
 //!    the forwarded-request report) and the unmatched-route `404`.
-//!  - `live_bindings` — [`set_up`] and [`WildflowerServer`], and HFS's base URL
-//!    following the tunnel's public host.
+//!  - `live_bindings` — [`set_up`] and [`WildflowerServer`].
 
 mod adapters;
 mod config;

@@ -110,11 +110,9 @@ describe('<AppsHomeBody> launch-error banner', () => {
     // A non-scope launch failure reads as a sentence. (A scope failure renders the
     // AuthorizationFailure surface via the app's ambient renderer — covered in the
     // scopes-react / renderer tests; there's no provider here, so use a message body.)
-    render(
-      <AppsHomeBody apps={[APP]} launchError={encodeLaunchError({ error: 'LaunchUnavailable' })} />
-    )
+    render(<AppsHomeBody apps={[APP]} launchError={encodeLaunchError({ error: 'AppNotFound' })} />)
 
-    expect(screen.getByRole('alert').textContent).toContain('reached')
+    expect(screen.getByRole('alert').textContent).toContain('no longer available')
   })
 
   test('renders no launch banner when there is no launchError', () => {

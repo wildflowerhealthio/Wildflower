@@ -8,8 +8,7 @@
 //! writes [`crate::domain::Remote`] directly (the domain type carries the diesel
 //! derives); the shared
 //! [`JsonText`](shared_structures_rust::json_text::JsonText) newtype maps its
-//! `config` field to the JSON TEXT column. Mirrors `tunnel-rust`'s
-//! `SqliteTunnelStore`.
+//! `config` field to the JSON TEXT column.
 
 mod remotes;
 mod remotes_store;

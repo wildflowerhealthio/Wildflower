@@ -30,10 +30,9 @@
 //! The `SQLite` adapter lives in [`crate::db`] as `SqliteGatekeeperStore` (its
 //! `SqliteGatekeeperTx` implements [`GatekeeperTx`]); the in-memory
 //! `FakeGatekeeperStore` in `domain::capabilities` substitutes for it in the
-//! semantic-mapping unit tests. Mirrors `collector-rust`'s `RemotesStore` and
-//! `tunnel-rust`'s `TunnelStore`, scaled up to the gatekeeper's six persistence
-//! concerns — plus the transaction seam neither of those simpler CRUD stores
-//! needed.
+//! semantic-mapping unit tests. Mirrors `collector-rust`'s `RemotesStore`,
+//! scaled up to the gatekeeper's six persistence concerns — plus the
+//! transaction seam that simpler CRUD store didn't need.
 
 mod store;
 mod tx;

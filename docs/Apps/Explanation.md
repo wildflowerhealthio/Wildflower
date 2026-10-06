@@ -6,10 +6,10 @@ user's PHI can and can't go when they launch one.
 ## What an app is
 
 An app is a thing the user launches from the homescreen: a registry row naming a
-web page and the template that launches it. Two facts about an app decide how
-it reaches the patient's data: whether it is a [SMART app](#smart-apps), which
-earns its own bearer for the API, and its `requires_tunnel` flag, which fixes how
-a launch reaches the device's FHIR server.
+web page and the template that launches it. Whether it is a
+[SMART app](#smart-apps), which earns its own bearer for the API, decides how it
+reaches the patient's data; every app reaches the FHIR server at the server's
+public origin.
 
 An app's assets are served from its own origin, never the host's. Growth Chart,
 Medication Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
@@ -21,17 +21,18 @@ console (`web-server-docs`), Importer (`importer-app`), the OHIF imaging viewer
 Serving the deployed copy means a shipped app updates when the site deploys
 rather than when the user installs a new desktop build.
 
-An app reaches PHI through `{origin}` in its stored launch template, and
-`requires_tunnel` decides which origin that is: set, it forces the tunnel up and
-substitutes the tunnel's verified HTTPS origin, so a launch fails `503` when the
-tunnel can't come up; clear, it substitutes the **served** origin — loopback for
-an on-device launch, the forwarded public origin for a remote one. Every seeded
-row sets it, the first-party ones included: their pages are HTTPS documents on
-<https://wildflowerhealth.io>, and an `iss={origin}` fetch from there to a
-loopback origin is unreachable remotely and refused by WebKit even on device.
-Only the debug-only `<id>-dev` rows below clear it, since their pages are served
-from `localhost` themselves. The trade-off: with the assets remote and the
-tunnel required, a first-party launch needs the network even on-device.
+An app reaches PHI through `{origin}` in its stored launch template, and every
+launch substitutes the server's public HTTPS origin (`https://<domain>`, from the
+server's record), whoever the caller is. A loopback origin would not do: the
+first-party pages are HTTPS documents on <https://wildflowerhealth.io>, and an
+`iss={origin}` fetch from there to a loopback origin is unreachable remotely and
+refused by WebKit even on device. The launch never consults the tunnel. The
+trade-off: with the assets remote and the FHIR server reached at its public
+origin, a launch needs the network even on-device.
+
+The `requires_tunnel` flag rides each row and the wire as `requiresTunnel`, and
+the homescreen shows it as a Tunnel pill; it has no effect on launch and is
+removed by #967.
 
 The SMART apps this repository publishes (every app that mounts
 `smart-app-react`'s `SmartAppRoot`) send nothing from the browser but their FHIR
@@ -72,7 +73,8 @@ documented here, not separately badged.
 One **`app_registrations`** table holds the whole app: `id` (the global id
 space, an explicit PK), `position` (UNIQUE, for ordering + drag-to-reorder),
 `on_homescreen`, `name`, `subtitle`, `url` (the launch template), the soft
-`client_id` reference, and `requires_tunnel` (a launch-readiness signal).
+`client_id` reference, and `requires_tunnel` (the Tunnel pill; no effect on
+launch).
 `PUT /home-screen` is the single writer of ordering + `on_homescreen`.
 
 The `url` is an origin-independent template (`domain/app_url.rs`): an absolute
@@ -93,11 +95,10 @@ from `client_id`), and `requiresTunnel`. The array order is the display
 order (`position` stays on the host). `GET /apps/{id}` returns the same shape for
 one app.
 
-The `url` on the wire is the **stored template**, never a **request-resolved**
-launch URL: the concrete target — with the caller's origin and a fresh `{launch}`
+The `url` on the wire is the **stored template**, never a resolved launch URL:
+the concrete target — with the server's public origin and a fresh `{launch}`
 nonce substituted — is materialized only by the launch endpoint
-(`POST /apps/{id}`), per request, so a forwarded and a loopback caller each get
-the right origin.
+(`POST /apps/{id}`), per request.
 
 ### Creating and editing
 
@@ -173,5 +174,5 @@ reaches the API.
 
 - [Apps Store Explanation](./Store%20Explanation.md) — how `apps-rust` persists
   the registry and the invariants its writes hold.
-- [Origins Explanation](../Origins/Explanation.md) — the served origin `{origin}`
+- [Origins Explanation](../Origins/Explanation.md) — the public origin `{origin}`
   resolves to.

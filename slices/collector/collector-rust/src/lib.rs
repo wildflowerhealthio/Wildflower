@@ -23,7 +23,7 @@
 //! See [`domain::capabilities`] and `docs/Authorization/Scope-Gated Endpoints
 //! How-To.md`.
 //!
-//! Layered like `tunnel-rust` and `apps-rust`:
+//! Layered like `apps-rust`:
 //!
 //!  - [`domain`] — core types: [`domain::Remote`] (the diesel-mapped row
 //!    **and** wire shape) and the [`domain::config_tag`] discriminant reader,

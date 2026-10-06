@@ -16,8 +16,8 @@ arrive having been addressed two different ways:
 
 - **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
   webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
-  parsed once at boot and threaded into every slice's config (apps, gatekeeper,
-  emr, tunnel) so nothing reassembles it from a string.
+  parsed once at boot and threaded into the configs of the slices that render
+  it (gatekeeper, emr) so nothing reassembles it from a string.
 - **Served origin** — the origin the client _actually_ reached. For a direct
   loopback caller it is the loopback origin. For a request relayed by the
   trusted front it is the public `{scheme}://{host}` the browser used. A handler
@@ -88,7 +88,7 @@ The SMART discovery document follows the same split: its `issuer` field is
 [`CANONICAL_ISSUER`], while its endpoint URLs are rendered from the served origin
 so the SMART app can actually reach them from where it is.
 
-### HFS's `base_url` follows the tunnel's public host
+### HFS's `base_url` is the server's public host
 
 HFS is the one component that can't render URLs per request. Its `base_url`
 setting is the prefix of every URL it emits (search Bundle `self`/`next` links,
@@ -96,21 +96,27 @@ setting is the prefix of every URL it emits (search Bundle `self`/`next` links,
 that pages by following `next` therefore goes wherever `base_url` points, and
 its token's `aud` has to match.
 
-So `base_url` is `https://<public_host>/fhir-r4`, the tunnel's configured public
-host, because that is how remote clients reach the FHIR server. It is the
-loopback FHIR base only while no public host is configured. Loopback callers
-get the public URLs too. That suits the host owner token, whose canonical
-audience is accepted at every served origin, but not an OAuth-minted token: its
-`aud` is the loopback base, so a SMART app launched on loopback that follows a
-public `next` link through the tunnel is refused.
+So `base_url` is `https://<public_host>/fhir-r4`, where the public host is the
+server's domain from its record, because that is how remote clients reach the
+FHIR server. Loopback callers get the public URLs too. That suits the host
+owner token, whose canonical audience is accepted at every served origin, but
+not an OAuth-minted token whose `aud` is the loopback base: a client that
+authorised over loopback and follows a public `next` link through the tunnel is
+refused. A launched app never does, since every launch names the public origin
+(below).
 
-HFS reads `base_url` only when its router is built, so emr-rust serves it as a
-[`SwappableHfs`]. The host calls `set_base_url` before serving and again
-whenever the public host changes. That rebuilds HFS over the same store and
-swaps it in under the routers already mounted. A public host that can't form an
-origin is refused when the tunnel settings are written. emr-rust's own
-overrides (`$everything`, the SMART discovery doc) still render the served
-origin per request.
+The public host can't change while the server runs, so the server hands
+emr-rust the public origin in its config ([`EmrConfig`]) and HFS's router is
+built once with that `base_url`; a public host that can't form an origin stops
+startup. emr-rust's own overrides (`$everything`, the SMART discovery doc) still
+render the served origin per request.
+
+### Every launch names the public origin
+
+The apps slice resolves every app's `{origin}` to the same public origin, from
+its config, whoever asked for the launch: the app reaches the FHIR server from
+off the device. The launch doesn't consult the tunnel; the tunnel belongs to the
+host, and the server's web surface knows nothing about it.
 
 ### Discovery is fetched before a token exists
 
@@ -174,4 +180,4 @@ restate the grammar.
 [`served_base_url_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
 [`UNAUTHENTICATED_FHIR_PATHS`]: ../../slices/emr/emr-rust/src/lib.rs
-[`SwappableHfs`]: ../../slices/emr/emr-rust/src/swappable_hfs.rs
+[`EmrConfig`]: ../../slices/emr/emr-rust/src/config.rs

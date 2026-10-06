@@ -4,7 +4,7 @@
 //! of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`), applies
 //! the embedded relay migrations once on construction, and implements the
 //! port by delegating to the query bodies in `tunnels`. Mirrors
-//! `tunnel-rust`'s `SqliteTunnelStore`.
+//! `collector-rust`'s `SqliteRemotesStore`.
 //!
 //! Tokens are stored in plain text, since rathole and the HMAC check both
 //! need them, so the file is created readable by the owner only. Every call

@@ -43,6 +43,9 @@ fn build_router() -> (Router, TempDb) {
         db_file_path: dir.join("health-data.sqlite"),
         jwks_url: None,
         search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
+        public_origin: "https://dev1.example.com"
+            .parse()
+            .expect("parse public origin"),
     };
 
     let revocation_store = token_revocation_rust::RevocationStore::always_allow();

@@ -2,39 +2,36 @@
 //! of the default-safe authorization pattern (the generic machinery lives in
 //! [`scope_capabilities_rust`]; the pattern originated on gatekeeper's `/access`
 //! surface, recipe in `docs/Authorization/Scope-Gated Endpoints How-To.md`).
-//! They live in `domain/` and depend only on the
-//! [`TunnelStore`](crate::domain::TunnelStore) port + the [`TunnelDaemon`] handle
-//! lifted from the state — never on `crate::http` — so the store-touching half is
-//! unit-testable against the in-memory fake.
+//! They live in `domain/` and depend only on the [`TunnelDaemon`] handle lifted
+//! from the state — never on `crate::http`.
 //!
 //! Each capability lives in its own submodule — [`TunnelSettingsReader`] in
-//! [`tunnel_settings_reader`], [`TunnelSettingsEditor`] in
-//! [`tunnel_settings_editor`] — holding the struct, its `*_scopes()` mapping, and
-//! its store-focused test. This module aggregates them into
-//! [`grantable_tunnel_scopes`], re-exports the surface the bindings and handlers
-//! use, and carries the cross-cutting guard tests.
+//! [`tunnel_settings_reader`] — holding the struct, its `*_scopes()` mapping,
+//! and its test. This module aggregates them into [`grantable_tunnel_scopes`],
+//! re-exports the surface the bindings and handlers use, and carries the
+//! cross-cutting guard tests.
 //!
-//! `TunnelSettings` is a **singleton** (no id), so — like gatekeeper's `/access`
+//! The tunnel is a **singleton** (no id), so — like gatekeeper's `/access`
 //! surface, unlike databases' per-resource gate — every capability is the
 //! **fixed-scope** flavour: the whole capability is gated by one static scope
-//! (`wildflower/TunnelSettings.r` to read the settings, `.u` to replace them),
-//! checked by the [`Scoped`] extractor before `build` runs. The concrete
+//! (`wildflower/TunnelSettings.r` to read the tunnel's state), checked by the
+//! [`Scoped`] extractor before `build` runs. The concrete
 //! [`FixedScopeCapability`](scope_capabilities_rust::FixedScopeCapability)
-//! bindings that name `SqliteTunnelStore` live beside the router state
-//! (`crate::live_bindings`), so `domain/` stays store-agnostic.
+//! bindings live beside the router state (`crate::live_bindings`), so `domain/`
+//! never names the router state.
 //!
 //! The (resource, permission) → required-scope mapping lives in one place — each
 //! capability's `*_scopes()` function — read by **both** its binding and
 //! [`grantable_tunnel_scopes`], so *enforced* and *grantable* can't drift.
+//!
+//! [`TunnelDaemon`]: crate::domain::TunnelDaemon
 
 use scopes_rust::Scope;
 
 pub(crate) use scope_capabilities_rust::Scoped;
 
-mod tunnel_settings_editor;
 mod tunnel_settings_reader;
 
-pub(crate) use tunnel_settings_editor::{tunnel_settings_editor_scopes, TunnelSettingsEditor};
 pub(crate) use tunnel_settings_reader::{tunnel_settings_reader_scopes, TunnelSettingsReader};
 
 /// The tunnel scopes the `/tunnel` surface enforces, deduplicated in declaration
@@ -44,10 +41,7 @@ pub(crate) use tunnel_settings_reader::{tunnel_settings_reader_scopes, TunnelSet
 /// tests below until a consent/admin surface consumes it.
 #[must_use]
 pub fn grantable_tunnel_scopes() -> Vec<Scope> {
-    let declared = [
-        tunnel_settings_reader_scopes(),
-        tunnel_settings_editor_scopes(),
-    ];
+    let declared = [tunnel_settings_reader_scopes()];
     let mut seen = std::collections::HashSet::new();
     declared
         .into_iter()
@@ -62,18 +56,17 @@ pub(crate) mod test_support {
 
     use crate::domain::TunnelDaemon;
     use crate::health::HealthProbe;
-    use crate::test_support::{HoldUntilCancelRelayClient, StubProbe};
+    use crate::test_support::{relay, HoldUntilCancelRelayClient, StubProbe};
 
-    /// A daemon handle for the store-focused capability tests. The capabilities
-    /// only *read* the daemon (the handler drives it), so any idle daemon does.
-    /// Shared by the reader and editor test modules.
+    /// A daemon handle for the capability tests. The capabilities only *read*
+    /// the daemon, so any running daemon does.
     pub(crate) fn daemon() -> Arc<TunnelDaemon> {
-        let probe: Arc<dyn HealthProbe> = Arc::new(StubProbe::passing());
-        Arc::new(TunnelDaemon::new_test(
+        let probe: Arc<dyn HealthProbe> = Arc::new(StubProbe::failing());
+        Arc::new(TunnelDaemon::spawn_test(
             Arc::new(HoldUntilCancelRelayClient),
             probe,
-            "http://127.0.0.1:8080",
-            8080,
+            relay(),
+            "dev1.example.com",
         ))
     }
 }
@@ -85,13 +78,7 @@ mod tests {
     #[test]
     fn grantable_tunnel_scopes_are_the_expected_wildflower_scopes() {
         let rendered = scopes_rust::render_scopes(&grantable_tunnel_scopes());
-        assert_eq!(
-            rendered,
-            vec![
-                "wildflower/TunnelSettings.r".to_owned(),
-                "wildflower/TunnelSettings.u".to_owned(),
-            ],
-        );
+        assert_eq!(rendered, vec!["wildflower/TunnelSettings.r".to_owned()],);
     }
 
     #[test]
@@ -143,7 +130,7 @@ mod tests {
             .count();
         // One `declared` entry per capability's scope function. Update BOTH when
         // adding a capability: its `*_scopes()` fn and the `declared` array.
-        let declared_entries = 2;
+        let declared_entries = 1;
         assert_eq!(
             scope_fns, declared_entries,
             "found {scope_fns} capability scope functions but grantable_tunnel_scopes() declares \
@@ -152,23 +139,20 @@ mod tests {
     }
 
     /// Default-safety guard: the scope-gated `/tunnel` handler files must reach
-    /// the store **only** through a `Scoped<…>` capability — never a raw
-    /// `State<Arc<TunnelState>>` or a direct `.store` field access. This test
+    /// the tunnel state **only** through a `Scoped<…>` capability — never a raw
+    /// `State<Arc<TunnelState>>` or a direct `.daemon` field access. This test
     /// fails if one appears, so a forgotten scope check can't ship silently.
     /// (Mirrors gatekeeper's / databases' source-guard tests.)
     ///
     /// The routes tree is enumerated at test time, so a NEW handler file is
     /// guarded by default — it must be consciously exempted below to escape.
-    /// (Advisory-strength, deliberately: the needles are textual.) The daemon is
-    /// deliberately NOT forbidden: the handler drives it through the capability's
-    /// `daemon()` accessor (acquired behind the gate), and it is runtime state,
-    /// not the scope-protected settings.
+    /// (Advisory-strength, deliberately: the needles are textual.)
     #[test]
-    fn tunnel_handlers_reach_the_store_only_through_capabilities() {
+    fn tunnel_handlers_reach_the_state_only_through_capabilities() {
         // Module glue (`mod.rs`) and the pure wire-representation helper are not
         // handlers; every operation handler is gated.
         const EXEMPT_FILES: &[&str] = &["mod.rs", "wire_representations.rs"];
-        const FORBIDDEN: &[&str] = &["State<", ".store"];
+        const FORBIDDEN: &[&str] = &["State<", ".daemon"];
 
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
@@ -188,14 +172,14 @@ mod tests {
             for needle in FORBIDDEN {
                 assert!(
                     !source.contains(needle),
-                    "scope-gated handler `{relative}` reaches the store directly \
+                    "scope-gated handler `{relative}` reaches the tunnel state directly \
                      (`{needle}`); acquire it through a `Scoped<…>` capability instead",
                 );
             }
             checked += 1;
         }
         assert!(
-            checked >= 2,
+            checked >= 1,
             "only {checked} handler files enumerated — did src/http/routes move?",
         );
     }
