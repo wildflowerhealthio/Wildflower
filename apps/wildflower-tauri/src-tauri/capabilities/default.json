@@ -9,6 +9,7 @@
     "log:default",
     "dialog:default",
     "native-webview:default",
-    "background-service:allow-configure-recovery"
+    "background-service:allow-configure-recovery",
+    "allow-server-enrolment"
   ]
 }

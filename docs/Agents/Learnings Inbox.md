@@ -479,3 +479,15 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/bg-server-3-mobile (asking for the notification permission at first launch)
 **Learning**: In 2.4.0 the Kotlin `requestPermissions` on Android 13+ only requests when the permission isn't granted, and has no `else` branch to resolve the invoke, so Rust's blocking `request_permission()` waits forever on a device that already granted it. Read `permission_state()` first and ask only on `Prompt`/`PromptWithRationale`, from a blocking thread (both calls block on the native side). Also, two permission requests on screen at once cancel the second, which this plugin then reports as `denied` (`areNotificationsEnabled()` is still false); `tauri-plugin-background-service` asks for `POST_NOTIFICATIONS` itself on every start, so ask before starting it.
 **Suggested destination**: a Tauri plugin gotchas Reference
+
+## A `#[tauri::command]` can't be defined at a crate's root
+
+**Discovered during**: base/896-enrolment (`servers-tauri-rust`)
+**Learning**: `#[tauri::command]` on a `pub fn` in `lib.rs` fails with "the name `__cmd__<name>` is defined multiple times": the macro defines a `macro_rules!` helper and re-imports it into the same module, which clashes at the crate root. Define commands in a submodule and `pub use` them from the root, as `browser-sniffer-tauri-rust` (`native_webview_bridge`) and `servers-tauri-rust` (`commands`) do; `generate_handler!` takes the re-exported path.
+**Suggested destination**: a Tauri slice How-To
+
+## A scoped `tracing` subscriber misses events in a multi-threaded test binary
+
+**Discovered during**: base/896-enrolment (`servers-rust`, checking the token never reaches a log)
+**Learning**: `tracing::subscriber::set_default` only applies to its own thread, and a callsite another test thread has already hit with no subscriber is cached as uninteresting, so the scoped subscriber silently misses it. The capture passed alone and failed under `cargo test`. To read log output back in a test, install the capturing subscriber once per process with `set_global_default` behind a `OnceLock`; nextest runs each test in its own process, so both runners see every event.
+**Suggested destination**: docs/Testing (a Rust testing Reference)
