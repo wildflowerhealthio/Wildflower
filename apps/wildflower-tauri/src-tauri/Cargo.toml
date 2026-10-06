@@ -79,4 +79,4 @@ workspace = true
 # Builds the `LoopbackConsentRequest` (its `expires_at`) the dialog tests render.
 chrono = { version = "0.4", default-features = false }
 # Parses the Android manifest the merge-override tests read.
-roxmltree = "0.20"
+roxmltree = "0.21"
