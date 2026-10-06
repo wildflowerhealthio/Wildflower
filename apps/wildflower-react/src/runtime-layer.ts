@@ -6,6 +6,7 @@ import { Effect, Layer, pipe } from 'effect'
 import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { FhirResourcesApiPrefix } from 'fhir-r4/http-api-definition'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
+import { RequestLogRouterContext } from 'request-log-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
 import { unauthorizedRetrySchedule } from './retry-policy.ts'
@@ -59,7 +60,8 @@ const buildRunAuthed = (
       FhirR4ResourcesRouterContext.sliceRuntimeLayer.pipe(
         Layer.provide(transportAt(FhirResourcesApiPrefix))
       ),
-      DatabasesRouterContext.sliceRuntimeLayer
+      DatabasesRouterContext.sliceRuntimeLayer,
+      RequestLogRouterContext.sliceRuntimeLayer
     ),
     baseRuntimeLayer
   )

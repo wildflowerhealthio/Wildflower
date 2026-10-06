@@ -3,22 +3,16 @@
 //! pool of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the
 //! shared database file, applies the embedded tunnel migrations once on
 //! construction, and implements the port by delegating to the per-concern query
-//! bodies (`tunnel_settings`, `seed_tunnel_settings`). It implements the
-//! [`RequestLogStore`] port the same way, over `tunnel_requests`. Mirrors
+//! bodies (`tunnel_settings`, `seed_tunnel_settings`). Mirrors
 //! `collector-rust`'s `RemotesStore`.
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 
-use chrono::{DateTime, Utc};
-use shared_structures_rust::request_caller::ForwardedRequest;
-
-use crate::db::{seed_tunnel_settings, tunnel_requests, tunnel_settings};
-use crate::domain::request_log::{CallerSummary, RequestLogFilter, RequestLogPage};
+use crate::db::{seed_tunnel_settings, tunnel_settings};
 use crate::domain::{
-    CallerClass, RelaySettings, RequestLogStore, SettingsSeed, SettingsUpdateOutcome, TunnelError,
-    TunnelSettings, TunnelStore,
+    RelaySettings, SettingsSeed, SettingsUpdateOutcome, TunnelError, TunnelSettings, TunnelStore,
 };
 
 /// This slice's migration namespace in the shared database. Applied versions are
@@ -132,34 +126,6 @@ impl TunnelStore for SqliteTunnelStore {
     }
 }
 
-/// The request-log half of the store, delegating to the `tunnel_requests`
-/// query bodies the same way.
-impl RequestLogStore for SqliteTunnelStore {
-    fn insert_requests(&self, requests: &[ForwardedRequest]) -> Result<(), TunnelError> {
-        tunnel_requests::insert_requests(&mut self.connection()?, requests)
-    }
-
-    fn delete_requests_beyond_cap(
-        &self,
-        caller_class: CallerClass,
-        row_cap: i64,
-    ) -> Result<usize, TunnelError> {
-        tunnel_requests::delete_requests_beyond_cap(&mut self.connection()?, caller_class, row_cap)
-    }
-
-    fn delete_requests_received_before(&self, cutoff: DateTime<Utc>) -> Result<usize, TunnelError> {
-        tunnel_requests::delete_requests_received_before(&mut self.connection()?, cutoff)
-    }
-
-    fn requests_page(&self, filter: &RequestLogFilter) -> Result<RequestLogPage, TunnelError> {
-        tunnel_requests::requests_page(&mut self.connection()?, filter)
-    }
-
-    fn caller_summaries(&self) -> Result<Vec<CallerSummary>, TunnelError> {
-        tunnel_requests::caller_summaries(&mut self.connection()?)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use diesel::prelude::*;
@@ -184,6 +150,29 @@ mod tests {
             .get_result(&mut conn)
             .expect("tunnel_settings must exist after migrate");
         assert_eq!(row_count, 1, "exactly the one seeded singleton row");
+    }
+
+    /// The migrations leave no `tunnel_requests` table behind: `0003` drops the
+    /// one `0002` created.
+    #[test]
+    fn migrations_leave_no_tunnel_requests_table() {
+        #[derive(QueryableByName)]
+        struct TableCount {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let mut conn = pool.get().unwrap();
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .unwrap();
+        let tables: TableCount = diesel::sql_query(
+            "SELECT COUNT(*) AS count FROM sqlite_master \
+             WHERE type = 'table' AND name = 'tunnel_requests'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(tables.count, 0);
     }
 
     /// Applying `0001` against a database that already carries the

@@ -164,8 +164,9 @@ pub async fn set_up(
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
     // every diesel-backed slice — the gatekeeper OAuth surface, the collector
-    // `/collector/remotes` surface, and the tunnel `/tunnel` surface all run
-    // over it rather than each opening their own. Its connections are NOT
+    // `/collector/remotes` surface, the tunnel `/tunnel` surface and the request
+    // log's `/requests` surface all run over it rather than each opening their
+    // own. Its connections are NOT
     // synchronized with the `Arc<Mutex<rusqlite::Connection>>` the other slices
     // write through: an accepted single-writer file-lock contention trade-off,
     // ridden out by a shared `busy_timeout`. This is where that trade-off is
@@ -249,6 +250,13 @@ pub async fn set_up(
     let tunnel = tunnel_rust::setup_tunnel(diesel_pool.clone(), &tunnel_config, health_probe)
         .context("failed to set up tunnel")?;
     let gated_tunnel = tunnel.router.layer(gatekeeper_auth_layer.clone());
+
+    // The `/requests` surface: the request log the forwarded-request layer
+    // (outermost, below) feeds, over the same diesel pool. Scope-gated on
+    // `wildflower/RequestLog.r` behind the bearer gate.
+    let request_log = request_log_rust::setup_request_log(diesel_pool.clone())
+        .context("failed to set up the request log")?;
+    let gated_request_log = request_log.router.layer(gatekeeper_auth_layer.clone());
 
     // The apps surface, behind the gatekeeper bearer gate (`gated_apps`, below).
     // `GET /apps` (list), the admin surface (`POST /apps`,
@@ -367,6 +375,7 @@ pub async fn set_up(
         .merge(gated_ohif_server)
         .merge(gated_collector)
         .merge(gated_tunnel)
+        .merge(gated_request_log)
         // The app-layer `/health`: an unauthenticated liveness endpoint the
         // tunnel's reachability probe round-trips through the relay. Ungated so
         // the probe (and any external uptime check) needs no bearer token. The
@@ -409,12 +418,11 @@ pub async fn set_up(
         .layer(api_cors_layer());
 
     // Outermost: every request the front relayed through the tunnel is
-    // reported to the host and to the tunnel's request log once its response
-    // is ready.
+    // reported to the host and to the request log once its response is ready.
     let router = api_router.layer(axum::middleware::from_fn_with_state(
         ForwardedRequestSenders {
             host_sender: observers.forwarded_request_sender,
-            request_log_sender: tunnel.request_log_sender,
+            request_log_sender: request_log.sender,
         },
         forwarded_request_layer::report_forwarded_request,
     ));

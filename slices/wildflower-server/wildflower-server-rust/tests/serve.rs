@@ -2,13 +2,19 @@
 //! `serve`'s shutdown token makes it return `Ok`, and the loopback port is then
 //! free for a second server over the same app-data dir and the same host
 //! channels, which comes up and answers `/health`. While serving, the host's
-//! observers see the tunnel's liveness and each forwarded request.
+//! observers see the tunnel's liveness and each forwarded request, and the
+//! request log records each forwarded request and serves it back on
+//! `/requests` to a token holding the request log's read scope.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use gatekeeper_rust::{NoLoopbackConsentPrompt, PendingConsentHead};
+use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
+use gatekeeper_rust::{
+    GatekeeperStore, NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
+};
+use serde_json::Value;
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
@@ -16,6 +22,13 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 use wildflower_server_rust::{set_up, HostPorts, ServerObservers, WildflowerServerConfig};
+
+/// The `Forwarded` header the trusted front stamps on a request it relayed
+/// through the tunnel, from client `192.0.2.1` to `demo.example.com`.
+const FORWARDED: &str = "for=192.0.2.1;host=demo.example.com;proto=https";
+
+/// The origin [`FORWARDED`] names: the audience of a client token for it.
+const FORWARDED_ORIGIN: &str = "https://demo.example.com";
 
 /// How long one server may take to come up or wind down before the test fails
 /// rather than hangs. Startup indexes the FHIR SearchParameter bundle, which is
@@ -123,10 +136,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     // caller (`/health` is ungated).
     let forwarded_health = reqwest::Client::new()
         .get(loopback_base_url.join("health").expect("health URL"))
-        .header(
-            "forwarded",
-            "for=192.0.2.1;host=demo.example.com;proto=https",
-        )
+        .header("forwarded", FORWARDED)
         .send()
         .await
         .expect("a forwarded GET /health reaches the server");
@@ -178,5 +188,146 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         .await
         .expect("the second serve returns in time once cancelled")
         .expect("the second serve task doesn't panic")
+        .expect("a cancelled serve returns Ok");
+}
+
+/// A client token for [`FORWARDED_ORIGIN`] granting `scopes`, signed with the
+/// key gatekeeper keeps in the server's database under `app_data_dir`.
+fn client_token(app_data_dir: &Path, scopes: &[String]) -> String {
+    // The server's shared database (`WILDFLOWER_DB` in `set_up`); a wrong name
+    // opens an empty one, with no signing key to find.
+    let pool = persistence_rust::open_pool(&app_data_dir.join("wildflower.sqlite"))
+        .expect("open the server's database");
+    let signing_key = SqliteGatekeeperStore::new(pool)
+        .expect("gatekeeper store")
+        .active_signing_key()
+        .expect("signing-key query")
+        .expect("an active signing key");
+    mint_access_token(
+        &signing_key,
+        &NewJwtArgs {
+            client_id: "request-log-reader",
+            scopes,
+            ttl: chrono::Duration::minutes(5),
+            issuer: shared_structures_rust::CANONICAL_ISSUER,
+            audience: Some(FORWARDED_ORIGIN),
+            patient: None,
+            is_host_owner: false,
+        },
+    )
+    .expect("mint a client token")
+}
+
+/// `GET /requests` relayed through the tunnel, with `bearer_token` when given.
+async fn forwarded_request_log_read(
+    loopback_base_url: &Url,
+    bearer_token: Option<&str>,
+) -> reqwest::Response {
+    let request = reqwest::Client::new()
+        .get(loopback_base_url.join("requests").expect("requests URL"))
+        .header("forwarded", FORWARDED);
+    let request = match bearer_token {
+        Some(bearer_token) => request.bearer_auth(bearer_token),
+        None => request,
+    };
+    request
+        .send()
+        .await
+        .expect("GET /requests reaches the server")
+}
+
+/// Whether the request log, read with `bearer_token`, holds a `GET /health`
+/// relayed from `192.0.2.1`.
+async fn request_log_holds_forwarded_health(loopback_base_url: &Url, bearer_token: &str) -> bool {
+    let response = forwarded_request_log_read(loopback_base_url, Some(bearer_token)).await;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let page: Value = response.json().await.expect("a JSON request-log page");
+    page["requests"]
+        .as_array()
+        .expect("a requests array")
+        .iter()
+        .any(|logged| logged["path"] == "/health" && logged["address"] == "192.0.2.1")
+}
+
+/// The composition root's request-log wiring: the forwarded-request layer feeds
+/// the request log's writer, and `/requests` sits behind the gatekeeper bearer
+/// gate, which hands the request log's scope check the caller's scopes.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_request_log_records_forwarded_requests_behind_its_scope() {
+    let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
+    let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
+        .expect("loopback base URL");
+    // The receivers stand in for the host bridge's, held for the whole run.
+    let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
+    let (active_pending_consent_sender, _pending_consents) =
+        watch::channel::<Option<PendingConsentHead>>(None);
+    let host_ports = HostPorts {
+        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
+        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
+        host_owner_token_sender,
+        active_pending_consent_sender,
+    };
+    let (tunnel_liveness_sender, _tunnel_liveness) = watch::channel(None);
+    let (forwarded_request_sender, _forwarded_requests) = mpsc::channel(8);
+    let observers = ServerObservers {
+        tunnel_liveness_sender,
+        forwarded_request_sender,
+    };
+    let shutdown = CancellationToken::new();
+    let serving = tokio::time::timeout(
+        LIFECYCLE_TIMEOUT,
+        start_serving(
+            server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
+            host_ports,
+            observers,
+            shutdown.clone(),
+        ),
+    )
+    .await
+    .expect("the server binds in time");
+    let request_log_reader = client_token(
+        app_data_dir.path(),
+        &request_log_rust::grantable_request_log_scopes()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+    );
+    let apps_reader = client_token(app_data_dir.path(), &["wildflower/Apps.r".to_owned()]);
+
+    let forwarded_health = reqwest::Client::new()
+        .get(loopback_base_url.join("health").expect("health URL"))
+        .header("forwarded", FORWARDED)
+        .send()
+        .await
+        .expect("a forwarded GET /health reaches the server");
+    assert_eq!(forwarded_health.status(), reqwest::StatusCode::OK);
+
+    // The writer records off the request path, so the row lands a moment after
+    // the response; read until it does.
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
+        while !request_log_holds_forwarded_health(&loopback_base_url, &request_log_reader).await {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the forwarded request is logged in time");
+    assert_eq!(
+        forwarded_request_log_read(&loopback_base_url, Some(&apps_reader))
+            .await
+            .status(),
+        reqwest::StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        forwarded_request_log_read(&loopback_base_url, None)
+            .await
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+
+    shutdown.cancel();
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, serving)
+        .await
+        .expect("serve returns in time once cancelled")
+        .expect("the serve task doesn't panic")
         .expect("a cancelled serve returns Ok");
 }

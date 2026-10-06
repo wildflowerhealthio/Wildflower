@@ -4,6 +4,7 @@ import { databasesSettingsItemsFragment } from 'databases-react'
 import { gatekeeperSettingsItemsFragment } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { ItemList, PageHeader } from 'react-tundraish'
+import { requestLogSettingsItemsFragment } from 'request-log-react'
 import type { SettingsItem } from 'shared-structures-react'
 import { tunnelSettingsItemsFragment } from 'tunnel-react'
 
@@ -19,6 +20,7 @@ import { useTelemetrySettingsItems } from '../../session/telemetry-settings-item
  */
 const sliceSettingsItems: readonly SettingsItem[] = [
   ...tunnelSettingsItemsFragment,
+  ...requestLogSettingsItemsFragment,
   ...gatekeeperSettingsItemsFragment,
   ...databasesSettingsItemsFragment,
   ...appsSettingsItemsFragment,

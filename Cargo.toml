@@ -17,6 +17,7 @@ members = [
   "slices/har-recorder/har-recorder-rust",
   "slices/har-recorder/har-recorder-tauri-rust",
   "slices/persistence/persistence-rust",
+  "slices/request-log/request-log-rust",
   "slices/scopes/scope-capabilities-rust",
   "slices/scopes/scopes-rust",
   "slices/shared-structures/shared-structures-rust",

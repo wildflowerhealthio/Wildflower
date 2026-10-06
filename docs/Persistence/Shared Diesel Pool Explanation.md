@@ -1,6 +1,6 @@
 # Shared Diesel Pool Explanation
 
-How the diesel-backed slices (apps, collector, gatekeeper and tunnel) persist to the app's
+How the diesel-backed slices (apps, collector, gatekeeper, request log and tunnel) persist to the app's
 one SQLite database. This is a **convention, not a library**: the host builds a
 single connection pool and hands it to each slice's store, and each store follows
 the same small shape by hand. The pool primitive itself lives in `persistence-rust`
@@ -70,5 +70,7 @@ fresh one. A genuinely new table keeps plain `CREATE TABLE`.
 - The implementations: apps' `SqliteAppsStore`
   (`apps-rust/src/db/apps_store.rs`), collector's `SqliteRemotesStore`
   (`collector-rust/src/db/remotes_store.rs`), gatekeeper's
-  `SqliteGatekeeperStore` (`gatekeeper-rust/src/db/gatekeeper_store.rs`) and
-  tunnel's `SqliteTunnelStore` (`tunnel-rust/src/db/tunnel_store.rs`).
+  `SqliteGatekeeperStore` (`gatekeeper-rust/src/db/gatekeeper_store.rs`),
+  the request log's `SqliteRequestLogStore`
+  (`request-log-rust/src/db/request_log_store.rs`) and tunnel's
+  `SqliteTunnelStore` (`tunnel-rust/src/db/tunnel_store.rs`).

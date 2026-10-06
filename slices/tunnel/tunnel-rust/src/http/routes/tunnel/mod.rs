@@ -1,15 +1,12 @@
 //! `/tunnel` routes — the host-side surface for reading and replacing tunnel
-//! settings, and for reading the request log. One module per operation (`get`,
-//! `replace`, `requests`, `callers`), each a `#[utoipa::path]`-annotated
-//! handler; the shared wire shapes live in [`wire_representations`].
-//! [`openapi_router`] is the only path table — the two methods on `/tunnel`
-//! (GET + PUT) share the path and `routes!` merges them, collecting the
-//! `OpenAPI` spec from the very handlers that serve traffic.
+//! settings. One module per operation (`get`, `replace`), each a
+//! `#[utoipa::path]`-annotated handler; the shared GET+PUT wire shape lives in
+//! [`wire_representations`]. [`openapi_router`] is the only path table — the two
+//! methods on `/tunnel` (GET + PUT) share the path and `routes!` merges them,
+//! collecting the `OpenAPI` spec from the very handlers that serve traffic.
 
-mod callers;
 mod get;
 mod replace;
-mod requests;
 mod wire_representations;
 
 use std::sync::Arc;
@@ -20,13 +17,10 @@ use utoipa_axum::routes;
 use crate::live_bindings::state::TunnelState;
 
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<TunnelState>> {
-    OpenApiRouter::new()
-        .routes(routes!(
-            get::handle_get_tunnel,
-            replace::handle_replace_tunnel
-        ))
-        .routes(routes!(callers::handle_list_callers))
-        .routes(routes!(requests::handle_list_requests))
+    OpenApiRouter::new().routes(routes!(
+        get::handle_get_tunnel,
+        replace::handle_replace_tunnel
+    ))
 }
 
 #[cfg(test)]
@@ -550,110 +544,6 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["settingsRevision"], serde_json::json!(0));
         assert_eq!(body["publicHost"], serde_json::Value::Null);
-    }
-
-    /// A `GET` of `uri` carrying exactly `scopes`.
-    fn get_uri_as(uri: &str, scopes: &str) -> Request<Body> {
-        Request::builder()
-            .uri(uri)
-            .extension(ScopeClaims::new(Some(scopes.to_owned())))
-            .body(Body::empty())
-            .unwrap()
-    }
-
-    /// A state whose request log holds a served request from `lifting` and,
-    /// after it, a refused one from no verified caller.
-    fn state_with_logged_requests() -> Arc<TunnelState> {
-        use crate::db::tunnel_requests::test_support::forwarded_request;
-        use crate::domain::RequestLogStore;
-        use shared_structures_rust::request_caller::RequestRefusal;
-
-        let (st, _started) = state(Behavior::HoldUntilCancel);
-        let mut refused = forwarded_request(None, std::time::SystemTime::now());
-        refused.client_address = Some("203.0.113.9".to_owned());
-        refused.refusal = Some(RequestRefusal::MissingToken);
-        st.store
-            .insert_requests(&[
-                forwarded_request(Some("lifting"), std::time::SystemTime::now()),
-                refused,
-            ])
-            .expect("log requests");
-        st
-    }
-
-    #[tokio::test]
-    async fn callers_lists_each_caller_and_address_newest_first() {
-        let st = state_with_logged_requests();
-        let (status, body) = send(&st, get_uri_as("/tunnel/requests/callers", OWNER_SCOPES)).await;
-        assert_eq!(status, StatusCode::OK, "body: {body}");
-        let callers = body.as_array().expect("an array");
-        assert_eq!(callers.len(), 2);
-        assert_eq!(callers[0]["clientId"], serde_json::Value::Null);
-        assert_eq!(callers[0]["address"], "203.0.113.9");
-        assert_eq!(callers[0]["refusedCount"], 1);
-        assert_eq!(callers[0]["lastStatus"], 401);
-        assert_eq!(callers[0]["lastRefusal"], "missingToken");
-        assert_eq!(callers[1]["clientId"], "lifting");
-        assert_eq!(callers[1]["requestCount"], 1);
-        assert_eq!(callers[1]["lastRefusal"], serde_json::Value::Null);
-    }
-
-    #[tokio::test]
-    async fn requests_pages_the_log_and_applies_the_filters() {
-        let st = state_with_logged_requests();
-        let (status, body) = send(&st, get_uri_as("/tunnel/requests", OWNER_SCOPES)).await;
-        assert_eq!(status, StatusCode::OK, "body: {body}");
-        assert_eq!(body["nextCursor"], serde_json::Value::Null);
-        let requests = body["requests"].as_array().expect("an array");
-        assert_eq!(requests.len(), 2);
-        assert_eq!(requests[0]["id"], 2);
-        assert_eq!(requests[0]["refusal"], "missingToken");
-        assert_eq!(requests[1]["clientId"], "lifting");
-        assert_eq!(requests[1]["path"], "/fhir-r4/Patient");
-        assert_eq!(requests[1]["durationMs"], 12);
-
-        let (_, refused) = send(
-            &st,
-            get_uri_as("/tunnel/requests?auth=refused", OWNER_SCOPES),
-        )
-        .await;
-        assert_eq!(refused["requests"].as_array().map(Vec::len), Some(1));
-        assert_eq!(refused["requests"][0]["id"], 2);
-        let (_, authorized) = send(
-            &st,
-            get_uri_as("/tunnel/requests?auth=authorized", OWNER_SCOPES),
-        )
-        .await;
-        assert_eq!(authorized["requests"].as_array().map(Vec::len), Some(1));
-        assert_eq!(authorized["requests"][0]["id"], 1);
-        let (_, public) = send(
-            &st,
-            get_uri_as("/tunnel/requests?auth=public", OWNER_SCOPES),
-        )
-        .await;
-        assert_eq!(public["requests"].as_array().map(Vec::len), Some(0));
-        let (_, lifting) = send(
-            &st,
-            get_uri_as("/tunnel/requests?client=lifting&cursor=2", OWNER_SCOPES),
-        )
-        .await;
-        assert_eq!(lifting["requests"][0]["id"], 1);
-    }
-
-    /// The request log is gated by `wildflower/TunnelSettings.r`: a token
-    /// without it is refused with the shared `403` before anything is read.
-    #[tokio::test]
-    async fn the_request_log_without_the_read_scope_is_403() {
-        let st = state_with_logged_requests();
-        for uri in ["/tunnel/requests/callers", "/tunnel/requests"] {
-            let (status, body) = send(&st, get_uri_as(uri, "wildflower/TunnelSettings.u")).await;
-            assert_eq!(status, StatusCode::FORBIDDEN, "{uri}: {body}");
-            assert_eq!(body["error"], serde_json::json!("InsufficientScope"));
-            assert_eq!(
-                body["missingScopes"],
-                serde_json::json!(["wildflower/TunnelSettings.r"]),
-            );
-        }
     }
 
     /// A request without a `ScopeClaims` extension is a wiring bug (the authN

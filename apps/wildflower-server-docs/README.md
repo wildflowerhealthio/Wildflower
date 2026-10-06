@@ -5,7 +5,7 @@ The static API console published at
 [Scalar](https://scalar.com) reference for the Wildflower server's HTTP API,
 pointed at whichever running server the reader chooses.
 
-It documents six slices, one sidebar group each, from the **committed OpenAPI
+It documents seven slices, one sidebar group each, from the **committed OpenAPI
 snapshots**:
 
 | Sidebar group | Snapshot                                                                  |
@@ -15,6 +15,7 @@ snapshots**:
 | Databases     | `slices/databases/databases-rust/openapi/databases.openapi.json`          |
 | Collector     | `slices/collector/collector-rust/openapi/collector.openapi.json`          |
 | Tunnel        | `slices/tunnel/tunnel-rust/openapi/tunnel-admin.openapi.json`             |
+| Request log   | `slices/request-log/request-log-rust/openapi/request-log.openapi.json`    |
 | FHIR R4       | `slices/emr/emr-rust/openapi/fhir-r4.openapi.json`                        |
 
 Those snapshots are the same files the per-slice Rust snapshot tests and the

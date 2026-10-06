@@ -1,0 +1,127 @@
+/*
+ * Recent-activity card — heads the requests page, summarizing the most
+ * recent callers (signed in, public, refused).
+ */
+/*
+ * Fade-in on mount — a hard mount felt abrupt against the rest of the
+ * page's smooth tone changes. The animation is a one-shot
+ * opacity/translate.
+ */
+@keyframes request-activity-feed-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.request-activity-feed {
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+  /*
+   * Only block-axis padding lives on the feed; the inline axis is
+   * delegated to children so the ItemList rows can carry the full
+   * width of the card. The danger-tone row tint therefore bleeds to
+   * the feed's edges naturally without negative-margin trickery.
+   *
+   * `overflow: hidden` clips the row tint against the feed's rounded
+   * corners — a danger row that happens to land first or last would
+   * otherwise paint a flat-corner rectangle that pokes past the
+   * border-radius.
+   */
+  padding-block: var(--space-7);
+  --item-list-row-padding-inline: var(--space-7);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  animation: request-activity-feed-fade-in 1s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .request-activity-feed {
+    animation: none;
+  }
+}
+
+.request-activity-feed__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-inline: var(--space-7);
+}
+
+/*
+ * Section eyebrow — same mono/letter-spaced/uppercase treatment the
+ * ItemList title uses, sized down a hair for the card-internal context.
+ */
+.request-activity-feed__label {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-5);
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
+  white-space: nowrap;
+}
+
+.request-activity-feed__summary {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-3);
+  padding-inline: var(--space-7);
+}
+
+/*
+ * Per-row leading status dot, one tone per way a request met the bearer
+ * gates — `authorized` (green, matches the hero's "This device" and Internet
+ * nodes when on), `public` (a quiet neutral: nothing was asked of it) and
+ * `refused` (the danger red the relay node uses when reporting). The mark is
+ * a plain `<span>` with a fixed footprint so the row's flex `gap` separates
+ * it cleanly from the text column.
+ */
+.request-activity-feed__dot {
+  display: inline-block;
+  width: var(--space-4);
+  height: var(--space-4);
+  border-radius: 999px;
+}
+
+.request-activity-feed__dot--authorized {
+  background: var(--color-success);
+}
+
+.request-activity-feed__dot--public {
+  background: var(--color-neutral-4);
+}
+
+.request-activity-feed__dot--refused {
+  background: var(--color-red-5);
+}
+
+/*
+ * Refused-streak warning — one line per address, in the danger red, with a
+ * link to the log filtered to that address's refused requests.
+ */
+.request-activity-feed__warning {
+  margin: 0;
+  padding-inline: var(--space-7);
+  font-size: var(--font-size-2);
+  color: var(--color-red-5);
+}
+
+.request-activity-feed__warning-link {
+  color: var(--color-accent);
+}
+
+.request-activity-feed__empty {
+  margin: 0;
+  padding-inline: var(--space-7);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
+}

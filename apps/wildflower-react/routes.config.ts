@@ -53,6 +53,7 @@ export const routes = rootRoute('__root.tsx', [
   route('/settings', 'settings.tsx', [
     index('settings/index.tsx'),
     physical('', routesDir('tunnel', 'settings')),
+    physical('', routesDir('request-log', 'settings')),
     physical('', routesDir('gatekeeper', 'settings')),
     physical('', routesDir('databases', 'settings')),
     physical('', routesDir('apps', 'settings')),

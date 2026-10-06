@@ -32,6 +32,11 @@
       "kind": "wildflower",
       "rendered": "wildflower/TunnelSettings.u"
     },
+    {
+      "scope": "wildflower/RequestLog.r",
+      "kind": "wildflower",
+      "rendered": "wildflower/RequestLog.r"
+    },
     { "scope": "wildflower/launch", "kind": "known", "rendered": "wildflower/launch" },
     {
       "scope": "wildflower/RefreshToken.cruds",
@@ -104,6 +109,12 @@
       "allowed": "wildflower/*.cruds",
       "requested": "wildflower/TunnelSettings.u",
       "covers": true
+    },
+    { "allowed": "wildflower/*.cruds", "requested": "wildflower/RequestLog.r", "covers": true },
+    {
+      "allowed": "wildflower/TunnelSettings.cruds",
+      "requested": "wildflower/RequestLog.r",
+      "covers": false
     },
     { "allowed": "wildflower/launch", "requested": "wildflower/launch", "covers": true },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/launch", "covers": false },

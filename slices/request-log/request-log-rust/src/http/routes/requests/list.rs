@@ -1,0 +1,67 @@
+//! `GET /requests` — the raw request log, keyset-paged on id.
+
+use axum::extract::Query;
+use axum::Json;
+use serde::Deserialize;
+use utoipa::IntoParams;
+
+use scope_capabilities_rust::InsufficientScopeBody;
+
+use super::wire_representations::{RequestAuthParam, RequestLogPageBody};
+use crate::domain::capabilities::Scoped;
+use crate::domain::request_log::{RequestAuth, RequestLogFilter};
+use crate::domain::RequestLogError;
+use crate::live_bindings::LiveRequestLogReader;
+
+/// The query `GET /requests` accepts. Every parameter is optional, and
+/// every one given must match.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(crate) struct ListRequestsParams {
+    /// The previous page's `nextCursor`: only requests older than it.
+    cursor: Option<i64>,
+    /// Only requests whose verified caller is this OAuth client.
+    client: Option<String>,
+    /// Only requests from this client address.
+    address: Option<String>,
+    /// Only requests in this auth case: `authorized` (a verified caller, not
+    /// refused), `public` (no verified caller, not refused) or `refused` (a
+    /// bearer gate's `401` or a scope `403`).
+    #[param(inline)]
+    auth: Option<RequestAuthParam>,
+}
+
+impl From<ListRequestsParams> for RequestLogFilter {
+    fn from(params: ListRequestsParams) -> Self {
+        RequestLogFilter {
+            before_id: params.cursor,
+            client_id: params.client,
+            client_address: params.address,
+            auth: params.auth.map(RequestAuth::from),
+        }
+    }
+}
+
+/// `GET /requests` — one page of the request log, newest first, with the
+/// cursor for the next. Gated by [`Scoped<LiveRequestLogReader>`]
+/// (`wildflower/RequestLog.r`).
+#[utoipa::path(
+    get,
+    tag = "Request log",
+    path = "/requests",
+    params(ListRequestsParams),
+    responses(
+        (status = 200, description = "One page of the request log, newest first", body = RequestLogPageBody),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/RequestLog.r`", body = InsufficientScopeBody)
+    )
+)]
+pub(crate) async fn handle_list_requests(
+    request_log: Scoped<LiveRequestLogReader>,
+    Query(params): Query<ListRequestsParams>,
+) -> Result<Json<RequestLogPageBody>, RequestLogError> {
+    Ok(Json(
+        request_log
+            .requests_page(&RequestLogFilter::from(params))?
+            .into(),
+    ))
+}

@@ -1,6 +1,6 @@
 //! The outermost layer of the served stack: after each request the trusted
 //! front relayed through the tunnel, report what it was and who made it to the
-//! host and to the tunnel slice's request log.
+//! host and to the request-log slice.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
 //! bearer gate's `401` off its [`RequestRefusal`] one; the gatekeeper bearer
@@ -24,12 +24,12 @@ use tokio::sync::mpsc;
 use reduced_path::reduced_path;
 
 /// Where [`report_forwarded_request`] sends each record: the host, which
-/// turns them into notifications, and the tunnel slice's request-log writer.
+/// turns them into notifications, and the request-log slice's writer.
 #[derive(Clone)]
 pub(crate) struct ForwardedRequestSenders {
     /// The host's channel (`ServerObservers::forwarded_request_sender`).
     pub(crate) host_sender: mpsc::Sender<ForwardedRequest>,
-    /// The request-log writer's channel (`tunnel_rust::Tunnel::request_log_sender`).
+    /// The request-log writer's channel (`request_log_rust::RequestLog::sender`).
     pub(crate) request_log_sender: mpsc::Sender<ForwardedRequest>,
 }
 
