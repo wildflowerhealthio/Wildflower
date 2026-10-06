@@ -42,7 +42,7 @@ use axum::http::request::Parts;
 use axum::http::{header, HeaderMap, HeaderName, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sfv::{BareItem, Dictionary, FieldType, InnerList, ListEntry, Parser};
 use sha2::{Digest, Sha256};
 
