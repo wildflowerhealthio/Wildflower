@@ -35,7 +35,7 @@ futures-util = { version = "0.3", default-features = false }
 include_dir = "0.7"
 # `hmac-sha256` HTTP message signatures (RFC 9421), with a constant-time
 # MAC check. Already in the tree.
-hmac = "0.12"
+hmac = "0.13"
 # Serves the site's router over each TLS connection; `axum::serve` only takes
 # listeners, and the front hands over connections one at a time. Both are
 # already in the tree through axum.
