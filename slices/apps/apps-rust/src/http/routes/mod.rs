@@ -208,8 +208,8 @@ mod tests {
             .expect("inserted");
     }
 
-    /// Seed a non-SMART app whose template names the served origin — the
-    /// fixture the provenance and umbrella tests drive.
+    /// Seed a non-SMART app whose template names `{origin}` — the fixture the
+    /// provenance and umbrella tests drive.
     fn seed_plain(store: &crate::db::SqliteAppsStore, id: &str) {
         seed_app(store, id, "https://app.example/y?iss={origin}", None);
     }

@@ -41,8 +41,8 @@ pub struct AppRegistration {
     /// `None` means "no subtitle"; the wire omits an absent one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
-    /// The launch URL template: `{origin}` is replaced with the served origin at
-    /// launch time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]). It
+    /// The launch URL template: `{origin}` is replaced with the server's public
+    /// origin at launch time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]). It
     /// is origin-independent, never a request-resolved redirect target — see
     /// `docs/Apps/Explanation.md`. Serialized as its canonical string.
     #[diesel(serialize_as = AppUrlColumn, deserialize_as = AppUrlColumn)]

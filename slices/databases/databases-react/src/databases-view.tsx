@@ -108,8 +108,8 @@ const DatabasesView = ({
       <PageHeader title="Your data" backHref="/settings" backLabel="Settings" />
       <p className="text-body-3">
         Download a copy of a database to keep, or delete it from this device. Deleting your health
-        data erases your clinical records here; deleting the app database resets access grants,
-        tunnel settings, and the apps catalogue.
+        data erases your clinical records here; deleting the app database resets access grants and
+        the apps catalogue.
       </p>
 
       {hasPendingDeletion ? (

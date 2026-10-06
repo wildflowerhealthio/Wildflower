@@ -40,8 +40,8 @@ impl AppLaunchScopes for FixedLaunchScopes {
 }
 
 /// Build apps state over a fresh in-memory store with a specific on-device
-/// webview handle and launch-scope seam, using the shared public origin. The most general fixture; the others below pin one of the
-/// knobs.
+/// webview handle and launch-scope seam, using the shared public origin. The
+/// most general fixture; the others below pin one of the knobs.
 pub(crate) fn state_full(
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
