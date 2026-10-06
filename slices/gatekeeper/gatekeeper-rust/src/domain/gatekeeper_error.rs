@@ -8,6 +8,8 @@
 //! decided one layer up, in `domain::capabilities`, so both the `SQLite`
 //! adapter and the in-memory test fake speak only the primitive port contract.
 
+use scope_capabilities_rust::MissingScopes;
+
 /// The ways a gatekeeper domain operation can fail. The `*NotFound` variants
 /// are semantic, client-facing outcomes that are part of the wire contract
 /// (each renders as a structured JSON 404 keyed by the resource's identifying
@@ -35,6 +37,12 @@ pub enum GatekeeperError {
     /// No authorization request has this id — the `/oauth/authorize/{id}`
     /// polling endpoint's 404.
     AuthorizationRequestNotFound { id: String },
+    /// The caller authenticated, but their token doesn't cover the scope(s) the
+    /// `/access` operation requires — the surface's **403**. `missing_scopes`
+    /// are the rendered scopes the caller must additionally hold. Raised when the
+    /// [`Scoped`](scope_capabilities_rust::Scoped) extractor rejects (via
+    /// `From<MissingScopes>`).
+    InsufficientScope { missing_scopes: Vec<String> },
     /// An approver tried to grant a client more than they themselves hold —
     /// the consent approve surfaces' **403**. `approver_missing_scopes` are the rendered
     /// scopes the approval would grant that the approver's own token does not
@@ -83,6 +91,13 @@ impl std::fmt::Display for GatekeeperError {
             GatekeeperError::AuthorizationRequestNotFound { id } => {
                 write!(f, "no authorization request with id {id}")
             }
+            GatekeeperError::InsufficientScope { missing_scopes } => {
+                write!(
+                    f,
+                    "insufficient scope; missing {}",
+                    missing_scopes.join(" ")
+                )
+            }
             GatekeeperError::InsufficientApproverScope {
                 approver_missing_scopes,
             } => {
@@ -119,6 +134,18 @@ impl GatekeeperError {
         GatekeeperError::Infrastructure {
             context,
             source: source.to_string(),
+        }
+    }
+}
+
+/// The [`Scoped`](scope_capabilities_rust::Scoped) extractor's rejection — the
+/// caller's token doesn't cover the capability's required scopes — becomes
+/// [`InsufficientScope`](GatekeeperError::InsufficientScope), so it reaches the wire
+/// through this error's rendering like any other failure.
+impl From<MissingScopes> for GatekeeperError {
+    fn from(missing: MissingScopes) -> Self {
+        GatekeeperError::InsufficientScope {
+            missing_scopes: missing.into_rendered(),
         }
     }
 }

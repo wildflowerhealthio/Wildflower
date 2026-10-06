@@ -11,6 +11,7 @@ use scopes_rust::{Grant, Scope};
 
 use super::state::AppsState;
 use crate::domain::capabilities::{app_launcher_scopes, AppLauncher};
+use crate::domain::AppsError;
 
 /// Launch a scoped app — the hybrid umbrella + per-app SMART capability;
 /// `Scoped<LiveAppLauncher>` in the launch handlers.
@@ -19,6 +20,7 @@ pub(crate) type LiveAppLauncher = AppLauncher;
 impl Capability for LiveAppLauncher {
     type State = Arc<AppsState>;
     type Claims = ScopeClaims;
+    type Error = AppsError;
 
     fn required_scopes() -> Vec<Scope> {
         app_launcher_scopes()

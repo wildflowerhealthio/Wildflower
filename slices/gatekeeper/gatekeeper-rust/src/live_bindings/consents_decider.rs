@@ -13,6 +13,7 @@ use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::access::consents::consent_decider_scopes;
 use crate::domain::capabilities::{Capability, ConsentDecider};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifiedClaims;
 use crate::ports::PendingConsentPublisher;
 
@@ -22,6 +23,7 @@ pub(crate) type LiveConsentDecider = ConsentDecider<SqliteGatekeeperStore>;
 impl Capability for LiveConsentDecider {
     type State = Arc<GatekeeperState>;
     type Claims = VerifiedClaims;
+    type Error = GatekeeperError;
 
     fn required_scopes() -> Vec<Scope> {
         consent_decider_scopes()

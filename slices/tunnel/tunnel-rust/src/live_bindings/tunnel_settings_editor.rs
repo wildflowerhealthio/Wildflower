@@ -14,6 +14,7 @@ use scopes_rust::Scope;
 use super::state::TunnelState;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::{tunnel_settings_editor_scopes, TunnelSettingsEditor};
+use crate::domain::TunnelError;
 
 /// Replace the tunnel settings.
 pub(crate) type LiveTunnelSettingsEditor = TunnelSettingsEditor<SqliteTunnelStore>;
@@ -21,6 +22,7 @@ pub(crate) type LiveTunnelSettingsEditor = TunnelSettingsEditor<SqliteTunnelStor
 impl FixedScopeCapability for LiveTunnelSettingsEditor {
     type State = Arc<TunnelState>;
     type Claims = ScopeClaims;
+    type Error = TunnelError;
 
     fn required_scopes() -> Vec<Scope> {
         tunnel_settings_editor_scopes()

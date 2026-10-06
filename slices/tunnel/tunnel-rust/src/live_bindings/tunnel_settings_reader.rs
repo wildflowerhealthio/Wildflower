@@ -14,6 +14,7 @@ use scopes_rust::Scope;
 use super::state::TunnelState;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::{tunnel_settings_reader_scopes, TunnelSettingsReader};
+use crate::domain::TunnelError;
 
 /// Read the tunnel settings — `Scoped<LiveTunnelSettingsReader>` in the handler.
 pub(crate) type LiveTunnelSettingsReader = TunnelSettingsReader<SqliteTunnelStore>;
@@ -21,6 +22,7 @@ pub(crate) type LiveTunnelSettingsReader = TunnelSettingsReader<SqliteTunnelStor
 impl FixedScopeCapability for LiveTunnelSettingsReader {
     type State = Arc<TunnelState>;
     type Claims = ScopeClaims;
+    type Error = TunnelError;
 
     fn required_scopes() -> Vec<Scope> {
         tunnel_settings_reader_scopes()

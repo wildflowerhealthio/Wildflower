@@ -13,8 +13,10 @@
 //! 2. Each data-touching handler acquires the store **only** through a
 //!    [`Scoped<F>`] extractor. It reads those claims, builds a coverage-checkable
 //!    [`Grant`], and hands back the narrow capability `F` **only if** the token
-//!    covers `F`'s [`required_scopes`](Capability::required_scopes) — otherwise a
-//!    `403` naming the missing scopes ([`insufficient_scope`]).
+//!    covers `F`'s [`required_scopes`](Capability::required_scopes) — otherwise
+//!    it rejects with the slice's own domain error (`F::Error`), built from the
+//!    [`MissingScopes`] and rendered as the `403` naming them
+//!    ([`insufficient_scope`]).
 //!
 //! A capability comes in three flavours, and the flavour is visible at the
 //! `impl` line:
@@ -98,6 +100,29 @@ impl GrantedScopes for ScopeClaims {
     }
 }
 
+/// The rendered scopes a caller's token doesn't cover — what the [`Scoped`]
+/// extractor hands a capability's [`Error`](Capability::Error) when it rejects.
+/// A slice converts it into its own `InsufficientScope` variant (via
+/// `From<MissingScopes>`), so the rejection travels the slice's domain error
+/// channel like any other failure and renders through the slice's
+/// `IntoResponse` onto the shared `403` body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingScopes(Vec<String>);
+
+impl MissingScopes {
+    /// The scopes a token failed to cover, rendered for the wire.
+    #[must_use]
+    pub fn uncovered(scopes: &[Scope]) -> Self {
+        Self(scopes_rust::render_scopes(scopes))
+    }
+
+    /// The rendered scopes, for a slice's `InsufficientScope { missing_scopes }`.
+    #[must_use]
+    pub fn into_rendered(self) -> Vec<String> {
+        self.0
+    }
+}
+
 /// A narrow, scope-gated view of a slice's store — the **data-dependent**
 /// flavour's trait, and the one the [`Scoped`] extractor drives. Implement
 /// [`FixedScopeCapability`] instead when one static scope set gates the whole
@@ -113,6 +138,12 @@ pub trait Capability: Sized {
     /// extensions. [`ScopeClaims`] for the common case; a slice's own type when
     /// its handlers need more than the scopes.
     type Claims: GrantedScopes;
+
+    /// The slice's domain error. When the caller's token doesn't cover
+    /// [`required_scopes`](Capability::required_scopes), [`Scoped`] rejects with
+    /// this error built from the [`MissingScopes`] (the slice maps it onto its
+    /// `InsufficientScope` variant) and rendered through its `IntoResponse`.
+    type Error: From<MissingScopes> + IntoResponse;
 
     /// The scope(s) the caller's token must cover — **all** of them — to obtain
     /// this capability. Empty means the static gate is "authenticated only" and
@@ -139,6 +170,8 @@ pub trait FixedScopeCapability: Sized {
     type State: Clone + Send + Sync + 'static;
     /// See [`Capability::Claims`].
     type Claims: GrantedScopes;
+    /// See [`Capability::Error`].
+    type Error: From<MissingScopes> + IntoResponse;
 
     /// The static scope(s) gating this capability — must be non-empty (an empty
     /// requirement means the check is data-dependent, which is [`Capability`]
@@ -153,6 +186,7 @@ pub trait FixedScopeCapability: Sized {
 impl<F: FixedScopeCapability> Capability for F {
     type State = F::State;
     type Claims = F::Claims;
+    type Error = F::Error;
 
     fn required_scopes() -> Vec<Scope> {
         let scopes = F::required_scopes();
@@ -174,9 +208,11 @@ impl<F: FixedScopeCapability> Capability for F {
 }
 
 /// Extractor that yields the capability `F` iff the caller's claims cover `F`'s
-/// [`required_scopes`](Capability::required_scopes); otherwise a `403`
-/// [`insufficient_scope`] naming the uncovered scopes. Derefs to `F`, so a
-/// handler writes `grants: Scoped<GrantsRevoker>` and calls `grants.revoke(...)`.
+/// [`required_scopes`](Capability::required_scopes); otherwise it rejects with
+/// `F`'s [`Error`](Capability::Error) built from the uncovered
+/// [`MissingScopes`] — the slice's `InsufficientScope`, rendered as the `403`
+/// naming them. Derefs to `F`, so a handler writes
+/// `grants: Scoped<GrantsRevoker>` and calls `grants.revoke(...)`.
 pub struct Scoped<F: Capability>(pub F);
 
 impl<F: Capability> Deref for Scoped<F> {
@@ -214,7 +250,7 @@ impl<F: Capability> FromRequestParts<F::State> for Scoped<F> {
         if missing.is_empty() {
             Ok(Scoped(F::build(state.clone(), granted)))
         } else {
-            Err(insufficient_scope(scopes_rust::render_scopes(&missing)))
+            Err(F::Error::from(MissingScopes::uncovered(&missing)).into_response())
         }
     }
 }
@@ -287,8 +323,10 @@ pub struct InsufficientScopeBody {
 }
 
 /// A `403 Forbidden` carrying the rendered scopes the caller lacks — the
-/// authorization (not authentication) failure the scope-gated extractors and any
-/// data-dependent capability return. Shared so every slice renders the same body.
+/// authorization (not authentication) failure a slice's `InsufficientScope`
+/// error variant renders onto the wire, whether the [`Scoped`] extractor or a
+/// data-dependent capability method raised it. Shared so every slice renders the
+/// same body.
 #[must_use]
 pub fn insufficient_scope(missing_scopes: Vec<String>) -> Response {
     (
@@ -495,6 +533,83 @@ mod tests {
             RefOr::T(response) => assert_eq!(response.description, "pre-existing"),
             RefOr::Ref(_) => panic!("expected the pre-existing inline response"),
         }
+    }
+
+    /// A slice error whose response is distinguishable from the shared `403`, so
+    /// a test can tell the extractor's rejection came through `F::Error`.
+    #[derive(Debug)]
+    struct TeapotError(MissingScopes);
+
+    impl From<MissingScopes> for TeapotError {
+        fn from(missing: MissingScopes) -> Self {
+            TeapotError(missing)
+        }
+    }
+
+    impl IntoResponse for TeapotError {
+        fn into_response(self) -> Response {
+            (StatusCode::IM_A_TEAPOT, Json(self.0.into_rendered())).into_response()
+        }
+    }
+
+    struct GrantsReader;
+
+    impl FixedScopeCapability for GrantsReader {
+        type State = ();
+        type Claims = ScopeClaims;
+        type Error = TeapotError;
+
+        fn required_scopes() -> Vec<Scope> {
+            vec![Scope::from("wildflower/Grant.r")]
+        }
+
+        fn build((): ()) -> Self {
+            GrantsReader
+        }
+    }
+
+    /// A token that doesn't cover the capability's scope is rejected with the
+    /// capability's own error, built from the uncovered scopes — not a response
+    /// the extractor renders itself.
+    #[tokio::test]
+    async fn scoped_rejects_through_the_capability_error() {
+        let mut parts = parts();
+        parts
+            .extensions
+            .insert(ScopeClaims::new(Some("wildflower/Grant.d".to_owned())));
+        let rejection = Scoped::<GrantsReader>::from_request_parts(&mut parts, &())
+            .await
+            .err()
+            .expect("scope not covered");
+        assert_eq!(rejection.status(), StatusCode::IM_A_TEAPOT);
+        let body = axum::body::to_bytes(rejection.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        assert_eq!(&body[..], br#"["wildflower/Grant.r"]"#);
+    }
+
+    /// A covering token yields the capability.
+    #[tokio::test]
+    async fn scoped_builds_when_the_scope_is_covered() {
+        let mut parts = parts();
+        parts
+            .extensions
+            .insert(ScopeClaims::new(Some("wildflower/Grant.r".to_owned())));
+        assert!(Scoped::<GrantsReader>::from_request_parts(&mut parts, &())
+            .await
+            .is_ok());
+    }
+
+    /// Without the claims `Scoped` fails closed with a 500, not the capability's
+    /// error — a wiring bug, not an under-scoped caller.
+    #[tokio::test]
+    async fn scoped_fails_closed_without_claims() {
+        let mut parts = parts();
+        let rejection = Scoped::<GrantsReader>::from_request_parts(&mut parts, &())
+            .await
+            .err()
+            .expect("claims absent");
+        assert_eq!(rejection.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[derive(Clone)]

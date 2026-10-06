@@ -7,9 +7,9 @@
 //! A stale-revision write is a normal `200`-or-`409` carrying the current
 //! [`TunnelStateResponse`] snapshot (part of the success type), not a
 //! `TunnelError`. So the things rendered here are the semantic `403`
-//! [`InsufficientScope`](TunnelError::InsufficientScope) (the shared body, also
-//! rendered directly by the `Scoped` extractor and declared in the routes'
-//! `#[utoipa::path]` responses), the semantic `400`
+//! [`InsufficientScope`](TunnelError::InsufficientScope) (the shared body — the
+//! `Scoped` extractor's rejection for an under-scoped caller — declared in the
+//! routes' `#[utoipa::path]` responses), the semantic `400`
 //! [`InvalidPublicHost`](TunnelError::InvalidPublicHost) ([`InvalidPublicHostBody`],
 //! declared on `PUT /tunnel`), and the opaque 500 for an
 //! [`Infrastructure`](TunnelError::Infrastructure) failure — logged via the
@@ -71,10 +71,8 @@ mod tests {
     use super::*;
 
     /// The semantic `InsufficientScope` variant renders the shared `403` body
-    /// (`{ error: "InsufficientScope", missingScopes: [...] }`) — the same shape
-    /// the `Scoped` extractor emits when it rejects — so a capability method that
-    /// surfaces it through the domain error channel is wire-identical to a gate
-    /// rejection.
+    /// (`{ error: "InsufficientScope", missingScopes: [...] }`) — the response the
+    /// `Scoped` extractor rejects an under-scoped caller with.
     #[test]
     fn insufficient_scope_renders_a_403() {
         let response = TunnelError::InsufficientScope {

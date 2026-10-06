@@ -81,11 +81,13 @@ pub(crate) fn unauthorized(refusal: RequestRefusal) -> Response {
     response
 }
 
-/// A `403 Forbidden` carrying the rendered scopes the caller lacks. Two callers
-/// share it: the scope-gated capability extractors
-/// (`domain::capabilities`) reject with it when a token doesn't cover a
-/// capability's required scope, and the consent approver check uses it when an
-/// approver tries to delegate scopes beyond their own grant. This is the
+/// A `403 Forbidden` carrying the rendered scopes the caller lacks. Two
+/// [`GatekeeperError`] variants render through it:
+/// [`InsufficientScope`](GatekeeperError::InsufficientScope), the scope-gated
+/// capability extractor's rejection when a token doesn't cover a capability's
+/// required scope, and
+/// [`InsufficientApproverScope`](GatekeeperError::InsufficientApproverScope),
+/// when an approver tries to delegate scopes beyond their own grant. This is the
 /// authorization (not authentication) failure path the resource-scope epic
 /// introduces — the first 403 the gatekeeper's `/access` surface can return.
 /// The wire shape and this constructor live in `scope-capabilities-rust` (the
@@ -220,6 +222,9 @@ impl IntoResponse for GatekeeperError {
                 }),
             )
                 .into_response(),
+            GatekeeperError::InsufficientScope { missing_scopes } => {
+                insufficient_scope(missing_scopes)
+            }
             GatekeeperError::InsufficientApproverScope {
                 approver_missing_scopes,
             } => insufficient_scope(approver_missing_scopes),

@@ -5,8 +5,8 @@
 //! a response with no HTTP glue at the call site.
 //!
 //! The semantic `403` [`InsufficientScope`](RequestLogError::InsufficientScope)
-//! renders the shared body (also rendered directly by the `Scoped` extractor and
-//! declared in the routes' `#[utoipa::path]` responses). An
+//! renders the shared body (the `Scoped` extractor's rejection for an
+//! under-scoped caller, declared in the routes' `#[utoipa::path]` responses). An
 //! [`Infrastructure`](RequestLogError::Infrastructure) failure is logged via the
 //! shared [`InternalError`] and answered as an empty 500 a client doesn't
 //! decode, so it is deliberately **not** modeled in the routes'
@@ -41,7 +41,7 @@ mod tests {
     use super::*;
 
     /// The semantic `InsufficientScope` variant renders the shared `403` — the
-    /// same shape the `Scoped` extractor emits when it rejects.
+    /// response the `Scoped` extractor rejects an under-scoped caller with.
     #[test]
     fn insufficient_scope_renders_a_403() {
         let response = RequestLogError::InsufficientScope {

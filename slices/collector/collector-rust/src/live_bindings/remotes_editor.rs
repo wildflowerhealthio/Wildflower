@@ -9,6 +9,7 @@ use scopes_rust::Scope;
 use super::state::CollectorState;
 use crate::db::SqliteRemotesStore;
 use crate::domain::capabilities::{remotes_editor_scopes, RemotesEditor};
+use crate::domain::RemoteError;
 
 /// Replace a remote — `Scoped<LiveRemotesEditor>` in the update handler.
 pub(crate) type LiveRemotesEditor = RemotesEditor<SqliteRemotesStore>;
@@ -16,6 +17,7 @@ pub(crate) type LiveRemotesEditor = RemotesEditor<SqliteRemotesStore>;
 impl FixedScopeCapability for LiveRemotesEditor {
     type State = Arc<CollectorState>;
     type Claims = ScopeClaims;
+    type Error = RemoteError;
 
     fn required_scopes() -> Vec<Scope> {
         remotes_editor_scopes()

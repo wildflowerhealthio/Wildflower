@@ -10,6 +10,7 @@ use scopes_rust::Scope;
 use super::state::GatekeeperState;
 use crate::domain::capabilities::access::tokens::token_revoker_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, TokenRevoker};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifiedClaims;
 
 /// Revoke issued tokens.
@@ -18,6 +19,7 @@ pub(crate) type LiveTokenRevoker = TokenRevoker;
 impl FixedScopeCapability for LiveTokenRevoker {
     type State = Arc<GatekeeperState>;
     type Claims = VerifiedClaims;
+    type Error = GatekeeperError;
 
     fn required_scopes() -> Vec<Scope> {
         token_revoker_scopes()

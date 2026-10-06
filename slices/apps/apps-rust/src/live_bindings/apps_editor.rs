@@ -10,6 +10,7 @@ use scopes_rust::Scope;
 use super::state::AppsState;
 use crate::db::SqliteAppsStore;
 use crate::domain::capabilities::{apps_editor_scopes, AppsEditor};
+use crate::domain::AppsError;
 
 /// Edit an app's content / home-screen placement — `Scoped<LiveAppsEditor>` in
 /// the handler.
@@ -18,6 +19,7 @@ pub(crate) type LiveAppsEditor = AppsEditor<SqliteAppsStore>;
 impl FixedScopeCapability for LiveAppsEditor {
     type State = Arc<AppsState>;
     type Claims = ScopeClaims;
+    type Error = AppsError;
 
     fn required_scopes() -> Vec<Scope> {
         apps_editor_scopes()

@@ -15,10 +15,9 @@
 //! green. `Infrastructure` is deliberately **not** modeled — an opaque 500
 //! carries no body a client decodes.
 //!
-//! The `403` is produced two ways that render identically: the scope-gated
-//! handlers' [`Scoped`](scope_capabilities_rust::Scoped) extractor rejects an
-//! under-scoped caller directly, and — for uniformity of the failure vocabulary —
-//! a [`RemoteError::InsufficientScope`] renders through the same shared
+//! The `403` is a [`RemoteError::InsufficientScope`] — the scope-gated handlers'
+//! [`Scoped`](scope_capabilities_rust::Scoped) extractor rejects an under-scoped
+//! caller with it — rendered through the shared
 //! [`insufficient_scope`](scope_capabilities_rust::insufficient_scope) helper.
 
 use axum::http::StatusCode;
@@ -103,10 +102,8 @@ impl IntoResponse for RemoteError {
 mod tests {
     use super::*;
 
-    /// A [`RemoteError::InsufficientScope`] renders as a `403` through the shared
-    /// helper — the same body shape (and status) the `Scoped` extractor produces
-    /// for an under-scoped caller, so the two `403` paths stay indistinguishable
-    /// on the wire.
+    /// A [`RemoteError::InsufficientScope`] — the `Scoped` extractor's rejection
+    /// for an under-scoped caller — renders as a `403` through the shared helper.
     #[test]
     fn insufficient_scope_renders_a_403() {
         let response = RemoteError::InsufficientScope {

@@ -9,6 +9,7 @@ use scopes_rust::Scope;
 use super::state::CollectorState;
 use crate::db::SqliteRemotesStore;
 use crate::domain::capabilities::{remotes_deleter_scopes, RemotesDeleter};
+use crate::domain::RemoteError;
 
 /// Delete a remote — `Scoped<LiveRemotesDeleter>` in the delete handler.
 pub(crate) type LiveRemotesDeleter = RemotesDeleter<SqliteRemotesStore>;
@@ -16,6 +17,7 @@ pub(crate) type LiveRemotesDeleter = RemotesDeleter<SqliteRemotesStore>;
 impl FixedScopeCapability for LiveRemotesDeleter {
     type State = Arc<CollectorState>;
     type Claims = ScopeClaims;
+    type Error = RemoteError;
 
     fn required_scopes() -> Vec<Scope> {
         remotes_deleter_scopes()

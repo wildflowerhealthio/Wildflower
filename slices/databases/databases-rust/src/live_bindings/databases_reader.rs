@@ -10,6 +10,7 @@ use scopes_rust::{Grant, Scope};
 use super::state::DatabasesState;
 use crate::adapters::FilesystemDatabaseFiles;
 use crate::domain::capabilities::DatabasesReader;
+use crate::domain::DatabaseError;
 
 /// Read catalogued databases — `Scoped<LiveDatabasesReader>` in the list/download
 /// handlers.
@@ -18,6 +19,7 @@ pub(crate) type LiveDatabasesReader = DatabasesReader<FilesystemDatabaseFiles>;
 impl Capability for LiveDatabasesReader {
     type State = Arc<DatabasesState>;
     type Claims = ScopeClaims;
+    type Error = DatabaseError;
 
     // Empty — the data-dependent flavour: listing needs only authentication, and
     // the per-database read scope is checked in `download` via the descriptor gate

@@ -11,6 +11,7 @@ use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::access::grants::grants_reader_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, GrantsReader};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifiedClaims;
 
 /// Read standing grants — `Scoped<LiveGrantsReader>` in the handler.
@@ -19,6 +20,7 @@ pub(crate) type LiveGrantsReader = GrantsReader<SqliteGatekeeperStore>;
 impl FixedScopeCapability for LiveGrantsReader {
     type State = Arc<GatekeeperState>;
     type Claims = VerifiedClaims;
+    type Error = GatekeeperError;
 
     fn required_scopes() -> Vec<Scope> {
         grants_reader_scopes()
