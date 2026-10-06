@@ -4,7 +4,8 @@
 //!
 //! - [`app_launch_scopes`] — apps' `AppLaunchScopes`, from gatekeeper's OAuth
 //!   clients.
-//! - [`health_probe`] — the tunnel's `HealthProbe`, over `reqwest`.
+//! - [`health_probe`] — the reachability monitor's `HealthProbe`, over
+//!   `reqwest`.
 
 pub(crate) mod app_launch_scopes;
 pub(crate) mod health_probe;

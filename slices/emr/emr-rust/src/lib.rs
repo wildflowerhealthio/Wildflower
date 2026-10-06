@@ -10,6 +10,7 @@ mod config;
 mod delegate;
 mod patient_everything;
 mod smart_configuration;
+mod store_readiness;
 
 use anyhow::Context;
 use axum::extract::DefaultBodyLimit;
@@ -25,16 +26,19 @@ use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
 pub use crate::config::EmrConfig;
+pub use crate::store_readiness::FhirR4StoreReadiness;
 
 /// The FHIR R4 base path [`setup_fhir_r4`]'s router mounts HFS under.
 pub const FHIR_R4_PATH: &str = "/fhir-r4";
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
-/// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router, and the bare HFS
-/// router for in-process delegation by other slices.
+/// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router, the bare HFS
+/// router for in-process delegation by other slices, and the store's readiness
+/// check for the server's `/health`.
 pub struct FhirR4Routers {
     pub augmented_fhir_r4_router: Router,
     pub raw_hfs_router: Router,
+    pub store_readiness: FhirR4StoreReadiness,
 }
 
 /// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
@@ -144,6 +148,7 @@ pub fn setup_fhir_r4(
         ..ServerConfig::default()
     };
 
+    let store_readiness = FhirR4StoreReadiness::new(sqlite_backend.clone());
     let (auth_config, auth_state) = build_auth(config.jwks_url.as_deref(), revocation_store);
     let hfs_router = create_app_with_auth(
         sqlite_backend,
@@ -196,6 +201,7 @@ pub fn setup_fhir_r4(
     Ok(FhirR4Routers {
         augmented_fhir_r4_router: Router::new().nest_service(FHIR_R4_PATH, fhir_with_override),
         raw_hfs_router: hfs_router_for_delegation,
+        store_readiness,
     })
 }
 

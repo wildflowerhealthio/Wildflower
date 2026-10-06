@@ -11,10 +11,11 @@ publish.workspace = true
 # serde_json — only the `-rust` crates that own a documented surface enable it,
 # as a dev-dependency.
 openapi-snapshot = ["dep:utoipa", "dep:serde_json"]
-# Opt-in: the `health_check` contract (`HealthCheckService`) + the reusable
-# `/health` router. Gated so the lean default build — and crates that don't
-# serve `/health` — stay free of axum/async-trait.
-health-check = ["dep:axum", "dep:async-trait"]
+# Opt-in: the `health_check` contract (`HealthCheckService`), the
+# draft-inadarei-api-health-check-06 report types, and the reusable `/health`
+# router. Gated so the lean default build — and crates that don't serve or read
+# `/health` — stay free of axum/async-trait/serde_json/chrono.
+health-check = ["dep:axum", "dep:async-trait", "dep:serde_json", "dep:chrono"]
 # Opt-in: the shared opaque-500 `InternalError` template. Gated so crates that
 # don't serve HTTP don't pull `axum` / `tracing`; the `-rust` slices that own a
 # handler surface enable it.
@@ -45,10 +46,13 @@ url = { version = "2" }
 utoipa = { workspace = true, optional = true }
 # Only for the `diesel-json-text` feature: the shared `JsonText` column mapping.
 diesel = { workspace = true, optional = true }
+# The `diesel-json-text` mapping, and the `health-check` report body.
 serde_json = { workspace = true, optional = true }
 async-trait = { version = "0.1", optional = true }
 # Only for the `health-check` `/health` router.
 axum = { workspace = true, optional = true }
+# Only for the `health-check` report: each check's `time`, as RFC 3339.
+chrono = { workspace = true, optional = true, features = ["serde"] }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]

@@ -336,16 +336,16 @@ pub fn run() {
                 .level(tauri_plugin_log::log::LevelFilter::Debug)
                 // rathole logs every relay heartbeat/data-channel event at
                 // debug — far too repetitive to read the tunnel lifecycle
-                // through. Pin it to info; the tunnel slice's own
-                // dial/probe/transition logs carry the timeline we care about.
+                // through. Pin it to warn; the tunnel slice's own dial logs
+                // carry the timeline we care about.
                 .level_for("rathole", tauri_plugin_log::log::LevelFilter::Warn)
                 .level_for(
                     "hyper_util::client::legacy",
                     tauri_plugin_log::log::LevelFilter::Info,
                 )
-                // Tunnel daemon heartbeats on debug
+                // The reachability monitor logs every `/health` probe on debug
                 .level_for(
-                    "tunnel_rust::domain::tunnel_daemon",
+                    "wildflower_server_rust::domain::reachability_monitor",
                     tauri_plugin_log::log::LevelFilter::Info,
                 )
                 // Helios's logging can be very chatty at debug, especially the auth middleware, so pin it to info

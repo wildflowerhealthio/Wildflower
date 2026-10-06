@@ -10,7 +10,8 @@ use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
-use tunnel_rust::TunnelLiveness;
+
+use crate::ServerHealth;
 
 /// What the host hands [`set_up`](crate::set_up): the values it derives at
 /// build time (`tauri-shared-config.json`), from its platform paths, or from
@@ -36,7 +37,8 @@ pub struct WildflowerServerConfig {
     /// record.
     pub relay_settings: tunnel_rust::RelaySettings,
     /// The bare public host the relay serves the server at: the server's
-    /// domain, from its record.
+    /// domain, from its record. The server's public origin, which HFS's links,
+    /// app launches and the reachability monitor's `/health` use.
     pub public_host: String,
 }
 
@@ -65,11 +67,11 @@ pub struct HostPorts {
 /// the senders are owned by the host and outlive any one server.
 #[derive(Clone)]
 pub struct ServerObservers {
-    /// The tunnel's liveness, copied from the tunnel slice by a task on the
-    /// server's runtime. `None` until the server publishes it; the copy stops
-    /// when that runtime does, so the host resets it to `None` once a server
-    /// is gone.
-    pub tunnel_liveness_sender: watch::Sender<Option<TunnelLiveness>>,
+    /// Whether the server's `/health` answers through its public origin, and
+    /// with what, published by the reachability monitor. `None` until its
+    /// first probe; the monitor stops when the server stops serving, so the
+    /// host resets it to `None` once a server is gone.
+    pub server_health_sender: watch::Sender<Option<ServerHealth>>,
     /// Each request the trusted front relayed through the tunnel, reported by
     /// the outermost layer after its response is ready (see
     /// `forwarded_request_layer`). A full channel drops the report rather than

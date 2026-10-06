@@ -118,6 +118,16 @@ its config, whoever asked for the launch: the app reaches the FHIR server from
 off the device. The launch doesn't consult the tunnel; the tunnel belongs to the
 host, and the server's web surface knows nothing about it.
 
+### Reachability is checked at the public origin
+
+Whether a remote app can reach the server is a question about the public
+origin, so that is where the server asks it. Its reachability monitor GETs the
+server's own `/health` at `https://<public_host>/health`: the request leaves the
+device, reaches the relay, and comes back down the tunnel as a forwarded
+request, the same round trip an app's makes. An answer, even one reporting
+`fail`, means reachable; no answer means unreachable. The tunnel only dials and
+says nothing about reachability.
+
 ### Discovery is fetched before a token exists
 
 A SMART/FHIR client fetches the discovery documents (`smart-configuration`,

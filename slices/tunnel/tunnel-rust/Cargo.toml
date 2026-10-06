@@ -6,8 +6,8 @@ publish.workspace = true
 
 # The Tauri-side tunnel slice: an embedded `rathole` client (noise transport, no
 # TLS/openssl) that dials the wildflower-relay named in the server's record and
-# forwards the server's local port through it, and the liveness the host reads
-# in-process. No HTTP surface; the tunnel keeps no rows.
+# forwards the server's local port through it, re-dialing with backoff. No HTTP
+# surface; the tunnel keeps no rows.
 [dependencies]
 anyhow.workspace = true
 serde = { workspace = true }

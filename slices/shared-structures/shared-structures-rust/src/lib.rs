@@ -38,9 +38,9 @@ pub mod http_errors;
 #[cfg(feature = "openapi-snapshot")]
 pub mod openapi_snapshot;
 
-/// The health-check service contract (`HealthCheckService`) + a reusable
-/// `/health` router. Behind the `health-check` feature so the lean default build
-/// stays free of `axum`/`async-trait`.
+/// The health-check service contract (`HealthCheckService`), the draft-06
+/// health report, and a reusable `/health` router. Behind the `health-check`
+/// feature so the lean default build stays free of `axum`/`async-trait`.
 #[cfg(feature = "health-check")]
 pub mod health_check;
 

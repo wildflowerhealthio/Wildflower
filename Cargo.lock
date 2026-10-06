@@ -873,7 +873,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-notification",
  "tokio",
- "tunnel-rust",
+ "wildflower-server-rust",
 ]
 
 [[package]]
@@ -2454,6 +2454,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shared-structures-rust",
+ "tempfile",
  "token-revocation-rust",
  "tokio",
  "tower",
@@ -7487,6 +7488,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "axum",
+ "chrono",
  "diesel",
  "http-body-util",
  "serde",
@@ -9501,6 +9503,7 @@ dependencies = [
  "chrono",
  "collector-rust",
  "databases-rust",
+ "diesel",
  "emr-rust",
  "gatekeeper-rust",
  "ohif-server-rust",

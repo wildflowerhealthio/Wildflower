@@ -15,12 +15,13 @@ use gatekeeper_rust::{
     GatekeeperConfig,
 };
 use tokio::net::TcpListener;
-use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
-use tunnel_rust::{TunnelDaemon, TunnelLiveness};
+use tunnel_rust::TunnelDaemon;
 
 use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
+use crate::domain::reachability_monitor::ReachabilityMonitor;
+use crate::http::health::ServerHealthChecks;
 use crate::http::middleware::cors::api_cors_layer;
 use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSenders};
 use crate::http::middleware::loopback_owner_trust::{
@@ -46,12 +47,16 @@ pub struct WildflowerServer {
     /// server holds it so the tunnel runs for exactly as long as the server
     /// does.
     tunnel_daemon: TunnelDaemon,
+    /// The monitor probing the server's `/health` through its public origin,
+    /// which stops when it's dropped. Held for the same reason.
+    reachability_monitor: ReachabilityMonitor,
 }
 
 impl WildflowerServer {
     /// Serve the composed API on the bound loopback port until `shutdown` is
     /// cancelled. Cancelling stops accepting connections, and the call returns
-    /// `Ok` once the open ones close. The tunnel stops when the call returns.
+    /// `Ok` once the open ones close. The tunnel and the reachability monitor
+    /// stop when the call returns.
     ///
     /// # Errors
     ///
@@ -61,6 +66,7 @@ impl WildflowerServer {
             listener,
             router,
             tunnel_daemon,
+            reachability_monitor,
         } = self;
         axum::serve(
             listener,
@@ -68,6 +74,7 @@ impl WildflowerServer {
         )
         .with_graceful_shutdown(shutdown.cancelled_owned())
         .await?;
+        drop(reachability_monitor);
         drop(tunnel_daemon);
         Ok(())
     }
@@ -89,12 +96,12 @@ impl WildflowerServer {
 ///
 /// # Remarks
 ///
-/// Slices spawn background tasks (the tunnel supervisor, gatekeeper's re-mint
-/// and sweeps, the tunnel-liveness copy) onto the runtime that runs this
+/// Slices spawn background tasks (the tunnel supervisor, the reachability
+/// monitor, gatekeeper's re-mint and sweeps) onto the runtime that runs this
 /// future. They are not tied to the shutdown token: the tunnel supervisor and
-/// the liveness copy stop when the returned [`WildflowerServer`] is dropped
-/// (at the latest when [`serve`](WildflowerServer::serve) returns), the rest
-/// when that runtime shuts down.
+/// the reachability monitor stop when the returned [`WildflowerServer`] is
+/// dropped (at the latest when [`serve`](WildflowerServer::serve) returns), the
+/// rest when that runtime shuts down.
 pub async fn set_up(
     config: WildflowerServerConfig,
     host: HostPorts,
@@ -185,6 +192,7 @@ pub async fn set_up(
     let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
     let fhir_r4_router = fhir_routers.augmented_fhir_r4_router;
+    let fhir_r4_store = fhir_routers.store_readiness;
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
@@ -258,25 +266,26 @@ pub async fn set_up(
         .layer(gatekeeper_auth_layer.clone());
 
     // The tunnel dials the relay from the server's record for as long as the
-    // server runs, forwarding the loopback port; it has no HTTP surface. The
-    // daemon drives a `/health` probe — against the app-layer `/health` route
-    // mounted below — through the reqwest adapter to verify reachability.
+    // server runs, forwarding the loopback port; it has no HTTP surface.
     let tunnel_config = tunnel_rust::TunnelConfig {
         local_port: runtime
             .loopback_base_url_ref()
             .port_or_known_default()
             .context("the loopback base URL has no port")?,
         relay_settings,
-        public_host,
     };
-    let health_probe: Arc<dyn tunnel_rust::HealthProbe> = Arc::new(ReqwestHealthProbe::new());
-    let tunnel_daemon = tunnel_rust::setup_tunnel(&tunnel_config, health_probe);
-    // The host watches the tunnel's liveness through its own channel, which
-    // outlives this server.
-    tokio::spawn(copy_tunnel_liveness(
-        tunnel_daemon.watch_liveness(),
-        observers.tunnel_liveness_sender,
-    ));
+    let tunnel_daemon = tunnel_rust::setup_tunnel(&tunnel_config);
+    // Whether a remote app can reach the server: the monitor GETs the server's
+    // own `/health` (mounted below) through the public origin, so the request
+    // goes out to the relay and back down the tunnel, and publishes the answer
+    // on the host's channel, which outlives this server.
+    let reachability_monitor = ReachabilityMonitor::spawn(
+        Arc::new(ReqwestHealthProbe::new()),
+        public_origin
+            .join("health")
+            .context("the server's public origin has no /health")?,
+        observers.server_health_sender,
+    );
 
     // The `/requests` surface: the request log the forwarded-request layer
     // (outermost, below) feeds, over the same diesel pool. Scope-gated on
@@ -304,7 +313,7 @@ pub async fn set_up(
     // A loopback launch hands the resolved URL to the host's on-device webview
     // handle, which opens it in a native popup (the server 204s).
     let apps = setup_apps(
-        diesel_pool,
+        diesel_pool.clone(),
         &apps_config,
         host.on_device_webview_handle,
         launch_scopes,
@@ -314,6 +323,13 @@ pub async fn set_up(
     // the launch's `Scoped<AppLauncher>` included (the per-app SMART check then
     // runs in-handler).
     let gated_apps = apps.router.layer(gatekeeper_auth_layer.clone());
+
+    // The server's `/health`: the FHIR R4 store and the shared database pool,
+    // checked in-process on each request.
+    let health_checks = ServerHealthChecks {
+        fhir_r4_store,
+        wildflower_db: diesel_pool,
+    };
 
     // The data-management surface (`/databases`): export + delete the server's
     // SQLite databases. It owns no store — it works at the file level on the
@@ -370,13 +386,12 @@ pub async fn set_up(
         .merge(gated_ohif_server)
         .merge(gated_collector)
         .merge(gated_request_log)
-        // The app-layer `/health`: an unauthenticated liveness endpoint the
-        // tunnel's reachability probe round-trips through the relay. Ungated so
-        // the probe (and any external uptime check) needs no bearer token. The
-        // reusable router comes from the core; `AlwaysHealthy` is the trivial
-        // service until real per-slice checks are wired.
+        // `/health`: the draft-06 health report of the server's checks,
+        // which the reachability monitor round-trips through the relay.
+        // Ungated so the monitor (and any external uptime check) needs no
+        // bearer token; the report says pass, warn or fail and nothing more.
         .merge(shared_structures_rust::health_check::health_router(
-            Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
+            Arc::new(health_checks),
         ))
         .merge(gated_apps)
         .merge(gated_databases)
@@ -425,19 +440,6 @@ pub async fn set_up(
         listener,
         router,
         tunnel_daemon,
+        reachability_monitor,
     })
-}
-
-/// Copy each tunnel liveness snapshot onto the host's channel until the
-/// [`TunnelDaemon`] is dropped or the server's runtime shuts down.
-async fn copy_tunnel_liveness(
-    mut tunnel_liveness: watch::Receiver<TunnelLiveness>,
-    host_tunnel_liveness_sender: watch::Sender<Option<TunnelLiveness>>,
-) {
-    loop {
-        host_tunnel_liveness_sender.send_replace(Some(tunnel_liveness.borrow_and_update().clone()));
-        if tunnel_liveness.changed().await.is_err() {
-            return;
-        }
-    }
 }

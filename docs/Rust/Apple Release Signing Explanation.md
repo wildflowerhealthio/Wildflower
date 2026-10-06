@@ -118,8 +118,8 @@ for App Store distribution, and it changes how the host runs:
 
 - the loopback listener in `src/lib.rs` needs `com.apple.security.network.server`
   — loopback is not exempt from the sandbox
-- the tunnel client, its `/health` probe and the collectors need
-  `com.apple.security.network.client`
+- the tunnel client, the server's `/health` reachability probe and the
+  collectors need `com.apple.security.network.client`
 - the importer's file picker needs `com.apple.security.files.user-selected.read-write`
 - the data directory moves to `~/Library/Containers/<identifier>/Data/`, so a
   sandboxed build does not see a non-sandboxed one's databases

@@ -2,8 +2,9 @@
 //! databases there, and once it has bound the port, cancelling `serve`'s
 //! shutdown token makes it return `Ok`. The loopback port is then free for a
 //! second server over the same folder and the same host channels, which comes
-//! up and answers `/health`. While serving, the host's observers see the
-//! tunnel's liveness and each forwarded request, and the request log records
+//! up and answers `/health` with its two passing checks. While serving, the
+//! host's observers see the server's health through its public origin and each
+//! forwarded request, and the request log records
 //! each forwarded request and serves it back on `/requests` to a token holding
 //! the request log's read scope.
 
@@ -16,13 +17,16 @@ use gatekeeper_rust::{
     GatekeeperStore, NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
 };
 use serde_json::Value;
+use shared_structures_rust::health_check::{ComponentType, HealthReport, HealthStatus};
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use wildflower_server_rust::{set_up, HostPorts, ServerObservers, WildflowerServerConfig};
+use wildflower_server_rust::{
+    set_up, HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig,
+};
 
 /// The `Forwarded` header the trusted front stamps on a request it relayed
 /// through the tunnel, from client `192.0.2.1` to `demo.example.com`.
@@ -68,7 +72,8 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             .collect(),
         first_party_client_id: gatekeeper_rust::FIRST_PARTY_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
-        // background, which the server's lifecycle doesn't wait on.
+        // background, which the server's lifecycle doesn't wait on, and the
+        // public host below never answers.
         relay_settings: tunnel_rust::RelaySettings {
             remote_addr: "127.0.0.1:9".to_owned(),
             token: "test-tunnel-token".to_owned(),
@@ -90,6 +95,21 @@ async fn start_serving(
         .await
         .expect("the server sets up and binds");
     tokio::spawn(server.serve(shutdown))
+}
+
+/// The loopback `/health`'s status and its decoded health report.
+async fn health_report(loopback_base_url: &Url) -> (reqwest::StatusCode, HealthReport) {
+    let response = reqwest::get(loopback_base_url.join("health").expect("health URL"))
+        .await
+        .expect("GET /health reaches the server");
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    assert_eq!(content_type.as_deref(), Some("application/health+json"));
+    (status, response.json().await.expect("a health report"))
 }
 
 async fn health_status(loopback_base_url: &Url) -> reqwest::StatusCode {
@@ -123,10 +143,10 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         host_owner_token_sender,
         active_pending_consent_sender,
     };
-    let (tunnel_liveness_sender, mut tunnel_liveness) = watch::channel(None);
+    let (server_health_sender, mut server_health) = watch::channel(None);
     let (forwarded_request_sender, mut forwarded_requests) = mpsc::channel(8);
     let observers = ServerObservers {
-        tunnel_liveness_sender,
+        server_health_sender,
         forwarded_request_sender,
     };
     let config = server_config(server_dir.clone(), loopback_base_url.clone());
@@ -154,9 +174,32 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
             "{database} is not in the data root"
         );
     }
+    // `/health` is the two checks, both passing on a healthy server.
+    let (status, report) = health_report(&loopback_base_url).await;
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert_eq!(report.status, HealthStatus::Pass);
+    let checks: Vec<(&str, Vec<(ComponentType, HealthStatus)>)> = report
+        .checks
+        .iter()
+        .map(|(name, checks)| {
+            (
+                name.as_str(),
+                checks
+                    .iter()
+                    .map(|check| (check.component_type, check.status))
+                    .collect(),
+            )
+        })
+        .collect();
     assert_eq!(
-        health_status(&loopback_base_url).await,
-        reqwest::StatusCode::OK
+        checks,
+        vec![
+            (
+                "fhir-r4",
+                vec![(ComponentType::Component, HealthStatus::Pass)]
+            ),
+            ("server", vec![(ComponentType::System, HealthStatus::Pass)]),
+        ]
     );
     // The loopback `/health` above is not reported; a forwarded one is, with no
     // caller (`/health` is ungated).
@@ -184,11 +227,18 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         forwarded_requests.try_recv().is_err(),
         "only the forwarded request is reported"
     );
-    // The host sees the tunnel's liveness without holding the tunnel slice.
-    tokio::time::timeout(LIFECYCLE_TIMEOUT, tunnel_liveness.wait_for(Option::is_some))
-        .await
-        .expect("the tunnel liveness is published in time")
-        .expect("the test holds the liveness sender");
+    // The host sees the server's health through its public origin, which no
+    // relay serves here: unreachable, with why.
+    let published =
+        tokio::time::timeout(LIFECYCLE_TIMEOUT, server_health.wait_for(Option::is_some))
+            .await
+            .expect("the server health is published in time")
+            .expect("the test holds the server-health sender")
+            .clone();
+    assert!(
+        matches!(&published, Some(ServerHealth::Unreachable { error }) if !error.is_empty()),
+        "{published:?}"
+    );
 
     first_shutdown.cancel();
     tokio::time::timeout(LIFECYCLE_TIMEOUT, first)
@@ -293,10 +343,10 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
         host_owner_token_sender,
         active_pending_consent_sender,
     };
-    let (tunnel_liveness_sender, _tunnel_liveness) = watch::channel(None);
+    let (server_health_sender, _server_health) = watch::channel(None);
     let (forwarded_request_sender, _forwarded_requests) = mpsc::channel(8);
     let observers = ServerObservers {
-        tunnel_liveness_sender,
+        server_health_sender,
         forwarded_request_sender,
     };
     let shutdown = CancellationToken::new();

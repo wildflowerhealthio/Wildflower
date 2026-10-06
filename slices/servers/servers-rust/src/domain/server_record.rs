@@ -4,7 +4,7 @@
 //!
 //! The record holds configuration only, [`running`](ServerRecord::running)
 //! included: whether the user wants the server run, not whether a run is up.
-//! A run's state, its tunnel's liveness and its certificate are live state,
+//! A run's state, its reachability and its certificate are live state,
 //! held by whatever runs the server, never here.
 
 use std::path::{Path, PathBuf};
