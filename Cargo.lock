@@ -6354,6 +6354,7 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -7295,12 +7296,41 @@ dependencies = [
 name = "servers-rust"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
+ "base64 0.23.1",
+ "chrono",
+ "hmac",
  "parking_lot",
+ "rand 0.10.3",
+ "rathole-settings-rust",
+ "rcgen",
+ "reqwest 0.12.28",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "wildflower-relay",
+]
+
+[[package]]
+name = "servers-tauri-rust"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
  "rathole-settings-rust",
  "serde",
  "serde_json",
+ "servers-rust",
+ "tauri",
+ "tauri-plugin-log",
  "tempfile",
- "thiserror 2.0.21",
+ "tokio",
  "url",
 ]
 
@@ -9408,6 +9438,7 @@ dependencies = [
  "roxmltree",
  "serde",
  "serde_json",
+ "servers-tauri-rust",
  "shared-structures-rust",
  "shared-structures-tauri-rust",
  "tauri",

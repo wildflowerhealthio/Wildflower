@@ -1,10 +1,17 @@
-//! `rathole-settings-rust` — what the relay's `GET /rathole` returns.
+//! `rathole-settings-rust` — what the relay's `GET /rathole` returns, the
+//! tunnel name a device adds to it, and what its signed `GET /me` returns.
 //!
 //! `wildflower-relay` serves [`PublicRatholeSettings`] at
 //! `https://<domain>/rathole` without authentication: everything public a
-//! rathole client needs to dial the relay. A device adds only its tunnel
-//! name, which is its rathole service name, and that tunnel's token. Its
-//! public host is `<tunnel name>.<domain>`.
+//! rathole client needs to dial the relay. A device adds only its
+//! [`TunnelName`], which is its rathole service name, and that tunnel's
+//! token. Its public host is `<tunnel name>.<domain>`. Both ends check a
+//! tunnel name with the same [`TunnelName::parse`]. A request signed with
+//! the token gets the tunnel's [`TunnelHost`] from `GET /me`.
+//!
+//! Both ends also check a dial address with the same [`parse_public_addr`].
+//! A device decodes the relay's domain, which ends each of its servers'
+//! domains and folder names, as a [`RelayDomain`].
 //!
 //! [`Transport`] and [`NoisePattern`] each have one value, the one the relay
 //! and the device's rathole are both built for. The relay renders its rathole
@@ -12,7 +19,15 @@
 //! fails to deserialize instead of becoming a client config the device
 //! cannot run.
 
+mod public_addr;
+mod relay_domain;
+mod tunnel_name;
+
 use serde::{Deserialize, Serialize};
+
+pub use public_addr::{parse_public_addr, InvalidPublicAddr};
+pub use relay_domain::{is_dns_name, InvalidRelayDomain, RelayDomain};
+pub use tunnel_name::{is_dns_label, InvalidTunnelName, TunnelName, ADMIN_KEY_ID};
 
 /// The relay's public rathole settings, as `GET /rathole` serves them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +44,17 @@ pub struct PublicRatholeSettings {
     /// The relay's own hostname; each tunnel is reached at
     /// `<tunnel name>.<domain>`.
     pub domain: String,
+}
+
+/// What the relay's signed `GET /me` returns: the tunnel that signed, and
+/// the hostname visitors reach it at.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TunnelHost {
+    /// Decoded as a [`TunnelName`], so a `/me` naming anything else fails to
+    /// deserialize.
+    pub tunnel_name: TunnelName,
+    /// `<tunnel name>.<domain>`.
+    pub public_host: String,
 }
 
 /// A rathole transport (`[client.transport] type`).
@@ -73,6 +99,19 @@ mod tests {
     fn deserializes_the_documented_wire_shape() {
         let settings: PublicRatholeSettings = serde_json::from_str(EXAMPLE_JSON).unwrap();
         assert_eq!(settings, example());
+    }
+
+    #[test]
+    fn a_tunnel_host_decodes_its_name_as_a_tunnel_name() {
+        let tunnel_host: TunnelHost = serde_json::from_str(
+            r#"{"tunnel_name":"ruth","public_host":"ruth.relay.example.com"}"#,
+        )
+        .unwrap();
+        assert_eq!(tunnel_host.tunnel_name, TunnelName::parse("ruth").unwrap());
+        for name in ["Ruth", "admin", "ru.th"] {
+            let json = format!(r#"{{"tunnel_name":"{name}","public_host":"x"}}"#);
+            assert!(serde_json::from_str::<TunnelHost>(&json).is_err(), "{json}");
+        }
     }
 
     #[test]

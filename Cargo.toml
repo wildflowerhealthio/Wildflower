@@ -20,6 +20,7 @@ members = [
   "slices/scopes/scope-capabilities-rust",
   "slices/scopes/scopes-rust",
   "slices/servers/servers-rust",
+  "slices/servers/servers-tauri-rust",
   "slices/shared-structures/shared-structures-rust",
   "slices/shared-structures/shared-structures-tauri-rust",
   "slices/tunnel/rathole-settings-rust",
