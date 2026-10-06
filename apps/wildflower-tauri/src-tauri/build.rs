@@ -1,6 +1,6 @@
 use std::path::Path;
 
-/// Embedded loopback config, shared verbatim with the TS shell. See
+/// The host's compile-time config, shared with `src/main.tsx`. See
 /// `tauri-shared-config.json` for the contract.
 #[derive(serde::Deserialize)]
 struct TauriSharedConfig {
@@ -16,10 +16,9 @@ struct TauriSharedConfig {
 
 fn main() {
     // SINGLE SOURCE OF TRUTH: `apps/wildflower-tauri/tauri-shared-config.json`
-    // pins the loopback hostname/port the embedded API server binds to. The TS
-    // shell derives its `apiBaseUrl` from the same file (`vite.config.ts` ->
-    // `WILDFLOWER_LOOPBACK_ORIGIN`). Reading it here and re-emitting the values
-    // as compile-time env vars keeps the Rust runtime config from drifting:
+    // pins the loopback hostname/port the embedded API server binds to.
+    // Reading it here and re-emitting the values as compile-time env vars keeps
+    // the Rust runtime config from drifting from it:
     // `src/lib.rs` reads
     // `WILDFLOWER_LOOPBACK_HOSTNAME`/`WILDFLOWER_LOOPBACK_PORT` via `env!`, so a
     // value that doesn't parse fails the build rather than shipping a mismatch.

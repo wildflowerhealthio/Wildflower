@@ -1,5 +1,4 @@
-declare module 'tundra-css'
-declare module 'react-tundraish/styles.css'
+/// <reference types="vite-plus/client" />
 
 declare module '*.module.css' {
   const classes: Readonly<Record<string, string>>

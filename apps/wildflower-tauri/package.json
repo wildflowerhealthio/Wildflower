@@ -14,25 +14,23 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "@tauri-apps/api": "catalog:",
     "@tauri-apps/plugin-fs": "catalog:",
     "@tauri-apps/plugin-opener": "catalog:",
-    "background-server-service-core": "workspace:*",
-    "background-server-service-react": "workspace:*",
     "branding-core": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "effect-messaging-tauri": "workspace:*",
-    "gatekeeper-core": "workspace:*",
-    "gatekeeper-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-tundraish": "workspace:*",
-    "scopes-react": "workspace:*",
+    "servers-core": "workspace:*",
+    "servers-react": "workspace:*",
     "tauri-plugin-background-service": "catalog:",
+    "telemetry-core": "workspace:*",
+    "telemetry-react": "workspace:*",
     "telemetry-web": "workspace:*",
-    "tundra-css": "catalog:",
-    "wildflower-react": "workspace:*"
+    "tundra-css": "catalog:"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

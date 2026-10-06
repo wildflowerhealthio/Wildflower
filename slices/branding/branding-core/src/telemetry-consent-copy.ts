@@ -120,7 +120,7 @@ const WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
     'While either switch is on, Sentry also counts app sessions. A session records that ' +
     'the app was opened, whether it ran into an error, and the operating system it ' +
     'ran on. Sessions carry no page addresses or record data.',
-  changeLater: 'You can change your answer at any time with the Telemetry row in Settings.',
+  changeLater: 'You can change your answer at any time with the Telemetry row in Host Settings.',
   continueLabel: TELEMETRY_CONSENT_COPY.continueLabel,
 }
 

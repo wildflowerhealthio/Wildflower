@@ -2,26 +2,9 @@
 
 interface ImportMetaEnv {
   /**
-   * The DSN of the owner UI's Sentry project, read by `wildflower-react`'s
-   * `ConsentedEntryRoot` once the user answers the consent dialog; unset, the
-   * app reports nothing whatever the answer.
+   * The DSN of the base's Sentry project, read by `servers-react`'s
+   * `BaseRoot` once the user answers its consent dialog; unset, the base
+   * reports nothing whatever the answer.
    */
-  readonly VITE_SENTRY_DSN_WILDFLOWER_REACT?: string
+  readonly VITE_SENTRY_DSN_WILDFLOWER_TAURI?: string
 }
-
-// Injected by Vite's `define` (see `vite.config.ts`), sourced from the
-// shared `tauri-shared-config.json` so the loopback API origin matches the
-// Rust server's binding. Absolute origin, e.g. `http://127.0.0.1:8080`.
-declare const WILDFLOWER_LOOPBACK_ORIGIN: string
-
-// Injected by Vite's `define` (see `vite.config.ts`), sourced from the shared
-// `tauri-shared-config.json` so the WebView's device-login request asks for
-// exactly the scopes gatekeeper-rust seeds for the `wildflower-host` client.
-// A space-joined scope string, e.g. `system/*.cruds wildflower/*.cruds`.
-declare const WILDFLOWER_LOCAL_GRANTED_SCOPES: string
-
-// Injected by Vite's `define` (see `vite.config.ts`), sourced from the shared
-// `tauri-shared-config.json` so the WebView's device-login `client_id` matches
-// the id gatekeeper-rust seeds the first-party host client under. e.g.
-// `wildflower-host`.
-declare const WILDFLOWER_FIRST_PARTY_CLIENT_ID: string
