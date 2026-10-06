@@ -11,6 +11,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use rathole_settings_rust::is_dns_label;
+
 use crate::served::ServedTunnels;
 
 /// One routable tunnel: the rathole service its visitors are handed to.
@@ -104,16 +106,6 @@ pub fn tunnel_name_for_host(host: &str, domain: &str) -> Option<String> {
     let domain = normalize_hostname(domain);
     let name = host.strip_suffix(&domain)?.strip_suffix('.')?;
     is_dns_label(name).then(|| name.to_owned())
-}
-
-/// A lowercase LDH label: 1–63 of `[a-z0-9-]`, not starting or ending in `-`.
-pub(crate) fn is_dns_label(label: &str) -> bool {
-    (1..=63).contains(&label.len())
-        && label
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        && !label.starts_with('-')
-        && !label.ends_with('-')
 }
 
 #[cfg(test)]

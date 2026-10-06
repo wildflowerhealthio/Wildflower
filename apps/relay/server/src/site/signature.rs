@@ -43,15 +43,12 @@ use axum::http::{header, HeaderMap, HeaderName, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, KeyInit, Mac};
+use rathole_settings_rust::{TunnelName, ADMIN_KEY_ID};
 use sfv::{BareItem, Dictionary, FieldType, InnerList, ListEntry, Parser};
 use sha2::{Digest, Sha256};
 
 use crate::served::ServedTunnels;
 use crate::settings::Secret;
-
-/// The `keyid` signed with `WILDFLOWER_RELAY_ADMIN_KEY`; no tunnel may take
-/// this name.
-pub const ADMIN_KEY_ID: &str = "admin";
 
 /// How far `created` may be from the relay's clock, either way, and so how
 /// long a nonce is remembered.
@@ -77,7 +74,7 @@ const MAX_NONCES_PER_KEY: usize = 4_096;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignedBy {
     /// The device holding this tunnel's token.
-    Tunnel(String),
+    Tunnel(TunnelName),
     /// The holder of `WILDFLOWER_RELAY_ADMIN_KEY`.
     Admin,
 }
@@ -185,11 +182,12 @@ impl Verifier {
             return Err("content-digest does not match the body");
         }
         self.remember_nonce(keyid, &key, nonce, created + CLOCK_SKEW_SECS, now)?;
-        Ok(if keyid == ADMIN_KEY_ID {
-            SignedBy::Admin
-        } else {
-            SignedBy::Tunnel(keyid.to_owned())
-        })
+        if keyid == ADMIN_KEY_ID {
+            return Ok(SignedBy::Admin);
+        }
+        // Served tunnels were named by `TunnelName`'s rules, so this holds.
+        let tunnel_name = TunnelName::parse(keyid).map_err(|_| "unknown keyid")?;
+        Ok(SignedBy::Tunnel(tunnel_name))
     }
 
     /// Record `keyid`'s `nonce` until `stale_after`, refusing one already
@@ -613,7 +611,7 @@ pub(crate) mod tests {
         let request = signed_request("GET", URI, b"", "alice", "alice-token", NOW, "n1");
         assert_eq!(
             verify(&verifier, request).await,
-            Ok(SignedBy::Tunnel("alice".to_owned()))
+            Ok(SignedBy::Tunnel(TunnelName::parse("alice").unwrap()))
         );
         let request = signed_request("POST", URI, b"{}", "admin", "admin-key", NOW, "n2");
         assert_eq!(verify(&verifier, request).await, Ok(SignedBy::Admin));
@@ -705,7 +703,7 @@ pub(crate) mod tests {
         let bob = signed_request("GET", URI, b"", "bob", "bob-token", NOW, "b1");
         assert_eq!(
             verify(&verifier, bob).await,
-            Ok(SignedBy::Tunnel("bob".to_owned()))
+            Ok(SignedBy::Tunnel(TunnelName::parse("bob").unwrap()))
         );
         remove(&verifier, "alice");
         let alice = signed_request("GET", URI, b"", "alice", "alice-token", NOW, "a2");

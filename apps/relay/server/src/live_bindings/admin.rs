@@ -85,7 +85,12 @@ mod tests {
     #[tokio::test]
     async fn only_the_admin_signature_builds_the_capability() {
         assert!(extract(Some(SignedBy::Admin)).await.is_ok());
-        for signed_by in [Some(SignedBy::Tunnel("alice".to_owned())), None] {
+        for signed_by in [
+            Some(SignedBy::Tunnel(
+                rathole_settings_rust::TunnelName::parse("alice").unwrap(),
+            )),
+            None,
+        ] {
             let rejection = extract(signed_by).await.err();
             assert_eq!(rejection, Some(StatusCode::UNAUTHORIZED));
         }
