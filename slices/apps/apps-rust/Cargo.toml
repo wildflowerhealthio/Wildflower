@@ -7,8 +7,8 @@ publish.workspace = true
 # The apps slice, host-side: SQLite-backed selection of bundled apps plus a
 # CRUD surface for user-defined custom apps, the `/apps` HTTP routes the
 # webview consumes (list + launch redirect), and the owner-gated admin routes
-# the consumer wraps with the gatekeeper. Layered like `tunnel-rust` and
-# `gatekeeper-rust`: pure `domain`, `db`, and `http`.
+# the consumer wraps with the gatekeeper. Layered like `gatekeeper-rust`: pure
+# `domain`, `db`, and `http`.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true

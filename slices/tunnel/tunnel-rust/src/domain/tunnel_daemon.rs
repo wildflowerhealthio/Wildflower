@@ -482,7 +482,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_new_daemon_is_dialing() {
-        // A never-answering probe keeps the tunnel off `Verified`.
+        // A failing probe keeps the tunnel off `Verified`.
         let daemon = daemon_with(
             Arc::new(HoldUntilCancelRelayClient),
             Arc::new(StubProbe::failing()),

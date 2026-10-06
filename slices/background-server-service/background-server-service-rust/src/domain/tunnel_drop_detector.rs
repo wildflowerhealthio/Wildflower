@@ -11,8 +11,9 @@ pub const TUNNEL_NOTIFICATION_ID: &str = "tunnel";
 /// Follows the tunnel's liveness and says when it drops and when it comes back.
 ///
 /// A drop is the tunnel leaving `Verified`. The liveness going to `None` is not
-/// a drop: the server stopped, and the stop has its own notification. After a drop, the next `Verified` (in this run
-/// or a later one) says the tunnel reconnected.
+/// a drop: the server stopped, and the stop has its own notification. After a
+/// drop, the next `Verified` (in this run or a later one) says the tunnel
+/// reconnected.
 #[derive(Debug, Default)]
 pub struct TunnelDropDetector {
     verified: bool,

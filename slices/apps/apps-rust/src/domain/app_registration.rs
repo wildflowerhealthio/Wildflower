@@ -53,7 +53,8 @@ pub struct AppRegistration {
     #[serde(rename = "isSmart", serialize_with = "serialize_client_id_as_is_smart")]
     #[schema(rename = "isSmart", value_type = bool)]
     pub client_id: Option<String>,
-    /// Whether a launch must bring the tunnel up first (a launch-readiness pill).
+    /// Whether a launch resolves `{origin}` to the server's public origin rather
+    /// than the served one (the Tunnel pill).
     pub requires_tunnel: bool,
 }
 

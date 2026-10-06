@@ -1,6 +1,7 @@
 //! The rule for a tunnel public host: a bare `host[:port]` that, behind
 //! `https://`, names an origin. [`public_origin_url`] applies it, for
-//! consumers that need the origin as a URL (the server's FHIR `base_url`).
+//! consumers that need the origin as a URL (the server's FHIR `base_url` and a
+//! `requires_tunnel` launch's `{origin}`).
 
 use url::Url;
 

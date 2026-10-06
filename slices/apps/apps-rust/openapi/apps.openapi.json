@@ -449,7 +449,7 @@
           },
           "requiresTunnel": {
             "type": "boolean",
-            "description": "Whether a launch must bring the tunnel up first (a launch-readiness pill)."
+            "description": "Whether a launch resolves `{origin}` to the server's public origin rather\nthan the served one (the Tunnel pill)."
           }
         }
       },

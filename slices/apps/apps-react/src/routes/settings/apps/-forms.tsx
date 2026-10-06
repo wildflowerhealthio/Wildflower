@@ -74,8 +74,8 @@ const AppFieldInputs = ({ fields, onChange, disabled }: AppFieldInputsProps): JS
         />
       )}
       <FieldDescription>
-        Some apps need to reach your health data over the internet to work. This setting ensures the
-        tunnel is running when the app launches.
+        Some apps need to reach your health data over the internet to work. This setting launches
+        them at your server’s public address.
       </FieldDescription>
     </div>
   </>
