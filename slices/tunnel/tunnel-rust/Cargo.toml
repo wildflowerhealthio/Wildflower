@@ -22,7 +22,6 @@ axum.workspace = true
 serde = { workspace = true }
 utoipa.workspace = true
 utoipa-axum.workspace = true
-diesel = { workspace = true }
 diesel_migrations.workspace = true
 # The loopback origin flows in as a typed `Url` (from `ServerRuntimeConfig`); the
 # daemon takes its bare origin string at construction.
@@ -80,3 +79,5 @@ tower = { version = "0.5", features = ["util"] }
 proptest = "1"
 serde_json.workspace = true
 parking_lot = "0.12"
+# The migration tests query `sqlite_master` directly.
+diesel = { workspace = true }

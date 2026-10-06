@@ -134,8 +134,7 @@ mod tests {
     }
 
     /// `GET /tunnel` carries the liveness and the public host from the record,
-    /// and nothing else: no relay settings, no run intent, no settings
-    /// revision. The failing probe keeps it on the loopback fallback.
+    /// and nothing else. The failing probe keeps it on the loopback fallback.
     #[tokio::test]
     async fn get_reads_the_liveness_and_the_public_host_only() {
         let (st, _started) = state(Behavior::HoldUntilCancel, failing_probe());

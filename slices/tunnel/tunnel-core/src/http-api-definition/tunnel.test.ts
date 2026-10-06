@@ -34,17 +34,6 @@ describe('TunnelStateViewSchema', () => {
     expectRightToEqual(Schema.decodeUnknownEither(TunnelStateViewSchema)(verified), verified)
   })
 
-  it('drops the relay settings and run intent the server no longer sends', () => {
-    // The relay settings live in the server's record, which only the base reads.
-    const decoded = Schema.decodeUnknownSync(TunnelStateViewSchema)({
-      ...FRESH_STATE,
-      settingsRevision: 3,
-      requestedRunning: true,
-      relay: { remoteAddr: 'relay.example.com:2333', publicKey: 'key', serviceName: 'ruth' },
-    })
-    expect(decoded).toEqual(FRESH_STATE)
-  })
-
   it('rejects state missing the public host', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(TunnelStateViewSchema)({ ...FRESH_STATE, publicHost: null }),

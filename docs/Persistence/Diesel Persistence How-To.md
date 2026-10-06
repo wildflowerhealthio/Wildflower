@@ -173,7 +173,7 @@ trees under different namespaces.
 
 ## Add a transaction seam only when compound operations need one
 
-A CRUD-only store (collector, tunnel) needs **no** transaction seam — each query
+A CRUD-only store (collector) needs **no** transaction seam — each query
 checks out a connection and autocommits. Reach for a seam only when a slice has
 multi-statement operations that must be atomic (read-merge-write, delete-both-
 then-expire, a three-state consume) and you don't want that business logic
