@@ -51,9 +51,16 @@ type ItemListProps = {
   readonly title?: ReactNode
   readonly items: readonly ItemListItem[]
   readonly className?: string
+  /**
+   * The most lines each row's subtitle takes. Defaults to `1`: the subtitle
+   * is truncated to one line with an ellipsis, as suits a URL or id. More
+   * lets a prose subtitle (a sentence explaining the row) wrap, clamped at
+   * that many lines; `null` lets it wrap and never truncates it.
+   */
+  readonly maxLines?: number | null
 }
 
-const ItemList = ({ title, items, className }: ItemListProps): JSX.Element | null => {
+const ItemList = ({ title, items, className, maxLines = 1 }: ItemListProps): JSX.Element | null => {
   if (items.length === 0) return null
   return (
     <section className={cn(styles['item-list'], className)}>
@@ -62,14 +69,21 @@ const ItemList = ({ title, items, className }: ItemListProps): JSX.Element | nul
       ) : null}
       <ul className={styles['item-list__rows']}>
         {items.map((item) => (
-          <ItemListRow key={item.id} item={item} />
+          <ItemListRow key={item.id} item={item} maxLines={maxLines} />
         ))}
       </ul>
     </section>
   )
 }
 
-const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
+const ItemListRow = ({
+  item,
+  maxLines,
+}: {
+  item: ItemListItem
+  maxLines: number | null
+}): JSX.Element => {
+  const wraps = maxLines === null || maxLines > 1
   const badgeJsx =
     item.badge !== undefined ? (
       <span className={styles['item-list__badge']}>{item.badge}</span>
@@ -78,7 +92,17 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
     item.meta !== undefined ? <span className={styles['item-list__meta']}>{item.meta}</span> : null
   const subtitleJsx =
     item.subtitle !== undefined ? (
-      <span className={cn(styles['item-list__subtitle'], 'text-body-3')}>{item.subtitle}</span>
+      <span
+        className={cn(
+          styles['item-list__subtitle'],
+          wraps ? styles['item-list__subtitle--wrap'] : null,
+          wraps && maxLines !== null ? styles['item-list__subtitle--clamp'] : null,
+          'text-body-3'
+        )}
+        style={wraps && maxLines !== null ? { WebkitLineClamp: maxLines } : undefined}
+      >
+        {item.subtitle}
+      </span>
     ) : null
   const leadingJsx =
     item.leading !== undefined ? (

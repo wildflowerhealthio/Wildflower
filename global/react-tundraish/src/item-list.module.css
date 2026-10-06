@@ -186,6 +186,21 @@ section > .item-list:not(:last-child) .item-list__rows {
   white-space: nowrap;
 }
 
+/* `maxLines` above 1, or `null`: a prose subtitle wraps, breaking a long word
+ * anywhere rather than overflowing the row. */
+.item-list__subtitle--wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* `maxLines` above 1: the wrapped subtitle is clamped at that many lines (the
+ * row sets `-webkit-line-clamp` inline). `null` leaves this off, so it never
+ * truncates. */
+.item-list__subtitle--clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+}
+
 /* Danger-tone row shifts the subtitle into the danger ramp too, so the
  * detail line agrees with the row's failure tint. */
 .item-list__row--tone-danger .item-list__subtitle {
