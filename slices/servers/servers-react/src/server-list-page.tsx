@@ -14,7 +14,7 @@ const ServerListPage = (): JSX.Element => (
     <PageHeader
       title="Servers"
       actions={
-        <Link to="/settings" className="button button-3 outline">
+        <Link to="/settings" className="button button-2 outline">
           Host Settings
         </Link>
       }
