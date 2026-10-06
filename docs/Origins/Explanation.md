@@ -88,7 +88,7 @@ The SMART discovery document follows the same split: its `issuer` field is
 [`CANONICAL_ISSUER`], while its endpoint URLs are rendered from the served origin
 so the SMART app can actually reach them from where it is.
 
-### HFS's `base_url` follows the tunnel's public host
+### HFS's `base_url` is the server's public host
 
 HFS is the one component that can't render URLs per request. Its `base_url`
 setting is the prefix of every URL it emits (search Bundle `self`/`next` links,
@@ -96,21 +96,19 @@ setting is the prefix of every URL it emits (search Bundle `self`/`next` links,
 that pages by following `next` therefore goes wherever `base_url` points, and
 its token's `aud` has to match.
 
-So `base_url` is `https://<public_host>/fhir-r4`, the tunnel's configured public
-host, because that is how remote clients reach the FHIR server. It is the
-loopback FHIR base only while no public host is configured. Loopback callers
-get the public URLs too. That suits the host owner token, whose canonical
-audience is accepted at every served origin, but not an OAuth-minted token: its
-`aud` is the loopback base, so a SMART app launched on loopback that follows a
-public `next` link through the tunnel is refused.
+So `base_url` is `https://<public_host>/fhir-r4`, where the public host is the
+server's domain from its record, because that is how remote clients reach the
+FHIR server. Loopback callers get the public URLs too. That suits the host
+owner token, whose canonical audience is accepted at every served origin, but
+not an OAuth-minted token: its `aud` is the loopback base, so a SMART app
+launched on loopback that follows a public `next` link through the tunnel is
+refused.
 
 HFS reads `base_url` only when its router is built, so emr-rust serves it as a
-[`SwappableHfs`]. The host calls `set_base_url` before serving and again
-whenever the public host changes. That rebuilds HFS over the same store and
-swaps it in under the routers already mounted. A public host that can't form an
-origin is refused when the tunnel settings are written. emr-rust's own
-overrides (`$everything`, the SMART discovery doc) still render the served
-origin per request.
+[`SwappableHfs`]. The server calls `set_base_url` once, before serving; a
+public host that can't form an origin stops startup. emr-rust's own overrides
+(`$everything`, the SMART discovery doc) still render the served origin per
+request.
 
 ### Discovery is fetched before a token exists
 

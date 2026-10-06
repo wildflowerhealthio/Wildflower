@@ -1,7 +1,7 @@
 /*
  * The Tunnel screen's "status hero" — a card immediately under the page
- * explainer with the live on/off control, status badge, and a connection
- * summary that dims when the tunnel is off.
+ * explainer with the status badge and a connection summary that dims when the
+ * tunnel isn't running.
  */
 .hero {
   background: var(--card-color-background);
@@ -23,10 +23,8 @@
 
 /*
  * Address block — public host, sub-line, connection path. Dims when the
- * tunnel isn't open (neither running nor about to be), since the path and
- * "N apps connected now" don't describe anything actionable in that state.
- * The 0.25s opacity transition matches the toggle's track transition, so
- * flipping Run-tunnel reads as one motion.
+ * tunnel isn't running, since the path and "N apps connected now" don't
+ * describe anything actionable in that state.
  */
 .hero__address {
   display: flex;
@@ -126,8 +124,8 @@
 .path__node {
   flex: 0 0 auto;
   border-radius: 999px;
-  /* Smooth the active/inactive/error swap so flipping Run-tunnel reads
-   * as a continuous state change rather than a hard color flip. */
+  /* Smooth the active/inactive/error swap so a status change reads as a
+   * continuous change rather than a hard color flip. */
   transition:
     background 1s ease,
     box-shadow 1s ease;

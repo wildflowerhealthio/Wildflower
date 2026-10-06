@@ -4,22 +4,22 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# The Tauri-side tunnel slice: SQLite-backed settings (via Diesel over the
-# app-wide connection pool), the `/tunnel` HTTP surface the tunnel-react UI
-# speaks, and an embedded `rathole` client (noise transport, no TLS/openssl)
-# that dials the wildflower-relay and forwards the loopback server
-# through it. Layered like collector-rust: pure `domain`, `db`, and `http`.
+# The Tauri-side tunnel slice: the read-only `/tunnel` HTTP surface the
+# tunnel-react UI speaks, and an embedded `rathole` client (noise transport, no
+# TLS/openssl) that dials the wildflower-relay named in the server's record and
+# forwards the loopback server through it. Layered like collector-rust: pure
+# `domain`, `db` (migrations only), and `http`.
 #
-# Persistence is Diesel over the host-owned `persistence_rust::DieselPool` (see
+# The migrations run over the host-owned `persistence_rust::DieselPool` (see
 # docs/Persistence/Shared Diesel Pool Explanation.md); this crate depends on
-# `persistence-rust` ONLY for the pool type — it does not touch `rusqlite`
-# directly. Cargo unifies diesel's `libsqlite3-sys` with rusqlite's
-# already-bundled one, so both connections drive the same bundled SQLite build.
+# `persistence-rust` only for the pool type and its namespaced migration runner
+# — it does not touch `rusqlite` directly. Cargo unifies diesel's
+# `libsqlite3-sys` with rusqlite's already-bundled one, so both connections
+# drive the same bundled SQLite build.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
 serde = { workspace = true }
-serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 diesel = { workspace = true }
@@ -31,13 +31,12 @@ url = { version = "2" }
 # diesel-backed slices; this crate names the pool type but not rusqlite.
 persistence-rust = { path = "../../persistence/persistence-rust" }
 # The tunnel service contract this slice implements (TunnelService + state
-# types), plus the shared opaque-500 `InternalError` the handlers 500 with.
+# types).
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
   "tunnel-service",
-  "http-errors",
 ] }
 # The scope grammar (`Scope`, `Permission`, `WildflowerResource`) the `/tunnel`
-# scope gate builds its required scopes from — `wildflower/TunnelSettings.{r,u}`.
+# scope gate builds its required scope from — `wildflower/TunnelSettings.r`.
 scopes-rust = { path = "../../scopes/scopes-rust" }
 # The generic scope-gated capability machinery (`Scoped<F>`,
 # `FixedScopeCapability`, `ScopeClaims`, `insufficient_scope` +
@@ -54,7 +53,6 @@ rathole = { version = "0.5", default-features = false, features = [
 # rendered client config names.
 rathole-settings-rust = { path = "../rathole-settings-rust" }
 async-trait = "0.1"
-parking_lot = "0.12"
 rand = "0.10"
 tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
 tokio-util = "0.7"
@@ -80,3 +78,5 @@ http = "1"
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
 proptest = "1"
+serde_json.workspace = true
+parking_lot = "0.12"

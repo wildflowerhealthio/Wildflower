@@ -4,7 +4,7 @@
 //! pool, readable by the owner only, and applies the relay's migrations onto
 //! it) plus the `tunnels` query bodies. The diesel `table!` schema lives in
 //! `schema`. Built on Diesel over `persistence_rust::DieselPool`, mirroring
-//! `tunnel-rust`'s `SqliteTunnelStore`. The domain type the port speaks
+//! `collector-rust`'s `SqliteRemotesStore`. The domain type the port speaks
 //! ([`StoredTunnel`](crate::domain::StoredTunnel)) lives in [`crate::domain`].
 
 mod schema;

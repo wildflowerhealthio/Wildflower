@@ -155,7 +155,7 @@ version)` in `diesel_slice_migrations`, applying each migration and its
 bookkeeping row in one transaction. Call it with a per-slice constant:
 
 ```rust
-// collector-rust/src/db/remotes_store.rs, tunnel-rust/src/db/tunnel_store.rs
+// collector-rust/src/db/remotes_store.rs, tunnel-rust/src/db/mod.rs
 persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
 ```
 

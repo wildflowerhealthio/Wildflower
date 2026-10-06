@@ -3,7 +3,7 @@
 //! [`GatekeeperStore`](crate::domain::GatekeeperStore) port: it holds the
 //! app-wide diesel r2d2 pool, `persistence_rust::DieselPool`, and applies the
 //! gatekeeper migrations onto it under a per-slice namespace, mirroring
-//! collector's `SqliteRemotesStore` and tunnel's `SqliteTunnelStore`) plus one
+//! collector's `SqliteRemotesStore`) plus one
 //! file per concern holding that concern's `table!` definition, row/column
 //! mappings, and single-statement query-body free functions (taking a
 //! `&mut SqliteConnection` — the adapter's `SqliteGatekeeperTx` unwraps it from a

@@ -1,7 +1,6 @@
 //! The rule for a tunnel public host: a bare `host[:port]` that, behind
-//! `https://`, names an origin. [`public_origin_url`] applies it. A settings
-//! write is refused when its host breaks the rule, and consumers that need the
-//! origin as a URL (the host app's FHIR `base_url`) parse it the same way.
+//! `https://`, names an origin. [`public_origin_url`] applies it, for
+//! consumers that need the origin as a URL (the server's FHIR `base_url`).
 
 use url::Url;
 

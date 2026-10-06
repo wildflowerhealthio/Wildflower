@@ -45,7 +45,6 @@ impl TunnelService for StubTunnel {
     }
     fn subscribe(&self) -> tokio::sync::watch::Receiver<TunnelLiveness> {
         tokio::sync::watch::channel(TunnelLiveness {
-            settings_revision: None,
             status: TunnelStatus::Verified,
             origin: self.origin.clone(),
             public_host: None,

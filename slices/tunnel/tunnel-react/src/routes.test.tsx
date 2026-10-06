@@ -1,12 +1,18 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { QueryClient } from '@tanstack/react-query'
-import { createMemoryHistory, createRouter, type AnyRoute } from '@tanstack/react-router'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+  type AnyRoute,
+} from '@tanstack/react-router'
+import { cleanup, render, screen } from '@testing-library/react'
 import { Effect, Layer, pipe } from 'effect'
 import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
-import { describe, expect, test } from 'vite-plus/test'
+import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { TUNNEL_STATE_QUERY_KEY, type RunAuthed } from './queries/index.ts'
+import { TUNNEL_STATE_QUERY_KEY, type RunAuthed, type TunnelState } from './queries/index.ts'
 import type { RouterContext } from './router-context.ts'
 import { sliceRuntimeLayer } from './router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
@@ -29,19 +35,14 @@ const routes = (): readonly AnyRoute[] =>
   Object.values(router.routesById).filter((route) => route.id !== '__root__')
 
 describe('tunnel routes', () => {
-  test('the generated tree exposes the overview + relay-settings routes', () => {
-    const ids = routes()
-      .map((route) => route.id)
-      .toSorted((a, b) => a.localeCompare(b))
-    expect(ids).toEqual(['/settings/tunnel/', '/settings/tunnel/relay'])
+  test('the generated tree exposes only the read-only overview', () => {
+    expect(routes().map((route) => route.id)).toEqual(['/settings/tunnel/'])
   })
 
-  test('the overview resolves at /settings/tunnel/ and the relay page at /settings/tunnel/relay', () => {
-    const byId = new Map(routes().map((route) => [route.id, route]))
+  test('the overview resolves at /settings/tunnel/', () => {
     // The overview is an index route, so the resolved fullPath keeps the
-    // trailing slash; the relay page is a leaf, no trailing slash.
-    expect(byId.get('/settings/tunnel/')?.fullPath).toBe('/settings/tunnel/')
-    expect(byId.get('/settings/tunnel/relay')?.fullPath).toBe('/settings/tunnel/relay')
+    // trailing slash.
+    expect(routes()[0]?.fullPath).toBe('/settings/tunnel/')
   })
 })
 
@@ -124,7 +125,7 @@ describe('tunnel route loader', () => {
     expect(result.status).toBe('success')
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toMatchObject({
       servedOrigin: 'http://127.0.0.1:8080',
-      running: false,
+      status: 'dialing',
     })
   })
 
@@ -147,5 +148,57 @@ describe('tunnel route loader', () => {
     expect(result.status).toBe('error')
     expect(result.error).toBeInstanceOf(Error)
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toBeUndefined()
+  })
+})
+
+describe('tunnel page', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  const VERIFIED: TunnelState = {
+    ...Tunnel.freshTunnelState,
+    status: 'verified',
+    servedOrigin: `https://${Tunnel.freshTunnelState.publicHost}`,
+  }
+
+  test('renders the status hero read-only, with no edit controls', async () => {
+    // Arrange — the cache holds the tunnel's state, as the loader leaves it.
+    const queryClient = new QueryClient()
+    queryClient.setQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY, VERIFIED)
+    const pageRouter = createRouter({
+      routeTree,
+      context: {
+        queryClient,
+        runAuthed: makeRunAuthed(stubHttpClientLayer()),
+        runtimeLayer: Layer.die('runtimeLayer not used by the page'),
+        awaitAuthReady: stubAwaitAuthReady,
+      },
+      history: createMemoryHistory({ initialEntries: ['/settings/tunnel'] }),
+    })
+
+    // Act
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={pageRouter} />
+      </QueryClientProvider>
+    )
+
+    // Assert — the hero shows the state...
+    expect((await screen.findByRole('status')).textContent).toContain('Online')
+    expect(screen.getAllByText(VERIFIED.publicHost).length).toBeGreaterThan(0)
+    // ...and nothing on the page edits the tunnel: no switch, no field, no
+    // link onward to relay settings, and copying the host is the one button.
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(
+      screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+    ).toEqual(['Copy public host'])
+    expect(
+      screen
+        .queryAllByRole('link')
+        .map((link) => link.getAttribute('href'))
+        .filter((href) => href?.startsWith('/settings/tunnel/') === true)
+    ).toEqual([])
   })
 })

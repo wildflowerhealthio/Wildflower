@@ -36,7 +36,7 @@ the pool is built and the trade-off is accepted.
 ## The store holds the pool
 
 Each slice's SQLite store (`SqliteAppsStore`, `SqliteRemotesStore`,
-`SqliteGatekeeperStore`, `SqliteTunnelStore`) holds the `DieselPool` — an `Arc`
+`SqliteGatekeeperStore`, `SqliteRequestLogStore`) holds the `DieselPool` — an `Arc`
 inside, so the store is cheap to clone into the axum state — and implements the
 slice's domain persistence port. Diesel's connection API is `&mut`, so each query
 **checks a connection out of the pool** rather than sharing one behind a mutex;
@@ -71,6 +71,6 @@ fresh one. A genuinely new table keeps plain `CREATE TABLE`.
   (`apps-rust/src/db/apps_store.rs`), collector's `SqliteRemotesStore`
   (`collector-rust/src/db/remotes_store.rs`), gatekeeper's
   `SqliteGatekeeperStore` (`gatekeeper-rust/src/db/gatekeeper_store.rs`),
-  the request log's `SqliteRequestLogStore`
-  (`request-log-rust/src/db/request_log_store.rs`) and tunnel's
-  `SqliteTunnelStore` (`tunnel-rust/src/db/tunnel_store.rs`).
+  and the request log's `SqliteRequestLogStore`
+  (`request-log-rust/src/db/request_log_store.rs`). The tunnel keeps no rows,
+  so it has no store: `tunnel-rust/src/db/mod.rs` only applies its migrations.

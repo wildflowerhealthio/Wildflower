@@ -7,6 +7,16 @@ use tokio_util::sync::CancellationToken;
 use crate::domain::{RelayClient, RelaySettings};
 use crate::health::HealthProbe;
 
+/// A relay connection for tests that never reach a real relay.
+pub(crate) fn relay() -> RelaySettings {
+    RelaySettings {
+        remote_addr: "relay.example.com:2333".into(),
+        token: "tok".into(),
+        public_key: "key".into(),
+        service_name: "dev1".into(),
+    }
+}
+
 /// A relay client that holds the session until cancelled — a stable "up" dial
 /// the probe runs against.
 pub(crate) struct HoldUntilCancelRelayClient;

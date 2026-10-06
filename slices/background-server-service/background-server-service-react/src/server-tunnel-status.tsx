@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useRouteContext } from '@tanstack/react-router'
+import { useRouteContext } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { ErrorBanner, PageLoading } from 'react-tundraish'
 import { TunnelStatusHero, tunnelStateQueryOptions } from 'tunnel-react'
@@ -22,8 +22,7 @@ const useRunAuthed = (): RunAuthed =>
  * tunnel), so every mount refetches (`refetchOnMount: 'always'`) and shows
  * loading until that fetch settles (`isFetchedAfterMount`) rather than the
  * cached data. Later background refetches, such as on window focus, keep
- * showing the data they replace. The Run-tunnel switch stays on the Tunnel
- * settings page, which this links to.
+ * showing the data they replace.
  */
 const ServerTunnelStatus = (): JSX.Element => {
   const tunnelStateQuery = useQuery({
@@ -33,15 +32,7 @@ const ServerTunnelStatus = (): JSX.Element => {
   if (tunnelStateQuery.isPending || !tunnelStateQuery.isFetchedAfterMount)
     return <PageLoading message="Loading the tunnel…" />
   if (tunnelStateQuery.isError) return <ErrorBanner error={tunnelStateQuery.error} />
-  return (
-    <>
-      <TunnelStatusHero state={tunnelStateQuery.data} disabled />
-      <p className="text-body-3">
-        Turn the tunnel on or off and set its public host in{' '}
-        <Link to="/settings/tunnel">Tunnel settings</Link>.
-      </p>
-    </>
-  )
+  return <TunnelStatusHero state={tunnelStateQuery.data} />
 }
 
 export { ServerTunnelStatus }

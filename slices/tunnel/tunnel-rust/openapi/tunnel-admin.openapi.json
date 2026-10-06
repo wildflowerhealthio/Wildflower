@@ -10,11 +10,11 @@
         "tags": [
           "Configuration"
         ],
-        "summary": "`GET /tunnel` — read the current persisted settings + observed runtime as a\nsingle wire snapshot. Gated by [`Scoped<LiveTunnelSettingsReader>`]: the\nsettings read lives behind the `wildflower/TunnelSettings.r` capability, so\nthis handler never touches the store directly (a `403` on an under-scoped\ntoken). Collected into the `OpenAPI` doc via `routes!` in the parent module,\nwhich reads this `#[utoipa::path]`.",
+        "summary": "`GET /tunnel` — read the tunnel's observed liveness and public host as a\nsingle wire snapshot. Gated by [`Scoped<TunnelSettingsReader>`]: the read\nlives behind the `wildflower/TunnelSettings.r` capability, so this handler\nnever touches the router state directly (a `403` on an under-scoped token).\nCollected into the `OpenAPI` doc via `routes!` in the parent module, which\nreads this `#[utoipa::path]`.",
         "operationId": "handle_get_tunnel",
         "responses": {
           "200": {
-            "description": "Current tunnel settings + observed runtime",
+            "description": "The tunnel's observed liveness and public host",
             "content": {
               "application/json": {
                 "schema": {
@@ -29,66 +29,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Configuration"
-        ],
-        "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. Gated by [`Scoped<LiveTunnelSettingsEditor>`]: the write\nlives behind the `wildflower/TunnelSettings.u` capability, so this handler\nnever touches the store directly (a `403` on an under-scoped token).",
-        "description": "A stale revision returns 409 with the current snapshot so the client can\nrebase; a winning write bumps the revision, reconciles the live supervisor,\nthen — like the launch seam — **awaits the liveness settling** (a `/health`\nprobe verifies, or the verify deadline elapses) before returning, so the\nsnapshot reflects *real* reachability rather than an optimistic `dialing`. A\nno-op change (same dialable config on an already-up tunnel) returns\nimmediately `verified` — `reconcile` leaves the live tunnel untouched, so\nthere's nothing to wait for. A `publicHost` that isn't a bare `host[:port]`\nis refused with a `400` before anything is written. Collected into the `OpenAPI` doc via `routes!`\nin the parent module, which reads this `#[utoipa::path]`.",
-        "operationId": "handle_replace_tunnel",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReplaceTunnelRequestBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Write applied; the new snapshot after the daemon reconciled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TunnelStateResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`publicHost` isn't a bare `host[:port]` naming an `https://` origin; nothing was written",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidPublicHostBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller's token doesn't cover `wildflower/TunnelSettings.u`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Stale revision; no write happened — the current snapshot is returned",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TunnelStateResponse"
                 }
               }
             }
@@ -120,128 +60,21 @@
           }
         }
       },
-      "InvalidPublicHostBody": {
-        "type": "object",
-        "description": "Wire shape for a 400 `InvalidPublicHost` — a `PUT /tunnel` whose\n`publicHost` isn't a bare `host[:port]`. Matches the TS\n`InvalidPublicHostSchema`.",
-        "required": [
-          "error",
-          "message"
-        ],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
-      },
-      "RelayInput": {
-        "type": "object",
-        "required": [
-          "remoteAddr",
-          "token",
-          "publicKey",
-          "serviceName"
-        ],
-        "properties": {
-          "remoteAddr": {
-            "type": "string"
-          },
-          "token": {
-            "type": "string"
-          },
-          "publicKey": {
-            "type": "string"
-          },
-          "serviceName": {
-            "type": "string"
-          }
-        }
-      },
-      "RelayView": {
-        "type": "object",
-        "description": "The readable view of the relay connection — everything except the secret\n`token`, which stays write-only and is never returned. Mirrors\n`RelaySettings` minus `token`. The client prefills these and only re-sends\nthe relay block (with a fresh token) when the user changes it.",
-        "required": [
-          "remoteAddr",
-          "publicKey",
-          "serviceName"
-        ],
-        "properties": {
-          "remoteAddr": {
-            "type": "string"
-          },
-          "publicKey": {
-            "type": "string"
-          },
-          "serviceName": {
-            "type": "string"
-          }
-        }
-      },
-      "ReplaceTunnelRequestBody": {
-        "type": "object",
-        "description": "PUT body — a full replace of the visible settings guarded by\n`settingsRevision`, plus an optional write-only `relay` block (absent = keep\nthe stored relay connection, present = replace all four fields).\n\n`publicHost` is required and full-replace: send the desired host as a\nstring, or `null` to clear it. An omitted field is rejected — full-replace\nPUT semantics, and the relay block is the only intentionally-omittable\nmember (because it's write-only and the client can't echo back what it\nhasn't seen).",
-        "required": [
-          "settingsRevision",
-          "publicHost",
-          "requestedRunning"
-        ],
-        "properties": {
-          "settingsRevision": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The optimistic-concurrency token echoed from the last-seen snapshot."
-          },
-          "publicHost": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "requestedRunning": {
-            "type": "boolean"
-          },
-          "relay": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RelayInput"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
       "TunnelStateResponse": {
         "type": "object",
-        "description": "Tunnel state on the wire. The relay connection's non-secret fields are\nreturned in [`RelayView`] (the `token` stays write-only and never appears\nhere). `settingsRevision` is the optimistic-concurrency token a PUT must echo.\n\n# Liveness is now verified, not optimistic\n\n`status` is the real [`TunnelStatus`] FSM position. `servedOrigin`\nresolves to `https://{publicHost}` **only** while `status == \"verified\"` —\ni.e. after a `/health` probe through the public origin came back healthy —\nand the supervisor re-probes, so it reverts to the loopback fallback if the\ntunnel silently drops. `running` is the coarse \"a supervisor is attempting\"\nview (`dialing`/`verified`/`unreachable`), retained for back-compat; prefer\n`status`.\n`dialAttempts` counts relay dials for this revision (resets on the next\nreconcile) — a counter climbing with a steady `error` flags a permanent\nmisconfiguration. This is the resolution of\n<https://github.com/Assessment-is/Wildflower/issues/184>.",
+        "description": "Tunnel state on the wire: the observed liveness and the public host.\n\n# Liveness is verified, not optimistic\n\n`status` is the real [`TunnelStatus`] FSM position. `servedOrigin`\nresolves to `https://{publicHost}` **only** while `status == \"verified\"` —\ni.e. after a `/health` probe through the public origin came back healthy —\nand the supervisor re-probes, so it reverts to the loopback fallback if the\ntunnel silently drops. `running` is the coarse \"a supervisor is attempting\"\nview (`dialing`/`verified`/`unreachable`).\n`dialAttempts` counts relay dials since the server started — a counter\nclimbing with a steady `error` flags a permanent misconfiguration. This is\nthe resolution of <https://github.com/Assessment-is/Wildflower/issues/184>.",
         "required": [
-          "settingsRevision",
           "publicHost",
-          "requestedRunning",
           "status",
           "running",
           "error",
           "dialAttempts",
-          "servedOrigin",
-          "relay"
+          "servedOrigin"
         ],
         "properties": {
-          "settingsRevision": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Which revision of the persisted settings this snapshot reflects — the\noptimistic-concurrency token a PUT must echo."
-          },
           "publicHost": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "requestedRunning": {
-            "type": "boolean"
+            "type": "string",
+            "description": "The bare public host the relay serves the server at, from the server's\nrecord."
           },
           "status": {
             "$ref": "#/components/schemas/TunnelStatus",
@@ -249,7 +82,7 @@
           },
           "running": {
             "type": "boolean",
-            "description": "`true` when a supervisor is attempting (`dialing`/`verified`/\n`unreachable`). A derived view of `status`, kept for back-compat."
+            "description": "`true` when a supervisor is attempting (`dialing`/`verified`/\n`unreachable`). A derived view of `status`."
           },
           "error": {
             "type": [
@@ -260,31 +93,19 @@
           "dialAttempts": {
             "type": "integer",
             "format": "int64",
-            "description": "How many times the tunnel has tried to dial the relay for this revision,\nresets on the next reconcile. Surfaced so an operator can spot a permanent\nmisconfiguration (counter climbs with no recovery) without the daemon\nhaving to classify rathole errors itself."
+            "description": "How many times the tunnel has tried to dial the relay since the server\nstarted. Surfaced so an operator can spot a permanent misconfiguration\n(counter climbs with no recovery) without the daemon having to classify\nrathole errors itself."
           },
           "servedOrigin": {
             "type": "string",
             "description": "`https://{publicHost}` only while `status == \"verified\"`, else the\nloopback fallback. See the type-level docs."
-          },
-          "relay": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RelayView",
-                "description": "The relay connection's non-secret fields, or `null` when no relay is\nconfigured. The `token` is never included."
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         }
       },
       "TunnelStatus": {
         "type": "string",
-        "description": "The liveness state of the tunnel. The full FSM lives in the tunnel slice;\nthis is the position consumers care about.\n\nThis is also the type the tunnel slice's `/tunnel` HTTP surface serializes\ndirectly (lowercase variants), so it derives `Serialize`/`ToSchema` here\nrather than a parallel wire enum re-declaring the same five variants.",
+        "description": "The liveness state of the tunnel. The full FSM lives in the tunnel slice;\nthis is the position consumers care about.\n\nThis is also the type the tunnel slice's `/tunnel` HTTP surface serializes\ndirectly (lowercase variants), so it derives `Serialize`/`ToSchema` here\nrather than a parallel wire enum re-declaring the same variants.",
         "enum": [
           "off",
-          "misconfigured",
           "dialing",
           "verified",
           "unreachable"

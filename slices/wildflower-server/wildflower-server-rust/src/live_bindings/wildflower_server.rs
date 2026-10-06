@@ -76,15 +76,14 @@ impl WildflowerServer {
 ///
 /// Returns an error if the server's folder can't be created, a scheduled
 /// database deletion can't be applied, a database or store can't be opened, the loopback port can't be bound, a
-/// slice's setup fails, or the tunnel's stored public host can't be FHIR's base
-/// URL.
+/// slice's setup fails, or the server's public host can't be FHIR's base URL.
 ///
 /// # Remarks
 ///
 /// Slices spawn background tasks (the tunnel supervisor, gatekeeper's re-mint
-/// and sweeps, the FHIR base-URL follower, the tunnel-liveness copy) onto the
-/// runtime that runs this future. They are not tied to the shutdown token: they
-/// stop when that runtime shuts down.
+/// and sweeps, the tunnel-liveness copy) onto the runtime that runs this
+/// future. They are not tied to the shutdown token: they stop when that runtime
+/// shuts down.
 pub async fn set_up(
     config: WildflowerServerConfig,
     host: HostPorts,
@@ -96,7 +95,8 @@ pub async fn set_up(
         owner_ui_base,
         host_owner_scopes,
         first_party_client_id,
-        tunnel_seed,
+        relay_settings,
+        public_host,
     } = config;
 
     // The server's folder holds its databases, and a server added since the
@@ -241,15 +241,13 @@ pub async fn set_up(
         .context("failed to set up collector")?
         .layer(gatekeeper_auth_layer.clone());
 
-    // The real `/tunnel` surface (replacing the former api_stubs stub). It's
-    // Owner-gated like the rest of the admin API. Settings (incl. the relay
-    // connection) are persisted in the shared database over the same diesel pool
-    // and controlled through the API; the host's build-time `tunnel_seed` fills
-    // only fields that are still unconfigured (see
-    // `tunnel_rust::SqliteTunnelStore::seed_if_absent`).
+    // The read-only `/tunnel` surface, Owner-gated like the rest of the admin
+    // API. The tunnel dials the relay from the server's record for as long as
+    // the server runs; its migrations ride the same diesel pool.
     let tunnel_config = tunnel_rust::TunnelConfig {
         loopback_base_url: runtime.loopback_base_url(),
-        seed: tunnel_seed,
+        relay_settings,
+        public_host: public_host.clone(),
     };
     // `setup_tunnel` hands back the `/tunnel` router plus the in-process
     // `TunnelControl` seam (which implements `TunnelService`). The daemon drives
@@ -282,29 +280,14 @@ pub async fn set_up(
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
 
-    // HFS's `base_url` tracks the tunnel's public host (see `hfs_base_url`): set
-    // before serving, so a stored host that can't be one stops startup, then
-    // re-set whenever the tunnel settings change.
+    // HFS's `base_url` is the server's public host (see `hfs_base_url`), set
+    // before serving, so a public host that can't be one stops startup.
+    hfs_base_url::point_hfs_at_public_host(&fhir_routers.hfs, &public_host)?;
     // The host watches the tunnel's liveness through its own channel, which
     // outlives this server.
     tokio::spawn(copy_tunnel_liveness(
         tunnel_service.subscribe(),
         observers.tunnel_liveness_sender,
-    ));
-    let mut tunnel_liveness = tunnel_service.subscribe();
-    let public_host = tunnel_liveness.borrow_and_update().public_host.clone();
-    hfs_base_url::point_hfs_at_public_host(&fhir_routers.hfs, public_host.as_deref())?;
-    let hfs = fhir_routers.hfs.clone();
-    tokio::spawn(hfs_base_url::follow_public_host(
-        tunnel_liveness,
-        public_host,
-        move |public_host| {
-            // `PUT /tunnel` refuses a host that can't be a base URL, so this
-            // failing is a bug, not a settings mistake.
-            if let Err(error) = hfs_base_url::point_hfs_at_public_host(&hfs, public_host) {
-                tracing::error!("FHIR base URL left unchanged: {error:#}");
-            }
-        },
     ));
     // The per-app SMART launch-scope seam: resolves a SMART app's OAuth client
     // scopes so the launch handler can require the caller's grant to cover them.
@@ -359,7 +342,7 @@ pub async fn set_up(
             databases_rust::DatabaseDescriptor {
                 id: WILDFLOWER_DB.to_owned(),
                 label: "Wildflower app data".to_owned(),
-                description: "App state — access grants, tunnel settings, and the apps catalogue."
+                description: "App state — access grants and the apps catalogue."
                     .to_owned(),
                 read_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::READ),
                 delete_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::DELETE),

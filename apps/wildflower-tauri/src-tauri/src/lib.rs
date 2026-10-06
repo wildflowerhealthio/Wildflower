@@ -84,41 +84,15 @@ fn resolve_data_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Resu
     return app.path().app_data_dir();
 }
 
-/// Build-time tunnel connection defaults, baked into the binary so a
-/// reinstall re-seeds them (see `tunnel_rust::SqliteTunnelStore::seed_if_absent`,
-/// which only fills unconfigured fields). The relay is seeded only when all
-/// four fields are present at build time.
-///
-/// SECURITY: `WILDFLOWER_TUNNEL_RELAY_TOKEN` is compiled into the distributed
-/// binary (an extractable artifact) — an accepted trade-off so the relay
-/// connection survives reinstalls, token included, without re-entry.
-fn tunnel_seed_from_build_env() -> tunnel_rust::SettingsSeed {
-    // Treat an empty value as absent: a blank `.env` entry is forwarded by
-    // `dotenvy` as `Some("")`, which would otherwise seed a half-configured
-    // relay (and an empty token reads back as unconfigured anyway).
-    let non_empty = |value: &'static str| (!value.is_empty()).then_some(value);
-    let relay = match (
-        option_env!("WILDFLOWER_TUNNEL_RELAY_REMOTE_ADDR").and_then(non_empty),
-        option_env!("WILDFLOWER_TUNNEL_RELAY_TOKEN").and_then(non_empty),
-        option_env!("WILDFLOWER_TUNNEL_RELAY_PUBLIC_KEY").and_then(non_empty),
-        option_env!("WILDFLOWER_TUNNEL_RELAY_SERVICE_NAME").and_then(non_empty),
-    ) {
-        (Some(remote_addr), Some(token), Some(public_key), Some(service_name)) => {
-            Some(tunnel_rust::RelaySettings {
-                remote_addr: remote_addr.to_owned(),
-                token: token.to_owned(),
-                public_key: public_key.to_owned(),
-                service_name: service_name.to_owned(),
-            })
-        }
-        _ => None,
-    };
-    tunnel_rust::SettingsSeed {
-        public_host: option_env!("WILDFLOWER_TUNNEL_PUBLIC_HOST")
-            .and_then(non_empty)
-            .map(str::to_owned),
-        relay,
-    }
+/// The relay connection `server`'s tunnel dials: the relay's dial address and
+/// noise key from its record's `public_settings`, as its tunnel name, with its
+/// token.
+fn relay_settings_of(server: &ServerRecord) -> tunnel_rust::RelaySettings {
+    tunnel_rust::RelaySettings::from_public_rathole_settings(
+        server.public_settings.clone(),
+        server.tunnel_name.to_string(),
+        server.token.expose().to_owned(),
+    )
 }
 
 /// The host's scopes for its owner token, from `LOCAL_GRANTED_SCOPES`.
@@ -129,8 +103,8 @@ fn host_owner_scopes() -> Vec<String> {
         .collect()
 }
 
-/// Resolves what the Wildflower server reads from this build and the
-/// platform's paths into its [`WildflowerServerConfig`].
+/// Resolves what the Wildflower server reads from this build, the platform's
+/// paths and `server`'s record into its [`WildflowerServerConfig`].
 ///
 /// Only the desktop/iOS release build asks `app_handle` for Tauri's
 /// bundled-resource dir, where it reads the FHIR SearchParameter bundle; the dev
@@ -139,6 +113,7 @@ fn host_owner_scopes() -> Vec<String> {
 /// server.
 fn server_config(
     runtime: ServerRuntimeConfig,
+    server: &ServerRecord,
     #[cfg_attr(not(target_os = "android"), allow(unused_variables))] data_root: &Path,
     #[cfg_attr(target_os = "android", allow(unused_variables))] app_handle: &tauri::AppHandle,
 ) -> anyhow::Result<WildflowerServerConfig> {
@@ -208,7 +183,8 @@ fn server_config(
         owner_ui_base,
         host_owner_scopes: host_owner_scopes(),
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
-        tunnel_seed: tunnel_seed_from_build_env(),
+        relay_settings: relay_settings_of(server),
+        public_host: server.domain(),
     })
 }
 
@@ -261,7 +237,7 @@ fn start_server(
         loopback_base_url,
         server_dir,
     };
-    match server_config(runtime, data_root, app_handle) {
+    match server_config(runtime, server, data_root, app_handle) {
         Ok(config) => {
             let (server_host_context, server_receivers) =
                 ServerHostContext::new(config, host_ports(app_handle, publishers));
@@ -602,6 +578,23 @@ mod tests {
         assert_eq!(
             domain_to_run(&servers(&[("lab", false), ("ruth", true), ("demo", true)])),
             Some("ruth.relay.wildflowerhealth.io".to_owned())
+        );
+    }
+
+    /// The tunnel dials the record's relay as its tunnel name, with its token.
+    #[test]
+    fn the_tunnel_dials_the_relay_in_the_server_s_record() {
+        let server = super::find_server_to_run(&servers(&[("ruth", true)]))
+            .expect("the registry reads")
+            .expect("a server runs");
+        assert_eq!(
+            super::relay_settings_of(&server),
+            tunnel_rust::RelaySettings {
+                remote_addr: "relay.wildflowerhealth.io:2333".to_owned(),
+                token: "s3cret-tunnel-token".to_owned(),
+                public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
+                service_name: "ruth".to_owned(),
+            }
         );
     }
 

@@ -16,14 +16,12 @@ use tokio::sync::watch;
 ///
 /// This is also the type the tunnel slice's `/tunnel` HTTP surface serializes
 /// directly (lowercase variants), so it derives `Serialize`/`ToSchema` here
-/// rather than a parallel wire enum re-declaring the same five variants.
+/// rather than a parallel wire enum re-declaring the same variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TunnelStatus {
-    /// Not requested on.
+    /// No tunnel: the server was wired without one (see [`OfflineTunnel`]).
     Off,
-    /// Requested on but un-dialable (no relay, or no public host).
-    Misconfigured,
     /// Attempting; not yet proven reachable.
     Dialing,
     /// A `/health` probe through the public origin came back healthy — the only
@@ -35,8 +33,7 @@ pub enum TunnelStatus {
 
 impl TunnelStatus {
     /// Whether a supervisor is actively attempting to keep the tunnel up
-    /// (`Dialing`/`Verified`/`Unreachable`), as opposed to idle/terminal
-    /// (`Off`/`Misconfigured`).
+    /// (`Dialing`/`Verified`/`Unreachable`), as opposed to `Off`.
     pub fn is_running(self) -> bool {
         matches!(
             self,
@@ -49,32 +46,24 @@ impl TunnelStatus {
 /// and read by the tunnel slice itself (it is the slice's one liveness type —
 /// there is no separate internal struct).
 ///
-/// Most consumers only care about `status`/`origin`/`error`;
-/// `settings_revision` and `dial_attempts` are the optimistic-concurrency token
-/// and the reconnect counter the tunnel slice carries for its own bookkeeping
-/// (and surfaces on the `/tunnel` HTTP wire). They're part of the snapshot so
-/// the slice's supersession guard stays serialized with state writes.
+/// Most consumers only care about `status`/`origin`/`error`; `dial_attempts`
+/// is the reconnect counter the tunnel slice surfaces on the `/tunnel` HTTP
+/// wire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TunnelLiveness {
-    /// Which revision of the persisted tunnel *settings* this snapshot reflects
-    /// — the optimistic-concurrency token bumped on each accepted settings
-    /// write. `None` before the tunnel has reconciled any settings.
-    pub settings_revision: Option<i64>,
     /// The liveness FSM position.
     pub status: TunnelStatus,
     /// The current most-available origin: the verified public origin while
     /// `Verified`, else the loopback fallback.
     pub origin: String,
-    /// The configured public host (bare, no scheme or port), normalized so an
-    /// empty stored value reads as `None` — independent of the liveness
-    /// `status`. Carried on the snapshot so a consumer that follows it (the
-    /// server's FHIR base-URL follower) reads it off the watch.
+    /// The public host the relay serves the server at (bare, no scheme or
+    /// port), independent of the liveness `status`. `None` without a tunnel.
     pub public_host: Option<String>,
-    /// A human-readable reason for `Misconfigured`/`Unreachable`, else `None`.
+    /// A human-readable reason for `Unreachable`, else `None`.
     pub error: Option<String>,
-    /// How many times the tunnel has tried to *dial* the relay for the current
-    /// settings revision; resets to 0 when the revision changes. A climbing
-    /// count with a steady `error` flags a permanent misconfiguration.
+    /// How many times the tunnel has tried to *dial* the relay since the
+    /// server started. A climbing count with a steady `error` flags a
+    /// permanent misconfiguration.
     pub dial_attempts: i64,
 }
 
@@ -86,9 +75,9 @@ pub trait TunnelService: Send + Sync {
     /// tunnel is up, else the loopback fallback. A cheap, synchronous read.
     fn current_origin(&self) -> String;
 
-    /// Try to bring the tunnel up, returning the verified public origin once a
-    /// reachability check confirms it, or a human-readable reason it couldn't.
-    /// Idempotent: a no-op (beyond re-confirming) when already up.
+    /// Wait for the tunnel to come up, returning the verified public origin
+    /// once a reachability check confirms it, or a human-readable reason it
+    /// didn't. Returns at once when already up.
     async fn try_start(&self) -> Result<String, String>;
 
     /// Subscribe to tunnel state changes. Consumers `borrow()` for the live
@@ -110,7 +99,6 @@ impl OfflineTunnel {
     pub fn new(origin: impl Into<String>) -> Self {
         let origin = origin.into();
         let (state, _) = watch::channel(TunnelLiveness {
-            settings_revision: None,
             status: TunnelStatus::Off,
             origin: origin.clone(),
             public_host: None,

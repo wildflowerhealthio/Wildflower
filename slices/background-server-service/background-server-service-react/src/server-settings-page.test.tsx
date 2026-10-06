@@ -19,8 +19,6 @@ type TunnelState = typeof Tunnel.TunnelStateViewSchema.Type
 const ONLINE_TUNNEL: TunnelState = {
   ...Tunnel.freshTunnelState,
   publicHost: 'ruth.wildflowerhealth.io',
-  requestedRunning: true,
-  running: true,
   status: 'verified',
 }
 

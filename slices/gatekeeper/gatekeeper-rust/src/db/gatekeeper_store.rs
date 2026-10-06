@@ -5,8 +5,8 @@
 //! construction (under this slice's [`MIGRATION_NAMESPACE`]), and implements the
 //! port by checking a connection out of the pool and delegating to the
 //! per-concern query bodies in the sibling `db/*` modules. Mirrors
-//! `collector-rust`'s `SqliteRemotesStore` and `tunnel-rust`'s
-//! `SqliteTunnelStore`, scaled to the gatekeeper's six persistence concerns.
+//! `collector-rust`'s `SqliteRemotesStore`, scaled to the gatekeeper's six
+//! persistence concerns.
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};

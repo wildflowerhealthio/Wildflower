@@ -13,8 +13,8 @@ use tokio::sync::{mpsc, watch};
 use tunnel_rust::TunnelLiveness;
 
 /// What the host hands [`set_up`](crate::set_up): the values it derives at
-/// build time (`tauri-shared-config.json`, build-time env) or from its platform
-/// paths.
+/// build time (`tauri-shared-config.json`), from its platform paths, or from
+/// the server's record.
 #[derive(Debug, Clone)]
 pub struct WildflowerServerConfig {
     /// The loopback base URL the API binds and the server's own folder, which
@@ -32,8 +32,12 @@ pub struct WildflowerServerConfig {
     pub host_owner_scopes: Vec<String>,
     /// The host's first-party OAuth `client_id`.
     pub first_party_client_id: String,
-    /// Tunnel connection defaults seeded into unconfigured settings at startup.
-    pub tunnel_seed: tunnel_rust::SettingsSeed,
+    /// The relay connection the server's tunnel dials, from the server's
+    /// record.
+    pub relay_settings: tunnel_rust::RelaySettings,
+    /// The bare public host the relay serves the server at: the server's
+    /// domain, from its record.
+    pub public_host: String,
 }
 
 /// The host's side of [`set_up`](crate::set_up): its native adapters and the

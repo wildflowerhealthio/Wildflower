@@ -1,21 +1,19 @@
 import type { JSX, ReactNode } from 'react'
 
-import { mightTunnelBeOpen, type TunnelState } from '../queries/index.ts'
+import type { TunnelState } from '../queries/index.ts'
 import styles from './TunnelExplainer.module.css'
 
 interface TunnelExplainerProps {
   readonly state: TunnelState
 }
 
-type ExplainerVariant = 'open-host' | 'open-no-host' | 'closed'
+type ExplainerVariant = 'open' | 'closed'
 
-const deriveVariant = (state: TunnelState): ExplainerVariant => {
-  if (!mightTunnelBeOpen(state)) return 'closed'
-  return state.publicHost !== null ? 'open-host' : 'open-no-host'
-}
+const deriveVariant = (state: TunnelState): ExplainerVariant =>
+  state.status === 'off' ? 'closed' : 'open'
 
-const renderCopy = (variant: ExplainerVariant, publicHost: string | null): ReactNode => {
-  if (variant === 'open-host' && publicHost !== null) {
+const renderCopy = (variant: ExplainerVariant, publicHost: string): ReactNode => {
+  if (variant === 'open') {
     return (
       <>
         Apps and people you&apos;ve authorized can access your device at{' '}
@@ -25,41 +23,21 @@ const renderCopy = (variant: ExplainerVariant, publicHost: string | null): React
       </>
     )
   }
-  if (variant === 'open-no-host') {
-    return (
-      <>
-        Apps and people you&apos;ve authorized can access your device. Apps and devices will still
-        need to ask your permission through the app to get access.
-      </>
-    )
-  }
-  return (
-    <>
-      By default, your personal health record is only accessible on this device. <br /> By
-      activating the tunnel you can use apps that access your data remotely, or grant access from
-      another device.
-    </>
-  )
+  return <>This server has no tunnel, so your personal health record is only accessible on it.</>
 }
 
 /**
  * State-aware explainer paragraph rendered beneath the Tunnel screen's
- * `<PageHeader>`. The copy swaps between three branches:
+ * `<PageHeader>`. The copy swaps between two branches:
  *
- *   - "open with host" — the daemon is (or is becoming) reachable and a
- *     public host is configured; the host is emphasized in the copy.
- *   - "open without host" — the daemon is (or is becoming) reachable but
- *     no public host has been set yet; the same sentence runs without the
- *     trailing "at \{host\}" clause rather than rendering an awkward gap.
- *   - "closed" — the resting state, describing the opt-in nature of the
- *     tunnel.
+ *   - "open" — the tunnel is (or is becoming) reachable; the public host is
+ *     emphasized in the copy.
+ *   - "closed" — the server has no tunnel (`off`).
  *
  * The variant is keyed onto the `<p>` so React remounts the paragraph
  * across copy swaps; a CSS keyframe on `.explainer` plays on mount,
- * giving the new copy a brief fade-up rather than the previous instant
- * text replacement. The host string isn't keyed (only the variant is),
- * so updating just `publicHost` doesn't restart the animation — the
- * emphasized host re-renders in place.
+ * giving the new copy a brief fade-up rather than an instant text
+ * replacement.
  */
 const TunnelExplainer = ({ state }: TunnelExplainerProps): JSX.Element => {
   const variant = deriveVariant(state)

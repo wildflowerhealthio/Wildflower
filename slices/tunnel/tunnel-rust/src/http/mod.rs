@@ -25,7 +25,7 @@ fn documented_router() -> OpenApiRouter<Arc<TunnelState>> {
     OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router())
 }
 
-/// Build the tunnel's `/tunnel` router (GET + PUT) over a [`TunnelState`]. The
+/// Build the tunnel's read-only `/tunnel` router over a [`TunnelState`]. The
 /// module owns its mount path so the caller just `.merge()`s.
 pub fn router(state: Arc<TunnelState>) -> Router {
     let (router, _spec) = documented_router().split_for_parts();

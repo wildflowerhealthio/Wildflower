@@ -1,8 +1,7 @@
 /**
  * Query-key roots shared across the tunnel resource modules.
  *
- * Mutations and external events invalidate the matching root so the next
- * render refetches.
+ * External events invalidate the matching root so the next render refetches.
  */
 
 /** External mutators of `TunnelState` (e.g. host-bridge events) should invalidate this. */

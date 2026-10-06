@@ -3,7 +3,7 @@
 //! pool of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the
 //! shared database file, applies the embedded collector migrations once on
 //! construction, and implements the port by delegating to the per-concern query
-//! bodies in [`crate::db::remotes`]. Mirrors `tunnel-rust`'s `SqliteTunnelStore`.
+//! bodies in [`crate::db::remotes`].
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};

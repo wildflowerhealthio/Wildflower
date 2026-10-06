@@ -2,38 +2,31 @@
 //!
 //! Layered like `gatekeeper-rust`:
 //!
-//!  - [`domain`] — pure settings types ([`TunnelSettings`]), the
-//!    [`RelayClient`](domain::RelayClient) trait, and the
-//!    [`TunnelStore`](domain::TunnelStore) persistence *port* plus the
-//!    `actions` the HTTP routes drive it through.
-//!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing that port, built
-//!    on Diesel over the app-wide r2d2 connection pool
-//!    (`persistence_rust::DieselPool`) onto the shared database file, and its
-//!    queries.
+//!  - [`domain`] — the [`RelayClient`](domain::RelayClient) trait and its
+//!    [`RelaySettings`], the [`TunnelDaemon`] that runs the tunnel, and the
+//!    scope-gated capability the HTTP route reads it through.
+//!  - `db` — the slice's migrations in the shared database. The tunnel keeps
+//!    no rows; they drop the slice's old tables.
 //!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
 //!    dials the Wildflower relay.
-//!  - [`http`] — the `/tunnel` wire contract.
+//!  - [`http`] — the read-only `/tunnel` wire contract.
 //!
-//! Settings live in `SQLite` and are API-controlled (`PUT /tunnel`, a
-//! full-replace guarded by an optimistic-concurrency `revision`). The relay
-//! connection fields are write-only and start empty; until they are set the
-//! tunnel reports "not configured". Live runtime state (the [`TunnelStatus`]
+//! The relay settings and public host come from the server's record, through
+//! [`TunnelConfig`]. The tunnel dials whenever the server runs; nothing in this
+//! slice turns it off or edits it. Live runtime state (the [`TunnelStatus`]
 //! liveness FSM and any error) is in-memory and resets per process.
 //!
-//! ## Reconcile + liveness model
+//! ## Liveness model
 //!
-//! Every accepted write bumps `revision` and reconciles: the previous
-//! [`TunnelState`](live_bindings::state::TunnelState) supervisor is cancelled and a fresh one
-//! is spawned for the new revision. A supervisor owns a reconnect/backoff loop, awaits its own
+//! The daemon's supervisor owns a reconnect/backoff loop, awaits its own
 //! rathole child, *and* drives a concurrent `/health` probe — so `servedOrigin`
 //! resolves to the public origin only once a probe through it has come back
-//! healthy (`status == "verified"`). A post-launch failure
-//! surfaces in the `error` field and is retried, and a superseded run's late
-//! exit can't clobber the live one.
+//! healthy (`status == "verified"`). A post-launch failure surfaces in the
+//! `error` field and is retried.
 
 pub mod config;
 mod control;
-pub mod db;
+mod db;
 pub mod domain;
 pub mod health;
 pub mod http;
@@ -44,22 +37,14 @@ mod test_support;
 
 use std::sync::Arc;
 
-use anyhow::Context;
 use axum::Router;
 
 pub use config::TunnelConfig;
 pub use control::TunnelControl;
-pub use db::SqliteTunnelStore;
-// The per-slice grantable-scope vocabulary (`wildflower/TunnelSettings.{r,u}`) —
-// the scopes the `/tunnel` surface enforces, for a future consent/admin surface.
+// The per-slice grantable-scope vocabulary (`wildflower/TunnelSettings.r`) —
+// the scope the `/tunnel` surface enforces, for a future consent/admin surface.
 pub use domain::grantable_tunnel_scopes;
-pub use domain::{
-    public_origin_url, InvalidPublicHost, RelaySettings, SettingsSeed, TunnelDaemon, TunnelSettings,
-};
-// The persistence port trait, in scope so `setup_tunnel` can drive the store's
-// `seed_if_absent` / `get_settings` methods directly (the trivial reads/seeds the
-// domain no longer wraps in an action).
-use domain::TunnelStore;
+pub use domain::{public_origin_url, InvalidPublicHost, RelaySettings, TunnelDaemon};
 pub use health::HealthProbe;
 use live_bindings::state::TunnelState;
 // Re-exported so the host can name the pool type at the `setup_tunnel` call site
@@ -71,9 +56,10 @@ use relay_clients::RatholeRelayClient;
 pub use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
 
 /// What [`setup_tunnel`] hands back: the `/tunnel` HTTP router to mount and the
-/// in-process [`TunnelControl`] seam. The composition root threads the control into the apps slice for launch-origin
-/// resolution, so a tunnel-requiring launch can trigger the tunnel and read its
-/// live public origin without an HTTP round-trip.
+/// in-process [`TunnelControl`] seam. The composition root threads the control
+/// into the apps slice for launch-origin resolution, so a tunnel-requiring
+/// launch can wait for the tunnel to verify and read its live public origin
+/// without an HTTP round-trip.
 pub struct Tunnel {
     pub router: Router,
     pub control: TunnelControl,
@@ -84,23 +70,21 @@ pub struct Tunnel {
 /// `setup_collector`. The host builds the app-wide diesel pool (via
 /// `persistence_rust::open_pool`) and passes it in along with the `probe` adapter
 /// the daemon uses to verify the tunnel is actually reachable (it GETs the served
-/// origin's assumed-present `/health`). Constructing the store applies the
-/// embedded tunnel migrations once, then resumes the tunnel from persisted
-/// settings.
+/// origin's assumed-present `/health`). Applies the embedded tunnel migrations,
+/// then spawns the daemon, which dials the relay in `config` for as long as the
+/// returned [`Tunnel`] is held.
 ///
 /// # Errors
 ///
-/// Returns an error if the store can't be migrated or the persisted settings
-/// can't be read.
+/// Returns an error if the tunnel migrations can't be applied.
 pub fn setup_tunnel(
     pool: DieselPool,
     config: &TunnelConfig,
     probe: Arc<dyn HealthProbe>,
 ) -> anyhow::Result<Tunnel> {
-    let store = SqliteTunnelStore::new(pool).context("failed to open tunnel store")?;
-    let client = Arc::new(RatholeRelayClient::new());
-    let tunnel_daemon = TunnelDaemon::new(
-        client,
+    db::run_migrations(&pool)?;
+    let tunnel_daemon = TunnelDaemon::spawn(
+        Arc::new(RatholeRelayClient::new()),
         probe,
         // The daemon renders the loopback origin into `TunnelLiveness.origin` (a
         // wire string), so hand it the bare origin (no trailing slash).
@@ -109,32 +93,16 @@ pub fn setup_tunnel(
             .loopback_base_url
             .port_or_known_default()
             .expect("loopback_base_url has a known port"),
+        config.relay_settings.clone(),
+        config.public_host.clone(),
     );
 
     let state = Arc::new(TunnelState {
-        store,
         daemon: Arc::new(tunnel_daemon),
     });
 
-    // Seed build-time connection defaults into a fresh row (only where
-    // unconfigured) before resuming, so a reinstall picks up the baked-in
-    // tunnel connection without clobbering any in-app edits.
-    state
-        .store
-        .seed_if_absent(&config.seed)
-        .context("failed to seed tunnel settings")?;
-
-    // Resume persisted intent: reconcile spawns a supervisor for the stored
-    // revision (a no-op when the tunnel isn't requested or the relay isn't
-    // configured).
-    let settings = state
-        .store
-        .get_settings()
-        .context("failed to read tunnel settings")?;
-    state.daemon.reconcile(&settings);
-
-    // The control seam shares the daemon's liveness watch; a start persists,
-    // reconciles, and awaits verification inline (no background task).
+    // The control seam shares the daemon's liveness watch; a start awaits
+    // verification inline (no background task).
     let control = TunnelControl::new(Arc::clone(&state));
 
     Ok(Tunnel {

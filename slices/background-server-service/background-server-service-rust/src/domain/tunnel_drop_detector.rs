@@ -11,10 +11,9 @@ pub const TUNNEL_NOTIFICATION_ID: &str = "tunnel";
 /// Follows the tunnel's liveness and says when it drops and when it comes back.
 ///
 /// A drop is the tunnel leaving `Verified` for anything but `Off`. `Off` only
-/// ever comes from the owner's settings (the tunnel slice publishes it when its
-/// settings say the tunnel is not requested), so turning the tunnel off is not
-/// a drop. Neither is the liveness going to `None`: the server stopped, and the
-/// stop has its own notification. After a drop, the next `Verified` (in this run
+/// ever comes from a server wired without a tunnel, so it is not a drop.
+/// Neither is the liveness going to `None`: the server stopped, and the stop
+/// has its own notification. After a drop, the next `Verified` (in this run
 /// or a later one) says the tunnel reconnected.
 #[derive(Debug, Default)]
 pub struct TunnelDropDetector {
@@ -51,7 +50,7 @@ impl TunnelDropDetector {
                 self.verified = false;
                 None
             }
-            TunnelStatus::Misconfigured | TunnelStatus::Dialing | TunnelStatus::Unreachable => {
+            TunnelStatus::Dialing | TunnelStatus::Unreachable => {
                 if !std::mem::take(&mut self.verified) {
                     return None;
                 }
@@ -83,7 +82,6 @@ mod tests {
 
     fn liveness(status: TunnelStatus, error: Option<&str>) -> TunnelLiveness {
         TunnelLiveness {
-            settings_revision: Some(1),
             status,
             origin: "https://demo.example.com".to_owned(),
             public_host: Some("demo.example.com".to_owned()),
@@ -166,7 +164,6 @@ mod tests {
         prop_oneof![
             Just(None),
             Just(Some(TunnelStatus::Off)),
-            Just(Some(TunnelStatus::Misconfigured)),
             Just(Some(TunnelStatus::Dialing)),
             Just(Some(TunnelStatus::Verified)),
             Just(Some(TunnelStatus::Unreachable)),

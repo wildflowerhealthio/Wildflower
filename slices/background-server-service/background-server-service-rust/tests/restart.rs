@@ -53,7 +53,15 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             .map(ToString::to_string)
             .collect(),
         first_party_client_id: gatekeeper_rust::FIRST_PARTY_CLIENT_ID.to_owned(),
-        tunnel_seed: tunnel_rust::SettingsSeed::default(),
+        // A relay nothing listens at: the tunnel dials and retries in the
+        // background, which the server's lifecycle doesn't wait on.
+        relay_settings: tunnel_rust::RelaySettings {
+            remote_addr: "127.0.0.1:9".to_owned(),
+            token: "test-tunnel-token".to_owned(),
+            public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
+            service_name: "test".to_owned(),
+        },
+        public_host: "test.relay.example.com".to_owned(),
     }
 }
 
