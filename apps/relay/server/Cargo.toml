@@ -134,4 +134,4 @@ tower = { workspace = true, features = ["util"] }
 http-body-util.workspace = true
 serde_json.workspace = true
 # A self-signed certificate stands in for the ACME one in the site's tests.
-rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
