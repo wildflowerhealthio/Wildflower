@@ -63,6 +63,8 @@ tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
 # The Wildflower server's config and ports, which the host builds.
 wildflower-server-rust = { path = "../../../slices/wildflower-server/wildflower-server-rust" }
 anyhow.workspace = true
+# Holds the publishers and context sender while no server is set to run.
+parking_lot = "0.12"
 # Typed loopback base URL for the server's `ServerRuntimeConfig`.
 url = "2"
 tokio = { workspace = true, features = ["full"] }
@@ -86,5 +88,5 @@ workspace = true
 chrono = { version = "0.4", default-features = false }
 # Parses the Android manifest the merge-override tests read.
 roxmltree = "0.20"
-# A throwaway data root for the tests of which server `.setup()` runs.
-tempfile = "3"
+# Builds the server records the tests of which server `.setup()` runs read.
+rathole-settings-rust = { path = "../../../slices/tunnel/rathole-settings-rust" }

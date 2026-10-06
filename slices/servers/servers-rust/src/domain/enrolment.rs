@@ -193,18 +193,15 @@ pub async fn add_server<S: RelayClient>(
         }
     };
     let record = run_blocking(registry, move |registry| {
-        let running = !registry.read_all()?.iter().any(|server| server.running);
-        let record = ServerRecord {
+        registry.insert(Box::new(|registered| ServerRecord {
             relay,
             tunnel_name,
             token,
             public_settings,
             launcher_url: ServerRecord::default_launcher_url(),
             staging_certificates: false,
-            running,
-        };
-        registry.insert(record.clone())?;
-        Ok(record)
+            running: !registered.iter().any(|server| server.running),
+        }))
     })
     .await?;
     Ok(record)
@@ -865,7 +862,7 @@ mod tests {
         let (_data_root, registry) = registry();
         let stopped = official_record("lab");
         assert!(!stopped.running);
-        registry.insert(stopped.clone()).unwrap();
+        registry.insert(Box::new(|_| stopped.clone())).unwrap();
         let relay_client = FakeRelayClient::serving(served_settings());
 
         let added = add(&registry, &relay_client, self_hosted_relay(None), TOKEN)
@@ -1010,7 +1007,7 @@ mod tests {
         registered.public_settings = served_settings();
         registered.staging_certificates = true;
         registered.launcher_url = Url::parse("http://localhost:5200/").unwrap();
-        registry.insert(registered.clone()).unwrap();
+        registry.insert(Box::new(|_| registered.clone())).unwrap();
         let relay_client = FakeRelayClient::serving(served_settings());
 
         let record = set_server_credentials(
@@ -1064,8 +1061,8 @@ mod tests {
         };
         let mut same = official_record("lab");
         same.public_settings = served_settings();
-        registry.insert(moved.clone()).unwrap();
-        registry.insert(same.clone()).unwrap();
+        registry.insert(Box::new(|_| moved.clone())).unwrap();
+        registry.insert(Box::new(|_| same.clone())).unwrap();
         let relay_client = FakeRelayClient::serving(served_settings());
 
         assert!(matches!(

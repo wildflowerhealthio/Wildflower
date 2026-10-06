@@ -48,4 +48,4 @@ pub use domain::{
     add_server, set_server_credentials, EnrolmentError, EnteredRelay, RegistryError, RelayIdentity,
     RelayKind, ServerRecord, TunnelToken, SERVERS_DIR_NAME,
 };
-pub use ports::{RelayClient, ServerRegistry};
+pub use ports::{NewRecord, RelayClient, ServerRegistry};

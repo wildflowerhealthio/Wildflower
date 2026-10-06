@@ -8,6 +8,7 @@ use background_server_service_tauri_rust::{
     report_no_server, report_server_failure, start_background_server_service,
     WildflowerServerService,
 };
+use parking_lot::Mutex;
 use servers_rust::{JsonServerRegistry, RegistryError, ServerRecord, ServerRegistry};
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::ServerRuntimeConfig;
@@ -233,6 +234,65 @@ fn find_server_to_run(
         .find(|server| server.running))
 }
 
+/// Start `server` from its folder under `data_root`: wire the background
+/// service's status, restart and notifications, start it, and publish the
+/// context its runs wait for on `host_context_sender`. A config that can't be
+/// built is reported the way a failed run is, and nothing starts.
+fn start_server(
+    app_handle: &tauri::AppHandle,
+    data_root: &Path,
+    server: &ServerRecord,
+    publishers: bridge::BridgePublishers,
+    host_context_sender: &watch::Sender<Option<ServerHostContext>>,
+) {
+    let server_dir = server.server_dir(data_root);
+    log::info!(
+        "[servers] starting {} from {}",
+        server.domain(),
+        server_dir.display()
+    );
+    // Hostname/port come from the shared `tauri-shared-config.json` (see
+    // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the TS `apiBaseUrl`
+    // reads.
+    let loopback_base_url = match Url::parse(&format!("http://{LOOPBACK_HOSTNAME}:{LOOPBACK_PORT}"))
+    {
+        Ok(url) => url,
+        Err(error) => {
+            report_server_failure(app_handle, &format!("bad loopback base URL: {error}"));
+            return;
+        }
+    };
+    let runtime = ServerRuntimeConfig {
+        // Loopback-only: the OS rejects non-local peers at the socket, so the
+        // bearer secret is never the only thing between LAN peers and FHIR
+        // health data.
+        loopback_base_url,
+        server_dir,
+    };
+    match server_config(runtime, data_root, app_handle) {
+        Ok(config) => {
+            let (server_host_context, server_receivers) =
+                ServerHostContext::new(config, host_ports(app_handle, publishers));
+            // Wire the server's status, restart and notifications before a run
+            // can begin, so no run-state change is missed, and start it from
+            // Rust, without waiting on the page. A run waits for the context
+            // published below.
+            start_background_server_service(
+                app_handle,
+                server_receivers,
+                StartConfig {
+                    service_label: BACKGROUND_SERVICE_LABEL.to_owned(),
+                    foreground_service_type: BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned(),
+                },
+            );
+            host_context_sender.send_replace(Some(server_host_context));
+        }
+        // Without a config there is no server to run; say so the way a failed
+        // run does, and keep the app up to show it.
+        Err(error) => report_server_failure(app_handle, &format!("{error:#}")),
+    }
+}
+
 /// Wraps the host's native adapters and bridge publishers as the server's
 /// [`HostPorts`].
 fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublishers) -> HostPorts {
@@ -391,9 +451,42 @@ pub fn run() {
             let server = match find_server_to_run(&JsonServerRegistry::in_data_root(&data_root)) {
                 Ok(Some(server)) => server,
                 // No server to run isn't a failure: the page shows the
-                // server stopped, with no error.
+                // server stopped, with no error. A server set running since
+                // (the first one added is) starts on the page's restart; the
+                // publishers and the context sender wait here until then.
                 Ok(None) => {
-                    report_no_server(app.handle());
+                    let waiting = Mutex::new(Some((publishers, host_context_sender)));
+                    report_no_server(app.handle(), move |app_handle| {
+                        let mut waiting = waiting.lock();
+                        let Some((publishers, host_context_sender)) = waiting.take() else {
+                            // Already started by an earlier restart.
+                            return true;
+                        };
+                        match find_server_to_run(&JsonServerRegistry::in_data_root(&data_root)) {
+                            Ok(Some(server)) => {
+                                start_server(
+                                    app_handle,
+                                    &data_root,
+                                    &server,
+                                    publishers,
+                                    &host_context_sender,
+                                );
+                                true
+                            }
+                            Ok(None) => {
+                                *waiting = Some((publishers, host_context_sender));
+                                false
+                            }
+                            Err(error) => {
+                                *waiting = Some((publishers, host_context_sender));
+                                report_server_failure(
+                                    app_handle,
+                                    &format!("failed to read the registered servers: {error}"),
+                                );
+                                false
+                            }
+                        }
+                    });
                     return Ok(());
                 }
                 // Without the registry there is no server to run; say so
@@ -407,48 +500,13 @@ pub fn run() {
                     return Ok(());
                 }
             };
-            let server_dir = server.server_dir(&data_root);
-            log::info!(
-                "[servers] starting {} from {}",
-                server.domain(),
-                server_dir.display()
+            start_server(
+                app.handle(),
+                &data_root,
+                &server,
+                publishers,
+                &host_context_sender,
             );
-
-            // Hostname/port come from the shared `tauri-shared-config.json`
-            // (see `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
-            // TS `apiBaseUrl` reads.
-            let loopback_base_url =
-                Url::parse(&format!("http://{}:{}", LOOPBACK_HOSTNAME, LOOPBACK_PORT))?;
-            let runtime = ServerRuntimeConfig {
-                // Loopback-only: the OS rejects non-local peers at the socket,
-                // so the bearer secret is never the only thing between LAN
-                // peers and FHIR health data.
-                loopback_base_url,
-                server_dir,
-            };
-
-            match server_config(runtime, &data_root, app.handle()) {
-                Ok(config) => {
-                    let (server_host_context, server_receivers) =
-                        ServerHostContext::new(config, host_ports(app.handle(), publishers));
-                    // Wire the server's status, restart and notifications
-                    // before a run can begin, so no run-state change is
-                    // missed, and start it from Rust, without waiting on the
-                    // page. A run waits for the context published below.
-                    start_background_server_service(
-                        app.handle(),
-                        server_receivers,
-                        StartConfig {
-                            service_label: BACKGROUND_SERVICE_LABEL.to_owned(),
-                            foreground_service_type: BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned(),
-                        },
-                    );
-                    host_context_sender.send_replace(Some(server_host_context));
-                }
-                // Without a config there is no server to run; say so the way
-                // a failed run does, and keep the app up to show it.
-                Err(error) => report_server_failure(app.handle(), &format!("{error:#}")),
-            }
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -457,71 +515,91 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use servers_rust::{JsonServerRegistry, ServerRecord, SERVERS_FILE_NAME};
+    use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
+    use servers_rust::{
+        NewRecord, RegistryError, RelayKind, ServerRecord, ServerRegistry, TunnelToken,
+    };
     use std::path::Path;
 
-    /// A `servers.json` in `data_root` holding a server on the official relay
-    /// for each `(tunnel name, running)`, in order, written by hand as the
-    /// enrolment commands would have left it.
-    fn write_servers(data_root: &Path, servers: &[(&str, bool)]) {
-        let servers: Vec<serde_json::Value> = servers
-            .iter()
-            .map(|(tunnel_name, running)| {
-                serde_json::json!({
-                    "relay": {"kind": "wildflowerOfficial"},
-                    "tunnelName": tunnel_name,
-                    "token": "s3cret-tunnel-token",
-                    "publicSettings": {
-                        "remoteAddr": "relay.wildflowerhealth.io:2333",
-                        "transport": "noise",
-                        "noisePattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
-                        "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
-                        "domain": "relay.wildflowerhealth.io"
-                    },
-                    "launcherUrl": "https://wildflowerhealth.io/app",
-                    "stagingCertificates": false,
-                    "running": running
-                })
-            })
-            .collect();
-        std::fs::write(
-            data_root.join(SERVERS_FILE_NAME),
-            serde_json::json!({"version": 1, "servers": servers}).to_string(),
-        )
-        .expect("write servers.json");
+    /// A registry holding `servers`, or, without them, one that can't be read.
+    /// Only [`ServerRegistry::read_all`] is used by the code under test.
+    struct FakeRegistry(Option<Vec<ServerRecord>>);
+
+    impl ServerRegistry for FakeRegistry {
+        fn read_all(&self) -> Result<Vec<ServerRecord>, RegistryError> {
+            self.0
+                .clone()
+                .ok_or(RegistryError::UnsupportedVersion { version: 2 })
+        }
+
+        fn insert(&self, _new_record: NewRecord<'_>) -> Result<ServerRecord, RegistryError> {
+            unreachable!("choosing the server to run only reads the registry")
+        }
+
+        fn update(&self, _record: ServerRecord) -> Result<(), RegistryError> {
+            unreachable!("choosing the server to run only reads the registry")
+        }
+
+        fn remove(&self, _domain: &str) -> Result<(), RegistryError> {
+            unreachable!("choosing the server to run only reads the registry")
+        }
     }
 
-    /// The server `setup()` would run from `data_root`.
-    fn server_to_run_in(data_root: &Path) -> Option<ServerRecord> {
-        super::find_server_to_run(&JsonServerRegistry::in_data_root(data_root))
-            .expect("servers.json reads")
+    /// A server on the official relay for each `(tunnel name, running)`, in
+    /// order.
+    fn servers(servers: &[(&str, bool)]) -> FakeRegistry {
+        FakeRegistry(Some(
+            servers
+                .iter()
+                .map(|&(tunnel_name, running)| ServerRecord {
+                    relay: RelayKind::WildflowerOfficial,
+                    tunnel_name: TunnelName::parse(tunnel_name).expect("a valid tunnel name"),
+                    token: TunnelToken::new("s3cret-tunnel-token"),
+                    public_settings: PublicRatholeSettings {
+                        remote_addr: "relay.wildflowerhealth.io:2333".to_owned(),
+                        transport: Transport::Noise,
+                        noise_pattern: NoisePattern::Nk25519ChaChaPolyBlake2s,
+                        public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
+                        domain: "relay.wildflowerhealth.io".to_owned(),
+                    },
+                    launcher_url: ServerRecord::default_launcher_url(),
+                    staging_certificates: false,
+                    running,
+                })
+                .collect(),
+        ))
+    }
+
+    /// The domain of the server `setup()` would run from `registry`.
+    fn domain_to_run(registry: &FakeRegistry) -> Option<String> {
+        super::find_server_to_run(registry)
+            .expect("the registry reads")
+            .map(|server| server.domain())
     }
 
     #[test]
     fn an_empty_registry_runs_no_server() {
-        let data_root = tempfile::tempdir().expect("temp data root");
-        assert_eq!(server_to_run_in(data_root.path()), None);
-        write_servers(data_root.path(), &[]);
-        assert_eq!(server_to_run_in(data_root.path()), None);
+        assert_eq!(domain_to_run(&servers(&[])), None);
     }
 
     #[test]
     fn a_registry_with_no_server_set_running_runs_none() {
-        let data_root = tempfile::tempdir().expect("temp data root");
-        write_servers(data_root.path(), &[("ruth", false), ("lab", false)]);
-        assert_eq!(server_to_run_in(data_root.path()), None);
+        assert_eq!(
+            domain_to_run(&servers(&[("ruth", false), ("lab", false)])),
+            None
+        );
     }
 
     #[test]
     fn the_server_set_running_runs_from_its_own_folder() {
-        let data_root = tempfile::tempdir().expect("temp data root");
-        write_servers(data_root.path(), &[("ruth", true)]);
-        let server = server_to_run_in(data_root.path()).expect("a server runs");
+        let server = super::find_server_to_run(&servers(&[("ruth", true)]))
+            .expect("the registry reads")
+            .expect("a server runs");
         assert_eq!(server.domain(), "ruth.relay.wildflowerhealth.io");
+        let data_root = Path::new("/data");
         assert_eq!(
-            server.server_dir(data_root.path()),
+            server.server_dir(data_root),
             data_root
-                .path()
                 .join("servers")
                 .join("ruth.relay.wildflowerhealth.io")
         );
@@ -529,26 +607,15 @@ mod tests {
 
     #[test]
     fn the_first_server_set_running_is_the_one_that_runs() {
-        let data_root = tempfile::tempdir().expect("temp data root");
-        write_servers(
-            data_root.path(),
-            &[("lab", false), ("ruth", true), ("demo", true)],
+        assert_eq!(
+            domain_to_run(&servers(&[("lab", false), ("ruth", true), ("demo", true)])),
+            Some("ruth.relay.wildflowerhealth.io".to_owned())
         );
-        let server = server_to_run_in(data_root.path()).expect("a server runs");
-        assert_eq!(server.domain(), "ruth.relay.wildflowerhealth.io");
     }
 
     #[test]
     fn an_unreadable_registry_is_an_error() {
-        let data_root = tempfile::tempdir().expect("temp data root");
-        std::fs::write(
-            data_root.path().join(SERVERS_FILE_NAME),
-            r#"{"version": 2, "servers": []}"#,
-        )
-        .expect("write servers.json");
-        assert!(
-            super::find_server_to_run(&JsonServerRegistry::in_data_root(data_root.path())).is_err()
-        );
+        assert!(super::find_server_to_run(&FakeRegistry(None)).is_err());
     }
 
     /// The plugin checks the type the service starts as against its config's
