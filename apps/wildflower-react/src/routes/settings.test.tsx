@@ -92,10 +92,10 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('aggregates one row per participating slice (tunnel, gatekeeper)', async () => {
+  test('aggregates one row per participating slice (databases, gatekeeper)', async () => {
     renderSettingsScreen()
     await waitFor(() => {
-      expect(screen.getAllByText('Tunnel').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Your data').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Access').length).toBeGreaterThanOrEqual(1)
     })
   })
@@ -115,7 +115,7 @@ describe('SettingsScreen', () => {
     renderSettingsScreen()
     await waitFor(() => {
       const hrefs = new Set(sliceRowLinks().map((l) => l.getAttribute('href') ?? ''))
-      expect(hrefs.has('/settings/tunnel')).toBe(true)
+      expect(hrefs.has('/settings/databases')).toBe(true)
       expect(hrefs.has('/settings/gatekeeper')).toBe(true)
     })
   })

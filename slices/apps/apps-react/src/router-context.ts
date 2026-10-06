@@ -1,17 +1,10 @@
 import { type QueryClient } from '@tanstack/react-query'
 import { type Effect, Layer } from 'effect'
 import { type BaseRouterContext } from 'shared-structures-react'
-import { type TunnelRouterContext } from 'tunnel-react'
 
 import { AppsAdminHttpApiClient, AppsHttpApiClient } from 'apps-core/clients'
 
-type RuntimeLayer = Layer.Layer<
-  | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
-  | AppsHttpApiClient
-  | AppsAdminHttpApiClient,
-  never,
-  never
->
+type RuntimeLayer = Layer.Layer<AppsHttpApiClient | AppsAdminHttpApiClient, never, never>
 
 /**
  * Slice-local router-context shape — structurally a subset of the host

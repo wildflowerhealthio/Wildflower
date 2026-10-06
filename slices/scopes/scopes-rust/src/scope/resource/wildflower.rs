@@ -50,9 +50,6 @@ pub enum WildflowerResource {
     /// surface (a remote's config may carry origin credentials, so reads need
     /// `.r`). The scope-layer name for what the collector code calls a `Remote`.
     Accounts,
-    /// The tunnel singleton (`/tunnel`): read its state (`.r`). Only the base
-    /// changes a server's relay settings, so no permission here writes them.
-    TunnelSettings,
     /// The request log (`/requests`): each request the trusted front relayed to
     /// the server. Read it (`.r`).
     RequestLog,
@@ -133,7 +130,6 @@ impl WildflowerResource {
             "Token" => Some(WildflowerResource::Token),
             "Apps" => Some(WildflowerResource::Apps),
             "Accounts" => Some(WildflowerResource::Accounts),
-            "TunnelSettings" => Some(WildflowerResource::TunnelSettings),
             "RequestLog" => Some(WildflowerResource::RequestLog),
             _ => None,
         }
@@ -147,7 +143,6 @@ impl WildflowerResource {
             WildflowerResource::Token => "Token",
             WildflowerResource::Apps => "Apps",
             WildflowerResource::Accounts => "Accounts",
-            WildflowerResource::TunnelSettings => "TunnelSettings",
             WildflowerResource::RequestLog => "RequestLog",
         }
     }

@@ -15,8 +15,8 @@ type GatekeeperClientRequirements = HttpClient.HttpClient | GatekeeperHttpApiCli
  * `GatekeeperHttpApiClient.layer` is produced by `defineSliceHttpClient`,
  * which sets no `Authorization` header — the host app's `HttpClient`
  * layer decides how requests authenticate. This builder just re-exposes that layer under a `buildXClientLayer()` name
- * matching the other slices (e.g. `tunnel-react`'s
- * `buildTunnelAdminClientLayer`).
+ * matching the other slices (e.g. `databases-react`'s
+ * `buildDatabasesClientLayer`).
  *
  * Leaves `HttpClient` unprovided: the host app supplies one (the owner
  * UI's API transport) shared across every slice's client layer via the

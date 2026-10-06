@@ -7,7 +7,6 @@ import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { FhirResourcesApiPrefix } from 'fhir-r4/http-api-definition'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { RequestLogRouterContext } from 'request-log-react'
-import { TunnelRouterContext } from 'tunnel-react'
 
 import { unauthorizedRetrySchedule } from './retry-policy.ts'
 import type { RunAuthed, RuntimeLayer } from './router-context.ts'
@@ -45,7 +44,6 @@ const buildRunAuthed = (
   const baseRuntimeLayer = Layer.mergeAll(transportAt(''), effectTelemetryLayer)
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
     Layer.mergeAll(
-      TunnelRouterContext.sliceRuntimeLayer,
       AppsRouterContext.sliceRuntimeLayer,
       GatekeeperRouterContext.sliceRuntimeLayer,
       CollectorRouterContext.sliceRuntimeLayer,

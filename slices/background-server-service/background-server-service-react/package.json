@@ -2,7 +2,7 @@
   "name": "background-server-service-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The background server service's browser surface: `ServerStatusBanner` (shown while the Wildflower server isn't running) and the `/settings/server` page, both rendering the host's latest `ServerServiceStatus` from a store its boot-stable bridge handler fills, and sending `RestartServer` over `BackgroundServerServiceBridge`. The page shows the tunnel through `tunnel-react` while the server runs.",
+  "description": "The background server service's browser surface: `ServerStatusBanner` (shown while the Wildflower server isn't running) and the `/settings/server` page, both rendering the host's latest `ServerServiceStatus` from a store its boot-stable bridge handler fills, and sending `RestartServer` over `BackgroundServerServiceBridge`.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -47,8 +47,6 @@
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
-    "tunnel-core": "workspace:*",
-    "tunnel-react": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -63,8 +61,6 @@
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
-    "shared-structures-react": "workspace:*",
-    "tunnel-core": "workspace:*",
-    "tunnel-react": "workspace:*"
+    "shared-structures-react": "workspace:*"
   }
 }

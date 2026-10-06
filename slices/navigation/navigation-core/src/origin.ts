@@ -7,7 +7,7 @@ import { Context, Effect, Layer, Stream, Subscribable } from 'effect'
  * `.get`s the Subscribable — so a tunnel toggle surfaces on the next
  * read without rebuilding the layer or runtime.
  *
- * The package that owns the live origin (e.g. `tunnel-core`) constructs
+ * The package that owns the live origin constructs
  * the Subscribable from `servedOrigin$` and wires it via a Layer that
  * depends on `TunnelStore | LocalHttpServerStore`. Consumers of `Origin`
  * stay slice-agnostic — they only see the `Origin` requirement.

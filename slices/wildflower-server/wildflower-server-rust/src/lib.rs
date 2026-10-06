@@ -2,11 +2,11 @@
 //! [`set_up`] and served by [`WildflowerServer::serve`].
 //!
 //! [`set_up`] opens the host's databases, sets up each server slice
-//! (gatekeeper, FHIR R4, OHIF, collector, tunnel, apps, databases), gates them,
-//! wraps them in the loopback owner trust, the loopback-peer gate, the CORS
-//! policy and the forwarded-request observer, and binds the loopback port.
-//! [`WildflowerServer::serve`] then serves the result until its shutdown token
-//! is cancelled.
+//! (gatekeeper, FHIR R4, OHIF, collector, request log, apps, databases), gates
+//! them, wraps them in the loopback owner trust, the loopback-peer gate, the
+//! CORS policy and the forwarded-request observer, starts the tunnel, and binds
+//! the loopback port. [`WildflowerServer::serve`] then serves the result until
+//! its shutdown token is cancelled; the tunnel runs for as long as it serves.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's

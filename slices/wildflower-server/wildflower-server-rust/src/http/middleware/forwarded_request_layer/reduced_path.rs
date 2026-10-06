@@ -69,7 +69,7 @@ mod tests {
         for (path, route) in [
             ("/access/clients/abc", "/access"),
             ("/access", "/access"),
-            ("/tunnel?x=1", "/tunnel"),
+            ("/collector/remotes?x=1", "/collector"),
             ("/apps/lifting", "/apps"),
             ("/health", "/health"),
             // A resource-type-shaped second segment only counts under FHIR.

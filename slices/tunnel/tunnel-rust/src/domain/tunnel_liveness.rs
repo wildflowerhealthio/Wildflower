@@ -1,13 +1,8 @@
 //! The tunnel's liveness: where the [`TunnelDaemon`](super::TunnelDaemon)'s
 //! supervisor is, and why it isn't verified when it isn't.
 
-use serde::Serialize;
-use utoipa::ToSchema;
-
-/// The liveness state of the tunnel. `GET /tunnel` serializes it directly
-/// (lowercase variants), so there is no parallel wire enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
-#[serde(rename_all = "lowercase")]
+/// The liveness state of the tunnel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TunnelStatus {
     /// Dialing the relay; not yet proven reachable.
     Dialing,

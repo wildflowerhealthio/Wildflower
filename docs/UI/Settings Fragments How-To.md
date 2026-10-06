@@ -74,8 +74,8 @@ In `apps/wildflower-react/src/screens/settings-screen.tsx`, spread the new items
 import { exampleSettingsItemsFragment } from 'example-react'
 
 const settingsItems: readonly SettingsItem[] = [
-  ...tunnelSettingsItemsFragment,
-  ...exampleSettingsItemsFragment, // appears under Tunnel in the menu
+  ...requestLogSettingsItemsFragment,
+  ...exampleSettingsItemsFragment, // appears under Request log in the menu
   // …
 ]
 ```

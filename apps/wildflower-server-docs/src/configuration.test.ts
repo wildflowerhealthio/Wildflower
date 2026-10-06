@@ -29,7 +29,6 @@ describe('consoleConfiguration', () => {
       'Apps',
       'Databases',
       'Collector',
-      'Tunnel',
       'Request log',
       'FHIR R4',
     ])
@@ -38,7 +37,6 @@ describe('consoleConfiguration', () => {
     )
     expect(configuration.sources.map((source) => source.default)).toEqual([
       true,
-      false,
       false,
       false,
       false,
@@ -77,7 +75,7 @@ describe('consoleConfiguration', () => {
     expect(signedIn.authentication.securitySchemes[BEARER_SCHEME_NAME].token).toBe(
       'header.payload.signature'
     )
-    expect(signedIn.sources).toHaveLength(7)
+    expect(signedIn.sources).toHaveLength(6)
   })
 
   it('follows the reader’s colour-scheme preference', () => {

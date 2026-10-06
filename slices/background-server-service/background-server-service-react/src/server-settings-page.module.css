@@ -75,14 +75,6 @@
   overflow-wrap: anywhere;
 }
 
-/* What the Tunnel section says while there is no tunnel to show. */
-.server-settings-page__note {
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: var(--font-size-3);
-  color: var(--color-neutral-4);
-}
-
 :global(:root[data-color-scheme='dark']) .server-settings-page__error {
   color: var(--color-red-2);
 }
