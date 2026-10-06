@@ -208,7 +208,9 @@ policy })`, the policy one of `{kind: "off"}`, `{kind: "whileInUse"}`,
   that is no longer among them and starts each one it hasn't. It runs once at
   setup (`reconcile_servers`) and after every command, and is what whatever
   watches the policies' conditions calls. A server it started stays started
-  until it leaves that set, so one that failed isn't restarted on every pass.
+  until it leaves that set. One that failed to start isn't tried again on
+  every pass, only once `server_set_run_policy` sets its policy again or it
+  leaves the set and comes back.
   A registry it can't read stops nothing; with nothing started it tells the
   service why, and so does a pass that starts nothing, so a run the platform
   or the OS starts on its own ends with that reason logged.

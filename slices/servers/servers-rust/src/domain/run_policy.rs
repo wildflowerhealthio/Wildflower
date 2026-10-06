@@ -8,7 +8,7 @@
 //! passes, it only stops counting as active. Only the user's choices write a
 //! policy.
 
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Datelike, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::domain::ServerChangeError;
@@ -52,6 +52,10 @@ impl RunPolicy {
     }
 }
 
+/// The last year a [`RunPolicy::Until`] deadline can fall in: RFC 3339's
+/// four-digit years, the last the base's date-time decoder reads.
+const LATEST_DEADLINE_YEAR: i32 = 9999;
+
 /// The policy the user picks for a server: [`RunPolicy`] with the window
 /// given as a duration from now rather than a deadline.
 ///
@@ -84,7 +88,7 @@ impl RunPolicyChoice {
     ///
     /// [`ServerChangeError::NonPositiveDuration`] for a `For` of zero seconds
     /// or less, and [`ServerChangeError::DurationOutOfRange`] for one whose
-    /// deadline is past the latest time a policy can hold.
+    /// deadline is after the year 9999.
     pub fn into_run_policy_at(self, now: DateTime<Utc>) -> Result<RunPolicy, ServerChangeError> {
         Ok(match self {
             Self::Off => RunPolicy::Off,
@@ -96,6 +100,7 @@ impl RunPolicyChoice {
                 }
                 let at = TimeDelta::try_seconds(seconds)
                     .and_then(|duration| now.checked_add_signed(duration))
+                    .filter(|at| at.year() <= LATEST_DEADLINE_YEAR)
                     .ok_or(ServerChangeError::DurationOutOfRange { seconds })?;
                 RunPolicy::Until { at }
             }
@@ -197,10 +202,24 @@ mod tests {
 
     #[test]
     fn a_duration_past_the_latest_deadline_is_rejected() {
-        assert!(matches!(
-            RunPolicyChoice::For { seconds: i64::MAX }.into_run_policy_at(now()),
-            Err(ServerChangeError::DurationOutOfRange { seconds: i64::MAX })
-        ));
+        let to_last_second_of_9999 =
+            (Utc.with_ymd_and_hms(9999, 12, 31, 23, 59, 59).unwrap() - now()).num_seconds();
+        assert!(RunPolicyChoice::For {
+            seconds: to_last_second_of_9999
+        }
+        .into_run_policy_at(now())
+        .is_ok());
+        // Past year 9999 the deadline would serialise as `+10000-…`, which the
+        // base's date-time decoder refuses; past chrono's range it can't be held.
+        for seconds in [to_last_second_of_9999 + 1, 1_000_000_000_000, i64::MAX] {
+            assert!(
+                matches!(
+                    RunPolicyChoice::For { seconds }.into_run_policy_at(now()),
+                    Err(ServerChangeError::DurationOutOfRange { seconds: rejected }) if rejected == seconds
+                ),
+                "{seconds}"
+            );
+        }
     }
 
     #[test]

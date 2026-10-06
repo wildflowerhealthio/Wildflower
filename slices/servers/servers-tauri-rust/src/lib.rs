@@ -38,7 +38,8 @@
 //! [`reconcile_servers`] at setup, the servers whose policy is active are
 //! started and the rest stopped, through the [`ServerService`] port the app
 //! implements. At most [`servers_rust::MAX_RUNNING_SERVERS`] run. A server
-//! that fails to start has its status `Stopped` with the error.
+//! that fails to start has its status `Stopped` with the error, and is tried
+//! again once `server_set_run_policy` sets its policy again.
 //!
 //! **Statuses.** Each server's [`ServerStatus`] (its run state, its tunnel's
 //! liveness, and when the current run began) is emitted on

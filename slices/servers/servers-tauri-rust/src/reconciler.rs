@@ -8,8 +8,10 @@
 //! them it hasn't started.
 //!
 //! A server it started stays started until it leaves that set, even if its
-//! run has since stopped on its own or failed: a failed server isn't retried
-//! on every pass, only once its policy is set again or the app restarts.
+//! run has since stopped on its own. A server that failed to start isn't
+//! retried on every pass, only once its policy is set again
+//! ([`Reconciler::retry_failed_start`]), it leaves the set and comes back, or
+//! the app restarts.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -30,8 +32,24 @@ const NO_ACTIVE_POLICY: &str = "no server's run policy is active";
 /// time.
 #[derive(Default)]
 pub(crate) struct Reconciler {
-    /// The domains of the servers this reconciler has started and not stopped.
-    started_domains: Mutex<BTreeSet<String>>,
+    domains: Mutex<ReconciledDomains>,
+}
+
+/// The servers a [`Reconciler`] has acted on, by domain.
+#[derive(Default)]
+struct ReconciledDomains {
+    /// Started and not stopped.
+    started: BTreeSet<String>,
+    /// Failed to start, and not tried again since.
+    failed_to_start: BTreeSet<String>,
+}
+
+impl ReconciledDomains {
+    /// Whether no server is started or waiting for a retry: with none, the
+    /// service is told there is nothing to run.
+    fn is_empty(&self) -> bool {
+        self.started.is_empty() && self.failed_to_start.is_empty()
+    }
 }
 
 impl Reconciler {
@@ -45,12 +63,12 @@ impl Reconciler {
         service: &dyn ServerService,
         statuses: &ServerStatuses,
     ) {
-        let mut started_domains = self.started_domains.lock().await;
+        let mut domains = self.domains.lock().await;
         let servers = match read_servers(registry).await {
             Ok(servers) => servers,
             Err(error) => {
                 log::error!("[servers] the registered servers can't be read: {error}");
-                if started_domains.is_empty() {
+                if domains.is_empty() {
                     service.publish_no_server(format!(
                         "the registered servers can't be read: {error}"
                     ));
@@ -62,35 +80,43 @@ impl Reconciler {
         let domains_to_run: BTreeSet<String> =
             servers_to_run.iter().map(ServerRecord::domain).collect();
 
-        for domain in started_domains.clone() {
+        domains
+            .failed_to_start
+            .retain(|domain| domains_to_run.contains(domain));
+        for domain in domains.started.clone() {
             if domains_to_run.contains(&domain) {
                 continue;
             }
             log::info!("[servers] stopping {domain}: its run policy isn't active");
             match service.stop(&domain).await {
                 Ok(()) => {
-                    started_domains.remove(&domain);
+                    domains.started.remove(&domain);
                 }
                 Err(error) => log::error!("[servers] stopping {domain} failed: {error}"),
             }
         }
         for server in &servers_to_run {
             let domain = server.domain();
-            if started_domains.contains(&domain) {
+            if domains.started.contains(&domain) || domains.failed_to_start.contains(&domain) {
                 continue;
             }
             log::info!("[servers] starting {domain}: its run policy is active");
-            if let Err(error) = service.start(server).await {
-                log::error!("[servers] starting {domain} failed: {error}");
-                statuses.report_run_state(
-                    &domain,
-                    ServerRunState::Stopped { error: Some(error) },
-                    Utc::now(),
-                );
+            match service.start(server).await {
+                Ok(()) => {
+                    domains.started.insert(domain);
+                }
+                Err(error) => {
+                    log::error!("[servers] starting {domain} failed: {error}");
+                    statuses.report_run_state(
+                        &domain,
+                        ServerRunState::Stopped { error: Some(error) },
+                        Utc::now(),
+                    );
+                    domains.failed_to_start.insert(domain);
+                }
             }
-            started_domains.insert(domain);
         }
-        if started_domains.is_empty() {
+        if domains.is_empty() {
             service.publish_no_server(NO_ACTIVE_POLICY.to_owned());
         }
     }
@@ -109,10 +135,17 @@ impl Reconciler {
         stop_failed: impl FnOnce(String) -> E,
         remove: impl AsyncFnOnce() -> Result<(), E>,
     ) -> Result<(), E> {
-        let mut started_domains = self.started_domains.lock().await;
+        let mut domains = self.domains.lock().await;
         service.stop(domain).await.map_err(stop_failed)?;
-        started_domains.remove(domain);
+        domains.started.remove(domain);
+        domains.failed_to_start.remove(domain);
         remove().await
+    }
+
+    /// Let the next pass try again to start the server with `domain`, if it
+    /// failed to start: the user has set its policy again.
+    pub(crate) async fn retry_failed_start(&self, domain: &str) {
+        self.domains.lock().await.failed_to_start.remove(domain);
     }
 }
 

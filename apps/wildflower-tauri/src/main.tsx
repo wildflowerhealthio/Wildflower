@@ -16,12 +16,14 @@ import {
 
 addOsColorSchemeListener()
 
-// The host starts the server itself, from Rust, at launch. This records that
-// the server should keep running, so the background-service plugin restarts it
-// after the OS ends the app: in an iOS background window, or through Android's
-// tap-to-resume notification. The start config is the one the host starts with,
-// read from the same `tauri-shared-config.json` the host's `build.rs` reads. The
-// server runs either way, so a failure only costs those restarts, and is logged.
+// The host starts the server whose run policy is active itself, from Rust, at
+// launch. This records that the server should keep running, so the
+// background-service plugin restarts it after the OS ends the app: in an iOS
+// background window, or through Android's tap-to-resume notification. A restart
+// with no server to run ends at once. The start config is the one the host
+// starts with, read from the same `tauri-shared-config.json` the host's
+// `build.rs` reads. The server runs either way, so a failure only costs those
+// restarts, and is logged.
 Effect.runFork(
   Effect.tryPromise(() =>
     configureRecovery({

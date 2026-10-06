@@ -276,6 +276,9 @@ async fn set_run_policy(
         servers_rust::set_run_policy(registry, &changed_domain, policy, Utc::now())
     })
     .await;
+    if result.is_ok() {
+        servers.reconciler.retry_failed_start(&domain).await;
+    }
     servers.reconcile().await;
     match result {
         Ok(run_policy) => {
@@ -1073,6 +1076,24 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(harness.service.take_calls(), Vec::new());
+
+        // Setting its policy again tries it again.
+        harness.service.failing_starts.lock().unwrap().clear();
+        set_run_policy(
+            &harness.servers,
+            LAB.to_owned(),
+            choice(serde_json::json!({"kind": "whileInUse"})),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            harness.service.take_calls(),
+            vec![ServiceCall::Start(LAB.to_owned())]
+        );
+        assert_eq!(
+            list(&harness.servers).await.unwrap()[1].status.run_state,
+            ServerRunState::Running
+        );
     }
 
     /// An `Until` that ended while the app was closed isn't started, and the
