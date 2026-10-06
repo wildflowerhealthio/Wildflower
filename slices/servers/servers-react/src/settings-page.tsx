@@ -14,9 +14,10 @@ import type { RouterContext } from './router-context.ts'
 
 /** What the Notifications row says under its title for each permission. */
 const NOTIFICATION_PERMISSION_SUBTITLE: Readonly<Record<NotificationPermission, string>> = {
-  granted: 'On. Wildflower tells you when a server stops.',
-  denied: 'Off. Turn them on for Wildflower in the system settings.',
-  prompt: 'Not asked yet. Press to allow them.',
+  granted: "Allowed — you'll get a notification if a server stops or is paused.",
+  denied:
+    'Blocked — to hear when a server stops, allow notifications for Wildflower in your system settings.',
+  prompt: 'Not asked yet — select to allow notifications when a server stops.',
 }
 
 /**
@@ -32,10 +33,14 @@ const useNotificationsItem = (): ItemListItem => {
   const requestPermission = useRequestNotificationPermission(runHostCommand)
   const item = { id: 'notifications', title: 'Notifications' } as const
   if (requestPermission.isError) {
-    return { ...item, subtitle: "Couldn't ask to allow notifications.", tone: 'danger' }
+    return { ...item, subtitle: "Couldn't ask the system to allow notifications.", tone: 'danger' }
   }
   if (permission.isError) {
-    return { ...item, subtitle: "Couldn't read whether notifications are on.", tone: 'danger' }
+    return {
+      ...item,
+      subtitle: "Couldn't check whether notifications are allowed.",
+      tone: 'danger',
+    }
   }
   if (permission.isPending) return { ...item, subtitle: 'Checking…' }
   if (permission.data === 'prompt') {

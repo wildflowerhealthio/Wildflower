@@ -230,9 +230,12 @@ describe('Host Settings', () => {
   }
 
   it.each([
-    [true, 'On. Wildflower tells you when a server stops.'],
-    [false, 'Off. Turn them on for Wildflower in the system settings.'],
-    [null, 'Not asked yet. Press to allow them.'],
+    [true, "Allowed — you'll get a notification if a server stops or is paused."],
+    [
+      false,
+      'Blocked — to hear when a server stops, allow notifications for Wildflower in your system settings.',
+    ],
+    [null, 'Not asked yet — select to allow notifications when a server stops.'],
   ] as const)(
     'should read a notification permission of %j as "%s"',
     async (permission, expectedSubtitle) => {
@@ -269,7 +272,9 @@ describe('Host Settings', () => {
     await user.click(await screen.findByRole('button', { name: /Not asked yet/ }))
 
     // Assert
-    expect(await screen.findByText('On. Wildflower tells you when a server stops.')).toBeDefined()
+    expect(
+      await screen.findByText("Allowed — you'll get a notification if a server stops or is paused.")
+    ).toBeDefined()
     expect(host.seen.map(({ command }) => command)).toContain(
       'plugin:notification|request_permission'
     )
@@ -290,7 +295,9 @@ describe('Host Settings', () => {
     })
 
     // Assert
-    expect(await screen.findByText("Couldn't read whether notifications are on.")).toBeDefined()
+    expect(
+      await screen.findByText("Couldn't check whether notifications are allowed.")
+    ).toBeDefined()
   })
 
   it('should read the stored telemetry answer and reopen the dialog from its row', async () => {

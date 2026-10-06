@@ -169,7 +169,7 @@ describe('ItemList', () => {
       {
         id: '1',
         title: 'Notifications',
-        subtitle: 'On. Wildflower tells you when a server stops.',
+        subtitle: 'A sentence long enough to need a second line in a narrow row.',
       },
     ]
 
@@ -177,7 +177,9 @@ describe('ItemList', () => {
     render(<ItemList items={items} />)
 
     // Assert — CSS-modules hashing keeps the unhashed token in the class.
-    const subtitle = screen.getByText('On. Wildflower tells you when a server stops.')
+    const subtitle = screen.getByText(
+      'A sentence long enough to need a second line in a narrow row.'
+    )
     expect(subtitle.className).not.toMatch(/subtitle--wrap/)
     expect(subtitle.style.webkitLineClamp).toBe('')
   })
@@ -188,7 +190,7 @@ describe('ItemList', () => {
       {
         id: '1',
         title: 'Notifications',
-        subtitle: 'On. Wildflower tells you when a server stops.',
+        subtitle: 'A sentence long enough to need a second line in a narrow row.',
       },
     ]
 
@@ -196,7 +198,9 @@ describe('ItemList', () => {
     render(<ItemList items={items} maxLines={maxLines} />)
 
     // Assert
-    const subtitle = screen.getByText('On. Wildflower tells you when a server stops.')
+    const subtitle = screen.getByText(
+      'A sentence long enough to need a second line in a narrow row.'
+    )
     expect(subtitle.className).toMatch(/subtitle--wrap/)
     expect(subtitle.className).toMatch(/subtitle--clamp/)
     expect(subtitle.style.webkitLineClamp).toBe(String(maxLines))
@@ -208,7 +212,7 @@ describe('ItemList', () => {
       {
         id: '1',
         title: 'Notifications',
-        subtitle: 'On. Wildflower tells you when a server stops.',
+        subtitle: 'A sentence long enough to need a second line in a narrow row.',
       },
     ]
 
@@ -216,7 +220,9 @@ describe('ItemList', () => {
     render(<ItemList items={items} maxLines={null} />)
 
     // Assert
-    const subtitle = screen.getByText('On. Wildflower tells you when a server stops.')
+    const subtitle = screen.getByText(
+      'A sentence long enough to need a second line in a narrow row.'
+    )
     expect(subtitle.className).toMatch(/subtitle--wrap/)
     expect(subtitle.className).not.toMatch(/subtitle--clamp/)
     expect(subtitle.style.webkitLineClamp).toBe('')
