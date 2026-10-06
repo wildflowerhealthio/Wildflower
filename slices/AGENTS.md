@@ -17,7 +17,7 @@ slices/<name>/
 └── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
 
-Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `servers`, `wildflower-server`).
+Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `wildflower-server`).
 
 Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `relay`, `request-log`, `scopes`, `servers`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
 
@@ -131,7 +131,11 @@ no Wildflower relay site, is entered as its settings, which get the same
 checks. A relay's identity (its dial address and noise key) is pinned when
 the server is added, and re-entering a token refuses a relay that presents
 another. `servers-tauri-rust` is the base's `server_add` and `server_set_credentials`
-commands over it.
+commands over it. The base itself, the UI the Tauri host's webview mounts in
+place of the owner UI, is `servers-react`'s `BaseRoot`: its own telemetry
+consent, then the server list and the app's Settings, which reach the host
+only through `servers-core`'s Tauri commands (plain `invoke`, answers
+decoded by Effect Schema), never the effect-messaging bridge.
 
 `smart-app` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 

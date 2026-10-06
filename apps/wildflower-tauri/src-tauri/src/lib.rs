@@ -24,11 +24,8 @@ use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
 // `apps/wildflower-tauri/tauri-shared-config.json`. `build.rs` reads that file
-// and re-emits these as `rustc-env` vars; the TS shell injects the same file
-// as `WILDFLOWER_LOOPBACK_ORIGIN` (see `vite.config.ts` and `src/main.tsx`).
-// Changing the JSON updates both sides — they can't drift. A non-numeric port
-// in the JSON fails this `const` parse at compile time rather than at bind
-// time.
+// and re-emits these as `rustc-env` vars. A non-numeric port in the JSON fails
+// this `const` parse at compile time rather than at bind time.
 const LOOPBACK_HOSTNAME: &str = env!("WILDFLOWER_LOOPBACK_HOSTNAME");
 const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_PORT"), 10) {
     Ok(port) => port,
@@ -37,17 +34,13 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
 
 // The host's granted-scope string, also sourced from
 // `apps/wildflower-tauri/tauri-shared-config.json` (re-emitted by `build.rs`).
-// The TS shell reads the same value as `WILDFLOWER_LOCAL_GRANTED_SCOPES`
-// (`vite.config.ts`), so the host's device-authorization request can't drift
-// from what gatekeeper seeds. gatekeeper seeds its first-party client's
+// gatekeeper seeds its first-party client's
 // `allowed_scopes` and mints the host owner token from this set (asserting it
 // covers `WILDFLOWER_WIDEST_SCOPES`).
 const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 
 // The host's first-party OAuth `client_id`, sourced from the same
-// `apps/wildflower-tauri/tauri-shared-config.json` (re-emitted by `build.rs`).
-// The TS shell reads the same value as `WILDFLOWER_FIRST_PARTY_CLIENT_ID`
-// (`vite.config.ts`), so the WebView's device-login `client_id` can't drift from
+// `apps/wildflower-tauri/tauri-shared-config.json` (re-emitted by `build.rs`):
 // the id gatekeeper seeds the first-party client and mints the owner token under.
 const FIRST_PARTY_CLIENT_ID: &str = env!("WILDFLOWER_FIRST_PARTY_CLIENT_ID");
 
@@ -252,8 +245,7 @@ fn start_server(
         server_dir.display()
     );
     // Hostname/port come from the shared `tauri-shared-config.json` (see
-    // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the TS `apiBaseUrl`
-    // reads.
+    // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`).
     let loopback_base_url = match Url::parse(&format!("http://{LOOPBACK_HOSTNAME}:{LOOPBACK_PORT}"))
     {
         Ok(url) => url,

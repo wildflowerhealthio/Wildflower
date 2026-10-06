@@ -149,10 +149,16 @@ fn format_log_payload(payload: &[serde_json::Value]) -> String {
 }
 
 /// Senders for server-originated host→web state. The bridge constructs
-/// the underlying channels (it owns the receiving ends for the lifetime
-/// of its resident task) and hands this struct to the caller; the
-/// server task publishes through it. Grows one field per state — slice
-/// crates never see this type, they take a bare `watch::Sender`.
+/// the underlying channels (its resident task owns the receiving ends,
+/// and a clone of each sender, for the life of the app) and hands this
+/// struct to the caller; the server task publishes through it. Grows one
+/// field per state — slice crates never see this type, they take a bare
+/// `watch::Sender`.
+///
+/// The channels outlive any server: dropping this struct, as a setup
+/// path that starts no server does, closes nothing, so the resident task
+/// keeps answering `__Ready` and a server started later publishes to the
+/// same webview.
 pub struct BridgePublishers {
     pub host_owner_token_sender: watch::Sender<Option<String>>,
     pub active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
@@ -275,7 +281,15 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     }
 
     let handle = app.clone();
+    // The task's own senders keep both channels open for the life of the
+    // app, whether or not a server ever takes the publishers (see
+    // `BridgePublishers`), so its `changed` arms never see them close.
+    let channels_kept_open = (
+        host_owner_token_sender.clone(),
+        active_pending_consent_sender.clone(),
+    );
     tauri::async_runtime::spawn(async move {
+        let _channels_kept_open = channels_kept_open;
         // Tracks the consent head we last delivered, so a `Some(A) →
         // Some(B)` transition does not re-raise an already-foreground
         // window — focus is for "a brand new popup appeared", not for
@@ -293,20 +307,8 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
             }
             let outcome = tokio::select! {
                 () = ready.notified() => Outcome::Ready,
-                changed = token_rx.changed() => match changed {
-                    Ok(()) => Outcome::TokenChanged,
-                    Err(_) => {
-                        log::error!("[bridge] token channel closed; delivery stopped");
-                        return;
-                    }
-                },
-                changed = consent_rx.changed() => match changed {
-                    Ok(()) => Outcome::ConsentChanged,
-                    Err(_) => {
-                        log::error!("[bridge] pending-consent channel closed; delivery stopped");
-                        return;
-                    }
-                },
+                Ok(()) = token_rx.changed() => Outcome::TokenChanged,
+                Ok(()) = consent_rx.changed() => Outcome::ConsentChanged,
             };
 
             match outcome {

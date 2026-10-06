@@ -8,8 +8,9 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
 - **`main-web`** (`src/main-web.tsx`) — the build published at `/app/`,
   cross-origin to the server `?server=` names. Signs in by SMART redirect and
   holds its bearer in page memory (`web-entry.ts`, `sign-in.ts`).
-- **`main-tauri`** (`apps/wildflower-tauri/src/main.tsx`) — the Tauri host's
-  webview, authenticated by the host.
+- **`main-tauri`** — the wiring for a webview the host authenticates. No app
+  mounts it: the Tauri host's webview mounts the servers base
+  (`slices/servers/servers-react`) instead.
 
 ## Guardrails
 
