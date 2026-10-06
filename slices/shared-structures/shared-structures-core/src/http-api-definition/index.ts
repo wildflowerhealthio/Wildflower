@@ -9,7 +9,7 @@ import type { Simplify } from 'effect/Types'
  * value and returns a `ClientTag<Self>()` factory and a
  * `makeLayerFactory(Tag)` that yields the slice's client layer. The
  * slice extends `ClientTag<Self>()` so its class name
- * (`TunnelAdminHttpApiClient`, etc.) remains both a value and a type
+ * (`DatabasesHttpApiClient`, etc.) remains both a value and a type
  * alias, exactly like the standalone
  * `class X extends Context.Tag(name)<X, Service>() {}` pattern.
  *
@@ -29,15 +29,15 @@ import type { Simplify } from 'effect/Types'
  * import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
  *
  * const { ClientTag, makeLayerFactory } = defineSliceHttpClient({
- *   name: 'TunnelAdminHttpApiClient',
- *   api: TunnelAdminApi,
+ *   name: 'DatabasesHttpApiClient',
+ *   api: DatabasesApi,
  * })
  *
- * class TunnelAdminHttpApiClient extends ClientTag<TunnelAdminHttpApiClient>() {
- *   static readonly layer = makeLayerFactory(TunnelAdminHttpApiClient)()
+ * class DatabasesHttpApiClient extends ClientTag<DatabasesHttpApiClient>() {
+ *   static readonly layer = makeLayerFactory(DatabasesHttpApiClient)()
  * }
  *
- * export { TunnelAdminHttpApiClient }
+ * export { DatabasesHttpApiClient }
  * ```
  */
 const defineSliceHttpClient = <

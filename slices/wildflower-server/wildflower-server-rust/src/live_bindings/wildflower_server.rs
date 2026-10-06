@@ -17,7 +17,7 @@ use gatekeeper_rust::{
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
-use tunnel_rust::TunnelLiveness;
+use tunnel_rust::{TunnelDaemon, TunnelLiveness};
 
 use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
@@ -42,24 +42,33 @@ const WILDFLOWER_DB: &str = "wildflower.sqlite";
 pub struct WildflowerServer {
     listener: TcpListener,
     router: Router,
+    /// The tunnel's supervisor, which dials the relay until it's dropped. The
+    /// server holds it so the tunnel runs for exactly as long as the server
+    /// does.
+    tunnel_daemon: TunnelDaemon,
 }
 
 impl WildflowerServer {
     /// Serve the composed API on the bound loopback port until `shutdown` is
     /// cancelled. Cancelling stops accepting connections, and the call returns
-    /// `Ok` once the open ones close.
+    /// `Ok` once the open ones close. The tunnel stops when the call returns.
     ///
     /// # Errors
     ///
     /// Returns an error if serving fails.
     pub async fn serve(self, shutdown: CancellationToken) -> anyhow::Result<()> {
+        let Self {
+            listener,
+            router,
+            tunnel_daemon,
+        } = self;
         axum::serve(
-            self.listener,
-            self.router
-                .into_make_service_with_connect_info::<SocketAddr>(),
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
         )
         .with_graceful_shutdown(shutdown.cancelled_owned())
         .await?;
+        drop(tunnel_daemon);
         Ok(())
     }
 }
@@ -82,8 +91,10 @@ impl WildflowerServer {
 ///
 /// Slices spawn background tasks (the tunnel supervisor, gatekeeper's re-mint
 /// and sweeps, the tunnel-liveness copy) onto the runtime that runs this
-/// future. They are not tied to the shutdown token: they stop when that runtime
-/// shuts down.
+/// future. They are not tied to the shutdown token: the tunnel supervisor and
+/// the liveness copy stop when the returned [`WildflowerServer`] is dropped
+/// (at the latest when [`serve`](WildflowerServer::serve) returns), the rest
+/// when that runtime shuts down.
 pub async fn set_up(
     config: WildflowerServerConfig,
     host: HostPorts,
@@ -246,11 +257,10 @@ pub async fn set_up(
         .context("failed to set up collector")?
         .layer(gatekeeper_auth_layer.clone());
 
-    // The read-only `/tunnel` surface, Owner-gated like the rest of the admin
-    // API. The tunnel dials the relay from the server's record for as long as
-    // the server runs, forwarding the loopback port. The daemon drives a
-    // `/health` probe — against the app-layer `/health` route mounted below —
-    // through the reqwest adapter to verify reachability.
+    // The tunnel dials the relay from the server's record for as long as the
+    // server runs, forwarding the loopback port; it has no HTTP surface. The
+    // daemon drives a `/health` probe — against the app-layer `/health` route
+    // mounted below — through the reqwest adapter to verify reachability.
     let tunnel_config = tunnel_rust::TunnelConfig {
         local_port: runtime
             .loopback_base_url_ref()
@@ -260,12 +270,11 @@ pub async fn set_up(
         public_host,
     };
     let health_probe: Arc<dyn tunnel_rust::HealthProbe> = Arc::new(ReqwestHealthProbe::new());
-    let tunnel = tunnel_rust::setup_tunnel(&tunnel_config, health_probe);
-    let gated_tunnel = tunnel.router.layer(gatekeeper_auth_layer.clone());
+    let tunnel_daemon = tunnel_rust::setup_tunnel(&tunnel_config, health_probe);
     // The host watches the tunnel's liveness through its own channel, which
     // outlives this server.
     tokio::spawn(copy_tunnel_liveness(
-        tunnel.liveness,
+        tunnel_daemon.watch_liveness(),
         observers.tunnel_liveness_sender,
     ));
 
@@ -360,7 +369,6 @@ pub async fn set_up(
         .merge(gated_fhir_r4)
         .merge(gated_ohif_server)
         .merge(gated_collector)
-        .merge(gated_tunnel)
         .merge(gated_request_log)
         // The app-layer `/health`: an unauthenticated liveness endpoint the
         // tunnel's reachability probe round-trips through the relay. Ungated so
@@ -413,11 +421,15 @@ pub async fn set_up(
         forwarded_request_layer::report_forwarded_request,
     ));
 
-    Ok(WildflowerServer { listener, router })
+    Ok(WildflowerServer {
+        listener,
+        router,
+        tunnel_daemon,
+    })
 }
 
-/// Copy each tunnel liveness snapshot onto the host's channel until the tunnel
-/// slice drops its sender or the server's runtime shuts down.
+/// Copy each tunnel liveness snapshot onto the host's channel until the
+/// [`TunnelDaemon`] is dropped or the server's runtime shuts down.
 async fn copy_tunnel_liveness(
     mut tunnel_liveness: watch::Receiver<TunnelLiveness>,
     host_tunnel_liveness_sender: watch::Sender<Option<TunnelLiveness>>,

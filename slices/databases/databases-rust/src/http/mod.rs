@@ -28,7 +28,7 @@ use utoipa_axum::router::OpenApiRouter;
 struct ApiDoc;
 
 /// The `/databases` surface as an `OpenApiRouter`, so the spec is collected from
-/// the same routes that serve traffic (mirrors `apps-rust` / `tunnel-rust`).
+/// the same routes that serve traffic (mirrors `apps-rust` / `request-log-rust`).
 fn documented_router() -> OpenApiRouter<Arc<DatabasesState>> {
     OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router())
 }

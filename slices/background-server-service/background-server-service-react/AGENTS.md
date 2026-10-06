@@ -26,10 +26,7 @@ page. Both render the host's latest `ServerServiceStatus` and send
   for the route below, so the page header doesn't add a second one.
 - `src/server-settings-page.tsx` — the page: a Status card (state,
   notifications, last stop reason, last error) on the Settings list's card
-  surface, Restart in every state, and the Tunnel section.
-  `src/server-tunnel-status.tsx` reads the tunnel through `tunnel-react`'s
-  `tunnelStateQueryOptions` and draws it with its `TunnelStatusHero`, mounted
-  only while the server runs.
+  surface, and Restart in every state.
 - `src/server-status-text.ts` — the labels and sentences for states, stop
   reasons and notification permissions, and `serverDisplayState`, which shows a
   clean `appStop` stop (the stop half of a restart) as `restarting`.
@@ -39,7 +36,8 @@ page. Both render the host's latest `ServerServiceStatus` and send
 - `src/routes/settings/server/index.tsx` — the route, mounted into
   `apps/wildflower-react` by its `routes.config.ts`; `src/routes/__root.tsx`
   exists only so the slice's own route generator has an anchor, with a
-  context matching the app's (`src/router-context.ts`).
+  context matching the app's (`src/router-context.ts`, the shared base: the
+  page calls no API).
 
 ## Wiring
 
@@ -58,9 +56,6 @@ page. Both render the host's latest `ServerServiceStatus` and send
 
 - **No client-side state machine.** Derive everything from the snapshot; don't
   remember a previous state to decide what to show.
-- **The tunnel query refetches on mount and shows loading until that fetch
-  lands.** The app warms the tunnel cache at boot, and a restart starts a new
-  tunnel, so a cached value can be a previous run's.
 
 ## Testing
 
@@ -69,11 +64,10 @@ page. Both render the host's latest `ServerServiceStatus` and send
   `stopped` shows its reason, error and Restart; `starting` and the stop half of
   a restart show none of them; Restart sends `RestartServer`; a running
   snapshot hides it.
-- `src/server-settings-page.test.tsx` — through the slice's route tree, with
-  the real tunnel client over a stub `HttpClient`: waiting before the first
-  snapshot, each state with Restart, a stopped server's fields and no tunnel
-  request, the stop half of a restart as restarting, the tunnel's host while
-  running, and loading rather than a previous run's cached tunnel.
+- `src/server-settings-page.test.tsx` — through the slice's route tree:
+  waiting before the first snapshot, each state with Restart, a stopped
+  server's fields, the notification permission, and the stop half of a restart
+  as restarting.
 - `src/web-bridge.test.ts` — each snapshot replaces the store's.
 - `src/routes.test.tsx` — the route tree is `/settings/server/` alone.
 - `src/settings-fragments.test.ts` — the one Settings row links to
@@ -87,5 +81,3 @@ page. Both render the host's latest `ServerServiceStatus` and send
   restart, and why the page keeps no state of its own.
 - [Web Handler Coordinator Explanation](../../../docs/Effect/Web%20Handler%20Coordinator%20Explanation.md)
   — why the handler is boot-stable.
-- [tunnel-react](../../tunnel/tunnel-react) — the tunnel query and component the
-  page reuses.

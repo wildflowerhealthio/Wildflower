@@ -77,9 +77,7 @@
     "smart-app-react": "workspace:*",
     "telemetry-react": "workspace:*",
     "telemetry-web": "workspace:*",
-    "tundra-css": "catalog:",
-    "tunnel-core": "workspace:*",
-    "tunnel-react": "workspace:*"
+    "tundra-css": "catalog:"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",

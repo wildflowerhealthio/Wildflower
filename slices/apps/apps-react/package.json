@@ -39,8 +39,6 @@
     "shared-structures-core": "workspace:*",
     "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
-    "tunnel-core": "workspace:*",
-    "tunnel-react": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
@@ -58,8 +56,6 @@
     "react-tundraish": "workspace:*",
     "shared-structures-core": "workspace:*",
     "shared-structures-react": "workspace:*",
-    "telemetry-react": "workspace:*",
-    "tunnel-core": "workspace:*",
-    "tunnel-react": "workspace:*"
+    "telemetry-react": "workspace:*"
   }
 }

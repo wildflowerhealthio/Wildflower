@@ -14,8 +14,7 @@ const AppsApi = HttpApi.make('AppsApi').add(Apps.httpApiGroup)
 /**
  * Owner-only surface — app writes (create / update / delete). The composing
  * app (e.g. `wildflower-server`) applies `RequireAuthMiddleware` to this
- * `HttpApi`; slice cores stay free of auth deps. Tunnel state lives
- * on `TunnelAdminApi` from `tunnel-core/http-api-definition`.
+ * `HttpApi`; slice cores stay free of auth deps.
  */
 const AppsAdminApi = HttpApi.make('AppsAdminApi').add(AppsAdmin.httpApiGroup)
 

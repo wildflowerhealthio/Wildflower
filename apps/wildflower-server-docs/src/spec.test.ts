@@ -94,7 +94,7 @@ describe('preparedSpec', () => {
   it('makes every shipped slice snapshot sendable against the chosen server', () => {
     // Runs against the real committed snapshots this page bundles, so a
     // snapshot that stopped being a usable OpenAPI document fails here.
-    expect(docSources.length).toBe(7)
+    expect(docSources.length).toBe(6)
     for (const source of docSources) {
       const result = preparedSpec(source.spec, 'https://example-tunnel-origin')
       expect(result.servers).toEqual([{ url: 'https://example-tunnel-origin' }])

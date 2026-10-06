@@ -4,13 +4,12 @@ import { Context, Effect, Layer, Stream, Subscribable } from 'effect'
  * Effect service carrying the live `Subscribable<string>` for the
  * current public origin (the URL at which clients should reach this
  * server). Consumers typically read via the `Origin.get` Effect — which
- * `.get`s the Subscribable — so a tunnel toggle surfaces on the next
- * read without rebuilding the layer or runtime.
+ * `.get`s the Subscribable — so a change surfaces on the next read
+ * without rebuilding the layer or runtime.
  *
- * The package that owns the live origin (e.g. `tunnel-core`) constructs
- * the Subscribable from `servedOrigin$` and wires it via a Layer that
- * depends on `TunnelStore | LocalHttpServerStore`. Consumers of `Origin`
- * stay slice-agnostic — they only see the `Origin` requirement.
+ * The composing app provides it (e.g. `Origin.layerFromLiteral`).
+ * Consumers of `Origin` stay slice-agnostic — they only see the `Origin`
+ * requirement.
  */
 class Origin extends Context.Tag('Origin')<Origin, Subscribable.Subscribable<string>>() {
   /**
@@ -24,7 +23,7 @@ class Origin extends Context.Tag('Origin')<Origin, Subscribable.Subscribable<str
 
   /**
    * Stream of origin updates. Emits the current value and then each
-   * subsequent change (e.g. tunnel toggles, LHS rebind). Sources its
+   * subsequent change. Sources its
    * subscription from the Layer-provided Subscribable.
    */
   static readonly changes: Stream.Stream<string, never, Origin> = Stream.unwrap(

@@ -17,7 +17,7 @@ type DatabasesClientRequirements = HttpClient.HttpClient | DatabasesHttpApiClien
  * requests authenticate. This builder just re-exposes that
  * layer under a `buildXClientLayer()` name matching the other slices. Leaves
  * `HttpClient` unprovided: the host app supplies one shared across every slice's
- * client layer via the composed `runtimeLayer`. Mirrors `tunnel-react`.
+ * client layer via the composed `runtimeLayer`.
  */
 const buildDatabasesClientLayer = (): Layer.Layer<
   DatabasesHttpApiClient,
