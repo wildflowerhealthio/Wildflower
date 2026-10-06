@@ -31,7 +31,7 @@ pub(crate) struct FilesystemDatabaseFiles {
 }
 
 impl FilesystemDatabaseFiles {
-    /// Build the adapter over the host's app-data directory. Every resource id
+    /// Build the adapter over the server's folder. Every resource id
     /// resolves to `data_dir.join(id)`.
     pub(crate) fn new(data_dir: PathBuf) -> Self {
         Self { data_dir }

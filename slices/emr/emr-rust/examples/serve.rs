@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
 
     let runtime = ServerRuntimeConfig {
         loopback_base_url: "http://127.0.0.1:8080".parse()?,
-        app_data_dir: tmp.clone(),
+        server_dir: tmp.clone(),
     };
     let config = EmrConfig {
         log_level: "info".to_string(),

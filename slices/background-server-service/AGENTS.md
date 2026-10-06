@@ -42,9 +42,12 @@ here.
   mirror against the plugin's own serializer.
 
 `apps/wildflower-tauri` registers the notification and background-service
-plugins, builds the `ServerHostContext` in `.setup()`, and hands it with the
-service's start config (label and foreground-service type, from
-`tauri-shared-config.json`) to `start_background_server_service`. It also owns
+plugins, builds the `ServerHostContext` in `.setup()` for the server
+`servers.json` sets running, and hands it with the service's start config
+(label and foreground-service type, from `tauri-shared-config.json`) to
+`start_background_server_service`; with no server set running it calls
+`report_no_server` instead, whose `RestartServer` starts a server set running
+since. It also owns
 the mobile packaging: the plugin's `background-service` config in
 `tauri.conf.json`, the Android manifest's overrides of the plugin's manifest,
 the iOS background modes and `BGTask` identifiers, and the Tauri entry's

@@ -65,6 +65,9 @@ Tauri app.
   .plugin(tauri_plugin_notification::init())
   .plugin(background_service::init_with_service(move || WildflowerServerService::new(host_context.clone())))
   setup():
+    read servers.json: the first server set running runs, from <data root>/servers/<domain>/
+      none set running ─▶ report_no_server(app, start)   // __Ready answered "stopped", no error; nothing starts
+                          RestartServer ─▶ start(): re-read servers.json; a server set running since starts as below
     build WildflowerServerConfig + HostPorts (consent dialog, webview handle, bridge publishers)
     (ServerHostContext, receivers) = ServerHostContext::new(config, host_ports)
     start_background_server_service(app, receivers, StartConfig { label, type })   // from tauri-shared-config.json

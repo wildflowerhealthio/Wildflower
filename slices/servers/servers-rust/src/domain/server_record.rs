@@ -2,13 +2,20 @@
 //! stores it. A server is identified by its [`domain`](ServerRecord::domain),
 //! `<tunnel name>.<relay domain>`; it has no other name.
 //!
-//! The record holds configuration only. Whether the server is running, its
-//! tunnel's liveness and its certificate are live state, held by whatever runs
-//! the server, never here.
+//! The record holds configuration only, [`running`](ServerRecord::running)
+//! included: whether the user wants the server run, not whether a run is up.
+//! A run's state, its tunnel's liveness and its certificate are live state,
+//! held by whatever runs the server, never here.
+
+use std::path::{Path, PathBuf};
 
 use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
 use serde::{Deserialize, Serialize, Serializer};
 use url::Url;
+
+/// The folder in the data root that holds one folder per server, named by its
+/// [`domain`](ServerRecord::domain).
+pub const SERVERS_DIR_NAME: &str = "servers";
 
 /// One server: the relay it is reached through, the tunnel it holds there,
 /// and how it launches apps.
@@ -37,6 +44,11 @@ pub struct ServerRecord {
     /// Whether this server's certificates come from the ACME staging directory
     /// instead of production.
     pub staging_certificates: bool,
+    /// Whether the user wants this server run: the host starts a server with
+    /// `running` set when it starts. Enrolment sets it on the first server
+    /// added while none is set, and on no later one. It says nothing about
+    /// whether a run is up, which is live state and never stored.
+    pub running: bool,
 }
 
 impl ServerRecord {
@@ -59,6 +71,15 @@ impl ServerRecord {
     #[must_use]
     pub fn domain(&self) -> String {
         format!("{}.{}", self.tunnel_name, self.public_settings.domain)
+    }
+
+    /// The folder the server runs from, `<data_root>/servers/<domain>/`, which
+    /// holds its databases. Only the path: nothing is created here. The
+    /// domain is a tunnel name and a relay domain, both DNS labels, so it
+    /// can't climb out of `servers/`.
+    #[must_use]
+    pub fn server_dir(&self, data_root: &Path) -> PathBuf {
+        data_root.join(SERVERS_DIR_NAME).join(self.domain())
     }
 }
 
@@ -179,6 +200,7 @@ pub(crate) mod tests {
             },
             launcher_url: ServerRecord::default_launcher_url(),
             staging_certificates: false,
+            running: false,
         }
     }
 
@@ -198,6 +220,7 @@ pub(crate) mod tests {
             },
             launcher_url: Url::parse("https://launcher.example.com/").unwrap(),
             staging_certificates: true,
+            running: false,
         }
     }
 
@@ -258,6 +281,19 @@ pub(crate) mod tests {
             "ruth.relay.wildflowerhealth.io"
         );
         assert_eq!(self_hosted_record("lab").domain(), "lab.relay.example.com");
+    }
+
+    #[test]
+    fn a_server_s_folder_is_its_domain_under_servers() {
+        let data_root = Path::new("/data/root");
+        assert_eq!(
+            official_record("ruth").server_dir(data_root),
+            Path::new("/data/root/servers/ruth.relay.wildflowerhealth.io")
+        );
+        assert_eq!(
+            self_hosted_record("lab").server_dir(data_root),
+            Path::new("/data/root/servers/lab.relay.example.com")
+        );
     }
 
     #[test]

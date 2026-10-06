@@ -19,9 +19,9 @@ use background_server_service_rust::{
 use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT, READY_TAG};
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::tunnel_service::TunnelLiveness;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tauri::plugin::PermissionState;
-use tauri::{AppHandle, Emitter, Listener, Manager, Runtime};
+use tauri::{AppHandle, Emitter, EventId, Listener, Manager, Runtime};
 use tauri_plugin_background_service::{
     BackgroundService, ServiceContext, ServiceError, ServiceManagerHandle, StartConfig,
 };
@@ -231,6 +231,45 @@ pub fn start_background_server_service<R: Runtime>(
     });
 }
 
+/// Report that there is no server to run, instead of
+/// [`start_background_server_service`]: nothing starts, and every `__Ready`
+/// from the page is answered with a [`ServerServiceStatus`] that is stopped with
+/// no error, so the page shows a stopped server rather than waiting on one.
+/// No run means no failure: there's no notification or error dialog.
+///
+/// A `RestartServer` from the page calls `start_server_to_run`, which starts
+/// the server set running since (through [`start_background_server_service`])
+/// and returns `true`, or returns `false` when there is still none. Once it
+/// has started one, this stops answering the page, and the started service's
+/// own listeners take over; until then each restart is answered with the
+/// stopped status again.
+///
+/// Registers its listener synchronously, so call it from `setup()` before the
+/// page can send `__Ready`. Call once per app lifecycle, and never alongside
+/// [`start_background_server_service`].
+pub fn report_no_server<R: Runtime>(
+    app: &AppHandle<R>,
+    start_server_to_run: impl Fn(&AppHandle<R>) -> bool + Send + Sync + 'static,
+) {
+    log::info!("[background-server-service] no server is set to run; none started");
+    let handle = app.clone();
+    let listener: Arc<OnceLock<EventId>> = Arc::new(OnceLock::new());
+    let listener_in_handler = Arc::clone(&listener);
+    let id = app.listen(BRIDGE_EVENT, move |event| {
+        let Ok(envelope) = serde_json::from_str::<BridgeEnvelope>(event.payload()) else {
+            return;
+        };
+        if envelope.tag == RESTART_SERVER && start_server_to_run(&handle) {
+            if let Some(&id) = listener_in_handler.get() {
+                handle.unlisten(id);
+            }
+        } else if envelope.tag == READY_TAG || envelope.tag == RESTART_SERVER {
+            emit_status(&handle, &ServerRunState::Stopped { error: None }, None);
+        }
+    });
+    let _ = listener.set(id);
+}
+
 /// Route the page's `__Ready` (a status snapshot is wanted) and `RestartServer`
 /// (a restart as `start_config` says). Sibling slices' tags and this slice's
 /// own `ServerServiceStatus` echo are dropped.
@@ -339,15 +378,21 @@ async fn emit_status_changes<R: Runtime>(
         }
         let current_run_state = run_state.borrow_and_update().clone();
         let current_stop_reason = *last_stop_reason.borrow_and_update();
-        let status = ServerServiceStatus::new(
-            &current_run_state,
-            current_stop_reason,
-            notification_permission(&app),
-        );
-        let message = BackgroundServerServiceHostToWeb::ServerServiceStatus(status);
-        if let Err(error) = app.emit(BRIDGE_EVENT, &message) {
-            log::error!("[background-server-service] failed to emit {message:?}: {error}");
-        }
+        emit_status(&app, &current_run_state, current_stop_reason);
+    }
+}
+
+/// Emit a [`ServerServiceStatus`] for `run_state` and `stop_reason` on
+/// [`BRIDGE_EVENT`], with the current notification permission.
+fn emit_status<R: Runtime>(
+    app: &AppHandle<R>,
+    run_state: &ServerRunState,
+    stop_reason: Option<ServiceStopReason>,
+) {
+    let status = ServerServiceStatus::new(run_state, stop_reason, notification_permission(app));
+    let message = BackgroundServerServiceHostToWeb::ServerServiceStatus(status);
+    if let Err(error) = app.emit(BRIDGE_EVENT, &message) {
+        log::error!("[background-server-service] failed to emit {message:?}: {error}");
     }
 }
 

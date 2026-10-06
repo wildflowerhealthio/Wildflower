@@ -67,8 +67,8 @@ pub use config::{DatabaseDescriptor, DatabasesConfig};
 pub use files::purge_pending_deletions;
 pub use live_bindings::state::DatabasesState;
 
-/// Build the `/databases` router over the host's data directory, mirroring
-/// `apps-rust`'s `setup_apps`. The host passes its app-data dir; the slice
+/// Build the `/databases` router over the server's folder, mirroring
+/// `apps-rust`'s `setup_apps`. The server passes its folder; the slice
 /// resolves each catalogued database beneath it on demand.
 ///
 /// The returned router carries no middleware — the consumer wraps it with its

@@ -53,10 +53,10 @@ impl DatabaseDescriptor {
     }
 }
 
-/// What [`setup_databases`](crate::setup_databases) needs: the host's app-data
-/// directory (the parent of every database file) and the catalogue of databases
-/// to expose. The Tauri host passes `ServerRuntimeConfig::app_data_dir` and the
-/// descriptors for the databases it opens.
+/// What [`setup_databases`](crate::setup_databases) needs: the server's folder
+/// (the parent of every database file) and the catalogue of databases to
+/// expose. The Wildflower server passes `ServerRuntimeConfig::server_dir` and
+/// the descriptors for the databases it opens.
 #[derive(Debug, Clone)]
 pub struct DatabasesConfig {
     /// The directory holding the database files — every resource id resolves to

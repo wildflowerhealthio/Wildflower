@@ -1,10 +1,11 @@
-//! The server's lifecycle: once `set_up` has bound the port, cancelling
-//! `serve`'s shutdown token makes it return `Ok`, and the loopback port is then
-//! free for a second server over the same app-data dir and the same host
-//! channels, which comes up and answers `/health`. While serving, the host's
-//! observers see the tunnel's liveness and each forwarded request, and the
-//! request log records each forwarded request and serves it back on
-//! `/requests` to a token holding the request log's read scope.
+//! The server's lifecycle: `set_up` creates the server's folder and opens its
+//! databases there, and once it has bound the port, cancelling `serve`'s
+//! shutdown token makes it return `Ok`. The loopback port is then free for a
+//! second server over the same folder and the same host channels, which comes
+//! up and answers `/health`. While serving, the host's observers see the
+//! tunnel's liveness and each forwarded request, and the request log records
+//! each forwarded request and serves it back on `/requests` to a token holding
+//! the request log's read scope.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -49,11 +50,11 @@ fn free_loopback_port() -> u16 {
     probe.local_addr().expect("ephemeral port address").port()
 }
 
-fn server_config(app_data_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {
+fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {
     WildflowerServerConfig {
         runtime: ServerRuntimeConfig {
             loopback_base_url,
-            app_data_dir: app_data_dir.clone(),
+            server_dir,
         },
         search_parameter_data_dir: PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -93,7 +94,13 @@ async fn health_status(loopback_base_url: &Url) -> reqwest::StatusCode {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn serve_returns_on_shutdown_and_the_port_rebinds() {
-    let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
+    let data_root = tempfile::tempdir().expect("temp data root");
+    // A server's folder as the host lays it out, `<data root>/servers/<domain>/`,
+    // which doesn't exist until the server creates it.
+    let server_dir = data_root
+        .path()
+        .join("servers")
+        .join("ruth.relay.wildflowerhealth.io");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
 
@@ -114,7 +121,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         tunnel_liveness_sender,
         forwarded_request_sender,
     };
-    let config = server_config(app_data_dir.path().to_owned(), loopback_base_url.clone());
+    let config = server_config(server_dir.clone(), loopback_base_url.clone());
 
     let first_shutdown = CancellationToken::new();
     let first = tokio::time::timeout(
@@ -128,6 +135,17 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     )
     .await
     .expect("the first serve binds in time");
+    // Both databases are in the server's folder, and none in the data root.
+    for database in ["wildflower.sqlite", "health-data.sqlite"] {
+        assert!(
+            server_dir.join(database).is_file(),
+            "{database} is in the server's folder"
+        );
+        assert!(
+            !data_root.path().join(database).exists(),
+            "{database} is not in the data root"
+        );
+    }
     assert_eq!(
         health_status(&loopback_base_url).await,
         reqwest::StatusCode::OK

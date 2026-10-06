@@ -2,12 +2,14 @@
 //!
 //! A server is a domain, a folder and an enrolment at a relay. Its
 //! [`ServerRecord`] holds the relay, the tunnel name and token there, what the
-//! relay's `GET /rathole` returned, the launcher apps open from, and whether
-//! its certificates come from the ACME staging directory. Its
-//! [`domain`](ServerRecord::domain), `<tunnel name>.<relay domain>`, is its
-//! only name: the registry key, the issuer, and its data folder
-//! `<data root>/servers/<domain>/`. Records hold configuration only; whether a
-//! server is running, its tunnel and its certificate are never stored here.
+//! relay's `GET /rathole` returned, the launcher apps open from, whether its
+//! certificates come from the ACME staging directory, and whether the user
+//! wants it run. Its [`domain`](ServerRecord::domain),
+//! `<tunnel name>.<relay domain>`, is its only name: the registry key, the
+//! issuer, and its data folder `<data root>/servers/<domain>/`
+//! ([`server_dir`](ServerRecord::server_dir)). Records hold configuration
+//! only; whether a run is up, its tunnel and its certificate are never stored
+//! here.
 //!
 //! The list lives in `<data root>/servers.json`, behind the
 //! [`ServerRegistry`] port, and holds any number of servers.
@@ -44,6 +46,6 @@ mod ports;
 pub use adapters::{JsonServerRegistry, ReqwestRelayClient, SERVERS_FILE_NAME};
 pub use domain::{
     add_server, set_server_credentials, EnrolmentError, EnteredRelay, RegistryError, RelayIdentity,
-    RelayKind, ServerRecord, TunnelToken,
+    RelayKind, ServerRecord, TunnelToken, SERVERS_DIR_NAME,
 };
-pub use ports::{RelayClient, ServerRegistry};
+pub use ports::{NewRecord, RelayClient, ServerRegistry};
