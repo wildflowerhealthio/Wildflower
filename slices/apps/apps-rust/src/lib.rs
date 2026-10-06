@@ -3,8 +3,8 @@
 //! A curated app registry with one wire surface. Storage is the one
 //! `app_registrations` table: per app, the global id, the catalogue facts, the
 //! launch `url` template, and the homescreen placement. Every app is a launch
-//! template reached from a remote origin (reaching PHI back through the tunnel
-//! when `requires_tunnel`); its model and privacy posture are canonical in
+//! template reached from a remote origin, reaching PHI back through the server's
+//! public origin; its model and privacy posture are canonical in
 //! `docs/Apps/Explanation.md`.
 //!
 //! Layered like `collector-rust`:
@@ -31,9 +31,9 @@
 //! `POST /apps/{id}` resolves a launch target and dispatches on the *request's*
 //! provenance (loopback vs. forwarded) — see the launch handler module. The launch
 //! surface is scope-gated on the `wildflower/launch` umbrella (a SMART app
-//! additionally requires the caller's grant to cover its client scopes). A
-//! `requires_tunnel` launch resolves to the server's public origin from
-//! [`AppsConfig`]; the slice knows nothing about the tunnel itself.
+//! additionally requires the caller's grant to cover its client scopes). Every
+//! launch resolves `{origin}` to the server's public origin from [`AppsConfig`];
+//! the slice knows nothing about the tunnel itself.
 
 pub mod config;
 pub mod db;
@@ -86,8 +86,8 @@ pub struct Apps {
     /// middleware: the host wraps it with its bearer gate, which inserts the scope
     /// claims the `Scoped<…>` capabilities read.
     pub router: Router,
-    /// Shared handler state (the store, the loopback base URL, the public
-    /// origin, the on-device webview seam, and the launch-scope port).
+    /// Shared handler state (the store, the public origin, the on-device
+    /// webview seam, and the launch-scope port).
     pub state: Arc<AppsState>,
 }
 
@@ -119,7 +119,6 @@ pub fn setup_apps(
     let store = SqliteAppsStore::new(pool).context("failed to open apps store")?;
     let state = Arc::new(AppsState::new(
         store,
-        config.loopback_base_url.clone(),
         config.public_origin.clone(),
         webview_handle,
         launch_scopes,

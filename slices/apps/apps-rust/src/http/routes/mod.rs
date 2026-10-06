@@ -390,22 +390,26 @@ mod tests {
         }
     }
 
-    /// A `requires_tunnel` launch resolves to the server's public origin, from
-    /// loopback and forwarded callers alike.
+    /// Every launch resolves `{origin}` to the server's public origin, from
+    /// loopback and forwarded callers alike, whatever the app's
+    /// `requires_tunnel` flag.
     #[tokio::test]
-    async fn launch_requires_tunnel_resolves_to_the_public_origin() {
+    async fn launch_resolves_to_the_public_origin_for_every_caller() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        let res = send_raw(&st, post_launch("/apps/growth-chart")).await;
+        seed_plain(&st.store, "app-y");
+        let expected = format!("https://app.example/y?iss={PUBLIC_ORIGIN}");
+
+        let res = send_raw(&st, post_launch("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        let opened = handle.0.lock().expect("handle mutex").clone();
-        let [url] = opened.as_slice() else {
-            panic!("exactly one URL, got {opened:?}");
-        };
-        assert!(
-            url.contains(&format!("iss={PUBLIC_ORIGIN}/fhir-r4")),
-            "expected the public origin in {url}",
+        assert_eq!(
+            handle.0.lock().expect("handle mutex").clone(),
+            vec![expected.clone()],
         );
+
+        let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(launch_url(res).await, expected);
 
         let res = send_raw(&st, post_forwarded("/apps/growth-chart")).await;
         assert_eq!(res.status(), StatusCode::OK);
@@ -416,24 +420,9 @@ mod tests {
         );
     }
 
-    /// A non-tunnel loopback launch substitutes the loopback origin.
+    /// A forwarded launch answers the URL rather than opening a host popup.
     #[tokio::test]
-    async fn launch_substitutes_the_loopback_origin() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        seed_plain(&st.store, "app-y");
-        let res = send_raw(&st, post_launch("/apps/app-y")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        assert_eq!(
-            handle.0.lock().expect("handle mutex").clone(),
-            vec!["https://app.example/y?iss=http://127.0.0.1:8080".to_string()],
-        );
-    }
-
-    /// A forwarded launch resolves `{origin}` against the served origin and
-    /// answers the URL rather than opening a host popup.
-    #[tokio::test]
-    async fn launch_forwarded_answers_the_served_origin_url() {
+    async fn launch_forwarded_answers_the_url_without_a_popup() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         seed_plain(&st.store, "app-y");
@@ -441,7 +430,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
             launch_url(res).await,
-            "https://app.example/y?iss=https://demo.example.com"
+            format!("https://app.example/y?iss={PUBLIC_ORIGIN}")
         );
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }

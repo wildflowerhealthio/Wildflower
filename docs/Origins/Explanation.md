@@ -16,8 +16,8 @@ arrive having been addressed two different ways:
 
 - **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
   webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
-  parsed once at boot and threaded into every slice's config (apps, gatekeeper,
-  emr) so nothing reassembles it from a string.
+  parsed once at boot and threaded into the configs of the slices that render
+  it (gatekeeper, emr) so nothing reassembles it from a string.
 - **Served origin** — the origin the client _actually_ reached. For a direct
   loopback caller it is the loopback origin. For a request relayed by the
   trusted front it is the public `{scheme}://{host}` the browser used. A handler
@@ -100,9 +100,10 @@ So `base_url` is `https://<public_host>/fhir-r4`, where the public host is the
 server's domain from its record, because that is how remote clients reach the
 FHIR server. Loopback callers get the public URLs too. That suits the host
 owner token, whose canonical audience is accepted at every served origin, but
-not an OAuth-minted token: its `aud` is the loopback base, so a SMART app
-launched on loopback that follows a public `next` link through the tunnel is
-refused.
+not an OAuth-minted token whose `aud` is the loopback base: a client that
+authorised over loopback and follows a public `next` link through the tunnel is
+refused. A launched app never does, since every launch names the public origin
+(below).
 
 The public host can't change while the server runs, so the server hands
 emr-rust the public origin in its config ([`EmrConfig`]) and HFS's router is
@@ -110,12 +111,12 @@ built once with that `base_url`; a public host that can't form an origin stops
 startup. emr-rust's own overrides (`$everything`, the SMART discovery doc) still
 render the served origin per request.
 
-### A `requires_tunnel` launch names the public origin
+### Every launch names the public origin
 
-The apps slice resolves a `requires_tunnel` app's `{origin}` to the same public
-origin, from its config, whoever asked for the launch: the app reaches the FHIR
-server from off the device. The launch doesn't consult the tunnel; the tunnel
-belongs to the host, and the server's web surface knows nothing about it.
+The apps slice resolves every app's `{origin}` to the same public origin, from
+its config, whoever asked for the launch: the app reaches the FHIR server from
+off the device. The launch doesn't consult the tunnel; the tunnel belongs to the
+host, and the server's web surface knows nothing about it.
 
 ### Discovery is fetched before a token exists
 

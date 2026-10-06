@@ -1,14 +1,11 @@
 //! `POST /apps/{id}` — resolve an app id to a launch target.
 //!
-//! Two orthogonal axes meet here: the app's `requires_tunnel` flag fixes which
-//! origin its launch template is *resolved* against (the server's public origin,
-//! or the served one), while the *request's*
-//! [`RequestProvenance`] (loopback vs. forwarded) fixes how it's *dispatched*. The
-//! flow:
+//! Every launch resolves its template's `{origin}` to the server's public origin,
+//! whoever calls; the *request's* [`RequestProvenance`] (loopback vs. forwarded)
+//! fixes only how the launch is *dispatched*. The flow:
 //!
 //!   1. Read the request's [`RequestProvenance`] *once*, so an empty/spoofed
-//!      `Forwarded` host can't make the gate-vs-resolve and which-origin
-//!      decisions disagree.
+//!      `Forwarded` host can't make the gate and dispatch decisions disagree.
 //!   2. The `wildflower/launch` umbrella is enforced *before this handler runs* by
 //!      the [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher) extractor
 //!      (the host wraps the apps router with the bearer gate that inserts the
@@ -21,7 +18,8 @@
 //!      shortfall `403`s with the shared `InsufficientScope` JSON body naming the
 //!      missing scopes, before any side-effect. A non-SMART app needs only the
 //!      umbrella.
-//!   5. Resolve the launch target from the stored template.
+//!   5. Resolve the launch target from the stored template against the public
+//!      origin.
 //!   6. Dispatch on the request's provenance: a loopback launch `204`s after
 //!      handing the URL to the host webview; a forwarded launch answers `200` with
 //!      the URL ([`LaunchTargetBody`]) for the caller's page to navigate to — the
@@ -113,7 +111,7 @@ pub(crate) async fn handle_launch_app(
         });
     }
 
-    let target_url = resolve_launch(&registration, &state, &provenance);
+    let target_url = resolve_launch(&registration, &state);
 
     match &provenance {
         // The loopback caller cleared the umbrella + SMART gates above; hand the URL
@@ -130,48 +128,21 @@ pub(crate) async fn handle_launch_app(
     }
 }
 
-/// Resolve an app to its launch URL: resolve the origin (see [`resolve_origin`]),
-/// then substitute `{origin}` / `{launch}` in the stored
+/// Resolve an app to its launch URL: substitute the server's public origin for
+/// `{origin}` and a fresh nonce for `{launch}` in the stored
 /// [`AppUrl`](crate::domain::AppUrl) template. The `url` was validated at the
 /// store read (the column decode), so no parse can fail here.
 ///
 /// Lives beside the launch handler rather than in `domain` on purpose: the
-/// resolution reads `AppsState`'s origins, so keeping it in the HTTP layer leaves
-/// the domain free of that runtime coupling.
-fn resolve_launch(
-    registration: &AppRegistration,
-    state: &AppsState,
-    provenance: &RequestProvenance,
-) -> String {
-    let origin = resolve_origin(state, provenance, registration.requires_tunnel);
+/// resolution reads `AppsState`'s public origin, so keeping it in the HTTP layer
+/// leaves the domain free of that runtime coupling.
+fn resolve_launch(registration: &AppRegistration, state: &AppsState) -> String {
+    let origin = state.public_origin();
     let launch = mint_launch_nonce();
     registration.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
     })
-}
-
-/// Resolve the launch origin for an app.
-///
-/// A `requires_tunnel` launch resolves to the server's public origin: the app
-/// reaches the user's FHIR server from off the device. Any other launch
-/// resolves to the *served* origin — the forwarded public origin when the
-/// trusted front relayed the request, else loopback — so the launch URL is
-/// something the caller can actually reach.
-fn resolve_origin(
-    state: &AppsState,
-    provenance: &RequestProvenance,
-    requires_tunnel: bool,
-) -> String {
-    if requires_tunnel {
-        return state.public_origin();
-    }
-    match provenance {
-        RequestProvenance::Forwarded { base_url } => {
-            shared_structures_rust::origin_string(base_url)
-        }
-        RequestProvenance::Loopback => state.loopback_origin(),
-    }
 }
 
 /// Wire shape of a forwarded launch's `200`: the resolved launch URL, for the

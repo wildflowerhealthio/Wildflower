@@ -99,8 +99,8 @@ pub async fn set_up(
         public_host,
     } = config;
 
-    // The server's public origin, from its domain: what HFS's links and a
-    // `requires_tunnel` launch name. It doesn't change while the server runs.
+    // The server's public origin, from its domain: what HFS's links and every app
+    // launch name. It doesn't change while the server runs.
     let public_origin = tunnel_rust::public_origin_url(&public_host)
         .context("the server's public host doesn't name an origin")?;
 
@@ -122,7 +122,7 @@ pub async fn set_up(
 
     let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
     // The typed loopback base URL is the single source threaded into every
-    // slice's config (apps / gatekeeper / emr / tunnel). `loopback_origin` is its
+    // slice's config that renders it (gatekeeper / emr). `loopback_origin` is its
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
     let loopback_base_url = runtime.loopback_base_url();
     let loopback_origin = shared_structures_rust::origin_string(&loopback_base_url);
@@ -281,13 +281,9 @@ pub async fn set_up(
     // `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are scope-gated on
     // `wildflower/Apps.*`. The launch route `POST /apps/{id}` is scope-gated on the
     // `wildflower/launch` umbrella, with a per-app SMART check in the handler; a
-    // forwarded launch rides the front trust boundary for the redirect. A
-    // `requires_tunnel` launch resolves to the server's public origin; any other
-    // launch to the served one (loopback, or the forwarded public origin).
-    let apps_config = AppsConfig {
-        loopback_base_url: loopback_base_url.clone(),
-        public_origin,
-    };
+    // forwarded launch rides the front trust boundary for the redirect. Every
+    // launch resolves `{origin}` to the server's public origin.
+    let apps_config = AppsConfig { public_origin };
     // The per-app SMART launch-scope seam: resolves a SMART app's OAuth client
     // scopes so the launch handler can require the caller's grant to cover them.
     // The launch umbrella (`wildflower/launch`) is enforced separately by the

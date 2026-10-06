@@ -14,18 +14,8 @@ use crate::live_bindings::state::AppsState;
 use crate::ports::{AppLaunchScopes, NoAppLaunchScopes};
 use crate::OnDeviceWebviewHandle;
 
-/// The loopback base URL a loopback caller reaches the server at. Its origin
-/// (`http://127.0.0.1:8080`) drives a non-tunnel loopback launch's `{origin}`.
-pub(crate) const LOOPBACK_BASE_URL: &str = "http://127.0.0.1:8080/";
-
-/// The server's public origin, which a `requires_tunnel` launch's `{origin}`
-/// resolves to.
+/// The server's public origin, which every launch's `{origin}` resolves to.
 pub(crate) const PUBLIC_ORIGIN: &str = "https://dev1.example.com";
-
-/// Parse the fixed loopback base URL — a hardcoded valid URL.
-pub(crate) fn loopback_base_url() -> Url {
-    Url::parse(LOOPBACK_BASE_URL).expect("loopback base url is a hardcoded valid URL")
-}
 
 /// An [`AppLaunchScopes`] fake that requires a fixed scope set for any SMART app —
 /// drives the per-app SMART launch check. The launch capability only consults it
@@ -50,8 +40,7 @@ impl AppLaunchScopes for FixedLaunchScopes {
 }
 
 /// Build apps state over a fresh in-memory store with a specific on-device
-/// webview handle and launch-scope seam, using the shared loopback base URL and
-/// public origin. The most general fixture; the others below pin one of the
+/// webview handle and launch-scope seam, using the shared public origin. The most general fixture; the others below pin one of the
 /// knobs.
 pub(crate) fn state_full(
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
@@ -60,7 +49,6 @@ pub(crate) fn state_full(
     let store = SqliteAppsStore::open_in_memory().expect("store");
     Arc::new(AppsState::new(
         store,
-        loopback_base_url(),
         Url::parse(PUBLIC_ORIGIN).expect("public origin is a hardcoded valid URL"),
         webview_handle,
         launch_scopes,

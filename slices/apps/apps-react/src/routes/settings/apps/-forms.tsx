@@ -74,8 +74,8 @@ const AppFieldInputs = ({ fields, onChange, disabled }: AppFieldInputsProps): JS
         />
       )}
       <FieldDescription>
-        Some apps need to reach your health data over the internet to work. This setting launches
-        them at your server’s public address.
+        Shows a Tunnel pill on the app’s tile. It has no effect on launch: every app launches at
+        your server’s public address.
       </FieldDescription>
     </div>
   </>

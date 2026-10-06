@@ -16,8 +16,6 @@ use url::Url;
 use scope_capabilities_rust::ScopeClaims;
 use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 
-const LOOPBACK_BASE_URL: &str = "http://127.0.0.1:8080/";
-
 /// Insert the owner `ScopeClaims` the host's bearer gate places in the request
 /// extensions before a scope-gated `/apps` handler reads them — `wildflower/*.cruds`
 /// covers every `wildflower/Apps.<perm>`, and the `wildflower/launch` known scope
@@ -38,7 +36,6 @@ fn with_owner_claims(mut req: Request<Body>) -> Request<Body> {
 fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     let pool = persistence_rust::open_in_memory_pool().expect("open in-memory diesel pool");
     let config = AppsConfig {
-        loopback_base_url: Url::parse(LOOPBACK_BASE_URL).expect("valid base url"),
         public_origin: Url::parse("https://dev1.example.com").expect("valid public origin"),
     };
     let handle = Arc::new(RecordingStubWebviewHandle::default());

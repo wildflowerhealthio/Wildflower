@@ -449,7 +449,7 @@
           },
           "requiresTunnel": {
             "type": "boolean",
-            "description": "Whether a launch resolves `{origin}` to the server's public origin rather\nthan the served one (the Tunnel pill)."
+            "description": "The app's Tunnel pill. It has no effect on launch (every launch resolves\n`{origin}` to the server's public origin); #967 removes it."
           }
         }
       },

@@ -14,8 +14,8 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   cancelled. It also holds the server-side adapters that join two slices: the
   gatekeeper-backed `AppLaunchScopes` for apps and the reqwest `HealthProbe` for
   the tunnel. It derives the server's public origin from its public host once and
-  hands it to emr (HFS's `base_url`) and apps (a `requires_tunnel` launch's
-  origin). The unmatched-route `404` is here too.
+  hands it to emr (HFS's `base_url`) and apps (every launch's origin). The
+  unmatched-route `404` is here too.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig`, `HostPorts`, `ServerObservers`); `adapters/`
     other slices' ports implemented here (apps' `AppLaunchScopes`, the tunnel's

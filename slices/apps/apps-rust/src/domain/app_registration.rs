@@ -1,7 +1,7 @@
 //! [`AppRegistration`] — the authoritative `app_registrations` row: one row per
 //! app, holding the global id, the homescreen placement (`position` /
 //! `on_homescreen`), the catalogue facts (`name` / `subtitle` / the soft
-//! `client_id` / the launch-readiness `requires_tunnel`), and the launch `url`
+//! `client_id` / the Tunnel-pill `requires_tunnel`), and the launch `url`
 //! template. It is BOTH the diesel-mapped domain row and the `GET /apps` wire
 //! item — one flat struct serialized directly (the "domain-is-wire" registration),
 //! so there is no second projection to drift from.
@@ -53,8 +53,8 @@ pub struct AppRegistration {
     #[serde(rename = "isSmart", serialize_with = "serialize_client_id_as_is_smart")]
     #[schema(rename = "isSmart", value_type = bool)]
     pub client_id: Option<String>,
-    /// Whether a launch resolves `{origin}` to the server's public origin rather
-    /// than the served one (the Tunnel pill).
+    /// The app's Tunnel pill. It has no effect on launch (every launch resolves
+    /// `{origin}` to the server's public origin); #967 removes it.
     pub requires_tunnel: bool,
 }
 

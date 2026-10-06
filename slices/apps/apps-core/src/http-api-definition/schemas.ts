@@ -38,7 +38,7 @@ const AppRegistrationSchema = Schema.Struct({
   url: Schema.String,
   /** Whether this is a SMART app (the registration carries a `client_id`). */
   isSmart: Schema.Boolean,
-  /** Whether a launch names the server's public origin rather than the served one (the Tunnel pill). */
+  /** The app's Tunnel pill. It has no effect on launch (every launch names the server's public origin); #967 removes it. */
   requiresTunnel: Schema.Boolean,
 })
 
