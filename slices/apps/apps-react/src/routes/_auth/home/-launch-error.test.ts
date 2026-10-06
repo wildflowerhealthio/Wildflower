@@ -15,9 +15,6 @@ describe('launch-error encoding', () => {
     expect(launchBannerError(encodeLaunchError({ error: 'AppNotFound' }))).toBe(
       'That app is no longer available.'
     )
-    expect(launchBannerError(encodeLaunchError({ error: 'LaunchUnavailable' }))).toContain(
-      'reached'
-    )
   })
 
   test('an unknown tag falls back to the generic launch message', () => {

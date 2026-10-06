@@ -41,7 +41,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 futures-core = "0.3"
 # The `DatabaseFiles` port's `read_catalogue_metadata` is `async` behind an
 # `Arc<dyn …>`, which native `async fn` can't do dyn-compatibly — so the port and
-# its adapter use `#[async_trait]`, as `TunnelService` / `JtiCache` do elsewhere.
+# its adapter use `#[async_trait]`, as `HealthProbe` / `JtiCache` do elsewhere.
 async-trait = "0.1"
 
 [lints]

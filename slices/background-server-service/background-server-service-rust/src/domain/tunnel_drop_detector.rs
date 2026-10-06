@@ -1,6 +1,6 @@
 //! Noticing the tunnel dropping while the server runs, and coming back.
 
-use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelStatus};
+use tunnel_rust::{TunnelLiveness, TunnelStatus};
 
 use crate::domain::notification::LocalNotification;
 
@@ -10,10 +10,8 @@ pub const TUNNEL_NOTIFICATION_ID: &str = "tunnel";
 
 /// Follows the tunnel's liveness and says when it drops and when it comes back.
 ///
-/// A drop is the tunnel leaving `Verified` for anything but `Off`. `Off` only
-/// ever comes from a server wired without a tunnel, so it is not a drop.
-/// Neither is the liveness going to `None`: the server stopped, and the stop
-/// has its own notification. After a drop, the next `Verified` (in this run
+/// A drop is the tunnel leaving `Verified`. The liveness going to `None` is not
+/// a drop: the server stopped, and the stop has its own notification. After a drop, the next `Verified` (in this run
 /// or a later one) says the tunnel reconnected.
 #[derive(Debug, Default)]
 pub struct TunnelDropDetector {
@@ -45,10 +43,6 @@ impl TunnelDropDetector {
                         "Your apps can reach the server again.",
                     )
                 })
-            }
-            TunnelStatus::Off => {
-                self.verified = false;
-                None
             }
             TunnelStatus::Dialing | TunnelStatus::Unreachable => {
                 if !std::mem::take(&mut self.verified) {
@@ -83,10 +77,7 @@ mod tests {
     fn liveness(status: TunnelStatus, error: Option<&str>) -> TunnelLiveness {
         TunnelLiveness {
             status,
-            origin: "https://demo.example.com".to_owned(),
-            public_host: Some("demo.example.com".to_owned()),
             error: error.map(str::to_owned),
-            dial_attempts: 1,
         }
     }
 
@@ -129,21 +120,6 @@ mod tests {
     }
 
     #[test]
-    fn the_owner_turning_the_tunnel_off_is_not_a_drop() {
-        let mut detector = TunnelDropDetector::new();
-        detector.notification_for(Some(&liveness(TunnelStatus::Verified, None)));
-        assert_eq!(
-            detector.notification_for(Some(&liveness(TunnelStatus::Off, None))),
-            None
-        );
-        assert_eq!(
-            detector.notification_for(Some(&liveness(TunnelStatus::Verified, None))),
-            None,
-            "coming back from an owner's Off is not a reconnection"
-        );
-    }
-
-    #[test]
     fn the_server_stopping_is_not_a_drop_but_a_later_run_reconnects() {
         let mut detector = TunnelDropDetector::new();
         detector.notification_for(Some(&liveness(TunnelStatus::Verified, None)));
@@ -163,7 +139,6 @@ mod tests {
     fn step() -> impl Strategy<Value = Option<TunnelStatus>> {
         prop_oneof![
             Just(None),
-            Just(Some(TunnelStatus::Off)),
             Just(Some(TunnelStatus::Dialing)),
             Just(Some(TunnelStatus::Verified)),
             Just(Some(TunnelStatus::Unreachable)),

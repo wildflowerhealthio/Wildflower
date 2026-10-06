@@ -1,10 +1,8 @@
 //! The tunnel reachability port: a real "is the tunnel actually carrying
-//! traffic" signal, replacing the optimistic `running` / `servedOrigin` for the
-//! start path (closes
-//! <https://github.com/Assessment-is/Wildflower/issues/184>).
+//! traffic" signal.
 //!
 //! The daemon's supervisor probes an **assumed-present, RFC-compliant**
-//! `/health` on the served origin (the IETF draft *Health Check Response Format
+//! `/health` through the public origin (the IETF draft *Health Check Response Format
 //! for HTTP APIs*, `draft-inadarei-api-health-check-06`: a `200`
 //! `application/health+json` with `status: "pass"`). Any healthy response is
 //! enough — the tunnel only needs to know the round-trip reaches a live server;

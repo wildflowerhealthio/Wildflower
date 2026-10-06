@@ -1,6 +1,6 @@
 import { Match, Predicate } from 'effect'
 import type { JSX } from 'react'
-import { cn, writeToClipboard } from 'react-kitchen-sink'
+import { cn } from 'react-kitchen-sink'
 import { StatusBadge, type StatusTone } from 'react-tundraish'
 
 import type { TunnelState } from '../queries/index.ts'
@@ -22,7 +22,6 @@ interface HeroStatus {
  * - any error                → `danger` "Error"
  * - `verified`               → `success` "Online"
  * - `dialing`/`unreachable`  → `info` "Connecting…"
- * - `off`                    → `neutral` "Off"
  */
 const deriveHeroStatus: (input: Pick<TunnelState, 'status' | 'error'>) => HeroStatus = Match.type<
   Pick<TunnelState, 'status' | 'error'>
@@ -30,13 +29,12 @@ const deriveHeroStatus: (input: Pick<TunnelState, 'status' | 'error'>) => HeroSt
   Match.withReturnType<HeroStatus>(),
   Match.when({ error: Predicate.isString }, () => ({ tone: 'danger', label: 'Error' })),
   Match.when({ status: 'verified' }, () => ({ tone: 'success', label: 'Online' })),
-  Match.when({ status: 'off' }, () => ({ tone: 'neutral', label: 'Off' })),
   Match.orElse(() => ({ tone: 'info', label: 'Connecting…' }))
 )
 
 interface ConnectionPathProps {
   /**
-   * `true` when the tunnel is running — paints the
+   * `true` when the tunnel is verified — paints the
    * relay node in full accent + ring and the internet node green. `false`
    * dims the relay to a paler accent shade (configured but not linked)
    * and grays the internet node (no exit). "This device" stays green in
@@ -104,28 +102,23 @@ const ConnectionPath = ({ open, error, className }: ConnectionPathProps): JSX.El
  * tunnel, so nothing here changes it.
  *
  * Layout:
- *   - top row: a status badge (Online, Connecting…, Off, or Error) that pulses
+ *   - top row: a status badge (Online, Connecting…, or Error) that pulses
  *     while Online.
  *   - error message (when present) below the top row.
- *   - address block (dims when the tunnel isn't running):
- *       · public host + copy button
- *       · "N apps connected now" sub-line (stubbed at `0` — there is no
- *         live connection-count source yet)
- *       · three-node connection path.
+ *   - address block (dims until the tunnel is verified): an "N apps connected
+ *     now" sub-line (stubbed at `0` — there is no live connection-count source
+ *     yet).
+ *   - three-node connection path.
  */
 const TunnelStatusHero = ({ state, className }: TunnelStatusHeroProps): JSX.Element => {
   const status = deriveHeroStatus(state)
-  const open = state.running
+  const open = state.status === 'verified'
   /*
    * Active-connection count is stubbed at 0 — there is no live source in
    * `TunnelState` for it today. Annotated `number` (not the literal `0`) so the
    * singular-vs-plural branch below stays meaningful once a real count lands.
    */
   const connectionsCount: number = 0
-
-  const handleCopy = (): void => {
-    void writeToClipboard(state.publicHost)
-  }
 
   return (
     <section className={cn(styles['hero'], className)}>
@@ -140,17 +133,6 @@ const TunnelStatusHero = ({ state, className }: TunnelStatusHeroProps): JSX.Elem
         </p>
       ) : null}
       <div className={cn(styles['hero__address'], open ? null : styles['hero__address--dim'])}>
-        <div className={styles['hero__address-row']}>
-          <span className={styles['hero__host']}>{state.publicHost}</span>
-          <button
-            type="button"
-            className={styles['hero__copy']}
-            onClick={handleCopy}
-            aria-label="Copy public host"
-          >
-            &#x2398;
-          </button>
-        </div>
         <p className={styles['hero__meta']}>
           {connectionsCount === 1
             ? '1 app connected now'

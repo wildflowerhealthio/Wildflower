@@ -19,7 +19,6 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tunnel_rust::TunnelLiveness;
 
-use super::hfs_base_url;
 use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
 use crate::http::middleware::cors::api_cors_layer;
@@ -74,9 +73,10 @@ impl WildflowerServer {
 ///
 /// # Errors
 ///
-/// Returns an error if the server's folder can't be created, a scheduled
-/// database deletion can't be applied, a database or store can't be opened, the loopback port can't be bound, a
-/// slice's setup fails, or the server's public host can't be FHIR's base URL.
+/// Returns an error if the server's public host doesn't name an origin, the
+/// server's folder can't be created, a scheduled database deletion can't be
+/// applied, a database or store can't be opened, the loopback port can't be
+/// bound, or a slice's setup fails.
 ///
 /// # Remarks
 ///
@@ -98,6 +98,11 @@ pub async fn set_up(
         relay_settings,
         public_host,
     } = config;
+
+    // The server's public origin, from its domain: what HFS's links and a
+    // `requires_tunnel` launch name. It doesn't change while the server runs.
+    let public_origin = tunnel_rust::public_origin_url(&public_host)
+        .context("the server's public host doesn't name an origin")?;
 
     // The server's folder holds its databases, and a server added since the
     // last start has none yet.
@@ -130,6 +135,7 @@ pub async fn set_up(
         // (at mint) and emr-rust (at validation).
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
         search_parameter_data_dir,
+        public_origin: public_origin.clone(),
     };
     let gatekeeper_config = GatekeeperConfig {
         loopback_base_url: loopback_base_url.clone(),
@@ -138,10 +144,9 @@ pub async fn set_up(
         owner_ui_base: owner_ui_base.clone(),
     };
 
-    // One shared SQLite database for all persistence-rust-backed slices
-    // (gatekeeper, and the tunnel slice); each runs its own namespaced
-    // migrations on it. (The FHIR/emr store is managed separately by
-    // helios-persistence.)
+    // One shared SQLite database for all persistence-rust-backed slices; each
+    // runs its own namespaced migrations on it. (The FHIR/emr store is managed
+    // separately by helios-persistence.)
     let db_path = runtime.server_dir.join(WILDFLOWER_DB);
     let db =
         persistence_rust::Connection::open(&db_path).context("failed to open shared database")?;
@@ -173,8 +178,8 @@ pub async fn set_up(
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
     // every diesel-backed slice — the gatekeeper OAuth surface, the collector
-    // `/collector/remotes` surface, the tunnel `/tunnel` surface and the request
-    // log's `/requests` surface all run over it rather than each opening their
+    // `/collector/remotes` surface, the apps surface and the request log's
+    // `/requests` surface all run over it rather than each opening their
     // own. Its connections are NOT
     // synchronized with the `Arc<Mutex<rusqlite::Connection>>` the other slices
     // write through: an accepted single-writer file-lock contention trade-off,
@@ -243,20 +248,26 @@ pub async fn set_up(
 
     // The read-only `/tunnel` surface, Owner-gated like the rest of the admin
     // API. The tunnel dials the relay from the server's record for as long as
-    // the server runs; its migrations ride the same diesel pool.
-    let tunnel_config = tunnel_rust::TunnelConfig {
-        loopback_base_url: runtime.loopback_base_url(),
-        relay_settings,
-        public_host: public_host.clone(),
-    };
-    // `setup_tunnel` hands back the `/tunnel` router plus the in-process
-    // `TunnelControl` seam (which implements `TunnelService`). The daemon drives
-    // a `/health` probe — against the app-layer `/health` route mounted below —
+    // the server runs, forwarding the loopback port. The daemon drives a
+    // `/health` probe — against the app-layer `/health` route mounted below —
     // through the reqwest adapter to verify reachability.
+    let tunnel_config = tunnel_rust::TunnelConfig {
+        local_port: runtime
+            .loopback_base_url_ref()
+            .port_or_known_default()
+            .context("the loopback base URL has no port")?,
+        relay_settings,
+        public_host,
+    };
     let health_probe: Arc<dyn tunnel_rust::HealthProbe> = Arc::new(ReqwestHealthProbe::new());
-    let tunnel = tunnel_rust::setup_tunnel(diesel_pool.clone(), &tunnel_config, health_probe)
-        .context("failed to set up tunnel")?;
+    let tunnel = tunnel_rust::setup_tunnel(&tunnel_config, health_probe);
     let gated_tunnel = tunnel.router.layer(gatekeeper_auth_layer.clone());
+    // The host watches the tunnel's liveness through its own channel, which
+    // outlives this server.
+    tokio::spawn(copy_tunnel_liveness(
+        tunnel.liveness,
+        observers.tunnel_liveness_sender,
+    ));
 
     // The `/requests` surface: the request log the forwarded-request layer
     // (outermost, below) feeds, over the same diesel pool. Scope-gated on
@@ -270,25 +281,13 @@ pub async fn set_up(
     // `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are scope-gated on
     // `wildflower/Apps.*`. The launch route `POST /apps/{id}` is scope-gated on the
     // `wildflower/launch` umbrella, with a per-app SMART check in the handler; a
-    // forwarded launch rides the front trust boundary for the redirect. A `requires_tunnel` launch resolves to
-    // the tunnel's verified origin through the tunnel service (or fails 503
-    // LaunchUnavailable when the tunnel can't be brought up). The apps slice derives
-    // the loopback launch origin from `loopback_base_url`.
+    // forwarded launch rides the front trust boundary for the redirect. A
+    // `requires_tunnel` launch resolves to the server's public origin; any other
+    // launch to the served one (loopback, or the forwarded public origin).
     let apps_config = AppsConfig {
         loopback_base_url: loopback_base_url.clone(),
+        public_origin,
     };
-    // `TunnelControl` implements `TunnelService`, so it's handed straight in.
-    let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-
-    // HFS's `base_url` is the server's public host (see `hfs_base_url`), set
-    // before serving, so a public host that can't be one stops startup.
-    hfs_base_url::point_hfs_at_public_host(&fhir_routers.hfs, &public_host)?;
-    // The host watches the tunnel's liveness through its own channel, which
-    // outlives this server.
-    tokio::spawn(copy_tunnel_liveness(
-        tunnel_service.subscribe(),
-        observers.tunnel_liveness_sender,
-    ));
     // The per-app SMART launch-scope seam: resolves a SMART app's OAuth client
     // scopes so the launch handler can require the caller's grant to cover them.
     // The launch umbrella (`wildflower/launch`) is enforced separately by the
@@ -302,7 +301,6 @@ pub async fn set_up(
     let apps = setup_apps(
         diesel_pool,
         &apps_config,
-        Arc::clone(&tunnel_service),
         host.on_device_webview_handle,
         launch_scopes,
     )

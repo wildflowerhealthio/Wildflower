@@ -7,17 +7,7 @@ import { afterEach, describe, expect, test } from 'vite-plus/test'
 import type { TunnelState } from '../queries/index.ts'
 import { TunnelStatusHero } from './TunnelStatusHero.tsx'
 
-const VERIFIED: TunnelState = {
-  ...Tunnel.freshTunnelState,
-  status: 'verified',
-  publicHost: 'ruth.wildflowerhealth.io',
-}
-
-const OFF: TunnelState = {
-  ...Tunnel.freshTunnelState,
-  status: 'off',
-  running: false,
-}
+const VERIFIED: TunnelState = { ...Tunnel.freshTunnelState, status: 'verified' }
 
 afterEach(() => {
   cleanup()
@@ -28,7 +18,6 @@ describe('TunnelStatusHero — status badge', () => {
     ['verified', 'Online'],
     ['dialing', 'Connecting…'],
     ['unreachable', 'Connecting…'],
-    ['off', 'Off'],
   ] as const)('(status=%s, error=null) → "%s" badge', (status, label) => {
     render(<TunnelStatusHero state={{ ...Tunnel.freshTunnelState, status }} />)
     expect(screen.getByRole('status').textContent).toContain(label)
@@ -57,28 +46,21 @@ describe('TunnelStatusHero — status badge', () => {
     expect(screen.getByRole('status').classList.contains('pulse')).toBe(true)
   })
 
-  test('Off badge does not pulse', () => {
-    render(<TunnelStatusHero state={OFF} />)
+  test('Connecting badge does not pulse', () => {
+    render(<TunnelStatusHero state={Tunnel.freshTunnelState} />)
     expect(screen.getByRole('status').classList.contains('pulse')).toBe(false)
   })
 })
 
 describe('TunnelStatusHero — read-only', () => {
-  test('offers no switch, and copying the host is its only control', () => {
+  test('offers no controls', () => {
     render(<TunnelStatusHero state={VERIFIED} />)
     expect(screen.queryByRole('switch')).toBeNull()
-    expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
-      'Copy public host',
-    ])
+    expect(screen.queryAllByRole('button')).toEqual([])
   })
 })
 
 describe('TunnelStatusHero — address block', () => {
-  test('shows the public host', () => {
-    render(<TunnelStatusHero state={VERIFIED} />)
-    expect(screen.getByText('ruth.wildflowerhealth.io')).toBeTruthy()
-  })
-
   test('renders the stubbed "0 apps connected now" sub-line', () => {
     render(<TunnelStatusHero state={VERIFIED} />)
     expect(screen.getByText('0 apps connected now')).toBeTruthy()

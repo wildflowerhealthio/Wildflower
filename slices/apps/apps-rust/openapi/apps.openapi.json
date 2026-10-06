@@ -259,16 +259,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "No reachable launch target (a requires_tunnel app while the tunnel is down)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LaunchUnavailableBody"
-                }
-              }
-            }
           }
         }
       },
@@ -542,22 +532,6 @@
           "url": {
             "type": "string",
             "description": "The absolute launch URL (the app's rendered template)."
-          }
-        }
-      },
-      "LaunchUnavailableBody": {
-        "type": "object",
-        "description": "Wire shape for a 503 `LaunchUnavailable` — a launch with no *reachable*\ntarget. The SPA surfaces the failure rather than following a dead redirect.",
-        "required": [
-          "error",
-          "reason"
-        ],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
           }
         }
       }

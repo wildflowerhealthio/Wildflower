@@ -4,33 +4,16 @@ import { Schema } from 'effect'
 /**
  * Tunnel state on the wire — mirrors the Rust `TunnelStateResponse`
  * (`slices/tunnel/tunnel-rust/.../routes/tunnel/wire_representations.rs`,
- * `#[serde(rename_all = "camelCase")]`): the tunnel's observed liveness and
- * the public host the relay serves the server at. The relay settings live in
- * the server's record and only the base changes them, so none appear here.
+ * `#[serde(rename_all = "camelCase")]`): the tunnel's observed liveness.
  *
- * `status` is the authoritative liveness FSM position — one of `off`,
- * `dialing`, `verified`, or `unreachable`. Liveness is **verified, not
- * optimistic**: `servedOrigin` resolves to `https://{publicHost}` **only**
- * while `status === 'verified'` (a `/health` probe through the public origin
- * came back `pass` from this device), otherwise the loopback fallback.
- * `running` is the coarse "a supervisor is attempting" view (`true` for
- * `dialing`/`verified`/`unreachable`). `error` is set for `unreachable`.
- *
- * `dialAttempts` counts dial attempts since the server started — a counter
- * that climbs with no recovery flags a permanent misconfiguration.
- *
- * `dialAttempts` is `i64` on the Rust side; as a monotonic counter it stays
- * well under `2^53`. `Schema.Int` (not `Schema.Number`) keeps the OpenAPI type
- * `integer`, matching utoipa's `i64` so the spec-drift contract test agrees on
- * the wire kind.
+ * `status` is the liveness FSM position — one of `dialing`, `verified`, or
+ * `unreachable`. Liveness is **verified, not optimistic**: `verified` only once
+ * a `/health` probe through the public origin came back `pass` from this
+ * device. `error` is set for `unreachable`.
  */
 const TunnelStateViewSchema = Schema.Struct({
-  publicHost: Schema.String,
-  status: Schema.Literal('off', 'dialing', 'verified', 'unreachable'),
-  running: Schema.Boolean,
+  status: Schema.Literal('dialing', 'verified', 'unreachable'),
   error: Schema.NullOr(Schema.String),
-  dialAttempts: Schema.Int,
-  servedOrigin: Schema.String,
 })
 
 /**
@@ -45,18 +28,13 @@ const InsufficientScopeSchema = Schema.Struct({
 })
 
 /**
- * A just-started tunnel's snapshot — dialing, not yet verified, so the server
- * is served at its loopback fallback. The single canonical sample shared by
- * the slice's tests, so the fixture doesn't drift across packages when a field
- * is added.
+ * A just-started tunnel's snapshot — dialing, not yet verified. The single
+ * canonical sample shared by the slice's tests, so the fixture doesn't drift
+ * across packages when a field is added.
  */
 const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
-  publicHost: 'ruth.relay.wildflowerhealth.io',
   status: 'dialing',
-  running: true,
   error: null,
-  dialAttempts: 0,
-  servedOrigin: 'http://127.0.0.1:8080',
 }
 
 /**

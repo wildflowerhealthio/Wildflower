@@ -11,13 +11,6 @@ publish.workspace = true
 # serde_json — only the `-rust` crates that own a documented surface enable it,
 # as a dev-dependency.
 openapi-snapshot = ["dep:utoipa", "dep:serde_json"]
-# Opt-in: the `tunnel_service` contract (the tunnel slice implements it, the apps
-# slice consumes it). Gated so the lean default build — and crates that don't
-# touch the tunnel (emr, gatekeeper) — stay free of tokio/async-trait. Pulls
-# `utoipa` so `TunnelStatus` derives `ToSchema` directly (it *is* the wire enum
-# the tunnel slice's OpenAPI surface documents); the dep only lands in the app
-# binary, which already carries utoipa, never in the lean default build.
-tunnel-service = ["dep:tokio", "dep:async-trait", "dep:utoipa"]
 # Opt-in: the `health_check` contract (`HealthCheckService`) + the reusable
 # `/health` router. Gated so the lean default build — and crates that don't
 # serve `/health` — stay free of axum/async-trait.
@@ -46,15 +39,13 @@ diesel-json-text = ["dep:diesel", "dep:serde_json"]
 serde = { workspace = true }
 # `url` is non-optional: the always-on `ServerRuntimeConfig::loopback_origin`
 # returns a `Url` — the single typed source the host threads into every slice's
-# config (apps / gatekeeper / emr / tunnel), so the loopback origin is parsed
+# config (apps / gatekeeper / emr), so the loopback origin is parsed
 # once here rather than rebuilt from a string downstream.
 url = { version = "2" }
 utoipa = { workspace = true, optional = true }
 # Only for the `diesel-json-text` feature: the shared `JsonText` column mapping.
 diesel = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-# Only for the `tunnel-service` contract (watch channel + async trait method).
-tokio = { workspace = true, optional = true, features = ["sync"] }
 async-trait = { version = "0.1", optional = true }
 # Only for the `health-check` `/health` router.
 axum = { workspace = true, optional = true }

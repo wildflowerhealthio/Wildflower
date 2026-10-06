@@ -10,11 +10,11 @@
         "tags": [
           "Configuration"
         ],
-        "summary": "`GET /tunnel` — read the tunnel's observed liveness and public host as a\nsingle wire snapshot. Gated by [`Scoped<TunnelSettingsReader>`]: the read\nlives behind the `wildflower/TunnelSettings.r` capability, so this handler\nnever touches the router state directly (a `403` on an under-scoped token).\nCollected into the `OpenAPI` doc via `routes!` in the parent module, which\nreads this `#[utoipa::path]`.",
+        "summary": "`GET /tunnel` — read the tunnel's observed liveness as a single wire\nsnapshot. Gated by [`Scoped<TunnelSettingsReader>`]: the read\nlives behind the `wildflower/TunnelSettings.r` capability, so this handler\nnever touches the router state directly (a `403` on an under-scoped token).\nCollected into the `OpenAPI` doc via `routes!` in the parent module, which\nreads this `#[utoipa::path]`.",
         "operationId": "handle_get_tunnel",
         "responses": {
           "200": {
-            "description": "The tunnel's observed liveness and public host",
+            "description": "The tunnel's observed liveness",
             "content": {
               "application/json": {
                 "schema": {
@@ -62,50 +62,28 @@
       },
       "TunnelStateResponse": {
         "type": "object",
-        "description": "Tunnel state on the wire: the observed liveness and the public host.\n\n# Liveness is verified, not optimistic\n\n`status` is the real [`TunnelStatus`] FSM position. `servedOrigin`\nresolves to `https://{publicHost}` **only** while `status == \"verified\"` —\ni.e. after a `/health` probe through the public origin came back healthy —\nand the supervisor re-probes, so it reverts to the loopback fallback if the\ntunnel silently drops. `running` is the coarse \"a supervisor is attempting\"\nview (`dialing`/`verified`/`unreachable`).\n`dialAttempts` counts relay dials since the server started — a counter\nclimbing with a steady `error` flags a permanent misconfiguration. This is\nthe resolution of <https://github.com/Assessment-is/Wildflower/issues/184>.",
+        "description": "Tunnel state on the wire: the observed liveness.\n\n`status` is the daemon's [`TunnelStatus`] itself: `verified` only once a\n`/health` probe through the public origin came back healthy, and the\nsupervisor re-probes, so it leaves `verified` if the tunnel silently drops.\n`error` says why the tunnel is `unreachable`.",
         "required": [
-          "publicHost",
           "status",
-          "running",
-          "error",
-          "dialAttempts",
-          "servedOrigin"
+          "error"
         ],
         "properties": {
-          "publicHost": {
-            "type": "string",
-            "description": "The bare public host the relay serves the server at, from the server's\nrecord."
-          },
           "status": {
             "$ref": "#/components/schemas/TunnelStatus",
-            "description": "The liveness FSM position — the authoritative state. See the type docs."
-          },
-          "running": {
-            "type": "boolean",
-            "description": "`true` when a supervisor is attempting (`dialing`/`verified`/\n`unreachable`). A derived view of `status`."
+            "description": "The liveness FSM position."
           },
           "error": {
             "type": [
               "string",
               "null"
             ]
-          },
-          "dialAttempts": {
-            "type": "integer",
-            "format": "int64",
-            "description": "How many times the tunnel has tried to dial the relay since the server\nstarted. Surfaced so an operator can spot a permanent misconfiguration\n(counter climbs with no recovery) without the daemon having to classify\nrathole errors itself."
-          },
-          "servedOrigin": {
-            "type": "string",
-            "description": "`https://{publicHost}` only while `status == \"verified\"`, else the\nloopback fallback. See the type-level docs."
           }
         }
       },
       "TunnelStatus": {
         "type": "string",
-        "description": "The liveness state of the tunnel. The full FSM lives in the tunnel slice;\nthis is the position consumers care about.\n\nThis is also the type the tunnel slice's `/tunnel` HTTP surface serializes\ndirectly (lowercase variants), so it derives `Serialize`/`ToSchema` here\nrather than a parallel wire enum re-declaring the same variants.",
+        "description": "The liveness state of the tunnel. `GET /tunnel` serializes it directly\n(lowercase variants), so there is no parallel wire enum.",
         "enum": [
-          "off",
           "dialing",
           "verified",
           "unreachable"

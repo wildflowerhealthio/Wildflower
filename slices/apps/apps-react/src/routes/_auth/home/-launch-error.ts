@@ -7,14 +7,13 @@ import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definit
  * {@link launchBannerError}).
  */
 const KnownLaunchError = Schema.Struct({
-  error: Schema.Literal('AppNotFound', 'LaunchUnavailable'),
+  error: Schema.Literal('AppNotFound'),
 })
 
 /** Friendly sentence per {@link KnownLaunchError} tag. */
 const LAUNCH_ERROR_MESSAGES: Record<Schema.Schema.Type<typeof KnownLaunchError>['error'], string> =
   {
     AppNotFound: 'That app is no longer available.',
-    LaunchUnavailable: 'That app can’t be reached right now. Try again in a moment.',
   }
 const FALLBACK_LAUNCH_MESSAGE = 'That app couldn’t be launched.'
 
@@ -23,8 +22,8 @@ const isInsufficientScope = Schema.is(InsufficientScopeSchema)
 
 /**
  * The JSON error body a launch failure carries to the home screen through
- * `?launchError` — an `InsufficientScope` naming the missing scopes, an
- * `AppNotFound`, a `LaunchUnavailable` — built from the typed client's decoded
+ * `?launchError` — an `InsufficientScope` naming the missing scopes, or an
+ * `AppNotFound` — built from the typed client's decoded
  * error (see `-launch.ts`).
  */
 const LaunchErrorBody = Schema.Union(

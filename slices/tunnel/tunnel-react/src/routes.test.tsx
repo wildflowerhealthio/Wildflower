@@ -123,10 +123,7 @@ describe('tunnel route loader', () => {
 
     // Assert — loader warmed the cache for first paint.
     expect(result.status).toBe('success')
-    expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toMatchObject({
-      servedOrigin: 'http://127.0.0.1:8080',
-      status: 'dialing',
-    })
+    expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toEqual(Tunnel.freshTunnelState)
   })
 
   test('propagates a genuine read failure to the error component instead of swallowing it', async () => {
@@ -156,11 +153,7 @@ describe('tunnel page', () => {
     cleanup()
   })
 
-  const VERIFIED: TunnelState = {
-    ...Tunnel.freshTunnelState,
-    status: 'verified',
-    servedOrigin: `https://${Tunnel.freshTunnelState.publicHost}`,
-  }
+  const VERIFIED: TunnelState = { ...Tunnel.freshTunnelState, status: 'verified' }
 
   test('renders the status hero read-only, with no edit controls', async () => {
     // Arrange — the cache holds the tunnel's state, as the loader leaves it.
@@ -186,14 +179,11 @@ describe('tunnel page', () => {
 
     // Assert — the hero shows the state...
     expect((await screen.findByRole('status')).textContent).toContain('Online')
-    expect(screen.getAllByText(VERIFIED.publicHost).length).toBeGreaterThan(0)
     // ...and nothing on the page edits the tunnel: no switch, no field, no
-    // link onward to relay settings, and copying the host is the one button.
+    // button, no link onward to relay settings.
     expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
-    expect(
-      screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
-    ).toEqual(['Copy public host'])
+    expect(screen.queryAllByRole('button')).toEqual([])
     expect(
       screen
         .queryAllByRole('link')

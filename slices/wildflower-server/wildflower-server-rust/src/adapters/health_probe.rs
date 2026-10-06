@@ -2,16 +2,11 @@
 //!
 //! [`ReqwestHealthProbe`] implements `tunnel_rust::HealthProbe` — the daemon
 //! uses it to GET `https://{publicHost}/health` and confirm the tunnel reaches a
-//! live server. The served origin's `/health` is defined at the app layer (see
+//! live server. The server's `/health` is defined at the app layer (see
 //! [`shared_structures_rust::health_check::health_router`]); for now any 2xx
 //! counts as healthy, with RFC-detail checks deferred. The TLS HTTP client
 //! lives here (in the server) rather than in the tunnel slice; positioned to
 //! later health-check every slice.
-//!
-//! The *outbound* side — the tunnel service the apps slice consumes — needs no
-//! adapter here: `tunnel_rust::TunnelControl` implements
-//! `shared_structures_rust::tunnel_service::TunnelService` directly, so the
-//! composition root hands `tunnel.control` straight to `setup_apps`.
 
 use std::time::Duration;
 

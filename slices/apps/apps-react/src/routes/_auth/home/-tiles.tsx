@@ -17,8 +17,8 @@ interface Pill {
 
 /**
  * The pills a tile shows for an app's registry flags: `SMART` when `isSmart` and
- * `Tunnel` when `requiresTunnel` (so a launch that needs the tunnel up is
- * signalled before the user clicks into a `503`).
+ * `Tunnel` when `requiresTunnel` (the app reaches the server through its public
+ * origin).
  * Pure — derives the list from the row so it can be unit-tested without
  * rendering.
  */

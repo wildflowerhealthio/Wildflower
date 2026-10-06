@@ -26,15 +26,14 @@
 //!    replace, and remove one; `POST /apps/{id}` launches it; `PUT /home-screen`
 //!    atomically reorders / enables any app.
 //!
-//! ## Launch / tunnel seam
+//! ## Launch
 //!
 //! `POST /apps/{id}` resolves a launch target and dispatches on the *request's*
 //! provenance (loopback vs. forwarded) — see the launch handler module. The launch
 //! surface is scope-gated on the `wildflower/launch` umbrella (a SMART app
 //! additionally requires the caller's grant to cover its client scopes). A
-//! `requires_tunnel` launch resolves through the shared
-//! [`TunnelService`](shared_structures_rust::tunnel_service::TunnelService)
-//! contract, keeping apps-rust decoupled from tunnel-rust.
+//! `requires_tunnel` launch resolves to the server's public origin from
+//! [`AppsConfig`]; the slice knows nothing about the tunnel itself.
 
 pub mod config;
 pub mod db;
@@ -58,7 +57,6 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use axum::Router;
-use shared_structures_rust::tunnel_service::TunnelService;
 
 // Re-exported so the host can name the pool type at the `setup_apps` call site
 // without a direct diesel dependency; the canonical home is persistence-rust.
@@ -88,8 +86,8 @@ pub struct Apps {
     /// middleware: the host wraps it with its bearer gate, which inserts the scope
     /// claims the `Scoped<…>` capabilities read.
     pub router: Router,
-    /// Shared handler state (the store, the loopback base URL, the tunnel, the
-    /// on-device webview seam, and the launch-scope port).
+    /// Shared handler state (the store, the loopback base URL, the public
+    /// origin, the on-device webview seam, and the launch-scope port).
     pub state: Arc<AppsState>,
 }
 
@@ -97,8 +95,7 @@ pub struct Apps {
 /// `collector-rust`'s `setup_collector`. The host builds the app-wide diesel pool
 /// (via `persistence_rust::open_pool`) on the same shared database file its
 /// rusqlite connection serves the other slices from, and passes a clone in — along
-/// with the `tunnel` service a `requires_tunnel` launch resolves its origin
-/// through and the `webview_handle` the on-device launch side-effect runs through.
+/// with the `webview_handle` the on-device launch side-effect runs through.
 ///
 /// `webview_handle` is the host seam for the on-device launch side-effect: a
 /// loopback launch opens the resolved URL through it and `204`s. The Tauri host
@@ -114,7 +111,6 @@ pub struct Apps {
 pub fn setup_apps(
     pool: DieselPool,
     config: &AppsConfig,
-    tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> anyhow::Result<Apps> {
@@ -124,7 +120,7 @@ pub fn setup_apps(
     let state = Arc::new(AppsState::new(
         store,
         config.loopback_base_url.clone(),
-        tunnel,
+        config.public_origin.clone(),
         webview_handle,
         launch_scopes,
     ));

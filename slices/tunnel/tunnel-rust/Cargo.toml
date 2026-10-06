@@ -7,33 +7,16 @@ publish.workspace = true
 # The Tauri-side tunnel slice: the read-only `/tunnel` HTTP surface the
 # tunnel-react UI speaks, and an embedded `rathole` client (noise transport, no
 # TLS/openssl) that dials the wildflower-relay named in the server's record and
-# forwards the loopback server through it. Layered like collector-rust: pure
-# `domain`, `db` (migrations only), and `http`.
-#
-# The migrations run over the host-owned `persistence_rust::DieselPool` (see
-# docs/Persistence/Shared Diesel Pool Explanation.md); this crate depends on
-# `persistence-rust` only for the pool type and its namespaced migration runner
-# — it does not touch `rusqlite` directly. Cargo unifies diesel's
-# `libsqlite3-sys` with rusqlite's already-bundled one, so both connections
-# drive the same bundled SQLite build.
+# forwards the server's local port through it. Layered like gatekeeper-rust:
+# pure `domain` and `http`. The tunnel keeps no rows.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
 serde = { workspace = true }
 utoipa.workspace = true
 utoipa-axum.workspace = true
-diesel_migrations.workspace = true
-# The loopback origin flows in as a typed `Url` (from `ServerRuntimeConfig`); the
-# daemon takes its bare origin string at construction.
+# `public_origin_url` hands the public origin out as a typed `Url`.
 url = { version = "2" }
-# The app-wide diesel connection pool (`DieselPool` / `open_pool`) shared across
-# diesel-backed slices; this crate names the pool type but not rusqlite.
-persistence-rust = { path = "../../persistence/persistence-rust" }
-# The tunnel service contract this slice implements (TunnelService + state
-# types).
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
-  "tunnel-service",
-] }
 # The scope grammar (`Scope`, `Permission`, `WildflowerResource`) the `/tunnel`
 # scope gate builds its required scope from — `wildflower/TunnelSettings.r`.
 scopes-rust = { path = "../../scopes/scopes-rust" }
@@ -79,5 +62,3 @@ tower = { version = "0.5", features = ["util"] }
 proptest = "1"
 serde_json.workspace = true
 parking_lot = "0.12"
-# The migration tests query `sqlite_master` directly.
-diesel = { workspace = true }

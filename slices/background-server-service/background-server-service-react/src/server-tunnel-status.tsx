@@ -12,7 +12,7 @@ const useRunAuthed = (): RunAuthed =>
   useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
 /**
- * The tunnel's status and public host, read through `tunnel-react`'s own
+ * The tunnel's status, read through `tunnel-react`'s own
  * `GET /tunnel` query and drawn with its `TunnelStatusHero`, read-only.
  *
  * @remarks

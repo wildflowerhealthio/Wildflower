@@ -5,10 +5,8 @@
 
 use std::sync::Arc;
 
+use crate::domain::{TunnelDaemon, TunnelLiveness};
 use scopes_rust::{Permission, Scope, WildflowerResource};
-use shared_structures_rust::tunnel_service::TunnelLiveness;
-
-use crate::domain::TunnelDaemon;
 
 /// The scope gating [`TunnelSettingsReader`] — `wildflower/TunnelSettings.r`.
 /// Shared by the capability's `FixedScopeCapability` binding and
@@ -21,7 +19,7 @@ pub(crate) fn tunnel_settings_reader_scopes() -> Vec<Scope> {
     )]
 }
 
-/// Read the tunnel's liveness and public host — `GET /tunnel`. Holds the
+/// Read the tunnel's liveness — `GET /tunnel`. Holds the
 /// [`TunnelDaemon`] lifted from the state (never `Arc<TunnelState>`).
 pub(crate) struct TunnelSettingsReader {
     daemon: Arc<TunnelDaemon>,
@@ -33,11 +31,6 @@ impl TunnelSettingsReader {
         TunnelSettingsReader { daemon }
     }
 
-    /// The bare public host the relay serves the server at.
-    pub(crate) fn public_host(&self) -> &str {
-        self.daemon.public_host()
-    }
-
     /// A snapshot of the tunnel's current liveness.
     pub(crate) fn liveness(&self) -> TunnelLiveness {
         self.daemon.liveness()
@@ -46,19 +39,15 @@ impl TunnelSettingsReader {
 
 #[cfg(test)]
 mod tests {
-    use shared_structures_rust::tunnel_service::TunnelStatus;
-
     use super::*;
     use crate::domain::capabilities::test_support::daemon;
+    use crate::domain::TunnelStatus;
 
-    /// The reader reads the running daemon: its public host, and its liveness,
-    /// dialing on the loopback fallback until a probe verifies.
+    /// The reader reads the running daemon's liveness: dialing until a probe
+    /// verifies.
     #[tokio::test]
-    async fn reader_reads_the_daemon_s_public_host_and_liveness() {
+    async fn reader_reads_the_daemon_s_liveness() {
         let reader = TunnelSettingsReader::new(daemon());
-        assert_eq!(reader.public_host(), "dev1.example.com");
-        let liveness = reader.liveness();
-        assert_eq!(liveness.status, TunnelStatus::Dialing);
-        assert_eq!(liveness.origin, "http://127.0.0.1:8080");
+        assert_eq!(reader.liveness().status, TunnelStatus::Dialing);
     }
 }

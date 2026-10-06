@@ -17,7 +17,7 @@ arrive having been addressed two different ways:
 - **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
   webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
   parsed once at boot and threaded into every slice's config (apps, gatekeeper,
-  emr, tunnel) so nothing reassembles it from a string.
+  emr) so nothing reassembles it from a string.
 - **Served origin** — the origin the client _actually_ reached. For a direct
   loopback caller it is the loopback origin. For a request relayed by the
   trusted front it is the public `{scheme}://{host}` the browser used. A handler
@@ -104,11 +104,18 @@ not an OAuth-minted token: its `aud` is the loopback base, so a SMART app
 launched on loopback that follows a public `next` link through the tunnel is
 refused.
 
-HFS reads `base_url` only when its router is built, so emr-rust serves it as a
-[`SwappableHfs`]. The server calls `set_base_url` once, before serving; a
-public host that can't form an origin stops startup. emr-rust's own overrides
-(`$everything`, the SMART discovery doc) still render the served origin per
-request.
+The public host can't change while the server runs, so the server hands
+emr-rust the public origin in its config ([`EmrConfig`]) and HFS's router is
+built once with that `base_url`; a public host that can't form an origin stops
+startup. emr-rust's own overrides (`$everything`, the SMART discovery doc) still
+render the served origin per request.
+
+### A `requires_tunnel` launch names the public origin
+
+The apps slice resolves a `requires_tunnel` app's `{origin}` to the same public
+origin, from its config, whoever asked for the launch: the app reaches the FHIR
+server from off the device. The launch doesn't consult the tunnel; the tunnel
+belongs to the host, and the server's web surface knows nothing about it.
 
 ### Discovery is fetched before a token exists
 
@@ -172,4 +179,4 @@ restate the grammar.
 [`served_base_url_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
 [`UNAUTHENTICATED_FHIR_PATHS`]: ../../slices/emr/emr-rust/src/lib.rs
-[`SwappableHfs`]: ../../slices/emr/emr-rust/src/swappable_hfs.rs
+[`EmrConfig`]: ../../slices/emr/emr-rust/src/config.rs

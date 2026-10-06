@@ -22,10 +22,10 @@ Serving the deployed copy means a shipped app updates when the site deploys
 rather than when the user installs a new desktop build.
 
 An app reaches PHI through `{origin}` in its stored launch template, and
-`requires_tunnel` decides which origin that is: set, it forces the tunnel up and
-substitutes the tunnel's verified HTTPS origin, so a launch fails `503` when the
-tunnel can't come up; clear, it substitutes the **served** origin — loopback for
-an on-device launch, the forwarded public origin for a remote one. Every seeded
+`requires_tunnel` decides which origin that is: set, it substitutes the server's
+public HTTPS origin (`https://<domain>`, from the server's record); clear, it
+substitutes the **served** origin — loopback for an on-device launch, the
+forwarded public origin for a remote one. The launch never consults the tunnel. Every seeded
 row sets it, the first-party ones included: their pages are HTTPS documents on
 <https://wildflowerhealth.io>, and an `iss={origin}` fetch from there to a
 loopback origin is unreachable remotely and refused by WebKit even on device.

@@ -18,10 +18,10 @@ tauri-plugin-background-service = "=1.0.1"
 # `BackgroundService` is an `#[async_trait]`.
 async-trait = "0.1"
 serde_json.workspace = true
-# `TunnelLiveness`, and the bridge envelope and channel the listener uses.
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
-  "tunnel-service",
-] }
+# The bridge envelope and channel the listener uses.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
+# `TunnelLiveness`, which the tunnel-drop notifications read.
+tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 # `sync` for the host-context watch and the glue's channels; `time` for the
 # request-notification timer; `macros` for `select!`.
 tokio = { workspace = true, features = ["macros", "sync", "time"] }

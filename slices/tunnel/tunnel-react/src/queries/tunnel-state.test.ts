@@ -69,9 +69,7 @@ describe('tunnelStateQueryOptions', () => {
 
     const state = await queryClient.query({ ...options, staleTime: 'static' })
 
-    expect(state.publicHost).toBe(Tunnel.freshTunnelState.publicHost)
-    expect(state.servedOrigin).toBe('http://127.0.0.1:8080')
-    expect(state.status).toBe('dialing')
+    expect(state).toEqual(Tunnel.freshTunnelState)
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toEqual(state)
   })
 

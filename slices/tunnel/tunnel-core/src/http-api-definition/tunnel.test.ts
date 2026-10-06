@@ -22,21 +22,14 @@ describe('TunnelStateViewSchema', () => {
     expectRightToEqual(Schema.decodeUnknownEither(TunnelStateViewSchema)(FRESH_STATE), FRESH_STATE)
   })
 
-  it('accepts a verified snapshot served at the public origin', () => {
-    const verified = {
-      publicHost: 'my-clinic.example.com',
-      status: 'verified' as const,
-      running: true,
-      error: null,
-      dialAttempts: 2,
-      servedOrigin: 'https://my-clinic.example.com',
-    }
-    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateViewSchema)(verified), verified)
+  it('accepts an unreachable snapshot with its error', () => {
+    const unreachable = { status: 'unreachable' as const, error: 'relay unreachable' }
+    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateViewSchema)(unreachable), unreachable)
   })
 
-  it('rejects state missing the public host', () => {
+  it('rejects state missing the error', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(TunnelStateViewSchema)({ ...FRESH_STATE, publicHost: null }),
+      Schema.decodeUnknownEither(TunnelStateViewSchema)({ status: 'dialing' }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

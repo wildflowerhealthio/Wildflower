@@ -44,53 +44,6 @@
   }
 }
 
-.hero__address-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-5);
-}
-
-.hero__host {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-3);
-  font-weight: var(--font-weight-2);
-  color: var(--color-foreground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/*
- * Bare icon button — no fill, no border. Sized to match the host line's
- * cap height so the glyph sits on the same baseline as the URL.
- */
-.hero__copy {
-  flex: 0 0 auto;
-  background: none;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  font-size: var(--font-size-4);
-  line-height: var(--line-height-1);
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.hero__copy:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.hero__copy:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-1);
-}
-
 .hero__meta {
   margin: 0;
   font-size: var(--font-size-2);

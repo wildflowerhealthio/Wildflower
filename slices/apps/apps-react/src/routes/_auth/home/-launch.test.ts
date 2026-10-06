@@ -1,4 +1,3 @@
-import { HttpClientError, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { Effect, Either } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -40,17 +39,6 @@ const resolvingRunAuthed = (value?: { readonly url: string }): RunAuthedStub => 
 const rejectingRunAuthed = (error: unknown): RunAuthedStub => {
   const calls: { readonly effect: unknown }[] = []
   return { calls, runAuthed: (effect) => (calls.push({ effect }), Promise.reject(error)) }
-}
-
-/** A `ResponseError` at `status` — the shape an *undeclared* launch status (`403` /
- * `503`) reaches the typed client as. */
-const responseError = (status: number): HttpClientError.ResponseError => {
-  const request = HttpClientRequest.get('/apps/pt-browser')
-  return new HttpClientError.ResponseError({
-    request,
-    response: HttpClientResponse.fromWeb(request, new Response(null, { status })),
-    reason: 'StatusCode',
-  })
 }
 
 describe('launchApp', () => {
@@ -99,12 +87,6 @@ describe('launchApp', () => {
     expect(launchBannerError(Either.isLeft(result) ? result.left : undefined)).toBe(
       'That app is no longer available.'
     )
-  })
-
-  test('encodes a 503 as a reachability message', async () => {
-    const result = await launchApp(ctxRejecting(responseError(503), recordingNavigate()), app.id)
-
-    expect(launchBannerError(Either.isLeft(result) ? result.left : undefined)).toContain('reached')
   })
 
   test('encodes an unrecognised failure as the generic launch message', async () => {

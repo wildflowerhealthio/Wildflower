@@ -10,7 +10,6 @@ use apps_rust::{ports::NoAppLaunchScopes, setup_apps, Apps, AppsConfig};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
-use shared_structures_rust::tunnel_service::OfflineTunnel;
 use tower::ServiceExt;
 use url::Url;
 
@@ -35,24 +34,16 @@ fn with_owner_claims(mut req: Request<Body>) -> Request<Body> {
 /// Spin up the slice plus the recording on-device webview handle, so a launch
 /// test can assert the URL a loopback launch routes to it.
 ///
-/// No per-app SMART launch scopes ([`NoAppLaunchScopes`]) and no tunnel (an
-/// [`OfflineTunnel`]): a `requires_tunnel` launch would `503`, so the harness only
-/// issues loopback launches of non-tunnel apps.
+/// No per-app SMART launch scopes ([`NoAppLaunchScopes`]).
 fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     let pool = persistence_rust::open_in_memory_pool().expect("open in-memory diesel pool");
     let config = AppsConfig {
         loopback_base_url: Url::parse(LOOPBACK_BASE_URL).expect("valid base url"),
+        public_origin: Url::parse("https://dev1.example.com").expect("valid public origin"),
     };
     let handle = Arc::new(RecordingStubWebviewHandle::default());
-    let tunnel = Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"));
-    let apps = setup_apps(
-        pool,
-        &config,
-        tunnel,
-        handle.clone(),
-        Arc::new(NoAppLaunchScopes),
-    )
-    .expect("setup_apps");
+    let apps =
+        setup_apps(pool, &config, handle.clone(), Arc::new(NoAppLaunchScopes)).expect("setup_apps");
     (apps, handle)
 }
 

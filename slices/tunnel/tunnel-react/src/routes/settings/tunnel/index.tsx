@@ -16,7 +16,7 @@ const TunnelScreenContent = (): JSX.Element => {
   return (
     <>
       <PageHeader title="Tunnel" backHref="/settings" backLabel="Settings" />
-      <TunnelExplainer state={state} />
+      <TunnelExplainer />
       <TunnelStatusHero state={state} />
     </>
   )

@@ -28,14 +28,12 @@ mod tests {
     use tokio_util::sync::CancellationToken;
     use tower::ServiceExt;
 
-    use scope_capabilities_rust::ScopeClaims;
-    use shared_structures_rust::tunnel_service::TunnelStatus;
-
     use super::*;
-    use crate::domain::{RelayClient, RelaySettings};
+    use crate::domain::{RelayClient, RelaySettings, TunnelStatus};
     use crate::health::HealthProbe;
     use crate::test_support::{relay, StubProbe};
     use crate::TunnelDaemon;
+    use scope_capabilities_rust::ScopeClaims;
 
     /// The scope claim `GET /tunnel` requires — the owner-shaped token the
     /// behavioural tests present so the scope gate never rejects them. The host
@@ -85,8 +83,7 @@ mod tests {
     }
 
     /// The tunnel state over a daemon dialing `dev1.example.com`'s relay. A
-    /// failing `probe` keeps the tunnel off `Verified`, so `servedOrigin` stays
-    /// deterministically on the loopback fallback.
+    /// failing `probe` keeps the tunnel off `Verified`.
     fn state(
         behavior: Behavior,
         probe: Arc<dyn HealthProbe>,
@@ -133,43 +130,22 @@ mod tests {
             .unwrap()
     }
 
-    /// `GET /tunnel` carries the liveness and the public host from the record,
-    /// and nothing else. The failing probe keeps it on the loopback fallback.
+    /// `GET /tunnel` carries the liveness, and nothing else.
     #[tokio::test]
-    async fn get_reads_the_liveness_and_the_public_host_only() {
+    async fn get_reads_the_liveness_only() {
         let (st, _started) = state(Behavior::HoldUntilCancel, failing_probe());
         let (status, body) = send(&st, get()).await;
         assert_eq!(status, StatusCode::OK);
-        let mut keys: Vec<&str> = body
-            .as_object()
-            .expect("an object")
-            .keys()
-            .map(String::as_str)
-            .collect();
-        keys.sort_unstable();
         assert_eq!(
-            keys,
-            [
-                "dialAttempts",
-                "error",
-                "publicHost",
-                "running",
-                "servedOrigin",
-                "status"
-            ],
-        );
-        assert_eq!(body["publicHost"], serde_json::json!("dev1.example.com"));
-        assert_eq!(body["running"], serde_json::json!(true));
-        assert_eq!(
-            body["servedOrigin"],
-            serde_json::json!("http://127.0.0.1:8080")
+            body,
+            serde_json::json!({ "status": "dialing", "error": null }),
         );
     }
 
     /// Once a `/health` probe comes back healthy, the status flips to
-    /// `verified` and `servedOrigin` becomes the public origin.
+    /// `verified`.
     #[tokio::test(start_paused = true)]
-    async fn verified_after_probe_reports_the_public_origin() {
+    async fn verified_after_probe() {
         let (st, _started) = state(Behavior::HoldUntilCancel, Arc::new(StubProbe::passing()));
         st.daemon
             .watch_liveness()
@@ -178,10 +154,6 @@ mod tests {
             .expect("verified");
         let (_status, body) = send(&st, get()).await;
         assert_eq!(body["status"], serde_json::json!("verified"));
-        assert_eq!(
-            body["servedOrigin"],
-            serde_json::json!("https://dev1.example.com")
-        );
     }
 
     #[tokio::test]
@@ -199,17 +171,6 @@ mod tests {
         // and it keeps reconnecting — at least two attempts happen
         started.recv().await.expect("attempt 1");
         started.recv().await.expect("attempt 2");
-
-        // The attempt counter climbs on every retry so an operator can spot a
-        // permanent misconfiguration (steady error + steadily climbing count).
-        live.wait_for(|l| l.dial_attempts >= 2)
-            .await
-            .expect("attempt count climbs");
-        let (_, body) = send(&st, get()).await;
-        assert!(
-            body["dialAttempts"].as_i64().expect("attempt is a number") >= 2,
-            "wire surfaces the climbing attempt count: {body}",
-        );
     }
 
     /// The web app can't write the tunnel: `/tunnel` serves no `PUT`, even to a

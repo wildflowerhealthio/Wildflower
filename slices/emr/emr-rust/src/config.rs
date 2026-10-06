@@ -25,4 +25,9 @@ pub struct EmrConfig {
     /// [`shared_structures_rust::CANONICAL_ISSUER`]; see
     /// `docs/Origins/Explanation.md`.
     pub jwks_url: Option<String>,
+    /// The server's public origin, e.g. `https://ruth.relay.wildflowerhealth.io`.
+    /// HFS's `base_url` — the prefix of every URL it emits (search Bundle links,
+    /// `entry.fullUrl`s, a create's `Location`) — is `{public_origin}/fhir-r4`,
+    /// fixed for the life of the router. See `docs/Origins/Explanation.md`.
+    pub public_origin: url::Url,
 }

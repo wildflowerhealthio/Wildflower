@@ -25,8 +25,8 @@ pub const CANONICAL_ISSUER: &str = "https://wildflowerhealth.io";
 /// stringify a loopback or per-request served base URL (loopback config origins,
 /// forwarded served origins, discovery-doc issuer URLs) can't each render it a
 /// slightly different way — the flap PR #224 warned about. Pure `url` code, so
-/// it stays out of the axum-gated `served_origin` module and non-HTTP crates
-/// (e.g. tunnel's daemon) can use it too. See `docs/Origins/Explanation.md`.
+/// it stays out of the axum-gated `served_origin` module and non-HTTP crates can
+/// use it too. See `docs/Origins/Explanation.md`.
 #[must_use]
 pub fn origin_string(base_url: &url::Url) -> String {
     base_url.origin().ascii_serialization()
@@ -37,12 +37,6 @@ pub mod http_errors;
 
 #[cfg(feature = "openapi-snapshot")]
 pub mod openapi_snapshot;
-
-/// The tunnel service contract (`TunnelService` + state types) the tunnel slice
-/// implements and the apps slice consumes. Behind the `tunnel-service` feature
-/// so the lean default build stays free of `tokio`/`async-trait`.
-#[cfg(feature = "tunnel-service")]
-pub mod tunnel_service;
 
 /// The health-check service contract (`HealthCheckService`) + a reusable
 /// `/health` router. Behind the `health-check` feature so the lean default build

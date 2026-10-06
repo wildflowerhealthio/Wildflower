@@ -31,13 +31,6 @@ defineSpecDriftTest({
     ['/apps', 'get'],
     ['/apps/{id}', 'post'],
   ],
-  /**
-   * `post /apps/{id}` (LaunchApp) declares the two successes the client decodes
-   * (see the focused test below) but deliberately omits the server's `503`
-   * error body, which the client never models. Its path parameter is still
-   * compared; its responses are not.
-   */
-  responsesNotCompared: new Set<string>(['post /apps/{id}']),
 })
 
 describe('LaunchApp success statuses', () => {
