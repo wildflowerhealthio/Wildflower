@@ -2,7 +2,7 @@
   "name": "servers-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The base app the Tauri host's webview mounts: `BaseRoot`, its own telemetry consent gate around the base's screens (the server list and the app's Settings), which reach the host only through `servers-core`'s Tauri commands.",
+  "description": "The base app the Tauri host's webview mounts: `BaseRoot`, its own telemetry consent gate around the base's screens (the server list and Host Settings), which reach the host only through `servers-core`'s Tauri commands.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

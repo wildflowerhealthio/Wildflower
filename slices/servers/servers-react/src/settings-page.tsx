@@ -57,7 +57,8 @@ const versionText = (version: UseQueryResult<string, HostCommandError>): string 
 }
 
 /**
- * The base's Settings, `/settings`, for the app rather than any one server:
+ * The base's Host Settings, `/settings`, for this device's app rather than
+ * any one server (whose settings the web app holds):
  * Notifications, the Telemetry row, and About.
  *
  * @remarks
@@ -75,10 +76,11 @@ const SettingsPage = (): JSX.Element => {
   const version = useQuery(appVersionQueryOptions(runHostCommand))
   return (
     <>
-      <PageHeader title="Settings" backHref="/" backLabel="Servers" />
-      <ItemList title="Notifications" items={[notificationsItem]} />
+      <PageHeader title="Host Settings" backHref="/" backLabel="Servers" />
+      <ItemList title="Notifications" items={[notificationsItem]} maxLines={3} />
       <ItemList
         title="Privacy"
+        maxLines={3}
         items={[
           {
             id: 'telemetry',
@@ -90,6 +92,7 @@ const SettingsPage = (): JSX.Element => {
       />
       <ItemList
         title="About"
+        maxLines={3}
         items={[
           { id: 'version', title: 'Version', meta: versionText(version) },
           {

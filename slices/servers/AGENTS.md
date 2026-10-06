@@ -27,7 +27,8 @@ host's webview mounts to manage them.
 - **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
   mounts with `@tauri-apps/api/core`'s `invoke`: the base's telemetry consent
   gate, then its router over `routes/`, `/` the server list and `/settings`
-  the app's Settings (Notifications, Telemetry, About).
+  Host Settings, for the app on this device rather than any one server
+  (Notifications, Telemetry, About).
 
 ## Rules
 

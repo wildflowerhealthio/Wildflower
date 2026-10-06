@@ -4,7 +4,7 @@ import { GateCard, PageHeader } from 'react-tundraish'
 
 /**
  * The base's home, `/`: the servers on this device, with the way to the
- * base's Settings.
+ * base's Host Settings.
  *
  * @remarks
  * A placeholder for now: it lists no servers, and says so.
@@ -15,7 +15,7 @@ const ServerListPage = (): JSX.Element => (
       title="Servers"
       actions={
         <Link to="/settings" className="button-3 outline">
-          Settings
+          Host Settings
         </Link>
       }
     />

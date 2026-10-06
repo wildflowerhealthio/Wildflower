@@ -193,7 +193,7 @@ describe('BaseRoot', () => {
     expect(tags).toStrictEqual({ app: 'wildflower-tauri' })
   })
 
-  it('should show the empty server list, and reach Settings from it', async () => {
+  it('should show the empty server list, and reach Host Settings from it', async () => {
     // Arrange
     const user = userEvent.setup()
     const host = hostWith()
@@ -206,10 +206,10 @@ describe('BaseRoot', () => {
     expect(await screen.findByText('No servers yet')).toBeDefined()
 
     // Act
-    await user.click(screen.getByRole('link', { name: 'Settings' }))
+    await user.click(screen.getByRole('link', { name: 'Host Settings' }))
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeDefined()
+    expect(await screen.findByRole('heading', { name: 'Host Settings' })).toBeDefined()
 
     // Act
     await user.click(screen.getByRole('link', { name: 'Servers' }))
@@ -219,7 +219,7 @@ describe('BaseRoot', () => {
   })
 })
 
-describe('Settings', () => {
+describe('Host Settings', () => {
   /** The row of the list titled `section` whose title is `title`. */
   const rowIn = (section: string, title: string): HTMLElement => {
     const list = screen.getByRole('heading', { name: section }).closest('section')

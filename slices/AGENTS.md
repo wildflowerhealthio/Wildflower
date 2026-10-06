@@ -133,7 +133,7 @@ the server is added, and re-entering a token refuses a relay that presents
 another. `servers-tauri-rust` is the base's `server_add` and `server_set_credentials`
 commands over it. The base itself, the UI the Tauri host's webview mounts in
 place of the owner UI, is `servers-react`'s `BaseRoot`: its own telemetry
-consent, then the server list and the app's Settings, which reach the host
+consent, then the server list and Host Settings, which reach the host
 only through `servers-core`'s Tauri commands (plain `invoke`, answers
 decoded by Effect Schema), never the effect-messaging bridge.
 
