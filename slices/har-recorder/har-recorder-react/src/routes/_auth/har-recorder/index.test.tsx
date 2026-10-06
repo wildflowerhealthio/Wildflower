@@ -221,7 +221,8 @@ const renderPage = (): PageHarness => {
     </HandlerCoordinatorContext.Provider>
   )
   return {
-    user: userEvent.setup(),
+    // No timer between keystrokes: the property types many generated URLs.
+    user: userEvent.setup({ delay: null }),
     savedFileNames,
     deliver: (bridgeName, message) => {
       const handler = registered.get(bridgeName)?.[message._tag]

@@ -125,8 +125,8 @@ describe('StartTrainingPlanDefinitionView', () => {
   it("should start any training plan definition at its rules' minimum loads as makeForEachExercise accepts", async () => {
     await fc.assert(
       fc.asyncProperty(trainingPlanDefinitionArb, async (trainingPlanDefinition) => {
-        // Arrange
-        const user = userEvent.setup()
+        // Arrange: no timer between keystrokes, as a plan of many exercises is many loads typed.
+        const user = userEvent.setup({ delay: null })
         const onStart = vi.fn<(start: TrainingPlanDefinitionStart) => void>()
         render(
           <StartTrainingPlanDefinitionView

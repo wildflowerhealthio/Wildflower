@@ -752,7 +752,8 @@ const renderForm = (
   onDone: (result: OAuthConsentResult) => void
 ): { readonly user: ReturnType<typeof userEvent.setup> } => {
   const queryClient = new QueryClient()
-  const user = userEvent.setup()
+  // No timer between pointer actions: the property renders and clicks once per run.
+  const user = userEvent.setup({ delay: null })
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
