@@ -22,13 +22,20 @@ impl FhirR4StoreReadiness {
 
     /// Check that the store hands out a connection and answers a query.
     ///
+    /// HFS's sqlite readiness check checks a connection out of its r2d2 pool
+    /// synchronously, parking for up to the pool's connection timeout when
+    /// the pool is exhausted, so it runs on the blocking pool: the caller's
+    /// task stays cancellable, and a stuck store never holds an async worker.
+    ///
     /// # Errors
     ///
-    /// Returns the backend's error when it can't.
+    /// Returns the backend's error when it can't, or when the check panicked.
     pub async fn check(&self) -> anyhow::Result<()> {
-        self.backend
-            .readiness_check()
+        let backend = self.backend.clone();
+        let runtime = tokio::runtime::Handle::current();
+        tokio::task::spawn_blocking(move || runtime.block_on(backend.readiness_check()))
             .await
+            .context("the FHIR R4 store readiness check panicked")?
             .context("the FHIR R4 store isn't ready")
     }
 }

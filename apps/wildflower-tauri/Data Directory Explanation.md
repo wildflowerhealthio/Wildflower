@@ -157,8 +157,8 @@ Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist):
   ATS reaches only what goes through CFNetwork/`URLSession` — the web views and
   the WebKit content above. It has no say over the Rust side: `reqwest` here is
   built `default-features = false` with `rustls-tls`, so the rathole tunnel
-  client, the tunnel `/health` probe and the collectors' upstream fetches open
-  their own sockets and speak their own TLS. Whatever those are allowed to
+  client, the reachability monitor's `/health` probe and the collectors'
+  upstream fetches open their own sockets and speak their own TLS. Whatever those are allowed to
   reach is a question for that code, not for this plist.
 
 ## Android is still private

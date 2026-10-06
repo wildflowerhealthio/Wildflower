@@ -201,8 +201,9 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
             ("server", vec![(ComponentType::System, HealthStatus::Pass)]),
         ]
     );
-    // The loopback `/health` above is not reported; a forwarded one is, with no
-    // caller (`/health` is ungated).
+    // The loopback `/health` above is not reported, and neither is a forwarded
+    // one (the reachability monitor's probes); a forwarded FHIR read is, with
+    // no caller (`/fhir-r4/metadata` is unauthenticated).
     let forwarded_health = reqwest::Client::new()
         .get(loopback_base_url.join("health").expect("health URL"))
         .header("forwarded", FORWARDED)
@@ -210,6 +211,10 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         .await
         .expect("a forwarded GET /health reaches the server");
     assert_eq!(forwarded_health.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        forwarded_metadata_status(&loopback_base_url).await,
+        reqwest::StatusCode::OK
+    );
     let forwarded_request = tokio::time::timeout(LIFECYCLE_TIMEOUT, forwarded_requests.recv())
         .await
         .expect("the forwarded request is reported in time")
@@ -221,7 +226,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
             forwarded_request.client_address.as_deref(),
             forwarded_request.caller,
         ),
-        ("/health", 200, Some("192.0.2.1"), None)
+        ("/fhir-r4", 200, Some("192.0.2.1"), None)
     );
     assert!(
         forwarded_requests.try_recv().is_err(),
@@ -312,9 +317,25 @@ async fn forwarded_request_log_read(
         .expect("GET /requests reaches the server")
 }
 
-/// Whether the request log, read with `bearer_token`, holds a `GET /health`
-/// relayed from `192.0.2.1`.
-async fn request_log_holds_forwarded_health(loopback_base_url: &Url, bearer_token: &str) -> bool {
+/// The status of a `GET /fhir-r4/metadata` relayed from `192.0.2.1`: an
+/// unauthenticated request the forwarded-request layer reports.
+async fn forwarded_metadata_status(loopback_base_url: &Url) -> reqwest::StatusCode {
+    reqwest::Client::new()
+        .get(
+            loopback_base_url
+                .join("fhir-r4/metadata")
+                .expect("metadata URL"),
+        )
+        .header("forwarded", FORWARDED)
+        .send()
+        .await
+        .expect("a forwarded GET /fhir-r4/metadata reaches the server")
+        .status()
+}
+
+/// Whether the request log, read with `bearer_token`, holds a
+/// `GET /fhir-r4/metadata` relayed from `192.0.2.1`.
+async fn request_log_holds_forwarded_metadata(loopback_base_url: &Url, bearer_token: &str) -> bool {
     let response = forwarded_request_log_read(loopback_base_url, Some(bearer_token)).await;
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let page: Value = response.json().await.expect("a JSON request-log page");
@@ -322,7 +343,7 @@ async fn request_log_holds_forwarded_health(loopback_base_url: &Url, bearer_toke
         .as_array()
         .expect("a requests array")
         .iter()
-        .any(|logged| logged["path"] == "/health" && logged["address"] == "192.0.2.1")
+        .any(|logged| logged["path"] == "/fhir-r4" && logged["address"] == "192.0.2.1")
 }
 
 /// The composition root's request-log wiring: the forwarded-request layer feeds
@@ -370,18 +391,15 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     );
     let apps_reader = client_token(app_data_dir.path(), &["wildflower/Apps.r".to_owned()]);
 
-    let forwarded_health = reqwest::Client::new()
-        .get(loopback_base_url.join("health").expect("health URL"))
-        .header("forwarded", FORWARDED)
-        .send()
-        .await
-        .expect("a forwarded GET /health reaches the server");
-    assert_eq!(forwarded_health.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        forwarded_metadata_status(&loopback_base_url).await,
+        reqwest::StatusCode::OK
+    );
 
     // The writer records off the request path, so the row lands a moment after
     // the response; read until it does.
     tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
-        while !request_log_holds_forwarded_health(&loopback_base_url, &request_log_reader).await {
+        while !request_log_holds_forwarded_metadata(&loopback_base_url, &request_log_reader).await {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     })

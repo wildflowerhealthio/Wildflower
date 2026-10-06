@@ -5,7 +5,7 @@
 /// notifications stack).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalNotification {
-    /// The stable string id: `server-stopped`, `tunnel`, or
+    /// The stable string id: `server-stopped`, `server-reach`, or
     /// `server-requests:<caller>`.
     pub id: String,
     pub title: String,
@@ -51,8 +51,8 @@ mod tests {
     fn numeric_ids_are_pinned() {
         // FNV-1a("server-stopped") = 0x912dbb96 → masked 0x112dbb96 → | 1.
         assert_eq!(with_id("server-stopped").numeric_id(), 0x112d_bb97);
-        // FNV-1a("tunnel") = 0x0a62fa57, already positive and odd.
-        assert_eq!(with_id("tunnel").numeric_id(), 0x0a62_fa57);
+        // FNV-1a("server-reach") = 0x21b43bc0 → already positive → | 1.
+        assert_eq!(with_id("server-reach").numeric_id(), 0x21b4_3bc1);
     }
 
     proptest! {

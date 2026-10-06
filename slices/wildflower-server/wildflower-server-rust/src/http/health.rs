@@ -54,7 +54,8 @@ impl HealthCheckService for ServerHealthChecks {
 }
 
 /// The `fhir-r4` check: the FHIR R4 store's readiness, within
-/// [`CHECK_TIMEOUT`].
+/// [`CHECK_TIMEOUT`]. The readiness check runs on the blocking pool, so the
+/// timeout fires even while HFS's pool checkout is parked.
 async fn check_fhir_r4(fhir_r4_store: &FhirR4StoreReadiness) -> HealthCheck {
     let outcome = tokio::time::timeout(CHECK_TIMEOUT, fhir_r4_store.check())
         .await

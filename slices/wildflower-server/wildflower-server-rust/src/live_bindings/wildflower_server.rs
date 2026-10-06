@@ -426,8 +426,9 @@ pub async fn set_up(
         .layer(require_loopback_peer_middleware())
         .layer(api_cors_layer());
 
-    // Outermost: every request the front relayed through the tunnel is
-    // reported to the host and to the request log once its response is ready.
+    // Outermost: every request the front relayed through the tunnel, but
+    // `/health` (the reachability monitor's probes), is reported to the host
+    // and to the request log once its response is ready.
     let router = api_router.layer(axum::middleware::from_fn_with_state(
         ForwardedRequestSenders {
             host_sender: observers.forwarded_request_sender,

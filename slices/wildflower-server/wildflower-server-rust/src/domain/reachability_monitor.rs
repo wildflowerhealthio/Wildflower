@@ -14,11 +14,14 @@
 //!   probe failed / no answer
 //!     within 3 s            ──► Unreachable { error }    next probe in 400 ms
 //! ```
+//!
+//! Only a change is published: a report whose statuses match the last one's
+//! (its checks' `time`s aside), or the same unreachable reason, is not.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use shared_structures_rust::health_check::HealthReport;
+use shared_structures_rust::health_check::{ComponentType, HealthReport, HealthStatus};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -50,7 +53,7 @@ const PROBE_INTERVAL: Duration = Duration::from_millis(400);
 const REACHABLE_PROBE_INTERVAL: Duration = Duration::from_secs(30);
 
 /// How long one probe may take before it counts as unreachable.
-const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+pub(crate) const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// The running monitor: the token that stops it when it is dropped.
 pub(crate) struct ReachabilityMonitor {
@@ -107,13 +110,50 @@ async fn monitor(
             ServerHealth::Unreachable { .. } => PROBE_INTERVAL,
         };
         server_health_sender.send_if_modified(|published| {
-            if published.as_ref() == Some(&server_health) {
+            if published
+                .as_ref()
+                .is_some_and(|published| says_the_same(published, &server_health))
+            {
                 return false;
             }
             *published = Some(server_health);
             true
         });
     }
+}
+
+/// Whether `probed` tells the host nothing `published` didn't: the same
+/// unreachable reason, or reports whose overall and per-check statuses agree.
+/// Each check's `time` is when it ran, so it differs on every probe; comparing
+/// it would republish a steady server every 30 s.
+fn says_the_same(published: &ServerHealth, probed: &ServerHealth) -> bool {
+    match (published, probed) {
+        (ServerHealth::Reachable(published), ServerHealth::Reachable(probed)) => {
+            published.status == probed.status
+                && check_statuses(published).eq(check_statuses(probed))
+        }
+        (
+            ServerHealth::Unreachable {
+                error: published_error,
+            },
+            ServerHealth::Unreachable {
+                error: probed_error,
+            },
+        ) => published_error == probed_error,
+        _ => false,
+    }
+}
+
+/// Each of `report`'s checks as its name, component type and status: the
+/// check without its `time`.
+fn check_statuses(
+    report: &HealthReport,
+) -> impl Iterator<Item = (&str, ComponentType, HealthStatus)> {
+    report.checks.iter().flat_map(|(check_name, checks)| {
+        checks
+            .iter()
+            .map(move |check| (check_name.as_str(), check.component_type, check.status))
+    })
 }
 
 /// One bounded probe: an answer is reachable; a failure or a timeout is
@@ -136,7 +176,9 @@ async fn probe_once(probe: &dyn HealthProbe, health_url: &Url) -> ServerHealth {
 mod tests {
     use std::collections::VecDeque;
 
-    use shared_structures_rust::health_check::HealthStatus;
+    use std::collections::BTreeMap;
+
+    use shared_structures_rust::health_check::HealthCheck;
     use std::sync::Mutex;
     use tokio::time::Instant;
 
@@ -207,6 +249,18 @@ mod tests {
             status: HealthStatus::Fail,
             ..HealthReport::pass()
         }
+    }
+
+    /// A report of one `server` check with `status`, run at `time`.
+    fn report_at(status: HealthStatus, time: &str) -> HealthReport {
+        HealthReport::from_checks(BTreeMap::from([(
+            "server".to_owned(),
+            vec![HealthCheck {
+                component_type: ComponentType::System,
+                status,
+                time: time.parse().expect("an RFC 3339 time"),
+            }],
+        )]))
     }
 
     fn spawn(
@@ -313,6 +367,46 @@ mod tests {
             .expect("published")
             .clone();
         assert_eq!(reached, Some(ServerHealth::Reachable(failing_report())));
+    }
+
+    /// Each probe's checks carry the time they ran, which differs every time;
+    /// a server whose statuses hold still is published once, and a changed
+    /// status is published again.
+    #[tokio::test(start_paused = true)]
+    async fn only_a_changed_verdict_is_republished() {
+        let probe = ScriptedProbe::new([
+            Answer::Report(report_at(HealthStatus::Pass, "2026-10-06T00:00:00Z")),
+            Answer::Report(report_at(HealthStatus::Pass, "2026-10-06T00:00:30Z")),
+            Answer::Report(report_at(HealthStatus::Pass, "2026-10-06T00:01:00Z")),
+            Answer::Report(report_at(HealthStatus::Warn, "2026-10-06T00:01:30Z")),
+        ]);
+        let (_monitor, mut server_health) = spawn(Arc::clone(&probe));
+        server_health
+            .wait_for(Option::is_some)
+            .await
+            .expect("published");
+        server_health.borrow_and_update();
+
+        tokio::time::sleep(Duration::from_secs(61)).await;
+        assert_eq!(probe.probe_times().len(), 3);
+        assert!(
+            !server_health
+                .has_changed()
+                .expect("the monitor holds the sender"),
+            "the same statuses at a later time are not a change"
+        );
+
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        assert!(server_health
+            .has_changed()
+            .expect("the monitor holds the sender"));
+        assert_eq!(
+            *server_health.borrow_and_update(),
+            Some(ServerHealth::Reachable(report_at(
+                HealthStatus::Warn,
+                "2026-10-06T00:01:30Z"
+            )))
+        );
     }
 
     #[tokio::test(start_paused = true)]

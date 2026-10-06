@@ -6,14 +6,12 @@
 //! `pass`/`warn` and `503` for `fail`, so both carry a report; any other
 //! status, or a body that isn't a report, is an error.
 
-use std::time::Duration;
-
 use anyhow::Context;
 use reqwest::StatusCode;
 use shared_structures_rust::health_check::HealthReport;
 use url::Url;
 
-use crate::domain::reachability_monitor::HealthProbe;
+use crate::domain::reachability_monitor::{HealthProbe, PROBE_TIMEOUT};
 
 /// A `reqwest`-backed `/health` probe. `rustls` TLS (no openssl), consistent
 /// with the project's openssl avoidance.
@@ -29,7 +27,7 @@ impl ReqwestHealthProbe {
             .use_rustls_tls()
             // A per-request timeout as a backstop; the monitor also bounds each
             // probe, so this only guards a client built without that wrapper.
-            .timeout(Duration::from_secs(3))
+            .timeout(PROBE_TIMEOUT)
             .build()
             // The TLS/connector build only fails on a broken TLS backend —
             // unrecoverable at startup, so surface it loudly.

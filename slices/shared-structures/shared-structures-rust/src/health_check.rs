@@ -32,6 +32,9 @@ use serde::{Deserialize, Serialize};
 /// The draft's media type for a health response.
 pub const HEALTH_JSON_MEDIA_TYPE: &str = "application/health+json";
 
+/// The path [`health_router`] serves the report at.
+pub const HEALTH_PATH: &str = "/health";
+
 /// Health status, per the draft: `pass` (healthy), `warn` (healthy but
 /// degraded), `fail` (unhealthy). Ordered from best to worst, so the worst of
 /// several is their [`Iterator::max`].
@@ -137,7 +140,7 @@ impl HealthCheckService for AlwaysHealthy {
 /// `application/health+json`, uncached. `pass`/`warn` → 200, `fail` → 503.
 pub fn health_router(service: Arc<dyn HealthCheckService>) -> Router {
     Router::new().route(
-        "/health",
+        HEALTH_PATH,
         get(move || {
             let service = Arc::clone(&service);
             async move { health_response(&service.check().await) }

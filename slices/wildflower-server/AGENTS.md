@@ -30,8 +30,11 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
     tunnel, 400 ms after start, every 400 ms while unreachable and every 30 s
     once reachable, each bounded at 3 s, and publishes `ServerHealth`
     (`Reachable(HealthReport)` or `Unreachable { error }`) on the host's
-    `ServerObservers::server_health_sender`. `WildflowerServer` holds it like
-    the tunnel daemon, so it stops when the server stops serving.
+    `ServerObservers::server_health_sender`, only when the statuses or the
+    unreachable reason change (each check's `time` aside). `WildflowerServer`
+    holds it like the tunnel daemon, so it stops when the server stops
+    serving. The forwarded-request report skips `/health`, so the probes stay
+    out of the request log and the request notifications.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig`, `HostPorts`, `ServerObservers`); `domain/`
     `ServerHealth` and the reachability monitor with its `HealthProbe` port;

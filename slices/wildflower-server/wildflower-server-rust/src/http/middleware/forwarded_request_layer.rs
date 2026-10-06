@@ -1,6 +1,6 @@
 //! The outermost layer of the served stack: after each request the trusted
-//! front relayed through the tunnel, report what it was and who made it to the
-//! host and to the request-log slice.
+//! front relayed through the tunnel, `/health` aside, report what it was and
+//! who made it to the host and to the request-log slice.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
 //! bearer gate's `401` off its [`RequestRefusal`] one; the gatekeeper bearer
@@ -15,6 +15,7 @@ use axum::body::HttpBody;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::Response;
+use shared_structures_rust::health_check::HEALTH_PATH;
 use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, RequestRefusal};
 use shared_structures_rust::served_origin::{
     forwarded_client_address, is_forwarded, request_provenance, RequestProvenance,
@@ -35,7 +36,10 @@ pub(crate) struct ForwardedRequestSenders {
 
 /// Report a [`ForwardedRequest`] on both of `forwarded_request_senders` once
 /// the response to a forwarded request is ready. A loopback request is not
-/// reported.
+/// reported, and neither is a forwarded `GET /health`
+/// ([`HEALTH_PATH`]): the reachability monitor asks it through the relay every
+/// 30 s (every 400 ms while unreachable), and a health check is nobody using
+/// the server.
 ///
 /// The forwarded test is [`is_forwarded`], the same presence-only predicate the
 /// loopback owner trust keys on, so a request with a malformed `Forwarded`
@@ -55,7 +59,7 @@ pub(crate) async fn report_forwarded_request(
     request: Request,
     next: Next,
 ) -> Response {
-    if !is_forwarded(request.headers()) {
+    if !is_forwarded(request.headers()) || request.uri().path() == HEALTH_PATH {
         return next.run(request).await;
     }
     let received_at = SystemTime::now();
@@ -175,6 +179,7 @@ mod tests {
                 }),
             )
             .route("/anonymous", get(|| async { "anonymous" }))
+            .route(HEALTH_PATH, get(|| async { "pass" }))
             .layer(axum::middleware::from_fn_with_state(
                 forwarded_request_senders,
                 report_forwarded_request,
@@ -324,6 +329,28 @@ mod tests {
                 receiver.try_recv(),
                 Err(mpsc::error::TryRecvError::Empty),
                 "a loopback request must not be reported"
+            );
+        }
+    }
+
+    /// The reachability monitor's forwarded `/health` probes stay out of the
+    /// request log and the host's notifications, and are still answered.
+    #[tokio::test]
+    async fn a_forwarded_health_check_is_not_reported() {
+        let (senders, mut host_receiver, mut request_log_receiver) = senders(4);
+        let router = reporting_router(senders);
+        let response = router
+            .clone()
+            .oneshot(forwarded_get(HEALTH_PATH))
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        for receiver in [&mut host_receiver, &mut request_log_receiver] {
+            assert_eq!(
+                receiver.try_recv(),
+                Err(mpsc::error::TryRecvError::Empty),
+                "a forwarded /health must not be reported"
             );
         }
     }
