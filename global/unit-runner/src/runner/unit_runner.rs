@@ -515,7 +515,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     fn publish_session_demand(&self, state: &UnitRunnerState<D>, some_unit_should_run: bool) {
         let demand = SessionDemand {
             some_unit_should_run,
-            session_running_and_not_ending: state.session_ledger.session_running_and_not_ending(),
+            session_phase: state.session_ledger.session_phase(),
         };
         self.session_demand_tx.send_if_modified(|current| {
             let changed = *current != demand;

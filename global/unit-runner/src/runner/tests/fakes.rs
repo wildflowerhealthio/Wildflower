@@ -345,6 +345,9 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
 pub(super) struct FakeBackgroundSession {
     unit_runner: Arc<UnitRunner<Detail>>,
     session: Mutex<Option<SessionId>>,
+    /// Asked to end, the session keeps running until
+    /// [`finish_ending_session`](Self::finish_ending_session).
+    ends_held: AtomicBool,
     starts: AtomicUsize,
     stops: AtomicUsize,
 }
@@ -354,6 +357,7 @@ impl FakeBackgroundSession {
         Arc::new(Self {
             unit_runner: Arc::clone(unit_runner),
             session: Mutex::new(None),
+            ends_held: AtomicBool::new(false),
             starts: AtomicUsize::new(0),
             stops: AtomicUsize::new(0),
         })
@@ -382,6 +386,25 @@ impl FakeBackgroundSession {
         }
     }
 
+    /// From now on, a session asked to end keeps running until
+    /// [`finish_ending_session`](Self::finish_ending_session), as the plugin's
+    /// service does until its task returns.
+    pub(super) fn hold_ends(&self) {
+        self.ends_held.store(true, Ordering::SeqCst);
+    }
+
+    /// The session asked to end finishes ending.
+    pub(super) fn finish_ending_session(&self) {
+        self.end_session();
+    }
+
+    fn end_session(&self) {
+        let ended = self.session.lock().expect("session lock").take();
+        if let Some(id) = ended {
+            self.unit_runner.session_ended(id, None);
+        }
+    }
+
     /// The platform ends the session, for `reason`.
     pub(super) fn platform_ends_session(&self, reason: PlatformStopReason) {
         let ended = self.session.lock().expect("session lock").take();
@@ -403,9 +426,8 @@ impl BackgroundSessionPlatform for FakeBackgroundSession {
     fn stop(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
             self.stops.fetch_add(1, Ordering::SeqCst);
-            let ended = self.session.lock().expect("session lock").take();
-            if let Some(id) = ended {
-                self.unit_runner.session_ended(id, None);
+            if !self.ends_held.load(Ordering::SeqCst) {
+                self.end_session();
             }
             Ok(())
         })

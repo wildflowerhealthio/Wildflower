@@ -35,6 +35,21 @@ pub enum SessionState {
     EndingAsNoLongerNeeded(SessionId),
 }
 
+/// Where the background session is, as starting and ending it sees it: the
+/// [`SessionState`] without the session's id or whether the platform ended
+/// the last one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SessionPhase {
+    /// No session is running: [`SessionState::NoSession`] or
+    /// [`SessionState::EndedByPlatform`].
+    #[default]
+    NoSession,
+    /// The session is running, and `UnitRunner` isn't ending it.
+    Running,
+    /// The session is running, and `UnitRunner` is ending it.
+    Ending,
+}
+
 /// How a background session ended, as `UnitRunner` sees it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionEnd {
@@ -52,7 +67,8 @@ pub enum SessionEnd {
 /// The session itself tells `UnitRunner` when it starts and ends, whoever
 /// started it: `UnitRunner`, the platform's own recovery, or an iOS background
 /// task. `UnitRunner` marks the session it is ending before it asks the
-/// platform, so the end that follows counts as its own.
+/// platform, so the end that follows counts as its own, and starts no other
+/// session until that end comes: the [`SessionPhase`] is `Ending` until then.
 ///
 /// It has no lock of its own: [`UnitRunner`](crate::UnitRunner) only
 /// touches it under its state lock.
@@ -128,10 +144,14 @@ impl SessionLedger {
         self.state == SessionState::EndedByPlatform
     }
 
-    /// Whether a session is running and `UnitRunner` isn't ending it.
+    /// Whether a session is running, and whether `UnitRunner` is ending it.
     #[must_use]
-    pub fn session_running_and_not_ending(&self) -> bool {
-        matches!(self.state, SessionState::Running(_))
+    pub fn session_phase(&self) -> SessionPhase {
+        match self.state {
+            SessionState::NoSession | SessionState::EndedByPlatform => SessionPhase::NoSession,
+            SessionState::Running(_) => SessionPhase::Running,
+            SessionState::EndingAsNoLongerNeeded(_) => SessionPhase::Ending,
+        }
     }
 }
 
@@ -143,16 +163,17 @@ mod tests {
     fn a_session_the_runner_ends_ends_as_no_longer_needed() {
         let mut ledger = SessionLedger::new();
         let id = ledger.session_started();
-        assert!(ledger.session_running_and_not_ending());
+        assert_eq!(ledger.session_phase(), SessionPhase::Running);
         assert_eq!(ledger.mark_no_longer_needed(), Some(id));
         assert_eq!(ledger.mark_no_longer_needed(), None, "one mark per session");
-        assert!(!ledger.session_running_and_not_ending());
+        assert_eq!(ledger.session_phase(), SessionPhase::Ending);
         // Even when the platform reports a reason: it ended a session
         // `UnitRunner` was ending anyway.
         assert_eq!(
             ledger.session_ended(id, Some(PlatformStopReason::UserStop)),
             SessionEnd::NoLongerNeeded
         );
+        assert_eq!(ledger.session_phase(), SessionPhase::NoSession);
         assert!(!ledger.runs_discouraged_by_platform());
     }
 
@@ -165,7 +186,7 @@ mod tests {
             SessionEnd::EndedByPlatform(PlatformStopReason::PlatformExpiration)
         );
         assert!(ledger.runs_discouraged_by_platform());
-        assert!(!ledger.session_running_and_not_ending());
+        assert_eq!(ledger.session_phase(), SessionPhase::NoSession);
         ledger.session_started();
         assert!(!ledger.runs_discouraged_by_platform());
     }
@@ -195,7 +216,7 @@ mod tests {
         let mut ledger = SessionLedger::new();
         let id = ledger.session_started();
         ledger.clear_ended_by_platform();
-        assert!(ledger.session_running_and_not_ending());
+        assert_eq!(ledger.session_phase(), SessionPhase::Running);
         assert_eq!(ledger.mark_no_longer_needed(), Some(id));
         ledger.clear_ended_by_platform();
         assert_eq!(ledger.session_ended(id, None), SessionEnd::NoLongerNeeded);
@@ -209,8 +230,9 @@ mod tests {
         let second = ledger.session_started();
         // The first was marked, but it is no longer the current session.
         assert_eq!(ledger.session_ended(first, None), SessionEnd::Stale);
-        assert!(
-            ledger.session_running_and_not_ending(),
+        assert_eq!(
+            ledger.session_phase(),
+            SessionPhase::Running,
             "the second session is still running"
         );
 
@@ -220,7 +242,7 @@ mod tests {
             SessionEnd::Stale
         );
         assert!(!ledger.runs_discouraged_by_platform());
-        assert!(ledger.session_running_and_not_ending());
+        assert_eq!(ledger.session_phase(), SessionPhase::Running);
         assert_eq!(
             ledger.session_ended(third, None),
             SessionEnd::EndedByPlatform(PlatformStopReason::Unknown)

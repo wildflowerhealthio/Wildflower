@@ -284,8 +284,10 @@ one is stale, and changes nothing.
 - **Starting and ending it.** `UnitRunner` starts a session when a unit should
   run, and ends it when none should, one `BackgroundSessionPlatform` call at a
   time. A call resolves once the platform has taken the request; the session
-  reports its start and end itself. A call that fails is logged and tried again
-  when `UnitRunner`'s demand next changes; units run either way.
+  reports its start and end itself. While a session is ending, `UnitRunner`
+  waits for its end before starting another, even if a unit should run again.
+  A call that fails is logged and tried again when `UnitRunner`'s demand next
+  changes; units run either way.
 - **Starts the platform makes.** Whoever starts a session, the session tells
   `UnitRunner` it started, and `UnitRunner` starts and stops runs per policy. A
   session the platform started with nothing to run is ended. A unit the app

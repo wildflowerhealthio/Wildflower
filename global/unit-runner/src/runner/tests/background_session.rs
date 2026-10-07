@@ -197,3 +197,30 @@ async fn the_runner_s_own_end_of_the_session_stops_no_unit() {
     })
     .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_unit_that_should_run_while_the_session_ends_gets_a_new_session() {
+    let (harness, session) = harness_with_background_session();
+    let probe = Probe::default();
+    harness.set_unit(
+        "unit",
+        RunPolicy::Always,
+        Script::RunUntilStopped { detail: None },
+        &probe,
+    );
+    harness.wait_until_running("unit").await;
+    eventually("a session runs", || session.session_running()).await;
+
+    session.hold_ends();
+    harness.set_unit_policy("unit", RunPolicy::Off);
+    eventually("the session is asked to end", || session.stops() == 1).await;
+
+    // The unit should run again before the session finishes ending.
+    harness.set_unit_policy("unit", RunPolicy::Always);
+    eventually("the unit runs again", || probe.starts() == 2).await;
+    assert!(session.session_running(), "the session is still ending");
+
+    session.finish_ending_session();
+    eventually("a new session runs", || session.session_running()).await;
+    assert_eq!(session.starts(), 2, "one start per session");
+}
