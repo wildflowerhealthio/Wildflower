@@ -48,7 +48,7 @@ pub struct WindowStateChange {
     pub open_after_event: bool,
     /// Whether the event is a resume that calls for restarting every running
     /// unit.
-    pub restart_needed: bool,
+    pub unit_restarts_needed: bool,
 }
 
 /// The app's open windows, and whether a phone app is suspended.
@@ -105,10 +105,10 @@ impl WindowState {
         self.change(followed_a_suspend && self.platform.resume_restarts_running_units())
     }
 
-    fn change(&self, restart_needed: bool) -> WindowStateChange {
+    fn change(&self, unit_restarts_needed: bool) -> WindowStateChange {
         WindowStateChange {
             open_after_event: self.app_open(),
-            restart_needed,
+            unit_restarts_needed,
         }
     }
 
@@ -160,16 +160,16 @@ mod tests {
             let mut windows = WindowState::new(platform);
             windows.window_opened("main");
             assert!(
-                !windows.resumed().restart_needed,
+                !windows.resumed().unit_restarts_needed,
                 "a resume without a suspend restarts nothing"
             );
             windows.suspended();
             assert_eq!(
-                windows.resumed().restart_needed,
+                windows.resumed().unit_restarts_needed,
                 platform == PlatformKind::Ios
             );
             assert!(
-                !windows.resumed().restart_needed,
+                !windows.resumed().unit_restarts_needed,
                 "each suspend counts for one resume"
             );
         }

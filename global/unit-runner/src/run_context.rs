@@ -12,18 +12,18 @@ use crate::unit::UnitId;
 /// stopped, what any clone reports is dropped.
 pub struct RunContext<D> {
     unit_id: UnitId,
-    shutdown: CancellationToken,
+    shutdown_token: CancellationToken,
     board: StatusBoard<D>,
-    run: RunLiveness,
+    run_liveness: RunLiveness,
 }
 
 impl<D> Clone for RunContext<D> {
     fn clone(&self) -> Self {
         Self {
             unit_id: self.unit_id.clone(),
-            shutdown: self.shutdown.clone(),
+            shutdown_token: self.shutdown_token.clone(),
             board: self.board.clone(),
-            run: self.run.clone(),
+            run_liveness: self.run_liveness.clone(),
         }
     }
 }
@@ -31,15 +31,15 @@ impl<D> Clone for RunContext<D> {
 impl<D: Clone + Send + Sync + 'static> RunContext<D> {
     pub(crate) fn new(
         unit_id: UnitId,
-        shutdown: CancellationToken,
+        shutdown_token: CancellationToken,
         board: StatusBoard<D>,
-        run: RunLiveness,
+        run_liveness: RunLiveness,
     ) -> Self {
         Self {
             unit_id,
-            shutdown,
+            shutdown_token,
             board,
-            run,
+            run_liveness,
         }
     }
 
@@ -52,18 +52,20 @@ impl<D: Clone + Send + Sync + 'static> RunContext<D> {
     /// Cancelled when the runner stops this run, or the platform revokes the
     /// keep-alive. The unit should wind down and return once it is.
     #[must_use]
-    pub fn shutdown(&self) -> &CancellationToken {
-        &self.shutdown
+    pub fn shutdown_token(&self) -> &CancellationToken {
+        &self.shutdown_token
     }
 
     /// Report that the unit is up: the run state goes from `Starting` to
     /// `Running`. Later calls do nothing.
     pub fn announce_running(&self) {
-        self.board.publish_running(&self.unit_id, &self.run);
+        self.board
+            .publish_running(&self.unit_id, &self.run_liveness);
     }
 
     /// Report the unit's own status. It is cleared when the run ends.
     pub fn set_detail(&self, detail: D) {
-        self.board.publish_detail(&self.unit_id, &self.run, detail);
+        self.board
+            .publish_detail(&self.unit_id, &self.run_liveness, detail);
     }
 }

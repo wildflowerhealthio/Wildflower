@@ -24,19 +24,21 @@ Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 | `UnitRunner::background_service_plugin`   | `tauri-plugin-background-service` with the runner's keep-alive as its one service.                            |
 | `UnitRunner::lifecycle_plugin`            | Follows the app's windows and resumes, and starts and stops the keep-alive.                                   |
 | `Unit`                                    | Work the runner can run, with its own `Detail` type.                                                          |
-| `RunContext<D>`                           | What a run is handed: `shutdown()`, `announce_running()`, `set_detail()`.                                     |
+| `RunContext<D>`                           | What a run is handed: `shutdown_token()`, `announce_running()`, `set_detail()`.                               |
 | `RunPolicy`                               | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`.                         |
 | `UnitId`                                  | The app's key for a unit.                                                                                     |
 | `UnitStatus<D>`, `RunState`, `RunStop`    | What the runner reports for a unit.                                                                           |
 | `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform revoked the keep-alive.                                               |
-| `StartConfig`                             | The plugin's start config (Android notification label and service type), re-exported.                         |
+| `BackgroundServiceStartConfig`            | The plugin's start config (Android notification label and service type), re-exported.                         |
 | `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                                            |
 | `unit-runner`'s other exports             | `UnitRunnerCore`, `KeepAlivePlatform`, `WallClock` and the rest, re-exported.                                 |
 
 ## Use
 
 ```rust,ignore
-use tauri_unit_runner::{RunContext, RunPolicy, StartConfig, Unit, UnitId, UnitRunner};
+use tauri_unit_runner::{
+    BackgroundServiceStartConfig, RunContext, RunPolicy, Unit, UnitId, UnitRunner,
+};
 
 struct Sync;
 
@@ -46,12 +48,12 @@ impl Unit for Sync {
     async fn run(self, ctx: RunContext<String>) -> anyhow::Result<()> {
         ctx.announce_running();
         ctx.set_detail("connected".to_owned());
-        ctx.shutdown().cancelled().await;
+        ctx.shutdown_token().cancelled().await;
         Ok(())
     }
 }
 
-let runner = UnitRunner::<String>::new(StartConfig {
+let runner = UnitRunner::<String>::new(BackgroundServiceStartConfig {
     service_label: "Syncing in the background".to_owned(),
     foreground_service_type: "dataSync".to_owned(),
 });

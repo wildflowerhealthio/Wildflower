@@ -65,14 +65,14 @@ pub trait Unit: Send + 'static {
     /// The unit's own status, e.g. a connection's liveness or a sync's progress.
     type Detail: Clone + Send + Sync + 'static;
 
-    /// Run until `ctx.shutdown()` is cancelled, or fail.
+    /// Run until `ctx.shutdown_token()` is cancelled, or fail.
     fn run(self, ctx: RunContext<Self::Detail>)
         -> impl Future<Output = anyhow::Result<()>> + Send;
 }
 
 impl<D> RunContext<D> {
     pub fn unit_id(&self) -> &UnitId;
-    pub fn shutdown(&self) -> &CancellationToken;
+    pub fn shutdown_token(&self) -> &CancellationToken;
     pub fn announce_running(&self);      // Starting → Running
     pub fn set_detail(&self, detail: D);
 }

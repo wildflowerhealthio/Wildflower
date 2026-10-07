@@ -35,11 +35,13 @@ pub(crate) async fn sync_keep_alive<D: Clone + Send + Sync + 'static>(
     let mut keep_alive_demand_rx = core.subscribe_keep_alive_demand();
     loop {
         let demand = *keep_alive_demand_rx.borrow_and_update();
-        if demand.wanted && !demand.kept {
+        let keep_alive_should_start = demand.wanted && !demand.kept;
+        let keep_alive_should_end = !demand.wanted && demand.kept;
+        if keep_alive_should_start {
             if let Err(error) = platform.start().await {
                 log::error!("[unit-runner] failed to start the keep-alive: {error:#}");
             }
-        } else if !demand.wanted && demand.kept && core.request_keep_alive_release().is_some() {
+        } else if keep_alive_should_end && core.request_keep_alive_release().is_some() {
             if let Err(error) = platform.stop().await {
                 log::error!("[unit-runner] failed to stop the keep-alive: {error:#}");
             }

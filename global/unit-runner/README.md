@@ -20,7 +20,7 @@ The design and its vocabulary are in the
 | Export                                    | What it is                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------------- |
 | `Unit`                                    | Work the runner can run, with its own `Detail` type.                                  |
-| `RunContext<D>`                           | What a run is handed: `shutdown()`, `announce_running()`, `set_detail()`.             |
+| `RunContext<D>`                           | What a run is handed: `shutdown_token()`, `announce_running()`, `set_detail()`.       |
 | `RunPolicy`                               | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`. |
 | `UnitId`                                  | The app's key for a unit.                                                             |
 | `UnitStatus<D>`, `RunState`, `RunStop`    | What the runner reports for a unit.                                                   |
@@ -47,7 +47,7 @@ impl Unit for Sync {
     async fn run(self, ctx: RunContext<String>) -> anyhow::Result<()> {
         ctx.announce_running();
         ctx.set_detail("connected".to_owned());
-        ctx.shutdown().cancelled().await;
+        ctx.shutdown_token().cancelled().await;
         Ok(())
     }
 }

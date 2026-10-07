@@ -281,25 +281,25 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
             if let Some(detail) = detail {
                 ctx.set_detail(detail);
             }
-            ctx.shutdown().cancelled().await;
+            ctx.shutdown_token().cancelled().await;
             Ok(())
         }
         Script::WindDownSlowly { shutdown_takes } => {
             ctx.announce_running();
-            ctx.shutdown().cancelled().await;
+            ctx.shutdown_token().cancelled().await;
             tokio::time::sleep(shutdown_takes).await;
             Ok(())
         }
         Script::WindDownWhenReleased { release } => {
             ctx.announce_running();
-            ctx.shutdown().cancelled().await;
+            ctx.shutdown_token().cancelled().await;
             let _permit = release.acquire().await?;
             Ok(())
         }
         Script::MeetOthers { barrier } => {
             barrier.wait().await;
             ctx.announce_running();
-            ctx.shutdown().cancelled().await;
+            ctx.shutdown_token().cancelled().await;
             Ok(())
         }
         Script::Fail { detail, error } => {
@@ -325,7 +325,7 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
                 leaked_ctx.announce_running();
                 leaked.written.store(true, Ordering::SeqCst);
             });
-            ctx.shutdown().cancelled().await;
+            ctx.shutdown_token().cancelled().await;
             Ok(())
         }
     }

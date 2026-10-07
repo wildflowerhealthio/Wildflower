@@ -32,7 +32,7 @@ pub(crate) async fn run_on_dedicated_thread<D: Clone + Send + Sync + 'static>(
 ) -> anyhow::Result<()> {
     // Should this future be dropped rather than awaited to the end, the unit
     // still stops.
-    let _stop_unit_when_dropped = ctx.shutdown().clone().drop_guard();
+    let _stop_unit_when_dropped = ctx.shutdown_token().clone().drop_guard();
     let (result_tx, result_rx) = oneshot::channel();
     let thread_name = format!("unit-{}", ctx.unit_id());
     std::thread::Builder::new()

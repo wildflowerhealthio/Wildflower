@@ -15,7 +15,7 @@ use super::erased_unit::{erase_factory, UnitFactory};
 use super::keep_alive_sync::{sync_keep_alive, KeepAliveDemand};
 use super::run_supervisor::{supervise_run, RunSpec};
 use super::status_board::StatusBoard;
-use super::unit_entry::{ActiveRun, PendingRestart, UnitEntry};
+use super::unit_entry::{ActiveRun, PendingRestart, RunGeneration, UnitEntry};
 use super::wall_clock_ticker::reconcile_on_the_wall_clock;
 use super::RunnerTimings;
 use crate::domain::app_presence::{AppPresence, PresenceChange};
@@ -62,15 +62,15 @@ struct RunnerState<D> {
     /// gets a new generation. A late event about one (a restart timer firing,
     /// a run ending) whose generation no longer matches its unit's entry is
     /// stale and ignored.
-    last_generation: u64,
+    last_generation: RunGeneration,
     /// The next wall-clock instant a policy or grace period runs out, as of
     /// the last reconcile.
     next_deadline: Option<DateTime<Utc>>,
 }
 
 impl<D> RunnerState<D> {
-    fn issue_generation(&mut self) -> u64 {
-        self.last_generation += 1;
+    fn issue_generation(&mut self) -> RunGeneration {
+        self.last_generation = self.last_generation.next();
         self.last_generation
     }
 }
@@ -96,7 +96,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
                 units: BTreeMap::new(),
                 app_presence: AppPresence::new(),
                 keep_alive: KeepAliveLedger::new(),
-                last_generation: 0,
+                last_generation: RunGeneration::default(),
                 next_deadline: None,
             }),
             board: StatusBoard::new(Arc::clone(&clock)),
@@ -183,7 +183,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
             Some(entry) => {
                 entry.policy = policy;
                 entry.factory = factory;
-                entry.removing = false;
+                entry.awaiting_removal = false;
                 entry.pending_restart = None;
                 entry.stop_run(StopReason::Replaced);
             }
@@ -214,32 +214,32 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     /// included. Run shutdown is bounded, so this always finishes. A unit never
     /// set is logged and ignored.
     pub async fn remove_unit(self: &Arc<Self>, unit_id: &UnitId) {
-        let finished_rx = {
+        let run_finished_rx = {
             let mut state = self.lock_state();
             let Some(entry) = state.units.get_mut(unit_id) else {
                 log::warn!("[unit-runner] remove_unit for {unit_id}, which was never set; ignored");
                 return;
             };
-            entry.removing = true;
+            entry.awaiting_removal = true;
             entry.pending_restart = None;
             entry.stop_run(StopReason::Removed);
-            let finished_rx = entry.run.as_ref().map(|run| run.finished_rx.clone());
+            let run_finished_rx = entry.run.as_ref().map(|run| run.run_finished_rx.clone());
             self.reconcile_locked(&mut state);
-            finished_rx
+            run_finished_rx
         };
         // Wait without holding the lock until the run's thread and runtime
         // are gone. The sender lives until then, and says so first.
-        if let Some(mut finished_rx) = finished_rx {
-            let _run_finished = finished_rx.wait_for(|finished| *finished).await;
+        if let Some(mut run_finished_rx) = run_finished_rx {
+            let _run_finished = run_finished_rx.wait_for(|finished| *finished).await;
         }
         // Check again: a `set_unit` while we waited may have brought the unit
         // back, and then it stays.
         let mut state = self.lock_state();
-        let still_removing = state
+        let still_awaiting_removal = state
             .units
             .get(unit_id)
-            .is_some_and(|entry| entry.removing && entry.run.is_none());
-        if still_removing {
+            .is_some_and(|entry| entry.awaiting_removal && entry.run.is_none());
+        if still_awaiting_removal {
             state.units.remove(unit_id);
             self.board.remove_unit(unit_id);
         }
@@ -338,14 +338,14 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     pub(super) fn run_ended(
         self: &Arc<Self>,
         unit_id: &UnitId,
-        generation: u64,
+        generation: RunGeneration,
         reason: StopReason,
     ) {
         let mut state = self.lock_state();
         let now = self.clock.now();
         let app_open_or_in_grace = state.app_presence.open_or_in_grace(now);
         let keep_alive_revoked = state.keep_alive.is_revoked();
-        let restart_generation = state.last_generation + 1;
+        let restart_generation = state.last_generation.next();
         let Some(entry) = state.units.get_mut(unit_id) else {
             return;
         };
@@ -375,7 +375,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
 
     /// The restart of `unit_id` with `generation` has waited out its delay. A
     /// restart that was cancelled or replaced since does nothing.
-    fn restart_due(self: &Arc<Self>, unit_id: &UnitId, generation: u64) {
+    fn restart_due(self: &Arc<Self>, unit_id: &UnitId, generation: RunGeneration) {
         let mut state = self.lock_state();
         let Some(entry) = state.units.get_mut(unit_id) else {
             return;
@@ -454,14 +454,14 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
         let Some(entry) = state.units.get_mut(&unit_id) else {
             return;
         };
-        let shutdown = CancellationToken::new();
+        let shutdown_token = CancellationToken::new();
         let stop_reason = Arc::new(OnceLock::new());
-        let (finished_tx, finished_rx) = watch::channel(false);
+        let (run_finished_tx, run_finished_rx) = watch::channel(false);
         entry.run = Some(ActiveRun {
             generation,
-            shutdown: shutdown.clone(),
+            shutdown_token: shutdown_token.clone(),
             stop_reason: Arc::clone(&stop_reason),
-            finished_rx,
+            run_finished_rx,
         });
         log::info!("[unit-runner] starting {unit_id}");
         let spec = RunSpec {
@@ -469,9 +469,9 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
             generation,
             factory: Arc::clone(&entry.factory),
             gate: entry.gate.clone(),
-            shutdown,
+            shutdown_token,
             stop_reason,
-            finished_tx,
+            run_finished_tx,
         };
         self.runtime.spawn(supervise_run(Arc::clone(self), spec));
     }

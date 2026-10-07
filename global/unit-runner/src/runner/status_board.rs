@@ -22,7 +22,7 @@ impl RunLiveness {
         self.0.load(Ordering::Relaxed)
     }
 
-    fn set(&self, live: bool) {
+    fn set_liveness(&self, live: bool) {
         self.0.store(live, Ordering::Relaxed);
     }
 }
@@ -79,9 +79,9 @@ impl<D: Clone + Send + Sync + 'static> StatusBoard<D> {
     }
 
     /// A run of `unit_id` began: `Starting`, with no detail.
-    pub(crate) fn publish_starting(&self, unit_id: &UnitId, run: &RunLiveness) {
+    pub(crate) fn publish_starting(&self, unit_id: &UnitId, run_liveness: &RunLiveness) {
         self.statuses_tx.send_if_modified(|statuses| {
-            run.set(true);
+            run_liveness.set_liveness(true);
             let Some(status) = statuses.get_mut(unit_id) else {
                 return false;
             };
@@ -95,13 +95,15 @@ impl<D: Clone + Send + Sync + 'static> StatusBoard<D> {
     }
 
     /// The run's unit is up: `Running` from now. Only a starting run moves.
-    pub(crate) fn publish_running(&self, unit_id: &UnitId, run: &RunLiveness) {
+    pub(crate) fn publish_running(&self, unit_id: &UnitId, run_liveness: &RunLiveness) {
         let now = self.clock.now();
         self.statuses_tx.send_if_modified(|statuses| {
             let Some(status) = statuses.get_mut(unit_id) else {
                 return false;
             };
-            if !run.is_live() || status.run_state != RunState::Starting {
+            let is_currently_starting =
+                run_liveness.is_live() && status.run_state == RunState::Starting;
+            if !is_currently_starting {
                 return false;
             }
             status.run_state = RunState::Running;
@@ -111,12 +113,12 @@ impl<D: Clone + Send + Sync + 'static> StatusBoard<D> {
     }
 
     /// The run's unit reports `detail`.
-    pub(crate) fn publish_detail(&self, unit_id: &UnitId, run: &RunLiveness, detail: D) {
+    pub(crate) fn publish_detail(&self, unit_id: &UnitId, run_liveness: &RunLiveness, detail: D) {
         self.statuses_tx.send_if_modified(|statuses| {
             let Some(status) = statuses.get_mut(unit_id) else {
                 return false;
             };
-            if !run.is_live() {
+            if !run_liveness.is_live() {
                 return false;
             }
             status.detail = Some(detail);
@@ -129,13 +131,13 @@ impl<D: Clone + Send + Sync + 'static> StatusBoard<D> {
     pub(crate) fn publish_stopped(
         &self,
         unit_id: &UnitId,
-        run: &RunLiveness,
+        run_liveness: &RunLiveness,
         reason: StopReason,
         error: Option<String>,
     ) {
         let stopped_at = self.clock.now();
         self.statuses_tx.send_if_modified(|statuses| {
-            run.set(false);
+            run_liveness.set_liveness(false);
             let Some(status) = statuses.get_mut(unit_id) else {
                 return false;
             };

@@ -55,7 +55,7 @@ pub trait Unit: Send + 'static {
     /// enum.
     type Detail: Clone + Send + Sync + 'static;
 
-    /// Run until `ctx.shutdown()` is cancelled, or fail.
+    /// Run until `ctx.shutdown_token()` is cancelled, or fail.
     ///
     /// Call [`RunContext::announce_running`] once the unit is up. Returning
     /// `Ok` without being asked to stop counts as ending on its own, like an

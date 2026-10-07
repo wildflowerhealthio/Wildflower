@@ -2,7 +2,10 @@
 //! the plugin runs it, it is the runner's keep-alive task.
 
 use tauri::Runtime;
-use tauri_plugin_background_service::{BackgroundService, ServiceContext, ServiceError};
+use tauri_plugin_background_service::{
+    BackgroundService, ServiceContext as BackgroundServiceContext,
+    ServiceError as BackgroundServiceError,
+};
 
 use super::KEEP_ALIVE_END_REASON_WAIT;
 use crate::runner::UnitRunner;
@@ -22,14 +25,20 @@ impl<D> KeepAliveService<D> {
 
 #[async_trait::async_trait]
 impl<R: Runtime, D: Clone + Send + Sync + 'static> BackgroundService<R> for KeepAliveService<D> {
-    async fn init(&mut self, _ctx: &ServiceContext<R>) -> Result<(), ServiceError> {
+    async fn init(
+        &mut self,
+        _ctx: &BackgroundServiceContext<R>,
+    ) -> Result<(), BackgroundServiceError> {
         Ok(())
     }
 
     /// Keep the app alive until the plugin shuts the service down. Never
     /// fails, so the plugin's event for its end is always a stop with the
     /// stopper's reason.
-    async fn run(&mut self, ctx: &ServiceContext<R>) -> Result<(), ServiceError> {
+    async fn run(
+        &mut self,
+        ctx: &BackgroundServiceContext<R>,
+    ) -> Result<(), BackgroundServiceError> {
         let keep_alive = self.runner.core.keep_alive_started();
         ctx.shutdown.cancelled().await;
         // The plugin emits the end's reason once this returns.

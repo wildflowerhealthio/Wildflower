@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use tauri_plugin_background_service::StartConfig;
+use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig;
 use tokio::sync::watch;
 
 use unit_runner::{RunPolicy, SystemClock, Unit, UnitId, UnitRunnerCore, UnitStatuses};
@@ -17,7 +17,7 @@ use crate::tauri_bindings::TauriBindings;
 /// Build it before the Tauri builder, and register both of its plugins:
 ///
 /// ```rust,ignore
-/// let runner = UnitRunner::<MyDetail>::new(StartConfig {
+/// let runner = UnitRunner::<MyDetail>::new(BackgroundServiceStartConfig {
 ///     service_label: "Syncing in the background".to_owned(),
 ///     foreground_service_type: "dataSync".to_owned(),
 /// });
@@ -58,13 +58,16 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// Runs and timers run on Tauri's async runtime, so this works before the
     /// Tauri builder exists.
     #[must_use]
-    pub fn new(start_config: StartConfig) -> Self {
+    pub fn new(start_config: BackgroundServiceStartConfig) -> Self {
         let runtime = tauri::async_runtime::handle().inner().clone();
         let core = UnitRunnerCore::new(runtime, Arc::new(SystemClock));
         Self::from_core(core, start_config)
     }
 
-    pub(crate) fn from_core(core: Arc<UnitRunnerCore<D>>, start_config: StartConfig) -> Self {
+    pub(crate) fn from_core(
+        core: Arc<UnitRunnerCore<D>>,
+        start_config: BackgroundServiceStartConfig,
+    ) -> Self {
         Self {
             core,
             bindings: Arc::new(TauriBindings::new(start_config)),

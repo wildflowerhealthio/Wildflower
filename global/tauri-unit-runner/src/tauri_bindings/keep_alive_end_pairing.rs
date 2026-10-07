@@ -8,18 +8,19 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use tauri_plugin_background_service::models::StopReason;
-use tauri_plugin_background_service::PluginEvent;
+use tauri_plugin_background_service::models::StopReason as TauriBackgroundServiceStopReason;
+use tauri_plugin_background_service::PluginEvent as BackgroundServicePluginEvent;
 use tokio::sync::oneshot;
 use unit_runner::PlatformStopReason;
 
-/// The Tauri event the plugin emits its [`PluginEvent`]s on.
+/// The Tauri event the plugin emits its [`BackgroundServicePluginEvent`]s on.
 pub(crate) const BACKGROUND_SERVICE_EVENT: &str = "background-service://event";
 
 /// The reason the runner stops the keep-alive task with. The plugin never stops
 /// the service with it itself (its own stops are `UserStop`, the platform's,
 /// `TaskCompleted` and `Error`), so its end is never taken for the platform's.
-pub(crate) const RUNNER_RELEASE_STOP_REASON: StopReason = StopReason::AppStop;
+pub(crate) const RUNNER_RELEASE_STOP_REASON: TauriBackgroundServiceStopReason =
+    TauriBackgroundServiceStopReason::AppStop;
 
 /// How a keep-alive task ended, by the plugin's account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,15 +42,21 @@ impl KeepAliveTaskEnd {
 
     /// How the keep-alive task that `event` reports on ended, or `None` when
     /// the event isn't an end.
-    pub(crate) fn from_plugin_event(event: &PluginEvent) -> Option<Self> {
+    pub(crate) fn from_plugin_event(event: &BackgroundServicePluginEvent) -> Option<Self> {
         match event {
-            PluginEvent::Stopped { reason } if *reason == RUNNER_RELEASE_STOP_REASON => {
+            BackgroundServicePluginEvent::Stopped { reason }
+                if *reason == RUNNER_RELEASE_STOP_REASON =>
+            {
                 Some(Self::Released)
             }
-            PluginEvent::Stopped { reason } => Some(Self::Platform(platform_stop_reason(*reason))),
-            PluginEvent::Error { .. } => Some(Self::Platform(PlatformStopReason::Error)),
-            // `PluginEvent` is `#[non_exhaustive]`: an event added later
-            // doesn't end a task.
+            BackgroundServicePluginEvent::Stopped { reason } => {
+                Some(Self::Platform(platform_stop_reason(*reason)))
+            }
+            BackgroundServicePluginEvent::Error { .. } => {
+                Some(Self::Platform(PlatformStopReason::Error))
+            }
+            // `BackgroundServicePluginEvent` is `#[non_exhaustive]`: an event
+            // added later doesn't end a task.
             _ => None,
         }
     }
@@ -58,17 +65,21 @@ impl KeepAliveTaskEnd {
 /// The runner's name for the plugin's `reason`. The runner's own
 /// [`RUNNER_RELEASE_STOP_REASON`] never gets here; a reason added to the plugin
 /// later is [`PlatformStopReason::Unknown`].
-fn platform_stop_reason(reason: StopReason) -> PlatformStopReason {
+fn platform_stop_reason(reason: TauriBackgroundServiceStopReason) -> PlatformStopReason {
     match reason {
-        StopReason::UserStop => PlatformStopReason::UserStop,
-        StopReason::PlatformTimeout => PlatformStopReason::PlatformTimeout,
-        StopReason::PlatformExpiration => PlatformStopReason::PlatformExpiration,
-        StopReason::NativeNotificationStop => PlatformStopReason::NativeNotificationStop,
-        StopReason::OsRestart => PlatformStopReason::OsRestart,
-        StopReason::BootRecovery => PlatformStopReason::BootRecovery,
-        StopReason::TaskCompleted => PlatformStopReason::TaskCompleted,
-        StopReason::Error => PlatformStopReason::Error,
-        StopReason::ProcessExit => PlatformStopReason::ProcessExit,
+        TauriBackgroundServiceStopReason::UserStop => PlatformStopReason::UserStop,
+        TauriBackgroundServiceStopReason::PlatformTimeout => PlatformStopReason::PlatformTimeout,
+        TauriBackgroundServiceStopReason::PlatformExpiration => {
+            PlatformStopReason::PlatformExpiration
+        }
+        TauriBackgroundServiceStopReason::NativeNotificationStop => {
+            PlatformStopReason::NativeNotificationStop
+        }
+        TauriBackgroundServiceStopReason::OsRestart => PlatformStopReason::OsRestart,
+        TauriBackgroundServiceStopReason::BootRecovery => PlatformStopReason::BootRecovery,
+        TauriBackgroundServiceStopReason::TaskCompleted => PlatformStopReason::TaskCompleted,
+        TauriBackgroundServiceStopReason::Error => PlatformStopReason::Error,
+        TauriBackgroundServiceStopReason::ProcessExit => PlatformStopReason::ProcessExit,
         _ => PlatformStopReason::Unknown,
     }
 }
@@ -84,13 +95,13 @@ impl KeepAliveEndPairing {
     /// earlier waiter, which then gets nothing.
     pub(crate) fn wait_for_end(&self) -> oneshot::Receiver<KeepAliveTaskEnd> {
         let (end_tx, end_rx) = oneshot::channel();
-        *self.lock() = Some(end_tx);
+        *self.lock_waiting_tx() = Some(end_tx);
         end_rx
     }
 
     /// Hand `end` to the keep-alive task waiting for it, if one is.
     pub(crate) fn deliver(&self, end: KeepAliveTaskEnd) {
-        match self.lock().take() {
+        match self.lock_waiting_tx().take() {
             Some(end_tx) => {
                 // A waiter that gave up has already reported its end.
                 let _waiter_gone = end_tx.send(end);
@@ -101,7 +112,9 @@ impl KeepAliveEndPairing {
         }
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, Option<oneshot::Sender<KeepAliveTaskEnd>>> {
+    fn lock_waiting_tx(
+        &self,
+    ) -> std::sync::MutexGuard<'_, Option<oneshot::Sender<KeepAliveTaskEnd>>> {
         // Replacing or taking one value can't be left half-done by a panic.
         self.waiting_tx
             .lock()
@@ -114,21 +127,21 @@ mod tests {
     use super::*;
 
     /// Every stop reason the plugin has, as of the pinned version.
-    const PLUGIN_STOP_REASONS: [StopReason; 10] = [
-        StopReason::UserStop,
-        StopReason::AppStop,
-        StopReason::PlatformTimeout,
-        StopReason::PlatformExpiration,
-        StopReason::NativeNotificationStop,
-        StopReason::OsRestart,
-        StopReason::BootRecovery,
-        StopReason::TaskCompleted,
-        StopReason::Error,
-        StopReason::ProcessExit,
+    const PLUGIN_STOP_REASONS: [TauriBackgroundServiceStopReason; 10] = [
+        TauriBackgroundServiceStopReason::UserStop,
+        TauriBackgroundServiceStopReason::AppStop,
+        TauriBackgroundServiceStopReason::PlatformTimeout,
+        TauriBackgroundServiceStopReason::PlatformExpiration,
+        TauriBackgroundServiceStopReason::NativeNotificationStop,
+        TauriBackgroundServiceStopReason::OsRestart,
+        TauriBackgroundServiceStopReason::BootRecovery,
+        TauriBackgroundServiceStopReason::TaskCompleted,
+        TauriBackgroundServiceStopReason::Error,
+        TauriBackgroundServiceStopReason::ProcessExit,
     ];
 
     /// Decode `event` the way the listener does: from the plugin's own JSON.
-    fn decoded(event: &PluginEvent) -> PluginEvent {
+    fn decoded(event: &BackgroundServicePluginEvent) -> BackgroundServicePluginEvent {
         let payload = serde_json::to_string(event).expect("the plugin serializes its event");
         serde_json::from_str(&payload).expect("the plugin's event decodes")
     }
@@ -136,8 +149,9 @@ mod tests {
     #[test]
     fn only_the_runner_s_own_reason_reads_as_its_release() {
         for reason in PLUGIN_STOP_REASONS {
-            let end =
-                KeepAliveTaskEnd::from_plugin_event(&decoded(&PluginEvent::Stopped { reason }));
+            let end = KeepAliveTaskEnd::from_plugin_event(&decoded(
+                &BackgroundServicePluginEvent::Stopped { reason },
+            ));
             if reason == RUNNER_RELEASE_STOP_REASON {
                 assert_eq!(end, Some(KeepAliveTaskEnd::Released));
             } else {
@@ -162,13 +176,13 @@ mod tests {
     #[test]
     fn an_error_ends_the_task_and_a_start_doesn_t() {
         assert_eq!(
-            KeepAliveTaskEnd::from_plugin_event(&decoded(&PluginEvent::Error {
+            KeepAliveTaskEnd::from_plugin_event(&decoded(&BackgroundServicePluginEvent::Error {
                 message: "Runtime error: gone".to_owned()
             })),
             Some(KeepAliveTaskEnd::Platform(PlatformStopReason::Error))
         );
         assert_eq!(
-            KeepAliveTaskEnd::from_plugin_event(&decoded(&PluginEvent::Started)),
+            KeepAliveTaskEnd::from_plugin_event(&decoded(&BackgroundServicePluginEvent::Started)),
             None
         );
     }

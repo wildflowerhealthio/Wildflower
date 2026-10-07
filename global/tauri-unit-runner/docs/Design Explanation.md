@@ -15,7 +15,7 @@ alone.
 
 ```rust
 impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
-    pub fn new(start_config: StartConfig) -> Self;
+    pub fn new(start_config: BackgroundServiceStartConfig) -> Self;
     pub fn background_service_plugin<R: Runtime>(&self) -> TauriPlugin<R, PluginConfig>;
     pub fn lifecycle_plugin<R: Runtime>(&self) -> TauriPlugin<R>;
 

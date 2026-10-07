@@ -10,6 +10,7 @@ use super::dedicated_runtime::run_on_dedicated_thread;
 use super::erased_unit::UnitFactory;
 use super::run_gate::RunGate;
 use super::status_board::RunLiveness;
+use super::unit_entry::RunGeneration;
 use super::UnitRunnerCore;
 use crate::run_context::RunContext;
 use crate::status::StopReason;
@@ -18,12 +19,12 @@ use crate::unit::UnitId;
 /// Everything one run needs, fixed when the runner starts it.
 pub(crate) struct RunSpec<D> {
     pub(crate) unit_id: UnitId,
-    pub(crate) generation: u64,
+    pub(crate) generation: RunGeneration,
     pub(crate) factory: UnitFactory<D>,
     pub(crate) gate: RunGate,
-    pub(crate) shutdown: CancellationToken,
+    pub(crate) shutdown_token: CancellationToken,
     pub(crate) stop_reason: Arc<OnceLock<StopReason>>,
-    pub(crate) finished_tx: watch::Sender<bool>,
+    pub(crate) run_finished_tx: watch::Sender<bool>,
 }
 
 /// Run `spec`'s unit once.
@@ -44,24 +45,29 @@ pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
         generation,
         factory,
         gate,
-        shutdown,
+        shutdown_token,
         stop_reason,
-        finished_tx,
+        run_finished_tx,
     } = spec;
     let run_gate_guard = gate.wait_for_previous_run().await;
     // Before the run starts, only the runner stops it, and it sets the stop
-    // reason before it cancels `shutdown`. So a reason set by now means the
-    // run was stopped while it waited.
+    // reason before it cancels `shutdown_token`. So a reason set by now means
+    // the run was stopped while it waited.
     if let Some(&reason) = stop_reason.get() {
         drop(run_gate_guard);
         core.run_ended(&unit_id, generation, reason);
-        finished_tx.send_replace(true);
+        run_finished_tx.send_replace(true);
         return;
     }
 
-    let run = RunLiveness::default();
-    core.board().publish_starting(&unit_id, &run);
-    let ctx = RunContext::new(unit_id.clone(), shutdown, core.board().clone(), run.clone());
+    let run_liveness = RunLiveness::default();
+    core.board().publish_starting(&unit_id, &run_liveness);
+    let ctx = RunContext::new(
+        unit_id.clone(),
+        shutdown_token,
+        core.board().clone(),
+        run_liveness.clone(),
+    );
     let result =
         run_on_dedicated_thread(factory, ctx, core.timings().run_runtime_shutdown_timeout).await;
     let reason = *stop_reason.get_or_init(|| StopReason::EndedOnItsOwn);
@@ -76,7 +82,8 @@ pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
     // app does on seeing it, a `set_unit_policy` included, acts on a run that
     // has ended.
     core.run_ended(&unit_id, generation, reason);
-    core.board().publish_stopped(&unit_id, &run, reason, error);
+    core.board()
+        .publish_stopped(&unit_id, &run_liveness, reason, error);
     drop(run_gate_guard);
-    finished_tx.send_replace(true);
+    run_finished_tx.send_replace(true);
 }

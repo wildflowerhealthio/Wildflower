@@ -7,7 +7,7 @@ use std::sync::{Arc, PoisonError};
 
 use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Listener, RunEvent, Runtime, WindowEvent};
-use tauri_plugin_background_service::PluginEvent;
+use tauri_plugin_background_service::PluginEvent as BackgroundServicePluginEvent;
 
 use super::keep_alive_end_pairing::{KeepAliveTaskEnd, BACKGROUND_SERVICE_EVENT};
 use super::plugin_keep_alive::PluginKeepAlive;
@@ -42,7 +42,7 @@ fn listen_for_keep_alive_task_ends<R: Runtime, D: Clone + Send + Sync + 'static>
     let bindings = Arc::clone(&runner.bindings);
     app.listen(
         BACKGROUND_SERVICE_EVENT,
-        move |event| match serde_json::from_str::<PluginEvent>(event.payload()) {
+        move |event| match serde_json::from_str::<BackgroundServicePluginEvent>(event.payload()) {
             Ok(plugin_event) => {
                 if let Some(end) = KeepAliveTaskEnd::from_plugin_event(&plugin_event) {
                     bindings.keep_alive_end_pairing.deliver(end);
@@ -103,7 +103,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
                 .unwrap_or_else(PoisonError::into_inner);
             event(&mut windows)
         };
-        if change.restart_needed {
+        if change.unit_restarts_needed {
             self.core.restart_running_units();
         }
         self.core.set_app_open(change.open_after_event);

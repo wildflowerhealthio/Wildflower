@@ -29,7 +29,7 @@ mod tauri_bindings;
 
 pub use runner::UnitRunner;
 pub use tauri_bindings::{KEEP_ALIVE_END_REASON_WAIT, UNIT_RUNNER_PLUGIN_NAME};
-pub use tauri_plugin_background_service::StartConfig;
+pub use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig;
 pub use unit_runner::{
     KeepAliveId, KeepAliveOperation, KeepAlivePlatform, PlatformStopReason, RunContext, RunPolicy,
     RunState, RunStop, StopReason, SystemClock, Unit, UnitId, UnitRunnerCore, UnitStatus,

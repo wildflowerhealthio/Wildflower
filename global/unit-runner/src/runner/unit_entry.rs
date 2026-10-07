@@ -25,7 +25,7 @@ pub(crate) struct UnitEntry<D> {
     pub(crate) pending_restart: Option<PendingRestart>,
     /// `remove_unit` is waiting for the unit's run to end before forgetting
     /// it.
-    pub(crate) removing: bool,
+    pub(crate) awaiting_removal: bool,
 }
 
 impl<D> UnitEntry<D> {
@@ -36,7 +36,7 @@ impl<D> UnitEntry<D> {
             gate: RunGate::default(),
             run: None,
             pending_restart: None,
-            removing: false,
+            awaiting_removal: false,
         }
     }
 
@@ -50,7 +50,9 @@ impl<D> UnitEntry<D> {
         app_open_or_in_grace: bool,
         keep_alive_revoked: bool,
     ) -> bool {
-        !self.removing && !keep_alive_revoked && self.policy.is_active(now, app_open_or_in_grace)
+        !self.awaiting_removal
+            && !keep_alive_revoked
+            && self.policy.is_active(now, app_open_or_in_grace)
     }
 
     /// Where the unit is, as a reconcile sees it.
@@ -71,17 +73,30 @@ impl<D> UnitEntry<D> {
     }
 }
 
+/// Numbers runs and restarts, so a late event about one tells it from a later
+/// one of the same unit.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct RunGeneration(u64);
+
+impl RunGeneration {
+    /// The generation after this one.
+    #[must_use]
+    pub(crate) fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+}
+
 /// A run that has begun and not yet ended.
 pub(crate) struct ActiveRun {
     /// Tells this run's end from a later run's.
-    pub(crate) generation: u64,
-    pub(crate) shutdown: CancellationToken,
+    pub(crate) generation: RunGeneration,
+    pub(crate) shutdown_token: CancellationToken,
     /// Why the run stopped: set once, by whoever is first, the runner asking
     /// it to stop or the run ending on its own.
     pub(crate) stop_reason: Arc<OnceLock<StopReason>>,
     /// `true` once the run's thread and runtime are gone and the runner has
     /// recorded its end.
-    pub(crate) finished_rx: watch::Receiver<bool>,
+    pub(crate) run_finished_rx: watch::Receiver<bool>,
 }
 
 impl ActiveRun {
@@ -90,7 +105,7 @@ impl ActiveRun {
     pub(crate) fn request_stop(&self, reason: StopReason) {
         // A run asked twice keeps the first reason.
         let _first_reason_kept = self.stop_reason.set(reason);
-        self.shutdown.cancel();
+        self.shutdown_token.cancel();
     }
 
     pub(crate) fn stop_requested(&self) -> bool {
@@ -101,5 +116,5 @@ impl ActiveRun {
 /// A restart waiting out the restart delay.
 pub(crate) struct PendingRestart {
     /// Tells this restart's timer from a cancelled one's.
-    pub(crate) generation: u64,
+    pub(crate) generation: RunGeneration,
 }

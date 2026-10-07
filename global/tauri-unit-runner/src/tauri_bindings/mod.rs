@@ -15,7 +15,9 @@ use std::time::Duration;
 
 use tauri::plugin::TauriPlugin;
 use tauri::Runtime;
-use tauri_plugin_background_service::{PluginConfig, StartConfig};
+use tauri_plugin_background_service::{
+    PluginConfig as BackgroundServicePluginConfig, StartConfig as BackgroundServiceStartConfig,
+};
 
 use crate::domain::window_state::{PlatformKind, WindowState};
 use crate::runner::UnitRunner;
@@ -33,13 +35,13 @@ pub const KEEP_ALIVE_END_REASON_WAIT: Duration = Duration::from_secs(1);
 /// The Tauri side's own state, shared by both plugins and every keep-alive
 /// task.
 pub(crate) struct TauriBindings {
-    start_config: StartConfig,
+    start_config: BackgroundServiceStartConfig,
     keep_alive_end_pairing: KeepAliveEndPairing,
     window_state: Mutex<WindowState>,
 }
 
 impl TauriBindings {
-    pub(crate) fn new(start_config: StartConfig) -> Self {
+    pub(crate) fn new(start_config: BackgroundServiceStartConfig) -> Self {
         Self {
             start_config,
             keep_alive_end_pairing: KeepAliveEndPairing::default(),
@@ -57,7 +59,9 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// on until the service stops. Units never run inside the service's task;
     /// it only keeps the app alive.
     #[must_use]
-    pub fn background_service_plugin<R: Runtime>(&self) -> TauriPlugin<R, PluginConfig> {
+    pub fn background_service_plugin<R: Runtime>(
+        &self,
+    ) -> TauriPlugin<R, BackgroundServicePluginConfig> {
         let runner = self.clone();
         tauri_plugin_background_service::init_with_service(move || {
             KeepAliveService::new(runner.clone())

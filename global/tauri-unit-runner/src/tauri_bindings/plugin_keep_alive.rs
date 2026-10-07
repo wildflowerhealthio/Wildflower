@@ -5,7 +5,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{anyhow, Context};
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_background_service::{ServiceError, ServiceManagerHandle, StartConfig};
+use tauri_plugin_background_service::{
+    ServiceError as BackgroundServiceError, ServiceManagerHandle as BackgroundServiceManagerHandle,
+    StartConfig as BackgroundServiceStartConfig,
+};
 use unit_runner::{KeepAliveOperation, KeepAlivePlatform};
 
 use super::keep_alive_end_pairing::RUNNER_RELEASE_STOP_REASON;
@@ -15,12 +18,12 @@ use super::notification_permission::ask_for_notification_permission;
 /// while it runs.
 pub(crate) struct PluginKeepAlive<R: Runtime> {
     app: AppHandle<R>,
-    start_config: StartConfig,
+    start_config: BackgroundServiceStartConfig,
     notification_permission_asked: AtomicBool,
 }
 
 impl<R: Runtime> PluginKeepAlive<R> {
-    pub(crate) fn new(app: AppHandle<R>, start_config: StartConfig) -> Self {
+    pub(crate) fn new(app: AppHandle<R>, start_config: BackgroundServiceStartConfig) -> Self {
         Self {
             app,
             start_config,
@@ -28,9 +31,11 @@ impl<R: Runtime> PluginKeepAlive<R> {
         }
     }
 
-    fn service_manager(&self) -> anyhow::Result<tauri::State<'_, ServiceManagerHandle<R>>> {
+    fn service_manager(
+        &self,
+    ) -> anyhow::Result<tauri::State<'_, BackgroundServiceManagerHandle<R>>> {
         self.app
-            .try_state::<ServiceManagerHandle<R>>()
+            .try_state::<BackgroundServiceManagerHandle<R>>()
             .context("the background-service plugin is not registered")
     }
 }
@@ -51,7 +56,7 @@ impl<R: Runtime> KeepAlivePlatform for PluginKeepAlive<R> {
                 .start(self.app.clone(), self.start_config.clone())
                 .await
             {
-                Ok(()) | Err(ServiceError::AlreadyRunning) => Ok(()),
+                Ok(()) | Err(BackgroundServiceError::AlreadyRunning) => Ok(()),
                 Err(error) => Err(anyhow!("the background service didn't start: {error}")),
             }
         })
@@ -66,7 +71,7 @@ impl<R: Runtime> KeepAlivePlatform for PluginKeepAlive<R> {
                 .stop_with_reason(RUNNER_RELEASE_STOP_REASON)
                 .await
             {
-                Ok(()) | Err(ServiceError::NotRunning) => Ok(()),
+                Ok(()) | Err(BackgroundServiceError::NotRunning) => Ok(()),
                 Err(error) => Err(anyhow!("the background service didn't stop: {error}")),
             }
         })
