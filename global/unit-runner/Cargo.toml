@@ -5,7 +5,8 @@ edition.workspace = true
 publish.workspace = true
 
 # Runs an app's long-lived background work as units, each on its own thread
-# and runtime, and asks the platform for one keep-alive while any should run.
+# and runtime, and asks the platform for one background session while any
+# should run.
 # Knows nothing about what a unit does, and nothing about the platform: a host
 # crate (`tauri-unit-runner`) binds it. See `docs/Design Explanation.md`.
 [dependencies]
@@ -17,7 +18,7 @@ chrono = { workspace = true, features = ["clock", "serde", "std"] }
 log = "0.4"
 serde.workspace = true
 # `rt-multi-thread` builds each run's dedicated runtime; `sync` carries the run
-# gates, the statuses and the keep-alive demand; `time` the restart delay and
+# gates, the statuses and the background session's demand; `time` the restart delay and
 # the wall-clock reconcile; `macros` for `select!`.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 # `CancellationToken`, each run's shutdown signal.

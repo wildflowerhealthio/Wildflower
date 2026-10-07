@@ -48,7 +48,7 @@ pub fn plan_unit(should_run: bool, phase: UnitPhase) -> UnitAction {
 /// delay, given whether its unit should still run. Only a run that ended on
 /// its own is. The runner doesn't undo its own stops; a run it stopped to
 /// restart starts again on the next reconcile, with no delay. Units stopped by
-/// a revocation wait for it to be cleared.
+/// the platform's end of the background session wait for that to be cleared.
 #[must_use]
 pub fn restarts_after(reason: StopReason, should_run: bool) -> bool {
     should_run && reason == StopReason::EndedOnItsOwn
@@ -99,7 +99,7 @@ mod tests {
             StopReason::Replaced,
             StopReason::Removed,
             StopReason::StoppedForRestart,
-            StopReason::KeepAliveRevoked {
+            StopReason::SessionEndedByPlatform {
                 platform_reason: PlatformStopReason::PlatformExpiration,
             },
         ] {

@@ -2,8 +2,8 @@
 
 Runs an app's long-lived background work as **units**. Each unit has a **run
 policy**. The runner starts and stops units to match their policies, restarts
-the ones that end on their own, asks the platform for one keep-alive task while
-any of them should run, and reports each unit's status. It knows nothing about
+the ones that end on their own, asks the platform for one background session
+while any of them should run, and reports each unit's status. It knows nothing about
 what a unit does: the app supplies the units, stores their policies, and owns
 its own wire and notifications.
 
@@ -24,11 +24,11 @@ The design and its vocabulary are in the
 | `RunPolicy`                               | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`. |
 | `UnitId`                                  | The app's key for a unit.                                                             |
 | `UnitStatus<D>`, `RunState`, `RunStop`    | What the runner reports for a unit.                                                   |
-| `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform revoked the keep-alive.                       |
+| `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform ended the background session.                 |
 | `UnitRunnerCore<D>`                       | The runner, free of any platform. A host binds it; an app uses its host's runner.     |
-| `KeepAlivePlatform`                       | The port a host implements to start and stop the keep-alive task.                     |
+| `BackgroundSessionPlatform`               | The port a host implements to start and end the background session.                   |
 | `WallClock`, `SystemClock`                | The wall clock policies are judged on, and the system's.                              |
-| `KeepAliveId`                             | One keep-alive task, as the host reports its start and end.                           |
+| `SessionId`                               | One background session, as the host reports its start and end.                        |
 | `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                    |
 
 ## Use

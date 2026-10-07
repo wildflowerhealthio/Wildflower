@@ -44,12 +44,12 @@ async fn a_unit_s_next_run_waits_for_its_previous_run_to_end() {
     let harness = Harness::new();
     // One probe for both definitions, so its events show the runs' order.
     let probe = Probe::default();
-    let release = Arc::new(Semaphore::new(0));
+    let allow_wind_down = Arc::new(Semaphore::new(0));
     harness.set_unit(
         "unit",
         RunPolicy::Always,
-        Script::WindDownWhenReleased {
-            release: Arc::clone(&release),
+        Script::WindDownWhenAllowed {
+            allow_wind_down: Arc::clone(&allow_wind_down),
         },
         &probe,
     );
@@ -69,7 +69,7 @@ async fn a_unit_s_next_run_waits_for_its_previous_run_to_end() {
         "the old run's state stands until it has stopped"
     );
 
-    release.add_permits(1);
+    allow_wind_down.add_permits(1);
     eventually("the replacement runs", || probe.starts() == 2).await;
     assert_eq!(
         probe.events(),
@@ -112,12 +112,12 @@ async fn setting_a_unit_again_stops_its_run_as_replaced() {
 async fn units_never_wait_for_each_other() {
     let harness = Harness::new();
     let slow = Probe::default();
-    let release = Arc::new(Semaphore::new(0));
+    let allow_wind_down = Arc::new(Semaphore::new(0));
     harness.set_unit(
         "slow",
         RunPolicy::Always,
-        Script::WindDownWhenReleased {
-            release: Arc::clone(&release),
+        Script::WindDownWhenAllowed {
+            allow_wind_down: Arc::clone(&allow_wind_down),
         },
         &slow,
     );
@@ -138,7 +138,7 @@ async fn units_never_wait_for_each_other() {
             .is_some_and(|status| status.run_state == RunState::Running),
         "the other unit started while the slow one was still winding down"
     );
-    release.add_permits(1);
+    allow_wind_down.add_permits(1);
     harness
         .wait_until_stopped_for("slow", StopReason::PolicyInactive)
         .await;
@@ -291,12 +291,12 @@ async fn remove_unit_waits_for_the_run_to_end_and_forgets_the_unit() {
 async fn a_unit_set_again_while_being_removed_stays() {
     let harness = Harness::new();
     let probe = Probe::default();
-    let release = Arc::new(Semaphore::new(0));
+    let allow_wind_down = Arc::new(Semaphore::new(0));
     harness.set_unit(
         "unit",
         RunPolicy::Always,
-        Script::WindDownWhenReleased {
-            release: Arc::clone(&release),
+        Script::WindDownWhenAllowed {
+            allow_wind_down: Arc::clone(&allow_wind_down),
         },
         &probe,
     );
@@ -304,7 +304,7 @@ async fn a_unit_set_again_while_being_removed_stays() {
     let unit_id = UnitId::from("unit");
     let mut removing = Box::pin(harness.core.remove_unit(&unit_id));
     // The first poll marks the unit as being removed and stops its run; the
-    // removal then waits for the run, which waits for `release`.
+    // removal then waits for the run, which waits for `allow_wind_down`.
     let first_poll = std::future::poll_fn(|cx| Poll::Ready(removing.as_mut().poll(cx))).await;
     assert!(first_poll.is_pending(), "the removal waits for the run");
     harness.set_unit(
@@ -313,7 +313,7 @@ async fn a_unit_set_again_while_being_removed_stays() {
         Script::RunUntilStopped { detail: None },
         &probe,
     );
-    release.add_permits(1);
+    allow_wind_down.add_permits(1);
     tokio::time::timeout(HANG_TIMEOUT, removing)
         .await
         .expect("remove_unit finishes");

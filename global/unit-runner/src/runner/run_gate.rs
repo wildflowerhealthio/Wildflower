@@ -36,7 +36,7 @@ mod tests {
     use std::time::Duration;
 
     #[tokio::test]
-    async fn a_run_waits_until_the_previous_run_releases_the_gate() {
+    async fn a_run_waits_until_the_previous_run_opens_the_gate() {
         let gate = RunGate::default();
         let first_run = gate.wait_for_previous_run().await;
 
@@ -50,7 +50,7 @@ mod tests {
         drop(first_run);
         tokio::time::timeout(Duration::from_secs(5), second_run)
             .await
-            .expect("the second run is admitted once the first releases the gate");
+            .expect("the second run is admitted once the first opens the gate");
     }
 
     #[tokio::test]

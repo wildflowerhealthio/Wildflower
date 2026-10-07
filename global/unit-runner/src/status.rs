@@ -86,18 +86,18 @@ pub enum StopReason {
     /// error), its factory failed, or it panicked. Restarted after
     /// [`RESTART_DELAY`](crate::RESTART_DELAY) while the unit should still run.
     EndedOnItsOwn,
-    /// The platform ended the keep-alive task, for `platform_reason`. Not
-    /// restarted until the app opens again, the app sets a policy, or the
-    /// keep-alive starts again.
-    KeepAliveRevoked {
-        /// The platform's reason for ending the keep-alive task.
+    /// The platform ended the background session, for `platform_reason`. Not
+    /// restarted until the app opens again, the app sets a policy, or a
+    /// session starts again.
+    SessionEndedByPlatform {
+        /// The platform's reason for ending the background session.
         platform_reason: PlatformStopReason,
     },
 }
 
-/// Why the platform ended the keep-alive task, in the words of
-/// `tauri-plugin-background-service`, the one keep-alive platform the runner
-/// is bound to. The runner's own stops of the task never appear here.
+/// Why the platform ended the background session, in the words of
+/// `tauri-plugin-background-service`, the one background session platform the
+/// runner is bound to. The runner's own ends of the session never appear here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlatformStopReason {
     /// A stop through the plugin's own `stop`, the desktop app quitting
@@ -113,13 +113,13 @@ pub enum PlatformStopReason {
     OsRestart,
     /// The service came back after the device booted.
     BootRecovery,
-    /// The keep-alive task ended with no stop pending.
+    /// The background session's task ended with no stop pending.
     TaskCompleted,
-    /// The plugin reported the keep-alive task as failed.
+    /// The plugin reported the background session's task as failed.
     Error,
     /// The app's process is going away (the iOS app backgrounded or killed).
     ProcessExit,
     /// The plugin gave no reason this runner knows, or none arrived in time
-    /// (`tauri-unit-runner`'s `KEEP_ALIVE_END_REASON_WAIT`).
+    /// (`tauri-unit-runner`'s `SESSION_END_REASON_WAIT`).
     Unknown,
 }

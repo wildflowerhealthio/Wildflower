@@ -49,8 +49,9 @@ impl<D: Clone + Send + Sync + 'static> RunContext<D> {
         &self.unit_id
     }
 
-    /// Cancelled when the runner stops this run, or the platform revokes the
-    /// keep-alive. The unit should wind down and return once it is.
+    /// Cancelled when the runner stops this run, the platform's end of the
+    /// background session included. The unit should wind down and return once
+    /// it is.
     #[must_use]
     pub fn shutdown_token(&self) -> &CancellationToken {
         &self.shutdown_token

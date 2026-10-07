@@ -50,7 +50,7 @@ impl<D> Clone for UnitRunner<D> {
 }
 
 impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
-    /// A runner with no units, whose keep-alive starts the background service
+    /// A runner with no units, whose background session starts the service
     /// with `start_config`: on Android, its label is the text of the persistent
     /// foreground-service notification that covers every unit, and its type
     /// must be one the plugin config's `androidForegroundServiceTypes` allows.
@@ -90,8 +90,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
 
     /// Replace the policy of the unit `unit_id`. Even with the policy it already
     /// has, this cancels a pending restart and starts the unit at once if it
-    /// should run, after the platform revoked the keep-alive too. A unit never
-    /// set is logged and ignored.
+    /// should run, after the platform ended the background session too. A unit
+    /// never set is logged and ignored.
     pub fn set_unit_policy(&self, unit_id: &UnitId, policy: RunPolicy) {
         self.core.set_unit_policy(unit_id, policy);
     }

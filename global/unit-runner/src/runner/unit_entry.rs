@@ -42,16 +42,16 @@ impl<D> UnitEntry<D> {
 
     /// Whether the unit should run at the wall-clock instant `now`, given
     /// whether the app is open or within its grace period and whether the
-    /// platform revoked the keep-alive. A unit being removed never should, and
-    /// no unit should while the keep-alive is revoked.
+    /// platform's end of the background session discourages runs. A unit being
+    /// removed never should, and no unit should while runs are discouraged.
     pub(crate) fn should_run(
         &self,
         now: DateTime<Utc>,
         app_open_or_in_grace: bool,
-        keep_alive_revoked: bool,
+        runs_discouraged_by_platform: bool,
     ) -> bool {
         !self.awaiting_removal
-            && !keep_alive_revoked
+            && !runs_discouraged_by_platform
             && self.policy.is_active(now, app_open_or_in_grace)
     }
 

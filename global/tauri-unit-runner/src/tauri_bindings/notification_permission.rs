@@ -1,5 +1,5 @@
 //! Asking for permission to post notifications before the runner first starts
-//! the keep-alive.
+//! a background session.
 
 use tauri::plugin::PermissionState;
 use tauri::{AppHandle, Manager, Runtime};

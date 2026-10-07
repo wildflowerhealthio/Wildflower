@@ -1,12 +1,13 @@
 //! The runner, [`UnitRunnerCore`]: the units and their runs, the reconcile,
-//! the restarts and the keep-alive demand. It knows the keep-alive only
-//! through the [`KeepAlivePlatform`](crate::KeepAlivePlatform) port, so it
+//! the restarts and the background session's demand. It knows the session
+//! only through the
+//! [`BackgroundSessionPlatform`](crate::BackgroundSessionPlatform) port, so it
 //! runs on any platform.
 
+mod background_session_driver;
 mod core;
 mod dedicated_runtime;
 mod erased_unit;
-mod keep_alive_sync;
 mod run_gate;
 mod run_supervisor;
 pub(crate) mod status_board;

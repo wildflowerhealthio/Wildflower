@@ -11,8 +11,8 @@ tells the runner which units exist and when each should run. The runner then:
 
 - starts and stops units to match their run policies
 - restarts units that fail
-- asks the platform to keep the app alive in the background while any unit
-  runs
+- asks the platform for a background session, which keeps the app alive in
+  the background, while any unit runs
 - reports each unit's status
 
 The runner knows nothing about what a unit does. A unit that serves HTTP through
@@ -24,8 +24,8 @@ The runner is split in two:
 
 - **`unit-runner`** (this crate) holds everything that decides: units, run
   policies, statuses and stop reasons, the reconcile, runs and restarts, and
-  the keep-alive ledger. It has no Tauri dependency.
-- **`tauri-unit-runner`** binds it to Tauri: the keep-alive as
+  the session ledger. It has no Tauri dependency.
+- **`tauri-unit-runner`** binds it to Tauri: the background session as
   `tauri-plugin-background-service`'s one service, and whether the app is open
   from its window events, as two plugins. It re-exports every public type
   here. Its
@@ -39,24 +39,25 @@ crate needs `tauri-unit-runner`.
 
 ## Words
 
-| Word                | Meaning                                                                                                                           |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Unit                | Work the runner can run. The app gives each unit an id, a run policy and a factory.                                               |
-| Unit id             | The app's key for a unit, unique within a runner.                                                                                 |
-| Factory             | Builds a fresh unit for each run, so a run's configuration is fixed from start to end. A factory that fails is a failed run.      |
-| Run                 | One start-to-end of a unit, on its own OS thread and tokio runtime.                                                               |
-| Run state           | `Starting`, `Running` or `Stopped`.                                                                                               |
-| Stop reason         | Why a run stopped. See Stop reasons.                                                                                              |
-| Detail              | A unit's own status, of a type the app chooses. The unit reports it during a run, and it is cleared when the run ends.            |
-| Unit status         | What the runner reports for a unit: the run state, the stop reason and error, when the run started running, and the detail.       |
-| Run policy          | When the app wants a unit to run: `Off`, `WhileOpen`, `Until { at }` or `Always`.                                                 |
-| Open                | Desktop: a window of the app is open, minimized included. Mobile: the app is in the foreground. The host tells the runner.        |
-| Grace period        | How long a `WhileOpen` unit keeps running after the app closes: 2 minutes.                                                        |
-| Keep-alive          | The one platform task that keeps the app alive while units run. Units don't run inside it.                                        |
-| Revocation          | The platform ending the keep-alive task. Units stay stopped until the app opens, a policy is set, or the keep-alive starts again. |
-| Runner              | `UnitRunnerCore`: holds the units, reconciles their runs with their policies, and asks for the keep-alive.                        |
-| Host                | What binds the runner to a platform: `tauri-unit-runner`'s `UnitRunner` in an app, a fake in tests.                               |
-| Keep-alive platform | The port a host implements to start and stop the keep-alive task: `KeepAlivePlatform`.                                            |
+| Word                        | Meaning                                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Unit                        | Work the runner can run. The app gives each unit an id, a run policy and a factory.                                               |
+| Unit id                     | The app's key for a unit, unique within a runner.                                                                                 |
+| Factory                     | Builds a fresh unit for each run, so a run's configuration is fixed from start to end. A factory that fails is a failed run.      |
+| Run                         | One start-to-end of a unit, on its own OS thread and tokio runtime.                                                               |
+| Run state                   | `Starting`, `Running` or `Stopped`.                                                                                               |
+| Stop reason                 | Why a run stopped. See Stop reasons.                                                                                              |
+| Detail                      | A unit's own status, of a type the app chooses. The unit reports it during a run, and it is cleared when the run ends.            |
+| Unit status                 | What the runner reports for a unit: the run state, the stop reason and error, when the run started running, and the detail.       |
+| Run policy                  | When the app wants a unit to run: `Off`, `WhileOpen`, `Until { at }` or `Always`.                                                 |
+| Open                        | Desktop: a window of the app is open, minimized included. Mobile: the app is in the foreground. The host tells the runner.        |
+| Grace period                | How long a `WhileOpen` unit keeps running after the app closes: 2 minutes.                                                        |
+| Background session          | The one platform task that keeps the app alive in the background while units run. Units don't run inside it.                      |
+| Ended by platform           | The platform ending the background session. Runs are discouraged until the app opens, a policy is set, or a session starts again. |
+| No longer needed            | How the runner ends the background session once no unit should run.                                                               |
+| Runner                      | `UnitRunnerCore`: holds the units, reconciles their runs with their policies, and asks for the background session.                |
+| Host                        | What binds the runner to a platform: `tauri-unit-runner`'s `UnitRunner` in an app, a fake in tests.                               |
+| Background session platform | The port a host implements to start and end the background session: `BackgroundSessionPlatform`.                                  |
 
 ## The contract
 
@@ -93,21 +94,26 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>>;
 
     // What the host calls.
-    pub fn start_keep_alive_sync(self: &Arc<Self>, platform: Arc<dyn KeepAlivePlatform>);
+    pub fn start_driving_background_session(
+        self: &Arc<Self>,
+        platform: Arc<dyn BackgroundSessionPlatform>,
+    );
     pub fn set_app_open(self: &Arc<Self>, open: bool);
     pub fn restart_running_units(self: &Arc<Self>);
-    pub fn keep_alive_started(self: &Arc<Self>) -> KeepAliveId;
-    pub fn keep_alive_ended(
+    pub fn session_started(self: &Arc<Self>) -> SessionId;
+    pub fn session_ended(
         self: &Arc<Self>,
-        id: KeepAliveId,
+        id: SessionId,
         platform_reason: Option<PlatformStopReason>,
     );
     pub fn runtime(&self) -> &Handle;
 }
 
-pub trait KeepAlivePlatform: Send + Sync + 'static {
-    fn start(&self) -> KeepAliveOperation<'_>; // a task already running counts as started
-    fn stop(&self) -> KeepAliveOperation<'_>;  // with the runner's own stop reason
+pub trait BackgroundSessionPlatform: Send + Sync + 'static {
+    // Each resolves once the platform has taken the request, before the
+    // session reports its start or end.
+    fn start(&self) -> BackgroundSessionOperation<'_>; // a session already running counts as started
+    fn stop(&self) -> BackgroundSessionOperation<'_>;  // with the runner's own stop reason
 }
 
 pub trait WallClock: Send + Sync + 'static {
@@ -126,7 +132,7 @@ pub enum StopReason {
     Removed,
     StoppedForRestart,
     EndedOnItsOwn,
-    KeepAliveRevoked { platform_reason: PlatformStopReason },
+    SessionEndedByPlatform { platform_reason: PlatformStopReason },
 }
 ```
 
@@ -155,11 +161,11 @@ that was never set are logged and ignored.
 
 **The host binds.** The runner learns about the platform only through its host.
 The host tells it when the app opens or closes (`set_app_open`), when every
-running unit should restart (`restart_running_units`), and when a keep-alive
-task starts and ends (`keep_alive_started`, `keep_alive_ended`). It hands the
-runner its `KeepAlivePlatform` once the platform can take its first start
-(`start_keep_alive_sync`). Until then the runner's demand for the keep-alive
-waits; units run either way.
+running unit should restart (`restart_running_units`), and when a background
+session starts and ends (`session_started`, `session_ended`). It hands the
+runner its `BackgroundSessionPlatform` once the platform can take its first
+start (`start_driving_background_session`). Until then the runner's demand
+for a background session waits; units run either way.
 
 ## Runs
 
@@ -195,21 +201,21 @@ waits; units run either way.
 
 ## Stop reasons
 
-| Reason              | Why the run stopped                                                                                                | What follows                                                              |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| `PolicyInactive`    | The unit's policy stopped being active: the app set another policy, an `Until` ran out, or the grace period ended. | It starts again once its policy is active.                                |
-| `Replaced`          | The app set the unit again.                                                                                        | The new definition starts once this run has ended, if it should run.      |
-| `Removed`           | The app removed the unit.                                                                                          | The runner forgets the unit once this run has ended.                      |
-| `StoppedForRestart` | The host restarted every running unit, as the Tauri host does on an iOS resume.                                    | It starts again once this run has ended, with no delay, if it should run. |
-| `EndedOnItsOwn`     | The unit returned, failed, panicked, or its factory failed.                                                        | It restarts after `RESTART_DELAY` if it should still run.                 |
-| `KeepAliveRevoked`  | The platform ended the keep-alive task.                                                                            | It stays stopped until the revocation is cleared (see The keep-alive).    |
+| Reason                   | Why the run stopped                                                                                                | What follows                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `PolicyInactive`         | The unit's policy stopped being active: the app set another policy, an `Until` ran out, or the grace period ended. | It starts again once its policy is active.                                |
+| `Replaced`               | The app set the unit again.                                                                                        | The new definition starts once this run has ended, if it should run.      |
+| `Removed`                | The app removed the unit.                                                                                          | The runner forgets the unit once this run has ended.                      |
+| `StoppedForRestart`      | The host restarted every running unit, as the Tauri host does on an iOS resume.                                    | It starts again once this run has ended, with no delay, if it should run. |
+| `EndedOnItsOwn`          | The unit returned, failed, panicked, or its factory failed.                                                        | It restarts after `RESTART_DELAY` if it should still run.                 |
+| `SessionEndedByPlatform` | The platform ended the background session.                                                                         | It stays stopped until that is cleared (see The background session).      |
 
 A run keeps the first reason it was stopped for.
 
 ## Reconciling
 
-A unit **should run** when its policy is active and the keep-alive isn't
-revoked:
+A unit **should run** when its policy is active and the platform's end of the
+background session doesn't discourage runs:
 
 | Policy         | Active                                                                        |
 | -------------- | ----------------------------------------------------------------------------- |
@@ -225,8 +231,8 @@ open.
 
 A reconcile pass starts every unit that should run and isn't running, and stops
 every unit that is running but shouldn't be. There is no cap on how many units
-run at once. Units start without waiting for the keep-alive to start: it only
-keeps the app alive in the background.
+run at once. Units start without waiting for the background session to start: it
+only keeps the app alive in the background.
 
 The runner reconciles:
 
@@ -237,51 +243,56 @@ The runner reconciles:
   runs on the monotonic clock, which stops while a laptop sleeps, so a long
   sleep alone would let a unit outlive its `Until`. The first interval after
   waking catches what ran out during the sleep, without the host's help.
-- when the keep-alive starts or ends
+- when a background session starts or ends
 
 ## Restart on failure
 
 A run that ends on its own while its unit should still run is restarted after a
 fixed delay, `RESTART_DELAY` (5 s). That covers a run that fails, and a run
 that returns `Ok` without being asked to stop. Runs the runner stopped itself,
-and runs stopped by a revocation, never wait out that delay. A run stopped for
+and runs stopped by the platform's end of the background session, never wait
+out that delay. A run stopped for
 a restart starts again as soon as it has ended.
 
 Calling `set_unit_policy` (even with the unchanged policy) cancels a pending
 restart and starts the unit at once if it should run. A unit waiting out its
-delay still should run, so it keeps the keep-alive running.
+delay still should run, so it keeps a background session wanted.
 
-## The keep-alive: one platform task for every unit
+## The background session: one platform task for every unit
 
-The runner asks the platform for exactly one keep-alive task for the whole app,
-however many units there are: on a phone, an Android foreground service or an
-iOS background task that keeps the process alive while units run. Units don't
-run inside that task; they run on their own threads (see Runs).
+The runner asks the platform for exactly one background session for the whole
+app, however many units there are: on a phone, an Android foreground service or
+an iOS background task that keeps the process alive while units run. Units
+don't run inside the session; they run on their own threads (see Runs).
 
-The runner keeps a ledger of the keep-alive. Starting and stopping the task are
-async, and the platform can also start it itself (boot recovery, an OS
-restart). So the runner numbers each task as it starts, and remembers which one
-it asked to stop, so that task's end counts as its own. Any other end of the
-current task is a **revocation**: the platform ended it. After a revocation,
-units stay stopped until the app opens again, the app sets a policy, or the
-keep-alive starts again. That way the runner doesn't fight the OS or the user.
+The runner keeps a ledger of the background session. Its state is one of: no
+session; ended by the platform; running; or ending as no longer needed.
+Starting and ending a session are async, and the platform can also start one
+itself (boot recovery, an OS restart). So the runner numbers each session as it
+starts, and marks the one it ends as **no longer needed**, so that session's
+end counts as its own. Any other end of the running session is the platform's:
+the session is **ended by the platform**. Runs are then discouraged until the
+app opens again, the app sets a policy, or a session starts again. That way the
+runner doesn't fight the OS or the user. A late end of a session that is no
+longer the current one is stale, and changes nothing.
 
-- **Starting and stopping it.** The runner starts the task when a unit should
-  run, and stops it when none should, one `KeepAlivePlatform` call at a time.
-  A call that fails is logged and tried again when the runner's demand next
-  changes; units run either way.
-- **Starts the platform makes.** Whoever starts the task, the task tells the
-  runner it started, and the runner reconciles. A keep-alive the platform
-  started with nothing to run is stopped. A unit the app hasn't set yet starts
+- **Starting and ending it.** The runner starts a session when a unit should
+  run, and ends it when none should, one `BackgroundSessionPlatform` call at a
+  time. A call resolves once the platform has taken the request; the session
+  reports its start and end itself. A call that fails is logged and tried again
+  when the runner's demand next changes; units run either way.
+- **Starts the platform makes.** Whoever starts a session, the session tells
+  the runner it started, and the runner reconciles. A session the platform
+  started with nothing to run is ended. A unit the app hasn't set yet starts
   when the app sets it. Nothing waits on an undecided value.
-- **Revocation.** When the platform revokes the keep-alive, every running unit
-  stops with `KeepAliveRevoked` and the platform's reason, a
-  `PlatformStopReason`. Examples: Android's foreground-service time limit, the
-  Stop action on Android's notification, iOS background time running out, or
-  the app quitting. Those units are not restarted until the revocation is
+- **Ended by the platform.** When the platform ends the background session,
+  every running unit stops with `SessionEndedByPlatform` and the platform's
+  reason, a `PlatformStopReason`. Examples: Android's foreground-service time
+  limit, the Stop action on Android's notification, iOS background time running
+  out, or the app quitting. Those units are not restarted until that is
   cleared. On a phone, that usually means when the app returns to the
   foreground: opening the app, like the app setting a policy, lets the runner
-  start the keep-alive again.
+  start a session again.
 
 ## What the app does
 

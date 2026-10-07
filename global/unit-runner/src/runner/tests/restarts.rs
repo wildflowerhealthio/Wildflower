@@ -171,12 +171,12 @@ async fn a_restart_of_running_units_stops_and_starts_each_one() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_stopped_for_a_restart_says_so() {
     let harness = Harness::new();
-    let release = Arc::new(Semaphore::new(0));
+    let allow_wind_down = Arc::new(Semaphore::new(0));
     harness.set_unit(
         "unit",
         RunPolicy::Always,
-        Script::WindDownWhenReleased {
-            release: Arc::clone(&release),
+        Script::WindDownWhenAllowed {
+            allow_wind_down: Arc::clone(&allow_wind_down),
         },
         &Probe::default(),
     );
@@ -185,7 +185,7 @@ async fn a_run_stopped_for_a_restart_says_so() {
     // Turned off while it winds down, so the restart doesn't hide its stop.
     // A run keeps the first reason it was stopped for.
     harness.set_unit_policy("unit", RunPolicy::Off);
-    release.add_permits(1);
+    allow_wind_down.add_permits(1);
     harness
         .wait_until_stopped_for("unit", StopReason::StoppedForRestart)
         .await;

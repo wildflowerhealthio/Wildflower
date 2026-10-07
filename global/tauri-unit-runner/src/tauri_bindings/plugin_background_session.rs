@@ -1,5 +1,5 @@
-//! [`PluginKeepAlive`]: the runner's keep-alive port, through the
-//! background-service plugin's `ServiceManagerHandle`.
+//! [`PluginBackgroundSession`]: the runner's background session port, through
+//! the background-service plugin's `ServiceManagerHandle`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -9,20 +9,20 @@ use tauri_plugin_background_service::{
     ServiceError as BackgroundServiceError, ServiceManagerHandle as BackgroundServiceManagerHandle,
     StartConfig as BackgroundServiceStartConfig,
 };
-use unit_runner::{KeepAliveOperation, KeepAlivePlatform};
+use unit_runner::{BackgroundSessionOperation, BackgroundSessionPlatform};
 
-use super::keep_alive_end_pairing::RUNNER_RELEASE_STOP_REASON;
 use super::notification_permission::ask_for_notification_permission;
+use super::session_end_pairing::NO_LONGER_NEEDED_STOP_REASON;
 
-/// Starts and stops the plugin's one service, which is the keep-alive task
+/// Starts and stops the plugin's one service, which is the background session
 /// while it runs.
-pub(crate) struct PluginKeepAlive<R: Runtime> {
+pub(crate) struct PluginBackgroundSession<R: Runtime> {
     app: AppHandle<R>,
     start_config: BackgroundServiceStartConfig,
     notification_permission_asked: AtomicBool,
 }
 
-impl<R: Runtime> PluginKeepAlive<R> {
+impl<R: Runtime> PluginBackgroundSession<R> {
     pub(crate) fn new(app: AppHandle<R>, start_config: BackgroundServiceStartConfig) -> Self {
         Self {
             app,
@@ -40,10 +40,10 @@ impl<R: Runtime> PluginKeepAlive<R> {
     }
 }
 
-impl<R: Runtime> KeepAlivePlatform for PluginKeepAlive<R> {
+impl<R: Runtime> BackgroundSessionPlatform for PluginBackgroundSession<R> {
     /// Start the service with the start config, after asking for notification
     /// permission the first time. A service already running counts as started.
-    fn start(&self) -> KeepAliveOperation<'_> {
+    fn start(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
             if !self
                 .notification_permission_asked
@@ -62,13 +62,13 @@ impl<R: Runtime> KeepAlivePlatform for PluginKeepAlive<R> {
         })
     }
 
-    /// Stop the service with [`RUNNER_RELEASE_STOP_REASON`]. A service already
-    /// stopped counts as stopped.
-    fn stop(&self) -> KeepAliveOperation<'_> {
+    /// Stop the service with [`NO_LONGER_NEEDED_STOP_REASON`]. A service
+    /// already stopped counts as stopped.
+    fn stop(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
             match self
                 .service_manager()?
-                .stop_with_reason(RUNNER_RELEASE_STOP_REASON)
+                .stop_with_reason(NO_LONGER_NEEDED_STOP_REASON)
                 .await
             {
                 Ok(()) | Err(BackgroundServiceError::NotRunning) => Ok(()),

@@ -1,5 +1,6 @@
 //! The doubles the runner tests share: a hand-set wall clock, scripted units
-//! that record their runs, a fake keep-alive platform, and status waits.
+//! that record their runs, a fake background session platform, and status
+//! waits.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -8,13 +9,15 @@ use std::time::Duration;
 use chrono::{DateTime, TimeDelta, Utc};
 use tokio::sync::{Barrier, Semaphore};
 
-use crate::domain::keep_alive_ledger::KeepAliveId;
 use crate::domain::run_policy::RunPolicy;
+use crate::domain::session_ledger::SessionId;
 use crate::domain::unit_plan::UnitPhase;
-use crate::ports::keep_alive_platform::{KeepAliveOperation, KeepAlivePlatform};
+use crate::ports::background_session_platform::{
+    BackgroundSessionOperation, BackgroundSessionPlatform,
+};
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
-use crate::runner::keep_alive_sync::KeepAliveDemand;
+use crate::runner::background_session_driver::SessionDemand;
 use crate::runner::{RunnerTimings, UnitRunnerCore};
 use crate::status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus};
 use crate::unit::{Unit, UnitId};
@@ -105,9 +108,9 @@ impl Harness {
         self.core.unit_phase(&UnitId::from(unit_id))
     }
 
-    /// The runner's keep-alive demand right now.
-    pub(super) fn keep_alive_demand(&self) -> KeepAliveDemand {
-        *self.core.subscribe_keep_alive_demand().borrow()
+    /// The runner's background session demand right now.
+    pub(super) fn session_demand(&self) -> SessionDemand {
+        *self.core.subscribe_session_demand().borrow()
     }
 
     /// Wait until `unit_id`'s status satisfies `predicate`, failing the test
@@ -173,8 +176,8 @@ pub(super) enum Script {
     /// Like `RunUntilStopped`, but take `shutdown_takes` to wind down.
     WindDownSlowly { shutdown_takes: Duration },
     /// Report running, and once asked to stop, wind down only when the test
-    /// adds a permit to `release`.
-    WindDownWhenReleased { release: Arc<Semaphore> },
+    /// adds a permit to `allow_wind_down`.
+    WindDownWhenAllowed { allow_wind_down: Arc<Semaphore> },
     /// Wait at `barrier` with the other units, then report running and wait to
     /// be asked to stop.
     MeetOthers { barrier: Arc<Barrier> },
@@ -290,10 +293,10 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
             tokio::time::sleep(shutdown_takes).await;
             Ok(())
         }
-        Script::WindDownWhenReleased { release } => {
+        Script::WindDownWhenAllowed { allow_wind_down } => {
             ctx.announce_running();
             ctx.shutdown_token().cancelled().await;
-            let _permit = release.acquire().await?;
+            let _permit = allow_wind_down.acquire().await?;
             Ok(())
         }
         Script::MeetOthers { barrier } => {
@@ -331,72 +334,72 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
     }
 }
 
-/// A keep-alive platform that starts and stops a pretend keep-alive task at
+/// A background session platform that starts and ends a pretend session at
 /// once, as the plugin would, and records the calls.
-pub(super) struct FakeKeepAlive {
+pub(super) struct FakeBackgroundSession {
     core: Arc<UnitRunnerCore<Detail>>,
-    task: Mutex<Option<KeepAliveId>>,
+    session: Mutex<Option<SessionId>>,
     starts: AtomicUsize,
     stops: AtomicUsize,
 }
 
-impl FakeKeepAlive {
+impl FakeBackgroundSession {
     pub(super) fn new(core: &Arc<UnitRunnerCore<Detail>>) -> Arc<Self> {
         Arc::new(Self {
             core: Arc::clone(core),
-            task: Mutex::new(None),
+            session: Mutex::new(None),
             starts: AtomicUsize::new(0),
             stops: AtomicUsize::new(0),
         })
     }
 
-    /// How many times the runner started the task.
+    /// How many times the runner started a session.
     pub(super) fn starts(&self) -> usize {
         self.starts.load(Ordering::SeqCst)
     }
 
-    /// How many times the runner stopped the task.
+    /// How many times the runner ended a session.
     pub(super) fn stops(&self) -> usize {
         self.stops.load(Ordering::SeqCst)
     }
 
-    pub(super) fn task_running(&self) -> bool {
-        self.task.lock().expect("task lock").is_some()
+    pub(super) fn session_running(&self) -> bool {
+        self.session.lock().expect("session lock").is_some()
     }
 
-    /// The platform starts the keep-alive task itself (an iOS background
-    /// task, the plugin's recovery).
-    pub(super) fn platform_starts(&self) {
-        let mut task = self.task.lock().expect("task lock");
-        if task.is_none() {
-            *task = Some(self.core.keep_alive_started());
+    /// The platform starts a session itself (an iOS background task, the
+    /// plugin's recovery).
+    pub(super) fn platform_starts_session(&self) {
+        let mut session = self.session.lock().expect("session lock");
+        if session.is_none() {
+            *session = Some(self.core.session_started());
         }
     }
 
-    /// The platform ends the keep-alive task, for `reason`.
-    pub(super) fn platform_revokes(&self, reason: PlatformStopReason) {
-        let ended = self.task.lock().expect("task lock").take();
+    /// The platform ends the session, for `reason`.
+    pub(super) fn platform_ends_session(&self, reason: PlatformStopReason) {
+        let ended = self.session.lock().expect("session lock").take();
         if let Some(id) = ended {
-            self.core.keep_alive_ended(id, Some(reason));
+            self.core.session_ended(id, Some(reason));
         }
     }
 }
 
-impl KeepAlivePlatform for FakeKeepAlive {
-    fn start(&self) -> KeepAliveOperation<'_> {
+impl BackgroundSessionPlatform for FakeBackgroundSession {
+    fn start(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
             self.starts.fetch_add(1, Ordering::SeqCst);
-            self.platform_starts();
+            self.platform_starts_session();
             Ok(())
         })
     }
 
-    fn stop(&self) -> KeepAliveOperation<'_> {
+    fn stop(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
             self.stops.fetch_add(1, Ordering::SeqCst);
-            let ended = self.task.lock().expect("task lock").take();
+            let ended = self.session.lock().expect("session lock").take();
             if let Some(id) = ended {
-                self.core.keep_alive_ended(id, None);
+                self.core.session_ended(id, None);
             }
             Ok(())
         })

@@ -1,7 +1,7 @@
 //! The runner's lifecycle plugin: whether the app is open, and its resumes,
-//! from its window events; the keep-alive's end reasons from the
-//! background-service plugin's events; and the keep-alive sync from the moment
-//! the app is ready.
+//! from its window events; the background session's end reasons from the
+//! background-service plugin's events; and driving the background session from
+//! the moment the app is ready.
 
 use std::sync::{Arc, PoisonError};
 
@@ -9,8 +9,8 @@ use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Listener, RunEvent, Runtime, WindowEvent};
 use tauri_plugin_background_service::PluginEvent as BackgroundServicePluginEvent;
 
-use super::keep_alive_end_pairing::{KeepAliveTaskEnd, BACKGROUND_SERVICE_EVENT};
-use super::plugin_keep_alive::PluginKeepAlive;
+use super::plugin_background_session::PluginBackgroundSession;
+use super::session_end_pairing::{PluginSessionEnd, BACKGROUND_SERVICE_EVENT};
 use super::UNIT_RUNNER_PLUGIN_NAME;
 use crate::domain::window_state::{WindowState, WindowStateChange};
 use crate::runner::UnitRunner;
@@ -23,7 +23,7 @@ pub(super) fn plugin<R: Runtime, D: Clone + Send + Sync + 'static>(
     let on_window_ready = runner.clone();
     tauri::plugin::Builder::new(UNIT_RUNNER_PLUGIN_NAME)
         .setup(move |app, _api| {
-            listen_for_keep_alive_task_ends(app, &on_setup);
+            listen_for_session_ends(app, &on_setup);
             Ok(())
         })
         .on_window_ready(move |window| {
@@ -33,9 +33,9 @@ pub(super) fn plugin<R: Runtime, D: Clone + Send + Sync + 'static>(
         .build()
 }
 
-/// Hand each keep-alive task end the background-service plugin reports to the
-/// keep-alive task waiting for its reason.
-fn listen_for_keep_alive_task_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
+/// Hand each background session end the background-service plugin reports to
+/// the session waiting for its reason.
+fn listen_for_session_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
     app: &AppHandle<R>,
     runner: &UnitRunner<D>,
 ) {
@@ -44,8 +44,8 @@ fn listen_for_keep_alive_task_ends<R: Runtime, D: Clone + Send + Sync + 'static>
         BACKGROUND_SERVICE_EVENT,
         move |event| match serde_json::from_str::<BackgroundServicePluginEvent>(event.payload()) {
             Ok(plugin_event) => {
-                if let Some(end) = KeepAliveTaskEnd::from_plugin_event(&plugin_event) {
-                    bindings.keep_alive_end_pairing.deliver(end);
+                if let Some(end) = PluginSessionEnd::from_plugin_event(&plugin_event) {
+                    bindings.session_end_pairing.deliver(end);
                 }
             }
             Err(error) => {
@@ -56,20 +56,20 @@ fn listen_for_keep_alive_task_ends<R: Runtime, D: Clone + Send + Sync + 'static>
 }
 
 impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
-    /// Follow the app's run events: start the keep-alive sync once the app is
-    /// ready, and follow window destruction, and suspend and resume on a
-    /// phone.
+    /// Follow the app's run events: start driving the background session once
+    /// the app is ready, and follow window destruction, and suspend and resume
+    /// on a phone.
     ///
     /// The window events, not `RunEvent::Resumed`: tauri-runtime-wry raises
     /// that one on an event-loop poll, not when the app comes back.
     fn follow_run_event<R: Runtime>(&self, app: &AppHandle<R>, event: &RunEvent) {
         match event {
             RunEvent::Ready => {
-                let platform = Arc::new(PluginKeepAlive::new(
+                let platform = Arc::new(PluginBackgroundSession::new(
                     app.clone(),
                     self.bindings.start_config.clone(),
                 ));
-                self.core.start_keep_alive_sync(platform);
+                self.core.start_driving_background_session(platform);
             }
             RunEvent::WindowEvent {
                 label,

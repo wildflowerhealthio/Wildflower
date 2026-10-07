@@ -1,5 +1,5 @@
-//! Pairing each keep-alive task's end with the reason the background-service
-//! plugin gives for it.
+//! Pairing each background session's end with the reason the
+//! background-service plugin gives for it.
 //!
 //! The service's task sees only its shutdown token; the reason comes on the
 //! plugin's `background-service://event`, emitted just after the task returns.
@@ -16,55 +16,56 @@ use unit_runner::PlatformStopReason;
 /// The Tauri event the plugin emits its [`BackgroundServicePluginEvent`]s on.
 pub(crate) const BACKGROUND_SERVICE_EVENT: &str = "background-service://event";
 
-/// The reason the runner stops the keep-alive task with. The plugin never stops
-/// the service with it itself (its own stops are `UserStop`, the platform's,
-/// `TaskCompleted` and `Error`), so its end is never taken for the platform's.
-pub(crate) const RUNNER_RELEASE_STOP_REASON: TauriBackgroundServiceStopReason =
+/// The reason the runner ends a background session with once no unit should
+/// run. The plugin never stops the service with it itself (its own stops are
+/// `UserStop`, the platform's, `TaskCompleted` and `Error`), so that end is
+/// never taken for the platform's.
+pub(crate) const NO_LONGER_NEEDED_STOP_REASON: TauriBackgroundServiceStopReason =
     TauriBackgroundServiceStopReason::AppStop;
 
-/// How a keep-alive task ended, by the plugin's account.
+/// How a background session ended, by the plugin's account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeepAliveTaskEnd {
-    /// The runner stopped it.
-    Released,
-    /// Anything else, for this reason.
-    Platform(PlatformStopReason),
+pub(crate) enum PluginSessionEnd {
+    /// The runner ended it, because no unit should run.
+    NoLongerNeeded,
+    /// Anything else ended it, for this reason.
+    EndedByPlatform(PlatformStopReason),
 }
 
-impl KeepAliveTaskEnd {
-    /// The platform's reason, unless the runner stopped the task.
+impl PluginSessionEnd {
+    /// The platform's reason, unless the runner ended the session.
     pub(crate) fn platform_reason(self) -> Option<PlatformStopReason> {
         match self {
-            Self::Released => None,
-            Self::Platform(platform_reason) => Some(platform_reason),
+            Self::NoLongerNeeded => None,
+            Self::EndedByPlatform(platform_reason) => Some(platform_reason),
         }
     }
 
-    /// How the keep-alive task that `event` reports on ended, or `None` when
-    /// the event isn't an end.
+    /// How the background session that `event` reports on ended, or `None`
+    /// when the event isn't an end.
     pub(crate) fn from_plugin_event(event: &BackgroundServicePluginEvent) -> Option<Self> {
         match event {
             BackgroundServicePluginEvent::Stopped { reason }
-                if *reason == RUNNER_RELEASE_STOP_REASON =>
+                if *reason == NO_LONGER_NEEDED_STOP_REASON =>
             {
-                Some(Self::Released)
+                Some(Self::NoLongerNeeded)
             }
             BackgroundServicePluginEvent::Stopped { reason } => {
-                Some(Self::Platform(platform_stop_reason(*reason)))
+                Some(Self::EndedByPlatform(platform_stop_reason(*reason)))
             }
             BackgroundServicePluginEvent::Error { .. } => {
-                Some(Self::Platform(PlatformStopReason::Error))
+                Some(Self::EndedByPlatform(PlatformStopReason::Error))
             }
             // `BackgroundServicePluginEvent` is `#[non_exhaustive]`: an event
-            // added later doesn't end a task.
+            // added later doesn't end a session.
             _ => None,
         }
     }
 }
 
 /// The runner's name for the plugin's `reason`. The runner's own
-/// [`RUNNER_RELEASE_STOP_REASON`] never gets here; a reason added to the plugin
-/// later is [`PlatformStopReason::Unknown`].
+/// [`NO_LONGER_NEEDED_STOP_REASON`] never gets here; a reason added to the
+/// plugin later is [`PlatformStopReason::Unknown`].
 fn platform_stop_reason(reason: TauriBackgroundServiceStopReason) -> PlatformStopReason {
     match reason {
         TauriBackgroundServiceStopReason::UserStop => PlatformStopReason::UserStop,
@@ -84,37 +85,37 @@ fn platform_stop_reason(reason: TauriBackgroundServiceStopReason) -> PlatformSto
     }
 }
 
-/// The waiter the most recently ended keep-alive task left for its reason.
+/// The waiter the most recently ended background session left for its reason.
 #[derive(Default)]
-pub(crate) struct KeepAliveEndPairing {
-    waiting_tx: Mutex<Option<oneshot::Sender<KeepAliveTaskEnd>>>,
+pub(crate) struct SessionEndPairing {
+    waiting_tx: Mutex<Option<oneshot::Sender<PluginSessionEnd>>>,
 }
 
-impl KeepAliveEndPairing {
-    /// Wait for the next keep-alive task end the plugin reports. Replaces an
+impl SessionEndPairing {
+    /// Wait for the next background session end the plugin reports. Replaces an
     /// earlier waiter, which then gets nothing.
-    pub(crate) fn wait_for_end(&self) -> oneshot::Receiver<KeepAliveTaskEnd> {
+    pub(crate) fn wait_for_end(&self) -> oneshot::Receiver<PluginSessionEnd> {
         let (end_tx, end_rx) = oneshot::channel();
         *self.lock_waiting_tx() = Some(end_tx);
         end_rx
     }
 
-    /// Hand `end` to the keep-alive task waiting for it, if one is.
-    pub(crate) fn deliver(&self, end: KeepAliveTaskEnd) {
+    /// Hand `end` to the background session waiting for it, if one is.
+    pub(crate) fn deliver(&self, end: PluginSessionEnd) {
         match self.lock_waiting_tx().take() {
             Some(end_tx) => {
                 // A waiter that gave up has already reported its end.
                 let _waiter_gone = end_tx.send(end);
             }
             None => {
-                log::debug!("[unit-runner] keep-alive end {end:?} with no keep-alive task waiting");
+                log::debug!("[unit-runner] session end {end:?} with no background session waiting");
             }
         }
     }
 
     fn lock_waiting_tx(
         &self,
-    ) -> std::sync::MutexGuard<'_, Option<oneshot::Sender<KeepAliveTaskEnd>>> {
+    ) -> std::sync::MutexGuard<'_, Option<oneshot::Sender<PluginSessionEnd>>> {
         // Replacing or taking one value can't be left half-done by a panic.
         self.waiting_tx
             .lock()
@@ -147,15 +148,15 @@ mod tests {
     }
 
     #[test]
-    fn only_the_runner_s_own_reason_reads_as_its_release() {
+    fn only_the_runner_s_own_reason_reads_as_no_longer_needed() {
         for reason in PLUGIN_STOP_REASONS {
-            let end = KeepAliveTaskEnd::from_plugin_event(&decoded(
+            let end = PluginSessionEnd::from_plugin_event(&decoded(
                 &BackgroundServicePluginEvent::Stopped { reason },
             ));
-            if reason == RUNNER_RELEASE_STOP_REASON {
-                assert_eq!(end, Some(KeepAliveTaskEnd::Released));
+            if reason == NO_LONGER_NEEDED_STOP_REASON {
+                assert_eq!(end, Some(PluginSessionEnd::NoLongerNeeded));
             } else {
-                let Some(KeepAliveTaskEnd::Platform(platform_reason)) = end else {
+                let Some(PluginSessionEnd::EndedByPlatform(platform_reason)) = end else {
                     panic!("{reason:?} read as {end:?}");
                 };
                 assert_ne!(platform_reason, PlatformStopReason::Unknown, "{reason:?}");
@@ -167,35 +168,35 @@ mod tests {
     fn each_platform_reason_keeps_its_own_name() {
         let names: std::collections::HashSet<_> = PLUGIN_STOP_REASONS
             .into_iter()
-            .filter(|reason| *reason != RUNNER_RELEASE_STOP_REASON)
+            .filter(|reason| *reason != NO_LONGER_NEEDED_STOP_REASON)
             .map(platform_stop_reason)
             .collect();
         assert_eq!(names.len(), PLUGIN_STOP_REASONS.len() - 1);
     }
 
     #[test]
-    fn an_error_ends_the_task_and_a_start_doesn_t() {
+    fn an_error_ends_the_session_and_a_start_doesn_t() {
         assert_eq!(
-            KeepAliveTaskEnd::from_plugin_event(&decoded(&BackgroundServicePluginEvent::Error {
+            PluginSessionEnd::from_plugin_event(&decoded(&BackgroundServicePluginEvent::Error {
                 message: "Runtime error: gone".to_owned()
             })),
-            Some(KeepAliveTaskEnd::Platform(PlatformStopReason::Error))
+            Some(PluginSessionEnd::EndedByPlatform(PlatformStopReason::Error))
         );
         assert_eq!(
-            KeepAliveTaskEnd::from_plugin_event(&decoded(&BackgroundServicePluginEvent::Started)),
+            PluginSessionEnd::from_plugin_event(&decoded(&BackgroundServicePluginEvent::Started)),
             None
         );
     }
 
     #[test]
     fn the_end_goes_to_the_latest_waiter() {
-        let pairing = KeepAliveEndPairing::default();
+        let pairing = SessionEndPairing::default();
         let mut replaced_rx = pairing.wait_for_end();
         let mut latest_rx = pairing.wait_for_end();
-        pairing.deliver(KeepAliveTaskEnd::Released);
+        pairing.deliver(PluginSessionEnd::NoLongerNeeded);
         assert!(replaced_rx.try_recv().is_err());
-        assert_eq!(latest_rx.try_recv(), Ok(KeepAliveTaskEnd::Released));
+        assert_eq!(latest_rx.try_recv(), Ok(PluginSessionEnd::NoLongerNeeded));
         // With nobody waiting, an end is dropped.
-        pairing.deliver(KeepAliveTaskEnd::Released);
+        pairing.deliver(PluginSessionEnd::NoLongerNeeded);
     }
 }

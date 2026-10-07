@@ -21,17 +21,17 @@ Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 | Export                                    | What it is                                                                                                    |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `UnitRunner<D>`                           | The runner. `set_unit`, `set_unit_policy`, `remove_unit`, `statuses`, `subscribe`, and the two plugins below. |
-| `UnitRunner::background_service_plugin`   | `tauri-plugin-background-service` with the runner's keep-alive as its one service.                            |
-| `UnitRunner::lifecycle_plugin`            | Follows the app's windows and resumes, and starts and stops the keep-alive.                                   |
+| `UnitRunner::background_service_plugin`   | `tauri-plugin-background-service` with the runner's background session as its one service.                    |
+| `UnitRunner::lifecycle_plugin`            | Follows the app's windows and resumes, and starts and ends the background session.                            |
 | `Unit`                                    | Work the runner can run, with its own `Detail` type.                                                          |
 | `RunContext<D>`                           | What a run is handed: `shutdown_token()`, `announce_running()`, `set_detail()`.                               |
 | `RunPolicy`                               | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`.                         |
 | `UnitId`                                  | The app's key for a unit.                                                                                     |
 | `UnitStatus<D>`, `RunState`, `RunStop`    | What the runner reports for a unit.                                                                           |
-| `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform revoked the keep-alive.                                               |
+| `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform ended the background session.                                         |
 | `BackgroundServiceStartConfig`            | The plugin's start config (Android notification label and service type), re-exported.                         |
 | `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                                            |
-| `unit-runner`'s other exports             | `UnitRunnerCore`, `KeepAlivePlatform`, `WallClock` and the rest, re-exported.                                 |
+| `unit-runner`'s other exports             | `UnitRunnerCore`, `BackgroundSessionPlatform`, `WallClock` and the rest, re-exported.                         |
 
 ## Use
 
