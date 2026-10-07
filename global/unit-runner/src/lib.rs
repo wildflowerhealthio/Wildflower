@@ -14,9 +14,9 @@
 //!
 //! Layered so everything that decides is testable without a platform:
 //!
-//!  - `domain` — the pure rules: when a policy is active, when the app counts
-//!    as open, what a reconcile does to each unit, when a run restarts, and
-//!    how a background session ends.
+//!  - `domain` — the pure rules: when a policy wants a unit running, when the
+//!    app counts as present, what starting and stopping runs per policy does
+//!    to each unit, when a run restarts, and how a background session ends.
 //!  - `ports` — what `UnitRunner` needs from its host: the [`WallClock`] and
 //!    the [`BackgroundSessionPlatform`].
 //!  - `runner` — [`UnitRunner`]'s state, each run's thread and runtime,
@@ -38,7 +38,8 @@ pub use ports::background_session_platform::{
 pub use ports::wall_clock::{SystemClock, WallClock};
 pub use run_context::RunContext;
 pub use runner::{
-    UnitRunner, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT, WALL_CLOCK_RECONCILE_INTERVAL,
+    UnitRunner, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT,
+    START_AND_STOP_RUNS_PER_POLICY_INTERVAL,
 };
 pub use status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus, UnitStatuses};
 pub use unit::{Unit, UnitId};

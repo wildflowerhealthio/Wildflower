@@ -8,9 +8,9 @@
 //! needed, so that session's end counts as its own. Any other end of the
 //! running session is the platform's: Android's time limit, the Stop action on
 //! the notification, or iOS ending the background time. After the platform ends
-//! it, runs are discouraged until the app opens again, a policy is set, or a
-//! session starts again. That way `UnitRunner` doesn't fight the OS or the
-//! user.
+//! it, runs are discouraged until the app becomes present again, a policy is
+//! set, or a session starts again. That way `UnitRunner` doesn't fight the OS
+//! or the user.
 
 use crate::status::PlatformStopReason;
 
@@ -114,7 +114,7 @@ impl SessionLedger {
     }
 
     /// Let units start again after the platform ended the session, without a
-    /// session starting again: the app opened, or the app set a policy.
+    /// session starting again: the app became present, or the app set a policy.
     pub fn clear_ended_by_platform(&mut self) {
         if self.state == SessionState::EndedByPlatform {
             self.state = SessionState::NoSession;

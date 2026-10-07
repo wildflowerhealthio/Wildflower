@@ -2,14 +2,14 @@
 
 How `tauri-unit-runner` binds `unit-runner` to a Tauri app: the background
 session as `tauri-plugin-background-service`'s one service, and whether the app
-is open from its window events.
+is present from its window events.
 
-The units, run policies, statuses, the reconcile, runs, restarts and the
-session ledger are `unit-runner`'s, and so are the words used here. Its
-[Design Explanation](../../unit-runner/docs/Design%20Explanation.md) covers
-them. This crate re-exports every public type of `unit-runner`, so the app
-needs only `tauri-unit-runner`, while its domain crates depend on `unit-runner`
-alone.
+The units, run policies, statuses, starting and stopping runs per policy, runs,
+restarts and the session ledger are `unit-runner`'s, and so are the words used
+here. Its [Design Explanation](../../unit-runner/docs/Design%20Explanation.md)
+covers them. This crate re-exports every public type of `unit-runner`, so the
+app needs only `tauri-unit-runner`, while its domain crates depend on
+`unit-runner` alone.
 
 ## The contract
 
@@ -37,29 +37,33 @@ wall clock, with the Tauri side's own state. Its unit calls are `UnitRunner`'s.
 
 The app builds `TauriUnitRunner` before the Tauri builder and registers its two
 plugins: `background_service_plugin()` (the background session) and
-`lifecycle_plugin()` (whether the app is open, its resumes, and starting and
+`lifecycle_plugin()` (whether the app is present, its returns to the
+foreground, and starting and
 ending the background session), next to `tauri-plugin-notification`. The plugin
 takes its service factory before the app's `setup()`, which is why
 `TauriUnitRunner` is built before the Tauri builder and passed to it.
 
-## Open
+## Present
 
-The lifecycle plugin tells `UnitRunner` whether the app is open:
+The lifecycle plugin tells `UnitRunner` whether the app is present:
 
 - **Desktop.** It counts the app's windows as they are created and destroyed.
-  The app is open while any window is, minimized included.
-- **Phone.** It follows the windows' `Suspended` and `Resumed` events. The app
-  is open while it is in the foreground. `RunEvent::Resumed` isn't used, as
+  The app is present while any window is open, minimized included.
+- **Phone.** It follows the windows' `Suspended` and `Resumed` events: the app
+  moving to the background and returning to the foreground. The app is present
+  while it is in the foreground. `RunEvent::Resumed` isn't used, as
   tauri-runtime-wry raises it on an event-loop poll, not when the app comes
   back.
-- **iOS resume.** On iOS, a resume that follows a suspend restarts every
-  running unit (`StoppedForRestart`): a suspended app's connections may be
-  dead while its runs still report `Running`. The resume a window reports as it
+- **iOS, back in the foreground.** On iOS, moving to the background can break
+  the app's sockets (`PlatformKind::backgrounding_breaks_sockets`): a suspended
+  app's connections may be dead while its runs still report `Running`. So a
+  return to the foreground that follows a move to the background restarts
+  every running unit (`StoppedForRestart`). The resume a window reports as it
   first appears doesn't count.
 
 Tauri raises no system resume on a desktop, so after a laptop sleeps
-`UnitRunner`'s wall-clock reconcile catches what ran out. A phone's app resume
-is the window's `Resumed`, which also opens the app.
+`UnitRunner`'s wall-clock ticker catches what ran out. A phone app's return to
+the foreground is the window's `Resumed`, which also makes the app present.
 
 ## The background session: the plugin's one service
 

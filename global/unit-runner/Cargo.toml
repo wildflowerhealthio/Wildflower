@@ -19,9 +19,10 @@ log = "0.4"
 serde.workspace = true
 # `rt-multi-thread` builds each run's dedicated runtime; `sync` carries the run
 # gates, the statuses and the background session's demand; `time` the restart
-# delay and the wall-clock reconcile; `macros` for `select!`.
+# delay and the wall-clock ticker; `macros` for `select!`.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
-# `CancellationToken`, each run's shutdown signal.
+# `CancellationToken`, each run's shutdown signal and each pending restart's
+# timer.
 tokio-util = "0.7"
 
 [dev-dependencies]

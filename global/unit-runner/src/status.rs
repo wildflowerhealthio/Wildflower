@@ -67,9 +67,10 @@ pub struct RunStop {
 /// Why a run stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopReason {
-    /// `UnitRunner` stopped the run because the unit's policy stopped being
-    /// active: the app set another policy, an `Until` ran out, or the app's
-    /// grace period ended. Starts again only once the policy is active again.
+    /// `UnitRunner` stopped the run because the unit's policy stopped wanting
+    /// it running: the app set another policy, an `Until` ran out, or the
+    /// app's grace period ended. Starts again only once the policy wants it
+    /// running again.
     PolicyInactive,
     /// The app set the unit again, so `UnitRunner` stopped the run of the old
     /// definition. The new definition starts once this run has ended, if it
@@ -78,7 +79,8 @@ pub enum StopReason {
     /// The app removed the unit, so `UnitRunner` stopped its run.
     Removed,
     /// `UnitRunner` stopped the run to start it again at once: the host
-    /// restarted every running unit, as the Tauri host does on an iOS resume.
+    /// restarted every running unit, as the Tauri host does when an iOS app
+    /// returns to the foreground.
     /// The unit starts again once this run has ended, with no restart delay,
     /// if it should still run.
     StoppedForRestart,
@@ -87,8 +89,8 @@ pub enum StopReason {
     /// [`RESTART_DELAY`](crate::RESTART_DELAY) while the unit should still run.
     EndedOnItsOwn,
     /// The platform ended the background session, for `platform_reason`. Not
-    /// restarted until the app opens again, the app sets a policy, or a
-    /// session starts again.
+    /// restarted until the app becomes present again, the app sets a policy, or
+    /// a session starts again.
     SessionEndedByPlatform {
         /// The platform's reason for ending the background session.
         platform_reason: PlatformStopReason,

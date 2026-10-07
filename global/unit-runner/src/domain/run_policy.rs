@@ -1,5 +1,5 @@
-//! [`RunPolicy`], when the app wants a unit to run, and the instant each policy
-//! is active at.
+//! [`RunPolicy`], when the app wants a unit to run, and whether each policy
+//! wants it running at an instant.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -19,13 +19,13 @@ use serde::{Deserialize, Serialize};
 pub enum RunPolicy {
     /// Never run.
     Off,
-    /// Run while the app is open, and keep running for
+    /// Run while the app is present (see `AppPresence`), and keep running for
     /// [`WHILE_OPEN_GRACE`](crate::WHILE_OPEN_GRACE) (2 minutes) after it
-    /// closes.
+    /// becomes absent.
     WhileOpen,
     /// Run while `at` is ahead of the wall clock.
     Until {
-        /// The wall-clock instant the policy stops being active.
+        /// The wall-clock instant the policy stops wanting the unit running.
         at: DateTime<Utc>,
     },
     /// Always run.
@@ -82,24 +82,25 @@ impl From<RunPolicy> for RunPolicyWire {
 }
 
 impl RunPolicy {
-    /// Whether the policy is active at the wall-clock instant `now`.
+    /// Whether the policy wants the unit running at the wall-clock instant
+    /// `now`.
     ///
-    /// `app_open_or_in_grace` is whether the app is open or still within the
-    /// grace period after it closed; only `WhileOpen` reads it.
+    /// `app_present_or_in_grace` is whether the app is present or still within
+    /// the grace period after it became absent; only `WhileOpen` reads it.
     #[must_use]
-    pub fn is_active(&self, now: DateTime<Utc>, app_open_or_in_grace: bool) -> bool {
+    pub fn wants_running(&self, now: DateTime<Utc>, app_present_or_in_grace: bool) -> bool {
         match self {
             Self::Off => false,
-            Self::WhileOpen => app_open_or_in_grace,
+            Self::WhileOpen => app_present_or_in_grace,
             Self::Until { at } => now < *at,
             Self::Always => true,
         }
     }
 
-    /// The wall-clock instant after `now` at which the policy stops being
-    /// active on its own, so `UnitRunner` can reconcile then: an `Until` that
-    /// is still ahead. `WhileOpen`'s end is the grace period's, which the app's
-    /// presence decides.
+    /// The wall-clock instant after `now` at which the policy stops wanting the
+    /// unit running on its own, so `UnitRunner` can start and stop runs then:
+    /// an `Until` that is still ahead. `WhileOpen`'s end is the grace period's,
+    /// which the app's presence decides.
     #[must_use]
     pub fn expires_after(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
         match self {
@@ -120,25 +121,25 @@ mod tests {
     }
 
     #[test]
-    fn off_and_always_ignore_the_clock_and_whether_the_app_is_open() {
-        for open in [false, true] {
-            assert!(!RunPolicy::Off.is_active(instant(0), open));
-            assert!(RunPolicy::Always.is_active(instant(0), open));
+    fn off_and_always_ignore_the_clock_and_whether_the_app_is_present() {
+        for present in [false, true] {
+            assert!(!RunPolicy::Off.wants_running(instant(0), present));
+            assert!(RunPolicy::Always.wants_running(instant(0), present));
         }
     }
 
     #[test]
-    fn while_open_follows_whether_the_app_is_open() {
-        assert!(RunPolicy::WhileOpen.is_active(instant(0), true));
-        assert!(!RunPolicy::WhileOpen.is_active(instant(0), false));
+    fn while_open_follows_whether_the_app_is_present() {
+        assert!(RunPolicy::WhileOpen.wants_running(instant(0), true));
+        assert!(!RunPolicy::WhileOpen.wants_running(instant(0), false));
     }
 
     #[test]
-    fn until_is_active_strictly_before_its_instant() {
+    fn until_wants_running_strictly_before_its_instant() {
         let policy = RunPolicy::Until { at: instant(10) };
-        assert!(policy.is_active(instant(9), false));
-        assert!(!policy.is_active(instant(10), true));
-        assert!(!policy.is_active(instant(11), true));
+        assert!(policy.wants_running(instant(9), false));
+        assert!(!policy.wants_running(instant(10), true));
+        assert!(!policy.wants_running(instant(11), true));
         assert_eq!(policy.expires_after(instant(9)), Some(instant(10)));
         assert_eq!(policy.expires_after(instant(10)), None);
     }
@@ -209,14 +210,14 @@ mod tests {
             prop_assert_eq!(serde_json::from_str::<RunPolicy>(&wire).expect("deserialize"), policy);
         }
 
-        /// An `Until` is active exactly while its instant is ahead, open app or
-        /// not, and its expiry is reported exactly then.
+        /// An `Until` wants the unit running exactly while its instant is
+        /// ahead, present app or not, and its expiry is reported exactly then.
         #[test]
-        fn until_is_active_exactly_while_ahead(offset in -1_000_i64..1_000, open: bool) {
+        fn until_wants_running_exactly_while_ahead(offset in -1_000_i64..1_000, present: bool) {
             let at = instant(0);
             let now = at + TimeDelta::seconds(offset);
             let policy = RunPolicy::Until { at };
-            prop_assert_eq!(policy.is_active(now, open), offset < 0);
+            prop_assert_eq!(policy.wants_running(now, present), offset < 0);
             prop_assert_eq!(policy.expires_after(now).is_some(), offset < 0);
         }
     }

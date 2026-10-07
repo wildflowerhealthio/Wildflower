@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use tokio::sync::watch;
+use tokio_util::sync::{CancellationToken, DropGuard};
 
 use super::erased_unit::UnitFactory;
 use super::run_stop_signal::RunStopSignal;
@@ -39,21 +40,21 @@ impl<D> UnitEntry<D> {
     }
 
     /// Whether the unit should run at the wall-clock instant `now`, given
-    /// whether the app is open or within its grace period and whether the
+    /// whether the app is present or within its grace period and whether the
     /// platform's end of the background session discourages runs. A unit being
     /// removed never should, and no unit should while runs are discouraged.
     pub(crate) fn should_run(
         &self,
         now: DateTime<Utc>,
-        app_open_or_in_grace: bool,
+        app_present_or_in_grace: bool,
         runs_discouraged_by_platform: bool,
     ) -> bool {
         !self.awaiting_removal
             && !runs_discouraged_by_platform
-            && self.policy.is_active(now, app_open_or_in_grace)
+            && self.policy.wants_running(now, app_present_or_in_grace)
     }
 
-    /// Where the unit is, as a reconcile sees it.
+    /// Where the unit is, as starting and stopping runs per policy sees it.
     pub(crate) fn phase(&self) -> UnitPhase {
         match (&self.current_run, &self.pending_restart) {
             (Some(run), _) if run.stop_requested() => UnitPhase::Stopping,
@@ -71,8 +72,8 @@ impl<D> UnitEntry<D> {
     }
 }
 
-/// Numbers runs and restarts, so a late event about one tells it from a later
-/// one of the same unit.
+/// Numbers runs, so a late end of one tells it from a later run of the same
+/// unit.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct RunGeneration(u64);
 
@@ -106,8 +107,40 @@ impl UnitRun {
     }
 }
 
-/// A restart waiting out the restart delay.
+/// A restart waiting out the restart delay. Dropping it (when it is
+/// cancelled, replaced, done, or its unit removed) cancels its timer.
 pub(crate) struct PendingRestart {
-    /// Tells this restart's timer from a cancelled one's.
-    pub(crate) generation: RunGeneration,
+    /// Cancels the timer's token when this restart is dropped.
+    _cancel_timer_when_dropped: DropGuard,
+}
+
+impl PendingRestart {
+    /// A pending restart, and the token its timer waits with.
+    pub(crate) fn new() -> (Self, CancellationToken) {
+        let restart_token = CancellationToken::new();
+        let pending_restart = Self {
+            _cancel_timer_when_dropped: restart_token.clone().drop_guard(),
+        };
+        (pending_restart, restart_token)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replacing_or_dropping_a_pending_restart_cancels_its_timer() {
+        let (first, first_token) = PendingRestart::new();
+        let mut pending_restart = Some(first);
+        assert!(!first_token.is_cancelled());
+
+        let (second, second_token) = PendingRestart::new();
+        drop(pending_restart.replace(second));
+        assert!(first_token.is_cancelled(), "the replaced restart's timer");
+        assert!(!second_token.is_cancelled());
+
+        drop(pending_restart.take());
+        assert!(second_token.is_cancelled(), "the dropped restart's timer");
+    }
 }

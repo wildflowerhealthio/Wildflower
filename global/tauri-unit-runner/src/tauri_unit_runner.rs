@@ -10,8 +10,8 @@ use unit_runner::{RunPolicy, SystemClock, Unit, UnitId, UnitRunner, UnitStatuses
 
 use crate::tauri_bindings::TauriBindings;
 
-/// Holds the app's units, reconciles their runs with their policies, and keeps
-/// the app alive while any of them should run: a [`UnitRunner`] bound to
+/// Holds the app's units, starts and stops their runs per their policies, and
+/// keeps the app alive while any of them should run: a [`UnitRunner`] bound to
 /// Tauri.
 ///
 /// Build it before the Tauri builder, and register both of its plugins:

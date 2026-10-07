@@ -1,7 +1,7 @@
-//! `TauriUnitRunner`'s lifecycle plugin: whether the app is open, and its
-//! resumes, from its window events; the background session's end reasons from
-//! the background-service plugin's events; and driving the background session
-//! from the moment the app is ready.
+//! `TauriUnitRunner`'s lifecycle plugin: whether the app is present, and its
+//! returns to the foreground, from its window events; the background session's
+//! end reasons from the background-service plugin's events; and driving the
+//! background session from the moment the app is ready.
 
 use std::sync::{Arc, PoisonError};
 
@@ -27,7 +27,8 @@ pub(super) fn plugin<R: Runtime, D: Clone + Send + Sync + 'static>(
             Ok(())
         })
         .on_window_ready(move |window| {
-            on_window_ready.apply_window_event(|windows| windows.window_opened(window.label()));
+            on_window_ready
+                .record_window_event(|window_state| window_state.window_opened(window.label()));
         })
         .on_event(move |app, event| runner.follow_run_event(app, event))
         .build()
@@ -57,8 +58,8 @@ fn listen_for_session_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
 
 impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     /// Follow the app's run events: start driving the background session once
-    /// the app is ready, and follow window destruction, and suspend and resume
-    /// on a phone.
+    /// the app is ready, and follow window destruction, and moves to and from
+    /// the background on a phone.
     ///
     /// The window events, not `RunEvent::Resumed`: tauri-runtime-wry raises
     /// that one on an event-loop poll, not when the app comes back.
@@ -75,38 +76,41 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
                 label,
                 event: WindowEvent::Destroyed,
                 ..
-            } => self.apply_window_event(|windows| windows.window_destroyed(label)),
+            } => self.record_window_event(|window_state| window_state.window_destroyed(label)),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             RunEvent::WindowEvent {
                 event: WindowEvent::Suspended,
                 ..
-            } => self.apply_window_event(WindowState::suspended),
+            } => self.record_window_event(WindowState::moved_to_background),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             RunEvent::WindowEvent {
                 event: WindowEvent::Resumed,
                 ..
-            } => self.apply_window_event(WindowState::resumed),
+            } => self.record_window_event(WindowState::returned_to_foreground),
             _ => {}
         }
     }
 
-    /// Record a window event, and pass what it means on to `TauriUnitRunner`.
-    /// Running units restart first, so units the change starts aren't restarted
-    /// too.
-    fn apply_window_event(&self, event: impl FnOnce(&mut WindowState) -> WindowStateChange) {
+    /// Record a window event with `record_on_window_state`, and pass what it
+    /// means on to `UnitRunner`. Running units restart first, so units the
+    /// change starts aren't restarted too.
+    fn record_window_event(
+        &self,
+        record_on_window_state: impl FnOnce(&mut WindowState) -> WindowStateChange,
+    ) {
         let change = {
             // Each event is one set insert or flag write, which no panic
             // leaves half-done.
-            let mut windows = self
+            let mut window_state = self
                 .bindings
                 .window_state
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
-            event(&mut windows)
+            record_on_window_state(&mut window_state)
         };
         if change.unit_restarts_needed {
             self.unit_runner.restart_running_units();
         }
-        self.unit_runner.set_app_open(change.open_after_event);
+        self.unit_runner.set_app_present(change.present_after_event);
     }
 }

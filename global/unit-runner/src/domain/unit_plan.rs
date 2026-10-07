@@ -1,8 +1,9 @@
-//! What a reconcile does to one unit, and whether a run that stopped restarts.
+//! What starting and stopping runs per policy does to one unit, and whether a
+//! run that stopped restarts.
 
 use crate::status::StopReason;
 
-/// Where a unit is, as a reconcile sees it.
+/// Where a unit is, as starting and stopping runs per policy sees it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnitPhase {
     /// No run is in progress and no restart is pending.
@@ -16,7 +17,7 @@ pub enum UnitPhase {
     AwaitingRestart,
 }
 
-/// What a reconcile does to one unit.
+/// What starting and stopping runs per policy does to one unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnitAction {
     /// Start a run.
@@ -29,10 +30,12 @@ pub enum UnitAction {
     Keep,
 }
 
-/// What a reconcile does to a unit in `phase` that should or shouldn't run.
+/// What starting and stopping runs per policy does to a unit in `phase` that
+/// should or shouldn't run.
 ///
-/// A stopping run is left to end: the reconcile its end triggers starts the
-/// unit again if it should still run. A pending restart is left to its delay.
+/// A stopping run is left to end: the `start_and_stop_runs_per_policy` its end
+/// triggers starts the unit again if it should still run. A pending restart is
+/// left to its delay.
 #[must_use]
 pub fn plan_unit(should_run: bool, phase: UnitPhase) -> UnitAction {
     match (should_run, phase) {
@@ -47,7 +50,8 @@ pub fn plan_unit(should_run: bool, phase: UnitPhase) -> UnitAction {
 /// Whether a run that stopped for `reason` is restarted after the restart
 /// delay, given whether its unit should still run. Only a run that ended on
 /// its own is. `UnitRunner` doesn't undo its own stops; a run it stopped to
-/// restart starts again on the next reconcile, with no delay. Units stopped by
+/// restart starts again the next time runs start and stop per policy, with no
+/// delay. Units stopped by
 /// the platform's end of the background session wait for that to be cleared.
 #[must_use]
 pub fn restarts_after(reason: StopReason, should_run: bool) -> bool {
@@ -112,10 +116,10 @@ mod tests {
     }
 
     proptest! {
-        /// Applying a reconcile's action and reconciling again asks for nothing
-        /// more: a reconcile is idempotent.
+        /// Applying a planned action and planning again asks for nothing more:
+        /// starting and stopping runs per policy is idempotent.
         #[test]
-        fn reconciling_twice_does_nothing_the_second_time(should_run: bool, before in phase()) {
+        fn planning_twice_does_nothing_the_second_time(should_run: bool, before in phase()) {
             let after = match plan_unit(should_run, before) {
                 UnitAction::Start => UnitPhase::Running,
                 UnitAction::Stop => UnitPhase::Stopping,

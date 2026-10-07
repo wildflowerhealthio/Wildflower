@@ -67,5 +67,5 @@ use unit_runner::{RunPolicy, SystemClock, UnitId, UnitRunner};
 
 let runner = UnitRunner::<String>::new(tokio::runtime::Handle::current(), Arc::new(SystemClock));
 runner.set_unit(UnitId::from("sync"), RunPolicy::Always, || Ok(Sync));
-runner.set_app_open(true);
+runner.set_app_present(true);
 ```

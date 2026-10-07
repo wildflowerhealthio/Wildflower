@@ -1,8 +1,8 @@
 //! [`UnitRunner`](unit_runner::UnitRunner) bound to Tauri: the background
 //! session as `tauri-plugin-background-service`'s one
 //! [`BackgroundService`](tauri_plugin_background_service::BackgroundService),
-//! and whether the app is open and resumes from its window events, as the two
-//! plugins [`TauriUnitRunner`] hands the app.
+//! and whether the app is present and returns to the foreground from its
+//! window events, as the two plugins [`TauriUnitRunner`] hands the app.
 
 mod background_session_service;
 mod lifecycle;
@@ -74,11 +74,11 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     /// [`background_service_plugin`](Self::background_service_plugin) and
     /// `tauri-plugin-notification`.
     ///
-    /// It follows the app's windows to tell when the app is open, restarts
-    /// every running unit on an iOS resume, learns why the platform ended a
-    /// background session from the background-service plugin's events, and
-    /// starts and ends the session from the moment the app's event loop is
-    /// ready, after the app's `setup()` has set its units.
+    /// It follows the app's windows to tell when the app is present, restarts
+    /// every running unit when an iOS app returns to the foreground, learns why
+    /// the platform ended a background session from the background-service
+    /// plugin's events, and starts and ends the session from the moment the
+    /// app's event loop is ready, after the app's `setup()` has set its units.
     #[must_use]
     pub fn lifecycle_plugin<R: Runtime>(&self) -> TauriPlugin<R> {
         lifecycle::plugin(self.clone())

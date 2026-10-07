@@ -9,7 +9,8 @@ supplies the units, stores their policies, and owns its own wire and
 notifications.
 
 This crate is the Tauri bindings of [`unit-runner`](../unit-runner/README.md),
-which holds the units, policies, statuses and the reconcile, free of Tauri. It
+which holds the units, policies, statuses, and starting and stopping runs per
+policy, free of Tauri. It
 re-exports every public type of `unit-runner`, so an app needs only this
 crate, while its domain crates depend on `unit-runner` alone.
 
@@ -23,7 +24,7 @@ Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `TauriUnitRunner<D>`                         | Holds the app's units. `set_unit`, `set_unit_policy`, `remove_unit`, `statuses`, `subscribe`, and the two plugins below. |
 | `TauriUnitRunner::background_service_plugin` | `tauri-plugin-background-service` with `TauriUnitRunner`'s background session as its one service.                        |
-| `TauriUnitRunner::lifecycle_plugin`          | Follows the app's windows and resumes, and starts and ends the background session.                                       |
+| `TauriUnitRunner::lifecycle_plugin`          | Follows the app's windows and its returns to the foreground, and starts and ends the background session.                 |
 | `Unit`                                       | Work `TauriUnitRunner` can run, with its own `Detail` type.                                                              |
 | `RunContext<D>`                              | What a run is handed: `shutdown_token()`, `announce_running()`, `set_detail()`.                                          |
 | `RunPolicy`                                  | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`.                                    |

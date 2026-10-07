@@ -127,10 +127,10 @@ async fn the_platform_ending_the_session_stops_every_unit_without_restart() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn opening_the_app_starts_a_session_again() {
+async fn the_app_becoming_present_starts_a_session_again() {
     let (harness, session) = harness_with_background_session();
     let probe = Probe::default();
-    harness.unit_runner.set_app_open(true);
+    harness.unit_runner.set_app_present(true);
     harness.set_unit(
         "unit",
         RunPolicy::Always,
@@ -140,7 +140,7 @@ async fn opening_the_app_starts_a_session_again() {
     harness.wait_until_running("unit").await;
     eventually("a session runs", || session.session_running()).await;
 
-    harness.unit_runner.set_app_open(false);
+    harness.unit_runner.set_app_present(false);
     session.platform_ends_session(PlatformStopReason::NativeNotificationStop);
     harness
         .wait_until_stopped_for(
@@ -151,7 +151,7 @@ async fn opening_the_app_starts_a_session_again() {
         )
         .await;
 
-    harness.unit_runner.set_app_open(true);
+    harness.unit_runner.set_app_present(true);
     eventually("a session starts again", || session.starts() == 2).await;
     harness.wait_until_running("unit").await;
     assert_eq!(probe.starts(), 2);

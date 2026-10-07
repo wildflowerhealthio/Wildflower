@@ -1,5 +1,6 @@
-//! [`UnitRunner`]: the units and their runs, the reconcile, the restarts and
-//! the background session's demand. It knows the session only through the
+//! [`UnitRunner`]: the units and their runs, starting and stopping runs per
+//! policy, the restarts and the background session's demand. It knows the
+//! session only through the
 //! [`BackgroundSessionPlatform`](crate::BackgroundSessionPlatform) port, so it
 //! runs on any platform.
 
@@ -26,18 +27,19 @@ pub use dedicated_runtime::RUN_RUNTIME_SHUTDOWN_TIMEOUT;
 /// while its unit should still run.
 pub const RESTART_DELAY: Duration = Duration::from_secs(5);
 
-/// The longest `UnitRunner` goes without reconciling on the wall clock.
+/// The longest `UnitRunner` goes without starting and stopping runs per policy
+/// on the wall clock.
 /// `tokio::time` runs on the monotonic clock, which stops while a laptop
-/// sleeps; reconciling this often catches an `Until` or a grace period that
+/// sleeps; doing so this often catches an `Until` or a grace period that
 /// ran out during a sleep soon after waking.
-pub const WALL_CLOCK_RECONCILE_INTERVAL: Duration = Duration::from_secs(10);
+pub const START_AND_STOP_RUNS_PER_POLICY_INTERVAL: Duration = Duration::from_secs(10);
 
 /// `UnitRunner`'s timings: the public constants in an app, shorter in tests.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RunnerTimings {
     pub(crate) restart_delay: Duration,
     pub(crate) run_runtime_shutdown_timeout: Duration,
-    pub(crate) wall_clock_reconcile_interval: Duration,
+    pub(crate) start_and_stop_runs_per_policy_interval: Duration,
 }
 
 impl Default for RunnerTimings {
@@ -45,7 +47,7 @@ impl Default for RunnerTimings {
         Self {
             restart_delay: RESTART_DELAY,
             run_runtime_shutdown_timeout: RUN_RUNTIME_SHUTDOWN_TIMEOUT,
-            wall_clock_reconcile_interval: WALL_CLOCK_RECONCILE_INTERVAL,
+            start_and_stop_runs_per_policy_interval: START_AND_STOP_RUNS_PER_POLICY_INTERVAL,
         }
     }
 }

@@ -15,6 +15,7 @@ depending on Tauri. Platform code belongs in the host crate, behind the
 
 The vocabulary and the design are in
 [Design Explanation](./docs/Design%20Explanation.md). Use its words (unit, run,
-run state, stop reason, detail, run policy, open, grace period, background
+run state, stop reason, detail, run policy, present, absent, grace period,
+background
 session, ended by platform, no longer needed, runner, host) in code and docs
 here.

@@ -59,8 +59,9 @@ async fn a_restart_waits_out_the_delay() {
     harness
         .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)
         .await;
-    // A reconcile leaves a pending restart to its delay.
-    harness.unit_runner.reconcile();
+    // Starting and stopping runs per policy leaves a pending restart to its
+    // delay.
+    harness.unit_runner.start_and_stop_runs_per_policy();
     assert_eq!(harness.phase("unit"), Some(UnitPhase::AwaitingRestart));
     assert_eq!(probe.starts(), 1);
 }

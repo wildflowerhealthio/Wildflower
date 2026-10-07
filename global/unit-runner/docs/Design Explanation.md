@@ -23,14 +23,15 @@ through a tunnel with its own TLS is as opaque to it as one that syncs a folder.
 It is split into two crates:
 
 - **`unit-runner`** (this crate) holds everything that decides: units, run
-  policies, statuses and stop reasons, the reconcile, runs and restarts, and
+  policies, statuses and stop reasons, starting and stopping runs per policy,
+  runs and restarts, and
   the session ledger. It has no Tauri dependency.
 - **`tauri-unit-runner`** binds it to Tauri: the background session as
-  `tauri-plugin-background-service`'s one service, and whether the app is open
-  from its window events, as two plugins. It re-exports every public type
-  here. Its
-  [Design Explanation](../../tauri-unit-runner/docs/Design%20Explanation.md)
-  covers the Tauri side.
+  `tauri-plugin-background-service`'s one service, and whether the app is
+  present from its window events, as two plugins. It re-exports every public
+  type here. Its [Design
+  Explanation](../../tauri-unit-runner/docs/Design%20Explanation.md) covers the
+  Tauri side.
 
 The split exists so an app's domain crates can define units and store run
 policies without depending on Tauri. They build and test against
@@ -39,25 +40,25 @@ crate needs `tauri-unit-runner`.
 
 ## Words
 
-| Word                        | Meaning                                                                                                                           |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Unit                        | Work `UnitRunner` can run. The app gives each unit an id, a run policy and a factory.                                             |
-| Unit id                     | The app's key for a unit, unique within a `UnitRunner`.                                                                           |
-| Factory                     | Builds a fresh unit for each run, so a run's configuration is fixed from start to end. A factory that fails is a failed run.      |
-| Run                         | One start-to-end of a unit, on its own OS thread and tokio runtime.                                                               |
-| Run state                   | `Starting`, `Running` or `Stopped`.                                                                                               |
-| Stop reason                 | Why a run stopped. See Stop reasons.                                                                                              |
-| Detail                      | A unit's own status, of a type the app chooses. The unit reports it during a run, and it is cleared when the run ends.            |
-| Unit status                 | What `UnitRunner` reports for a unit: the run state, the stop reason and error, when the run started running, and the detail.     |
-| Run policy                  | When the app wants a unit to run: `Off`, `WhileOpen`, `Until { at }` or `Always`.                                                 |
-| Open                        | Desktop: a window of the app is open, minimized included. Mobile: the app is in the foreground. The host tells `UnitRunner`.      |
-| Grace period                | How long a `WhileOpen` unit keeps running after the app closes: 2 minutes.                                                        |
-| Background session          | The one platform task that keeps the app alive in the background while units run. Units don't run inside it.                      |
-| Ended by platform           | The platform ending the background session. Runs are discouraged until the app opens, a policy is set, or a session starts again. |
-| No longer needed            | How `UnitRunner` ends the background session once no unit should run.                                                             |
-| Runner                      | `UnitRunner`: holds the units, reconciles their runs with their policies, and asks for the background session.                    |
-| Host                        | What binds `UnitRunner` to a platform: `tauri-unit-runner`'s `TauriUnitRunner` in an app, a fake in tests.                        |
-| Background session platform | The port a host implements to start and end the background session: `BackgroundSessionPlatform`.                                  |
+| Word                        | Meaning                                                                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit                        | Work `UnitRunner` can run. The app gives each unit an id, a run policy and a factory.                                                                |
+| Unit id                     | The app's key for a unit, unique within a `UnitRunner`.                                                                                              |
+| Factory                     | Builds a fresh unit for each run, so a run's configuration is fixed from start to end. A factory that fails is a failed run.                         |
+| Run                         | One start-to-end of a unit, on its own OS thread and tokio runtime.                                                                                  |
+| Run state                   | `Starting`, `Running` or `Stopped`.                                                                                                                  |
+| Stop reason                 | Why a run stopped. See Stop reasons.                                                                                                                 |
+| Detail                      | A unit's own status, of a type the app chooses. The unit reports it during a run, and it is cleared when the run ends.                               |
+| Unit status                 | What `UnitRunner` reports for a unit: the run state, the stop reason and error, when the run started running, and the detail.                        |
+| Run policy                  | When the app wants a unit to run: `Off`, `WhileOpen`, `Until { at }` or `Always`.                                                                    |
+| Present                     | Desktop: a window of the app is open, minimized included. Mobile: the app is in the foreground. The host tells `UnitRunner`. The opposite is absent. |
+| Grace period                | How long a `WhileOpen` unit keeps running after the app becomes absent: 2 minutes.                                                                   |
+| Background session          | The one platform task that keeps the app alive in the background while units run. Units don't run inside it.                                         |
+| Ended by platform           | The platform ending the background session. Runs are discouraged until the app becomes present, a policy is set, or a session starts again.          |
+| No longer needed            | How `UnitRunner` ends the background session once no unit should run.                                                                                |
+| Runner                      | `UnitRunner`: holds the units, starts and stops their runs per their policies, and asks for the background session.                                  |
+| Host                        | What binds `UnitRunner` to a platform: `tauri-unit-runner`'s `TauriUnitRunner` in an app, a fake in tests.                                           |
+| Background session platform | The port a host implements to start and end the background session: `BackgroundSessionPlatform`.                                                     |
 
 ## The contract
 
@@ -98,7 +99,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         self: &Arc<Self>,
         platform: Arc<dyn BackgroundSessionPlatform>,
     );
-    pub fn set_app_open(self: &Arc<Self>, open: bool);
+    pub fn set_app_present(self: &Arc<Self>, present: bool);
     pub fn restart_running_units(self: &Arc<Self>);
     pub fn session_started(self: &Arc<Self>) -> SessionId;
     pub fn session_ended(
@@ -160,7 +161,8 @@ forgets it, status included. Run shutdown is bounded (see Runs), so
 that was never set are logged and ignored.
 
 **The host binds.** `UnitRunner` learns about the platform only through its
-host. The host tells it when the app opens or closes (`set_app_open`), when
+host. The host tells it when the app becomes present or absent
+(`set_app_present`), when
 every running unit should restart (`restart_running_units`), and when a
 background session starts and ends (`session_started`, `session_ended`). It
 hands `UnitRunner` its `BackgroundSessionPlatform` once the platform can take
@@ -184,9 +186,11 @@ demand for a background session waits; units run either way.
   for each other. A run asked to stop while it waits never starts and publishes
   nothing: the unit's status stays as its last run left it, or never run for a
   unit that hasn't run yet. Statuses report runs that happened.
-- **Generations.** Every run and every scheduled restart gets a generation
-  number. A late event about one (a restart timer firing, a run ending) whose
-  generation no longer matches the unit's is stale and ignored.
+- **Generations.** Every run gets a generation number. A late end of a run
+  whose generation no longer matches the unit's current run is stale and
+  ignored. A pending restart's timer is cancelled whenever the restart is
+  dropped (cancelled, replaced, or its unit removed), and checks that under
+  `UnitRunner`'s state lock, so a stale timer never restarts a unit.
 - **States.**
   - `Starting` is published when the run begins.
   - `Running` is published when the unit calls `announce_running()`.
@@ -201,48 +205,48 @@ demand for a background session waits; units run either way.
 
 ## Stop reasons
 
-| Reason                   | Why the run stopped                                                                                                | What follows                                                              |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| `PolicyInactive`         | The unit's policy stopped being active: the app set another policy, an `Until` ran out, or the grace period ended. | It starts again once its policy is active.                                |
-| `Replaced`               | The app set the unit again.                                                                                        | The new definition starts once this run has ended, if it should run.      |
-| `Removed`                | The app removed the unit.                                                                                          | `UnitRunner` forgets the unit once this run has ended.                    |
-| `StoppedForRestart`      | The host restarted every running unit, as the Tauri host does on an iOS resume.                                    | It starts again once this run has ended, with no delay, if it should run. |
-| `EndedOnItsOwn`          | The unit returned, failed, panicked, or its factory failed.                                                        | It restarts after `RESTART_DELAY` if it should still run.                 |
-| `SessionEndedByPlatform` | The platform ended the background session.                                                                         | It stays stopped until that is cleared (see The background session).      |
+| Reason                   | Why the run stopped                                                                                                      | What follows                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `PolicyInactive`         | The unit's policy stopped wanting it running: the app set another policy, an `Until` ran out, or the grace period ended. | It starts again once its policy wants it running.                         |
+| `Replaced`               | The app set the unit again.                                                                                              | The new definition starts once this run has ended, if it should run.      |
+| `Removed`                | The app removed the unit.                                                                                                | `UnitRunner` forgets the unit once this run has ended.                    |
+| `StoppedForRestart`      | The host restarted every running unit, as the Tauri host does when an iOS app returns to the foreground.                 | It starts again once this run has ended, with no delay, if it should run. |
+| `EndedOnItsOwn`          | The unit returned, failed, panicked, or its factory failed.                                                              | It restarts after `RESTART_DELAY` if it should still run.                 |
+| `SessionEndedByPlatform` | The platform ended the background session.                                                                               | It stays stopped until that is cleared (see The background session).      |
 
 A run keeps the first reason it was stopped for.
 
-## Reconciling
+## Starting and stopping runs per policy
 
-A unit **should run** when its policy is active and the platform's end of the
-background session doesn't discourage runs:
+A unit **should run** when its policy wants it running and the platform's end
+of the background session doesn't discourage runs:
 
-| Policy         | Active                                                                        |
-| -------------- | ----------------------------------------------------------------------------- |
-| `Off`          | never                                                                         |
-| `WhileOpen`    | while the app is open, and for `WHILE_OPEN_GRACE` (2 minutes) after it closes |
-| `Until { at }` | while `at` is ahead of the wall clock                                         |
-| `Always`       | always                                                                        |
+| Policy         | Wants the unit running                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| `Off`          | never                                                                                    |
+| `WhileOpen`    | while the app is present, and for `WHILE_OPEN_GRACE` (2 minutes) after it becomes absent |
+| `Until { at }` | while `at` is ahead of the wall clock                                                    |
+| `Always`       | always                                                                                   |
 
-So a `WhileOpen` unit keeps running for 2 minutes after the app closes. The
-grace period is measured on the wall clock. The app starts out closed with no
-grace period, so a `WhileOpen` unit starts once the host first reports the app
-open.
+So a `WhileOpen` unit keeps running for 2 minutes after the app becomes absent.
+The grace period is measured on the wall clock. The app starts out absent with
+no grace period, so a `WhileOpen` unit starts once the host first reports the
+app present.
 
-A reconcile pass starts every unit that should run and isn't running, and stops
-every unit that is running but shouldn't be. There is no cap on how many units
-run at once. Units start without waiting for the background session to start: it
-only keeps the app alive in the background.
+`start_and_stop_runs_per_policy` starts every unit that should run and isn't
+running, and stops every unit that is running but shouldn't be. There is no cap
+on how many units run at once. Units start without waiting for the background
+session to start: it only keeps the app alive in the background.
 
-`UnitRunner` reconciles:
+`UnitRunner` starts and stops runs per policy:
 
 - on `set_unit`, `set_unit_policy` and `remove_unit`
-- when the app opens or closes, and when a grace period ends
+- when the app becomes present or absent, and when a grace period ends
 - at the next wall-clock deadline (an `Until` or a grace period running out),
-  and at least every `WALL_CLOCK_RECONCILE_INTERVAL` (10 s). `tokio::time`
-  runs on the monotonic clock, which stops while a laptop sleeps, so a long
-  sleep alone would let a unit outlive its `Until`. The first interval after
-  waking catches what ran out during the sleep, without the host's help.
+  and at least every `START_AND_STOP_RUNS_PER_POLICY_INTERVAL` (10 s).
+  `tokio::time` runs on the monotonic clock, which stops while a laptop sleeps,
+  so a long sleep alone would let a unit outlive its `Until`. The first interval
+  after waking catches what ran out during the sleep, without the host's help.
 - when a background session starts or ends
 
 ## Restart on failure
@@ -271,7 +275,8 @@ and ending a session are async, and the platform can also start one itself (boot
 recovery, an OS restart). So `UnitRunner` numbers each session as it starts, and
 marks the one it ends as **no longer needed**, so that session's end counts as
 its own. Any other end of the running session is the platform's: the session is
-**ended by the platform**. Runs are then discouraged until the app opens again,
+**ended by the platform**. Runs are then discouraged until the app becomes
+present again,
 the app sets a policy, or a session starts again. That way `UnitRunner` doesn't
 fight the OS or the user. A late end of a session that is no longer the current
 one is stale, and changes nothing.
@@ -282,16 +287,18 @@ one is stale, and changes nothing.
   reports its start and end itself. A call that fails is logged and tried again
   when `UnitRunner`'s demand next changes; units run either way.
 - **Starts the platform makes.** Whoever starts a session, the session tells
-  `UnitRunner` it started, and `UnitRunner` reconciles. A session the platform
-  started with nothing to run is ended. A unit the app hasn't set yet starts
-  when the app sets it. Nothing waits on an undecided value.
+  `UnitRunner` it started, and `UnitRunner` starts and stops runs per policy. A
+  session the platform started with nothing to run is ended. A unit the app
+  hasn't set yet starts when the app sets it. Nothing waits on an undecided
+  value.
 - **Ended by the platform.** When the platform ends the background session,
   every running unit stops with `SessionEndedByPlatform` and the platform's
   reason, a `PlatformStopReason`. Examples: Android's foreground-service time
   limit, the Stop action on Android's notification, iOS background time running
   out, or the app quitting. Those units are not restarted until that is
   cleared. On a phone, that usually means when the app returns to the
-  foreground: opening the app, like the app setting a policy, lets `UnitRunner`
+  foreground: the app becoming present, like the app setting a policy, lets
+  `UnitRunner`
   start a session again.
 
 ## What the app does

@@ -68,7 +68,7 @@ impl Harness {
             RunnerTimings {
                 restart_delay,
                 run_runtime_shutdown_timeout: Duration::from_secs(1),
-                wall_clock_reconcile_interval: Duration::from_secs(10),
+                start_and_stop_runs_per_policy_interval: Duration::from_secs(10),
             },
         );
         Self { unit_runner, clock }
@@ -106,7 +106,8 @@ impl Harness {
             .cloned()
     }
 
-    /// Where `unit_id` is, as a reconcile sees it, right now. Every
+    /// Where `unit_id` is, as starting and stopping runs per policy sees it,
+    /// right now. Every
     /// `UnitRunner` call that changes it has done so by the time it returns, so
     /// a test can read it to check that something didn't happen.
     pub(super) fn phase(&self, unit_id: &str) -> Option<UnitPhase> {
