@@ -7398,6 +7398,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "unit-runner",
  "url",
  "wildflower-relay",
 ]
@@ -7407,6 +7408,7 @@ name = "servers-tauri-rust"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "rathole-settings-rust",
  "serde",
  "serde_json",

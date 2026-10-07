@@ -420,6 +420,7 @@ mod tests {
             ruth(),
             TunnelToken::new(TOKEN),
             |relay_base| Ok(relay.client_at(relay_base)),
+            chrono::Utc::now(),
         )
         .await
         .unwrap();
@@ -436,6 +437,7 @@ mod tests {
                 ruth(),
                 TunnelToken::new(TOKEN),
                 |relay_base| Ok(relay.client_at(relay_base)),
+                chrono::Utc::now(),
             )
             .await,
             Err(EnrolmentError::Registry(
@@ -470,6 +472,7 @@ mod tests {
                     ruth(),
                     TunnelToken::new(token),
                     |relay_base| Ok(relay.client_at(relay_base)),
+                    chrono::Utc::now(),
                 )
                 .await
                 .unwrap_err(),

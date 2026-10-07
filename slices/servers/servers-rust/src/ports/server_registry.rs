@@ -6,6 +6,15 @@ use crate::domain::{RegistryError, ServerRecord};
 /// registered.
 pub type NewRecord<'a> = Box<dyn FnOnce(&[ServerRecord]) -> ServerRecord + 'a>;
 
+/// Edits the registered servers in place for [`ServerRegistry::modify`], or
+/// refuses with the [`RegistryError`] that stops the change.
+///
+/// A change must not alter a record's [`ServerRecord::domain`] (its tunnel
+/// name or relay domain): the registry doesn't check that domains stay
+/// unique after it.
+pub type RegistryChange<'a> =
+    Box<dyn FnOnce(&mut [ServerRecord]) -> Result<(), RegistryError> + 'a>;
+
 /// The servers this install knows about, keyed by
 /// [`ServerRecord::domain`]. The production adapter is
 /// [`JsonServerRegistry`](crate::JsonServerRegistry).
@@ -31,13 +40,17 @@ pub trait ServerRegistry: Send + Sync {
     /// record's domain is registered, or a read or write failure.
     fn insert(&self, new_record: NewRecord<'_>) -> Result<ServerRecord, RegistryError>;
 
-    /// Replace the registered server with `record`'s domain by `record`.
+    /// Apply `change` to the registered servers and keep what it leaves.
+    /// Reading the servers, the change and writing them are one change, so no
+    /// other change lands between them: a change that edits only some fields
+    /// of a record keeps whatever another change wrote to the rest. `change`
+    /// must leave every record's domain as it was; see [`RegistryChange`].
     ///
     /// # Errors
     ///
-    /// [`RegistryError::NotRegistered`] when no server has its domain, or a
-    /// read or write failure.
-    fn update(&self, record: ServerRecord) -> Result<(), RegistryError>;
+    /// The error `change` refuses with, with nothing written, or a read or
+    /// write failure.
+    fn modify(&self, change: RegistryChange<'_>) -> Result<(), RegistryError>;
 
     /// Remove the server with `domain`.
     ///

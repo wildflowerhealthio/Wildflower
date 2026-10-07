@@ -88,6 +88,7 @@ async fn add<S: RelayClient>(
             tunnel_name,
             token,
             relay_client,
+            chrono::Utc::now(),
         )
         .await
     }
