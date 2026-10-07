@@ -1,8 +1,8 @@
-//! [`ServerStatus`], a server's status on the unit runner as the base
-//! receives it, and [`ServerStatusTracker`], which picks the statuses that
-//! changed out of the runner's statuses.
+//! [`ServerStatus`], a server's status on `UnitRunner` as the base receives
+//! it, and [`ServerStatusTracker`], which picks the statuses that changed out
+//! of `UnitRunner`'s statuses.
 //!
-//! The status is the runner's own `UnitStatus<ServerDetail>`, keyed by the
+//! The status is `UnitRunner`'s own `UnitStatus<ServerDetail>`, keyed by the
 //! server's domain; only its serialisation is the servers slice's. It is
 //! written camelCase, with each optional member left out when it is `None`:
 //!
@@ -12,7 +12,7 @@
 //!   "runState": "starting" | "running" | "stopped",
 //!   "lastStop": {
 //!     "reason": "policyInactive" | "replaced" | "removed" | "stoppedForRestart"
-//!             | "endedOnItsOwn" | "keepAliveRevoked",
+//!             | "endedOnItsOwn" | "sessionEndedByPlatform",
 //!     "platformReason": "userStop" | "platformTimeout" | …,
 //!     "error": "…",
 //!     "stoppedAt": "<RFC 3339>"
@@ -24,7 +24,7 @@
 //! ```
 //!
 //! `lastStop` is there only while the run state is `stopped`, and only once
-//! the server has run; `platformReason` only for `keepAliveRevoked`;
+//! the server has run; `platformReason` only for `sessionEndedByPlatform`;
 //! `runningSince` only while `running`; `health` only while a run has
 //! reported it.
 
@@ -40,15 +40,15 @@ use wildflower_server_rust::ServerHealth;
 
 use crate::domain::ServerDetail;
 
-/// One server's status on the unit runner: the runner's
-/// [`UnitStatus`] for the unit whose id is the server's `domain`.
+/// One server's status on `UnitRunner`: `UnitRunner`'s [`UnitStatus`] for the
+/// unit whose id is the server's `domain`.
 ///
 /// `Serialize` writes the camelCase shape the [module docs](self) give.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerStatus {
     /// The server's domain, its unit id.
     pub domain: String,
-    /// What the runner reports for the server.
+    /// What `UnitRunner` reports for the server.
     pub unit_status: UnitStatus<ServerDetail>,
 }
 
@@ -127,8 +127,8 @@ impl<'a> RunStopWire<'a> {
             StopReason::Removed => (StopReasonWire::Removed, None),
             StopReason::StoppedForRestart => (StopReasonWire::StoppedForRestart, None),
             StopReason::EndedOnItsOwn => (StopReasonWire::EndedOnItsOwn, None),
-            StopReason::KeepAliveRevoked { platform_reason } => (
-                StopReasonWire::KeepAliveRevoked,
+            StopReason::SessionEndedByPlatform { platform_reason } => (
+                StopReasonWire::SessionEndedByPlatform,
                 Some(PlatformStopReasonWire::of(platform_reason)),
             ),
         };
@@ -150,7 +150,7 @@ enum StopReasonWire {
     Removed,
     StoppedForRestart,
     EndedOnItsOwn,
-    KeepAliveRevoked,
+    SessionEndedByPlatform,
 }
 
 /// [`PlatformStopReason`]'s wire names.
@@ -207,13 +207,13 @@ impl<'a> ServerHealthWire<'a> {
     }
 }
 
-/// Picks the servers whose status changed out of the unit runner's
+/// Picks the servers whose status changed out of `UnitRunner`'s
 /// statuses, whose unit ids are the servers' domains, so the host sends the
 /// base one status per change.
 ///
 /// A server that leaves the statuses, because it was removed, is forgotten
 /// and gets no status of its own: the base drops a server it no longer
-/// lists. The statuses are read as the runner's watch holds them, so a
+/// lists. The statuses are read as `UnitRunner`'s watch holds them, so a
 /// status a later one replaced before it was read is never sent.
 #[derive(Debug, Default)]
 pub struct ServerStatusTracker {
@@ -321,7 +321,7 @@ pub(crate) mod tests {
                 status(UnitStatus {
                     run_state: RunState::Stopped {
                         last_stop: Some(RunStop {
-                            reason: StopReason::KeepAliveRevoked {
+                            reason: StopReason::SessionEndedByPlatform {
                                 platform_reason: PlatformStopReason::PlatformTimeout,
                             },
                             error: None,
@@ -447,7 +447,7 @@ pub(crate) mod tests {
         ];
         for (platform_reason, name) in platform_reasons {
             let stop = RunStop {
-                reason: StopReason::KeepAliveRevoked { platform_reason },
+                reason: StopReason::SessionEndedByPlatform { platform_reason },
                 error: None,
                 stopped_at: at(0),
             };

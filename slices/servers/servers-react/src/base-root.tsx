@@ -3,7 +3,11 @@ import { createBrowserHistory, RouterProvider, type RouterHistory } from '@tanst
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
 import { type Context, Effect } from 'effect'
 import { useEffect, useState, type JSX } from 'react'
-import { enableKeepAliveRecovery, type KeepAliveStartConfig, TauriInvoke } from 'servers-core'
+import {
+  enableBackgroundSessionRecovery,
+  type BackgroundServiceStartConfig,
+  TauriInvoke,
+} from 'servers-core'
 import type { ConsentStorage } from 'telemetry-core'
 import {
   CrashReportingBoundary,
@@ -34,10 +38,10 @@ interface BaseRootProps {
   /** How the base hears the host's events: `listen` from `@tauri-apps/api/event`. */
   readonly listen: ListenToHostEvent
   /**
-   * How the host's unit runner starts its keep-alive, from the app's
+   * How the host's unit runner starts its background session, from the app's
    * `tauri-shared-config.json`, which the host reads too.
    */
-  readonly keepAliveStartConfig: KeepAliveStartConfig
+  readonly backgroundServiceStartConfig: BackgroundServiceStartConfig
   /** Where the base's telemetry goes once the user consents to it. */
   readonly telemetry: BaseTelemetry
   /** The router's history. Defaults to the webview's own; tests pass a memory one. */
@@ -47,18 +51,18 @@ interface BaseRootProps {
 }
 
 /**
- * Record, once the base starts, that the host's keep-alive should keep
- * running, so the background-service plugin starts it again after the OS
+ * Record, once the base starts, that the host's background session should
+ * keep running, so the background-service plugin starts it again after the OS
  * ends the app. The servers run either way, so a failure only costs those
  * restarts, and is logged.
  */
-const useKeepAliveRecovery = (
+const useBackgroundSessionRecovery = (
   invoke: Context.Tag.Service<TauriInvoke>,
-  keepAliveStartConfig: KeepAliveStartConfig
+  backgroundServiceStartConfig: BackgroundServiceStartConfig
 ): void => {
   useEffect(() => {
     Effect.runFork(
-      enableKeepAliveRecovery(keepAliveStartConfig).pipe(
+      enableBackgroundSessionRecovery(backgroundServiceStartConfig).pipe(
         Effect.catchAll((error) =>
           Effect.logError(
             '[background-service] the servers will not restart after the OS ends the app',
@@ -68,17 +72,20 @@ const useKeepAliveRecovery = (
         Effect.provideService(TauriInvoke, invoke)
       )
     )
-  }, [invoke, keepAliveStartConfig])
+  }, [invoke, backgroundServiceStartConfig])
 }
 
 /** The base's router and its query cache, built once. */
 function BaseRouter({
   invoke,
   listen,
-  keepAliveStartConfig,
+  backgroundServiceStartConfig,
   history,
-}: Pick<BaseRootProps, 'invoke' | 'listen' | 'keepAliveStartConfig' | 'history'>): JSX.Element {
-  useKeepAliveRecovery(invoke, keepAliveStartConfig)
+}: Pick<
+  BaseRootProps,
+  'invoke' | 'listen' | 'backgroundServiceStartConfig' | 'history'
+>): JSX.Element {
+  useBackgroundSessionRecovery(invoke, backgroundServiceStartConfig)
   const [router] = useState(() =>
     buildBaseRouter({
       history: history ?? createBrowserHistory(),
@@ -115,17 +122,17 @@ function BaseRouter({
  * **Nothing runs before the user answers.** Until an answer for
  * `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY` is kept in `storage`, the page is
  * the consent dialog alone: no router or query cache exists and no host
- * command is called. Once it is answered, the base enables the keep-alive's
- * recovery with `keepAliveStartConfig` and shows its screens. The answer,
- * stored or new, starts telemetry through `useConsentedTelemetryStart` with
- * `telemetry`'s DSN and `app` tag. The base's consent is its own: the web app
- * asks for its own, on its own origin. A `CrashReportingBoundary` reports a
- * screen that crashes.
+ * command is called. Once it is answered, the base enables the background
+ * session's recovery with `backgroundServiceStartConfig` and shows its
+ * screens. The answer, stored or new, starts telemetry through
+ * `useConsentedTelemetryStart` with `telemetry`'s DSN and `app` tag. The
+ * base's consent is its own: the web app asks for its own, on its own origin.
+ * A `CrashReportingBoundary` reports a screen that crashes.
  */
 function BaseRoot({
   invoke,
   listen,
-  keepAliveStartConfig,
+  backgroundServiceStartConfig,
   telemetry,
   history,
   storage,
@@ -144,7 +151,7 @@ function BaseRoot({
         <BaseRouter
           invoke={invoke}
           listen={listen}
-          keepAliveStartConfig={keepAliveStartConfig}
+          backgroundServiceStartConfig={backgroundServiceStartConfig}
           history={history}
         />
       </CrashReportingBoundary>

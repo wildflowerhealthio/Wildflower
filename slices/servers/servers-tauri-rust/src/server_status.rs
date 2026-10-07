@@ -1,5 +1,5 @@
-//! The [`SERVER_STATUS_EVENT`]: each server's status on the unit runner, sent
-//! to the base whenever it changes.
+//! The [`SERVER_STATUS_EVENT`]: each server's status on `TauriUnitRunner`,
+//! sent to the base whenever it changes.
 
 use servers_rust::{ServerDetail, ServerStatus, ServerStatusTracker};
 use tauri::{AppHandle, Emitter, Runtime};
@@ -18,7 +18,7 @@ pub const SERVER_STATUS_EVENT: &str = "server-status";
 const BASE_WEBVIEW_LABEL: &str = "main";
 
 /// Emit the [`SERVER_STATUS_EVENT`] for each server whose status changed,
-/// every time the runner's statuses change, as [`ServerStatusTracker`]
+/// every time `TauriUnitRunner`'s statuses change, as [`ServerStatusTracker`]
 /// picks them. The first statuses read are all emitted.
 pub(crate) async fn emit_server_statuses<R: Runtime>(
     app: AppHandle<R>,
@@ -31,7 +31,9 @@ pub(crate) async fn emit_server_statuses<R: Runtime>(
             emit_server_status(&app, &status);
         }
         if statuses.changed().await.is_err() {
-            log::error!("[servers] the runner's statuses closed; server-status events stopped");
+            log::error!(
+                "[servers] the unit runner's statuses closed; server-status events stopped"
+            );
             return;
         }
     }

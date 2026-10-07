@@ -66,7 +66,7 @@
       "domain": "ruth.relay.example.com",
       "runState": "stopped",
       "lastStop": {
-        "reason": "keepAliveRevoked",
+        "reason": "sessionEndedByPlatform",
         "platformReason": "platformTimeout",
         "stoppedAt": "2026-10-06T17:09:00Z"
       }

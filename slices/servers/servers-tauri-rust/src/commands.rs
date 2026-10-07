@@ -1,12 +1,12 @@
 //! The servers commands: thin wrappers that parse their arguments, call
 //! [`servers_rust`] (with a [`ReqwestRelayClient`] for a Wildflower relay's
-//! enrolment), push what they wrote to the unit runner through
+//! enrolment), push what they wrote to `TauriUnitRunner` through
 //! [`ServerUnits`](crate::ServerUnits), and log the outcome by domain.
 //!
 //! A command that writes the registry holds
 //! [`ServersState::registry_writes`] from before its write until after its
-//! push, so the runner gets the servers' changes in the order they were
-//! written.
+//! push, so `TauriUnitRunner` gets the servers' changes in the order they
+//! were written.
 //!
 //! Each takes its arguments as top-level parameters, which Tauri reads from
 //! the invoke payload under their camelCase names (`tunnel_name` is
@@ -35,7 +35,7 @@ use url::Url;
 use crate::ServersState;
 
 /// Every registered server, in the order they were added, each with its
-/// status on the runner. Invoked as `invoke('servers_list')`.
+/// status on `TauriUnitRunner`. Invoked as `invoke('servers_list')`.
 ///
 /// # Errors
 ///
@@ -48,11 +48,10 @@ pub async fn servers_list(
     list(&servers).await
 }
 
-/// Enrol and register a server, then push it to the runner; answers with its
-/// domain. Invoked as
-/// `invoke('server_add', { relay, tunnelName, token })`, `relay` being an
-/// [`EnteredRelay`]. The token is trimmed. No parameter is logged, and the
-/// token never is.
+/// Enrol and register a server, then push it to `TauriUnitRunner`; answers with
+/// its domain. Invoked as `invoke('server_add', { relay, tunnelName, token })`,
+/// `relay` being an [`EnteredRelay`]. The token is trimmed. No parameter is
+/// logged, and the token never is.
 ///
 /// # Errors
 ///
@@ -85,8 +84,8 @@ pub async fn server_set_credentials(
     set_credentials(&servers, domain, token, ReqwestRelayClient::new).await
 }
 
-/// Set a server's run policy to `choice`, then give the runner the policy
-/// stored; answers with that [`RunPolicy`]. Invoked as
+/// Set a server's run policy to `choice`, then give `TauriUnitRunner` the
+/// policy stored; answers with that [`RunPolicy`]. Invoked as
 /// `invoke('server_set_run_policy', { domain, choice })`, `choice` being a
 /// [`RunPolicyChoice`]: `{kind: "for", seconds}` is stored as
 /// `{kind: "until", at}`, counted from now. Every other server keeps its
@@ -105,10 +104,10 @@ pub async fn server_set_run_policy(
     set_run_policy(&servers, domain, choice).await
 }
 
-/// Set the launcher a server opens apps from, and whether its certificates
-/// come from the ACME staging directory; answers with nothing. Invoked as
+/// Set the launcher a server opens apps from, and whether its certificates come
+/// from the ACME staging directory; answers with nothing. Invoked as
 /// `invoke('server_update', { domain, launcherUrl, stagingCertificates })`.
-/// When a field a run reads changed, the server is pushed to the runner
+/// When a field a run reads changed, the server is pushed to `TauriUnitRunner`
 /// again, which replaces a run of the old record.
 ///
 /// # Errors
@@ -132,9 +131,8 @@ pub async fn server_update(
 ///
 /// # Errors
 ///
-/// The [`ServerChangeError`] that stopped it. A server whose folder
-/// couldn't be deleted is still registered, and is pushed to the runner
-/// again.
+/// The [`ServerChangeError`] that stopped it. A server whose folder couldn't be
+/// deleted is still registered, and is pushed to `TauriUnitRunner` again.
 #[tauri::command]
 pub async fn server_remove(
     servers: tauri::State<'_, ServersState>,
@@ -328,15 +326,16 @@ async fn remove(servers: &ServersState, domain: String) -> Result<(), ServerChan
         }
         Err(error) => {
             log::warn!("[servers] removing {domain} failed: {error}");
-            put_back_on_the_runner(servers, &domain).await;
+            put_back_on_the_unit_runner(servers, &domain).await;
             Err(error)
         }
     }
 }
 
-/// Push the server `domain` to the runner again, as `servers.json` holds it,
-/// after a removal that took it off the runner but failed to delete it.
-async fn put_back_on_the_runner(servers: &ServersState, domain: &str) {
+/// Push the server `domain` to `TauriUnitRunner` again, as `servers.json`
+/// holds it, after a removal that took it off `TauriUnitRunner` but failed to
+/// delete it.
+async fn put_back_on_the_unit_runner(servers: &ServersState, domain: &str) {
     match on_registry(servers, |registry| registry.read_all()).await {
         Ok(records) => {
             if let Some(record) = records.into_iter().find(|record| record.domain() == domain) {
@@ -344,7 +343,9 @@ async fn put_back_on_the_runner(servers: &ServersState, domain: &str) {
             }
         }
         Err(error) => {
-            log::error!("[servers] {domain} is off the runner until the app restarts: {error}");
+            log::error!(
+                "[servers] {domain} is off the unit runner until the app restarts: {error}"
+            );
         }
     }
 }
@@ -363,8 +364,8 @@ mod tests {
     };
     use shared_structures_rust::OnDeviceWebviewHandle;
     use tauri_unit_runner::{
-        RunContext, RunState, RunStop, StartConfig, StopReason, Unit, UnitId, UnitRunner,
-        UnitStatus,
+        BackgroundServiceStartConfig, RunContext, RunState, RunStop, StopReason, TauriUnitRunner,
+        Unit, UnitId, UnitStatus,
     };
     use tokio::sync::{mpsc, watch};
     use tokio_util::sync::CancellationToken;
@@ -848,7 +849,7 @@ mod tests {
     /// The domain [`rathole_add_args`] registers.
     const RATHOLE_DOMAIN: &str = "ruth.rathole.example.com";
 
-    /// How long a test waits for the runner before it fails rather than
+    /// How long a test waits for `TauriUnitRunner` before it fails rather than
     /// hangs.
     const RUNNER_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -873,9 +874,9 @@ mod tests {
         type Detail = ServerDetail;
 
         async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
-            *self.run.shutdown.lock().unwrap() = Some(ctx.shutdown().clone());
+            *self.run.shutdown.lock().unwrap() = Some(ctx.shutdown_token().clone());
             ctx.announce_running();
-            ctx.shutdown().cancelled().await;
+            ctx.shutdown_token().cancelled().await;
             *self.run.folder_existed_at_stop.lock().unwrap() = Some(self.folder.exists());
             Ok(())
         }
@@ -884,7 +885,7 @@ mod tests {
     /// A registered rathole server, [`RATHOLE_DOMAIN`], with its folder,
     /// whose unit on `runner` is a [`HeldUnit`] that is running.
     async fn running_server(
-        runner: &UnitRunner<ServerDetail>,
+        runner: &TauriUnitRunner<ServerDetail>,
     ) -> (tempfile::TempDir, ServersState, Arc<HeldRun>) {
         let (data_root, servers) = servers_on(runner);
         add_with(&servers, rathole_add_args(TOKEN), no_client)
@@ -908,9 +909,9 @@ mod tests {
     }
 
     /// The status of [`RATHOLE_DOMAIN`] on `runner` once `reached` holds for
-    /// it; `None` once the runner doesn't hold it.
+    /// it; `None` once `TauriUnitRunner` doesn't hold it.
     async fn status_on(
-        runner: &UnitRunner<ServerDetail>,
+        runner: &TauriUnitRunner<ServerDetail>,
         reached: impl Fn(Option<&UnitStatus<ServerDetail>>) -> bool,
     ) -> Option<UnitStatus<ServerDetail>> {
         let mut statuses = runner.subscribe();
@@ -920,8 +921,8 @@ mod tests {
             statuses.wait_for(|statuses| reached(statuses.get(&unit_id))),
         )
         .await
-        .expect("the runner reached the status in time")
-        .expect("the runner is alive")
+        .expect("the unit runner reached the status in time")
+        .expect("the unit runner is alive")
         .clone();
         statuses.get(&unit_id).cloned()
     }

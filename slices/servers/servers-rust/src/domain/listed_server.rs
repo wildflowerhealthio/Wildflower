@@ -18,13 +18,13 @@ use crate::domain::{RelayKind, ServerDetail, ServerRecord};
 pub struct ListedServer {
     /// The server's record.
     pub record: ServerRecord,
-    /// What the runner reports for the server.
+    /// What `UnitRunner` reports for the server.
     pub unit_status: UnitStatus<ServerDetail>,
 }
 
 impl ListedServer {
     /// Each of `records`, in order, with its status in `statuses`, keyed by
-    /// domain. A server the runner doesn't hold is listed as never run.
+    /// domain. A server `UnitRunner` doesn't hold is listed as never run.
     #[must_use]
     pub fn list(records: Vec<ServerRecord>, statuses: &UnitStatuses<ServerDetail>) -> Vec<Self> {
         records

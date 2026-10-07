@@ -139,7 +139,7 @@ const fakeEvents = (): FakeEvents => {
   }
 }
 
-const KEEP_ALIVE_START_CONFIG = {
+const BACKGROUND_SERVICE_START_CONFIG = {
   serviceLabel: 'Wildflower server is running',
   foregroundServiceType: 'specialUse',
 } as const
@@ -159,7 +159,7 @@ const renderBase = ({
     <BaseRoot
       invoke={invoke}
       listen={events.listen}
-      keepAliveStartConfig={KEEP_ALIVE_START_CONFIG}
+      backgroundServiceStartConfig={BACKGROUND_SERVICE_START_CONFIG}
       telemetry={{ dsn: BASE_DSN, app: 'wildflower-tauri' }}
       history={createMemoryHistory({ initialEntries: [path] })}
       storage={storage}
@@ -273,7 +273,7 @@ describe('BaseRoot', () => {
   })
 })
 
-describe('the keep-alive recovery', () => {
+describe('the background session recovery', () => {
   it("should be enabled with the host's start config once the user has answered", async () => {
     // Arrange
     const host = hostWith()
@@ -288,7 +288,7 @@ describe('the keep-alive recovery', () => {
     await waitFor(() => {
       expect(host.seen).toContainEqual({
         command: 'plugin:background-service|configure_recovery',
-        args: { enabled: true, config: KEEP_ALIVE_START_CONFIG },
+        args: { enabled: true, config: BACKGROUND_SERVICE_START_CONFIG },
       })
     })
   })

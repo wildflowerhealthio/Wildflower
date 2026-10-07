@@ -31,7 +31,7 @@ url = "2"
 # The instant enrolment chooses a new server's run policy at.
 chrono = { workspace = true, features = ["clock"] }
 # `sync` for the lock ordering registry writes with their pushes, the
-# forwarded-request channel and the runner's statuses; `time` for the
+# forwarded-request channel and `TauriUnitRunner`'s statuses; `time` for the
 # request-notification timer; `macros` for `select!`; `rt` for the commands'
 # registry reads and writes on a blocking thread.
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

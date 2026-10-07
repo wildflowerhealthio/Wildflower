@@ -6,13 +6,13 @@
 //! [`host_servers`], called once from the app's `setup()`:
 //!
 //! - pushes every server in `servers.json` to the app's
-//!   [`TauriUnitRunner`](tauri_unit_runner::TauriUnitRunner) as a unit whose id
-//!   is its domain, with its run policy and a factory that builds a fresh
+//!   [`TauriUnitRunner`](tauri_unit_runner::TauriUnitRunner) as a unit whose
+//!   id is its domain, with its run policy and a factory that builds a fresh
 //!   [`ServerUnit`](servers_rust::ServerUnit) for each run (see
 //!   [`ServerUnits::push`]). An unreadable registry is logged, and no server
 //!   runs;
 //! - emits the [`SERVER_STATUS_EVENT`] to the base for each server whose
-//!   status on the runner changed;
+//!   status on `TauriUnitRunner` changed;
 //! - posts a stop notification for each new stop of a server's run, read from
 //!   `TauriUnitRunner`'s statuses, and the per-caller notifications for the
 //!   requests the servers' tunnels relay;
@@ -23,7 +23,7 @@
 //! `TauriUnitRunner` always ends up with the record as last written.
 //!
 //! - [`servers_list`], invoked as `invoke('servers_list')`, answers with
-//!   every registered server and its status on the runner, as
+//!   every registered server and its status on `TauriUnitRunner`, as
 //!   [`ListedServer`](servers_rust::ListedServer)s, or with the error
 //!   `servers.json` couldn't be read with.
 //! - [`server_add`], invoked as
@@ -38,13 +38,13 @@
 //! - [`server_set_run_policy`], invoked as
 //!   `invoke('server_set_run_policy', { domain, choice })`, stores the
 //!   [`RunPolicyChoice`](servers_rust::RunPolicyChoice) as a run policy and
-//!   gives the runner that policy, answering with it.
+//!   gives `TauriUnitRunner` that policy, answering with it.
 //! - [`server_update`], invoked as
 //!   `invoke('server_update', { domain, launcherUrl, stagingCertificates })`,
 //!   sets the launcher and the certificate source, and pushes the server
 //!   again only when a field its runs read changed.
 //! - [`server_remove`], invoked as `invoke('server_remove', { domain })`,
-//!   takes the server off the runner, waiting for its run to end, then
+//!   takes the server off `TauriUnitRunner`, waiting for its run to end, then
 //!   deletes its folder and its record.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
@@ -93,8 +93,8 @@ pub use server_units::{ServerConfigBuilder, ServerUnits};
 pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
 
 /// What the servers commands work through: the install's registry and the
-/// data root its servers' folders are in, the runner's server units, and the
-/// lock that orders each registry write with its push.
+/// data root its servers' folders are in, `TauriUnitRunner`'s server units,
+/// and the lock that orders each registry write with its push.
 pub struct ServersState {
     pub(crate) registry: Arc<dyn ServerRegistry>,
     /// The directory holding `servers.json` and each server's folder.

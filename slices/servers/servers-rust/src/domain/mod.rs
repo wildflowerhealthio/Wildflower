@@ -7,10 +7,10 @@
 //! the registry, and [`EnrolmentError`]; and changing a registered server:
 //! [`set_run_policy`] with its [`RunPolicyChoice`], [`update_server`] and
 //! [`remove_server`], with [`ServerChangeError`] and [`ServerUpdate`];
-//! [`ServerDetail`], what a server's run reports to the unit runner;
-//! [`ServerStatus`], a server's status on the runner as the base receives it,
-//! with [`ServerStatusTracker`], and [`ListedServer`], a server as the base
-//! lists it; and [`notifications`], what the host notifies about its
+//! [`ServerDetail`], what a server's run reports to `UnitRunner`;
+//! [`ServerStatus`], a server's status on `UnitRunner` as the base receives
+//! it, with [`ServerStatusTracker`], and [`ListedServer`], a server as the
+//! base lists it; and [`notifications`], what the host notifies about its
 //! servers. Nothing here touches the network, and only [`remove_server`] the
 //! filesystem, to delete the server's folder.
 

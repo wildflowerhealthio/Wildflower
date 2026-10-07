@@ -84,10 +84,10 @@ const healthBadge = (health: ServerStatus.Health): Badge =>
 const STOP_REASON_TEXT: Readonly<
   Record<Exclude<ServerStatus.RunStop['reason'], 'endedOnItsOwn'>, string>
 > = {
-  keepAliveRevoked: 'The system ended its time in the background.',
   policyInactive: 'It stopped as its run policy ended.',
   replaced: 'It stopped to start again with its new settings.',
   removed: 'It was removed.',
+  sessionEndedByPlatform: 'The system ended its time in the background.',
   stoppedForRestart: 'It stopped to start again.',
 }
 

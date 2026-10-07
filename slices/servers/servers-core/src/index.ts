@@ -7,7 +7,10 @@ export {
   TauriInvoke,
   type HostCommandError,
 } from './host-commands.ts'
-export { enableKeepAliveRecovery, type KeepAliveStartConfig } from './keep-alive-recovery.ts'
+export {
+  enableBackgroundSessionRecovery,
+  type BackgroundServiceStartConfig,
+} from './background-session-recovery.ts'
 export * as ListedServer from './listed-server.ts'
 export {
   NotificationPermission,

@@ -1,22 +1,22 @@
 import { type DateTime, Option, Schema } from 'effect'
 
-/** Why a server's run stopped: the unit runner's stop reason. */
+/** Why a server's run stopped: `UnitRunner`'s stop reason. */
 const StopReasonSchema = Schema.Literal(
-  /** The run policy stopped being active: set to `off`, or its time ran out. */
+  /** The run policy stopped wanting it running: set to `off`, or its time ran out. */
   'policyInactive',
   /** The server was changed, so the run of its old record stopped. */
   'replaced',
   /** The server was removed. */
   'removed',
-  /** The host restarted every running server, as on an iOS resume. */
+  /** The host restarted every running server, as when an iOS app returns to the foreground. */
   'stoppedForRestart',
   /** The run ended without being asked to: it failed, or its config couldn't be built. */
   'endedOnItsOwn',
-  /** The platform ended the app's background time; `platformReason` says why. */
-  'keepAliveRevoked'
+  /** The platform ended the app's background session; `platformReason` says why. */
+  'sessionEndedByPlatform'
 )
 
-/** Why the platform ended the app's background time. */
+/** Why the platform ended the app's background session. */
 const PlatformStopReasonSchema = Schema.Literal(
   'userStop',
   'platformTimeout',

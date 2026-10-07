@@ -89,7 +89,7 @@ impl ServerRecord {
     ///
     /// A run reads every field but two: the launcher URL, which only the base
     /// reads to open apps, and the run policy, which says when the server
-    /// runs, not how, and reaches the runner on its own. The certificate
+    /// runs, not how, and reaches `UnitRunner` on its own. The certificate
     /// source is a run's: it is where the server's certificates come from.
     #[must_use]
     pub fn run_inputs_differ(&self, other: &Self) -> bool {

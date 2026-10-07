@@ -2,8 +2,8 @@ import { Cause, DateTime, Effect, Either, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
+import { enableBackgroundSessionRecovery } from './background-session-recovery.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
-import { enableKeepAliveRecovery } from './keep-alive-recovery.ts'
 import * as ListedServer from './listed-server.ts'
 import * as RunPolicyChoice from './run-policy-choice.ts'
 import * as RunPolicy from './run-policy.ts'
@@ -221,7 +221,7 @@ describe('the server commands', () => {
         Promise.resolve(null)
       ),
       runAgainstHostAnswering(
-        enableKeepAliveRecovery({
+        enableBackgroundSessionRecovery({
           serviceLabel: 'Wildflower server is running',
           foregroundServiceType: 'specialUse',
         }),

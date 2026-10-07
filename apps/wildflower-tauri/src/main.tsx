@@ -15,11 +15,12 @@ import {
 
 addOsColorSchemeListener()
 
-// How the host's unit runner starts its keep-alive, the background-service
-// plugin's one service, from the same `tauri-shared-config.json` the host's
-// `build.rs` reads. The base enables the plugin's recovery with it, so the
-// plugin starts the keep-alive again after the OS ends the app.
-const keepAliveStartConfig = {
+// How the host's unit runner starts its background session, the
+// background-service plugin's one service, from the same
+// `tauri-shared-config.json` the host's `build.rs` reads. The base enables the
+// plugin's recovery with it, so the plugin starts the background session again
+// after the OS ends the app.
+const backgroundServiceStartConfig = {
   serviceLabel: backgroundServiceLabel,
   foregroundServiceType: backgroundServiceForegroundType,
 } as const
@@ -34,7 +35,7 @@ createRoot(rootElement).render(
     <BaseRoot
       invoke={invoke}
       listen={listen}
-      keepAliveStartConfig={keepAliveStartConfig}
+      backgroundServiceStartConfig={backgroundServiceStartConfig}
       telemetry={{
         dsn: import.meta.env.VITE_SENTRY_DSN_WILDFLOWER_TAURI ?? '',
         app: 'wildflower-tauri',
