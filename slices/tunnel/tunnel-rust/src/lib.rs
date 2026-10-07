@@ -1,52 +1,39 @@
-//! `tunnel-rust` — the Tauri-side tunnel slice.
+//! `tunnel-rust` — the Tauri-side tunnel slice: a dialer.
 //!
 //!  - [`domain`] — the [`RelayClient`](domain::RelayClient) trait and its
-//!    [`RelaySettings`], the [`TunnelDaemon`] that runs the tunnel, and the
-//!    [`TunnelLiveness`] it publishes.
+//!    [`RelaySettings`], the [`TunnelDaemon`] that dials the relay and re-dials
+//!    with backoff, the [`HealthStatus`] it publishes, and the rule for a
+//!    public host ([`public_origin_url`]).
 //!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
 //!    dials the Wildflower relay.
 //!
-//! The relay settings and public host come from the server's record, through
+//! The relay settings come from the server's record, through
 //! [`TunnelConfig`]. The tunnel dials whenever the server runs; nothing in this
 //! slice turns it off or edits it. The tunnel has no HTTP surface and keeps no
-//! rows: its liveness (the [`TunnelStatus`] FSM and any error) is in-memory,
-//! resets per process, and reaches the host in-process through
-//! [`TunnelDaemon::watch_liveness`].
-//!
-//! ## Liveness model
-//!
-//! The daemon's supervisor owns a reconnect/backoff loop, awaits its own
-//! rathole child, *and* drives a concurrent `/health` probe through the public
-//! origin, so `status` is `verified` only once a probe through it has come back
-//! healthy. A post-launch failure surfaces in the `error` field and is retried.
+//! rows: each dial and its outcome go to the tracing log, and its only state is
+//! its [`HealthStatus`], which the server's `/health` reports as its
+//! `connectivity` check. Whether the server is reachable through the relay is
+//! the server's own `/health`, which `wildflower-server-rust`'s reachability
+//! monitor reads through the public origin.
 
 pub mod config;
 pub mod domain;
-pub mod health;
 mod relay_clients;
-#[cfg(test)]
-mod test_support;
 
 use std::sync::Arc;
 
 pub use config::TunnelConfig;
-pub use domain::{
-    public_origin_url, InvalidPublicHost, RelaySettings, TunnelDaemon, TunnelLiveness, TunnelStatus,
-};
-pub use health::HealthProbe;
+pub use domain::{public_origin_url, InvalidPublicHost, RelaySettings, TunnelDaemon};
 use relay_clients::RatholeRelayClient;
+pub use shared_structures_rust::health_check::HealthStatus;
 
 /// Spawn the tunnel daemon over an embedded rathole client. The daemon dials
-/// the relay in `config`, forwarding its local port, and verifies reachability
-/// with `probe` (it GETs `/health` through the public origin). It dials for as
-/// long as the returned [`TunnelDaemon`] is held; dropping it stops the
-/// supervisor.
-pub fn setup_tunnel(config: &TunnelConfig, probe: Arc<dyn HealthProbe>) -> TunnelDaemon {
+/// the relay in `config`, forwarding its local port, for as long as the
+/// returned [`TunnelDaemon`] is held; dropping it stops the supervisor.
+pub fn setup_tunnel(config: &TunnelConfig) -> TunnelDaemon {
     TunnelDaemon::spawn(
         Arc::new(RatholeRelayClient::new()),
-        probe,
         config.local_port,
         config.relay_settings.clone(),
-        config.public_host.clone(),
     )
 }

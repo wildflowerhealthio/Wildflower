@@ -150,7 +150,7 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   only, through its `allow-server-enrolment` permission.
 - **Configuration only.** `ServerRecord::running` is whether the user wants
   the server run, which the host reads at startup to choose what to start.
-  Whether a run is up, its tunnel's liveness and its certificate are live
+  Whether a run is up, its reachability and its certificate are live
   state, held by whatever runs the server, never in a `ServerRecord`.
 - **The first server added is set running.** `add_server` sets `running` when
   no registered server has it, and on no later server; nothing else changes

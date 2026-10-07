@@ -6,8 +6,7 @@ mod dedicated_runtime;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
-use tunnel_rust::TunnelLiveness;
-use wildflower_server_rust::{HostPorts, ServerObservers, WildflowerServerConfig};
+use wildflower_server_rust::{HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig};
 
 use crate::domain::run_gate::RunGate;
 use crate::domain::server_run_state::ServerRunState;
@@ -35,8 +34,9 @@ pub struct ServerHostContext {
 pub struct ServerServiceReceivers {
     /// Each run's [`ServerRunState`]; `Stopped { error: None }` before any run.
     pub run_state: watch::Receiver<ServerRunState>,
-    /// The running server's tunnel liveness; `None` while no server runs.
-    pub tunnel_liveness: watch::Receiver<Option<TunnelLiveness>>,
+    /// The running server's health through its public origin; `None` while no
+    /// server runs, and until its first probe.
+    pub server_health: watch::Receiver<Option<ServerHealth>>,
     /// Each request the trusted front relayed through the tunnel.
     pub forwarded_requests: mpsc::Receiver<ForwardedRequest>,
 }
@@ -50,14 +50,14 @@ impl ServerHostContext {
         host_ports: HostPorts,
     ) -> (Self, ServerServiceReceivers) {
         let (run_state_sender, run_state) = watch::channel(ServerRunState::Stopped { error: None });
-        let (tunnel_liveness_sender, tunnel_liveness) = watch::channel(None);
+        let (server_health_sender, server_health) = watch::channel(None);
         let (forwarded_request_sender, forwarded_requests) =
             mpsc::channel(FORWARDED_REQUEST_CAPACITY);
         let context = Self {
             config,
             host_ports,
             observers: ServerObservers {
-                tunnel_liveness_sender,
+                server_health_sender,
                 forwarded_request_sender,
             },
             run_gate: RunGate::new(),
@@ -65,7 +65,7 @@ impl ServerHostContext {
         };
         let receivers = ServerServiceReceivers {
             run_state,
-            tunnel_liveness,
+            server_health,
             forwarded_requests,
         };
         (context, receivers)
@@ -94,9 +94,9 @@ impl ServerHostContext {
         }
         self.run_state_sender.send_replace(ServerRunState::Starting);
         let result = self.serve_on_server_thread(shutdown.child_token()).await;
-        // The run's tasks are gone with its runtime, so nothing copies the
-        // tunnel's liveness any more.
-        self.observers.tunnel_liveness_sender.send_replace(None);
+        // The run's tasks are gone with its runtime, so nothing probes the
+        // server's health any more.
+        self.observers.server_health_sender.send_replace(None);
         self.run_state_sender.send_replace(ServerRunState::Stopped {
             error: result.as_ref().err().map(|error| format!("{error:#}")),
         });

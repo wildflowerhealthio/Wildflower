@@ -6,8 +6,8 @@ publish.workspace = true
 
 # The Tauri-side tunnel slice: an embedded `rathole` client (noise transport, no
 # TLS/openssl) that dials the wildflower-relay named in the server's record and
-# forwards the server's local port through it, and the liveness the host reads
-# in-process. No HTTP surface; the tunnel keeps no rows.
+# forwards the server's local port through it, re-dialing with backoff. No HTTP
+# surface; the tunnel keeps no rows.
 [dependencies]
 anyhow.workspace = true
 serde = { workspace = true }
@@ -20,6 +20,10 @@ rathole = { version = "0.5", default-features = false, features = [
 # The relay's `GET /rathole` settings, and the transport and noise pattern the
 # rendered client config names.
 rathole-settings-rust = { path = "../rathole-settings-rust" }
+# `HealthStatus`: the tunnel's own health, which the server's `/health` reports.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
+  "health-check",
+] }
 async-trait = "0.1"
 rand = "0.10"
 tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
