@@ -189,6 +189,9 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   `<data root>/servers/<domain>/` and then the record, so a folder that can't
   be deleted (`ServerChangeError::DeletingFolder`) leaves the server
   registered and the removal can be retried; a folder already gone is fine.
+  A deletion that fails partway leaves the server registered with part of its
+  folder, some databases or certificates possibly gone; retrying deletes the
+  rest.
 - **A launcher URL is checked when entered.** `update_server` takes an
   absolute `http` or `https` URL with a host and no credentials, or refuses it
   as `ServerChangeError::InvalidLauncherUrl`.

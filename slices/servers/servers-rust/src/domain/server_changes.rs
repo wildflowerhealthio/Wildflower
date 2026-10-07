@@ -77,6 +77,9 @@ pub fn update_server(
 ///
 /// The folder goes first, so a folder that can't be deleted leaves the server
 /// registered and the removal can be retried; a folder already gone is fine.
+/// A deletion that fails partway leaves the server registered with only part
+/// of its folder, so some of its databases or certificates may already be
+/// gone; retrying deletes the rest.
 ///
 /// # Errors
 ///
@@ -433,13 +436,12 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_folder_that_cannot_be_deleted_keeps_the_server() {
-        use std::os::unix::fs::PermissionsExt;
-
         let (data_root, registry) = registry_holding(&[official_record("ruth")]);
         let ruth_dir = official_record("ruth").server_dir(data_root.path());
-        std::fs::create_dir_all(ruth_dir.join("certificates")).unwrap();
-        let servers_dir = ruth_dir.parent().unwrap().to_owned();
-        std::fs::set_permissions(&servers_dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+        std::fs::create_dir_all(ruth_dir.parent().unwrap()).unwrap();
+        // A file where the folder should be fails `remove_dir_all` for any
+        // user, where a read-only parent doesn't stop root.
+        std::fs::write(&ruth_dir, "").unwrap();
 
         let result = remove_server(
             registry.as_ref(),
@@ -447,7 +449,6 @@ mod tests {
             "ruth.relay.wildflowerhealth.io",
         );
 
-        std::fs::set_permissions(&servers_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
         assert!(
             matches!(result, Err(ServerChangeError::DeletingFolder { ref domain, .. }) if domain == "ruth.relay.wildflowerhealth.io"),
             "{result:?}"

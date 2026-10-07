@@ -245,10 +245,6 @@ pub async fn add_server<S: RelayClient>(
 /// it serves another remote address or noise key; any other
 /// [`EnrolmentError`] from `relay_client` or the relay's site; or a registry
 /// failure. Nothing is written on any of them.
-///
-/// # Panics
-///
-/// Never: a registry change that succeeds has found and updated the record.
 pub async fn set_server_credentials<S: RelayClient>(
     registry: Arc<dyn ServerRegistry>,
     domain: &str,
@@ -295,7 +291,6 @@ pub async fn set_server_credentials<S: RelayClient>(
     };
     let wanted_domain = domain.to_owned();
     let record = run_blocking(registry, move |registry| {
-        let mut updated = None;
         registry.modify(Box::new(|servers| {
             let current = servers
                 .iter_mut()
@@ -305,10 +300,15 @@ pub async fn set_server_credentials<S: RelayClient>(
                 })?;
             current.token = token;
             current.public_settings = public_settings;
-            updated = Some(current.clone());
             Ok(())
         }))?;
-        Ok(updated.expect("a change that succeeds has updated the record"))
+        registry
+            .read_all()?
+            .into_iter()
+            .find(|record| record.domain() == wanted_domain)
+            .ok_or(RegistryError::NotRegistered {
+                domain: wanted_domain,
+            })
     })
     .await?;
     Ok(record)
