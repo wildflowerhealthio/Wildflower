@@ -18,7 +18,7 @@ pub enum ServerHealth {
     /// request failed, timed out, or answered something other than a health
     /// report.
     Unreachable {
-        /// Why, for the log and the host's notification.
+        /// Why, for the log.
         error: String,
     },
 }

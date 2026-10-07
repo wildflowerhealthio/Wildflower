@@ -18,14 +18,12 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   origin). The unmatched-route `404` is here too.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
     (`shared_structures_rust::health_check`): `application/health+json`,
-    uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly three
-    checks, a functional breakdown: `fhir-r4` (HFS's store readiness, called
-    in-process through emr's `FhirR4StoreReadiness`), `server` (a
-    `wildflower.sqlite` pool connection answering `SELECT 1`) and
-    `connectivity` (the tunnel daemon's `TunnelConnectivity`: `pass` while
-    normal, `warn` while degraded, never `fail`; nothing marks it degraded
-    yet). The overall status is the worst check's. Each check is in-process
-    and bounded at 1 s. The route is public and unauthenticated, so the report
+    uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two
+    checks, a functional breakdown: `server` (a `wildflower.sqlite` pool
+    connection answering `SELECT 1`) and `connectivity` (the tunnel daemon's
+    published `HealthStatus`; nothing sets it to `warn` or `fail` yet). The
+    overall status is the worst check's. Each check is in-process and bounded
+    at 1 s. The route is public and unauthenticated, so the report
     carries only statuses: no output, observed values, errors or versions.
   - **Reachability** is the server's own: the reachability monitor GETs
     `https://<public host>/health`, out to the relay and back down the

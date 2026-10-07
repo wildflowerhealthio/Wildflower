@@ -4,7 +4,7 @@
 //! server's record, and dials for as long as the server runs, forwarding the
 //! server's local port through the relay. It owns the reconnect/backoff loop
 //! and awaits its own rathole child; each dial and its outcome go to the
-//! tracing log, and it publishes its [`TunnelConnectivity`] for the server's
+//! tracing log, and it publishes its [`HealthStatus`] for the server's
 //! `/health`. Whether the server is reachable through the relay is not the
 //! tunnel's to say: the server's reachability monitor
 //! (`wildflower-server-rust`) GETs its own `/health` through the public
@@ -16,7 +16,8 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::domain::{RelayClient, RelaySettings, TunnelConnectivity};
+use crate::domain::{RelayClient, RelaySettings};
+use shared_structures_rust::health_check::HealthStatus;
 
 /// Exponential reconnect backoff, configurable so tests don't wait on wall time.
 #[derive(Debug, Clone, Copy)]
@@ -47,9 +48,9 @@ pub struct TunnelDaemon {
     /// Cancelled on drop, so the supervisor stops dialing once nothing holds
     /// the daemon.
     cancel: CancellationToken,
-    /// The tunnel's [`TunnelConnectivity`]; [`Normal`](TunnelConnectivity::Normal)
-    /// from the start, and nothing marks it degraded yet.
-    connectivity_sender: watch::Sender<TunnelConnectivity>,
+    /// The tunnel's [`HealthStatus`]; `Pass` from the start, and nothing
+    /// marks it `Warn` or `Fail` yet.
+    connectivity_sender: watch::Sender<HealthStatus>,
 }
 
 impl TunnelDaemon {
@@ -78,17 +79,17 @@ impl TunnelDaemon {
             cancel.clone(),
             backoff,
         ));
-        let (connectivity_sender, _) = watch::channel(TunnelConnectivity::Normal);
+        let (connectivity_sender, _) = watch::channel(HealthStatus::Pass);
         Self {
             cancel,
             connectivity_sender,
         }
     }
 
-    /// The tunnel's [`TunnelConnectivity`], as it changes. The receiver keeps
+    /// The tunnel's [`HealthStatus`], as it changes. The receiver keeps
     /// the last value once the daemon is dropped.
     #[must_use]
-    pub fn connectivity(&self) -> watch::Receiver<TunnelConnectivity> {
+    pub fn connectivity(&self) -> watch::Receiver<HealthStatus> {
         self.connectivity_sender.subscribe()
     }
 }
@@ -276,20 +277,20 @@ mod tests {
         dials.recv().await.expect("dial 3");
     }
 
-    /// Failed dials don't mark the tunnel degraded: nothing does yet.
+    /// Failed dials don't mark the tunnel unhealthy: nothing does yet.
     #[tokio::test(start_paused = true)]
-    async fn connectivity_is_normal_through_failed_dials() {
+    async fn health_passes_through_failed_dials() {
         let (dialed, mut dials) = mpsc::unbounded_channel();
         let daemon =
             TunnelDaemon::spawn_test(Arc::new(FailImmediatelyRelayClient(dialed)), relay());
         let connectivity = daemon.connectivity();
         dials.recv().await.expect("dial 1");
         dials.recv().await.expect("dial 2");
-        assert_eq!(*connectivity.borrow(), TunnelConnectivity::Normal);
+        assert_eq!(*connectivity.borrow(), HealthStatus::Pass);
         drop(daemon);
         assert_eq!(
             *connectivity.borrow(),
-            TunnelConnectivity::Normal,
+            HealthStatus::Pass,
             "the last value outlives the daemon"
         );
     }

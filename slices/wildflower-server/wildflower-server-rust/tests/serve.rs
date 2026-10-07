@@ -80,7 +80,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
             service_name: "test".to_owned(),
         },
-        public_host: "test.relay.example.com".to_owned(),
+        public_host: "test.relay.invalid".to_owned(),
     }
 }
 
@@ -174,7 +174,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
             "{database} is not in the data root"
         );
     }
-    // `/health` is the three checks, all passing on a healthy server.
+    // `/health` is the two checks, all passing on a healthy server.
     let (status, report) = health_report(&loopback_base_url).await;
     assert_eq!(status, reqwest::StatusCode::OK);
     assert_eq!(report.status, HealthStatus::Pass);
@@ -198,16 +198,12 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
                 "connectivity",
                 vec![(ComponentType::Component, HealthStatus::Pass)]
             ),
-            (
-                "fhir-r4",
-                vec![(ComponentType::Component, HealthStatus::Pass)]
-            ),
             ("server", vec![(ComponentType::System, HealthStatus::Pass)]),
         ]
     );
-    // The loopback `/health` above is not reported, and neither is a forwarded
-    // one (the reachability monitor's probes); a forwarded FHIR read is, with
-    // no caller (`/fhir-r4/metadata` is unauthenticated).
+    // The loopback `/health` above is not reported. A forwarded one is logged
+    // but not sent to the host; a forwarded FHIR read is sent to both, with no
+    // caller (`/fhir-r4/metadata` is unauthenticated).
     let forwarded_health = reqwest::Client::new()
         .get(loopback_base_url.join("health").expect("health URL"))
         .header("forwarded", FORWARDED)

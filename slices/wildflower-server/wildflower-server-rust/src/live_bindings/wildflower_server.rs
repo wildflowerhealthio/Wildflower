@@ -192,7 +192,6 @@ pub async fn set_up(
     let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
     let fhir_r4_router = fhir_routers.augmented_fhir_r4_router;
-    let fhir_r4_store = fhir_routers.store_readiness;
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
@@ -324,10 +323,9 @@ pub async fn set_up(
     // runs in-handler).
     let gated_apps = apps.router.layer(gatekeeper_auth_layer.clone());
 
-    // The server's `/health`: the FHIR R4 store, the shared database pool and
-    // the tunnel's connectivity, checked in-process on each request.
+    // The server's `/health`: the shared database pool and the tunnel's
+    // health, checked in-process on each request.
     let health_checks = ServerHealthChecks {
-        fhir_r4_store,
         wildflower_db: diesel_pool,
         tunnel_connectivity: tunnel_daemon.connectivity(),
     };
@@ -427,9 +425,9 @@ pub async fn set_up(
         .layer(require_loopback_peer_middleware())
         .layer(api_cors_layer());
 
-    // Outermost: every request the front relayed through the tunnel, but
-    // `/health` (the reachability monitor's probes), is reported to the host
-    // and to the request log once its response is ready.
+    // Outermost: every request the front relayed through the tunnel is reported
+    // to the request log once its response is ready, and to the host unless it
+    // is a `/health` check (the reachability monitor's probes).
     let router = api_router.layer(axum::middleware::from_fn_with_state(
         ForwardedRequestSenders {
             host_sender: observers.forwarded_request_sender,

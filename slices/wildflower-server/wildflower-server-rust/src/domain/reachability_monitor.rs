@@ -105,6 +105,12 @@ async fn monitor(
             if published.as_ref() == Some(&server_health) {
                 return false;
             }
+            // The host logs this module at info, which hides each probe's
+            // debug line, so a new reason for being unreachable is logged
+            // here, once.
+            if let ServerHealth::Unreachable { error } = &server_health {
+                tracing::warn!(url = %health_url, %error, "reachability: /health not answering through the public origin");
+            }
             *published = Some(server_health);
             true
         });

@@ -46,9 +46,6 @@ async-trait = "0.1"
 # The `JtiCache::check_and_store` signature is in `chrono::DateTime<Utc>`; already
 # in the tree via helios, pinned here as a direct dep for the type reference.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-# `spawn_blocking`: the store readiness check's blocking pool checkout runs off
-# the async workers.
-tokio = { workspace = true, features = ["rt"] }
 
 [dev-dependencies]
 base64.workspace = true
@@ -58,8 +55,6 @@ ohif-server-rust = { path = "../../dicom/ohif-server-rust" }
 # fail-closed branch. Already in the tree via token-revocation-rust.
 persistence-rust = { path = "../../persistence/persistence-rust" }
 scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust" }
-# A throwaway store folder for the readiness test.
-tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
 
 [lints]

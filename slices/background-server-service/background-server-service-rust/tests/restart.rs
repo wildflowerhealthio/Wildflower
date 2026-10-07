@@ -62,7 +62,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
             service_name: "test".to_owned(),
         },
-        public_host: "test.relay.example.com".to_owned(),
+        public_host: "test.relay.invalid".to_owned(),
     }
 }
 
