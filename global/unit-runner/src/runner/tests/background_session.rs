@@ -21,7 +21,7 @@ fn harness_with_background_session_and_restart_delay(
     let session = FakeBackgroundSession::new(&harness.unit_runner);
     harness
         .unit_runner
-        .start_driving_background_session(Arc::clone(&session));
+        .attach_background_session_platform(Arc::clone(&session));
     (harness, session)
 }
 
@@ -36,7 +36,7 @@ async fn a_session_runs_exactly_while_some_unit_should_run() {
             &Probe::default(),
         );
     }
-    // The driver starts a session only once some unit should run.
+    // A session is requested only once some unit should run.
     assert!(
         !harness.session_demand().some_unit_should_run,
         "no unit should run"
@@ -53,7 +53,7 @@ async fn a_session_runs_exactly_while_some_unit_should_run() {
     );
 
     harness.set_unit_policy("first", RunPolicy::Off);
-    // The driver ends the session only once no unit should run.
+    // The session's end is requested only once no unit should run.
     assert!(
         harness.session_demand().some_unit_should_run,
         "the second unit still should run"

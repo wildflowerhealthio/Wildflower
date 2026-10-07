@@ -4,9 +4,9 @@
 //! [`BackgroundSessionPlatform`](crate::BackgroundSessionPlatform) port, so it
 //! runs on any platform.
 
-mod background_session_driver;
 mod dedicated_runtime;
 mod erased_unit;
+mod platform_session_requests;
 mod run_stop_signal;
 mod run_supervisor;
 pub(crate) mod status_publisher;

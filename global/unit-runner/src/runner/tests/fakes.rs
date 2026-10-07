@@ -11,11 +11,11 @@ use tokio::sync::{Barrier, Semaphore};
 
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::session_ledger::SessionId;
+use crate::domain::session_plan::SessionDemand;
 use crate::domain::unit_plan::UnitPhase;
 use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
-use crate::runner::background_session_driver::SessionDemand;
 use crate::runner::{RunnerTimings, UnitRunner};
 use crate::status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus};
 use crate::unit::{Unit, UnitId};

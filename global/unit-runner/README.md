@@ -59,7 +59,7 @@ pub struct SyncRecord {
 ```
 
 The app's Tauri crate hands the units to `tauri_unit_runner::TauriUnitRunner`. A
-test, or another host, drives `UnitRunner` directly:
+test, or another host, calls `UnitRunner` directly:
 
 ```rust,ignore
 use std::sync::Arc;

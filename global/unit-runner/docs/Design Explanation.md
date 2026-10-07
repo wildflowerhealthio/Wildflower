@@ -95,7 +95,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>>;
 
     // What the host calls.
-    pub fn start_driving_background_session<P: BackgroundSessionPlatform>(
+    pub fn attach_background_session_platform<P: BackgroundSessionPlatform>(
         self: &Arc<Self>,
         platform: Arc<P>,
     );
@@ -165,9 +165,11 @@ host. The host tells it when the app becomes present or absent
 (`set_app_present`), when
 every running unit should restart (`restart_running_units`), and when a
 background session starts and ends (`session_started`, `session_ended`). It
-hands `UnitRunner` its `BackgroundSessionPlatform` once the platform can take
-its first start (`start_driving_background_session`). Until then `UnitRunner`'s
-demand for a background session waits; units run either way.
+hands `UnitRunner` its `BackgroundSessionPlatform` once, when the platform can
+take its first request (`attach_background_session_platform`); from then on
+`UnitRunner` asks it for session starts and ends as its session demand changes.
+Until then `UnitRunner`'s demand for a background session waits; units run
+either way.
 
 ## Runs
 
@@ -283,8 +285,11 @@ one is stale, and changes nothing.
 
 - **Starting and ending it.** `UnitRunner` starts a session when a unit should
   run, and ends it when none should, one `BackgroundSessionPlatform` call at a
-  time. A call resolves once the platform has taken the request; the session
-  reports its start and end itself. While a session is ending, `UnitRunner`
+  time. It decides under its lock and never awaits there, so it only publishes
+  its session demand; one task follows the latest demand and makes the call it
+  plans, skipping demands replaced in the meantime. A call resolves once the
+  platform has taken the request; the session reports its start and end
+  itself. While a session is ending, `UnitRunner`
   waits for its end before starting another, even if a unit should run again.
   A call that fails is logged and tried again when `UnitRunner`'s demand next
   changes; units run either way.

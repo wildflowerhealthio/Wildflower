@@ -1,5 +1,9 @@
 //! [`UnitFactory`]: the app's factory with its unit type erased, so one
 //! `UnitRunner` holds units of any type that share its `Detail`.
+//!
+//! One `UnitRunner<D>` holds units of different Rust types that share
+//! `Detail = D`, and one map of mixed types needs `dyn`, so `set_unit` erases
+//! each factory's unit type.
 
 use std::future::Future;
 use std::pin::Pin;

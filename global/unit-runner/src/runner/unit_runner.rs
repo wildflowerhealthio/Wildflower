@@ -11,8 +11,8 @@ use tokio::runtime::Handle;
 use tokio::sync::{watch, Notify};
 use tokio_util::sync::CancellationToken;
 
-use super::background_session_driver::{drive_background_session, SessionDemand};
 use super::erased_unit::{erase_factory, UnitFactory};
+use super::platform_session_requests::follow_unit_runner_session_demand_with_platform;
 use super::run_stop_signal::RunStopSignal;
 use super::run_supervisor::{supervise_run, SuperviseRunArgs};
 use super::status_publisher::{RunLiveness, StatusPublisher};
@@ -22,6 +22,7 @@ use super::RunnerTimings;
 use crate::domain::app_presence::{AppPresence, PresenceChange};
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::session_ledger::{SessionEnd, SessionId, SessionLedger};
+use crate::domain::session_plan::SessionDemand;
 #[cfg(test)]
 use crate::domain::unit_plan::UnitPhase;
 use crate::domain::unit_plan::{plan_unit, restarts_after, UnitAction};
@@ -43,7 +44,7 @@ use crate::unit::{Unit, UnitId};
 /// ([`session_started`](Self::session_started),
 /// [`session_ended`](Self::session_ended)); and it hands `UnitRunner` its
 /// [`BackgroundSessionPlatform`]
-/// ([`start_driving_background_session`](Self::start_driving_background_session)).
+/// ([`attach_background_session_platform`](Self::attach_background_session_platform)).
 ///
 /// Every method takes the one state lock briefly and never awaits under it;
 /// runs, restart timers and the wall-clock ticker are tasks on `runtime`.
@@ -153,15 +154,19 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         self.lock_state().units.get(unit_id).map(UnitEntry::phase)
     }
 
-    /// Start and end the platform's background session through `platform`, to
-    /// match whether any unit should run, for as long as `UnitRunner` lives.
-    /// Call it once, when the platform can take its first start.
-    pub fn start_driving_background_session<P: BackgroundSessionPlatform>(
+    /// Hand `UnitRunner` the host's background-session `platform`. Call it
+    /// once, when the platform can take its first request; from then on, for
+    /// as long as `UnitRunner` lives, it asks `platform` for a session's start
+    /// and end as its session demand changes.
+    pub fn attach_background_session_platform<P: BackgroundSessionPlatform>(
         self: &Arc<Self>,
         platform: Arc<P>,
     ) {
         self.runtime
-            .spawn(drive_background_session(Arc::clone(self), platform));
+            .spawn(follow_unit_runner_session_demand_with_platform(
+                Arc::clone(self),
+                platform,
+            ));
     }
 
     /// Add the unit `unit_id` with `policy`, whose runs are built by `factory`;

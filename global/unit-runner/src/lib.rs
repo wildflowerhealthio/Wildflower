@@ -16,7 +16,8 @@
 //!
 //!  - `domain` — the pure rules: when a policy wants a unit running, when the
 //!    app counts as present, what starting and stopping runs per policy does
-//!    to each unit, when a run restarts, and how a background session ends.
+//!    to each unit, when a run restarts, how a background session ends, and
+//!    when to ask the platform for a session's start or end.
 //!  - `ports` — what `UnitRunner` needs from its host: the [`WallClock`] and
 //!    the [`BackgroundSessionPlatform`].
 //!  - `runner` — [`UnitRunner`]'s state, each run's thread and runtime,

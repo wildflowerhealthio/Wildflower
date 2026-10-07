@@ -1,7 +1,8 @@
 //! `TauriUnitRunner`'s lifecycle plugin: whether the app is present, and its
 //! returns to the foreground, from its window events; the background session's
-//! end reasons from the background-service plugin's events; and driving the
-//! background session from the moment the app is ready.
+//! end reasons from the background-service plugin's events; and attaching the
+//! background-service plugin as `UnitRunner`'s background-session platform
+//! once the app is ready.
 
 use std::sync::{Arc, PoisonError};
 
@@ -57,8 +58,8 @@ fn listen_for_session_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
 }
 
 impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
-    /// Follow the app's run events: start driving the background session once
-    /// the app is ready, and follow window destruction, and moves to and from
+    /// Follow the app's run events: attach the background-session platform
+    /// once the app is ready, and follow window destruction, and moves to and from
     /// the background on a phone.
     ///
     /// The window events, not `RunEvent::Resumed`: tauri-runtime-wry raises
@@ -70,7 +71,8 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
                     app.clone(),
                     self.bindings.start_config.clone(),
                 ));
-                self.unit_runner.start_driving_background_session(platform);
+                self.unit_runner
+                    .attach_background_session_platform(platform);
             }
             RunEvent::WindowEvent {
                 label,
