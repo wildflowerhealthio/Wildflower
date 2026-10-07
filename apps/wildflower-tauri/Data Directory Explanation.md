@@ -19,14 +19,15 @@ folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir` in
 
 `setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves the data
 root, hands it to the slices that keep install-wide files, and reads
-`servers.json`. The first server whose run policy is active then is the one that
-starts: its folder goes to the server as `ServerRuntimeConfig.server_dir`, and
-the server creates the folder, applies scheduled database deletions in it, and
-opens both databases there; the data-management screen (`/databases`) exports
-and deletes that server's databases only. With no server's policy active,
-nothing starts and the host reports the server stopped, with no error. Every
-slice that needs a path joins onto the data root or the server's folder rather
-than resolving its own.
+`servers.json`. The first server whose run policy wants it running then is the
+one that starts: its folder goes to the server as
+`ServerRuntimeConfig.server_dir`, and the server creates the folder, applies
+scheduled database deletions in it, and opens both databases there; the
+data-management screen (`/databases`) exports and deletes that server's
+databases only. With no server's policy wanting it running, nothing starts and
+the host reports the server stopped, with no error. Every slice that needs a
+path joins onto the data root or the server's folder rather than resolving its
+own.
 
 ## `servers.json`
 
@@ -59,8 +60,9 @@ configuration only, never whether a server is up:
 `runPolicy` is when the user wants the server run, in the unit runner's own
 shape: `{"kind": "off"}`, `{"kind": "whileOpen"}`,
 `{"kind": "until", "at": "<RFC 3339>"}` or `{"kind": "always"}`. A new server
-gets `whileOpen` when no other server's policy is active, and `off` otherwise.
-An `until` whose `at` has passed stays in the file and counts as inactive.
+gets `whileOpen` when no other server's policy wants it running, and `off`
+otherwise. An `until` whose `at` has passed stays in the file and no longer
+wants its server running.
 
 Where the data root lands is a per-platform decision, and on iOS it is a
 deliberate one.

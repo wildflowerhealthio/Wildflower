@@ -44,8 +44,8 @@ base64.workspace = true
 chrono = { workspace = true, features = ["clock"] }
 # Each signature's nonce.
 rand = "0.10"
-# `RunPolicy`, the runner's own type, which each `ServerRecord` stores in the
-# runner's wire shape. The runner's Tauri-free core, so this crate stays
+# `RunPolicy`, `UnitRunner`'s own type, which each `ServerRecord` stores in
+# its wire shape. The Tauri-free `UnitRunner`, so this crate stays
 # Tauri-free.
 unit-runner = { path = "../../../global/unit-runner" }
 

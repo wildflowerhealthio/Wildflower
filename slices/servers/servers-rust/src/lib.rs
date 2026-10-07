@@ -27,8 +27,8 @@
 //! A registered server's run policy is set by [`set_run_policy`], its
 //! launcher and certificate source by [`update_server`], and it is deleted,
 //! folder and all, by [`remove_server`]. Each changes only the server it
-//! names. The policy is the unit runner's [`RunPolicy`], stored as the runner
-//! writes it; the app stores it here and pushes it to the runner, which never
+//! names. The policy is `UnitRunner`'s [`RunPolicy`], stored in its wire
+//! shape; the app stores it here and pushes it to `UnitRunner`, which never
 //! reads `servers.json`.
 //!
 //!  - [`domain`] — [`ServerRecord`], its [`RelayKind`], [`TunnelToken`] and

@@ -1,10 +1,10 @@
 //! [`RunPolicyChoice`]: the run policy the user picks for a server, which
 //! becomes the [`RunPolicy`] its record stores.
 //!
-//! [`RunPolicy`] is the unit runner's own type, stored in `servers.json` in
-//! the runner's wire shape. An `Until` whose `at` has passed stays in the
-//! record as it is; nothing rewrites it when the deadline passes, it only
-//! stops counting as active. Only the user's choices write a policy.
+//! [`RunPolicy`] is `UnitRunner`'s own type, stored in `servers.json` in its
+//! wire shape. An `Until` whose `at` has passed stays in the record as it is;
+//! nothing rewrites it when the deadline passes, it only stops wanting its
+//! server running. Only the user's choices write a policy.
 
 use chrono::{DateTime, Datelike, TimeDelta, Utc};
 use serde::Deserialize;
@@ -29,8 +29,8 @@ const LATEST_DEADLINE_YEAR: i32 = 9999;
 pub enum RunPolicyChoice {
     /// [`RunPolicy::Off`]: never run.
     Off,
-    /// [`RunPolicy::WhileOpen`]: run while the app is open, and for the
-    /// runner's grace period after it closes.
+    /// [`RunPolicy::WhileOpen`]: run while the app is present, and for
+    /// `UnitRunner`'s grace period after it becomes absent.
     WhileOpen,
     /// Run for `seconds` from the moment the choice is applied, stored as a
     /// [`RunPolicy::Until`]. Choosing it again counts from then, not from the
@@ -45,7 +45,7 @@ pub enum RunPolicyChoice {
 
 /// [`RunPolicyChoice`]'s wire shape: serde's internally tagged enums accept
 /// unknown fields on unit variants even with `deny_unknown_fields`, so the
-/// shape is a flat struct, checked on the way in, as the runner's
+/// shape is a flat struct, checked on the way in, as `UnitRunner`'s
 /// `RunPolicy` is.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

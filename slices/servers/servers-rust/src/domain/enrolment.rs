@@ -127,9 +127,9 @@ impl RelayIdentity {
 /// Enrol `tunnel_name` at `relay` with `token` and register the server, with
 /// the default launcher and production certificates. Its
 /// [`run_policy`](ServerRecord::run_policy) is [`RunPolicy::WhileOpen`] when
-/// no registered server's policy is active at `now`, so the first server added
-/// runs, and [`RunPolicy::Off`] otherwise, so a later one doesn't start
-/// alongside it. An `Off` policy or an `Until` that has passed is inactive.
+/// no registered server's policy wants it running at `now`, so the first
+/// server added runs, and [`RunPolicy::Off`] otherwise, so a later one doesn't
+/// start alongside it. An `Off` policy or an `Until` that has passed doesn't.
 ///
 /// `relay_client` builds the [`RelayClient`] for a Wildflower relay from its
 /// base URL; it is called once for an official or self-hosted Wildflower
@@ -205,11 +205,11 @@ pub async fn add_server<S: RelayClient>(
             public_settings,
             launcher_url: ServerRecord::default_launcher_url(),
             staging_certificates: false,
-            // The user is enrolling, so the app is open: a `WhileOpen`
-            // policy counts as active.
+            // The user is enrolling, so the app is present: a `WhileOpen`
+            // policy wants its server running.
             run_policy: if registered
                 .iter()
-                .any(|server| server.run_policy.is_active(now, true))
+                .any(|server| server.run_policy.wants_running(now, true))
             {
                 RunPolicy::Off
             } else {
@@ -879,7 +879,7 @@ mod tests {
         assert_eq!(registry.read_all().unwrap(), vec![existing]);
     }
 
-    /// The first server added runs while the app is open; a later one is
+    /// The first server added runs while the app is present; a later one is
     /// added off, so it doesn't start alongside the first.
     #[tokio::test]
     async fn the_first_server_added_runs_while_open_and_a_later_one_is_off() {
@@ -905,10 +905,10 @@ mod tests {
         assert_eq!(registry.read_all().unwrap(), vec![first, second]);
     }
 
-    /// Servers whose policies are all inactive, an `Until` that has passed
-    /// included, don't stop the next one added from running.
+    /// Servers whose policies want none of them running, an `Until` that has
+    /// passed included, don't stop the next one added from running.
     #[tokio::test]
-    async fn a_server_added_while_no_policy_is_active_runs_while_open() {
+    async fn a_server_added_while_no_policy_wants_running_runs_while_open() {
         let (_data_root, registry) = registry();
         let off = official_record("lab");
         let ended = ServerRecord {
@@ -930,11 +930,11 @@ mod tests {
         assert_eq!(registry.read_all().unwrap(), vec![off, ended, added]);
     }
 
-    /// A server whose policy is active at the time, a future `Until`
+    /// A server whose policy wants it running at the time, a future `Until`
     /// included, has the next one added off.
     #[tokio::test]
-    async fn a_server_added_while_a_policy_is_active_is_off() {
-        for active in [
+    async fn a_server_added_while_a_policy_wants_running_is_off() {
+        for wanting_running in [
             RunPolicy::WhileOpen,
             RunPolicy::Always,
             RunPolicy::Until {
@@ -943,7 +943,7 @@ mod tests {
         ] {
             let (_data_root, registry) = registry();
             let running = ServerRecord {
-                run_policy: active,
+                run_policy: wanting_running,
                 ..official_record("lab")
             };
             registry.insert(Box::new(|_| running.clone())).unwrap();
@@ -953,7 +953,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(added.run_policy, RunPolicy::Off, "{active:?}");
+            assert_eq!(added.run_policy, RunPolicy::Off, "{wanting_running:?}");
         }
     }
 

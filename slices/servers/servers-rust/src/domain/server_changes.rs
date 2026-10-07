@@ -207,8 +207,8 @@ mod tests {
         }
     }
 
-    /// An `Until` whose deadline has passed is inactive, but nothing rewrites
-    /// it: it stays in the file exactly as it was set.
+    /// An `Until` whose deadline has passed no longer wants its server running,
+    /// but nothing rewrites it: it stays in the file exactly as it was set.
     #[test]
     fn an_expired_until_stays_in_the_file() {
         let (data_root, registry) = registry_holding(&[official_record("ruth")]);
@@ -220,7 +220,7 @@ mod tests {
         )
         .unwrap();
         let after_the_deadline = now() + TimeDelta::minutes(5);
-        assert!(!stored.is_active(after_the_deadline, true));
+        assert!(!stored.wants_running(after_the_deadline, true));
 
         update_server(
             registry.as_ref(),

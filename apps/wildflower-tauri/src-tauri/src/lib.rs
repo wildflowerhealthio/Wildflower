@@ -190,8 +190,8 @@ fn server_config(
 }
 
 /// Find the registered server `setup()` runs: the first one whose
-/// [`run_policy`](ServerRecord::run_policy) is active at `now`, with the app
-/// open. `None` when no server's is, an empty registry included.
+/// [`run_policy`](ServerRecord::run_policy) wants it running at `now`, with
+/// the app present. `None` when no server's does, an empty registry included.
 ///
 /// A deliberately thin interim: the host runs one server, chosen once, until
 /// it runs servers as units on the unit runner, which replaces this.
@@ -202,7 +202,7 @@ fn find_server_to_run(
     Ok(registry
         .read_all()?
         .into_iter()
-        .find(|server| server.run_policy.is_active(now, true)))
+        .find(|server| server.run_policy.wants_running(now, true)))
 }
 
 /// Start `server` from its folder under `data_root`: wire the background
@@ -423,10 +423,10 @@ pub fn run() {
                 {
                     Ok(Some(server)) => server,
                     // No server to run isn't a failure: the page shows the
-                    // server stopped, with no error. A server whose policy is
-                    // active since (the first one added gets `WhileOpen`) starts
-                    // on the page's restart; the
-                    // publishers and the context sender wait here until then.
+                    // server stopped, with no error. A server whose policy has
+                    // wanted it running since (the first one added gets
+                    // `WhileOpen`) starts on the page's restart; the publishers
+                    // and the context sender wait here until then.
                     Ok(None) => {
                         let waiting = Mutex::new(Some((publishers, host_context_sender)));
                         report_no_server(app.handle(), move |app_handle| {
@@ -592,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn the_first_server_whose_policy_is_active_is_the_one_that_runs() {
+    fn the_first_server_whose_policy_wants_it_running_is_the_one_that_runs() {
         assert_eq!(
             domain_to_run(&servers(&[
                 ("lab", RunPolicy::Off),

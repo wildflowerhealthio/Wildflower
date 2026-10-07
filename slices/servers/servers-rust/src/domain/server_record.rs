@@ -47,9 +47,9 @@ pub struct ServerRecord {
     /// instead of production.
     pub staging_certificates: bool,
     /// When the user wants this server run. Enrolment gives a new server
-    /// [`RunPolicy::WhileOpen`] when no other server's policy is active, and
-    /// [`RunPolicy::Off`] otherwise. It says nothing about whether a run is
-    /// up, which is live state and never stored.
+    /// [`RunPolicy::WhileOpen`] when no other server's policy wants it
+    /// running, and [`RunPolicy::Off`] otherwise. It says nothing about whether
+    /// a run is up, which is live state and never stored.
     pub run_policy: RunPolicy,
 }
 
