@@ -372,16 +372,9 @@ pub async fn set_up(
     let gated_databases =
         databases_rust::setup_databases(&databases_config).layer(gatekeeper_auth_layer);
 
-    // The webview page is NOT served from this origin — it loads from
-    // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
-    // asset protocol (`tauri://localhost`) in builds, while API fetches
-    // target this server absolutely (the React tauri entry's
-    // `apiBaseUrl`). So every API request is cross-origin and the API
-    // must impose no CORS restriction beyond refusing credentials (see
-    // `api_cors_layer`). Trust doesn't come from CORS here anyway: the
-    // loopback gate rejects non-local peers and auth rides the bearer
-    // header.
-    let api_router = Router::new()
+    // Every slice's routes, gated per slice, composed once: the routes each
+    // listener serves. The listener-specific layers go on top of this, below.
+    let inner_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
         .merge(gated_ohif_server)
@@ -401,46 +394,60 @@ pub async fn set_up(
         .fallback(not_found::fallback(Arc::new(not_found::NotFoundConfig {
             owner_ui_base,
             loopback_base_url: loopback_base_url.clone(),
-        })))
-        // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
-        // present the host owner token for a direct-local caller so the webview
-        // authenticates on connection provenance. Inner of CORS (which answers preflight
-        // first) and of the loopback-peer gate applied below.
-        .layer(axum::middleware::from_fn_with_state(
-            LoopbackOwnerTrust {
-                token_rx: host.host_owner_token_sender.subscribe(),
-            },
-            inject_loopback_owner_token,
-        ));
+        })));
 
-    // Defense-in-depth: gate the entire API surface on a loopback peer address.
-    // Every endpoint here is meant to be reached only over the loopback socket —
-    // directly, or relayed by the trusted front, which proxies remote callers
-    // from loopback (and is distinguished downstream by the `Forwarded` header).
-    // A genuinely non-loopback peer is rejected with `403` before any handler
-    // runs, so even a bearer-gated, CORS-permissive endpoint like
-    // `POST /apps/{id}` (which can open a native popup on the owner's device) can't
-    // be driven by a non-loopback client. Applied outermost (after CORS) so it runs first. See
-    // `require_loopback_peer_middleware` for how forwarded callers pass and why
-    // re-gating the gatekeeper's already-gated routes is harmless.
-    let api_router = api_router
-        .layer(require_loopback_peer_middleware())
-        .layer(api_cors_layer());
-
-    // Outermost: every request the front relayed through the tunnel is reported
-    // to the request log once its response is ready, and to the host unless it
-    // is a `/health` check (the reachability monitor's probes).
-    let router = api_router.layer(axum::middleware::from_fn_with_state(
+    // Every forwarded request is reported to the request log once its response
+    // is ready, and to the host unless it is a `/health` check (the
+    // reachability monitor's probes).
+    let forwarded_request_report = axum::middleware::from_fn_with_state(
         ForwardedRequestSenders {
             host_sender: observers.forwarded_request_sender,
             request_log_sender: request_log.sender,
         },
         forwarded_request_layer::report_forwarded_request,
-    ));
+    );
+
+    // The loopback listener's router: the inner router behind the loopback
+    // owner trust, the loopback-peer gate, CORS and the forwarded-request
+    // report, innermost first.
+    let loopback_router = inner_router
+        // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
+        // present the host owner token for a direct-local caller so the webview
+        // authenticates on connection provenance. Inner of CORS (which answers
+        // preflight first) and of the loopback-peer gate.
+        .layer(axum::middleware::from_fn_with_state(
+            LoopbackOwnerTrust {
+                token_rx: host.host_owner_token_sender.subscribe(),
+            },
+            inject_loopback_owner_token,
+        ))
+        // Defense-in-depth: gate the whole surface on a loopback peer address.
+        // Every request on this listener comes from this machine: directly, or
+        // relayed by a front run on it, which proxies remote callers from
+        // loopback (and is distinguished downstream by the `Forwarded` header).
+        // A genuinely non-loopback peer is rejected with `403` before any
+        // handler runs, so even a bearer-gated, CORS-permissive endpoint like
+        // `POST /apps/{id}` (which can open a native popup on the owner's
+        // device) can't be driven by a non-loopback client. See
+        // `require_loopback_peer_middleware` for how forwarded callers pass and
+        // why re-gating the gatekeeper's already-gated routes is harmless.
+        .layer(require_loopback_peer_middleware())
+        // The webview page is NOT served from this origin — it loads from
+        // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
+        // asset protocol (`tauri://localhost`) in builds, while API fetches
+        // target this server absolutely (the React tauri entry's
+        // `apiBaseUrl`). So every API request is cross-origin and the API
+        // must impose no CORS restriction beyond refusing credentials (see
+        // `api_cors_layer`). Trust doesn't come from CORS here anyway: the
+        // loopback gate rejects non-local peers and auth rides the bearer
+        // header.
+        .layer(api_cors_layer())
+        // Outermost, so every response is reported as it leaves.
+        .layer(forwarded_request_report);
 
     Ok(WildflowerServer {
         listener,
-        router,
+        router: loopback_router,
         tunnel_daemon,
         reachability_monitor,
     })
