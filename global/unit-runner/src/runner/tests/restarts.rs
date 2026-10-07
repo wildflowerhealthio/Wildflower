@@ -61,7 +61,7 @@ async fn a_restart_waits_out_the_delay() {
         .await;
     // A reconcile leaves a pending restart to its delay.
     harness.unit_runner.reconcile();
-    assert_eq!(harness.phase("unit"), Some(UnitPhase::RestartPending));
+    assert_eq!(harness.phase("unit"), Some(UnitPhase::AwaitingRestart));
     assert_eq!(probe.starts(), 1);
 }
 

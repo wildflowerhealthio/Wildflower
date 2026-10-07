@@ -1,4 +1,4 @@
-//! [`RunGate`]: one unit's runs, one at a time, in the order they began.
+//! [`UnitRunGate`]: one unit's runs, one at a time, in the order they began.
 
 use std::sync::Arc;
 
@@ -16,11 +16,11 @@ use tokio::sync::{Mutex, OwnedMutexGuard};
 /// Waiting runs are admitted in the order they began (the gate is a fair
 /// mutex).
 #[derive(Clone, Default)]
-pub(crate) struct RunGate {
+pub(crate) struct UnitRunGate {
     current_run: Arc<Mutex<()>>,
 }
 
-impl RunGate {
+impl UnitRunGate {
     /// Wait until no earlier run holds the gate, then hold it for this run.
     /// The gate opens for the next run when the returned guard drops.
     pub(crate) async fn wait_for_previous_run(&self) -> OwnedMutexGuard<()> {
@@ -37,7 +37,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_run_waits_until_the_previous_run_opens_the_gate() {
-        let gate = RunGate::default();
+        let gate = UnitRunGate::default();
         let first_run = gate.wait_for_previous_run().await;
 
         let mut second_run = Box::pin(gate.wait_for_previous_run());
@@ -55,8 +55,8 @@ mod tests {
 
     #[tokio::test]
     async fn separate_gates_never_wait_for_each_other() {
-        let first_gate = RunGate::default();
-        let second_gate = RunGate::default();
+        let first_gate = UnitRunGate::default();
+        let second_gate = UnitRunGate::default();
         let _first_run = first_gate.wait_for_previous_run().await;
         tokio::time::timeout(Duration::from_secs(1), second_gate.wait_for_previous_run())
             .await

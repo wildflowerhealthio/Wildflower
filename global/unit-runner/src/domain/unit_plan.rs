@@ -13,7 +13,7 @@ pub enum UnitPhase {
     Stopping,
     /// The latest run ended on its own and its restart is waiting out the
     /// restart delay.
-    RestartPending,
+    AwaitingRestart,
 }
 
 /// What a reconcile does to one unit.
@@ -38,8 +38,8 @@ pub fn plan_unit(should_run: bool, phase: UnitPhase) -> UnitAction {
     match (should_run, phase) {
         (true, UnitPhase::Idle) => UnitAction::Start,
         (false, UnitPhase::Running) => UnitAction::Stop,
-        (false, UnitPhase::RestartPending) => UnitAction::CancelRestart,
-        (true, UnitPhase::Running | UnitPhase::Stopping | UnitPhase::RestartPending)
+        (false, UnitPhase::AwaitingRestart) => UnitAction::CancelRestart,
+        (true, UnitPhase::Running | UnitPhase::Stopping | UnitPhase::AwaitingRestart)
         | (false, UnitPhase::Idle | UnitPhase::Stopping) => UnitAction::Keep,
     }
 }
@@ -64,7 +64,7 @@ mod tests {
         UnitPhase::Idle,
         UnitPhase::Running,
         UnitPhase::Stopping,
-        UnitPhase::RestartPending,
+        UnitPhase::AwaitingRestart,
     ];
 
     #[test]
@@ -85,7 +85,7 @@ mod tests {
         assert_eq!(plan_unit(false, UnitPhase::Running), UnitAction::Stop);
         assert_eq!(plan_unit(false, UnitPhase::Stopping), UnitAction::Keep);
         assert_eq!(
-            plan_unit(false, UnitPhase::RestartPending),
+            plan_unit(false, UnitPhase::AwaitingRestart),
             UnitAction::CancelRestart
         );
     }

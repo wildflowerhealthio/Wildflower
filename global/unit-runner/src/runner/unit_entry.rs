@@ -1,14 +1,12 @@
 //! [`UnitEntry`], `UnitRunner`'s record of one unit: its policy, its factory,
 //! its run gate, its current run and its pending restart.
 
-use std::sync::{Arc, OnceLock};
-
 use chrono::{DateTime, Utc};
 use tokio::sync::watch;
-use tokio_util::sync::CancellationToken;
 
 use super::erased_unit::UnitFactory;
-use super::run_gate::RunGate;
+use super::run_stop_signal::RunStopSignal;
+use super::unit_run_gate::UnitRunGate;
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
 use crate::status::StopReason;
@@ -19,9 +17,9 @@ pub(crate) struct UnitEntry<D> {
     pub(crate) factory: UnitFactory<D>,
     /// Shared by every run of the unit, the next one included after a
     /// `set_unit`, or a `remove_unit` that the app undoes with a `set_unit`.
-    pub(crate) gate: RunGate,
+    pub(crate) gate: UnitRunGate,
     /// The latest run, until it has ended.
-    pub(crate) run: Option<ActiveRun>,
+    pub(crate) current_run: Option<UnitRun>,
     pub(crate) pending_restart: Option<PendingRestart>,
     /// `remove_unit` is waiting for the unit's run to end before forgetting
     /// it.
@@ -33,8 +31,8 @@ impl<D> UnitEntry<D> {
         Self {
             policy,
             factory,
-            gate: RunGate::default(),
-            run: None,
+            gate: UnitRunGate::default(),
+            current_run: None,
             pending_restart: None,
             awaiting_removal: false,
         }
@@ -57,17 +55,17 @@ impl<D> UnitEntry<D> {
 
     /// Where the unit is, as a reconcile sees it.
     pub(crate) fn phase(&self) -> UnitPhase {
-        match (&self.run, &self.pending_restart) {
+        match (&self.current_run, &self.pending_restart) {
             (Some(run), _) if run.stop_requested() => UnitPhase::Stopping,
             (Some(_), _) => UnitPhase::Running,
-            (None, Some(_)) => UnitPhase::RestartPending,
+            (None, Some(_)) => UnitPhase::AwaitingRestart,
             (None, None) => UnitPhase::Idle,
         }
     }
 
     /// Ask the unit's run, if it has one, to stop for `reason`.
     pub(crate) fn stop_run(&self, reason: StopReason) {
-        if let Some(run) = &self.run {
+        if let Some(run) = &self.current_run {
             run.request_stop(reason);
         }
     }
@@ -86,30 +84,25 @@ impl RunGeneration {
     }
 }
 
-/// A run that has begun and not yet ended.
-pub(crate) struct ActiveRun {
+/// One run of a unit that has begun and not yet ended.
+pub(crate) struct UnitRun {
     /// Tells this run's end from a later run's.
     pub(crate) generation: RunGeneration,
-    pub(crate) shutdown_token: CancellationToken,
-    /// Why the run stopped: set once, by whoever is first, `UnitRunner` asking
-    /// it to stop or the run ending on its own.
-    pub(crate) stop_reason: Arc<OnceLock<StopReason>>,
+    pub(crate) stop_signal: RunStopSignal,
     /// `true` once the run's thread and runtime are gone and `UnitRunner` has
     /// recorded its end.
     pub(crate) run_finished_rx: watch::Receiver<bool>,
 }
 
-impl ActiveRun {
+impl UnitRun {
     /// Ask the run to stop for `reason`. A run that already has a stop reason
     /// keeps it.
     pub(crate) fn request_stop(&self, reason: StopReason) {
-        // A run asked twice keeps the first reason.
-        let _first_reason_kept = self.stop_reason.set(reason);
-        self.shutdown_token.cancel();
+        self.stop_signal.request_stop(reason);
     }
 
     pub(crate) fn stop_requested(&self) -> bool {
-        self.stop_reason.get().is_some()
+        self.stop_signal.stop_reason().is_some()
     }
 }
 

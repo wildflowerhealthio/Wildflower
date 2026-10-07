@@ -80,7 +80,7 @@ async fn a_unit_waiting_to_restart_still_wants_a_session() {
         .await;
     // `UnitRunner` recorded the end, and published its demand, before the
     // status said `Stopped`.
-    assert_eq!(harness.phase("unit"), Some(UnitPhase::RestartPending));
+    assert_eq!(harness.phase("unit"), Some(UnitPhase::AwaitingRestart));
     assert!(harness.session_demand().some_unit_should_run);
     eventually("a session runs", || session.session_running()).await;
     assert_eq!(session.stops(), 0);

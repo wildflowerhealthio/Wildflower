@@ -6,10 +6,11 @@
 mod background_session_driver;
 mod dedicated_runtime;
 mod erased_unit;
-mod run_gate;
+mod run_stop_signal;
 mod run_supervisor;
 pub(crate) mod status_publisher;
 mod unit_entry;
+mod unit_run_gate;
 mod unit_runner;
 mod wall_clock_ticker;
 

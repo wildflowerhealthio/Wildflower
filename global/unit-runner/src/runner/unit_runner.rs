@@ -3,7 +3,7 @@
 //! in line with the policies.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -13,9 +13,10 @@ use tokio_util::sync::CancellationToken;
 
 use super::background_session_driver::{drive_background_session, SessionDemand};
 use super::erased_unit::{erase_factory, UnitFactory};
-use super::run_supervisor::{supervise_run, RunSpec};
+use super::run_stop_signal::RunStopSignal;
+use super::run_supervisor::{supervise_run, SuperviseRunArgs};
 use super::status_publisher::{RunLiveness, StatusPublisher};
-use super::unit_entry::{ActiveRun, PendingRestart, RunGeneration, UnitEntry};
+use super::unit_entry::{PendingRestart, RunGeneration, UnitEntry, UnitRun};
 use super::wall_clock_ticker::reconcile_on_the_wall_clock;
 use super::RunnerTimings;
 use crate::domain::app_presence::{AppPresence, PresenceChange};
@@ -219,7 +220,10 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             entry.awaiting_removal = true;
             entry.pending_restart = None;
             entry.stop_run(StopReason::Removed);
-            let run_finished_rx = entry.run.as_ref().map(|run| run.run_finished_rx.clone());
+            let run_finished_rx = entry
+                .current_run
+                .as_ref()
+                .map(|run| run.run_finished_rx.clone());
             self.reconcile_locked(&mut state);
             run_finished_rx
         };
@@ -234,7 +238,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         let still_awaiting_removal = state
             .units
             .get(unit_id)
-            .is_some_and(|entry| entry.awaiting_removal && entry.run.is_none());
+            .is_some_and(|entry| entry.awaiting_removal && entry.current_run.is_none());
         if still_awaiting_removal {
             state.units.remove(unit_id);
             self.status_publisher.remove_unit(unit_id);
@@ -407,10 +411,10 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         let Some(entry) = state.units.get_mut(unit_id) else {
             return;
         };
-        if entry.run.as_ref().map(|run| run.generation) != Some(generation) {
+        if entry.current_run.as_ref().map(|run| run.generation) != Some(generation) {
             return;
         }
-        entry.run = None;
+        entry.current_run = None;
         let should_run = entry.should_run(now, app_open_or_in_grace, runs_discouraged_by_platform);
         if restarts_after(reason, should_run) {
             entry.pending_restart = Some(PendingRestart {
@@ -513,26 +517,23 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         let Some(entry) = state.units.get_mut(&unit_id) else {
             return;
         };
-        let shutdown_token = CancellationToken::new();
-        let stop_reason = Arc::new(OnceLock::new());
+        let stop_signal = RunStopSignal::default();
         let (run_finished_tx, run_finished_rx) = watch::channel(false);
-        entry.run = Some(ActiveRun {
+        entry.current_run = Some(UnitRun {
             generation,
-            shutdown_token: shutdown_token.clone(),
-            stop_reason: Arc::clone(&stop_reason),
+            stop_signal: stop_signal.clone(),
             run_finished_rx,
         });
         log::info!("[unit-runner] starting {unit_id}");
-        let spec = RunSpec {
+        let args = SuperviseRunArgs {
             unit_id,
             generation,
             factory: Arc::clone(&entry.factory),
             gate: entry.gate.clone(),
-            shutdown_token,
-            stop_reason,
+            stop_signal,
             shutdown_timeout: self.timings.run_runtime_shutdown_timeout,
             run_finished_tx,
         };
-        self.runtime.spawn(supervise_run(Arc::clone(self), spec));
+        self.runtime.spawn(supervise_run(Arc::clone(self), args));
     }
 }
