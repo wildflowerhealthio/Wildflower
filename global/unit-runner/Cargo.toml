@@ -1,0 +1,35 @@
+[package]
+name = "unit-runner"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# Runs an app's long-lived background work as units, each on its own thread
+# and runtime, and asks the platform for one background session while any
+# should run.
+# Knows nothing about what a unit does, and nothing about the platform: a host
+# crate (`tauri-unit-runner`) binds it. See `docs/Design Explanation.md`.
+[dependencies]
+anyhow.workspace = true
+# `RunPolicy::Until`'s instant, the wall clock policies and grace are read on,
+# and its RFC 3339 serde.
+chrono = { workspace = true, features = ["clock", "serde", "std"] }
+# `UnitRunner` logs through `log`, which the host collects.
+log = "0.4"
+serde.workspace = true
+# `rt-multi-thread` builds each run's dedicated runtime; `sync` carries the run
+# gates, the statuses and the background session's demand; `time` the restart
+# delay and the wall-clock ticker; `macros` for `select!`.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+# `CancellationToken`, each run's shutdown signal and each pending restart's
+# timer.
+tokio-util = "0.7"
+
+[dev-dependencies]
+proptest = "1"
+# `RunPolicy`'s serde tests.
+serde_json.workspace = true
+
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true

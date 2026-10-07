@@ -8,9 +8,10 @@ on:
   # including the crates that pull in `tauri = "2"` (wildflower-tauri,
   # background-server-service-tauri-rust, browser-sniffer-tauri-rust,
   # har-recorder-tauri-rust, servers-tauri-rust, shared-structures-tauri-rust,
-  # tauri-plugin-native-webview). Those need GTK/webkit system libs, so the
-  # job installs them and stubs the generated web bundles the Tauri crates
-  # `include_str!` (and the relay's admin UI, which wildflower-relay embeds).
+  # tauri-plugin-native-webview, tauri-unit-runner). Those need GTK/webkit
+  # system libs, so the job installs them and stubs the generated web bundles
+  # the Tauri crates `include_str!` (and the relay's admin UI, which
+  # wildflower-relay embeds).
   # (This used to be a separate ci-rust-tauri.yml; the split saved little
   # because most Rust PRs touch a Tauri crate anyway.)
   #

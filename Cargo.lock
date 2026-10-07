@@ -8316,6 +8316,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-unit-runner"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "log",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-background-service",
+ "tauri-plugin-notification",
+ "tokio",
+ "unit-runner",
+]
+
+[[package]]
 name = "tauri-utils"
 version = "2.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9003,6 +9018,20 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
+name = "unit-runner"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "log",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
 
 [[package]]
 name = "universal-hash"
