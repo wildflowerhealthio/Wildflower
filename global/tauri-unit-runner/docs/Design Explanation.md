@@ -1,186 +1,110 @@
 # Tauri Unit Runner — Design Explanation
 
-What the runner is for, the words it uses, and how it starts, watches, restarts
-and ends a unit's runs.
+How `tauri-unit-runner` binds `unit-runner` to a Tauri app: the background
+session as `tauri-plugin-background-service`'s one service, and whether the app
+is present from its window events.
 
-## What it is
-
-`tauri-unit-runner` runs a Tauri app's long-lived background work. Each piece
-of work is a **unit**: something that runs until it is asked to stop, or fails.
-The app tells the runner which units exist and when each should run. The runner
-then:
-
-- starts and stops units to match their run policies
-- restarts units that fail
-- keeps the app alive in the background while any unit runs
-- reports each unit's status
-
-The runner knows nothing about what a unit does. A unit that serves HTTP through
-a tunnel with its own TLS is as opaque to it as one that syncs a folder.
-
-## Words
-
-| Word        | Meaning                                                                                                                      |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Unit        | Work the runner can run. The app gives each unit an id, a run policy and a factory.                                          |
-| Unit id     | The app's key for a unit, unique within a runner.                                                                            |
-| Factory     | Builds a fresh unit for each run, so a run's configuration is fixed from start to end. A factory that fails is a failed run. |
-| Run         | One start-to-end of a unit, on its own OS thread and tokio runtime.                                                          |
-| Run state   | `Starting`, `Running` or `Stopped`.                                                                                          |
-| Stop reason | Why a run stopped: the runner stopped it, it ended on its own (with or without an error), or the platform ended the lease.   |
-| Detail      | A unit's own status, of a type the app chooses. The unit reports it during a run, and it is cleared when the run ends.       |
-| Unit status | What the runner reports for a unit: the run state, the stop reason and error, when the run started running, and the detail.  |
-| Run policy  | When the app wants a unit to run: `Off`, `WhileInUse`, `Until { at }` or `Always`.                                           |
-| In use      | Desktop: a window of the app is open, minimized included. Mobile: the app is in the foreground.                              |
-| Lease       | The one background-service task that keeps the app alive while units run.                                                    |
-| Runner      | `UnitRunner`: holds the units, reconciles their runs with their policies, and holds the lease.                               |
+The units, run policies, statuses, starting and stopping runs per policy, runs,
+restarts and the session ledger are `unit-runner`'s, and so are the words used
+here. Its [Design Explanation](../../unit-runner/docs/Design%20Explanation.md)
+covers them. This crate re-exports every public type of `unit-runner`, so the
+app needs only `tauri-unit-runner`, while its domain crates depend on
+`unit-runner` alone.
 
 ## The contract
 
-A sketch of the shape, not the final signatures:
-
 ```rust
-pub trait Unit: Send + 'static {
-    /// The unit's own status, e.g. a connection's liveness or a sync's progress.
-    type Detail: Clone + Send + Sync + 'static;
+impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
+    pub fn new(start_config: BackgroundServiceStartConfig) -> Self;
+    pub fn background_service_plugin<R: Runtime>(&self) -> TauriPlugin<R, PluginConfig>;
+    pub fn lifecycle_plugin<R: Runtime>(&self) -> TauriPlugin<R>;
 
-    /// Run until `ctx.shutdown()` is cancelled, or fail.
-    fn run(self, ctx: RunContext<Self::Detail>)
-        -> impl Future<Output = anyhow::Result<()>> + Send;
-}
-
-impl<D> RunContext<D> {
-    pub fn shutdown(&self) -> &CancellationToken;
-    pub fn running(&self);               // Starting → Running
-    pub fn set_detail(&self, detail: D);
-}
-
-impl<D> UnitRunner<D> {
-    pub fn set<U: Unit<Detail = D>>(
+    pub fn set_unit<U: Unit<Detail = D>>(
         &self,
-        id: UnitId,
+        unit_id: UnitId,
         policy: RunPolicy,
         factory: impl Fn() -> anyhow::Result<U> + Send + Sync + 'static,
     );
-    pub fn set_policy(&self, id: &UnitId, policy: RunPolicy);
-    pub async fn remove(&self, id: &UnitId);
-    pub fn statuses(&self) -> BTreeMap<UnitId, UnitStatus<D>>;
-    pub fn subscribe(&self) -> /* each unit's status as it changes */;
+    pub fn set_unit_policy(&self, unit_id: &UnitId, policy: RunPolicy);
+    pub async fn remove_unit(&self, unit_id: &UnitId);
+    pub fn statuses(&self) -> UnitStatuses<D>;
+    pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>>;
 }
 ```
 
-One runner has one `Detail` type. An app with several kinds of unit makes its
-`Detail` an enum.
+`TauriUnitRunner` is a `UnitRunner` on Tauri's async runtime and the system
+wall clock, with the Tauri side's own state. Its unit calls are `UnitRunner`'s.
 
-**The app pushes; the runner never pulls.** At setup the app reads its own
-registry and calls `set` for each unit. Its commands write the registry, then
-call `set_policy` or `remove`. The runner never reads or writes the app's
-storage, and it never changes a policy. An expired `Until` stays exactly as the
-app set it.
+The app builds `TauriUnitRunner` before the Tauri builder and registers its two
+plugins: `background_service_plugin()` (the background session) and
+`lifecycle_plugin()` (whether the app is present, its returns to the
+foreground, and starting and
+ending the background session), next to `tauri-plugin-notification`. The plugin
+takes its service factory before the app's `setup()`, which is why
+`TauriUnitRunner` is built before the Tauri builder and passed to it.
 
-`remove` stops the unit, waits for its run to end, and forgets it. Run shutdown
-is bounded (see Runs), so `remove` always finishes.
+## Present
 
-## Runs
+The lifecycle plugin tells `UnitRunner` whether the app is present:
 
-- **Isolation.** Each run gets its own OS thread and multi-thread tokio runtime.
-  When the unit's future returns, the thread shuts the runtime down with a
-  bounded `shutdown_timeout`, which cancels every task the unit spawned. That is
-  what keeps units from sharing anything: whatever a unit starts lives and dies
-  with its run. Shutdown happens on the thread, never inside an async context.
-- **Panics.** A panic is caught on the thread and becomes the run's error.
-- **Run gate.** Each unit has its own run gate. A run waits at it until the
-  unit's previous run has ended and published `Stopped`. So a unit's run state
-  never goes backwards, and two runs of one unit never overlap. Units never wait
-  for each other.
-- **States.**
-  - `Starting` is published when the run begins.
-  - `Running` is published when the unit calls `running()`.
-  - `Stopped` is published once the runtime is gone, with the stop reason and,
-    for a failure, the error as its `{:#}` anyhow chain.
-  - The detail is cleared at both ends of the run.
+- **Desktop.** It counts the app's windows as they are created and destroyed.
+  The app is present while any window is open, minimized included.
+- **Phone.** It follows the windows' `Suspended` and `Resumed` events: the app
+  moving to the background and returning to the foreground. The app is present
+  while it is in the foreground. `RunEvent::Resumed` isn't used, as
+  tauri-runtime-wry raises it on an event-loop poll, not when the app comes
+  back.
+- **iOS, back in the foreground.** On iOS, moving to the background can break
+  the app's sockets (`PlatformKind::backgrounding_breaks_sockets`): a suspended
+  app's connections may be dead while its runs still report `Running`. So a
+  return to the foreground that follows a move to the background restarts
+  every running unit (`StoppedForRestart`). The resume a window reports as it
+  first appears doesn't count.
 
-## Reconciling
+Tauri raises no system resume on a desktop, so after a laptop sleeps
+`UnitRunner`'s wall-clock ticker catches what ran out. A phone app's return to
+the foreground is the window's `Resumed`, which also makes the app present.
 
-A unit **should run** when its policy is active and the runner holds the lease,
-or can take it:
+## The background session: the plugin's one service
 
-| Policy         | Active                                                                   |
-| -------------- | ------------------------------------------------------------------------ |
-| `Off`          | never                                                                    |
-| `WhileInUse`   | while the app is in use, plus a grace period after it stops being in use |
-| `Until { at }` | while `at` is ahead of the wall clock                                    |
-| `Always`       | always                                                                   |
+`TauriUnitRunner` registers exactly one `BackgroundService` for the whole app,
+however many units there are. While that service runs, it is the background
+session: its `run()` tells `UnitRunner` the session started, and waits until the
+plugin shuts it down. Units don't run inside the service's task.
 
-A reconcile pass starts every unit that should run and isn't running, and stops
-every unit that is running but shouldn't be. There is no cap on how many units
-run at once.
-
-The runner reconciles:
-
-- on `set`, `set_policy` and `remove`
-- when the app goes in or out of use, and when a grace period ends
-- on a short wall-clock interval, and on system and app resume. `tokio::time`
-  runs on the monotonic clock, which stops while a laptop sleeps, so a long
-  sleep alone would let a unit outlive its `Until`.
-- when it gains or loses the lease
-
-## Restart on failure
-
-A run that ends on its own while its unit should still run is restarted after a
-fixed delay. That covers a run that fails, and a run that returns `Ok` without
-being asked to stop. The runner does not restart runs it stopped itself, or runs
-that ended because the platform ended the lease.
-
-Calling `set_policy` (even with the unchanged policy) cancels a pending restart
-and starts the unit at once if it should run.
-
-## The lease: one background task for every unit
-
-The runner uses `tauri-plugin-background-service`, and registers exactly one
-`BackgroundService` for the whole app, however many units there are. Its `run()`
-holds the lease until the plugin shuts it down. Units don't run inside that
-task; they run on their own threads (see Runs). The task only keeps the app
-alive.
-
-- **Taking and releasing it.** The runner starts the service when a unit should
-  run, and stops it when none should. Its own stops carry a stop reason that the
-  platform never uses, so they are never mistaken for platform stops.
+- **Starting and ending it.** `UnitRunner`'s `BackgroundSessionPlatform` port is
+  the plugin's `ServiceManagerHandle`. A start resolves once the plugin has
+  spawned the service's task, and a stop once it has cancelled the task's
+  shutdown token; the task itself reports the session's start and end. A start
+  of a service already running, and a stop of one already stopped, count as
+  done. When no unit should run, `TauriUnitRunner` stops the service with
+  `AppStop`, a stop reason that the plugin never uses itself, so that end is
+  never mistaken for the platform's.
+- **From `RunEvent::Ready`.** The lifecycle plugin hands `UnitRunner` the plugin
+  as its background session platform once the app's event loop is ready, which
+  follows the app's `setup()`. So a session the platform started at launch is
+  judged once the app has set its units.
 - **Starts the platform makes.** The plugin or the OS may start the service
-  itself: an iOS background task, or the plugin's recovery. That run just hands
-  the runner the lease, and the runner reconciles. The plugin takes its service
-  factory before the app's `setup()`, so the runner is built before the Tauri
-  builder and passed to it. A unit the app hasn't set yet starts when the app
-  sets it. Nothing waits on an undecided value.
-- **The platform ending it.** When the platform ends the lease, every running
-  unit stops with the platform's stop reason. Examples: iOS background time
-  running out, the Stop action on Android's notification, or the app quitting.
-  Those units are not restarted until the lease comes back. On a phone, that
-  means when the app returns to the foreground.
-- **iOS resume.** On iOS, a resume restarts every running unit. A suspended
-  app's connections may be dead while its runs still report `Running`.
-- **Notification permission.** Before its first start, the runner asks for
-  notification permission if the OS has never asked. The plugin's own start
-  asks too, and on Android a second ask while the first is on screen reads as
-  a refusal.
+  itself: an iOS background task, or the plugin's recovery. That run just tells
+  `UnitRunner` a session started.
+- **Why it ended.** The service's task sees only its shutdown token. The plugin
+  names the reason in its `background-service://event` once the task has
+  returned, so the task waits up to `SESSION_END_REASON_WAIT` (1 s) for
+  that event before it reports the end. A reason that doesn't come in time, or
+  that `TauriUnitRunner` doesn't know, is `PlatformStopReason::Unknown`.
+- **Notification permission.** Before its first start, `TauriUnitRunner` asks
+  for notification permission if the OS has never asked. The plugin's own start
+  asks too, and on Android a second ask while the first is on screen reads as a
+  refusal.
 - **Android.** The plugin's persistent foreground-service notification, with the
   start config's label, covers every unit.
 
 ## What the app does
 
-- It stores its units and their policies, and decides what each unit is.
-- It owns its wire. The runner hands it statuses and their changes, and the app
-  emits its own events and answers its own commands from them.
-- It posts its own notifications, such as stops, failures and anything carried
-  in a unit's detail, from the statuses.
-- It configures the plugin: the start config, the Android manifest and the iOS
-  background modes.
+Besides what `unit-runner` asks of every app, it configures the plugin: the
+start config, `plugins.background-service` in `tauri.conf.json`, the Android
+manifest and the iOS background modes.
 
 ## Deliberately not here
 
-- A cap on how many units run at once.
-- Backoff, restart limits or other restart strategies; a failed run restarts
-  after a fixed delay.
-- Dependencies between units, or an order for starting them.
 - The plugin's desktop OS-service (daemon) mode.
-- Notification text, and any wire format.
