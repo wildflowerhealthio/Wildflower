@@ -34,6 +34,12 @@ pub const RESTART_DELAY: Duration = Duration::from_secs(5);
 /// ran out during a sleep soon after waking.
 pub const START_AND_STOP_RUNS_PER_POLICY_INTERVAL: Duration = Duration::from_secs(10);
 
+/// How many stops a subscriber of
+/// [`UnitRunner::subscribe_stops`](UnitRunner::subscribe_stops) can fall behind
+/// before it misses the oldest. A run stops at most once per
+/// [`RESTART_DELAY`] per unit, so a reader that keeps up never gets near it.
+pub const RUN_STOPS_CAPACITY: usize = 64;
+
 /// `UnitRunner`'s timings: the public constants in an app, shorter in tests.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RunnerTimings {

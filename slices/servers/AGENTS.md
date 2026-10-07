@@ -23,7 +23,7 @@ changing how servers run or what the host notifies about them.
     (`set_run_policy` with `RunPolicyChoice`, `update_server`,
     `remove_server`, `ServerChangeError`), `ServerDetail`, and
     `notifications/` (`LocalNotification`, `RequestNotificationCoalescer`,
-    `stop_notification` and `StopNotificationTracker`); `ports/` the
+    `stop_notification` and `StopNotificationCoalescer`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
@@ -173,7 +173,8 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   order.
 - **Status comes from `UnitRunner`.** Whether a server is running, why it
   last stopped and its health are `UnitRunner`'s `UnitStatus<ServerDetail>`,
-  from `statuses()` / `subscribe()`; nothing in the slice tracks runs itself.
+  from `statuses()` / `subscribe()`, and each run's stop is
+  `subscribe_stops()`'s; nothing in the slice tracks runs itself.
   A run's health goes out through `ctx.set_detail`, and `UnitRunner` clears
   it.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s

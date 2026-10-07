@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig;
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 
-use unit_runner::{RunPolicy, SystemClock, Unit, UnitId, UnitRunner, UnitStatuses};
+use unit_runner::{RunPolicy, RunStopped, SystemClock, Unit, UnitId, UnitRunner, UnitStatuses};
 
 use crate::tauri_bindings::TauriBindings;
 
@@ -116,5 +116,13 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     #[must_use]
     pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>> {
         self.unit_runner.subscribe()
+    }
+
+    /// Each run's stop from now on, once per run, in the order the runs
+    /// stopped. A reader more than `RUN_STOPS_CAPACITY` stops behind misses
+    /// the oldest and is told how many.
+    #[must_use]
+    pub fn subscribe_stops(&self) -> broadcast::Receiver<RunStopped> {
+        self.unit_runner.subscribe_stops()
     }
 }

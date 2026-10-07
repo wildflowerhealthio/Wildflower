@@ -139,7 +139,7 @@ pub fn host_servers(
     }
     tauri::async_runtime::spawn(notifications::post_stop_notifications(
         app.clone(),
-        runner.subscribe(),
+        runner.subscribe_stops(),
     ));
     tauri::async_runtime::spawn(notifications::post_request_notifications(
         app.clone(),

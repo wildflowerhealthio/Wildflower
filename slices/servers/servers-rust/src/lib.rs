@@ -35,8 +35,8 @@
 //! record to `UnitRunner` with a factory that builds a fresh unit for every
 //! run, and the unit reports its health as its [`ServerDetail`]. What the host
 //! notifies about its servers is decided here too: the per-caller request
-//! notifications ([`RequestNotificationCoalescer`]) and each new stop of a
-//! server's run ([`StopNotificationTracker`]).
+//! notifications ([`RequestNotificationCoalescer`]) and the notifications for
+//! each stop of a server's run ([`StopNotificationCoalescer`]).
 //!
 //!  - [`domain`] — [`ServerRecord`], its [`RelayKind`], [`TunnelToken`] and
 //!    [`RunPolicy`], [`RegistryError`], enrolment with its [`EnteredRelay`],
@@ -68,7 +68,7 @@ pub use domain::notifications::local_notification::LocalNotification;
 pub use domain::notifications::request_notifications::{
     CallerActivity, RequestNotificationCoalescer,
 };
-pub use domain::notifications::stop_notification::{stop_notification, StopNotificationTracker};
+pub use domain::notifications::stop_notification::{stop_notification, StopNotificationCoalescer};
 pub use domain::{
     add_server, remove_server, set_run_policy, set_server_credentials, update_server,
     EnrolmentError, EnteredRelay, RegistryError, RelayIdentity, RelayKind, RunPolicyChoice,

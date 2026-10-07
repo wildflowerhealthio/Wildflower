@@ -1,10 +1,10 @@
 //! The notification for a server's run that stopped, keyed by `UnitRunner`'s
-//! [`StopReason`], and [`StopNotificationTracker`], which picks each server's
-//! new stops out of `UnitRunner`'s statuses.
+//! [`StopReason`], and [`StopNotificationCoalescer`], which keeps a server's
+//! failure from notifying again on every retry.
 
 use std::collections::BTreeMap;
 
-use unit_runner::{PlatformStopReason, RunState, RunStop, StopReason, UnitId, UnitStatuses};
+use unit_runner::{PlatformStopReason, RunStop, RunStopped, StopReason, UnitId};
 
 use crate::domain::notifications::local_notification::LocalNotification;
 
@@ -78,85 +78,45 @@ fn session_end_text(platform_reason: PlatformStopReason) -> (&'static str, &'sta
     }
 }
 
-/// Picks each server's new stops out of `UnitRunner`'s statuses, whose
-/// unit ids are the servers' domains, and decides which of them notify.
+/// Decides which of the servers' stops notify, fed each stop `UnitRunner`
+/// reports once ([`RunStopped`]), whose unit ids are the servers' domains.
 ///
-/// Each stop notifies once, as [`stop_notification`] says. `UnitRunner` retries
-/// a failed run every few seconds, so a failure with the same error as the one
-/// last notified for that server doesn't notify again until the server has
-/// run.
-///
-/// The statuses are read as `UnitRunner`'s watch holds them: a stop that a
-/// later one replaced before it was read is never seen.
+/// A stop notifies as [`stop_notification`] says, with one more rule:
+/// `UnitRunner` retries a failed run every few seconds, so a failure with the
+/// same error as the one last notified for that server doesn't notify again
+/// until the server has run, or the app has set it again (a new token, say)
+/// or removed it.
 #[derive(Debug, Default)]
-pub struct StopNotificationTracker {
-    servers: BTreeMap<UnitId, TrackedServer>,
+pub struct StopNotificationCoalescer {
+    /// Each server's error last notified, until the server runs again or is
+    /// set again or removed.
+    notified_failures: BTreeMap<UnitId, String>,
 }
 
-/// What the tracker remembers about one server.
-#[derive(Debug, Default)]
-struct TrackedServer {
-    /// The latest stop seen, so it is never taken as new twice.
-    last_stop: Option<RunStop>,
-    /// The error of the failure last notified, until the server runs again.
-    notified_failure: Option<String>,
-}
-
-impl StopNotificationTracker {
-    /// A tracker that has seen no stops.
+impl StopNotificationCoalescer {
+    /// A coalescer that has notified no failures.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// The notifications for the stops in `statuses` this tracker hasn't seen
-    /// yet, in domain order. Servers missing from `statuses` are forgotten.
-    pub fn new_stop_notifications<D>(
-        &mut self,
-        statuses: &UnitStatuses<D>,
-    ) -> Vec<LocalNotification> {
-        self.servers
-            .retain(|unit_id, _| statuses.contains_key(unit_id));
-        let mut notifications = Vec::new();
-        for (unit_id, status) in statuses {
-            let server = self.servers.entry(unit_id.clone()).or_default();
-            match &status.run_state {
-                RunState::Running => server.notified_failure = None,
-                RunState::Starting | RunState::Stopped { last_stop: None } => {}
-                RunState::Stopped {
-                    last_stop: Some(stop),
-                } => {
-                    if server.last_stop.as_ref() == Some(stop) {
-                        continue;
-                    }
-                    server.last_stop = Some(stop.clone());
-                    if stop.reason == StopReason::Replaced {
-                        // The app changed the server (a new token, say), so
-                        // its next failure is news even if it repeats the
-                        // last one.
-                        server.notified_failure = None;
-                    }
-                    notifications.extend(server.notification_for_new(unit_id, stop));
-                }
-            }
+    /// The notification for `stopped`, or `None` when it doesn't notify or
+    /// repeats the failure last notified for its server.
+    pub fn notification_for(&mut self, stopped: &RunStopped) -> Option<LocalNotification> {
+        let RunStopped {
+            unit_id,
+            stop,
+            announced_running,
+        } = stopped;
+        if *announced_running || matches!(stop.reason, StopReason::Replaced | StopReason::Removed) {
+            self.notified_failures.remove(unit_id);
         }
-        notifications
-    }
-}
-
-impl TrackedServer {
-    /// The notification for `stop`, a stop of this server not seen before,
-    /// or `None` when it doesn't notify or repeats the failure last notified.
-    fn notification_for_new(
-        &mut self,
-        unit_id: &UnitId,
-        stop: &RunStop,
-    ) -> Option<LocalNotification> {
         if let (StopReason::EndedOnItsOwn, Some(error)) = (stop.reason, &stop.error) {
-            if self.notified_failure.as_ref() == Some(error) {
+            if self.notified_failures.get(unit_id) == Some(error) {
                 return None;
             }
-            self.notified_failure = Some(error.clone());
+            self.notified_failures
+                .insert(unit_id.clone(), error.clone());
         }
         stop_notification(unit_id.as_str(), stop)
     }
@@ -165,7 +125,6 @@ impl TrackedServer {
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, TimeDelta};
-    use unit_runner::UnitStatus;
 
     use super::*;
 
@@ -185,8 +144,7 @@ mod tests {
         PlatformStopReason::Unknown,
     ];
 
-    /// A stop for `reason` with `error`, the `nth` of its test, so no two
-    /// stops of a test are equal.
+    /// A stop for `reason` with `error`, `nth` seconds into its test.
     fn stop(reason: StopReason, error: Option<&str>, nth: i64) -> RunStop {
         RunStop {
             reason,
@@ -198,31 +156,6 @@ mod tests {
 
     fn failure(error: &str, nth: i64) -> RunStop {
         stop(StopReason::EndedOnItsOwn, Some(error), nth)
-    }
-
-    fn stopped(stop: RunStop) -> UnitStatus<()> {
-        UnitStatus {
-            run_state: RunState::Stopped {
-                last_stop: Some(stop),
-            },
-            running_since: None,
-            detail: None,
-        }
-    }
-
-    fn running() -> UnitStatus<()> {
-        UnitStatus {
-            run_state: RunState::Running,
-            running_since: Some(DateTime::from_timestamp(1_800_000_000, 0).expect("an instant")),
-            detail: None,
-        }
-    }
-
-    fn statuses(entries: Vec<(&str, UnitStatus<()>)>) -> UnitStatuses<()> {
-        entries
-            .into_iter()
-            .map(|(domain, status)| (UnitId::from(domain), status))
-            .collect()
     }
 
     #[test]
@@ -302,98 +235,72 @@ mod tests {
         );
     }
 
-    #[test]
-    fn each_stop_notifies_once() {
-        let mut tracker = StopNotificationTracker::new();
-        let ended_by_platform = stop(
-            StopReason::SessionEndedByPlatform {
-                platform_reason: PlatformStopReason::PlatformTimeout,
-            },
-            None,
-            1,
-        );
-        let current = statuses(vec![(DOMAIN, stopped(ended_by_platform))]);
-        assert_eq!(tracker.new_stop_notifications(&current).len(), 1);
-        assert_eq!(tracker.new_stop_notifications(&current), Vec::new());
+    /// `stopped` as `UnitRunner` reports it for `domain`, from a run that
+    /// had (`ran`) or hadn't announced running.
+    fn stopped(domain: &str, stop: RunStop, ran: bool) -> RunStopped {
+        RunStopped {
+            unit_id: UnitId::from(domain),
+            stop,
+            announced_running: ran,
+        }
     }
 
-    #[test]
-    fn a_server_that_never_ran_or_is_running_notifies_nothing() {
-        let mut tracker = StopNotificationTracker::new();
-        let current = statuses(vec![
-            (DOMAIN, UnitStatus::never_run()),
-            (OTHER_DOMAIN, running()),
-        ]);
-        assert_eq!(tracker.new_stop_notifications(&current), Vec::new());
+    /// How many notifications `coalescer` posts for `stops`, fed in order.
+    fn notified(coalescer: &mut StopNotificationCoalescer, stops: &[RunStopped]) -> usize {
+        stops
+            .iter()
+            .filter_map(|stopped| coalescer.notification_for(stopped))
+            .count()
     }
 
     #[test]
     fn a_failure_repeating_on_every_retry_notifies_once_until_the_server_runs() {
-        let mut tracker = StopNotificationTracker::new();
+        let mut coalescer = StopNotificationCoalescer::new();
         let address_in_use = "failed to bind: Address already in use";
-        let mut failed = |nth| {
-            tracker
-                .new_stop_notifications(&statuses(vec![(
-                    DOMAIN,
-                    stopped(failure(address_in_use, nth)),
-                )]))
-                .len()
-        };
-        assert_eq!(failed(1), 1);
-        assert_eq!(failed(2), 0);
-        assert_eq!(failed(3), 0);
-
-        let disk_full = statuses(vec![(DOMAIN, stopped(failure("disk full", 4)))]);
-        assert_eq!(tracker.new_stop_notifications(&disk_full).len(), 1);
-        let address_in_use_again = statuses(vec![(DOMAIN, stopped(failure(address_in_use, 5)))]);
+        let retry = stopped(DOMAIN, failure(address_in_use, 1), false);
         assert_eq!(
-            tracker.new_stop_notifications(&address_in_use_again).len(),
+            notified(&mut coalescer, &[retry.clone(), retry.clone(), retry]),
             1
         );
 
-        tracker.new_stop_notifications(&statuses(vec![(DOMAIN, running())]));
-        let after_running = statuses(vec![(DOMAIN, stopped(failure(address_in_use, 6)))]);
-        assert_eq!(tracker.new_stop_notifications(&after_running).len(), 1);
+        let disk_full = stopped(DOMAIN, failure("disk full", 2), false);
+        assert_eq!(notified(&mut coalescer, &[disk_full]), 1);
+        let address_in_use_again = stopped(DOMAIN, failure(address_in_use, 3), false);
+        assert_eq!(notified(&mut coalescer, &[address_in_use_again]), 1);
+
+        let after_running = stopped(DOMAIN, failure(address_in_use, 4), true);
+        assert_eq!(notified(&mut coalescer, &[after_running]), 1);
     }
 
     #[test]
-    fn a_failure_notifies_again_after_the_app_replaced_the_server() {
-        let mut tracker = StopNotificationTracker::new();
+    fn a_failure_notifies_again_after_the_app_replaced_or_removed_the_server() {
         let address_in_use = "failed to bind: Address already in use";
-        let failed = statuses(vec![(DOMAIN, stopped(failure(address_in_use, 1)))]);
-        assert_eq!(tracker.new_stop_notifications(&failed).len(), 1);
-        let replaced = statuses(vec![(DOMAIN, stopped(stop(StopReason::Replaced, None, 2)))]);
-        assert_eq!(tracker.new_stop_notifications(&replaced), Vec::new());
-        let failed_again = statuses(vec![(DOMAIN, stopped(failure(address_in_use, 3)))]);
-        assert_eq!(tracker.new_stop_notifications(&failed_again).len(), 1);
+        for reason in [StopReason::Replaced, StopReason::Removed] {
+            let mut coalescer = StopNotificationCoalescer::new();
+            let failed = stopped(DOMAIN, failure(address_in_use, 1), false);
+            assert_eq!(notified(&mut coalescer, std::slice::from_ref(&failed)), 1);
+            let set_again = stopped(DOMAIN, stop(reason, None, 2), false);
+            assert_eq!(notified(&mut coalescer, &[set_again]), 0, "{reason:?}");
+            assert_eq!(notified(&mut coalescer, &[failed]), 1, "{reason:?}");
+        }
     }
 
     #[test]
-    fn servers_are_tracked_apart() {
-        let mut tracker = StopNotificationTracker::new();
-        let notifications = tracker.new_stop_notifications(&statuses(vec![
-            (DOMAIN, stopped(failure("disk full", 1))),
-            (OTHER_DOMAIN, stopped(failure("disk full", 1))),
-        ]));
-        let ids: Vec<&str> = notifications
-            .iter()
-            .map(|notification| notification.id.as_str())
+    fn servers_are_coalesced_apart() {
+        let mut coalescer = StopNotificationCoalescer::new();
+        let ids: Vec<String> = [DOMAIN, OTHER_DOMAIN]
+            .into_iter()
+            .filter_map(|domain| {
+                coalescer.notification_for(&stopped(domain, failure("disk full", 1), false))
+            })
+            .map(|notification| notification.id)
             .collect();
         assert_eq!(
             ids,
             [
-                "server-stopped:lab.relay.example.com",
-                "server-stopped:ruth.relay.example.com"
+                "server-stopped:ruth.relay.example.com",
+                "server-stopped:lab.relay.example.com"
             ]
         );
-    }
-
-    #[test]
-    fn a_removed_server_is_forgotten() {
-        let mut tracker = StopNotificationTracker::new();
-        let failed = statuses(vec![(DOMAIN, stopped(failure("disk full", 1)))]);
-        assert_eq!(tracker.new_stop_notifications(&failed).len(), 1);
-        tracker.new_stop_notifications(&statuses(vec![]));
-        assert_eq!(tracker.new_stop_notifications(&failed).len(), 1);
     }
 }
