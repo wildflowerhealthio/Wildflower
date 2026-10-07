@@ -13,8 +13,8 @@ use background_server_service_rust::{
     failure_notification, stop_notification, BackgroundServerServiceHostToWeb,
     BackgroundServerServiceWebToHost, BackgroundServiceEvent, LocalNotification,
     NotificationPermission, RequestNotificationCoalescer, ServerHostContext, ServerRunState,
-    ServerServiceReceivers, ServerServiceStatus, ServiceStopReason, TunnelDropDetector,
-    BACKGROUND_SERVICE_EVENT, RESTART_SERVER, RESTART_STOP_REASON, TAGS,
+    ServerServiceReceivers, ServerServiceStatus, ServiceStopReason, BACKGROUND_SERVICE_EVENT,
+    RESTART_SERVER, RESTART_STOP_REASON, TAGS,
 };
 use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT, READY_TAG};
 use shared_structures_rust::request_caller::ForwardedRequest;
@@ -28,7 +28,6 @@ use tauri_plugin_dialog::{Dialog, MessageDialogKind};
 use tauri_plugin_log::log;
 use tauri_plugin_notification::Notification;
 use tokio::sync::{mpsc, watch, Notify};
-use tunnel_rust::TunnelLiveness;
 
 mod stop_reason;
 
@@ -166,8 +165,7 @@ async fn restart_server_service<R: Runtime>(
 /// - Listens on the plugin's [`BACKGROUND_SERVICE_EVENT`] for stop reasons,
 ///   posting the stop notification, and for errors, which also raise the native
 ///   error dialog.
-/// - Posts the per-caller request notifications and the tunnel-drop
-///   notification.
+/// - Posts the per-caller request notifications.
 /// - On a phone, starts the server when the app comes back to the foreground
 ///   with it stopped, and on iOS restarts a running one.
 /// - Asks for permission to post notifications if the OS has never asked
@@ -188,9 +186,10 @@ pub fn start_background_server_service<R: Runtime>(
         "[background-server-service] listening on '{BRIDGE_EVENT}' for tags: {TAGS:?}, \
          and on '{BACKGROUND_SERVICE_EVENT}'"
     );
+    // The server's health is not posted: the reachability monitor logs it.
     let ServerServiceReceivers {
         run_state,
-        tunnel_liveness,
+        server_health: _,
         forwarded_requests,
     } = receivers;
     let status_wanted = Arc::new(Notify::new());
@@ -217,7 +216,6 @@ pub fn start_background_server_service<R: Runtime>(
         last_stop_reason,
     ));
     tauri::async_runtime::spawn(post_request_notifications(app.clone(), forwarded_requests));
-    tauri::async_runtime::spawn(post_tunnel_notifications(app.clone(), tunnel_liveness));
 
     let launch_handle = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -430,25 +428,6 @@ async fn sleep_until_due(due_at: Option<Instant>) {
         Some(due_at) => tokio::time::sleep_until(due_at.into()).await,
         None => std::future::pending().await,
     }
-}
-
-/// Post the tunnel-drop and reconnection notifications as the running server's
-/// tunnel liveness changes.
-async fn post_tunnel_notifications<R: Runtime>(
-    app: AppHandle<R>,
-    mut tunnel_liveness: watch::Receiver<Option<TunnelLiveness>>,
-) {
-    let mut tunnel_drops = TunnelDropDetector::new();
-    while tunnel_liveness.changed().await.is_ok() {
-        let notification =
-            tunnel_drops.notification_for(tunnel_liveness.borrow_and_update().as_ref());
-        if let Some(notification) = notification {
-            show_notification(&app, &notification);
-        }
-    }
-    log::error!(
-        "[background-server-service] tunnel-liveness channel closed; tunnel notifications stopped"
-    );
 }
 
 /// Follow the main window's suspend and resume, and start or restart the

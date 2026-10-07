@@ -107,9 +107,9 @@ type BackgroundServerServiceBridge = Bridge.Bridge<
  * Wildflower server as a background service.
  *
  * @remarks
- * One snapshot host → web and one request web → host. The tunnel's state is
- * not on this bridge: the tunnel belongs to the host, which reads its
- * liveness in-process.
+ * One snapshot host → web and one request web → host. The server's health
+ * through its public origin is not on this bridge: the host reads it
+ * in-process.
  */
 const BackgroundServerServiceBridge: BackgroundServerServiceBridge = Bridge.make({
   name: 'BackgroundServerService',

@@ -32,6 +32,5 @@ pub use domain::request_notifications::{CallerActivity, RequestNotificationCoale
 pub use domain::run_gate::RunGate;
 pub use domain::server_run_state::ServerRunState;
 pub use domain::stop_notification::{failure_notification, stop_notification, RESTART_STOP_REASON};
-pub use domain::tunnel_drop_detector::TunnelDropDetector;
 pub use live_bindings::server_run::{ServerHostContext, ServerServiceReceivers};
 pub use plugin_event::{BackgroundServiceEvent, ServiceStopReason, BACKGROUND_SERVICE_EVENT};

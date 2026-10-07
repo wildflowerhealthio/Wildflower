@@ -6,7 +6,8 @@ publish.workspace = true
 
 # The Wildflower server: `serve` composes every server slice (gatekeeper, emr,
 # OHIF, collector, tunnel, request log, apps, databases) into the loopback API
-# and serves it until its shutdown token is cancelled. No `tauri` dependency —
+# and serves it until its shutdown token is cancelled, with its `/health` and the
+# reachability monitor that reads it through the public origin. No `tauri` dependency —
 # the Tauri host hands in its native adapters as trait objects — so it compiles
 # and tests without GTK.
 [dependencies]
@@ -14,23 +15,28 @@ anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
 tower-http.workspace = true
-# `net` binds the loopback listener; `sync` carries the host's owner-token and
-# pending-consent `watch` channels.
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
+# `net` binds the loopback listener; `sync` carries the host's owner-token,
+# pending-consent and server-health `watch` channels; `time` and `macros` pace
+# and bound the reachability monitor's probes and the `/health` checks.
+tokio = { workspace = true, features = ["net", "rt", "sync", "time", "macros"] }
 # `CancellationToken`, the shutdown signal `serve` takes.
 tokio-util = "0.7"
 tracing = "0.1"
 # Typed loopback base URL handed to the slices' configs and the 404 fallback.
 url = "2"
-# The tunnel `/health` reachability probe. `rustls-tls` (no openssl) matches the
-# project's openssl avoidance; `json` decodes the health body. reqwest is already
+# The reachability monitor's `/health` probe. `rustls-tls` (no openssl) matches
+# the project's openssl avoidance; `json` decodes the health report. reqwest is already
 # a transitive dependency (via helios), so this adds no new build cost.
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "json",
 ] }
-# `tunnel_rust::HealthProbe` is an `#[async_trait]`.
+# The monitor's `HealthProbe` port and `HealthCheckService` are `#[async_trait]`s.
 async-trait = "0.1"
+# Each `/health` check's `time`.
+chrono = { workspace = true, features = ["clock"] }
+# The `server` `/health` check's `SELECT 1` on the shared diesel pool.
+diesel.workspace = true
 apps-rust = { path = "../../apps/apps-rust" }
 collector-rust = { path = "../../collector/collector-rust" }
 databases-rust = { path = "../../databases/databases-rust" }
@@ -57,12 +63,11 @@ tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 workspace = true
 
 [dev-dependencies]
-# The lifetime of the client tokens the request-log test in `tests/serve.rs` mints.
-chrono.workspace = true
 serde_json.workspace = true
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+# `test-util` drives the reachability monitor on virtual time.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time", "test-util"] }
 # `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.
 tower = { version = "0.5", features = ["util"] }
 # The forwarded-request path reducer's property test.

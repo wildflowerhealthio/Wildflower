@@ -2,7 +2,8 @@
 //! is cancelled and the second asked for at once, without waiting. The second
 //! run waits at the run gate for the first run's runtime to be gone, binds the
 //! same loopback port without "address in use", and answers `/health`. The run
-//! state the host watches never goes backwards.
+//! state the host watches never goes backwards, and the server's health is
+//! published while a run serves and reset once it stops.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -61,7 +62,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
             service_name: "test".to_owned(),
         },
-        public_host: "test.relay.example.com".to_owned(),
+        public_host: "test.relay.invalid".to_owned(),
     }
 }
 
@@ -119,7 +120,7 @@ async fn a_restart_waits_for_the_previous_run_and_serves_again() {
         host_ports,
     );
     let mut run_state = receivers.run_state;
-    let tunnel_liveness = receivers.tunnel_liveness;
+    let mut server_health = receivers.server_health;
 
     let first_shutdown = CancellationToken::new();
     let first_run = spawn_run(&context, &first_shutdown);
@@ -186,6 +187,12 @@ async fn a_restart_waits_for_the_previous_run_and_serves_again() {
         "neither run may fail: {history:?}"
     );
 
+    // No relay serves the public host, so the monitor finds it unreachable.
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, server_health.wait_for(Option::is_some))
+        .await
+        .expect("the server health is published in time")
+        .expect("the context holds the server-health sender");
+
     second_shutdown.cancel();
     tokio::time::timeout(LIFECYCLE_TIMEOUT, second_run)
         .await
@@ -194,9 +201,9 @@ async fn a_restart_waits_for_the_previous_run_and_serves_again() {
         .expect("a cancelled run returns Ok");
     assert_eq!(*run_state.borrow(), ServerRunState::Stopped { error: None });
     assert_eq!(
-        *tunnel_liveness.borrow(),
+        *server_health.borrow(),
         None,
-        "no tunnel liveness outlives the server"
+        "no server health outlives the server"
     );
 }
 

@@ -4,8 +4,8 @@ The **background server service**: the Tauri host runs the Wildflower server
 (`slices/wildflower-server`) through `tauri-plugin-background-service`, each
 start on its own OS thread and tokio runtime behind a run gate, and watches it:
 a status snapshot on the bridge, a restart from the page, and local
-notifications for stops, tunnel traffic and tunnel drops. The page shows the
-snapshot in a banner and on `/settings/server`. Read the
+notifications for stops and tunnel traffic. The page shows the snapshot in a
+banner and on `/settings/server`. Read the
 [Design Explanation](./docs/Design%20Explanation.md) before changing anything
 here.
 
@@ -26,9 +26,8 @@ here.
   - `ServerHostContext::run_server` (`live_bindings/server_run.rs`): one run
     of the server behind the `RunGate`, on a dedicated runtime, publishing its
     `ServerRunState`. `tests/restart.rs` restarts the real server through it.
-  - The notification decisions: the per-caller request coalescer, the stop
-    notification per reason, the tunnel-drop detector, and what a foreground
-    resume does.
+  - The notification decisions: the per-caller request coalescer and the stop
+    notification per reason; and what a foreground resume does.
   - Layout: the wire mirrors (`bridge.rs`, `plugin_event.rs`) at the crate
     root; `domain/` the run gate, `ServerRunState`, the foreground-resume rule
     and the notification decisions, testable without I/O; `live_bindings/` a

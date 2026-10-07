@@ -1,6 +1,7 @@
 //! The outermost layer of the served stack: after each request the trusted
-//! front relayed through the tunnel, report what it was and who made it to the
-//! host and to the request-log slice.
+//! front relayed through the tunnel report what it was and who made it to the
+//! host and to the request-log slice; a `/health` check goes to the request log
+//! only.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
 //! bearer gate's `401` off its [`RequestRefusal`] one; the gatekeeper bearer
@@ -15,6 +16,7 @@ use axum::body::HttpBody;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::Response;
+use shared_structures_rust::health_check::HEALTH_PATH;
 use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, RequestRefusal};
 use shared_structures_rust::served_origin::{
     forwarded_client_address, is_forwarded, request_provenance, RequestProvenance,
@@ -35,7 +37,9 @@ pub(crate) struct ForwardedRequestSenders {
 
 /// Report a [`ForwardedRequest`] on both of `forwarded_request_senders` once
 /// the response to a forwarded request is ready. A loopback request is not
-/// reported.
+/// reported. A forwarded `GET /health` ([`HEALTH_PATH`]) goes to the request
+/// log but not the host: the reachability monitor asks it through the relay at
+/// the start of every run, and a health check is nobody using the server.
 ///
 /// The forwarded test is [`is_forwarded`], the same presence-only predicate the
 /// loopback owner trust keys on, so a request with a malformed `Forwarded`
@@ -58,6 +62,7 @@ pub(crate) async fn report_forwarded_request(
     if !is_forwarded(request.headers()) {
         return next.run(request).await;
     }
+    let is_health_check = request.uri().path() == HEALTH_PATH;
     let received_at = SystemTime::now();
     let started = Instant::now();
     let client_address = forwarded_client_address(request.headers()).map(str::to_owned);
@@ -82,11 +87,13 @@ pub(crate) async fn report_forwarded_request(
         caller: response.extensions().get::<RequestCaller>().cloned(),
         refusal: response.extensions().get::<RequestRefusal>().copied(),
     };
-    if let Err(error) = forwarded_request_senders
-        .host_sender
-        .try_send(forwarded_request.clone())
-    {
-        tracing::debug!("forwarded-request report to the host dropped: {error}");
+    if !is_health_check {
+        if let Err(error) = forwarded_request_senders
+            .host_sender
+            .try_send(forwarded_request.clone())
+        {
+            tracing::debug!("forwarded-request report to the host dropped: {error}");
+        }
     }
     if let Err(error) = forwarded_request_senders
         .request_log_sender
@@ -175,6 +182,7 @@ mod tests {
                 }),
             )
             .route("/anonymous", get(|| async { "anonymous" }))
+            .route(HEALTH_PATH, get(|| async { "pass" }))
             .layer(axum::middleware::from_fn_with_state(
                 forwarded_request_senders,
                 report_forwarded_request,
@@ -326,6 +334,28 @@ mod tests {
                 "a loopback request must not be reported"
             );
         }
+    }
+
+    /// A forwarded `/health` check is in the request log but not the host's
+    /// notifications, and is still answered.
+    #[tokio::test]
+    async fn a_forwarded_health_check_is_logged_but_not_notified() {
+        let (senders, mut host_receiver, mut request_log_receiver) = senders(4);
+        let router = reporting_router(senders);
+        let response = router
+            .clone()
+            .oneshot(forwarded_get(HEALTH_PATH))
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        assert_eq!(
+            host_receiver.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty),
+            "a forwarded /health must not notify the host"
+        );
+        let logged = request_log_receiver.try_recv().expect("logged");
+        assert_eq!(logged.reduced_path, HEALTH_PATH);
     }
 
     /// A host or log writer that falls behind never slows the API: with the
