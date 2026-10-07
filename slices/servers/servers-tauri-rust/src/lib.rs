@@ -1,25 +1,25 @@
-//! Tauri host glue for the servers slice: the install's servers on the unit
-//! runner, the notifications about them, and the base's commands for adding a
-//! server and re-entering its token. Every decision lives in
+//! Tauri host glue for the servers slice: the install's servers on
+//! `TauriUnitRunner`, the notifications about them, and the base's commands for
+//! adding a server and re-entering its token. Every decision lives in
 //! [`servers_rust`], which needs no webview to be tested; this crate is only
 //! the glue.
 //!
 //! [`host_servers`], called once from the app's `setup()`:
 //!
 //! - pushes every server in `servers.json` to the app's
-//!   [`UnitRunner`](tauri_unit_runner::UnitRunner) as a unit whose id is its
-//!   domain, with its run policy and a factory that builds a fresh
+//!   [`TauriUnitRunner`](tauri_unit_runner::TauriUnitRunner) as a unit whose id
+//!   is its domain, with its run policy and a factory that builds a fresh
 //!   [`ServerUnit`](servers_rust::ServerUnit) for each run (see
 //!   [`ServerUnits::push`]). An unreadable registry is logged, and no server
 //!   runs;
 //! - posts a stop notification for each new stop of a server's run, read from
-//!   the runner's statuses, and the per-caller notifications for the requests
-//!   the servers' tunnels relay;
+//!   `TauriUnitRunner`'s statuses, and the per-caller notifications for the
+//!   requests the servers' tunnels relay;
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
 //! The commands write the registry, then push the server they changed. One
-//! async mutex orders each command's registry write and its push, so the
-//! runner always ends up with the record as last written.
+//! async mutex orders each command's registry write and its push, so
+//! `TauriUnitRunner` always ends up with the record as last written.
 //!
 //! - [`server_add`], invoked as
 //!   `invoke('server_add', { relay, tunnelName, token })`, enrols a tunnel at
@@ -59,7 +59,7 @@ use std::sync::Arc;
 use servers_rust::{JsonServerRegistry, ServerDetail, ServerRecord, ServerRegistry};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_log::log;
-use tauri_unit_runner::UnitRunner;
+use tauri_unit_runner::TauriUnitRunner;
 use tokio::sync::{mpsc, Mutex};
 use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
@@ -71,15 +71,15 @@ pub use server_units::{ServerConfigBuilder, ServerUnits};
 /// `wildflower_server_rust::ServerObservers`).
 pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
 
-/// What the servers commands work through: the install's registry, the
-/// runner's server units, and the lock that orders each registry write with
-/// its push.
+/// What the servers commands work through: the install's registry,
+/// `TauriUnitRunner`'s server units, and the lock that orders each registry
+/// write with its push.
 pub struct ServersState {
     pub(crate) registry: Arc<dyn ServerRegistry>,
     pub(crate) server_units: ServerUnits,
     /// Held by a command from before its registry write until after it has
-    /// pushed the result, so pushes reach the runner in the order the writes
-    /// were made.
+    /// pushed the result, so pushes reach `TauriUnitRunner` in the order the
+    /// writes were made.
     pub(crate) registry_writes: Mutex<()>,
 }
 
@@ -107,7 +107,7 @@ impl ServersState {
 pub fn host_servers(
     app: &AppHandle,
     data_root: &Path,
-    runner: &UnitRunner<ServerDetail>,
+    runner: &TauriUnitRunner<ServerDetail>,
     host_ports: HostPorts,
     server_config: impl Fn(&ServerRecord) -> anyhow::Result<WildflowerServerConfig>
         + Send
@@ -126,7 +126,7 @@ pub fn host_servers(
         Ok(records) => {
             for record in records {
                 log::info!(
-                    "[servers] setting {} on the runner, run policy {:?}",
+                    "[servers] setting {} on the unit runner, run policy {:?}",
                     record.domain(),
                     record.run_policy
                 );

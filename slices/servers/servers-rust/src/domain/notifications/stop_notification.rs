@@ -1,6 +1,6 @@
-//! The notification for a server's run that stopped, keyed by the unit
-//! runner's [`StopReason`], and [`StopNotificationTracker`], which picks each
-//! server's new stops out of the runner's statuses.
+//! The notification for a server's run that stopped, keyed by `UnitRunner`'s
+//! [`StopReason`], and [`StopNotificationTracker`], which picks each server's
+//! new stops out of `UnitRunner`'s statuses.
 
 use std::collections::BTreeMap;
 
@@ -17,14 +17,14 @@ pub const SERVER_STOPPED_NOTIFICATION_ID_PREFIX: &str = "server-stopped:";
 const STOPPED_TITLE: &str = "Wildflower server stopped";
 
 /// The title of a stop the platform made for the app's time in the
-/// background, which ends when the app opens again.
+/// background, which ends when the app becomes present again.
 const PAUSED_TITLE: &str = "Wildflower server paused";
 
 /// The notification for the run of the server `domain` that stopped as `stop`
-/// says, or `None` for a stop the runner made itself: the app set the server
-/// again or removed it, its policy stopped being active, or the runner
-/// restarted it. A run that ended on its own and a run the platform ended
-/// notify.
+/// says, or `None` for a stop `UnitRunner` made itself: the app set the server
+/// again or removed it, its policy stopped wanting it running, or `UnitRunner`
+/// restarted it. A run that ended on its own and a run the platform's end of
+/// the background session stopped notify.
 #[must_use]
 pub fn stop_notification(domain: &str, stop: &RunStop) -> Option<LocalNotification> {
     let (title, text) = match stop.reason {
@@ -36,7 +36,7 @@ pub fn stop_notification(domain: &str, stop: &RunStop) -> Option<LocalNotificati
             Some(error) => (STOPPED_TITLE, error.as_str()),
             None => (STOPPED_TITLE, "The server stopped."),
         },
-        StopReason::KeepAliveRevoked { platform_reason } => revocation_text(platform_reason),
+        StopReason::SessionEndedByPlatform { platform_reason } => session_end_text(platform_reason),
     };
     Some(LocalNotification {
         id: format!("{SERVER_STOPPED_NOTIFICATION_ID_PREFIX}{domain}"),
@@ -45,9 +45,9 @@ pub fn stop_notification(domain: &str, stop: &RunStop) -> Option<LocalNotificati
     })
 }
 
-/// The title and text for a run the platform stopped by ending the keep-alive
-/// for `platform_reason`.
-fn revocation_text(platform_reason: PlatformStopReason) -> (&'static str, &'static str) {
+/// The title and text for a run the platform stopped by ending the background
+/// session for `platform_reason`.
+fn session_end_text(platform_reason: PlatformStopReason) -> (&'static str, &'static str) {
     match platform_reason {
         PlatformStopReason::UserStop => (STOPPED_TITLE, "The server was stopped."),
         PlatformStopReason::NativeNotificationStop => (
@@ -78,16 +78,16 @@ fn revocation_text(platform_reason: PlatformStopReason) -> (&'static str, &'stat
     }
 }
 
-/// Picks each server's new stops out of the unit runner's statuses, whose
+/// Picks each server's new stops out of `UnitRunner`'s statuses, whose
 /// unit ids are the servers' domains, and decides which of them notify.
 ///
-/// Each stop notifies once, as [`stop_notification`] says. The runner retries
+/// Each stop notifies once, as [`stop_notification`] says. `UnitRunner` retries
 /// a failed run every few seconds, so a failure with the same error as the one
 /// last notified for that server doesn't notify again until the server has
 /// run.
 ///
-/// The statuses are read as the runner's watch holds them: a stop that a later
-/// one replaced before it was read is never seen.
+/// The statuses are read as `UnitRunner`'s watch holds them: a stop that a
+/// later one replaced before it was read is never seen.
 #[derive(Debug, Default)]
 pub struct StopNotificationTracker {
     servers: BTreeMap<UnitId, TrackedServer>,
@@ -220,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn the_runner_s_own_stops_never_notify() {
+    fn the_unit_runner_s_own_stops_never_notify() {
         for reason in [
             StopReason::PolicyInactive,
             StopReason::Replaced,
@@ -236,11 +236,15 @@ mod tests {
     }
 
     #[test]
-    fn every_platform_revocation_notifies_under_the_server_s_id() {
+    fn every_session_end_by_the_platform_notifies_under_the_server_s_id() {
         for platform_reason in EVERY_PLATFORM_REASON {
             let notification = stop_notification(
                 DOMAIN,
-                &stop(StopReason::KeepAliveRevoked { platform_reason }, None, 0),
+                &stop(
+                    StopReason::SessionEndedByPlatform { platform_reason },
+                    None,
+                    0,
+                ),
             )
             .unwrap_or_else(|| panic!("{platform_reason:?} notifies"));
             assert_eq!(notification.id, "server-stopped:ruth.relay.example.com");
@@ -253,15 +257,15 @@ mod tests {
 
     #[test]
     fn a_platform_pause_says_which_platform_ended_it() {
-        let revoked = stop(
-            StopReason::KeepAliveRevoked {
+        let ended_by_platform = stop(
+            StopReason::SessionEndedByPlatform {
                 platform_reason: PlatformStopReason::PlatformExpiration,
             },
             None,
             0,
         );
         assert_eq!(
-            stop_notification(DOMAIN, &revoked),
+            stop_notification(DOMAIN, &ended_by_platform),
             Some(LocalNotification {
                 id: "server-stopped:ruth.relay.example.com".to_owned(),
                 title: "Wildflower server paused".to_owned(),
@@ -295,14 +299,14 @@ mod tests {
     #[test]
     fn each_stop_notifies_once() {
         let mut tracker = StopNotificationTracker::new();
-        let revoked = stop(
-            StopReason::KeepAliveRevoked {
+        let ended_by_platform = stop(
+            StopReason::SessionEndedByPlatform {
                 platform_reason: PlatformStopReason::PlatformTimeout,
             },
             None,
             1,
         );
-        let current = statuses(vec![(DOMAIN, stopped(revoked))]);
+        let current = statuses(vec![(DOMAIN, stopped(ended_by_platform))]);
         assert_eq!(tracker.new_stop_notifications(&current).len(), 1);
         assert_eq!(tracker.new_stop_notifications(&current), Vec::new());
     }

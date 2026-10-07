@@ -1,11 +1,11 @@
-//! [`ServerUnits`]: the one place a server's record becomes a unit on the
-//! unit runner.
+//! [`ServerUnits`]: the one place a server's record becomes a unit on
+//! `TauriUnitRunner`.
 
 use std::sync::Arc;
 
 use servers_rust::{ServerDetail, ServerRecord, ServerUnit};
 use shared_structures_rust::request_caller::ForwardedRequest;
-use tauri_unit_runner::{UnitId, UnitRunner};
+use tauri_unit_runner::{TauriUnitRunner, UnitId};
 use tokio::sync::mpsc;
 use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
@@ -15,14 +15,14 @@ use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 pub type ServerConfigBuilder =
     Arc<dyn Fn(&ServerRecord) -> anyhow::Result<WildflowerServerConfig> + Send + Sync>;
 
-/// Pushes the install's servers to the unit runner, each as a unit whose id
+/// Pushes the install's servers to `TauriUnitRunner`, each as a unit whose id
 /// is the server's domain.
 ///
 /// The host's ports and the forwarded-request channel are the host's, shared
 /// by every run of every server.
 #[derive(Clone)]
 pub struct ServerUnits {
-    runner: UnitRunner<ServerDetail>,
+    runner: TauriUnitRunner<ServerDetail>,
     server_config: ServerConfigBuilder,
     host_ports: HostPorts,
     forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
@@ -34,7 +34,7 @@ impl ServerUnits {
     /// tunnels relay on `forwarded_request_sender`.
     #[must_use]
     pub fn new(
-        runner: UnitRunner<ServerDetail>,
+        runner: TauriUnitRunner<ServerDetail>,
         server_config: ServerConfigBuilder,
         host_ports: HostPorts,
         forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
@@ -47,10 +47,10 @@ impl ServerUnits {
         }
     }
 
-    /// Set the server `record` describes on the runner, with its run policy
-    /// and a factory that builds a fresh [`ServerUnit`] for each run from
-    /// `record`. A server already set is replaced: a run of its old record
-    /// stops, and it starts again from `record` if its policy is active.
+    /// Set the server `record` describes on `TauriUnitRunner`, with its run
+    /// policy and a factory that builds a fresh [`ServerUnit`] for each run
+    /// from `record`. A server already set is replaced: a run of its old record
+    /// stops, and it starts again from `record` if its policy wants it running.
     ///
     /// Call it after every registry write that changes `record`.
     pub fn push(&self, record: ServerRecord) {

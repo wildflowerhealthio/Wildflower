@@ -31,9 +31,9 @@
 //! shape; the app stores it here and pushes it to `UnitRunner`, which never
 //! reads `servers.json`.
 //!
-//! A server runs as a [`ServerUnit`] on the unit runner: the host pushes each
-//! record to the runner with a factory that builds a fresh unit for every run,
-//! and the unit reports its health as its [`ServerDetail`]. What the host
+//! A server runs as a [`ServerUnit`] on `UnitRunner`: the host pushes each
+//! record to `UnitRunner` with a factory that builds a fresh unit for every
+//! run, and the unit reports its health as its [`ServerDetail`]. What the host
 //! notifies about its servers is decided here too: the per-caller request
 //! notifications ([`RequestNotificationCoalescer`]) and each new stop of a
 //! server's run ([`StopNotificationTracker`]).
@@ -55,7 +55,7 @@
 //!    HTTP Message Signatures (RFC 9421) keyed by the token, so the token is
 //!    never sent.
 //!  - `live_bindings` — [`ServerUnit`], a server bound to
-//!    `wildflower-server-rust` as a unit the runner runs.
+//!    `wildflower-server-rust` as a unit `UnitRunner` runs.
 
 pub mod domain;
 

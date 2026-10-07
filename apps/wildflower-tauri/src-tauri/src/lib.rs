@@ -9,7 +9,7 @@ use shared_structures_rust::ServerRuntimeConfig;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::Manager;
-use tauri_unit_runner::{StartConfig, UnitRunner};
+use tauri_unit_runner::{BackgroundServiceStartConfig, TauriUnitRunner};
 use url::Url;
 use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
@@ -46,12 +46,12 @@ const OWNER_UI_BASE_URL: &str = if cfg!(debug_assertions) {
     env!("WILDFLOWER_OWNER_UI_BASE_URL")
 };
 
-// How the unit runner starts its keep-alive, the background-service plugin's
-// one service, from the same `tauri-shared-config.json` (re-emitted by
+// How the unit runner starts its background session, the background-service
+// plugin's one service, from the same `tauri-shared-config.json` (re-emitted by
 // `build.rs`): the text of Android's persistent foreground-service notification
 // and its foreground-service type. The TS shell imports the same pair from that
 // file for the plugin's `configureRecovery` (`src/main.tsx`), so the restarts
-// the plugin makes itself start the service as the runner does.
+// the plugin makes itself start the service as `TauriUnitRunner` does.
 const BACKGROUND_SERVICE_LABEL: &str = env!("WILDFLOWER_BACKGROUND_SERVICE_LABEL");
 const BACKGROUND_SERVICE_FOREGROUND_TYPE: &str =
     env!("WILDFLOWER_BACKGROUND_SERVICE_FOREGROUND_TYPE");
@@ -237,9 +237,9 @@ fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublisher
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Runs every server as a unit. Built before the Tauri builder: the
-    // background-service plugin takes the runner's keep-alive service before
-    // `.setup()`, which pushes the servers to it.
-    let runner = UnitRunner::<ServerDetail>::new(StartConfig {
+    // background-service plugin takes `TauriUnitRunner`'s background session
+    // service before `.setup()`, which pushes the servers to it.
+    let runner = TauriUnitRunner::<ServerDetail>::new(BackgroundServiceStartConfig {
         service_label: BACKGROUND_SERVICE_LABEL.to_owned(),
         foreground_service_type: BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned(),
     });
@@ -316,17 +316,18 @@ pub fn run() {
                 .level_for("h2", tauri_plugin_log::log::LevelFilter::Warn)
                 .build(),
         )
-        // Before the runner's plugins: the runner asks for the notification
-        // permission before its keep-alive first starts, and the servers'
-        // notifications post through it.
+        // Before `TauriUnitRunner`'s plugins: it asks for the notification
+        // permission before its background session first starts, and the
+        // servers' notifications post through it.
         .plugin(tauri_plugin_notification::init())
-        // The runner's keep-alive, the background-service plugin's one
-        // service: in-process on desktop. The plugin's `background-service`
-        // config in `tauri.conf.json` allowlists the foreground-service type
-        // it starts as.
+        // `TauriUnitRunner`'s background session, the background-service
+        // plugin's one service: in-process on desktop. The plugin's
+        // `background-service` config in `tauri.conf.json` allowlists the
+        // foreground-service type it starts as.
         .plugin(runner.background_service_plugin())
-        // Tells the runner whether the app is open, restarts every running
-        // server on an iOS resume, and starts and stops the keep-alive.
+        // Tells `TauriUnitRunner` whether the app is present, restarts every
+        // running server when the iOS app returns to the foreground, and
+        // starts and ends the background session.
         .plugin(runner.lifecycle_plugin())
         .setup(move |app| {
             let data_root = resolve_data_dir(app.handle())?;
@@ -356,8 +357,8 @@ pub fn run() {
             har_recorder_tauri_rust::attach_har_recorder(app.handle(), data_root.clone());
 
             // Push every server in `servers.json`, in the same data root, to
-            // the runner, and manage the registry the commands write. Each run
-            // of a server builds its config from its record here.
+            // `TauriUnitRunner`, and manage the registry the commands write.
+            // Each run of a server builds its config from its record here.
             let config_app_handle = app.handle().clone();
             let config_data_root = data_root.clone();
             servers_tauri_rust::host_servers(
@@ -411,10 +412,11 @@ mod tests {
         );
     }
 
-    /// The plugin checks the type the runner's keep-alive starts as against
-    /// its config's allowlist on every platform, so a type missing from
-    /// `tauri.conf.json` would stop the keep-alive starting at all. Read through the plugin's own
-    /// config type, which is what the plugin validates at startup.
+    /// The plugin checks the type `TauriUnitRunner`'s background session starts
+    /// as against its config's allowlist on every platform, so a type missing
+    /// from `tauri.conf.json` would stop the background session starting at
+    /// all. Read through the plugin's own config type, which is what the plugin
+    /// validates at startup.
     #[test]
     fn the_background_service_config_allows_the_service_s_foreground_type() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");

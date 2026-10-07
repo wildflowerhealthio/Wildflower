@@ -28,9 +28,9 @@ changing how servers run or what the host notifies about them.
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`.
-    `tests/server_unit.rs` runs the real server through the runner's core.
+    `tests/server_unit.rs` runs the real server through `UnitRunner`.
 - **`servers-tauri-rust`** — the host side. `host_servers`, called from the
-  app's `setup()`, pushes every server to the app's `UnitRunner` through
+  app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
   `ServerUnits::push`, posts the stop and request notifications, and manages
   the commands' `ServersState`. The base's Tauri commands, `server_add` and
   `server_set_credentials`, write the registry and then push the server they
@@ -169,11 +169,13 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   the host's server config builder. Don't start a server any other way.
 - **Write, then push, under one lock.** A command that writes a server holds
   `ServersState::registry_writes` from before its write until after it has
-  pushed the record it wrote, so pushes reach the runner in write order.
-- **Status comes from the runner.** Whether a server is running, why it last
-  stopped and its health are the runner's `UnitStatus<ServerDetail>`, from
-  `statuses()` / `subscribe()`; nothing in the slice tracks runs itself. A
-  run's health goes out through `ctx.set_detail`, and the runner clears it.
+  pushed the record it wrote, so pushes reach `TauriUnitRunner` in write
+  order.
+- **Status comes from `UnitRunner`.** Whether a server is running, why it
+  last stopped and its health are `UnitRunner`'s `UnitStatus<ServerDetail>`,
+  from `statuses()` / `subscribe()`; nothing in the slice tracks runs itself.
+  A run's health goes out through `ctx.set_detail`, and `UnitRunner` clears
+  it.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
   `domain/notifications/` with its tests; `servers-tauri-rust` only posts.
 - **Configuration only.** `ServerRecord::run_policy` is when the user wants
@@ -197,9 +199,10 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   passes; it only stops wanting its server running. Only the user's choices
   write a policy.
 - **No cap on running servers.** `set_run_policy` changes only the server it
-  names; every other server keeps its policy, so several can be active at
-  once. They all bind the one loopback port, so a second active server fails
-  and the runner retries it every 5 s; nothing guards against that.
+  names; every other server keeps its policy, so several can want their
+  servers running at once. They all bind the one loopback port, so a second
+  server run fails and `UnitRunner` retries it every 5 s; nothing guards
+  against that.
 - **A new server runs if nothing else does.** `add_server` gives a new server
   `whileOpen` when no registered server's policy wants it running, and `off`
   otherwise. An `off` policy or an `until` that has passed doesn't.
@@ -243,10 +246,11 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   `VITE_SENTRY_DSN_WILDFLOWER_TAURI`, tagged `app: wildflower-tauri`. The web
   app's consent is its own, on its own origin.
 - **`servers-rust` has no `tauri` dependency**, so it builds and tests in the
-  non-Tauri partition of `scripts/checks/rust.sh`. Its one runner dependency
-  is `global/unit-runner`, the runner's Tauri-free core, and the server it
-  runs is `wildflower-server-rust`, Tauri-free too. `servers-tauri-rust`
-  depends on `global/tauri-unit-runner` and is in the Tauri partition.
+  non-Tauri partition of `scripts/checks/rust.sh`. Its one unit runner
+  dependency is `global/unit-runner`, the Tauri-free `UnitRunner`, and the
+  server it runs is `wildflower-server-rust`, Tauri-free too.
+  `servers-tauri-rust` depends on `global/tauri-unit-runner` and is in the Tauri
+  partition.
 
 ## References
 
@@ -254,7 +258,7 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   host runs the servers on the unit runner, the notifications, and the
   background-service packaging.
 - [unit-runner Design Explanation](../../global/unit-runner/docs/Design%20Explanation.md)
-  — the runner's contract and vocabulary.
+  — `UnitRunner`'s contract and vocabulary.
 - [wildflower-server AGENTS.md](../wildflower-server/AGENTS.md) — the server
   each run sets up and serves.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

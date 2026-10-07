@@ -1,6 +1,6 @@
 //! Posting what [`servers_rust`] decides to notify about the servers: each
 //! caller's requests through the tunnels, and each new stop of a server's
-//! run, read from the unit runner's statuses.
+//! run, read from `TauriUnitRunner`'s statuses.
 
 use std::time::Instant;
 
@@ -51,8 +51,8 @@ async fn sleep_until_due(due_at: Option<Instant>) {
 }
 
 /// Post a stop notification for each new stop of a server's run, as
-/// [`StopNotificationTracker`] decides, every time the runner's statuses
-/// change.
+/// [`StopNotificationTracker`] decides, every time `TauriUnitRunner`'s
+/// statuses change.
 pub(crate) async fn post_stop_notifications<R: Runtime>(
     app: AppHandle<R>,
     mut statuses: watch::Receiver<UnitStatuses<ServerDetail>>,
@@ -64,7 +64,7 @@ pub(crate) async fn post_stop_notifications<R: Runtime>(
             post_notification(&app, &notification);
         }
         if statuses.changed().await.is_err() {
-            log::error!("[servers] the runner's statuses closed; stop notifications stopped");
+            log::error!("[servers] the unit runner's statuses closed; stop notifications stopped");
             return;
         }
     }

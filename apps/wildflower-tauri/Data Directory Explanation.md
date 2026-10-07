@@ -58,7 +58,8 @@ configuration only, never whether a server is up:
 ```
 
 `runPolicy` is when the user wants the server run, in the unit runner's own
-shape, which the host pushes to the runner unchanged: `{"kind": "off"}`, `{"kind": "whileOpen"}`,
+shape, which the host pushes to `TauriUnitRunner` unchanged:
+`{"kind": "off"}`, `{"kind": "whileOpen"}`,
 `{"kind": "until", "at": "<RFC 3339>"}` or `{"kind": "always"}`. A new server
 gets `whileOpen` when no other server's policy wants it running, and `off`
 otherwise. An `until` whose `at` has passed stays in the file and no longer

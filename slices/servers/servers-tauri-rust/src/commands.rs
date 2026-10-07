@@ -1,6 +1,6 @@
 //! The servers commands: thin wrappers that parse their arguments, call
 //! [`servers_rust`]'s enrolment with a [`ReqwestRelayClient`] for a
-//! Wildflower relay, push the server they wrote to the unit runner, and log
+//! Wildflower relay, push the server they wrote to `TauriUnitRunner`, and log
 //! the outcome by domain.
 //!
 //! Each takes its arguments as top-level parameters, which Tauri reads from
@@ -24,11 +24,10 @@ use url::Url;
 
 use crate::ServersState;
 
-/// Enrol and register a server, then push it to the runner; answers with its
-/// domain. Invoked as
-/// `invoke('server_add', { relay, tunnelName, token })`, `relay` being an
-/// [`EnteredRelay`]. The token is trimmed. No parameter is logged, and the
-/// token never is.
+/// Enrol and register a server, then push it to `TauriUnitRunner`; answers with
+/// its domain. Invoked as `invoke('server_add', { relay, tunnelName, token })`,
+/// `relay` being an [`EnteredRelay`]. The token is trimmed. No parameter is
+/// logged, and the token never is.
 ///
 /// # Errors
 ///
@@ -44,7 +43,7 @@ pub async fn server_add(
 }
 
 /// Replace a registered server's token once its relay accepts it, or at
-/// once for a rathole relay, then push the server to the runner, which
+/// once for a rathole relay, then push the server to `TauriUnitRunner`, which
 /// restarts a run of it with the new token; answers with nothing. Invoked as
 /// `invoke('server_set_credentials', { domain, token })`. The token is
 /// trimmed.
@@ -150,7 +149,9 @@ mod tests {
     use serde::Deserialize;
     use servers_rust::{JsonServerRegistry, RelayKind, ServerDetail, ServerRecord};
     use shared_structures_rust::OnDeviceWebviewHandle;
-    use tauri_unit_runner::{RunPolicy, StartConfig, UnitId, UnitRunner, UnitStatus};
+    use tauri_unit_runner::{
+        BackgroundServiceStartConfig, RunPolicy, TauriUnitRunner, UnitId, UnitStatus,
+    };
     use tokio::sync::{mpsc, watch};
     use wildflower_server_rust::HostPorts;
 
@@ -260,9 +261,9 @@ mod tests {
     }
 
     /// The commands' state over a registry in a fresh data root, pushing to
-    /// `runner`. The app is never open here, so a
-    /// `whileOpen` server never runs, and no run builds a config.
-    fn servers_on(runner: &UnitRunner<ServerDetail>) -> (tempfile::TempDir, ServersState) {
+    /// `runner`. The app is never present here, so a `whileOpen` server never
+    /// runs, and no run builds a config.
+    fn servers_on(runner: &TauriUnitRunner<ServerDetail>) -> (tempfile::TempDir, ServersState) {
         let data_root = tempfile::tempdir().unwrap();
         let (host_owner_token_sender, _) = watch::channel(None);
         let (active_pending_consent_sender, _) = watch::channel(None);
@@ -287,8 +288,8 @@ mod tests {
         (data_root, servers)
     }
 
-    fn runner() -> UnitRunner<ServerDetail> {
-        UnitRunner::new(StartConfig {
+    fn runner() -> TauriUnitRunner<ServerDetail> {
+        TauriUnitRunner::new(BackgroundServiceStartConfig {
             service_label: "Wildflower server is running".to_owned(),
             foreground_service_type: "specialUse".to_owned(),
         })
@@ -418,8 +419,8 @@ mod tests {
         assert_eq!(registered[0].token.expose(), TOKEN);
     }
 
-    /// The server a command wrote is set on the runner, under its domain; a
-    /// failed command sets nothing.
+    /// The server a command wrote is set on `TauriUnitRunner`, under its
+    /// domain; a failed command sets nothing.
     #[tokio::test]
     async fn the_commands_push_what_they_wrote_to_the_runner() {
         let runner = runner();
@@ -442,7 +443,7 @@ mod tests {
         assert_eq!(
             statuses[&UnitId::from("ruth.relay.example.com")],
             UnitStatus::never_run(),
-            "the app isn't open, so a whileOpen server waits"
+            "the app isn't present, so a whileOpen server waits"
         );
 
         set_credentials_with(

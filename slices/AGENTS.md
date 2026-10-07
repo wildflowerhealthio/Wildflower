@@ -133,7 +133,7 @@ pushes every record with its run policy and a factory that builds a fresh
 unit for each run, and the unit reports its health as its detail.
 `servers-rust` also decides what the host notifies: the per-caller request
 notifications and each new stop of a server's run. `servers-tauri-rust` is
-the host side: it pushes the servers to the runner, posts the
+the host side: it pushes the servers to `TauriUnitRunner`, posts the
 notifications, and holds the base's `server_add` and `server_set_credentials`
 commands, which write the registry and then push. See the
 [Server Runs Explanation](./servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in

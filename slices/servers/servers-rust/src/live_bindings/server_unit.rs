@@ -1,4 +1,4 @@
-//! [`ServerUnit`]: one server, as a unit the unit runner runs.
+//! [`ServerUnit`]: one server, as a unit `UnitRunner` runs.
 
 use shared_structures_rust::request_caller::ForwardedRequest;
 use tokio::sync::{mpsc, watch};
@@ -8,11 +8,11 @@ use wildflower_server_rust::{HostPorts, ServerHealth, ServerObservers, Wildflowe
 use crate::domain::ServerDetail;
 
 /// One run of one server: the Wildflower server `wildflower-server-rust` sets
-/// up and serves, as a unit the unit runner runs.
+/// up and serves, as a unit `UnitRunner` runs.
 ///
 /// The host's factory builds a fresh `ServerUnit` for each run, from the
 /// server's record as the host last pushed it, so a run's configuration is
-/// fixed from its start to its end. The runner gives each run its own thread
+/// fixed from its start to its end. `UnitRunner` gives each run its own thread
 /// and runtime, and shuts that runtime down when the run ends, which stops
 /// every task the server's slices spawned.
 ///
@@ -44,7 +44,7 @@ impl Unit for ServerUnit {
     type Detail = ServerDetail;
 
     /// Set the server up, announce it running once it is bound, and serve it
-    /// until the runner stops the run. Its health goes out as the run's
+    /// until `UnitRunner` stops the run. Its health goes out as the run's
     /// [`ServerDetail`].
     async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
         let (server_health_sender, server_health) = watch::channel(None);
@@ -59,13 +59,13 @@ impl Unit for ServerUnit {
         )
         .await?;
         ctx.announce_running();
-        server.serve(ctx.shutdown().clone()).await
+        server.serve(ctx.shutdown_token().clone()).await
     }
 }
 
 /// Set each health the run's reachability monitor publishes as the run's
 /// detail, until the server drops its sender. The task dies with the run's
-/// runtime, and the runner clears the detail when the run ends.
+/// runtime, and `UnitRunner` clears the detail when the run ends.
 async fn report_health_as_detail(
     mut server_health: watch::Receiver<Option<ServerHealth>>,
     ctx: RunContext<ServerDetail>,

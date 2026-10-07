@@ -1,5 +1,5 @@
-//! The real server as a unit: a `ServerUnit` run through the unit runner's
-//! core, with no platform bound (units run without a keep-alive). It comes up
+//! The real server as a unit: a `ServerUnit` run through `UnitRunner`, with no
+//! platform bound (units run without a background session). It comes up
 //! `Running` and answers `/health` on its loopback port, reports its health
 //! as the run's detail, and once its policy turns it off, stops with the
 //! detail cleared. Turned back on, the next run binds the same port, so the
@@ -14,7 +14,7 @@ use servers_rust::{RunPolicy, ServerDetail, ServerUnit};
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
-use unit_runner::{RunState, StopReason, SystemClock, UnitId, UnitRunnerCore, UnitStatus};
+use unit_runner::{RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus};
 use url::Url;
 use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
@@ -72,12 +72,12 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
 /// Wait until the server's status satisfies `predicate`, failing the test
 /// after [`LIFECYCLE_TIMEOUT`], or at once on a run that failed.
 async fn wait_for(
-    runner: &UnitRunnerCore<ServerDetail>,
+    unit_runner: &UnitRunner<ServerDetail>,
     what: &str,
     predicate: impl Fn(&UnitStatus<ServerDetail>) -> bool,
 ) -> UnitStatus<ServerDetail> {
     let unit_id = UnitId::from(DOMAIN);
-    let mut statuses = runner.subscribe();
+    let mut statuses = unit_runner.subscribe();
     let waited = tokio::time::timeout(
         LIFECYCLE_TIMEOUT,
         statuses.wait_for(|statuses| {
@@ -101,7 +101,7 @@ async fn wait_for(
         Ok(Err(_)) => panic!("the statuses closed while waiting for the server to be {what}"),
         Err(_) => panic!(
             "the server never became {what}; it is {:?}",
-            runner.statuses().get(&unit_id)
+            unit_runner.statuses().get(&unit_id)
         ),
     }
 }
@@ -130,11 +130,9 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
     let (forwarded_request_sender, _forwarded_requests) = mpsc::channel(16);
     let config = server_config(server_dir.path().to_owned(), loopback_base_url.clone());
 
-    let runner = UnitRunnerCore::<ServerDetail>::new(
-        tokio::runtime::Handle::current(),
-        Arc::new(SystemClock),
-    );
-    runner.set_unit(UnitId::from(DOMAIN), RunPolicy::Always, move || {
+    let unit_runner =
+        UnitRunner::<ServerDetail>::new(tokio::runtime::Handle::current(), Arc::new(SystemClock));
+    unit_runner.set_unit(UnitId::from(DOMAIN), RunPolicy::Always, move || {
         Ok(ServerUnit::new(
             config.clone(),
             host_ports.clone(),
@@ -142,7 +140,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         ))
     });
 
-    wait_for(&runner, "running", |status| {
+    wait_for(&unit_runner, "running", |status| {
         status.run_state == RunState::Running
     })
     .await;
@@ -152,7 +150,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
     );
     // No relay serves the public host, so the monitor finds it unreachable,
     // and the run reports that as its detail.
-    wait_for(&runner, "reporting its health", |status| {
+    wait_for(&unit_runner, "reporting its health", |status| {
         status
             .detail
             .as_ref()
@@ -160,8 +158,8 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
     })
     .await;
 
-    runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Off);
-    let stopped = wait_for(&runner, "stopped", |status| {
+    unit_runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Off);
+    let stopped = wait_for(&unit_runner, "stopped", |status| {
         matches!(status.run_state, RunState::Stopped { last_stop: Some(_) })
     })
     .await;
@@ -175,8 +173,8 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
     assert_eq!(stop.error, None);
     assert_eq!(stopped.detail, None, "no health outlives the run");
 
-    runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Always);
-    wait_for(&runner, "running again", |status| {
+    unit_runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Always);
+    wait_for(&unit_runner, "running again", |status| {
         status.run_state == RunState::Running
     })
     .await;
@@ -185,6 +183,6 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         reqwest::StatusCode::OK
     );
 
-    runner.remove_unit(&UnitId::from(DOMAIN)).await;
-    assert!(runner.statuses().is_empty());
+    unit_runner.remove_unit(&UnitId::from(DOMAIN)).await;
+    assert!(unit_runner.statuses().is_empty());
 }

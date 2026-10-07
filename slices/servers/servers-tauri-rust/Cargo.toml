@@ -4,8 +4,8 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# Tauri host glue for the servers slice: the install's servers on the unit
-# runner, the notifications about them, and the base's commands over
+# Tauri host glue for the servers slice: the install's servers on
+# `TauriUnitRunner`, the notifications about them, and the base's commands over
 # `servers-rust`, which holds every decision and its tests.
 [dependencies]
 # A server config builder's error, which fails the run it was building.
@@ -14,7 +14,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
 # Posting the stop and request notifications.
 tauri-plugin-notification = "2"
-# The app's runner, which the servers are pushed to as units.
+# The app's `TauriUnitRunner`, which the servers are pushed to as units.
 tauri-unit-runner = { path = "../../../global/tauri-unit-runner" }
 # The registry, enrolment and the relay client adapter the commands drive;
 # `ServerUnit`; and the notification decisions.

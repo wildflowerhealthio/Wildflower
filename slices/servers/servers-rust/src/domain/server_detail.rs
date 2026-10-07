@@ -1,10 +1,10 @@
-//! [`ServerDetail`], what a server's run reports to the unit runner beyond its
+//! [`ServerDetail`], what a server's run reports to `UnitRunner` beyond its
 //! run state.
 
 use wildflower_server_rust::ServerHealth;
 
-/// A server's own status: the unit runner's `Detail` for a
-/// [`ServerUnit`](crate::ServerUnit). The runner reports it in the server's
+/// A server's own status: `UnitRunner`'s `Detail` for a
+/// [`ServerUnit`](crate::ServerUnit). `UnitRunner` reports it in the server's
 /// `UnitStatus` while a run is in progress, and clears it when the run ends.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerDetail {
