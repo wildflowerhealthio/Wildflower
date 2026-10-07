@@ -59,6 +59,10 @@ pub struct WildflowerServer {
     /// What the tunnel listener serves: the API behind the tunnel front,
     /// with no loopback trust.
     tunnel_router: Router,
+    /// A sender onto the tunnel listener, for
+    /// [`tunnel_stream_sender`](Self::tunnel_stream_sender).
+    #[cfg(feature = "test-support")]
+    tunnel_stream_sender: mpsc::Sender<TunnelStream>,
     /// The tunnel's supervisor, which dials the relay until it's dropped. The
     /// server holds it so the tunnel runs for exactly as long as the server
     /// does.
@@ -69,6 +73,15 @@ pub struct WildflowerServer {
 }
 
 impl WildflowerServer {
+    /// A sender onto the tunnel listener, as the tunnel holds: each stream
+    /// sent is served as a visitor's connection through the tunnel. Test
+    /// support only (the `test-support` feature).
+    #[cfg(feature = "test-support")]
+    #[must_use]
+    pub fn tunnel_stream_sender(&self) -> mpsc::Sender<TunnelStream> {
+        self.tunnel_stream_sender.clone()
+    }
+
     /// Serve the composed API on the bound loopback port and the tunnel
     /// listener until `shutdown` is cancelled. Cancelling stops both accepting
     /// connections, and the call returns `Ok` once the open ones on both
@@ -86,6 +99,8 @@ impl WildflowerServer {
             tunnel_router,
             tunnel_daemon,
             reachability_monitor,
+            // The `test-support` feature's `tunnel_stream_sender`.
+            ..
         } = self;
         let loopback = axum::serve(
             loopback_listener,
@@ -301,6 +316,8 @@ pub async fn set_up(
         relay_settings,
     };
     let tunnel_daemon = tunnel_rust::setup_tunnel(&tunnel_config);
+    #[cfg(feature = "test-support")]
+    let tunnel_stream_sender = tunnel_config.tunnel_stream_sender;
     // Whether a remote app can reach the server: the monitor GETs the server's
     // own `/health` (mounted below) through the public origin, so the request
     // goes out to the relay and back down the tunnel, and publishes the answer
@@ -496,6 +513,8 @@ pub async fn set_up(
         loopback_router,
         tunnel_listener: TunnelListener::new(tunnel_streams),
         tunnel_router,
+        #[cfg(feature = "test-support")]
+        tunnel_stream_sender,
         tunnel_daemon,
         reachability_monitor,
     })

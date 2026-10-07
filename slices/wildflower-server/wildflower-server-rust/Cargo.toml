@@ -11,6 +11,13 @@ publish.workspace = true
 # through the public origin. No `tauri` dependency —
 # the Tauri host hands in its native adapters as trait objects — so it compiles
 # and tests without GTK.
+[features]
+# Test support for this crate's own integration tests:
+# `WildflowerServer::tunnel_stream_sender`, which hands the tunnel listener a
+# visitor's connection the way the tunnel does. Only the dev-dependency on this
+# crate below enables it.
+test-support = []
+
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
@@ -69,6 +76,10 @@ tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 workspace = true
 
 [dev-dependencies]
+# This crate with its test support, for `tests/serve.rs`.
+wildflower-server-rust = { path = ".", features = ["test-support"] }
+# PROXY headers the tunnel listener tests send.
+ppp.workspace = true
 serde_json.workspace = true
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"

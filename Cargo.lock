@@ -9512,6 +9512,7 @@ dependencies = [
  "tracing",
  "tunnel-rust",
  "url",
+ "wildflower-server-rust",
 ]
 
 [[package]]
