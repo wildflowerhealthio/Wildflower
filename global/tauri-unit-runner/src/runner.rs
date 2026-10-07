@@ -6,15 +6,13 @@ use std::sync::Arc;
 use tauri_plugin_background_service::StartConfig;
 use tokio::sync::watch;
 
-use crate::domain::run_policy::RunPolicy;
-use crate::runner::wall_clock::SystemClock;
-use crate::runner::{erase_factory, RunnerCore, RunnerTimings};
-use crate::status::UnitStatuses;
+use unit_runner::{RunPolicy, SystemClock, Unit, UnitId, UnitRunnerCore, UnitStatuses};
+
 use crate::tauri_bindings::TauriBindings;
-use crate::unit::{Unit, UnitId};
 
 /// Holds the app's units, reconciles their runs with their policies, and keeps
-/// the app alive while any of them should run.
+/// the app alive while any of them should run: a [`UnitRunnerCore`] bound to
+/// Tauri.
 ///
 /// Build it before the Tauri builder, and register both of its plugins:
 ///
@@ -38,7 +36,7 @@ use crate::unit::{Unit, UnitId};
 /// The app pushes; the runner never reads the app's storage and never changes
 /// a policy. Cloning is cheap; every clone is the same runner.
 pub struct UnitRunner<D> {
-    pub(crate) core: Arc<RunnerCore<D>>,
+    pub(crate) core: Arc<UnitRunnerCore<D>>,
     pub(crate) bindings: Arc<TauriBindings>,
 }
 
@@ -62,11 +60,11 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     #[must_use]
     pub fn new(start_config: StartConfig) -> Self {
         let runtime = tauri::async_runtime::handle().inner().clone();
-        let core = RunnerCore::new(runtime, Arc::new(SystemClock), RunnerTimings::default());
+        let core = UnitRunnerCore::new(runtime, Arc::new(SystemClock));
         Self::from_core(core, start_config)
     }
 
-    pub(crate) fn from_core(core: Arc<RunnerCore<D>>, start_config: StartConfig) -> Self {
+    pub(crate) fn from_core(core: Arc<UnitRunnerCore<D>>, start_config: StartConfig) -> Self {
         Self {
             core,
             bindings: Arc::new(TauriBindings::new(start_config)),
@@ -84,7 +82,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         policy: RunPolicy,
         factory: impl Fn() -> anyhow::Result<U> + Send + Sync + 'static,
     ) {
-        self.core.set_unit(unit_id, policy, erase_factory(factory));
+        self.core.set_unit(unit_id, policy, factory);
     }
 
     /// Replace the policy of the unit `unit_id`. Even with the policy it already

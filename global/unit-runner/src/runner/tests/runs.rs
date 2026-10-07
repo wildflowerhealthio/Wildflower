@@ -165,9 +165,9 @@ async fn a_failed_factory_is_a_failed_run() {
     harness.core.set_unit(
         UnitId::from("unit"),
         RunPolicy::Always,
-        crate::runner::erase_factory(|| -> anyhow::Result<super::fakes::ScriptedUnit> {
+        || -> anyhow::Result<super::fakes::ScriptedUnit> {
             Err(anyhow::anyhow!("no configuration"))
-        }),
+        },
     );
     let stop = harness
         .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)

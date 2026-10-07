@@ -1,10 +1,5 @@
-//! The runner's rules, free of threads, runtimes and Tauri: when a policy is
-//! active, when the app counts as open, what a reconcile does to each unit,
-//! when a run restarts, and how a keep-alive task ends. Every rule takes the
-//! wall-clock instant it is judged at, so tests drive it with a fixed clock.
+//! The Tauri side's one rule, free of Tauri itself: whether the app is open
+//! after each of its window events, and which resumes call for restarting
+//! every running unit.
 
-pub mod app_presence;
-pub mod keep_alive_ledger;
-pub mod run_policy;
-pub mod unit_plan;
 pub mod window_state;

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 
-use super::wall_clock::WallClock;
+use crate::ports::wall_clock::WallClock;
 use crate::status::{RunState, RunStop, StopReason, UnitStatus, UnitStatuses};
 use crate::unit::UnitId;
 

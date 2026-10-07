@@ -13,8 +13,7 @@ use super::keep_alive_end_pairing::{KeepAliveTaskEnd, BACKGROUND_SERVICE_EVENT};
 use super::plugin_keep_alive::PluginKeepAlive;
 use super::UNIT_RUNNER_PLUGIN_NAME;
 use crate::domain::window_state::{WindowState, WindowStateChange};
-use crate::runner::keep_alive_sync::sync_keep_alive;
-use crate::unit_runner::UnitRunner;
+use crate::runner::UnitRunner;
 
 /// The lifecycle plugin for `runner`.
 pub(super) fn plugin<R: Runtime, D: Clone + Send + Sync + 'static>(
@@ -70,9 +69,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
                     app.clone(),
                     self.bindings.start_config.clone(),
                 ));
-                self.core
-                    .runtime()
-                    .spawn(sync_keep_alive(Arc::clone(&self.core), platform));
+                self.core.start_keep_alive_sync(platform);
             }
             RunEvent::WindowEvent {
                 label,

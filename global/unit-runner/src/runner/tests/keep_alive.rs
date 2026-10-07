@@ -7,7 +7,7 @@ use std::time::Duration;
 use super::fakes::{eventually, FakeKeepAlive, Harness, Probe, Script};
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
-use crate::runner::keep_alive_sync::{sync_keep_alive, KeepAlivePlatform};
+use crate::ports::keep_alive_platform::KeepAlivePlatform;
 use crate::status::{PlatformStopReason, StopReason};
 
 /// A harness whose keep-alive the fake platform runs.
@@ -20,10 +20,9 @@ fn harness_with_keep_alive_and_restart_delay(
 ) -> (Harness, Arc<FakeKeepAlive>) {
     let harness = Harness::with_restart_delay(restart_delay);
     let keep_alive = FakeKeepAlive::new(&harness.core);
-    tokio::spawn(sync_keep_alive(
-        Arc::clone(&harness.core),
-        Arc::clone(&keep_alive) as Arc<dyn KeepAlivePlatform>,
-    ));
+    harness
+        .core
+        .start_keep_alive_sync(Arc::clone(&keep_alive) as Arc<dyn KeepAlivePlatform>);
     (harness, keep_alive)
 }
 

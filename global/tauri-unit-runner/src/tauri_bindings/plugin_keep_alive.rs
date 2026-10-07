@@ -1,4 +1,4 @@
-//! [`PluginKeepAlive`]: the runner's keep-alive seam, through the
+//! [`PluginKeepAlive`]: the runner's keep-alive port, through the
 //! background-service plugin's `ServiceManagerHandle`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -6,10 +6,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{anyhow, Context};
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_background_service::{ServiceError, ServiceManagerHandle, StartConfig};
+use unit_runner::{KeepAliveOperation, KeepAlivePlatform};
 
 use super::keep_alive_end_pairing::RUNNER_RELEASE_STOP_REASON;
 use super::notification_permission::ask_for_notification_permission;
-use crate::runner::keep_alive_sync::{KeepAliveOperation, KeepAlivePlatform};
 
 /// Starts and stops the plugin's one service, which is the keep-alive task
 /// while it runs.

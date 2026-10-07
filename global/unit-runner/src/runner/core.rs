@@ -1,5 +1,5 @@
-//! [`RunnerCore`]: the units, their runs and pending restarts, whether the app
-//! is open, the keep-alive, and the reconcile that brings the runs in line
+//! [`UnitRunnerCore`]: the units, their runs and pending restarts, whether the
+//! app is open, the keep-alive, and the reconcile that brings the runs in line
 //! with the policies.
 
 use std::collections::BTreeMap;
@@ -11,12 +11,11 @@ use tokio::runtime::Handle;
 use tokio::sync::{watch, Notify};
 use tokio_util::sync::CancellationToken;
 
-use super::erased_unit::UnitFactory;
-use super::keep_alive_sync::KeepAliveDemand;
+use super::erased_unit::{erase_factory, UnitFactory};
+use super::keep_alive_sync::{sync_keep_alive, KeepAliveDemand};
 use super::run_supervisor::{supervise_run, RunSpec};
 use super::status_board::StatusBoard;
 use super::unit_entry::{ActiveRun, PendingRestart, UnitEntry};
-use super::wall_clock::WallClock;
 use super::wall_clock_ticker::reconcile_on_the_wall_clock;
 use super::RunnerTimings;
 use crate::domain::app_presence::{AppPresence, PresenceChange};
@@ -25,13 +24,26 @@ use crate::domain::run_policy::RunPolicy;
 #[cfg(test)]
 use crate::domain::unit_plan::UnitPhase;
 use crate::domain::unit_plan::{plan_unit, restarts_after, UnitAction};
+use crate::ports::keep_alive_platform::KeepAlivePlatform;
+use crate::ports::wall_clock::WallClock;
 use crate::status::{PlatformStopReason, StopReason, UnitStatuses};
-use crate::unit::UnitId;
+use crate::unit::{Unit, UnitId};
 
-/// The runner's engine. Every method takes the one state lock briefly and
-/// never awaits under it; runs, restart timers and the wall-clock reconcile
-/// are tasks on `runtime`.
-pub(crate) struct RunnerCore<D> {
+/// The runner, free of any platform: holds the units, reconciles their runs
+/// with their policies, restarts the ones that end on their own, and publishes
+/// their statuses and whether the keep-alive is wanted.
+///
+/// A host binds it to its platform. It tells the runner when the app opens or
+/// closes ([`set_app_open`](Self::set_app_open)), when every running unit
+/// should restart ([`restart_running_units`](Self::restart_running_units)),
+/// and when the keep-alive task starts and ends
+/// ([`keep_alive_started`](Self::keep_alive_started),
+/// [`keep_alive_ended`](Self::keep_alive_ended)); and it hands the runner its
+/// [`KeepAlivePlatform`] ([`start_keep_alive_sync`](Self::start_keep_alive_sync)).
+///
+/// Every method takes the one state lock briefly and never awaits under it;
+/// runs, restart timers and the wall-clock reconcile are tasks on `runtime`.
+pub struct UnitRunnerCore<D> {
     state: Mutex<RunnerState<D>>,
     board: StatusBoard<D>,
     runtime: Handle,
@@ -63,10 +75,16 @@ impl<D> RunnerState<D> {
     }
 }
 
-impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
+impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     /// A runner with no units, whose tasks run on `runtime`, judging policies
-    /// on `clock`. Starts its wall-clock reconcile.
-    pub(crate) fn new(
+    /// on `clock`. Starts its wall-clock reconcile on `runtime`.
+    #[must_use]
+    pub fn new(runtime: Handle, clock: Arc<dyn WallClock>) -> Arc<Self> {
+        Self::with_timings(runtime, clock, RunnerTimings::default())
+    }
+
+    /// [`new`](Self::new), with `timings` in place of the public constants.
+    pub(crate) fn with_timings(
         runtime: Handle,
         clock: Arc<dyn WallClock>,
         timings: RunnerTimings,
@@ -101,7 +119,10 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         self.timings
     }
 
-    pub(crate) fn runtime(&self) -> &Handle {
+    /// The runtime the runner's tasks run on, for a host's own tasks that
+    /// report back to the runner.
+    #[must_use]
+    pub fn runtime(&self) -> &Handle {
         &self.runtime
     }
 
@@ -111,11 +132,16 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(crate) fn statuses(&self) -> UnitStatuses<D> {
+    /// Every unit's current status.
+    #[must_use]
+    pub fn statuses(&self) -> UnitStatuses<D> {
         self.board.snapshot()
     }
 
-    pub(crate) fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>> {
+    /// Every unit's status, as it changes. The receiver always holds the
+    /// current statuses; a slow reader sees the latest, not every step.
+    #[must_use]
+    pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>> {
         self.board.subscribe()
     }
 
@@ -131,15 +157,26 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         self.lock_state().units.get(unit_id).map(UnitEntry::phase)
     }
 
-    /// Add the unit `unit_id`, or replace its policy and factory. A run of the
-    /// replaced definition stops; the unit starts again from the new factory
-    /// if it should run.
-    pub(crate) fn set_unit(
+    /// Start and stop the platform's keep-alive task through `platform`, to
+    /// match whether any unit should run, for as long as the runner lives.
+    /// Call it once, when the platform can take its first start.
+    pub fn start_keep_alive_sync(self: &Arc<Self>, platform: Arc<dyn KeepAlivePlatform>) {
+        self.runtime
+            .spawn(sync_keep_alive(Arc::clone(self), platform));
+    }
+
+    /// Add the unit `unit_id` with `policy`, whose runs are built by `factory`;
+    /// or, for a unit already set, replace its policy and factory, stopping a
+    /// run of the old definition. The unit starts at once if it should run.
+    ///
+    /// A factory that fails is a failed run.
+    pub fn set_unit<U: Unit<Detail = D>>(
         self: &Arc<Self>,
         unit_id: UnitId,
         policy: RunPolicy,
-        factory: UnitFactory<D>,
+        factory: impl Fn() -> anyhow::Result<U> + Send + Sync + 'static,
     ) {
+        let factory: UnitFactory<D> = erase_factory(factory);
         let mut state = self.lock_state();
         self.board.add_unit(&unit_id);
         match state.units.get_mut(&unit_id) {
@@ -157,10 +194,11 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         self.reconcile_locked(&mut state);
     }
 
-    /// Replace the policy of the unit `unit_id`. Drops a pending restart and
-    /// clears a keep-alive revocation, so the unit starts at once if it should
-    /// run.
-    pub(crate) fn set_unit_policy(self: &Arc<Self>, unit_id: &UnitId, policy: RunPolicy) {
+    /// Replace the policy of the unit `unit_id`. Even with the policy it
+    /// already has, this cancels a pending restart and clears a keep-alive
+    /// revocation, so the unit starts at once if it should run. A unit never
+    /// set is logged and ignored.
+    pub fn set_unit_policy(self: &Arc<Self>, unit_id: &UnitId, policy: RunPolicy) {
         let mut state = self.lock_state();
         let Some(entry) = state.units.get_mut(unit_id) else {
             log::warn!("[unit-runner] set_unit_policy for {unit_id}, which was never set; ignored");
@@ -172,8 +210,10 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         self.reconcile_locked(&mut state);
     }
 
-    /// Stop the unit `unit_id`, wait for its run to end, and forget it.
-    pub(crate) async fn remove_unit(self: &Arc<Self>, unit_id: &UnitId) {
+    /// Stop the unit `unit_id`, wait for its run to end, and forget it, status
+    /// included. Run shutdown is bounded, so this always finishes. A unit never
+    /// set is logged and ignored.
+    pub async fn remove_unit(self: &Arc<Self>, unit_id: &UnitId) {
         let finished_rx = {
             let mut state = self.lock_state();
             let Some(entry) = state.units.get_mut(unit_id) else {
@@ -207,7 +247,7 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
 
     /// The app is open now, or closed. Opening clears a keep-alive
     /// revocation.
-    pub(crate) fn set_app_open(self: &Arc<Self>, open: bool) {
+    pub fn set_app_open(self: &Arc<Self>, open: bool) {
         let mut state = self.lock_state();
         let now = self.clock.now();
         match state.app_presence.update(open, now) {
@@ -219,15 +259,16 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
 
     /// Restart every unit whose run is in progress: each run stops, and the
     /// unit starts again once it has ended.
-    pub(crate) fn restart_running_units(self: &Arc<Self>) {
+    pub fn restart_running_units(self: &Arc<Self>) {
         let state = self.lock_state();
         for entry in state.units.values() {
             entry.stop_run(StopReason::StoppedForRestart);
         }
     }
 
-    /// A keep-alive task started. It clears a revocation.
-    pub(crate) fn keep_alive_started(self: &Arc<Self>) -> KeepAliveId {
+    /// A keep-alive task started, whoever started it. It clears a
+    /// revocation. The task reports its end with the returned id.
+    pub fn keep_alive_started(self: &Arc<Self>) -> KeepAliveId {
         let mut state = self.lock_state();
         let id = state.keep_alive.task_started();
         log::info!("[unit-runner] keep-alive {id:?} started");
@@ -253,7 +294,7 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
     /// gave one. When the platform ended the current task, every run stops
     /// with the platform's reason, and no unit starts until the keep-alive
     /// starts again, the app opens, or a policy is set.
-    pub(crate) fn keep_alive_ended(
+    pub fn keep_alive_ended(
         self: &Arc<Self>,
         id: KeepAliveId,
         platform_reason: Option<PlatformStopReason>,

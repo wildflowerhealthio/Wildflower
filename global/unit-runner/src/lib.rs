@@ -1,0 +1,42 @@
+//! Runs an app's long-lived background work as **units**, on any platform.
+//!
+//! The app gives the runner each unit's id, [`RunPolicy`] and factory. The
+//! runner starts and stops units to match their policies, restarts the ones
+//! that end on their own, asks the platform for one **keep-alive** task while
+//! any of them should run, and reports each unit's [`UnitStatus`]. It knows
+//! nothing about what a unit does. See the
+//! [Design Explanation](../docs/Design%20Explanation.md).
+//!
+//! This crate has no platform dependency, so an app's domain crates can define
+//! units and store run policies without depending on Tauri. A host crate,
+//! such as `tauri-unit-runner`, binds [`UnitRunnerCore`] to its platform
+//! through the [`KeepAlivePlatform`] port and the core's host calls.
+//!
+//! Layered so everything that decides is testable without a platform:
+//!
+//!  - `domain` — the pure rules: when a policy is active, when the app counts
+//!    as open, what a reconcile does to each unit, when a run restarts, and
+//!    how a keep-alive task ends.
+//!  - `ports` — what the runner needs from its host: the [`WallClock`] and the
+//!    [`KeepAlivePlatform`].
+//!  - `runner` — [`UnitRunnerCore`]'s state, each run's thread and runtime,
+//!    the run gates, the statuses and the keep-alive demand.
+
+mod domain;
+mod ports;
+mod run_context;
+mod runner;
+mod status;
+mod unit;
+
+pub use domain::app_presence::WHILE_OPEN_GRACE;
+pub use domain::keep_alive_ledger::KeepAliveId;
+pub use domain::run_policy::RunPolicy;
+pub use ports::keep_alive_platform::{KeepAliveOperation, KeepAlivePlatform};
+pub use ports::wall_clock::{SystemClock, WallClock};
+pub use run_context::RunContext;
+pub use runner::{
+    UnitRunnerCore, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT, WALL_CLOCK_RECONCILE_INTERVAL,
+};
+pub use status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus, UnitStatuses};
+pub use unit::{Unit, UnitId};

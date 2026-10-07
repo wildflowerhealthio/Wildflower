@@ -1,31 +1,10 @@
 //! Starting and stopping the keep-alive task to match the runner's demand,
-//! through the [`KeepAlivePlatform`] seam.
+//! through the [`KeepAlivePlatform`] port.
 
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
-use super::RunnerCore;
-
-/// A keep-alive start's or stop's future.
-pub(crate) type KeepAliveOperation<'a> =
-    Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'a>>;
-
-/// What the runner needs from the platform to keep the app alive: the
-/// background-service plugin in an app, a fake in tests.
-///
-/// Neither call tells the runner about the task itself. The keep-alive task
-/// the platform runs reports its own start and end to the runner
-/// ([`RunnerCore::keep_alive_started`], [`RunnerCore::keep_alive_ended`]),
-/// whoever started it.
-pub(crate) trait KeepAlivePlatform: Send + Sync + 'static {
-    /// Start the keep-alive task. A task already running counts as started.
-    fn start(&self) -> KeepAliveOperation<'_>;
-
-    /// Stop the keep-alive task, with the runner's own stop reason. A task
-    /// already stopped counts as stopped.
-    fn stop(&self) -> KeepAliveOperation<'_>;
-}
+use super::UnitRunnerCore;
+use crate::ports::keep_alive_platform::KeepAlivePlatform;
 
 /// Whether the runner wants the keep-alive, and whether a task is running
 /// that the runner is keeping.
@@ -50,7 +29,7 @@ pub(crate) struct KeepAliveDemand {
 /// The units run either way, as the keep-alive only keeps the app alive in the
 /// background.
 pub(crate) async fn sync_keep_alive<D: Clone + Send + Sync + 'static>(
-    core: Arc<RunnerCore<D>>,
+    core: Arc<UnitRunnerCore<D>>,
     platform: Arc<dyn KeepAlivePlatform>,
 ) {
     let mut keep_alive_demand_rx = core.subscribe_keep_alive_demand();

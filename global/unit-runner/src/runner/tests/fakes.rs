@@ -11,11 +11,11 @@ use tokio::sync::{Barrier, Semaphore};
 use crate::domain::keep_alive_ledger::KeepAliveId;
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
+use crate::ports::keep_alive_platform::{KeepAliveOperation, KeepAlivePlatform};
+use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
-use crate::runner::erase_factory;
-use crate::runner::keep_alive_sync::{KeepAliveDemand, KeepAliveOperation, KeepAlivePlatform};
-use crate::runner::wall_clock::WallClock;
-use crate::runner::{RunnerCore, RunnerTimings};
+use crate::runner::keep_alive_sync::KeepAliveDemand;
+use crate::runner::{RunnerTimings, UnitRunnerCore};
 use crate::status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus};
 use crate::unit::{Unit, UnitId};
 
@@ -49,7 +49,7 @@ impl WallClock for ManualClock {
 
 /// A runner on the test's runtime, its clock, and quick timings.
 pub(super) struct Harness {
-    pub(super) core: Arc<RunnerCore<Detail>>,
+    pub(super) core: Arc<UnitRunnerCore<Detail>>,
     pub(super) clock: Arc<ManualClock>,
 }
 
@@ -59,7 +59,7 @@ impl Harness {
         let clock = Arc::new(ManualClock(Mutex::new(
             DateTime::from_timestamp(1_800_000_000, 0).expect("a valid instant"),
         )));
-        let core = RunnerCore::new(
+        let core = UnitRunnerCore::with_timings(
             tokio::runtime::Handle::current(),
             Arc::clone(&clock) as Arc<dyn WallClock>,
             RunnerTimings {
@@ -82,16 +82,12 @@ impl Harness {
     /// Set `unit_id` to run `script` under `policy`, recording on `probe`.
     pub(super) fn set_unit(&self, unit_id: &str, policy: RunPolicy, script: Script, probe: &Probe) {
         let probe = probe.clone();
-        self.core.set_unit(
-            UnitId::from(unit_id),
-            policy,
-            erase_factory(move || {
-                Ok(ScriptedUnit {
-                    script: script.clone(),
-                    probe: probe.clone(),
-                })
-            }),
-        );
+        self.core.set_unit(UnitId::from(unit_id), policy, move || {
+            Ok(ScriptedUnit {
+                script: script.clone(),
+                probe: probe.clone(),
+            })
+        });
     }
 
     pub(super) fn set_unit_policy(&self, unit_id: &str, policy: RunPolicy) {
@@ -338,14 +334,14 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
 /// A keep-alive platform that starts and stops a pretend keep-alive task at
 /// once, as the plugin would, and records the calls.
 pub(super) struct FakeKeepAlive {
-    core: Arc<RunnerCore<Detail>>,
+    core: Arc<UnitRunnerCore<Detail>>,
     task: Mutex<Option<KeepAliveId>>,
     starts: AtomicUsize,
     stops: AtomicUsize,
 }
 
 impl FakeKeepAlive {
-    pub(super) fn new(core: &Arc<RunnerCore<Detail>>) -> Arc<Self> {
+    pub(super) fn new(core: &Arc<UnitRunnerCore<Detail>>) -> Arc<Self> {
         Arc::new(Self {
             core: Arc::clone(core),
             task: Mutex::new(None),

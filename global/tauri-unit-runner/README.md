@@ -7,8 +7,14 @@ with one `tauri-plugin-background-service` task for all of them, and reports
 each unit's status. It knows nothing about what a unit does: the app supplies
 the units, stores their policies, and owns its own wire and notifications.
 
-The design and its vocabulary are in the
-[Design Explanation](./docs/Design%20Explanation.md).
+This crate is the Tauri bindings of [`unit-runner`](../unit-runner/README.md),
+which holds the units, policies, statuses and the reconcile, free of Tauri. It
+re-exports every public type of `unit-runner`, so an app needs only this
+crate, while its domain crates depend on `unit-runner` alone.
+
+The design and its vocabulary are in `unit-runner`'s
+[Design Explanation](../unit-runner/docs/Design%20Explanation.md), and the
+Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 
 ## Main exports
 
@@ -25,6 +31,7 @@ The design and its vocabulary are in the
 | `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform revoked the keep-alive.                                               |
 | `StartConfig`                             | The plugin's start config (Android notification label and service type), re-exported.                         |
 | `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                                            |
+| `unit-runner`'s other exports             | `UnitRunnerCore`, `KeepAlivePlatform`, `WallClock` and the rest, re-exported.                                 |
 
 ## Use
 

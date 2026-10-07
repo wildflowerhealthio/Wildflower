@@ -10,7 +10,7 @@ use super::dedicated_runtime::run_on_dedicated_thread;
 use super::erased_unit::UnitFactory;
 use super::run_gate::RunGate;
 use super::status_board::RunLiveness;
-use super::RunnerCore;
+use super::UnitRunnerCore;
 use crate::run_context::RunContext;
 use crate::status::StopReason;
 use crate::unit::UnitId;
@@ -36,7 +36,7 @@ pub(crate) struct RunSpec<D> {
 /// A run asked to stop while it waits at the gate never starts and publishes
 /// nothing; it still waits its turn, so its end implies its predecessors'.
 pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
-    core: Arc<RunnerCore<D>>,
+    core: Arc<UnitRunnerCore<D>>,
     spec: RunSpec<D>,
 ) {
     let RunSpec {

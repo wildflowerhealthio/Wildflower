@@ -1,0 +1,71 @@
+# unit-runner
+
+Runs an app's long-lived background work as **units**. Each unit has a **run
+policy**. The runner starts and stops units to match their policies, restarts
+the ones that end on their own, asks the platform for one keep-alive task while
+any of them should run, and reports each unit's status. It knows nothing about
+what a unit does: the app supplies the units, stores their policies, and owns
+its own wire and notifications.
+
+This crate has no Tauri dependency, so an app's domain crates can define units
+and store run policies without depending on Tauri.
+[`tauri-unit-runner`](../tauri-unit-runner/README.md) binds it to a Tauri app
+and re-exports everything here.
+
+The design and its vocabulary are in the
+[Design Explanation](./docs/Design%20Explanation.md).
+
+## Main exports
+
+| Export                                    | What it is                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- |
+| `Unit`                                    | Work the runner can run, with its own `Detail` type.                                  |
+| `RunContext<D>`                           | What a run is handed: `shutdown()`, `announce_running()`, `set_detail()`.             |
+| `RunPolicy`                               | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`. |
+| `UnitId`                                  | The app's key for a unit.                                                             |
+| `UnitStatus<D>`, `RunState`, `RunStop`    | What the runner reports for a unit.                                                   |
+| `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform revoked the keep-alive.                       |
+| `UnitRunnerCore<D>`                       | The runner, free of any platform. A host binds it; an app uses its host's runner.     |
+| `KeepAlivePlatform`                       | The port a host implements to start and stop the keep-alive task.                     |
+| `WallClock`, `SystemClock`                | The wall clock policies are judged on, and the system's.                              |
+| `KeepAliveId`                             | One keep-alive task, as the host reports its start and end.                           |
+| `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                    |
+
+## Use
+
+A domain crate defines its units and stores their policies with this crate
+alone:
+
+```rust,ignore
+use unit_runner::{RunContext, RunPolicy, Unit};
+
+pub struct Sync;
+
+impl Unit for Sync {
+    type Detail = String;
+
+    async fn run(self, ctx: RunContext<String>) -> anyhow::Result<()> {
+        ctx.announce_running();
+        ctx.set_detail("connected".to_owned());
+        ctx.shutdown().cancelled().await;
+        Ok(())
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SyncRecord {
+    pub policy: RunPolicy,
+}
+```
+
+The app's Tauri crate hands the units to `tauri_unit_runner::UnitRunner`. A
+test, or another host, drives `UnitRunnerCore` directly:
+
+```rust,ignore
+use std::sync::Arc;
+use unit_runner::{RunPolicy, SystemClock, UnitId, UnitRunnerCore};
+
+let runner = UnitRunnerCore::<String>::new(tokio::runtime::Handle::current(), Arc::new(SystemClock));
+runner.set_unit(UnitId::from("sync"), RunPolicy::Always, || Ok(Sync));
+runner.set_app_open(true);
+```

@@ -77,9 +77,10 @@ pub enum StopReason {
     Replaced,
     /// The app removed the unit, so the runner stopped its run.
     Removed,
-    /// The runner stopped the run to start it again at once: every running
-    /// unit restarts on an iOS resume. The unit starts again once this run has
-    /// ended, with no restart delay, if it should still run.
+    /// The runner stopped the run to start it again at once: the host
+    /// restarted every running unit, as the Tauri host does on an iOS resume.
+    /// The unit starts again once this run has ended, with no restart delay,
+    /// if it should still run.
     StoppedForRestart,
     /// The run ended without being asked to: its unit returned (`Ok` or an
     /// error), its factory failed, or it panicked. Restarted after
@@ -94,9 +95,9 @@ pub enum StopReason {
     },
 }
 
-/// Why the platform ended the keep-alive task, as
-/// `tauri-plugin-background-service` names it. The runner's own stops of the
-/// task never appear here.
+/// Why the platform ended the keep-alive task, in the words of
+/// `tauri-plugin-background-service`, the one keep-alive platform the runner
+/// is bound to. The runner's own stops of the task never appear here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlatformStopReason {
     /// A stop through the plugin's own `stop`, the desktop app quitting
@@ -118,7 +119,7 @@ pub enum PlatformStopReason {
     Error,
     /// The app's process is going away (the iOS app backgrounded or killed).
     ProcessExit,
-    /// The plugin gave no reason this runner knows, or none arrived within
-    /// [`KEEP_ALIVE_END_REASON_WAIT`](crate::KEEP_ALIVE_END_REASON_WAIT).
+    /// The plugin gave no reason this runner knows, or none arrived in time
+    /// (`tauri-unit-runner`'s `KEEP_ALIVE_END_REASON_WAIT`).
     Unknown,
 }

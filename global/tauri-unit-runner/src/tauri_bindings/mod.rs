@@ -18,7 +18,7 @@ use tauri::Runtime;
 use tauri_plugin_background_service::{PluginConfig, StartConfig};
 
 use crate::domain::window_state::{PlatformKind, WindowState};
-use crate::unit_runner::UnitRunner;
+use crate::runner::UnitRunner;
 use keep_alive_end_pairing::KeepAliveEndPairing;
 use keep_alive_service::KeepAliveService;
 

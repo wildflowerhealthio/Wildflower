@@ -2,7 +2,7 @@
 //!
 //! The keep-alive is the one background-service task (an Android foreground
 //! service, an iOS background task) that keeps the app alive while units run.
-//! Starting and stopping it are async, and the plugin can also start the task
+//! Starting and stopping it are async, and the platform can also start the task
 //! itself (boot recovery, an OS restart). So the runner numbers each task as
 //! it starts, and remembers which one it asked to stop, so that task's end
 //! counts as its own. Any other end of the current task is a revocation by the
@@ -33,7 +33,7 @@ pub enum KeepAliveEnd {
 /// The runner's record of the keep-alive task.
 ///
 /// The task itself tells the runner when it starts and ends, whoever started
-/// it: the runner, the plugin's recovery, or an iOS background task. The
+/// it: the runner, the platform's own recovery, or an iOS background task. The
 /// runner records which task it is stopping before it asks the platform, so
 /// the end that follows counts as its own.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

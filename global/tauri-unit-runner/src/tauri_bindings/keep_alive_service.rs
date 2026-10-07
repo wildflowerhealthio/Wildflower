@@ -5,7 +5,7 @@ use tauri::Runtime;
 use tauri_plugin_background_service::{BackgroundService, ServiceContext, ServiceError};
 
 use super::KEEP_ALIVE_END_REASON_WAIT;
-use crate::unit_runner::UnitRunner;
+use crate::runner::UnitRunner;
 
 /// The service the plugin builds for each of its starts. Its task tells the
 /// runner the keep-alive started, runs until the plugin's shutdown, and then
