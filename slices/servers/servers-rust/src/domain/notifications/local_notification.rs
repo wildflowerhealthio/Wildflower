@@ -51,8 +51,16 @@ mod tests {
     /// already on a device under their old ids.
     #[test]
     fn numeric_ids_are_pinned() {
-        // FNV-1a("server-stopped") = 0x912dbb96 → masked 0x112dbb96 → | 1.
-        assert_eq!(with_id("server-stopped").numeric_id(), 0x112d_bb97);
+        // FNV-1a("server-stopped:ruth.relay.example.com") = 0xdf692c69 → masked 0x5f692c69 → | 1.
+        assert_eq!(
+            with_id("server-stopped:ruth.relay.example.com").numeric_id(),
+            0x5f69_2c69
+        );
+        // FNV-1a("server-requests:client:lifting") = 0x8dd190a5 → masked 0x0dd190a5 → | 1.
+        assert_eq!(
+            with_id("server-requests:client:lifting").numeric_id(),
+            0x0dd1_90a5
+        );
     }
 
     proptest! {
