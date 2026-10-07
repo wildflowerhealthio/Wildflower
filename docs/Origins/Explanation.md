@@ -7,22 +7,40 @@ depend on it. The mechanics live in `shared-structures-rust` ([`origin_string`],
 [`served_origin`]); this is the narrative those modules and their consumers
 (gatekeeper, emr, apps, tunnel) point back to instead of each re-deriving it.
 
+## Two listeners
+
+The server answers on two listeners, and each serves its own router, built
+from the one router every slice's routes are composed into:
+
+- **The loopback listener** (`http://127.0.0.1:<port>/`) serves the on-device
+  webview and other local clients, and a front run on this machine (nginx)
+  that relays remote callers over the same loopback socket. Its router adds the
+  loopback owner trust and the loopback-peer gate (see
+  [Loopback is the trust boundary](#loopback-is-the-trust-boundary)).
+- **The tunnel listener** serves the visitors who reach the server through
+  the relay. It binds no port: the tunnel's rathole client hands each
+  visitor's stream to it in process. Before HTTP, the listener reads the
+  connection's PROXY protocol v2 header, when it opens with one, for the
+  visitor's address. Its router has no owner trust and no loopback-peer gate,
+  so no tunnel connection is ever a local caller, whatever its peer or
+  headers. Its outermost layer, the tunnel front, holds each request to the
+  server's public host (see
+  [The tunnel front writes `Forwarded`](#the-tunnel-front-writes-forwarded)).
+
 ## Two origins: loopback and served
 
-The embedded API server is bound to **loopback only** (`http://127.0.0.1:<port>/`).
-Every remote caller reaches it the same way — a trusted front (nginx) or the
-tunnel exit relays the request over that same loopback socket. So a request can
-arrive having been addressed two different ways:
+A request can arrive having been addressed two different ways:
 
 - **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
   webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
   parsed once at boot and threaded into the configs of the slices that render
   it (gatekeeper, emr) so nothing reassembles it from a string.
 - **Served origin** — the origin the client _actually_ reached. For a direct
-  loopback caller it is the loopback origin. For a request relayed by the
-  trusted front it is the public `{scheme}://{host}` the browser used. A handler
-  recovers it per request with [`served_base_url_for`] (which returns the served
-  base URL as a typed `Url`; the bare origin string is derived from it).
+  loopback caller it is the loopback origin. For a request through the tunnel,
+  or one relayed by a front, it is the public `{scheme}://{host}` the browser
+  used. A handler recovers it per request with [`served_base_url_for`] (which
+  returns the served base URL as a typed `Url`; the bare origin string is
+  derived from it).
 
 "Served origin" is the load-bearing concept for what the server renders: a
 redirect `Location` or a discovery document's endpoints must reference the URL
@@ -31,24 +49,47 @@ are the exception: they name the server, not the request (below).
 
 ### Recovering the served origin from `Forwarded` (RFC 7239)
 
-The trusted front appends its hop to any inbound `Forwarded` chain and tacks the
-public `host`/`proto` onto that trailing element. The host/scheme we trust are
-therefore always in the **last** forwarded-element; any client-supplied elements
-sit to its left and are ignored. Trust comes from the loopback-socket gate (see
-[Loopback peer gating](#loopback-is-the-trust-boundary)), **not** from the header
-— the header only tells a gated-as-trusted request _which_ public origin it used.
+Every consumer reads the served origin from one header, `Forwarded`, whichever
+listener the request arrived on. A front appends its hop to any inbound
+`Forwarded` chain and tacks the public `host`/`proto` onto that trailing
+element; the tunnel front writes a single element of its own. The host/scheme
+we trust are therefore always in the **last** forwarded-element; any
+client-supplied elements sit to its left and are ignored. Trust comes from the
+listener the request arrived on (see
+[Loopback is the trust boundary](#loopback-is-the-trust-boundary)), **not** from
+the header — the header only tells a request _which_ public origin it used.
 
 Because the `host` ultimately derives from an attacker-influenced `Host` header
 and lands in a `Location` the browser follows, it is validated (`safe_host` /
 `safe_scheme`) against the delimiters that could redirect to a different
 authority. A `Forwarded` header that fails validation is **rejected** (the
 request `500`s), _not_ treated as loopback: the header's presence means the
-request came through the front, so collapsing a malformed one to loopback would
-let a tunnel-relayed remote caller be mistaken for a direct-local one — and
-inherit the local-owner trust that is gated purely on "not forwarded" (e.g. the
-desktop host's owner-token injection). Only the **absence** of the header reads
-as loopback. The parsing contract, the exact nginx directive, and the attack
-cases live on the [`served_origin`] module.
+request was relayed, so collapsing a malformed one to loopback would let a
+relayed remote caller be mistaken for a direct-local one — and inherit the
+local-owner trust the loopback listener grants on "not forwarded" (the owner
+token injection). Only the **absence** of the header reads as loopback. The
+parsing contract, the exact nginx directive, and the attack cases live on the
+[`served_origin`] module.
+
+### The tunnel front writes `Forwarded`
+
+Nothing on the path from a tunnel visitor vouches for the request's headers:
+the relay passes bytes through and the visitor writes the rest. So the tunnel
+front, the outermost layer of the tunnel listener's router, writes the header
+itself:
+
+- It drops any `Forwarded` the visitor sent.
+- It compares the request's `Host` with the server's public host, its domain,
+  as `https` origins (so case and a spelled-out `:443` don't matter). A
+  mismatched or missing `Host` is answered `421 Misdirected Request`, before
+  the request log sees it.
+- It writes `Forwarded: for=<visitor>;host="<public host>";proto=https`. The
+  `for` is the visitor's address from the PROXY header, and is left out when
+  the connection had none; the `host` is the public host, normalized.
+
+Every reader of the served origin (gatekeeper, emr, apps, the `404`, the
+request log) then sees a tunnel request exactly as it sees one a front
+relayed, served at the public origin.
 
 ## `iss` and `aud` are the server's origin
 
@@ -105,8 +146,7 @@ render the served origin per request.
 
 The apps slice resolves every app's `{origin}` to the same public origin, from
 its config, whoever asked for the launch: the app reaches the FHIR server from
-off the device. The launch doesn't consult the tunnel; the tunnel belongs to the
-host, and the server's web surface knows nothing about it.
+off the device. The launch doesn't consult the tunnel.
 
 ### Reachability is checked at the public origin
 
@@ -114,7 +154,7 @@ Whether a remote app can reach the server is a question about the public
 origin, so that is where the server asks it. Each run, its reachability
 monitor GETs the server's own `/health` at `https://<public_host>/health` until
 it first answers: the request leaves the device, reaches the relay, and comes
-back down the tunnel as a forwarded request, the same round trip an app's
+back down the tunnel to the tunnel listener, the same round trip an app's
 makes. An answer, even one reporting `fail`, means reachable; no answer means
 not reachable yet. The tunnel only dials and says nothing about reachability;
 how well it carries traffic is `/health`'s `connectivity` check.
@@ -129,11 +169,13 @@ allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (emr-rust), which mirrors HFS's own
 
 ## Loopback is the trust boundary
 
-The loopback-socket gate ([`require_loopback_peer`]) is what lets every slice
-trust the `Forwarded` header: a non-loopback peer is rejected before any handler
-runs, so every request a handler sees came from this machine or through the
-trusted front. See [Apps Explanation](../Apps/Explanation.md) for how this lands
-in the apps auth posture.
+On the loopback listener, the loopback-socket gate ([`require_loopback_peer`])
+is what lets every slice trust the `Forwarded` header: a non-loopback peer is
+rejected before any handler runs, so every request a handler sees came from
+this machine, directly or through a front run on it. On the tunnel listener the
+header is the tunnel front's own, and nothing there is trusted as local. See
+[Apps Explanation](../Apps/Explanation.md) for how this lands in the apps auth
+posture.
 
 ## Loopback owner dialog
 
@@ -149,9 +191,9 @@ that address is new. See the gatekeeper
 for how the answer is applied.
 
 "Direct loopback" is the same test as everywhere else in this doc: the request
-carries **no** `Forwarded` header. A request relayed by the trusted front never
-raises the dialog, whatever its `client_id`. It is decided in the Owner UI
-alone, because the person who started it is remote.
+carries **no** `Forwarded` header. A request through the tunnel, or relayed by
+a front, never raises the dialog, whatever its `client_id`. It is decided in
+the Owner UI alone, because the person who started it is remote.
 
 The hosted page is on a public origin and calls a private-network address, so
 Chrome's Local Network Access check sends a preflight carrying
