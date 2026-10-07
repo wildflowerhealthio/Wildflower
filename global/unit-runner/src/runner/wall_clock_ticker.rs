@@ -8,7 +8,7 @@ use super::UnitRunner;
 
 /// Start and stop runs per policy at the next wall-clock deadline, or after the
 /// wall-clock interval, whichever is sooner, and again whenever the next
-/// deadline moves.
+/// deadline moves, until the runtime shuts down.
 ///
 /// The wait runs on `tokio::time`, whose clock stops while a laptop sleeps, so
 /// a deadline that passed during a sleep is caught by the first interval after

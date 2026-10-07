@@ -5,7 +5,7 @@
 //! only publishes its [`SessionDemand`](crate::domain::session_plan::SessionDemand).
 //! This task is the one place that waits on the [`BackgroundSessionPlatform`].
 //! [`attach_background_session_platform`](UnitRunner::attach_background_session_platform)
-//! starts it, and it lives as long as `UnitRunner`.
+//! starts it, and it runs until `UnitRunner`'s runtime shuts down.
 //!
 //! It follows the latest demand: the demand is a watch, so a demand replaced
 //! while a request is in flight is skipped, and only the one that holds once
@@ -20,8 +20,8 @@ use crate::domain::session_plan::{plan_session_request_for_demand, SessionReques
 use crate::ports::background_session_platform::BackgroundSessionPlatform;
 
 /// Make the one request, if any, that `UnitRunner`'s latest session demand
-/// calls for, then wait for the demand to change; return once `UnitRunner` is
-/// dropped.
+/// calls for, then wait for the demand to change, until the runtime shuts
+/// down.
 ///
 /// The session reports its own starts and ends back to `UnitRunner`, which
 /// changes the demand, so this only asks.

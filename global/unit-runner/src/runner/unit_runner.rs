@@ -82,6 +82,11 @@ impl<D> UnitRunnerState<D> {
 impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// A `UnitRunner` with no units, whose tasks run on `runtime`, judging
     /// policies on `clock`. Starts its wall-clock ticker on `runtime`.
+    ///
+    /// The ticker, like the task
+    /// [`attach_background_session_platform`](Self::attach_background_session_platform)
+    /// starts, holds the `UnitRunner` and runs until `runtime` shuts down, so a
+    /// `UnitRunner` lives as long as its runtime.
     #[must_use]
     pub fn new(runtime: Handle, clock: Arc<dyn WallClock>) -> Arc<Self> {
         Self::with_timings(runtime, clock, RunnerTimings::default())
@@ -155,8 +160,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     }
 
     /// Hand `UnitRunner` the host's background-session `platform`. Call it
-    /// once, when the platform can take its first request; from then on, for
-    /// as long as `UnitRunner` lives, it asks `platform` for a session's start
+    /// once, when the platform can take its first request; from then on,
+    /// until the runtime shuts down, it asks `platform` for a session's start
     /// and end as its session demand changes.
     pub fn attach_background_session_platform<P: BackgroundSessionPlatform>(
         self: &Arc<Self>,
