@@ -59,8 +59,8 @@ pub(crate) async fn post_stop_notifications<R: Runtime>(
     loop {
         match stops.recv().await {
             Ok(stopped) => {
-                if let Some(notification) = coalescer.notification_for(&stopped) {
-                    post_notification(&app, &notification);
+                if let Some(server_stopped) = coalescer.record(&stopped) {
+                    post_notification(&app, &server_stopped.notification());
                 }
             }
             Err(RecvError::Lagged(missed)) => {
@@ -86,11 +86,58 @@ fn post_notification<R: Runtime>(app: &AppHandle<R>, notification: &LocalNotific
     };
     if let Err(error) = notifications
         .builder()
-        .id(notification.numeric_id())
+        .id(plugin_notification_id(&notification.id))
         .title(&notification.title)
         .body(&notification.body)
         .show()
     {
         log::warn!("[servers] notification {} failed: {error}", notification.id);
+    }
+}
+
+/// `id`, a [`LocalNotification`]'s string id, as the positive, non-zero `i32`
+/// the notification plugin takes, the same on every call and across launches
+/// (32-bit FNV-1a with the sign bit cleared and the low bit set).
+///
+/// # Remarks
+///
+/// Android treats a non-positive id as "no id", so the sign bit is masked off
+/// rather than the hash reinterpreted as signed. Two string ids can collide;
+/// with the handful of ids the host posts, that is accepted.
+fn plugin_notification_id(id: &str) -> i32 {
+    let hash = id.bytes().fold(0x811c_9dc5_u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193)
+    });
+    let positive = i32::from_be_bytes((hash & 0x7fff_ffff).to_be_bytes());
+    positive | 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Pinned values: a change to the hash would orphan the notifications
+    /// already on a device under their old ids.
+    #[test]
+    fn plugin_notification_ids_are_pinned() {
+        // FNV-1a("server-stopped:ruth.relay.example.com") = 0xdf692c69 → masked 0x5f692c69 → | 1.
+        assert_eq!(
+            plugin_notification_id("server-stopped:ruth.relay.example.com"),
+            0x5f69_2c69
+        );
+        // FNV-1a("server-requests:client:lifting") = 0x8dd190a5 → masked 0x0dd190a5 → | 1.
+        assert_eq!(
+            plugin_notification_id("server-requests:client:lifting"),
+            0x0dd1_90a5
+        );
+    }
+
+    proptest! {
+        #[test]
+        fn plugin_notification_ids_are_positive_and_stable(id in ".{0,64}") {
+            prop_assert!(plugin_notification_id(&id) > 0);
+            prop_assert_eq!(plugin_notification_id(&id), plugin_notification_id(&id.clone()));
+        }
     }
 }

@@ -1,6 +1,7 @@
-//! The notification for a server's run that stopped, keyed by `UnitRunner`'s
-//! [`StopReason`], and [`StopNotificationCoalescer`], which keeps a server's
-//! failure from notifying again on every retry.
+//! The notifications for the servers' stopped runs: [`StopCause`], why a run
+//! stopped among the stops that notify, [`ServerStopped`], what one
+//! notification says, and [`StopNotificationCoalescer`], which keeps a
+//! server's failure from notifying again on every retry.
 
 use std::collections::BTreeMap;
 
@@ -20,29 +21,66 @@ const STOPPED_TITLE: &str = "Wildflower server stopped";
 /// background, which ends when the app becomes present again.
 const PAUSED_TITLE: &str = "Wildflower server paused";
 
-/// The notification for the run of the server `domain` that stopped as `stop`
-/// says, or `None` for a stop `UnitRunner` made itself: the app set the server
-/// again or removed it, its policy stopped wanting it running, or `UnitRunner`
-/// restarted it. A run that ended on its own and a run the platform's end of
-/// the background session stopped notify.
-#[must_use]
-pub fn stop_notification(domain: &str, stop: &RunStop) -> Option<LocalNotification> {
-    let (title, text) = match stop.reason {
-        StopReason::PolicyInactive
-        | StopReason::Replaced
-        | StopReason::Removed
-        | StopReason::StoppedForRestart => return None,
-        StopReason::EndedOnItsOwn => match &stop.error {
-            Some(error) => (STOPPED_TITLE, error.as_str()),
-            None => (STOPPED_TITLE, "The server stopped."),
-        },
-        StopReason::SessionEndedByPlatform { platform_reason } => session_end_text(platform_reason),
-    };
-    Some(LocalNotification {
-        id: format!("{SERVER_STOPPED_NOTIFICATION_ID_PREFIX}{domain}"),
-        title: title.to_owned(),
-        body: format!("{domain}: {text}"),
-    })
+/// Why a server's run stopped, among the stops that notify.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StopCause {
+    /// The run ended on its own with this error.
+    Failed(String),
+    /// The run ended on its own without an error.
+    Ended,
+    /// The platform ended the background session, for this reason.
+    EndedByPlatform(PlatformStopReason),
+}
+
+impl StopCause {
+    /// The cause of `stop`, or `None` for a stop `UnitRunner` made itself:
+    /// the app set the server again or removed it, its policy stopped wanting
+    /// it running, or `UnitRunner` restarted it. Those don't notify.
+    #[must_use]
+    pub fn from_run_stop(stop: &RunStop) -> Option<Self> {
+        match stop.reason {
+            StopReason::PolicyInactive
+            | StopReason::Replaced
+            | StopReason::Removed
+            | StopReason::StoppedForRestart => None,
+            StopReason::EndedOnItsOwn => Some(match &stop.error {
+                Some(error) => Self::Failed(error.clone()),
+                None => Self::Ended,
+            }),
+            StopReason::SessionEndedByPlatform { platform_reason } => {
+                Some(Self::EndedByPlatform(platform_reason))
+            }
+        }
+    }
+}
+
+/// What one stop notification says: the server `domain`'s run stopped, for
+/// `cause`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerStopped {
+    /// The server's domain, its unit id.
+    pub domain: String,
+    /// Why its run stopped.
+    pub cause: StopCause,
+}
+
+impl ServerStopped {
+    /// The notification for this stop, under the server's own id
+    /// (`server-stopped:<domain>`), with its body starting with the domain.
+    #[must_use]
+    pub fn notification(&self) -> LocalNotification {
+        let (title, text) = match &self.cause {
+            StopCause::Failed(error) => (STOPPED_TITLE, error.as_str()),
+            StopCause::Ended => (STOPPED_TITLE, "The server stopped."),
+            StopCause::EndedByPlatform(platform_reason) => session_end_text(*platform_reason),
+        };
+        let domain = &self.domain;
+        LocalNotification {
+            id: format!("{SERVER_STOPPED_NOTIFICATION_ID_PREFIX}{domain}"),
+            title: title.to_owned(),
+            body: format!("{domain}: {text}"),
+        }
+    }
 }
 
 /// The title and text for a run the platform stopped by ending the background
@@ -81,7 +119,7 @@ fn session_end_text(platform_reason: PlatformStopReason) -> (&'static str, &'sta
 /// Decides which of the servers' stops notify, fed each stop `UnitRunner`
 /// reports once ([`RunStopped`]), whose unit ids are the servers' domains.
 ///
-/// A stop notifies as [`stop_notification`] says, with one more rule:
+/// A stop notifies when it has a [`StopCause`], with one more rule:
 /// `UnitRunner` retries a failed run every few seconds, so a failure with the
 /// same error as the one last notified for that server doesn't notify again
 /// until the server has run, or the app has set it again (a new token, say)
@@ -100,9 +138,10 @@ impl StopNotificationCoalescer {
         Self::default()
     }
 
-    /// The notification for `stopped`, or `None` when it doesn't notify or
-    /// repeats the failure last notified for its server.
-    pub fn notification_for(&mut self, stopped: &RunStopped) -> Option<LocalNotification> {
+    /// Count `stopped`, returning the notification it warrants, if any:
+    /// `None` when it doesn't notify or repeats the failure last notified for
+    /// its server.
+    pub fn record(&mut self, stopped: &RunStopped) -> Option<ServerStopped> {
         let RunStopped {
             unit_id,
             stop,
@@ -111,14 +150,18 @@ impl StopNotificationCoalescer {
         if *announced_running || matches!(stop.reason, StopReason::Replaced | StopReason::Removed) {
             self.notified_failures.remove(unit_id);
         }
-        if let (StopReason::EndedOnItsOwn, Some(error)) = (stop.reason, &stop.error) {
+        let cause = StopCause::from_run_stop(stop)?;
+        if let StopCause::Failed(error) = &cause {
             if self.notified_failures.get(unit_id) == Some(error) {
                 return None;
             }
             self.notified_failures
                 .insert(unit_id.clone(), error.clone());
         }
-        stop_notification(unit_id.as_str(), stop)
+        Some(ServerStopped {
+            domain: unit_id.as_str().to_owned(),
+            cause,
+        })
     }
 }
 
@@ -156,6 +199,18 @@ mod tests {
 
     fn failure(error: &str, nth: i64) -> RunStop {
         stop(StopReason::EndedOnItsOwn, Some(error), nth)
+    }
+
+    /// The notification for the run of `domain` that stopped as `stop` says,
+    /// if it has a cause.
+    fn stop_notification(domain: &str, stop: &RunStop) -> Option<LocalNotification> {
+        StopCause::from_run_stop(stop).map(|cause| {
+            ServerStopped {
+                domain: domain.to_owned(),
+                cause,
+            }
+            .notification()
+        })
     }
 
     #[test]
@@ -249,7 +304,7 @@ mod tests {
     fn notified(coalescer: &mut StopNotificationCoalescer, stops: &[RunStopped]) -> usize {
         stops
             .iter()
-            .filter_map(|stopped| coalescer.notification_for(stopped))
+            .filter_map(|stopped| coalescer.record(stopped))
             .count()
     }
 
@@ -290,10 +345,8 @@ mod tests {
         let mut coalescer = StopNotificationCoalescer::new();
         let ids: Vec<String> = [DOMAIN, OTHER_DOMAIN]
             .into_iter()
-            .filter_map(|domain| {
-                coalescer.notification_for(&stopped(domain, failure("disk full", 1), false))
-            })
-            .map(|notification| notification.id)
+            .filter_map(|domain| coalescer.record(&stopped(domain, failure("disk full", 1), false)))
+            .map(|server_stopped| server_stopped.notification().id)
             .collect();
         assert_eq!(
             ids,

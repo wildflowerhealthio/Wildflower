@@ -7391,6 +7391,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "gatekeeper-rust",
+ "proptest",
  "rathole-settings-rust",
  "serde",
  "serde_json",

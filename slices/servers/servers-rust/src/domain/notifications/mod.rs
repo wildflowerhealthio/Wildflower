@@ -5,4 +5,4 @@
 
 pub mod local_notification;
 pub mod request_notifications;
-pub mod stop_notification;
+pub mod stop_notifications;

@@ -44,6 +44,8 @@ workspace = true
 async-trait = "0.1"
 # The consent-free loopback prompt the tests' host ports carry.
 gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
+# The plugin notification id's properties.
+proptest = "1"
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"
