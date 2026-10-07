@@ -15,6 +15,8 @@ servers-rust = { path = "../servers-rust" }
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
 # The relay base URL enrolment builds a relay client for.
 url = "2"
+# The instant enrolment chooses a new server's run policy at.
+chrono = { workspace = true, features = ["clock"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]

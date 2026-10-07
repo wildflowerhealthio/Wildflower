@@ -21,11 +21,13 @@ use std::sync::Arc;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use chrono::{DateTime, Utc};
 use rathole_settings_rust::{
     parse_public_addr, NoisePattern, PublicRatholeSettings, RelayDomain, Transport, TunnelHost,
     TunnelName,
 };
 use serde::Deserialize;
+use unit_runner::RunPolicy;
 use url::Url;
 
 use crate::domain::{EnrolmentError, RegistryError, RelayKind, ServerRecord, TunnelToken};
@@ -123,9 +125,11 @@ impl RelayIdentity {
 }
 
 /// Enrol `tunnel_name` at `relay` with `token` and register the server, with
-/// the default launcher and production certificates. The server is set
-/// [`running`](ServerRecord::running) when no registered server is, so the
-/// first server added is the one the host starts; a later one isn't.
+/// the default launcher and production certificates. Its
+/// [`run_policy`](ServerRecord::run_policy) is [`RunPolicy::WhileOpen`] when
+/// no registered server's policy wants it running at `now`, so the first
+/// server added runs, and [`RunPolicy::Off`] otherwise, so a later one doesn't
+/// start alongside it. An `Off` policy or an `Until` that has passed doesn't.
 ///
 /// `relay_client` builds the [`RelayClient`] for a Wildflower relay from its
 /// base URL; it is called once for an official or self-hosted Wildflower
@@ -144,6 +148,7 @@ pub async fn add_server<S: RelayClient>(
     tunnel_name: TunnelName,
     token: TunnelToken,
     relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
+    now: DateTime<Utc>,
 ) -> Result<ServerRecord, EnrolmentError> {
     let (relay, public_settings) = match relay {
         EnteredRelay::WildflowerOfficial => {
@@ -200,7 +205,16 @@ pub async fn add_server<S: RelayClient>(
             public_settings,
             launcher_url: ServerRecord::default_launcher_url(),
             staging_certificates: false,
-            running: !registered.iter().any(|server| server.running),
+            // The user is enrolling, so the app is present: a `WhileOpen`
+            // policy wants its server running.
+            run_policy: if registered
+                .iter()
+                .any(|server| server.run_policy.wants_running(now, true))
+            {
+                RunPolicy::Off
+            } else {
+                RunPolicy::WhileOpen
+            },
         }))
     })
     .await?;
@@ -209,6 +223,10 @@ pub async fn add_server<S: RelayClient>(
 
 /// Replace the token of the server with `domain` by `token`; everything else
 /// is kept.
+///
+/// Only the token and `public_settings` are written, onto the record as it is
+/// when the relay has answered, in one registry change: a change made to the
+/// server while the relay was being asked, such as its run policy, is kept.
 ///
 /// For a Wildflower relay, the token is first checked with it the way
 /// [`add_server`] does, through the [`RelayClient`] `relay_client` builds from
@@ -271,13 +289,28 @@ pub async fn set_server_credentials<S: RelayClient>(
             .await?
         }
     };
-    let record = ServerRecord {
-        token,
-        public_settings,
-        ..registered
-    };
-    let updated = record.clone();
-    run_blocking(registry, move |registry| registry.update(updated)).await?;
+    let wanted_domain = domain.to_owned();
+    let record = run_blocking(registry, move |registry| {
+        registry.modify(Box::new(|servers| {
+            let current = servers
+                .iter_mut()
+                .find(|record| record.domain() == wanted_domain)
+                .ok_or(RegistryError::NotRegistered {
+                    domain: wanted_domain.clone(),
+                })?;
+            current.token = token;
+            current.public_settings = public_settings;
+            Ok(())
+        }))?;
+        registry
+            .read_all()?
+            .into_iter()
+            .find(|record| record.domain() == wanted_domain)
+            .ok_or(RegistryError::NotRegistered {
+                domain: wanted_domain,
+            })
+    })
+    .await?;
     Ok(record)
 }
 
@@ -446,6 +479,9 @@ mod tests {
         tunnel_host_fetches: Arc<AtomicUsize>,
         /// The base URL of every relay client built for enrolment.
         built_for: Arc<Mutex<Vec<Url>>>,
+        /// Run while `GET /me` is in flight, before it answers: a change
+        /// another command makes during the relay's round trip.
+        while_asked: Option<Arc<dyn Fn() + Send + Sync>>,
     }
 
     impl FakeRelayClient {
@@ -455,6 +491,7 @@ mod tests {
                 tunnel_host: None,
                 tunnel_host_fetches: Arc::default(),
                 built_for: Arc::default(),
+                while_asked: None,
             }
         }
 
@@ -489,6 +526,9 @@ mod tests {
             token: &TunnelToken,
         ) -> Result<TunnelHost, EnrolmentError> {
             self.tunnel_host_fetches.fetch_add(1, Ordering::SeqCst);
+            if let Some(while_asked) = &self.while_asked {
+                while_asked();
+            }
             if tunnel_name.as_str() != "ruth" || token.expose() != TOKEN {
                 return Err(EnrolmentError::SignedRequestRejected {
                     tunnel_name: tunnel_name.clone(),
@@ -538,6 +578,12 @@ mod tests {
         TunnelName::parse("ruth").unwrap()
     }
 
+    /// The moment every enrolment in these tests happens at.
+    fn now() -> DateTime<Utc> {
+        use chrono::TimeZone;
+        Utc.with_ymd_and_hms(2026, 10, 6, 17, 0, 0).unwrap()
+    }
+
     async fn add(
         registry: &Arc<dyn ServerRegistry>,
         relay_client: &FakeRelayClient,
@@ -550,6 +596,7 @@ mod tests {
             ruth(),
             TunnelToken::new(token),
             relay_client.builder(),
+            now(),
         )
         .await
     }
@@ -574,7 +621,7 @@ mod tests {
                 public_settings: served_settings(),
                 launcher_url: ServerRecord::default_launcher_url(),
                 staging_certificates: false,
-                running: true,
+                run_policy: RunPolicy::WhileOpen,
             }
         );
         assert_eq!(record.domain(), "ruth.relay.example.com");
@@ -717,6 +764,7 @@ mod tests {
                     source: "no TLS backend".into(),
                 })
             },
+            now(),
         )
         .await;
         assert!(matches!(
@@ -831,9 +879,10 @@ mod tests {
         assert_eq!(registry.read_all().unwrap(), vec![existing]);
     }
 
-    /// The first server added is the one the host starts; a later one isn't.
+    /// The first server added runs while the app is present; a later one is
+    /// added off, so it doesn't start alongside the first.
     #[tokio::test]
-    async fn only_the_first_server_added_is_set_running() {
+    async fn the_first_server_added_runs_while_open_and_a_later_one_is_off() {
         let (_data_root, registry) = registry();
         let relay_client = FakeRelayClient::serving(served_settings());
 
@@ -846,31 +895,66 @@ mod tests {
             TunnelName::parse("lab").unwrap(),
             TunnelToken::new("any-token"),
             no_client,
+            now(),
         )
         .await
         .unwrap();
 
-        assert!(first.running);
-        assert!(!second.running);
+        assert_eq!(first.run_policy, RunPolicy::WhileOpen);
+        assert_eq!(second.run_policy, RunPolicy::Off);
         assert_eq!(registry.read_all().unwrap(), vec![first, second]);
     }
 
-    /// Servers registered with none set running don't stop the next one
-    /// added from being set.
+    /// Servers whose policies want none of them running, an `Until` that has
+    /// passed included, don't stop the next one added from running.
     #[tokio::test]
-    async fn a_server_added_while_none_is_running_is_set_running() {
+    async fn a_server_added_while_no_policy_wants_running_runs_while_open() {
         let (_data_root, registry) = registry();
-        let stopped = official_record("lab");
-        assert!(!stopped.running);
-        registry.insert(Box::new(|_| stopped.clone())).unwrap();
+        let off = official_record("lab");
+        let ended = ServerRecord {
+            run_policy: RunPolicy::Until {
+                at: now() - chrono::TimeDelta::minutes(1),
+            },
+            ..official_record("demo")
+        };
+        for record in [&off, &ended] {
+            registry.insert(Box::new(|_| record.clone())).unwrap();
+        }
         let relay_client = FakeRelayClient::serving(served_settings());
 
         let added = add(&registry, &relay_client, self_hosted_relay(None), TOKEN)
             .await
             .unwrap();
 
-        assert!(added.running);
-        assert_eq!(registry.read_all().unwrap(), vec![stopped, added]);
+        assert_eq!(added.run_policy, RunPolicy::WhileOpen);
+        assert_eq!(registry.read_all().unwrap(), vec![off, ended, added]);
+    }
+
+    /// A server whose policy wants it running at the time, a future `Until`
+    /// included, has the next one added off.
+    #[tokio::test]
+    async fn a_server_added_while_a_policy_wants_running_is_off() {
+        for wanting_running in [
+            RunPolicy::WhileOpen,
+            RunPolicy::Always,
+            RunPolicy::Until {
+                at: now() + chrono::TimeDelta::minutes(1),
+            },
+        ] {
+            let (_data_root, registry) = registry();
+            let running = ServerRecord {
+                run_policy: wanting_running,
+                ..official_record("lab")
+            };
+            registry.insert(Box::new(|_| running.clone())).unwrap();
+            let relay_client = FakeRelayClient::serving(served_settings());
+
+            let added = add(&registry, &relay_client, self_hosted_relay(None), TOKEN)
+                .await
+                .unwrap();
+
+            assert_eq!(added.run_policy, RunPolicy::Off, "{wanting_running:?}");
+        }
     }
 
     #[tokio::test]
@@ -883,6 +967,7 @@ mod tests {
             ruth(),
             TunnelToken::new("any-token"),
             no_client,
+            now(),
         )
         .await
         .unwrap();
@@ -896,7 +981,7 @@ mod tests {
                 public_settings: served_settings(),
                 launcher_url: ServerRecord::default_launcher_url(),
                 staging_certificates: false,
-                running: true,
+                run_policy: RunPolicy::WhileOpen,
             }
         );
         assert_eq!(record.domain(), "ruth.relay.example.com");
@@ -918,6 +1003,7 @@ mod tests {
                 ruth(),
                 TunnelToken::new(TOKEN),
                 no_client,
+                now(),
             )
             .await;
             assert!(
@@ -1034,6 +1120,77 @@ mod tests {
         assert_eq!(registry.read_all().unwrap(), vec![record]);
     }
 
+    /// The relay's round trip takes a while, and the user can change the
+    /// server's run policy meanwhile: the token is written onto the record as
+    /// it is then, so the new policy is kept.
+    #[tokio::test]
+    async fn set_credentials_keeps_a_run_policy_changed_while_the_relay_is_asked() {
+        let (_data_root, registry) = registry();
+        let mut registered = official_record("ruth");
+        registered.token = TunnelToken::new("the-old-token");
+        registered.public_settings = served_settings();
+        registry.insert(Box::new(|_| registered.clone())).unwrap();
+        let concurrent_registry = Arc::clone(&registry);
+        let relay_client = FakeRelayClient {
+            while_asked: Some(Arc::new(move || {
+                crate::set_run_policy(
+                    concurrent_registry.as_ref(),
+                    "ruth.relay.example.com",
+                    crate::RunPolicyChoice::Always,
+                    now(),
+                )
+                .unwrap();
+            })),
+            ..FakeRelayClient::serving(served_settings())
+        };
+
+        let record = set_server_credentials(
+            Arc::clone(&registry),
+            "ruth.relay.example.com",
+            TunnelToken::new(TOKEN),
+            relay_client.builder(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(record.run_policy, RunPolicy::Always);
+        assert_eq!(record.token, TunnelToken::new(TOKEN));
+        assert_eq!(registry.read_all().unwrap(), vec![record]);
+    }
+
+    /// A server removed while the relay was asked isn't written back.
+    #[tokio::test]
+    async fn set_credentials_for_a_server_removed_while_the_relay_is_asked_writes_nothing() {
+        let (_data_root, registry) = registry();
+        let mut registered = official_record("ruth");
+        registered.public_settings = served_settings();
+        registry.insert(Box::new(|_| registered.clone())).unwrap();
+        let concurrent_registry = Arc::clone(&registry);
+        let relay_client = FakeRelayClient {
+            while_asked: Some(Arc::new(move || {
+                concurrent_registry
+                    .remove("ruth.relay.example.com")
+                    .unwrap();
+            })),
+            ..FakeRelayClient::serving(served_settings())
+        };
+
+        let result = set_server_credentials(
+            Arc::clone(&registry),
+            "ruth.relay.example.com",
+            TunnelToken::new(TOKEN),
+            relay_client.builder(),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(EnrolmentError::Registry(RegistryError::NotRegistered { domain }))
+                if domain == "ruth.relay.example.com"
+        ));
+        assert_eq!(registry.read_all().unwrap(), Vec::new());
+    }
+
     #[tokio::test]
     async fn set_credentials_for_an_unknown_domain_builds_no_site() {
         let (_data_root, registry) = registry();
@@ -1098,6 +1255,7 @@ mod tests {
             ruth(),
             TunnelToken::new("the-old-token"),
             no_client,
+            now(),
         )
         .await
         .unwrap();
@@ -1136,6 +1294,7 @@ mod tests {
             ruth(),
             TunnelToken::new(TOKEN),
             no_client,
+            now(),
         )
         .await
         .unwrap();
@@ -1162,6 +1321,7 @@ mod tests {
                 ruth(),
                 TunnelToken::new(TOKEN),
                 no_client,
+                now(),
             )
             .await;
             assert!(
@@ -1191,6 +1351,7 @@ mod tests {
             ruth(),
             TunnelToken::new(TOKEN),
             relay_client.builder(),
+            now(),
         )
         .await
         .unwrap();

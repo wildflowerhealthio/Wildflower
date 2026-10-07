@@ -91,9 +91,8 @@ pub enum EnrolmentError {
 
 impl EnrolmentError {
     /// What went wrong, as a stable `camelCase` name a caller can branch on:
-    /// one per variant, except that [`EnrolmentError::Registry`] is
-    /// `alreadyRegistered`, `notRegistered` or, for a registry that can't be
-    /// read or written, `registry`.
+    /// one per variant, except that [`EnrolmentError::Registry`] is its
+    /// [`RegistryError::kind`].
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
@@ -106,11 +105,7 @@ impl EnrolmentError {
             Self::SignedRequestRejected { .. } => "signedRequestRejected",
             Self::DomainChanged { .. } => "domainChanged",
             Self::RelayIdentityChanged { .. } => "relayIdentityChanged",
-            Self::Registry(RegistryError::AlreadyRegistered { .. }) => "alreadyRegistered",
-            Self::Registry(RegistryError::NotRegistered { .. }) => "notRegistered",
-            Self::Registry(
-                RegistryError::UnsupportedVersion { .. } | RegistryError::Storage { .. },
-            ) => "registry",
+            Self::Registry(registry_error) => registry_error.kind(),
         }
     }
 }
