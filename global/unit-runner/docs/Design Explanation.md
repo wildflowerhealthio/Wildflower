@@ -95,9 +95,9 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>>;
 
     // What the host calls.
-    pub fn start_driving_background_session(
+    pub fn start_driving_background_session<P: BackgroundSessionPlatform>(
         self: &Arc<Self>,
-        platform: Arc<dyn BackgroundSessionPlatform>,
+        platform: Arc<P>,
     );
     pub fn set_app_present(self: &Arc<Self>, present: bool);
     pub fn restart_running_units(self: &Arc<Self>);
@@ -113,8 +113,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
 pub trait BackgroundSessionPlatform: Send + Sync + 'static {
     // Each resolves once the platform has taken the request, before the
     // session reports its start or end.
-    fn request_session_start(&self) -> BackgroundSessionOperation<'_>; // a session already running counts as started
-    fn request_session_end(&self) -> BackgroundSessionOperation<'_>;   // with `UnitRunner`'s own stop reason
+    fn request_session_start(&self) -> impl Future<Output = anyhow::Result<()>> + Send; // a session already running counts as started
+    fn request_session_end(&self) -> impl Future<Output = anyhow::Result<()>> + Send;   // with `UnitRunner`'s own stop reason
 }
 
 pub trait WallClock: Send + Sync + 'static {

@@ -32,9 +32,7 @@ mod unit;
 pub use domain::app_presence::WHILE_OPEN_GRACE;
 pub use domain::run_policy::RunPolicy;
 pub use domain::session_ledger::SessionId;
-pub use ports::background_session_platform::{
-    BackgroundSessionOperation, BackgroundSessionPlatform,
-};
+pub use ports::background_session_platform::BackgroundSessionPlatform;
 pub use ports::wall_clock::{SystemClock, WallClock};
 pub use run_context::RunContext;
 pub use runner::{

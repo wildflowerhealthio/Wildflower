@@ -33,8 +33,8 @@ pub use tauri_bindings::{SESSION_END_REASON_WAIT, UNIT_RUNNER_PLUGIN_NAME};
 pub use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig;
 pub use tauri_unit_runner::TauriUnitRunner;
 pub use unit_runner::{
-    BackgroundSessionOperation, BackgroundSessionPlatform, PlatformStopReason, RunContext,
-    RunPolicy, RunState, RunStop, SessionId, StopReason, SystemClock, Unit, UnitId, UnitRunner,
-    UnitStatus, UnitStatuses, WallClock, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT,
+    BackgroundSessionPlatform, PlatformStopReason, RunContext, RunPolicy, RunState, RunStop,
+    SessionId, StopReason, SystemClock, Unit, UnitId, UnitRunner, UnitStatus, UnitStatuses,
+    WallClock, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT,
     START_AND_STOP_RUNS_PER_POLICY_INTERVAL, WHILE_OPEN_GRACE,
 };

@@ -156,9 +156,9 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// Start and end the platform's background session through `platform`, to
     /// match whether any unit should run, for as long as `UnitRunner` lives.
     /// Call it once, when the platform can take its first start.
-    pub fn start_driving_background_session(
+    pub fn start_driving_background_session<P: BackgroundSessionPlatform>(
         self: &Arc<Self>,
-        platform: Arc<dyn BackgroundSessionPlatform>,
+        platform: Arc<P>,
     ) {
         self.runtime
             .spawn(drive_background_session(Arc::clone(self), platform));

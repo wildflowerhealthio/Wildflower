@@ -9,7 +9,7 @@ use tauri_plugin_background_service::{
     ServiceError as BackgroundServiceError, ServiceManagerHandle as BackgroundServiceManagerHandle,
     StartConfig as BackgroundServiceStartConfig,
 };
-use unit_runner::{BackgroundSessionOperation, BackgroundSessionPlatform};
+use unit_runner::BackgroundSessionPlatform;
 
 use super::notification_permission::ask_for_notification_permission;
 use super::session_end_pairing::NO_LONGER_NEEDED_STOP_REASON;
@@ -43,37 +43,33 @@ impl<R: Runtime> PluginBackgroundSession<R> {
 impl<R: Runtime> BackgroundSessionPlatform for PluginBackgroundSession<R> {
     /// Start the service with the start config, after asking for notification
     /// permission the first time. A service already running counts as started.
-    fn request_session_start(&self) -> BackgroundSessionOperation<'_> {
-        Box::pin(async move {
-            if !self
-                .notification_permission_asked
-                .swap(true, Ordering::Relaxed)
-            {
-                ask_for_notification_permission(&self.app).await;
-            }
-            match self
-                .service_manager()?
-                .start(self.app.clone(), self.start_config.clone())
-                .await
-            {
-                Ok(()) | Err(BackgroundServiceError::AlreadyRunning) => Ok(()),
-                Err(error) => Err(anyhow!("the background service didn't start: {error}")),
-            }
-        })
+    async fn request_session_start(&self) -> anyhow::Result<()> {
+        if !self
+            .notification_permission_asked
+            .swap(true, Ordering::Relaxed)
+        {
+            ask_for_notification_permission(&self.app).await;
+        }
+        match self
+            .service_manager()?
+            .start(self.app.clone(), self.start_config.clone())
+            .await
+        {
+            Ok(()) | Err(BackgroundServiceError::AlreadyRunning) => Ok(()),
+            Err(error) => Err(anyhow!("the background service didn't start: {error}")),
+        }
     }
 
     /// Stop the service with [`NO_LONGER_NEEDED_STOP_REASON`]. A service
     /// already stopped counts as stopped.
-    fn request_session_end(&self) -> BackgroundSessionOperation<'_> {
-        Box::pin(async move {
-            match self
-                .service_manager()?
-                .stop_with_reason(NO_LONGER_NEEDED_STOP_REASON)
-                .await
-            {
-                Ok(()) | Err(BackgroundServiceError::NotRunning) => Ok(()),
-                Err(error) => Err(anyhow!("the background service didn't stop: {error}")),
-            }
-        })
+    async fn request_session_end(&self) -> anyhow::Result<()> {
+        match self
+            .service_manager()?
+            .stop_with_reason(NO_LONGER_NEEDED_STOP_REASON)
+            .await
+        {
+            Ok(()) | Err(BackgroundServiceError::NotRunning) => Ok(()),
+            Err(error) => Err(anyhow!("the background service didn't stop: {error}")),
+        }
     }
 }

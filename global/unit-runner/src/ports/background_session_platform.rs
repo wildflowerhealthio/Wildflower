@@ -2,11 +2,6 @@
 //! and end its background session.
 
 use std::future::Future;
-use std::pin::Pin;
-
-/// A background session start's or end's future.
-pub type BackgroundSessionOperation<'a> =
-    Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'a>>;
 
 /// What `UnitRunner` needs from the platform to keep the app alive in the
 /// background: a Tauri app's background-service plugin, or a fake in tests.
@@ -22,9 +17,9 @@ pub type BackgroundSessionOperation<'a> =
 pub trait BackgroundSessionPlatform: Send + Sync + 'static {
     /// Ask the platform to start the background session. A session already
     /// running counts as started.
-    fn request_session_start(&self) -> BackgroundSessionOperation<'_>;
+    fn request_session_start(&self) -> impl Future<Output = anyhow::Result<()>> + Send;
 
     /// Ask the platform to end the background session, with `UnitRunner`'s own
     /// stop reason. A session already ended counts as ended.
-    fn request_session_end(&self) -> BackgroundSessionOperation<'_>;
+    fn request_session_end(&self) -> impl Future<Output = anyhow::Result<()>> + Send;
 }

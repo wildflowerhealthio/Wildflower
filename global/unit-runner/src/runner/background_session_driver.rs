@@ -32,9 +32,12 @@ pub(crate) struct SessionDemand {
 /// A call that fails is logged and not retried until the demand next changes.
 /// The units run either way, as the session only keeps the app alive in the
 /// background.
-pub(crate) async fn drive_background_session<D: Clone + Send + Sync + 'static>(
+pub(crate) async fn drive_background_session<
+    D: Clone + Send + Sync + 'static,
+    P: BackgroundSessionPlatform,
+>(
     unit_runner: Arc<UnitRunner<D>>,
-    platform: Arc<dyn BackgroundSessionPlatform>,
+    platform: Arc<P>,
 ) {
     let mut session_demand_rx = unit_runner.subscribe_session_demand();
     loop {

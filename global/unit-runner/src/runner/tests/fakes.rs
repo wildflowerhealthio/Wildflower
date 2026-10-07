@@ -12,9 +12,7 @@ use tokio::sync::{Barrier, Semaphore};
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::session_ledger::SessionId;
 use crate::domain::unit_plan::UnitPhase;
-use crate::ports::background_session_platform::{
-    BackgroundSessionOperation, BackgroundSessionPlatform,
-};
+use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
 use crate::runner::background_session_driver::SessionDemand;
@@ -415,22 +413,18 @@ impl FakeBackgroundSession {
 }
 
 impl BackgroundSessionPlatform for FakeBackgroundSession {
-    fn request_session_start(&self) -> BackgroundSessionOperation<'_> {
-        Box::pin(async move {
-            self.session_start_requests.fetch_add(1, Ordering::SeqCst);
-            self.platform_starts_session();
-            Ok(())
-        })
+    async fn request_session_start(&self) -> anyhow::Result<()> {
+        self.session_start_requests.fetch_add(1, Ordering::SeqCst);
+        self.platform_starts_session();
+        Ok(())
     }
 
-    fn request_session_end(&self) -> BackgroundSessionOperation<'_> {
-        Box::pin(async move {
-            self.session_end_requests.fetch_add(1, Ordering::SeqCst);
-            if !self.ends_held.load(Ordering::SeqCst) {
-                self.end_session();
-            }
-            Ok(())
-        })
+    async fn request_session_end(&self) -> anyhow::Result<()> {
+        self.session_end_requests.fetch_add(1, Ordering::SeqCst);
+        if !self.ends_held.load(Ordering::SeqCst) {
+            self.end_session();
+        }
+        Ok(())
     }
 }
 

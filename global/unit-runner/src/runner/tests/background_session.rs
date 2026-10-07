@@ -7,7 +7,6 @@ use std::time::Duration;
 use super::fakes::{eventually, FakeBackgroundSession, Harness, Probe, Script};
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
-use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::status::{PlatformStopReason, StopReason};
 
 /// A harness whose background session the fake platform runs.
@@ -20,9 +19,9 @@ fn harness_with_background_session_and_restart_delay(
 ) -> (Harness, Arc<FakeBackgroundSession>) {
     let harness = Harness::with_restart_delay(restart_delay);
     let session = FakeBackgroundSession::new(&harness.unit_runner);
-    harness.unit_runner.start_driving_background_session(
-        Arc::clone(&session) as Arc<dyn BackgroundSessionPlatform>
-    );
+    harness
+        .unit_runner
+        .start_driving_background_session(Arc::clone(&session));
     (harness, session)
 }
 
