@@ -46,7 +46,7 @@ pub fn plan_unit(should_run: bool, phase: UnitPhase) -> UnitAction {
 
 /// Whether a run that stopped for `reason` is restarted after the restart
 /// delay, given whether its unit should still run. Only a run that ended on
-/// its own is. The runner doesn't undo its own stops; a run it stopped to
+/// its own is. `UnitRunner` doesn't undo its own stops; a run it stopped to
 /// restart starts again on the next reconcile, with no delay. Units stopped by
 /// the platform's end of the background session wait for that to be cleared.
 #[must_use]

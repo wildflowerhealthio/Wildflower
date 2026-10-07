@@ -1,5 +1,5 @@
 //! [`BackgroundSessionService`], the background-service plugin's one service:
-//! while the plugin runs it, it is the runner's background session.
+//! while the plugin runs it, it is `TauriUnitRunner`'s background session.
 
 use tauri::Runtime;
 use tauri_plugin_background_service::{
@@ -8,17 +8,18 @@ use tauri_plugin_background_service::{
 };
 
 use super::SESSION_END_REASON_WAIT;
-use crate::runner::UnitRunner;
+use crate::tauri_unit_runner::TauriUnitRunner;
 
-/// The service the plugin builds for each of its starts. Its task tells the
-/// runner the background session started, runs until the plugin's shutdown,
-/// and then reports the session's end with the plugin's reason for it.
+/// The service the plugin builds for each of its starts. Its task tells
+/// `UnitRunner` the background session started, runs until the plugin's
+/// shutdown, and then reports the session's end with the plugin's reason for
+/// it.
 pub(crate) struct BackgroundSessionService<D> {
-    runner: UnitRunner<D>,
+    runner: TauriUnitRunner<D>,
 }
 
 impl<D> BackgroundSessionService<D> {
-    pub(crate) fn new(runner: UnitRunner<D>) -> Self {
+    pub(crate) fn new(runner: TauriUnitRunner<D>) -> Self {
         Self { runner }
     }
 }
@@ -41,13 +42,13 @@ impl<R: Runtime, D: Clone + Send + Sync + 'static> BackgroundService<R>
         &mut self,
         ctx: &BackgroundServiceContext<R>,
     ) -> Result<(), BackgroundServiceError> {
-        let session = self.runner.core.session_started();
+        let session = self.runner.unit_runner.session_started();
         let shutdown_requested = &ctx.shutdown;
         shutdown_requested.cancelled().await;
         // The plugin emits the end's reason once this returns.
         let end_reason_rx = self.runner.bindings.session_end_pairing.wait_for_end();
-        let core = std::sync::Arc::clone(&self.runner.core);
-        self.runner.core.runtime().spawn(async move {
+        let unit_runner = std::sync::Arc::clone(&self.runner.unit_runner);
+        self.runner.unit_runner.runtime().spawn(async move {
             let platform_reason =
                 match tokio::time::timeout(SESSION_END_REASON_WAIT, end_reason_rx).await {
                     Ok(Ok(end)) => end.platform_reason(),
@@ -59,7 +60,7 @@ impl<R: Runtime, D: Clone + Send + Sync + 'static> BackgroundService<R>
                         None
                     }
                 };
-            core.session_ended(session, platform_reason);
+            unit_runner.session_ended(session, platform_reason);
         });
         Ok(())
     }

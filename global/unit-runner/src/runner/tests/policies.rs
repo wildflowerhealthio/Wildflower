@@ -42,7 +42,7 @@ async fn an_until_stops_its_unit_once_the_wall_clock_passes_it() {
 
     // As after a laptop sleep: the wall clock jumps, `tokio::time` doesn't.
     harness.clock.advance(Duration::from_secs(31 * 60));
-    harness.core.reconcile();
+    harness.unit_runner.reconcile();
     harness
         .wait_until_stopped_for("unit", StopReason::PolicyInactive)
         .await;
@@ -64,14 +64,14 @@ async fn while_open_runs_while_open_and_through_the_grace() {
         "the app isn't open yet"
     );
 
-    harness.core.set_app_open(true);
+    harness.unit_runner.set_app_open(true);
     harness.wait_until_running("unit").await;
 
-    harness.core.set_app_open(false);
+    harness.unit_runner.set_app_open(false);
     harness
         .clock
         .advance(WHILE_OPEN_GRACE - Duration::from_secs(1));
-    harness.core.reconcile();
+    harness.unit_runner.reconcile();
     assert_eq!(
         harness.phase("unit"),
         Some(UnitPhase::Running),
@@ -80,7 +80,7 @@ async fn while_open_runs_while_open_and_through_the_grace() {
     assert_eq!(probe.starts(), 1);
 
     harness.clock.advance(Duration::from_secs(1));
-    harness.core.reconcile();
+    harness.unit_runner.reconcile();
     harness
         .wait_until_stopped_for("unit", StopReason::PolicyInactive)
         .await;
@@ -96,13 +96,13 @@ async fn opening_again_within_the_grace_keeps_the_same_run() {
         Script::RunUntilStopped { detail: None },
         &probe,
     );
-    harness.core.set_app_open(true);
+    harness.unit_runner.set_app_open(true);
     harness.wait_until_running("unit").await;
-    harness.core.set_app_open(false);
+    harness.unit_runner.set_app_open(false);
     harness.clock.advance(Duration::from_secs(30));
-    harness.core.set_app_open(true);
+    harness.unit_runner.set_app_open(true);
     harness.clock.advance(WHILE_OPEN_GRACE * 2);
-    harness.core.reconcile();
+    harness.unit_runner.reconcile();
     assert_eq!(harness.phase("unit"), Some(UnitPhase::Running));
     assert_eq!(probe.starts(), 1);
 }
@@ -119,7 +119,7 @@ async fn the_wall_clock_reconcile_waits_for_the_next_deadline() {
         &Probe::default(),
     );
     assert_eq!(
-        harness.core.time_until_next_reconcile(),
+        harness.unit_runner.time_until_next_reconcile(),
         Duration::from_secs(3)
     );
     harness.set_unit_policy(
@@ -129,7 +129,7 @@ async fn the_wall_clock_reconcile_waits_for_the_next_deadline() {
         },
     );
     assert_eq!(
-        harness.core.time_until_next_reconcile(),
+        harness.unit_runner.time_until_next_reconcile(),
         Duration::from_secs(10),
         "never longer than the wall-clock interval"
     );

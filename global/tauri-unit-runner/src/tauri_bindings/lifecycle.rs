@@ -1,7 +1,7 @@
-//! The runner's lifecycle plugin: whether the app is open, and its resumes,
-//! from its window events; the background session's end reasons from the
-//! background-service plugin's events; and driving the background session from
-//! the moment the app is ready.
+//! `TauriUnitRunner`'s lifecycle plugin: whether the app is open, and its
+//! resumes, from its window events; the background session's end reasons from
+//! the background-service plugin's events; and driving the background session
+//! from the moment the app is ready.
 
 use std::sync::{Arc, PoisonError};
 
@@ -13,11 +13,11 @@ use super::plugin_background_session::PluginBackgroundSession;
 use super::session_end_pairing::{PluginSessionEnd, BACKGROUND_SERVICE_EVENT};
 use super::UNIT_RUNNER_PLUGIN_NAME;
 use crate::domain::window_state::{WindowState, WindowStateChange};
-use crate::runner::UnitRunner;
+use crate::tauri_unit_runner::TauriUnitRunner;
 
 /// The lifecycle plugin for `runner`.
 pub(super) fn plugin<R: Runtime, D: Clone + Send + Sync + 'static>(
-    runner: UnitRunner<D>,
+    runner: TauriUnitRunner<D>,
 ) -> TauriPlugin<R> {
     let on_setup = runner.clone();
     let on_window_ready = runner.clone();
@@ -37,7 +37,7 @@ pub(super) fn plugin<R: Runtime, D: Clone + Send + Sync + 'static>(
 /// the session waiting for its reason.
 fn listen_for_session_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
     app: &AppHandle<R>,
-    runner: &UnitRunner<D>,
+    runner: &TauriUnitRunner<D>,
 ) {
     let bindings = Arc::clone(&runner.bindings);
     app.listen(
@@ -55,7 +55,7 @@ fn listen_for_session_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
     );
 }
 
-impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
+impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     /// Follow the app's run events: start driving the background session once
     /// the app is ready, and follow window destruction, and suspend and resume
     /// on a phone.
@@ -69,7 +69,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
                     app.clone(),
                     self.bindings.start_config.clone(),
                 ));
-                self.core.start_driving_background_session(platform);
+                self.unit_runner.start_driving_background_session(platform);
             }
             RunEvent::WindowEvent {
                 label,
@@ -90,8 +90,9 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         }
     }
 
-    /// Record a window event, and pass what it means on to the runner. Running
-    /// units restart first, so units the change starts aren't restarted too.
+    /// Record a window event, and pass what it means on to `TauriUnitRunner`.
+    /// Running units restart first, so units the change starts aren't restarted
+    /// too.
     fn apply_window_event(&self, event: impl FnOnce(&mut WindowState) -> WindowStateChange) {
         let change = {
             // Each event is one set insert or flag write, which no panic
@@ -104,8 +105,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             event(&mut windows)
         };
         if change.unit_restarts_needed {
-            self.core.restart_running_units();
+            self.unit_runner.restart_running_units();
         }
-        self.core.set_app_open(change.open_after_event);
+        self.unit_runner.set_app_open(change.open_after_event);
     }
 }

@@ -16,9 +16,9 @@ use unit_runner::PlatformStopReason;
 /// The Tauri event the plugin emits its [`BackgroundServicePluginEvent`]s on.
 pub(crate) const BACKGROUND_SERVICE_EVENT: &str = "background-service://event";
 
-/// The reason the runner ends a background session with once no unit should
-/// run. The plugin never stops the service with it itself (its own stops are
-/// `UserStop`, the platform's, `TaskCompleted` and `Error`), so that end is
+/// The reason `TauriUnitRunner` ends a background session with once no unit
+/// should run. The plugin never stops the service with it itself (its own stops
+/// are `UserStop`, the platform's, `TaskCompleted` and `Error`), so that end is
 /// never taken for the platform's.
 pub(crate) const NO_LONGER_NEEDED_STOP_REASON: TauriBackgroundServiceStopReason =
     TauriBackgroundServiceStopReason::AppStop;
@@ -26,14 +26,14 @@ pub(crate) const NO_LONGER_NEEDED_STOP_REASON: TauriBackgroundServiceStopReason 
 /// How a background session ended, by the plugin's account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PluginSessionEnd {
-    /// The runner ended it, because no unit should run.
+    /// `TauriUnitRunner` ended it, because no unit should run.
     NoLongerNeeded,
     /// Anything else ended it, for this reason.
     EndedByPlatform(PlatformStopReason),
 }
 
 impl PluginSessionEnd {
-    /// The platform's reason, unless the runner ended the session.
+    /// The platform's reason, unless `TauriUnitRunner` ended the session.
     pub(crate) fn platform_reason(self) -> Option<PlatformStopReason> {
         match self {
             Self::NoLongerNeeded => None,
@@ -63,7 +63,7 @@ impl PluginSessionEnd {
     }
 }
 
-/// The runner's name for the plugin's `reason`. The runner's own
+/// `TauriUnitRunner`'s name for the plugin's `reason`. Its own
 /// [`NO_LONGER_NEEDED_STOP_REASON`] never gets here; a reason added to the
 /// plugin later is [`PlatformStopReason::Unknown`].
 fn platform_stop_reason(reason: TauriBackgroundServiceStopReason) -> PlatformStopReason {

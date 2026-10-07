@@ -162,7 +162,7 @@ async fn a_panic_is_the_run_s_error() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_failed_factory_is_a_failed_run() {
     let harness = Harness::with_restart_delay(Duration::from_secs(3600));
-    harness.core.set_unit(
+    harness.unit_runner.set_unit(
         UnitId::from("unit"),
         RunPolicy::Always,
         || -> anyhow::Result<super::fakes::ScriptedUnit> {
@@ -273,7 +273,7 @@ async fn remove_unit_waits_for_the_run_to_end_and_forgets_the_unit() {
     harness.wait_until_running("unit").await;
     tokio::time::timeout(
         HANG_TIMEOUT,
-        harness.core.remove_unit(&UnitId::from("unit")),
+        harness.unit_runner.remove_unit(&UnitId::from("unit")),
     )
     .await
     .expect("remove_unit finishes");
@@ -282,7 +282,7 @@ async fn remove_unit_waits_for_the_run_to_end_and_forgets_the_unit() {
         Some(&RunEvent::Ended(UnitId::from("unit")))
     );
     assert_eq!(harness.status("unit"), None);
-    // The runner no longer holds the unit, so nothing can start it again.
+    // `UnitRunner` no longer holds the unit, so nothing can start it again.
     assert_eq!(harness.phase("unit"), None);
     assert_eq!(probe.starts(), 1);
 }
@@ -302,7 +302,7 @@ async fn a_unit_set_again_while_being_removed_stays() {
     );
     harness.wait_until_running("unit").await;
     let unit_id = UnitId::from("unit");
-    let mut removing = Box::pin(harness.core.remove_unit(&unit_id));
+    let mut removing = Box::pin(harness.unit_runner.remove_unit(&unit_id));
     // The first poll marks the unit as being removed and stops its run; the
     // removal then waits for the run, which waits for `allow_wind_down`.
     let first_poll = std::future::poll_fn(|cx| Poll::Ready(removing.as_mut().poll(cx))).await;
@@ -357,7 +357,7 @@ async fn a_run_stopped_before_it_starts_publishes_nothing() {
     assert_eq!(probe.starts(), 0, "the stopped run never started");
     assert_eq!(harness.status("unit"), Some(UnitStatus::never_run()));
 
-    // The runner's record of the unit is whole: it starts when set to.
+    // `UnitRunner`'s record of the unit is whole: it starts when set to.
     harness.set_unit_policy("unit", RunPolicy::Always);
     harness.wait_until_running("unit").await;
     assert_eq!(probe.starts(), 1);

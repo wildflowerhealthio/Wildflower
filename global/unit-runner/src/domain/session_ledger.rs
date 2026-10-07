@@ -1,24 +1,25 @@
-//! [`SessionLedger`]: the runner's record of the background session.
+//! [`SessionLedger`]: `UnitRunner`'s record of the background session.
 //!
 //! The background session is the one background-service task (an Android
 //! foreground service, an iOS background task) that keeps the app alive while
 //! units run. Starting and ending it are async, and the platform can also start
-//! a session itself (boot recovery, an OS restart). So the runner numbers each
-//! session as it starts, and marks the one it is ending as no longer needed, so
-//! that session's end counts as its own. Any other end of the running session
-//! is the platform's: Android's time limit, the Stop action on the
-//! notification, or iOS ending the background time. After the platform ends
+//! a session itself (boot recovery, an OS restart). So `UnitRunner` numbers
+//! each session as it starts, and marks the one it is ending as no longer
+//! needed, so that session's end counts as its own. Any other end of the
+//! running session is the platform's: Android's time limit, the Stop action on
+//! the notification, or iOS ending the background time. After the platform ends
 //! it, runs are discouraged until the app opens again, a policy is set, or a
-//! session starts again. That way the runner doesn't fight the OS or the user.
+//! session starts again. That way `UnitRunner` doesn't fight the OS or the
+//! user.
 
 use crate::status::PlatformStopReason;
 
 /// One background session, from its start to its end, numbered in the order
-/// the runner learned of them.
+/// `UnitRunner` learned of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SessionId(u64);
 
-/// Where the background session is, as the runner knows it.
+/// Where the background session is, as `UnitRunner` knows it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SessionState {
     /// No session is running, and nothing discourages runs.
@@ -29,15 +30,15 @@ pub enum SessionState {
     EndedByPlatform,
     /// The session is running.
     Running(SessionId),
-    /// The session is running, and the runner is ending it because no unit
+    /// The session is running, and `UnitRunner` is ending it because no unit
     /// should run.
     EndingAsNoLongerNeeded(SessionId),
 }
 
-/// How a background session ended, as the runner sees it.
+/// How a background session ended, as `UnitRunner` sees it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionEnd {
-    /// The runner ended it, because no unit should run.
+    /// `UnitRunner` ended it, because no unit should run.
     NoLongerNeeded,
     /// The platform ended the running session. Every running unit stops with
     /// this reason, and none starts until that is cleared.
@@ -46,14 +47,14 @@ pub enum SessionEnd {
     Stale,
 }
 
-/// The runner's record of the background session.
+/// `UnitRunner`'s record of the background session.
 ///
-/// The session itself tells the runner when it starts and ends, whoever
-/// started it: the runner, the platform's own recovery, or an iOS background
-/// task. The runner marks the session it is ending before it asks the
+/// The session itself tells `UnitRunner` when it starts and ends, whoever
+/// started it: `UnitRunner`, the platform's own recovery, or an iOS background
+/// task. `UnitRunner` marks the session it is ending before it asks the
 /// platform, so the end that follows counts as its own.
 ///
-/// It has no lock of its own: [`UnitRunnerCore`](crate::UnitRunnerCore) only
+/// It has no lock of its own: [`UnitRunner`](crate::UnitRunner) only
 /// touches it under its state lock.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionLedger {
@@ -78,8 +79,8 @@ impl SessionLedger {
         id
     }
 
-    /// Record that the runner is ending the running session, and return it.
-    /// `None` when no session is running, or the runner is already ending it.
+    /// Record that `UnitRunner` is ending the running session, and return it.
+    /// `None` when no session is running, or `UnitRunner` is already ending it.
     pub fn mark_no_longer_needed(&mut self) -> Option<SessionId> {
         let SessionState::Running(id) = self.state else {
             return None;
@@ -89,7 +90,8 @@ impl SessionLedger {
     }
 
     /// The background session `id` ended. `platform_reason` is the platform's
-    /// reason for it, when the platform gave one that wasn't the runner's own.
+    /// reason for it, when the platform gave one that wasn't `UnitRunner`'s
+    /// own.
     pub fn session_ended(
         &mut self,
         id: SessionId,
@@ -126,7 +128,7 @@ impl SessionLedger {
         self.state == SessionState::EndedByPlatform
     }
 
-    /// Whether a session is running and the runner isn't ending it.
+    /// Whether a session is running and `UnitRunner` isn't ending it.
     #[must_use]
     pub fn session_running_and_not_ending(&self) -> bool {
         matches!(self.state, SessionState::Running(_))
@@ -145,8 +147,8 @@ mod tests {
         assert_eq!(ledger.mark_no_longer_needed(), Some(id));
         assert_eq!(ledger.mark_no_longer_needed(), None, "one mark per session");
         assert!(!ledger.session_running_and_not_ending());
-        // Even when the platform reports a reason: it ended a session the
-        // runner was ending anyway.
+        // Even when the platform reports a reason: it ended a session
+        // `UnitRunner` was ending anyway.
         assert_eq!(
             ledger.session_ended(id, Some(PlatformStopReason::UserStop)),
             SessionEnd::NoLongerNeeded

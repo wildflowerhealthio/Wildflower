@@ -1,7 +1,8 @@
-//! One run of a unit, from its run gate to its `Stopped`: what the runner
+//! One run of a unit, from its run gate to its `Stopped`: what `UnitRunner`
 //! spawns for each run it starts.
 
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -9,14 +10,12 @@ use tokio_util::sync::CancellationToken;
 use super::dedicated_runtime::run_on_dedicated_thread;
 use super::erased_unit::UnitFactory;
 use super::run_gate::RunGate;
-use super::status_board::RunLiveness;
 use super::unit_entry::RunGeneration;
-use super::UnitRunnerCore;
-use crate::run_context::RunContext;
+use super::UnitRunner;
 use crate::status::StopReason;
 use crate::unit::UnitId;
 
-/// Everything one run needs, fixed when the runner starts it.
+/// Everything one run needs, fixed when `UnitRunner` starts it.
 pub(crate) struct RunSpec<D> {
     pub(crate) unit_id: UnitId,
     pub(crate) generation: RunGeneration,
@@ -24,20 +23,25 @@ pub(crate) struct RunSpec<D> {
     pub(crate) gate: RunGate,
     pub(crate) shutdown_token: CancellationToken,
     pub(crate) stop_reason: Arc<OnceLock<StopReason>>,
+    /// How long the run's runtime waits for the unit's tasks once its run
+    /// returns.
+    pub(crate) shutdown_timeout: Duration,
     pub(crate) run_finished_tx: watch::Sender<bool>,
 }
 
-/// Run `spec`'s unit once.
+/// Run `spec`'s unit once:
 ///
-/// Waits at the unit's run gate for its previous run to end, then publishes
-/// `Starting` and runs the unit on its own thread and runtime. Once that
-/// runtime is gone it tells the runner the run ended, publishes `Stopped` with
-/// the run's stop reason and error, and opens the gate.
+///  1. Wait at the unit's run gate for its previous run to end.
+///  2. Publish `Starting`.
+///  3. Run the unit on its own thread and runtime, until that runtime is gone.
+///  4. Record the run's end with `UnitRunner`,
+///  5. then publish `Stopped`, with the run's stop reason and error.
+///  6. Open the gate for the unit's next run.
 ///
 /// A run asked to stop while it waits at the gate never starts and publishes
 /// nothing; it still waits its turn, so its end implies its predecessors'.
 pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
-    core: Arc<UnitRunnerCore<D>>,
+    unit_runner: Arc<UnitRunner<D>>,
     spec: RunSpec<D>,
 ) {
     let RunSpec {
@@ -47,29 +51,28 @@ pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
         gate,
         shutdown_token,
         stop_reason,
+        shutdown_timeout,
         run_finished_tx,
     } = spec;
+
+    // 1. Wait at the unit's gate.
     let run_gate_guard = gate.wait_for_previous_run().await;
-    // Before the run starts, only the runner stops it, and it sets the stop
+    // Before the run starts, only `UnitRunner` stops it, and it sets the stop
     // reason before it cancels `shutdown_token`. So a reason set by now means
     // the run was stopped while it waited.
     if let Some(&reason) = stop_reason.get() {
+        unit_runner.run_finished_before_starting(&unit_id, generation, reason);
         drop(run_gate_guard);
-        core.run_ended(&unit_id, generation, reason);
         run_finished_tx.send_replace(true);
         return;
     }
 
-    let run_liveness = RunLiveness::default();
-    core.board().publish_starting(&unit_id, &run_liveness);
-    let ctx = RunContext::new(
-        unit_id.clone(),
-        shutdown_token,
-        core.board().clone(),
-        run_liveness.clone(),
-    );
-    let result =
-        run_on_dedicated_thread(factory, ctx, core.timings().run_runtime_shutdown_timeout).await;
+    // 2. Publish `Starting`.
+    let run_liveness = unit_runner.run_admitted(&unit_id);
+
+    // 3. Run the unit on its own thread and runtime.
+    let ctx = unit_runner.context_for_run(unit_id.clone(), shutdown_token, run_liveness.clone());
+    let result = run_on_dedicated_thread(factory, ctx, shutdown_timeout).await;
     let reason = *stop_reason.get_or_init(|| StopReason::EndedOnItsOwn);
     let error = result.err().map(|error| format!("{error:#}"));
     if let Some(error) = &error {
@@ -77,13 +80,12 @@ pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
     } else {
         log::info!("[unit-runner] {unit_id} stopped ({reason:?})");
     }
-    // The runner records the end (scheduling a restart, or starting the next
-    // run behind the gate) before anyone can see `Stopped`, so whatever the
-    // app does on seeing it, a `set_unit_policy` included, acts on a run that
-    // has ended.
-    core.run_ended(&unit_id, generation, reason);
-    core.board()
-        .publish_stopped(&unit_id, &run_liveness, reason, error);
+
+    // 4–5. Record the end (scheduling a restart, or starting the next run
+    // behind the gate), then publish `Stopped`.
+    unit_runner.run_finished(&unit_id, generation, &run_liveness, reason, error);
+
+    // 6. Open the gate.
     drop(run_gate_guard);
     run_finished_tx.send_replace(true);
 }

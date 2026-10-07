@@ -19,8 +19,8 @@ fn harness_with_background_session_and_restart_delay(
     restart_delay: Duration,
 ) -> (Harness, Arc<FakeBackgroundSession>) {
     let harness = Harness::with_restart_delay(restart_delay);
-    let session = FakeBackgroundSession::new(&harness.core);
-    harness.core.start_driving_background_session(
+    let session = FakeBackgroundSession::new(&harness.unit_runner);
+    harness.unit_runner.start_driving_background_session(
         Arc::clone(&session) as Arc<dyn BackgroundSessionPlatform>
     );
     (harness, session)
@@ -78,7 +78,7 @@ async fn a_unit_waiting_to_restart_still_wants_a_session() {
     harness
         .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)
         .await;
-    // The runner recorded the end, and published its demand, before the
+    // `UnitRunner` recorded the end, and published its demand, before the
     // status said `Stopped`.
     assert_eq!(harness.phase("unit"), Some(UnitPhase::RestartPending));
     assert!(harness.session_demand().some_unit_should_run);
@@ -117,7 +117,7 @@ async fn the_platform_ending_the_session_stops_every_unit_without_restart() {
         2,
         "nothing restarts after the platform ends the session"
     );
-    assert_eq!(session.starts(), 1, "the runner doesn't start one again");
+    assert_eq!(session.starts(), 1, "`UnitRunner` doesn't start one again");
 
     // The platform starts a session again (an iOS background task).
     session.platform_starts_session();
@@ -130,7 +130,7 @@ async fn the_platform_ending_the_session_stops_every_unit_without_restart() {
 async fn opening_the_app_starts_a_session_again() {
     let (harness, session) = harness_with_background_session();
     let probe = Probe::default();
-    harness.core.set_app_open(true);
+    harness.unit_runner.set_app_open(true);
     harness.set_unit(
         "unit",
         RunPolicy::Always,
@@ -140,7 +140,7 @@ async fn opening_the_app_starts_a_session_again() {
     harness.wait_until_running("unit").await;
     eventually("a session runs", || session.session_running()).await;
 
-    harness.core.set_app_open(false);
+    harness.unit_runner.set_app_open(false);
     session.platform_ends_session(PlatformStopReason::NativeNotificationStop);
     harness
         .wait_until_stopped_for(
@@ -151,7 +151,7 @@ async fn opening_the_app_starts_a_session_again() {
         )
         .await;
 
-    harness.core.set_app_open(true);
+    harness.unit_runner.set_app_open(true);
     eventually("a session starts again", || session.starts() == 2).await;
     harness.wait_until_running("unit").await;
     assert_eq!(probe.starts(), 2);

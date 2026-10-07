@@ -1,13 +1,13 @@
 # Unit Runner — Design Explanation
 
-What the runner is for, the words it uses, and how it starts, watches, restarts
-and ends a unit's runs.
+What `UnitRunner` is for, the words it uses, and how it starts, watches,
+restarts and ends a unit's runs.
 
 ## What it is
 
-`unit-runner` runs an app's long-lived background work. Each piece of work is
-a **unit**: something that runs until it is asked to stop, or fails. The app
-tells the runner which units exist and when each should run. The runner then:
+`unit-runner` runs an app's long-lived background work. Each piece of work is a
+**unit**: something that runs until it is asked to stop, or fails. The app tells
+`UnitRunner` which units exist and when each should run. `UnitRunner` then:
 
 - starts and stops units to match their run policies
 - restarts units that fail
@@ -15,12 +15,12 @@ tells the runner which units exist and when each should run. The runner then:
   the background, while any unit runs
 - reports each unit's status
 
-The runner knows nothing about what a unit does. A unit that serves HTTP through
-a tunnel with its own TLS is as opaque to it as one that syncs a folder.
+`UnitRunner` knows nothing about what a unit does. A unit that serves HTTP
+through a tunnel with its own TLS is as opaque to it as one that syncs a folder.
 
 ## Two crates
 
-The runner is split in two:
+It is split into two crates:
 
 - **`unit-runner`** (this crate) holds everything that decides: units, run
   policies, statuses and stop reasons, the reconcile, runs and restarts, and
@@ -41,22 +41,22 @@ crate needs `tauri-unit-runner`.
 
 | Word                        | Meaning                                                                                                                           |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Unit                        | Work the runner can run. The app gives each unit an id, a run policy and a factory.                                               |
-| Unit id                     | The app's key for a unit, unique within a runner.                                                                                 |
+| Unit                        | Work `UnitRunner` can run. The app gives each unit an id, a run policy and a factory.                                             |
+| Unit id                     | The app's key for a unit, unique within a `UnitRunner`.                                                                           |
 | Factory                     | Builds a fresh unit for each run, so a run's configuration is fixed from start to end. A factory that fails is a failed run.      |
 | Run                         | One start-to-end of a unit, on its own OS thread and tokio runtime.                                                               |
 | Run state                   | `Starting`, `Running` or `Stopped`.                                                                                               |
 | Stop reason                 | Why a run stopped. See Stop reasons.                                                                                              |
 | Detail                      | A unit's own status, of a type the app chooses. The unit reports it during a run, and it is cleared when the run ends.            |
-| Unit status                 | What the runner reports for a unit: the run state, the stop reason and error, when the run started running, and the detail.       |
+| Unit status                 | What `UnitRunner` reports for a unit: the run state, the stop reason and error, when the run started running, and the detail.     |
 | Run policy                  | When the app wants a unit to run: `Off`, `WhileOpen`, `Until { at }` or `Always`.                                                 |
-| Open                        | Desktop: a window of the app is open, minimized included. Mobile: the app is in the foreground. The host tells the runner.        |
+| Open                        | Desktop: a window of the app is open, minimized included. Mobile: the app is in the foreground. The host tells `UnitRunner`.      |
 | Grace period                | How long a `WhileOpen` unit keeps running after the app closes: 2 minutes.                                                        |
 | Background session          | The one platform task that keeps the app alive in the background while units run. Units don't run inside it.                      |
 | Ended by platform           | The platform ending the background session. Runs are discouraged until the app opens, a policy is set, or a session starts again. |
-| No longer needed            | How the runner ends the background session once no unit should run.                                                               |
-| Runner                      | `UnitRunnerCore`: holds the units, reconciles their runs with their policies, and asks for the background session.                |
-| Host                        | What binds the runner to a platform: `tauri-unit-runner`'s `UnitRunner` in an app, a fake in tests.                               |
+| No longer needed            | How `UnitRunner` ends the background session once no unit should run.                                                             |
+| Runner                      | `UnitRunner`: holds the units, reconciles their runs with their policies, and asks for the background session.                    |
+| Host                        | What binds `UnitRunner` to a platform: `tauri-unit-runner`'s `TauriUnitRunner` in an app, a fake in tests.                        |
 | Background session platform | The port a host implements to start and end the background session: `BackgroundSessionPlatform`.                                  |
 
 ## The contract
@@ -78,7 +78,7 @@ impl<D> RunContext<D> {
     pub fn set_detail(&self, detail: D);
 }
 
-impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
+impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     pub fn new(runtime: Handle, clock: Arc<dyn WallClock>) -> Arc<Self>;
 
     // What the app calls, through its host's runner.
@@ -113,7 +113,7 @@ pub trait BackgroundSessionPlatform: Send + Sync + 'static {
     // Each resolves once the platform has taken the request, before the
     // session reports its start or end.
     fn start(&self) -> BackgroundSessionOperation<'_>; // a session already running counts as started
-    fn stop(&self) -> BackgroundSessionOperation<'_>;  // with the runner's own stop reason
+    fn stop(&self) -> BackgroundSessionOperation<'_>;  // with `UnitRunner`'s own stop reason
 }
 
 pub trait WallClock: Send + Sync + 'static {
@@ -140,12 +140,12 @@ pub enum StopReason {
 latest statuses, not every step. A new unit is `Stopped` with no last stop
 until its first run.
 
-One runner has one `Detail` type. An app with several kinds of unit makes its
-`Detail` an enum.
+One `UnitRunner` has one `Detail` type. An app with several kinds of unit makes
+its `Detail` an enum.
 
-**The app pushes; the runner never pulls.** At setup the app reads its own
+**The app pushes; `UnitRunner` never pulls.** At setup the app reads its own
 registry and calls `set_unit` for each unit. Its commands write the registry,
-then call `set_unit_policy` or `remove_unit`. The runner never reads or writes
+then call `set_unit_policy` or `remove_unit`. `UnitRunner` never reads or writes
 the app's storage, and it never changes a policy. An expired `Until` stays
 exactly as the app set it. For the app's registry, a `RunPolicy` serializes as
 `{"kind":"off"}`, `{"kind":"whileOpen"}`,
@@ -159,13 +159,13 @@ forgets it, status included. Run shutdown is bounded (see Runs), so
 `remove_unit` always finishes. `set_unit_policy` and `remove_unit` for a unit
 that was never set are logged and ignored.
 
-**The host binds.** The runner learns about the platform only through its host.
-The host tells it when the app opens or closes (`set_app_open`), when every
-running unit should restart (`restart_running_units`), and when a background
-session starts and ends (`session_started`, `session_ended`). It hands the
-runner its `BackgroundSessionPlatform` once the platform can take its first
-start (`start_driving_background_session`). Until then the runner's demand
-for a background session waits; units run either way.
+**The host binds.** `UnitRunner` learns about the platform only through its
+host. The host tells it when the app opens or closes (`set_app_open`), when
+every running unit should restart (`restart_running_units`), and when a
+background session starts and ends (`session_started`, `session_ended`). It
+hands `UnitRunner` its `BackgroundSessionPlatform` once the platform can take
+its first start (`start_driving_background_session`). Until then `UnitRunner`'s
+demand for a background session waits; units run either way.
 
 ## Runs
 
@@ -191,7 +191,7 @@ for a background session waits; units run either way.
   - `Starting` is published when the run begins.
   - `Running` is published when the unit calls `announce_running()`.
   - `Stopped` is published once the runtime is gone, with the stop reason and,
-    for a failure, the error as its `{:#}` anyhow chain. The runner has
+    for a failure, the error as its `{:#}` anyhow chain. `UnitRunner` has
     recorded the end (and scheduled any restart) by then, so a
     `set_unit_policy` the app makes on seeing `Stopped` always cancels that
     restart.
@@ -205,7 +205,7 @@ for a background session waits; units run either way.
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
 | `PolicyInactive`         | The unit's policy stopped being active: the app set another policy, an `Until` ran out, or the grace period ended. | It starts again once its policy is active.                                |
 | `Replaced`               | The app set the unit again.                                                                                        | The new definition starts once this run has ended, if it should run.      |
-| `Removed`                | The app removed the unit.                                                                                          | The runner forgets the unit once this run has ended.                      |
+| `Removed`                | The app removed the unit.                                                                                          | `UnitRunner` forgets the unit once this run has ended.                    |
 | `StoppedForRestart`      | The host restarted every running unit, as the Tauri host does on an iOS resume.                                    | It starts again once this run has ended, with no delay, if it should run. |
 | `EndedOnItsOwn`          | The unit returned, failed, panicked, or its factory failed.                                                        | It restarts after `RESTART_DELAY` if it should still run.                 |
 | `SessionEndedByPlatform` | The platform ended the background session.                                                                         | It stays stopped until that is cleared (see The background session).      |
@@ -234,7 +234,7 @@ every unit that is running but shouldn't be. There is no cap on how many units
 run at once. Units start without waiting for the background session to start: it
 only keeps the app alive in the background.
 
-The runner reconciles:
+`UnitRunner` reconciles:
 
 - on `set_unit`, `set_unit_policy` and `remove_unit`
 - when the app opens or closes, and when a grace period ends
@@ -249,7 +249,7 @@ The runner reconciles:
 
 A run that ends on its own while its unit should still run is restarted after a
 fixed delay, `RESTART_DELAY` (5 s). That covers a run that fails, and a run
-that returns `Ok` without being asked to stop. Runs the runner stopped itself,
+that returns `Ok` without being asked to stop. Runs `UnitRunner` stopped itself,
 and runs stopped by the platform's end of the background session, never wait
 out that delay. A run stopped for
 a restart starts again as soon as it has ended.
@@ -260,29 +260,29 @@ delay still should run, so it keeps a background session wanted.
 
 ## The background session: one platform task for every unit
 
-The runner asks the platform for exactly one background session for the whole
+`UnitRunner` asks the platform for exactly one background session for the whole
 app, however many units there are: on a phone, an Android foreground service or
 an iOS background task that keeps the process alive while units run. Units
 don't run inside the session; they run on their own threads (see Runs).
 
-The runner keeps a ledger of the background session. Its state is one of: no
-session; ended by the platform; running; or ending as no longer needed.
-Starting and ending a session are async, and the platform can also start one
-itself (boot recovery, an OS restart). So the runner numbers each session as it
-starts, and marks the one it ends as **no longer needed**, so that session's
-end counts as its own. Any other end of the running session is the platform's:
-the session is **ended by the platform**. Runs are then discouraged until the
-app opens again, the app sets a policy, or a session starts again. That way the
-runner doesn't fight the OS or the user. A late end of a session that is no
-longer the current one is stale, and changes nothing.
+`UnitRunner` keeps a ledger of the background session. Its state is one of: no
+session; ended by the platform; running; or ending as no longer needed. Starting
+and ending a session are async, and the platform can also start one itself (boot
+recovery, an OS restart). So `UnitRunner` numbers each session as it starts, and
+marks the one it ends as **no longer needed**, so that session's end counts as
+its own. Any other end of the running session is the platform's: the session is
+**ended by the platform**. Runs are then discouraged until the app opens again,
+the app sets a policy, or a session starts again. That way `UnitRunner` doesn't
+fight the OS or the user. A late end of a session that is no longer the current
+one is stale, and changes nothing.
 
-- **Starting and ending it.** The runner starts a session when a unit should
+- **Starting and ending it.** `UnitRunner` starts a session when a unit should
   run, and ends it when none should, one `BackgroundSessionPlatform` call at a
   time. A call resolves once the platform has taken the request; the session
   reports its start and end itself. A call that fails is logged and tried again
-  when the runner's demand next changes; units run either way.
+  when `UnitRunner`'s demand next changes; units run either way.
 - **Starts the platform makes.** Whoever starts a session, the session tells
-  the runner it started, and the runner reconciles. A session the platform
+  `UnitRunner` it started, and `UnitRunner` reconciles. A session the platform
   started with nothing to run is ended. A unit the app hasn't set yet starts
   when the app sets it. Nothing waits on an undecided value.
 - **Ended by the platform.** When the platform ends the background session,
@@ -291,14 +291,14 @@ longer the current one is stale, and changes nothing.
   limit, the Stop action on Android's notification, iOS background time running
   out, or the app quitting. Those units are not restarted until that is
   cleared. On a phone, that usually means when the app returns to the
-  foreground: opening the app, like the app setting a policy, lets the runner
+  foreground: opening the app, like the app setting a policy, lets `UnitRunner`
   start a session again.
 
 ## What the app does
 
 - It stores its units and their policies, and decides what each unit is.
-- It owns its wire. The runner hands it statuses and their changes, and the app
-  emits its own events and answers its own commands from them.
+- It owns its wire. `UnitRunner` hands it statuses and their changes, and the
+  app emits its own events and answers its own commands from them.
 - It posts its own notifications, such as stops, failures and anything carried
   in a unit's detail, from the statuses.
 - It registers its host, and configures the host's platform.

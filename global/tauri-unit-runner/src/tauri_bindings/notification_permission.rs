@@ -1,5 +1,5 @@
-//! Asking for permission to post notifications before the runner first starts
-//! a background session.
+//! Asking for permission to post notifications before `TauriUnitRunner` first
+//! starts a background session.
 
 use tauri::plugin::PermissionState;
 use tauri::{AppHandle, Manager, Runtime};
@@ -9,7 +9,7 @@ use tauri_plugin_notification::Notification;
 /// (iOS, and Android 13 and later), and log the answer when it isn't a grant.
 /// Units never depend on the answer.
 ///
-/// Asked before the runner's first start of the background service: the
+/// Asked before `TauriUnitRunner`'s first start of the background service: the
 /// plugin's start asks too, and on Android a second ask while the first is on
 /// screen is cancelled, which reads as a refusal. A grant answered here leaves
 /// the plugin nothing to ask.

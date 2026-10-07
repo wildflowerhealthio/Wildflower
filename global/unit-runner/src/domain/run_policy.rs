@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 /// When the app wants a unit to run.
 ///
-/// The app stores it and pushes it to the runner; the runner never changes it.
-/// An expired `Until` stays exactly as the app set it.
+/// The app stores it and pushes it to `UnitRunner`; `UnitRunner` never changes
+/// it. An expired `Until` stays exactly as the app set it.
 ///
 /// Wire: `{"kind":"off"}`, `{"kind":"whileOpen"}`,
 /// `{"kind":"until","at":"2026-10-06T17:00:00Z"}`, `{"kind":"always"}`.
@@ -97,8 +97,8 @@ impl RunPolicy {
     }
 
     /// The wall-clock instant after `now` at which the policy stops being
-    /// active on its own, so the runner can reconcile then: an `Until` that is
-    /// still ahead. `WhileOpen`'s end is the grace period's, which the app's
+    /// active on its own, so `UnitRunner` can reconcile then: an `Until` that
+    /// is still ahead. `WhileOpen`'s end is the grace period's, which the app's
     /// presence decides.
     #[must_use]
     pub fn expires_after(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {

@@ -1,4 +1,4 @@
-//! What the runner needs from its host: the wall clock it judges policies on,
+//! What `UnitRunner` needs from its host: the wall clock it judges policies on,
 //! and the platform's background session.
 
 pub mod background_session_platform;

@@ -1,5 +1,6 @@
-//! Restarts: a run that ends on its own restarts after the delay; the runner's
-//! own stops don't; `set_unit_policy` cuts a pending restart short.
+//! Restarts: a run that ends on its own restarts after the delay;
+//! `UnitRunner`'s own stops don't; `set_unit_policy` cuts a pending restart
+//! short.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,7 +60,7 @@ async fn a_restart_waits_out_the_delay() {
         .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)
         .await;
     // A reconcile leaves a pending restart to its delay.
-    harness.core.reconcile();
+    harness.unit_runner.reconcile();
     assert_eq!(harness.phase("unit"), Some(UnitPhase::RestartPending));
     assert_eq!(probe.starts(), 1);
 }
@@ -127,7 +128,7 @@ async fn a_run_stopped_for_an_inactive_policy_is_not_restarted() {
     harness
         .wait_until_stopped_for("unit", StopReason::PolicyInactive)
         .await;
-    // The runner recorded the end before the status said `Stopped`, and
+    // `UnitRunner` recorded the end before the status said `Stopped`, and
     // scheduled no restart.
     assert_eq!(harness.phase("unit"), Some(UnitPhase::Idle));
     assert_eq!(probe.starts(), 1);
@@ -154,7 +155,7 @@ async fn a_restart_of_running_units_stops_and_starts_each_one() {
     harness.wait_until_running("first").await;
     harness.wait_until_running("second").await;
 
-    harness.core.restart_running_units();
+    harness.unit_runner.restart_running_units();
     eventually("both running units start again", || {
         first.starts() == 2 && second.starts() == 2
     })
@@ -181,7 +182,7 @@ async fn a_run_stopped_for_a_restart_says_so() {
         &Probe::default(),
     );
     harness.wait_until_running("unit").await;
-    harness.core.restart_running_units();
+    harness.unit_runner.restart_running_units();
     // Turned off while it winds down, so the restart doesn't hide its stop.
     // A run keeps the first reason it was stopped for.
     harness.set_unit_policy("unit", RunPolicy::Off);

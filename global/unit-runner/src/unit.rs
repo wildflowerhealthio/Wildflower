@@ -1,11 +1,11 @@
-//! [`Unit`], the work the runner runs, and [`UnitId`], the app's key for it.
+//! [`Unit`], the work `UnitRunner` runs, and [`UnitId`], the app's key for it.
 
 use std::fmt;
 use std::future::Future;
 
 use crate::run_context::RunContext;
 
-/// The app's key for a unit, unique within a runner.
+/// The app's key for a unit, unique within a `UnitRunner`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnitId(String);
 
@@ -41,7 +41,7 @@ impl From<String> for UnitId {
     }
 }
 
-/// Work the runner can run: something that runs until it is asked to stop, or
+/// Work `UnitRunner` can run: something that runs until it is asked to stop, or
 /// fails.
 ///
 /// The app's factory builds a fresh unit for each run, so a run's
@@ -50,9 +50,9 @@ impl From<String> for UnitId {
 /// lives and dies with its run.
 pub trait Unit: Send + 'static {
     /// The unit's own status, such as a connection's liveness or a sync's
-    /// progress, which it reports through [`RunContext::set_detail`]. One runner
-    /// has one `Detail` type; an app with several kinds of unit makes it an
-    /// enum.
+    /// progress, which it reports through [`RunContext::set_detail`]. One
+    /// `UnitRunner` has one `Detail` type; an app with several kinds of unit
+    /// makes it an enum.
     type Detail: Clone + Send + Sync + 'static;
 
     /// Run until `ctx.shutdown_token()` is cancelled, or fail.
@@ -63,7 +63,7 @@ pub trait Unit: Send + 'static {
     ///
     /// # Errors
     ///
-    /// Whatever made the run fail. The runner reports it as the run's error,
+    /// Whatever made the run fail. `UnitRunner` reports it as the run's error,
     /// formatted as its `{:#}` chain.
     fn run(self, ctx: RunContext<Self::Detail>) -> impl Future<Output = anyhow::Result<()>> + Send;
 }

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use super::UnitRunnerCore;
+use super::UnitRunner;
 
 /// Reconcile at the next wall-clock deadline, or after the wall-clock interval,
 /// whichever is sooner, and again whenever the next deadline moves.
@@ -13,14 +13,14 @@ use super::UnitRunnerCore;
 /// a deadline that passed during a sleep is caught by the first interval after
 /// waking, when the reconcile reads the wall clock.
 pub(super) async fn reconcile_on_the_wall_clock<D: Clone + Send + Sync + 'static>(
-    core: Arc<UnitRunnerCore<D>>,
+    unit_runner: Arc<UnitRunner<D>>,
 ) {
     loop {
-        let wait = core.time_until_next_reconcile();
+        let wait = unit_runner.time_until_next_reconcile();
         tokio::select! {
             () = tokio::time::sleep(wait) => {}
-            () = core.next_deadline_moved.notified() => {}
+            () = unit_runner.next_deadline_moved.notified() => {}
         }
-        core.reconcile();
+        unit_runner.reconcile();
     }
 }

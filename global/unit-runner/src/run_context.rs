@@ -2,7 +2,7 @@
 
 use tokio_util::sync::CancellationToken;
 
-use crate::runner::status_board::{RunLiveness, StatusBoard};
+use crate::runner::status_publisher::{RunLiveness, StatusPublisher};
 use crate::unit::UnitId;
 
 /// What one run of a unit is handed: the signal to stop, and the way to report
@@ -13,7 +13,7 @@ use crate::unit::UnitId;
 pub struct RunContext<D> {
     unit_id: UnitId,
     shutdown_token: CancellationToken,
-    board: StatusBoard<D>,
+    status_publisher: StatusPublisher<D>,
     run_liveness: RunLiveness,
 }
 
@@ -22,7 +22,7 @@ impl<D> Clone for RunContext<D> {
         Self {
             unit_id: self.unit_id.clone(),
             shutdown_token: self.shutdown_token.clone(),
-            board: self.board.clone(),
+            status_publisher: self.status_publisher.clone(),
             run_liveness: self.run_liveness.clone(),
         }
     }
@@ -32,13 +32,13 @@ impl<D: Clone + Send + Sync + 'static> RunContext<D> {
     pub(crate) fn new(
         unit_id: UnitId,
         shutdown_token: CancellationToken,
-        board: StatusBoard<D>,
+        status_publisher: StatusPublisher<D>,
         run_liveness: RunLiveness,
     ) -> Self {
         Self {
             unit_id,
             shutdown_token,
-            board,
+            status_publisher,
             run_liveness,
         }
     }
@@ -49,7 +49,7 @@ impl<D: Clone + Send + Sync + 'static> RunContext<D> {
         &self.unit_id
     }
 
-    /// Cancelled when the runner stops this run, the platform's end of the
+    /// Cancelled when `UnitRunner` stops this run, the platform's end of the
     /// background session included. The unit should wind down and return once
     /// it is.
     #[must_use]
@@ -60,13 +60,13 @@ impl<D: Clone + Send + Sync + 'static> RunContext<D> {
     /// Report that the unit is up: the run state goes from `Starting` to
     /// `Running`. Later calls do nothing.
     pub fn announce_running(&self) {
-        self.board
+        self.status_publisher
             .publish_running(&self.unit_id, &self.run_liveness);
     }
 
     /// Report the unit's own status. It is cleared when the run ends.
     pub fn set_detail(&self, detail: D) {
-        self.board
+        self.status_publisher
             .publish_detail(&self.unit_id, &self.run_liveness, detail);
     }
 }

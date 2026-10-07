@@ -1,5 +1,5 @@
-//! [`PluginBackgroundSession`]: the runner's background session port, through
-//! the background-service plugin's `ServiceManagerHandle`.
+//! [`PluginBackgroundSession`]: `TauriUnitRunner`'s background session port,
+//! through the background-service plugin's `ServiceManagerHandle`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

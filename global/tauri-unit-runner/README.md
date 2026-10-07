@@ -1,11 +1,12 @@
 # tauri-unit-runner
 
 Runs a Tauri app's long-lived background work as **units**. Each unit has a
-**run policy**. The runner starts and stops units to match their policies,
-restarts the ones that end on their own, keeps the app alive in the background
-with one `tauri-plugin-background-service` task for all of them, and reports
-each unit's status. It knows nothing about what a unit does: the app supplies
-the units, stores their policies, and owns its own wire and notifications.
+**run policy**. `TauriUnitRunner` starts and stops units to match their
+policies, restarts the ones that end on their own, keeps the app alive in the
+background with one `tauri-plugin-background-service` task for all of them, and
+reports each unit's status. It knows nothing about what a unit does: the app
+supplies the units, stores their policies, and owns its own wire and
+notifications.
 
 This crate is the Tauri bindings of [`unit-runner`](../unit-runner/README.md),
 which holds the units, policies, statuses and the reconcile, free of Tauri. It
@@ -18,26 +19,26 @@ Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 
 ## Main exports
 
-| Export                                    | What it is                                                                                                    |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `UnitRunner<D>`                           | The runner. `set_unit`, `set_unit_policy`, `remove_unit`, `statuses`, `subscribe`, and the two plugins below. |
-| `UnitRunner::background_service_plugin`   | `tauri-plugin-background-service` with the runner's background session as its one service.                    |
-| `UnitRunner::lifecycle_plugin`            | Follows the app's windows and resumes, and starts and ends the background session.                            |
-| `Unit`                                    | Work the runner can run, with its own `Detail` type.                                                          |
-| `RunContext<D>`                           | What a run is handed: `shutdown_token()`, `announce_running()`, `set_detail()`.                               |
-| `RunPolicy`                               | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`.                         |
-| `UnitId`                                  | The app's key for a unit.                                                                                     |
-| `UnitStatus<D>`, `RunState`, `RunStop`    | What the runner reports for a unit.                                                                           |
-| `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform ended the background session.                                         |
-| `BackgroundServiceStartConfig`            | The plugin's start config (Android notification label and service type), re-exported.                         |
-| `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                                            |
-| `unit-runner`'s other exports             | `UnitRunnerCore`, `BackgroundSessionPlatform`, `WallClock` and the rest, re-exported.                         |
+| Export                                       | What it is                                                                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `TauriUnitRunner<D>`                         | Holds the app's units. `set_unit`, `set_unit_policy`, `remove_unit`, `statuses`, `subscribe`, and the two plugins below. |
+| `TauriUnitRunner::background_service_plugin` | `tauri-plugin-background-service` with `TauriUnitRunner`'s background session as its one service.                        |
+| `TauriUnitRunner::lifecycle_plugin`          | Follows the app's windows and resumes, and starts and ends the background session.                                       |
+| `Unit`                                       | Work `TauriUnitRunner` can run, with its own `Detail` type.                                                              |
+| `RunContext<D>`                              | What a run is handed: `shutdown_token()`, `announce_running()`, `set_detail()`.                                          |
+| `RunPolicy`                                  | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`.                                    |
+| `UnitId`                                     | The app's key for a unit.                                                                                                |
+| `UnitStatus<D>`, `RunState`, `RunStop`       | What `TauriUnitRunner` reports for a unit.                                                                               |
+| `StopReason`, `PlatformStopReason`           | Why a run stopped, and why the platform ended the background session.                                                    |
+| `BackgroundServiceStartConfig`               | The plugin's start config (Android notification label and service type), re-exported.                                    |
+| `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc.    | The fixed timings.                                                                                                       |
+| `unit-runner`'s other exports                | `UnitRunner`, `BackgroundSessionPlatform`, `WallClock` and the rest, re-exported.                                        |
 
 ## Use
 
 ```rust,ignore
 use tauri_unit_runner::{
-    BackgroundServiceStartConfig, RunContext, RunPolicy, Unit, UnitId, UnitRunner,
+    BackgroundServiceStartConfig, RunContext, RunPolicy, TauriUnitRunner, Unit, UnitId,
 };
 
 struct Sync;
@@ -53,7 +54,7 @@ impl Unit for Sync {
     }
 }
 
-let runner = UnitRunner::<String>::new(BackgroundServiceStartConfig {
+let runner = TauriUnitRunner::<String>::new(BackgroundServiceStartConfig {
     service_label: "Syncing in the background".to_owned(),
     foreground_service_type: "dataSync".to_owned(),
 });

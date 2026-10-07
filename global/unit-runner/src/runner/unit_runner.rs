@@ -1,4 +1,4 @@
-//! [`UnitRunnerCore`]: the units, their runs and pending restarts, whether the
+//! [`UnitRunner`]: the units, their runs and pending restarts, whether the
 //! app is open, the background session, and the reconcile that brings the runs
 //! in line with the policies.
 
@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 use super::background_session_driver::{drive_background_session, SessionDemand};
 use super::erased_unit::{erase_factory, UnitFactory};
 use super::run_supervisor::{supervise_run, RunSpec};
-use super::status_board::StatusBoard;
+use super::status_publisher::{RunLiveness, StatusPublisher};
 use super::unit_entry::{ActiveRun, PendingRestart, RunGeneration, UnitEntry};
 use super::wall_clock_ticker::reconcile_on_the_wall_clock;
 use super::RunnerTimings;
@@ -26,27 +26,28 @@ use crate::domain::unit_plan::UnitPhase;
 use crate::domain::unit_plan::{plan_unit, restarts_after, UnitAction};
 use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::ports::wall_clock::WallClock;
+use crate::run_context::RunContext;
 use crate::status::{PlatformStopReason, StopReason, UnitStatuses};
 use crate::unit::{Unit, UnitId};
 
-/// The runner, free of any platform: holds the units, reconciles their runs
-/// with their policies, restarts the ones that end on their own, and publishes
-/// their statuses and whether a background session is wanted.
+/// Runs an app's units, free of any platform: holds the units, reconciles their
+/// runs with their policies, restarts the ones that end on their own, and
+/// publishes their statuses and whether a background session is wanted.
 ///
-/// A host binds it to its platform. It tells the runner when the app opens or
+/// A host binds it to its platform. It tells `UnitRunner` when the app opens or
 /// closes ([`set_app_open`](Self::set_app_open)), when every running unit
-/// should restart ([`restart_running_units`](Self::restart_running_units)),
-/// and when a background session starts and ends
+/// should restart ([`restart_running_units`](Self::restart_running_units)), and
+/// when a background session starts and ends
 /// ([`session_started`](Self::session_started),
-/// [`session_ended`](Self::session_ended)); and it hands the runner its
+/// [`session_ended`](Self::session_ended)); and it hands `UnitRunner` its
 /// [`BackgroundSessionPlatform`]
 /// ([`start_driving_background_session`](Self::start_driving_background_session)).
 ///
 /// Every method takes the one state lock briefly and never awaits under it;
 /// runs, restart timers and the wall-clock reconcile are tasks on `runtime`.
-pub struct UnitRunnerCore<D> {
-    state: Mutex<RunnerState<D>>,
-    board: StatusBoard<D>,
+pub struct UnitRunner<D> {
+    state: Mutex<UnitRunnerState<D>>,
+    status_publisher: StatusPublisher<D>,
     runtime: Handle,
     clock: Arc<dyn WallClock>,
     timings: RunnerTimings,
@@ -55,7 +56,7 @@ pub struct UnitRunnerCore<D> {
     pub(super) next_deadline_moved: Notify,
 }
 
-struct RunnerState<D> {
+struct UnitRunnerState<D> {
     units: BTreeMap<UnitId, UnitEntry<D>>,
     app_presence: AppPresence,
     session_ledger: SessionLedger,
@@ -69,16 +70,16 @@ struct RunnerState<D> {
     next_deadline: Option<DateTime<Utc>>,
 }
 
-impl<D> RunnerState<D> {
+impl<D> UnitRunnerState<D> {
     fn issue_generation(&mut self) -> RunGeneration {
         self.last_generation = self.last_generation.next();
         self.last_generation
     }
 }
 
-impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
-    /// A runner with no units, whose tasks run on `runtime`, judging policies
-    /// on `clock`. Starts its wall-clock reconcile on `runtime`.
+impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
+    /// A `UnitRunner` with no units, whose tasks run on `runtime`, judging
+    /// policies on `clock`. Starts its wall-clock reconcile on `runtime`.
     #[must_use]
     pub fn new(runtime: Handle, clock: Arc<dyn WallClock>) -> Arc<Self> {
         Self::with_timings(runtime, clock, RunnerTimings::default())
@@ -90,43 +91,35 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
         clock: Arc<dyn WallClock>,
         timings: RunnerTimings,
     ) -> Arc<Self> {
-        let (session_demand_tx, _session_demand_rx) = watch::channel(SessionDemand::default());
-        let core = Arc::new(Self {
-            state: Mutex::new(RunnerState {
+        let unit_runner = Arc::new(Self {
+            state: Mutex::new(UnitRunnerState {
                 units: BTreeMap::new(),
                 app_presence: AppPresence::new(),
                 session_ledger: SessionLedger::new(),
                 last_generation: RunGeneration::default(),
                 next_deadline: None,
             }),
-            board: StatusBoard::new(Arc::clone(&clock)),
+            status_publisher: StatusPublisher::new(Arc::clone(&clock)),
             runtime,
             clock,
             timings,
-            session_demand_tx,
+            session_demand_tx: watch::Sender::new(SessionDemand::default()),
             next_deadline_moved: Notify::new(),
         });
-        core.runtime
-            .spawn(reconcile_on_the_wall_clock(Arc::clone(&core)));
-        core
+        unit_runner
+            .runtime
+            .spawn(reconcile_on_the_wall_clock(Arc::clone(&unit_runner)));
+        unit_runner
     }
 
-    pub(super) fn board(&self) -> &StatusBoard<D> {
-        &self.board
-    }
-
-    pub(super) fn timings(&self) -> RunnerTimings {
-        self.timings
-    }
-
-    /// The runtime the runner's tasks run on, for a host's own tasks that
-    /// report back to the runner.
+    /// The runtime `UnitRunner`'s tasks run on, for a host's own tasks that
+    /// report back to `UnitRunner`.
     #[must_use]
     pub fn runtime(&self) -> &Handle {
         &self.runtime
     }
 
-    fn lock_state(&self) -> MutexGuard<'_, RunnerState<D>> {
+    fn lock_state(&self) -> MutexGuard<'_, UnitRunnerState<D>> {
         // Nothing under the lock panics midway through an update, so a
         // poisoned lock's state is still whole.
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
@@ -135,14 +128,14 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     /// Every unit's current status.
     #[must_use]
     pub fn statuses(&self) -> UnitStatuses<D> {
-        self.board.snapshot()
+        self.status_publisher.snapshot()
     }
 
     /// Every unit's status, as it changes. The receiver always holds the
     /// current statuses; a slow reader sees the latest, not every step.
     #[must_use]
     pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>> {
-        self.board.subscribe()
+        self.status_publisher.subscribe()
     }
 
     pub(crate) fn subscribe_session_demand(&self) -> watch::Receiver<SessionDemand> {
@@ -150,7 +143,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     }
 
     /// Where the unit `unit_id` is, as a reconcile sees it; `None` for a unit
-    /// the runner doesn't hold. Lets tests check that nothing happened
+    /// `UnitRunner` doesn't hold. Lets tests check that nothing happened
     /// without waiting to see.
     #[cfg(test)]
     pub(crate) fn unit_phase(&self, unit_id: &UnitId) -> Option<UnitPhase> {
@@ -158,7 +151,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     }
 
     /// Start and end the platform's background session through `platform`, to
-    /// match whether any unit should run, for as long as the runner lives.
+    /// match whether any unit should run, for as long as `UnitRunner` lives.
     /// Call it once, when the platform can take its first start.
     pub fn start_driving_background_session(
         self: &Arc<Self>,
@@ -181,7 +174,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     ) {
         let factory: UnitFactory<D> = erase_factory(factory);
         let mut state = self.lock_state();
-        self.board.add_unit(&unit_id);
+        self.status_publisher.add_unit(&unit_id);
         match state.units.get_mut(&unit_id) {
             Some(entry) => {
                 entry.policy = policy;
@@ -244,7 +237,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
             .is_some_and(|entry| entry.awaiting_removal && entry.run.is_none());
         if still_awaiting_removal {
             state.units.remove(unit_id);
-            self.board.remove_unit(unit_id);
+            self.status_publisher.remove_unit(unit_id);
         }
     }
 
@@ -280,7 +273,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
         id
     }
 
-    /// The runner is about to end the background session because no unit
+    /// `UnitRunner` is about to end the background session because no unit
     /// should run; returns it, or `None` when there is none to end or a unit
     /// should run again.
     pub(crate) fn mark_session_no_longer_needed(self: &Arc<Self>) -> Option<SessionId> {
@@ -342,10 +335,65 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
             .map_or(interval, |until_deadline| until_deadline.min(interval))
     }
 
+    /// The run of `unit_id` passed its gate and is starting: publishes
+    /// `Starting`, and returns the run's liveness, which its context reports
+    /// with.
+    pub(super) fn run_admitted(&self, unit_id: &UnitId) -> RunLiveness {
+        let run_liveness = RunLiveness::default();
+        self.status_publisher
+            .publish_starting(unit_id, &run_liveness);
+        run_liveness
+    }
+
+    /// What the run of `unit_id` is handed: `shutdown_token` to stop by, and
+    /// `run_liveness` to report through.
+    pub(super) fn context_for_run(
+        &self,
+        unit_id: UnitId,
+        shutdown_token: CancellationToken,
+        run_liveness: RunLiveness,
+    ) -> RunContext<D> {
+        RunContext::new(
+            unit_id,
+            shutdown_token,
+            self.status_publisher.clone(),
+            run_liveness,
+        )
+    }
+
+    /// The run of `unit_id` with `generation` has ended for `reason`, with
+    /// `error` when it failed, and its runtime is gone. Records the end, then
+    /// publishes `Stopped`, so whatever the app does on seeing `Stopped`, a
+    /// `set_unit_policy` included, acts on a run that has ended.
+    pub(super) fn run_finished(
+        self: &Arc<Self>,
+        unit_id: &UnitId,
+        generation: RunGeneration,
+        run_liveness: &RunLiveness,
+        reason: StopReason,
+        error: Option<String>,
+    ) {
+        self.record_run_end(unit_id, generation, reason);
+        self.status_publisher
+            .publish_stopped(unit_id, run_liveness, reason, error);
+    }
+
+    /// The run of `unit_id` with `generation` was stopped for `reason` while
+    /// it waited at its gate, and never started. Records the end; there is
+    /// nothing to publish.
+    pub(super) fn run_finished_before_starting(
+        self: &Arc<Self>,
+        unit_id: &UnitId,
+        generation: RunGeneration,
+        reason: StopReason,
+    ) {
+        self.record_run_end(unit_id, generation, reason);
+    }
+
     /// The run of `unit_id` with `generation` ended for `reason`. Restarts it
     /// after the restart delay when it ended on its own while its unit should
     /// still run.
-    pub(super) fn run_ended(
+    fn record_run_end(
         self: &Arc<Self>,
         unit_id: &UnitId,
         generation: RunGeneration,
@@ -373,11 +421,11 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
                 "[unit-runner] {unit_id} restarts in {:?}",
                 self.timings.restart_delay
             );
-            let core = Arc::clone(self);
+            let unit_runner = Arc::clone(self);
             let unit_id = unit_id.clone();
             self.runtime.spawn(async move {
-                tokio::time::sleep(core.timings.restart_delay).await;
-                core.restart_due(&unit_id, restart_generation);
+                tokio::time::sleep(unit_runner.timings.restart_delay).await;
+                unit_runner.restart_due(&unit_id, restart_generation);
             });
         }
         self.reconcile_locked(&mut state);
@@ -405,7 +453,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
     /// unit should run, one waiting out its restart delay included), and move
     /// the wall-clock reconcile's next deadline. Returns whether some unit
     /// should run.
-    fn reconcile_locked(self: &Arc<Self>, state: &mut RunnerState<D>) -> bool {
+    fn reconcile_locked(self: &Arc<Self>, state: &mut UnitRunnerState<D>) -> bool {
         let now = self.clock.now();
         let app_open_or_in_grace = state.app_presence.open_or_in_grace(now);
         let runs_discouraged_by_platform = state.session_ledger.runs_discouraged_by_platform();
@@ -448,7 +496,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
         some_unit_should_run
     }
 
-    fn publish_session_demand(&self, state: &RunnerState<D>, some_unit_should_run: bool) {
+    fn publish_session_demand(&self, state: &UnitRunnerState<D>, some_unit_should_run: bool) {
         let demand = SessionDemand {
             some_unit_should_run,
             session_running_and_not_ending: state.session_ledger.session_running_and_not_ending(),
@@ -460,7 +508,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
         });
     }
 
-    fn start_run(self: &Arc<Self>, state: &mut RunnerState<D>, unit_id: UnitId) {
+    fn start_run(self: &Arc<Self>, state: &mut UnitRunnerState<D>, unit_id: UnitId) {
         let generation = state.issue_generation();
         let Some(entry) = state.units.get_mut(&unit_id) else {
             return;
@@ -482,6 +530,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunnerCore<D> {
             gate: entry.gate.clone(),
             shutdown_token,
             stop_reason,
+            shutdown_timeout: self.timings.run_runtime_shutdown_timeout,
             run_finished_tx,
         };
         self.runtime.spawn(supervise_run(Arc::clone(self), spec));

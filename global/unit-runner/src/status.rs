@@ -1,4 +1,4 @@
-//! What the runner reports for each unit: its [`UnitStatus`], made of the
+//! What `UnitRunner` reports for each unit: its [`UnitStatus`], made of the
 //! [`RunState`] of its latest run, how that run stopped, and the unit's detail.
 
 use std::collections::BTreeMap;
@@ -10,7 +10,7 @@ use crate::unit::UnitId;
 /// Every unit's status, keyed by unit id.
 pub type UnitStatuses<D> = BTreeMap<UnitId, UnitStatus<D>>;
 
-/// What the runner reports for one unit.
+/// What `UnitRunner` reports for one unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitStatus<D> {
     /// Where the unit's latest run is.
@@ -67,17 +67,17 @@ pub struct RunStop {
 /// Why a run stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopReason {
-    /// The runner stopped the run because the unit's policy stopped being
+    /// `UnitRunner` stopped the run because the unit's policy stopped being
     /// active: the app set another policy, an `Until` ran out, or the app's
     /// grace period ended. Starts again only once the policy is active again.
     PolicyInactive,
-    /// The app set the unit again, so the runner stopped the run of the old
+    /// The app set the unit again, so `UnitRunner` stopped the run of the old
     /// definition. The new definition starts once this run has ended, if it
     /// should run.
     Replaced,
-    /// The app removed the unit, so the runner stopped its run.
+    /// The app removed the unit, so `UnitRunner` stopped its run.
     Removed,
-    /// The runner stopped the run to start it again at once: the host
+    /// `UnitRunner` stopped the run to start it again at once: the host
     /// restarted every running unit, as the Tauri host does on an iOS resume.
     /// The unit starts again once this run has ended, with no restart delay,
     /// if it should still run.
@@ -96,8 +96,9 @@ pub enum StopReason {
 }
 
 /// Why the platform ended the background session, in the words of
-/// `tauri-plugin-background-service`, the one background session platform the
-/// runner is bound to. The runner's own ends of the session never appear here.
+/// `tauri-plugin-background-service`, the one background session platform
+/// `UnitRunner` is bound to. `UnitRunner`'s own ends of the session never
+/// appear here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlatformStopReason {
     /// A stop through the plugin's own `stop`, the desktop app quitting
@@ -119,7 +120,7 @@ pub enum PlatformStopReason {
     Error,
     /// The app's process is going away (the iOS app backgrounded or killed).
     ProcessExit,
-    /// The plugin gave no reason this runner knows, or none arrived in time
+    /// The plugin gave no reason `UnitRunner` knows, or none arrived in time
     /// (`tauri-unit-runner`'s `SESSION_END_REASON_WAIT`).
     Unknown,
 }

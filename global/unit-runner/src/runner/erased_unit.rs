@@ -1,5 +1,5 @@
-//! [`UnitFactory`]: the app's factory with its unit type erased, so one runner
-//! holds units of any type that share its `Detail`.
+//! [`UnitFactory`]: the app's factory with its unit type erased, so one
+//! `UnitRunner` holds units of any type that share its `Detail`.
 
 use std::future::Future;
 use std::pin::Pin;

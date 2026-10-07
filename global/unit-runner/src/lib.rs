@@ -1,25 +1,25 @@
 //! Runs an app's long-lived background work as **units**, on any platform.
 //!
-//! The app gives the runner each unit's id, [`RunPolicy`] and factory. The
-//! runner starts and stops units to match their policies, restarts the ones
-//! that end on their own, asks the platform for one **background session**
+//! The app gives [`UnitRunner`] each unit's id, [`RunPolicy`] and factory.
+//! `UnitRunner` starts and stops units to match their policies, restarts the
+//! ones that end on their own, asks the platform for one **background session**
 //! while any of them should run, and reports each unit's [`UnitStatus`]. It
-//! knows nothing about what a unit does. See the
-//! [Design Explanation](../docs/Design%20Explanation.md).
+//! knows nothing about what a unit does. See the [Design
+//! Explanation](../docs/Design%20Explanation.md).
 //!
 //! This crate has no platform dependency, so an app's domain crates can define
-//! units and store run policies without depending on Tauri. A host crate,
-//! such as `tauri-unit-runner`, binds [`UnitRunnerCore`] to its platform
-//! through the [`BackgroundSessionPlatform`] port and the core's host calls.
+//! units and store run policies without depending on Tauri. A host crate, such
+//! as `tauri-unit-runner`, binds [`UnitRunner`] to its platform through the
+//! [`BackgroundSessionPlatform`] port and `UnitRunner`'s host calls.
 //!
 //! Layered so everything that decides is testable without a platform:
 //!
 //!  - `domain` — the pure rules: when a policy is active, when the app counts
 //!    as open, what a reconcile does to each unit, when a run restarts, and
 //!    how a background session ends.
-//!  - `ports` — what the runner needs from its host: the [`WallClock`] and the
-//!    [`BackgroundSessionPlatform`].
-//!  - `runner` — [`UnitRunnerCore`]'s state, each run's thread and runtime,
+//!  - `ports` — what `UnitRunner` needs from its host: the [`WallClock`] and
+//!    the [`BackgroundSessionPlatform`].
+//!  - `runner` — [`UnitRunner`]'s state, each run's thread and runtime,
 //!    the run gates, the statuses and the background session's demand.
 
 mod domain;
@@ -38,7 +38,7 @@ pub use ports::background_session_platform::{
 pub use ports::wall_clock::{SystemClock, WallClock};
 pub use run_context::RunContext;
 pub use runner::{
-    UnitRunnerCore, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT, WALL_CLOCK_RECONCILE_INTERVAL,
+    UnitRunner, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT, WALL_CLOCK_RECONCILE_INTERVAL,
 };
 pub use status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus, UnitStatuses};
 pub use unit::{Unit, UnitId};

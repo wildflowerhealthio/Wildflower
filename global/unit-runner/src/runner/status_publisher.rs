@@ -1,5 +1,5 @@
-//! [`StatusBoard`], where runs publish their units' statuses and the app reads
-//! and subscribes to them.
+//! [`StatusPublisher`], where runs publish their units' statuses and the app
+//! reads and subscribes to them.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -30,12 +30,12 @@ impl RunLiveness {
 /// Every unit's status, in one watch. Every write happens inside the watch's
 /// lock, where a run's liveness is also checked and changed, so a late write
 /// from a finished run can't land after its `Stopped`.
-pub(crate) struct StatusBoard<D> {
+pub(crate) struct StatusPublisher<D> {
     statuses_tx: Arc<watch::Sender<UnitStatuses<D>>>,
     clock: Arc<dyn WallClock>,
 }
 
-impl<D> Clone for StatusBoard<D> {
+impl<D> Clone for StatusPublisher<D> {
     fn clone(&self) -> Self {
         Self {
             statuses_tx: Arc::clone(&self.statuses_tx),
@@ -44,12 +44,11 @@ impl<D> Clone for StatusBoard<D> {
     }
 }
 
-impl<D: Clone + Send + Sync + 'static> StatusBoard<D> {
-    /// An empty board whose stop and running times are read on `clock`.
+impl<D: Clone + Send + Sync + 'static> StatusPublisher<D> {
+    /// No statuses yet; stop and running times are read on `clock`.
     pub(crate) fn new(clock: Arc<dyn WallClock>) -> Self {
-        let (statuses_tx, _statuses_rx) = watch::channel(UnitStatuses::new());
         Self {
-            statuses_tx: Arc::new(statuses_tx),
+            statuses_tx: Arc::new(watch::Sender::new(UnitStatuses::new())),
             clock,
         }
     }

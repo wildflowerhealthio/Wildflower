@@ -41,7 +41,7 @@ impl PlatformKind {
     }
 }
 
-/// What a window event means for the runner. The caller acts on it.
+/// What a window event means for `TauriUnitRunner`. The caller acts on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowStateChange {
     /// Whether the app is open after the event.

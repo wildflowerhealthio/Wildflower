@@ -1,5 +1,5 @@
-//! [`UnitEntry`], the runner's record of one unit: its policy, its factory, its
-//! run gate, its current run and its pending restart.
+//! [`UnitEntry`], `UnitRunner`'s record of one unit: its policy, its factory,
+//! its run gate, its current run and its pending restart.
 
 use std::sync::{Arc, OnceLock};
 
@@ -13,7 +13,7 @@ use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
 use crate::status::StopReason;
 
-/// The runner's record of one unit.
+/// `UnitRunner`'s record of one unit.
 pub(crate) struct UnitEntry<D> {
     pub(crate) policy: RunPolicy,
     pub(crate) factory: UnitFactory<D>,
@@ -91,10 +91,10 @@ pub(crate) struct ActiveRun {
     /// Tells this run's end from a later run's.
     pub(crate) generation: RunGeneration,
     pub(crate) shutdown_token: CancellationToken,
-    /// Why the run stopped: set once, by whoever is first, the runner asking
+    /// Why the run stopped: set once, by whoever is first, `UnitRunner` asking
     /// it to stop or the run ending on its own.
     pub(crate) stop_reason: Arc<OnceLock<StopReason>>,
-    /// `true` once the run's thread and runtime are gone and the runner has
+    /// `true` once the run's thread and runtime are gone and `UnitRunner` has
     /// recorded its end.
     pub(crate) run_finished_rx: watch::Receiver<bool>,
 }

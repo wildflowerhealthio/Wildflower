@@ -1,8 +1,8 @@
-//! The runner bound to Tauri: the background session as
-//! `tauri-plugin-background-service`'s one
+//! [`UnitRunner`](unit_runner::UnitRunner) bound to Tauri: the background
+//! session as `tauri-plugin-background-service`'s one
 //! [`BackgroundService`](tauri_plugin_background_service::BackgroundService),
 //! and whether the app is open and resumes from its window events, as the two
-//! plugins [`UnitRunner`] hands the app.
+//! plugins [`TauriUnitRunner`] hands the app.
 
 mod background_session_service;
 mod lifecycle;
@@ -20,14 +20,14 @@ use tauri_plugin_background_service::{
 };
 
 use crate::domain::window_state::{PlatformKind, WindowState};
-use crate::runner::UnitRunner;
+use crate::tauri_unit_runner::TauriUnitRunner;
 use background_session_service::BackgroundSessionService;
 use session_end_pairing::SessionEndPairing;
 
-/// The name the runner's lifecycle plugin registers under.
+/// The name `TauriUnitRunner`'s lifecycle plugin registers under.
 pub const UNIT_RUNNER_PLUGIN_NAME: &str = "unit-runner";
 
-/// How long, after a background session ends, the runner waits for the
+/// How long, after a background session ends, `TauriUnitRunner` waits for the
 /// plugin's event that names the reason. The plugin emits it as soon as the
 /// session's task has returned.
 pub const SESSION_END_REASON_WAIT: Duration = Duration::from_secs(1);
@@ -50,14 +50,15 @@ impl TauriBindings {
     }
 }
 
-impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
-    /// `tauri-plugin-background-service`, with the runner's background session
-    /// as its one service. Register it once, before the app's `setup()`.
+impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
+    /// `tauri-plugin-background-service`, with `TauriUnitRunner`'s background
+    /// session as its one service. Register it once, before the app's
+    /// `setup()`.
     ///
-    /// Each start of the service, whether the runner, the plugin's recovery or
-    /// an iOS background task made it, is a background session the runner
-    /// counts on until the service stops. Units never run inside the service's
-    /// task; it only keeps the app alive.
+    /// Each start of the service, whether `TauriUnitRunner`, the plugin's
+    /// recovery or an iOS background task made it, is a background session
+    /// `TauriUnitRunner` counts on until the service stops. Units never run
+    /// inside the service's task; it only keeps the app alive.
     #[must_use]
     pub fn background_service_plugin<R: Runtime>(
         &self,
@@ -68,9 +69,10 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         })
     }
 
-    /// The runner's own plugin, [`UNIT_RUNNER_PLUGIN_NAME`]. Register it once,
-    /// alongside [`background_service_plugin`](Self::background_service_plugin)
-    /// and `tauri-plugin-notification`.
+    /// `TauriUnitRunner`'s own plugin, [`UNIT_RUNNER_PLUGIN_NAME`]. Register it
+    /// once, alongside
+    /// [`background_service_plugin`](Self::background_service_plugin) and
+    /// `tauri-plugin-notification`.
     ///
     /// It follows the app's windows to tell when the app is open, restarts
     /// every running unit on an iOS resume, learns why the platform ended a

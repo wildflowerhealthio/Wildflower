@@ -1,5 +1,5 @@
-//! The doubles the runner tests share: a hand-set wall clock, scripted units
-//! that record their runs, a fake background session platform, and status
+//! The doubles the `UnitRunner` tests share: a hand-set wall clock, scripted
+//! units that record their runs, a fake background session platform, and status
 //! waits.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -18,17 +18,17 @@ use crate::ports::background_session_platform::{
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
 use crate::runner::background_session_driver::SessionDemand;
-use crate::runner::{RunnerTimings, UnitRunnerCore};
+use crate::runner::{RunnerTimings, UnitRunner};
 use crate::status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus};
 use crate::unit::{Unit, UnitId};
 
 /// The ceiling on a test's wait for something that should happen, so a broken
-/// runner fails the test rather than hangs it.
+/// `UnitRunner` fails the test rather than hangs it.
 pub(super) const HANG_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How long a test watches for something that must not happen, where nothing
 /// marks the moment it would have happened. Most checks for what must not
-/// happen read the runner's state instead (see [`Harness::phase`]).
+/// happen read `UnitRunner`'s state instead (see [`Harness::phase`]).
 pub(super) const QUIET_PERIOD: Duration = Duration::from_millis(300);
 
 /// The detail the scripted units report.
@@ -50,19 +50,19 @@ impl WallClock for ManualClock {
     }
 }
 
-/// A runner on the test's runtime, its clock, and quick timings.
+/// A `UnitRunner` on the test's runtime, its clock, and quick timings.
 pub(super) struct Harness {
-    pub(super) core: Arc<UnitRunnerCore<Detail>>,
+    pub(super) unit_runner: Arc<UnitRunner<Detail>>,
     pub(super) clock: Arc<ManualClock>,
 }
 
 impl Harness {
-    /// A runner that restarts after `restart_delay`.
+    /// A `UnitRunner` that restarts after `restart_delay`.
     pub(super) fn with_restart_delay(restart_delay: Duration) -> Self {
         let clock = Arc::new(ManualClock(Mutex::new(
             DateTime::from_timestamp(1_800_000_000, 0).expect("a valid instant"),
         )));
-        let core = UnitRunnerCore::with_timings(
+        let unit_runner = UnitRunner::with_timings(
             tokio::runtime::Handle::current(),
             Arc::clone(&clock) as Arc<dyn WallClock>,
             RunnerTimings {
@@ -71,7 +71,7 @@ impl Harness {
                 wall_clock_reconcile_interval: Duration::from_secs(10),
             },
         );
-        Self { core, clock }
+        Self { unit_runner, clock }
     }
 
     pub(super) fn new() -> Self {
@@ -85,32 +85,37 @@ impl Harness {
     /// Set `unit_id` to run `script` under `policy`, recording on `probe`.
     pub(super) fn set_unit(&self, unit_id: &str, policy: RunPolicy, script: Script, probe: &Probe) {
         let probe = probe.clone();
-        self.core.set_unit(UnitId::from(unit_id), policy, move || {
-            Ok(ScriptedUnit {
-                script: script.clone(),
-                probe: probe.clone(),
-            })
-        });
+        self.unit_runner
+            .set_unit(UnitId::from(unit_id), policy, move || {
+                Ok(ScriptedUnit {
+                    script: script.clone(),
+                    probe: probe.clone(),
+                })
+            });
     }
 
     pub(super) fn set_unit_policy(&self, unit_id: &str, policy: RunPolicy) {
-        self.core.set_unit_policy(&UnitId::from(unit_id), policy);
+        self.unit_runner
+            .set_unit_policy(&UnitId::from(unit_id), policy);
     }
 
     pub(super) fn status(&self, unit_id: &str) -> Option<UnitStatus<Detail>> {
-        self.core.statuses().get(&UnitId::from(unit_id)).cloned()
+        self.unit_runner
+            .statuses()
+            .get(&UnitId::from(unit_id))
+            .cloned()
     }
 
-    /// Where `unit_id` is, as a reconcile sees it, right now. Every runner
-    /// call that changes it has done so by the time it returns, so a test can
-    /// read it to check that something didn't happen.
+    /// Where `unit_id` is, as a reconcile sees it, right now. Every
+    /// `UnitRunner` call that changes it has done so by the time it returns, so
+    /// a test can read it to check that something didn't happen.
     pub(super) fn phase(&self, unit_id: &str) -> Option<UnitPhase> {
-        self.core.unit_phase(&UnitId::from(unit_id))
+        self.unit_runner.unit_phase(&UnitId::from(unit_id))
     }
 
-    /// The runner's background session demand right now.
+    /// `UnitRunner`'s background session demand right now.
     pub(super) fn session_demand(&self) -> SessionDemand {
-        *self.core.subscribe_session_demand().borrow()
+        *self.unit_runner.subscribe_session_demand().borrow()
     }
 
     /// Wait until `unit_id`'s status satisfies `predicate`, failing the test
@@ -122,7 +127,7 @@ impl Harness {
         predicate: impl Fn(&UnitStatus<Detail>) -> bool,
     ) -> UnitStatus<Detail> {
         let unit_id = UnitId::from(unit_id);
-        let mut statuses_rx = self.core.subscribe();
+        let mut statuses_rx = self.unit_runner.subscribe();
         let waited = tokio::time::timeout(
             HANG_TIMEOUT,
             statuses_rx.wait_for(|statuses| statuses.get(&unit_id).is_some_and(&predicate)),
@@ -133,7 +138,7 @@ impl Harness {
             Ok(Err(_)) => panic!("the statuses closed while waiting for {unit_id} to be {what}"),
             Err(_) => panic!(
                 "{unit_id} never became {what}; it is {:?}",
-                self.core.statuses().get(&unit_id)
+                self.unit_runner.statuses().get(&unit_id)
             ),
         }
     }
@@ -337,28 +342,28 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
 /// A background session platform that starts and ends a pretend session at
 /// once, as the plugin would, and records the calls.
 pub(super) struct FakeBackgroundSession {
-    core: Arc<UnitRunnerCore<Detail>>,
+    unit_runner: Arc<UnitRunner<Detail>>,
     session: Mutex<Option<SessionId>>,
     starts: AtomicUsize,
     stops: AtomicUsize,
 }
 
 impl FakeBackgroundSession {
-    pub(super) fn new(core: &Arc<UnitRunnerCore<Detail>>) -> Arc<Self> {
+    pub(super) fn new(unit_runner: &Arc<UnitRunner<Detail>>) -> Arc<Self> {
         Arc::new(Self {
-            core: Arc::clone(core),
+            unit_runner: Arc::clone(unit_runner),
             session: Mutex::new(None),
             starts: AtomicUsize::new(0),
             stops: AtomicUsize::new(0),
         })
     }
 
-    /// How many times the runner started a session.
+    /// How many times `UnitRunner` started a session.
     pub(super) fn starts(&self) -> usize {
         self.starts.load(Ordering::SeqCst)
     }
 
-    /// How many times the runner ended a session.
+    /// How many times `UnitRunner` ended a session.
     pub(super) fn stops(&self) -> usize {
         self.stops.load(Ordering::SeqCst)
     }
@@ -372,7 +377,7 @@ impl FakeBackgroundSession {
     pub(super) fn platform_starts_session(&self) {
         let mut session = self.session.lock().expect("session lock");
         if session.is_none() {
-            *session = Some(self.core.session_started());
+            *session = Some(self.unit_runner.session_started());
         }
     }
 
@@ -380,7 +385,7 @@ impl FakeBackgroundSession {
     pub(super) fn platform_ends_session(&self, reason: PlatformStopReason) {
         let ended = self.session.lock().expect("session lock").take();
         if let Some(id) = ended {
-            self.core.session_ended(id, Some(reason));
+            self.unit_runner.session_ended(id, Some(reason));
         }
     }
 }
@@ -399,7 +404,7 @@ impl BackgroundSessionPlatform for FakeBackgroundSession {
             self.stops.fetch_add(1, Ordering::SeqCst);
             let ended = self.session.lock().expect("session lock").take();
             if let Some(id) = ended {
-                self.core.session_ended(id, None);
+                self.unit_runner.session_ended(id, None);
             }
             Ok(())
         })
