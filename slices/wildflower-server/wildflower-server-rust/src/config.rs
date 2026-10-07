@@ -73,10 +73,11 @@ pub struct ServerObservers {
     /// answer. `None` until its first probe; the monitor stops when the server
     /// stops serving, and publishes nothing after.
     pub server_health_sender: watch::Sender<Option<ServerHealth>>,
-    /// Each request the trusted front relayed through the tunnel, reported by
-    /// the outermost layer after its response is ready (see
-    /// `forwarded_request_layer`). A full channel drops the report rather than
-    /// delaying the response. The same layer sends each record to the
-    /// request-log slice, over a channel the server wires itself.
+    /// Each forwarded request (every request through the tunnel, and each one
+    /// a front run on this machine relayed), reported by the forwarded-request
+    /// layer after its response is ready (see `forwarded_request_layer`). A
+    /// full channel drops the report rather than delaying the response. The
+    /// same layer sends each record to the request-log slice, over a channel
+    /// the server wires itself.
     pub forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
 }

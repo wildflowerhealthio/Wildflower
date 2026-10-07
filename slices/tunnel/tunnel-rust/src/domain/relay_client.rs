@@ -6,12 +6,16 @@
 //! no run lifecycle of its own. The trait exists so the supervisor can be tested
 //! against a fake instead of a live relay.
 //!
-//! rathole's public API only accepts a config *file* path, and its own `Config`
-//! re-serializes the token as a masked `***`, so we render the client config
-//! from our own typed structs with [`toml`] (escaping handled by construction)
-//! to a temp file that lives for the duration of the attempt.
+//! The client connects to no local port: it hands each visitor's connection,
+//! in process, to the sender it is given, as a [`TunnelStream`].
+
 use rathole_settings_rust::PublicRatholeSettings;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+
+/// One visitor's connection through the relay, as the rathole client hands it
+/// over: the bytes of exactly that visitor, from the relay.
+pub type TunnelStream = Box<dyn rathole::AsyncStream>;
 
 /// A fully-specified relay connection: every field the rathole client needs,
 /// built from the server's record.
@@ -58,14 +62,15 @@ impl std::fmt::Debug for RelaySettings {
 /// Runs a single rathole client attempt. The supervisor calls this in a loop.
 #[async_trait::async_trait]
 pub trait RelayClient: Send + Sync {
-    /// Forward `local_addr` to the relay per `relay`, running until the client
-    /// exits. Resolves `Ok` on a clean stop — `cancel` fired, or the relay
-    /// closed the session without error — and `Err` on a failure the supervisor
-    /// should back off and retry (relay unreachable, handshake rejected).
+    /// Bring up the tunnel per `relay`, sending each visitor's stream to
+    /// `tunnel_stream_sender`, and run until the client exits. Resolves `Ok` on
+    /// a clean stop — `cancel` fired, or the relay closed the session without
+    /// error — and `Err` on a failure the supervisor should back off and retry
+    /// (relay unreachable, handshake rejected).
     async fn run_once(
         &self,
         relay: &RelaySettings,
-        local_addr: &str,
+        tunnel_stream_sender: mpsc::Sender<TunnelStream>,
         cancel: CancellationToken,
     ) -> anyhow::Result<()>;
 }

@@ -1,7 +1,8 @@
-//! The outermost layer of the served stack: after each request the trusted
-//! front relayed through the tunnel report what it was and who made it to the
-//! host and to the request-log slice; a `/health` check goes to the request log
-//! only.
+//! The forwarded-request report, on both listeners' routers: after each
+//! forwarded request (every request through the tunnel, whose `Forwarded` the
+//! tunnel front writes, and each one a front run on this machine relayed to
+//! the loopback listener) report what it was and who made it to the host and
+//! to the request-log slice; a `/health` check goes to the request log only.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
 //! bearer gate's `401` off its [`RequestRefusal`] one; the gatekeeper bearer

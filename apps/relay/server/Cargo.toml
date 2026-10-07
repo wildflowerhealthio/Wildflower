@@ -47,7 +47,7 @@ hyper-util = { version = "0.1", features = ["tokio", "service"] }
 persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
 # PROXY protocol v2 header ahead of each replayed ClientHello, so the device
 # sees the visitor's address instead of the relay's.
-ppp = "2.3"
+ppp.workspace = true
 # OS randomness (`SysRng`) for created tunnels' tokens and default names. The
 # version the slices use.
 rand = "0.10"
