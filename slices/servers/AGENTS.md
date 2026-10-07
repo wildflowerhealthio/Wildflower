@@ -14,36 +14,50 @@ changing how servers run or what the host notifies about them.
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher and certificate source,
   and its removal. `ServerUnit`, a server as a unit the unit runner runs, with
-  `ServerDetail`, what its runs report; and the notification decisions: the
-  per-caller request coalescer and the stop notification for each new stop of
-  a server's run.
+  `ServerDetail`, what its runs report; `ServerStatus`, a server's status on
+  the runner as the base receives it, and `ListedServer`; and the
+  notification decisions: the per-caller request coalescer and the stop
+  notification for each new stop of a server's run.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `RelayIdentity`, `EnrolmentError`), server changes
-    (`set_run_policy` with `RunPolicyChoice`, `update_server`,
-    `remove_server`, `ServerChangeError`), `ServerDetail`, and
+    (`set_run_policy` with `RunPolicyChoice`, `update_server` with
+    `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
+    `ServerStatus` with `ServerStatusTracker`, `ListedServer`, and
     `notifications/` (`LocalNotification`, `RequestNotificationCoalescer`,
-    `stop_notification` and `StopNotificationCoalescer`); `ports/` the
+    `stop_notification` and `StopNotificationTracker`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`.
     `tests/server_unit.rs` runs the real server through `UnitRunner`.
 - **`servers-tauri-rust`** — the host side. `host_servers`, called from the
-  app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
-  `ServerUnits::push`, posts the stop and request notifications, and manages
-  the commands' `ServersState`. The base's Tauri commands, `server_add` and
-  `server_set_credentials`, write the registry and then push the server they
-  wrote. Only glue; every decision and its tests are in `servers-rust`.
+  app's `setup()`, pushes every server to the app's `UnitRunner` through
+  `ServerUnits::push`, emits the `server-status` event, posts the stop and
+  request notifications, and manages the commands' `ServersState`. The base's
+  Tauri commands: `servers_list`, `server_add`, `server_set_credentials`,
+  `server_set_run_policy`, `server_update` and `server_remove`, each writing
+  the registry and then pushing what it wrote. Only glue; every decision and
+  its tests are in `servers-rust`, except the commands' own order of write and
+  push, tested here against a real `UnitRunner`.
 - **`servers-core`** — the host commands the base calls, as Effects over the
   `TauriInvoke` port (`invokeHostCommand`), each answer decoded by an Effect
-  Schema: the app's version and the notification permission. No DOM, no
-  React, no `@tauri-apps/api`.
+  Schema: the server commands (`listServers`, `setServerRunPolicy`,
+  `updateServer`, `removeServer`), the keep-alive's recovery
+  (`enableKeepAliveRecovery`), the app's version and the notification
+  permission; and the wire's namespaces, `ListedServer`, `ServerStatus` (with
+  the `server-status` event's name and decoder), `RunPolicy` and
+  `RunPolicyChoice`, each a `Schema` and its `Type` with getters. A refused
+  command is a `HostCommandFailed` whose `refusal` is the host's
+  `{kind, message}`. No DOM, no React, no `@tauri-apps/api`.
 - **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
-  mounts with `@tauri-apps/api/core`'s `invoke`: the base's telemetry consent
-  gate, then its router over `routes/`, `/` the server list and `/settings`
-  Host Settings, for the app on this device rather than any one server
-  (Notifications, Telemetry, About).
+  mounts with `@tauri-apps/api/core`'s `invoke`, `@tauri-apps/api/event`'s
+  `listen` and the keep-alive's start config: the base's telemetry consent
+  gate, then the keep-alive's recovery and its router over `routes/`, `/` the
+  server list and `/settings` Host Settings, for the app on this device rather
+  than any one server (Notifications, Telemetry, About). The server list shows
+  each server's run state and health, sets its run policy, and removes it
+  behind a confirm, kept current by the `server-status` event.
 
 ## Rules
 
@@ -154,7 +168,15 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
 - **Commands answer without the token.** `server_add` answers with the
   server's domain and `server_set_credentials` with nothing; a failure the
   command reaches is the `EnrolmentError` as `{"kind", "message"}`, and their
-  logs name the domain, never a parameter.
+  logs name the domain, never a parameter. `servers_list` lists a server's
+  domain, relay, tunnel name, launcher, certificate source, run policy and
+  status, never its token or the relay's dial settings.
+- **The change commands answer with `{kind, message}` too.**
+  `server_set_run_policy` (`{domain, choice}`) answers with the run policy
+  stored, `server_update` (`{domain, launcherUrl, stagingCertificates}`) and
+  `server_remove` (`{domain}`) with nothing; a failure is the
+  `ServerChangeError`. `servers_list` answers an unreadable `servers.json`
+  with its `RegistryError`, kind `registry`, which the base shows.
 - **Only a malformed payload gets a plain string.** Every value a user types
   (tunnel name, token, base URL, rathole settings) is taken as a string and
   checked by the command, so a bad one is an `EnrolmentError`. A payload Tauri
@@ -169,14 +191,29 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   the host's server config builder. Don't start a server any other way.
 - **Write, then push, under one lock.** A command that writes a server holds
   `ServersState::registry_writes` from before its write until after it has
-  pushed the record it wrote, so pushes reach `TauriUnitRunner` in write
-  order.
-- **Status comes from `UnitRunner`.** Whether a server is running, why it
-  last stopped and its health are `UnitRunner`'s `UnitStatus<ServerDetail>`,
-  from `statuses()` / `subscribe()`, and each run's stop is
-  `subscribe_stops()`'s; nothing in the slice tracks runs itself.
-  A run's health goes out through `ctx.set_detail`, and `UnitRunner` clears
-  it.
+  pushed the record it wrote, so pushes reach the runner in write order.
+  `server_set_run_policy` pushes only the policy (`set_unit_policy`).
+  `server_update` pushes the record again only when
+  `ServerRecord::run_inputs_differ` says a field a run reads changed: every
+  field but the launcher URL and the run policy. A new field needs a decision
+  there.
+- **Stop, then delete.** `server_remove` awaits the runner's `remove_unit`,
+  so the server's run has ended, then deletes its folder and its record. A
+  deletion that fails pushes the server back as `servers.json` holds it.
+- **One `server-status` per change.** The host emits a server's
+  `ServerStatus` to the `main` webview whenever its `UnitStatus` changes,
+  camelCase, each optional member left out when absent:
+  `{domain, runState, lastStop?: {reason, platformReason?, error?,
+stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
+  base drops a server once `servers_list` no longer lists it, and reads the
+  list again after `server_remove` and for a status of a server it doesn't
+  list. `servers-wire-golden.json` pins the list and the event, read by both
+  `servers-rust`'s tests and `servers-core`'s decoder tests: change both
+  sides with it.
+- **Status comes from the runner.** Whether a server is running, why it last
+  stopped and its health are the runner's `UnitStatus<ServerDetail>`, from
+  `statuses()` / `subscribe()`; nothing in the slice tracks runs itself. A
+  run's health goes out through `ctx.set_detail`, and the runner clears it.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
   `domain/notifications/` with its tests; `servers-tauri-rust` only posts.
 - **Configuration only.** `ServerRecord::run_policy` is when the user wants
@@ -218,9 +255,6 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   `<data root>/servers/<domain>/` and then the record, so a folder that can't
   be deleted (`ServerChangeError::DeletingFolder`) leaves the server
   registered and the removal can be retried; a folder already gone is fine.
-  A deletion that fails partway leaves the server registered with part of its
-  folder, some databases or certificates possibly gone; retrying deletes the
-  rest.
 - **A launcher URL is checked when entered.** `update_server` takes an
   absolute `http` or `https` URL with a host and no credentials, or refuses it
   as `ServerChangeError::InvalidLauncherUrl`.
@@ -239,7 +273,13 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   the command's schema, so nothing the host sends is trusted by its static
   type. The base mounts no effect-messaging transport. A command the base
   calls is granted to the `main` webview in
-  `apps/wildflower-tauri/src-tauri/capabilities/default.json`.
+  `apps/wildflower-tauri/src-tauri/capabilities/default.json`; the server
+  commands through the app-defined `allow-server-enrolment` and
+  `allow-server-management` permissions.
+- **The base enables the keep-alive's recovery.** Once its consent is
+  answered, `BaseRoot` calls the background-service plugin's
+  `configure_recovery` with the start config the app passes, read from
+  `tauri-shared-config.json`, the file the host's runner is built from.
 - **The base asks for its own telemetry consent.** `BaseRoot` is a
   `TelemetryConsentGate` with `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY`; until
   it is answered no router or query cache exists and no host command is

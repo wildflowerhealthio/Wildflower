@@ -162,9 +162,6 @@ catalogs:
     structured-headers:
       specifier: ^2.0.2
       version: 2.1.0
-    tauri-plugin-background-service:
-      specifier: 1.0.1
-      version: 1.0.1
     tundra-css:
       specifier: ^0.14.0
       version: 0.14.0
@@ -1568,9 +1565,6 @@ importers:
       servers-react:
         specifier: workspace:*
         version: link:../../slices/servers/servers-react
-      tauri-plugin-background-service:
-        specifier: 'catalog:'
-        version: 1.0.1
       telemetry-core:
         specifier: workspace:*
         version: link:../../slices/telemetry/telemetry-core
@@ -12512,9 +12506,6 @@ packages:
   tailwindcss@4.3.3:
     resolution: {integrity: sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ==}
 
-  tauri-plugin-background-service@1.0.1:
-    resolution: {integrity: sha512-mXx0TMgQK6eWT7yiWFTGVlQZrhRkmQC50Kt3ZGShvdTiIhV3lOucXNXQdo6XHICmrvx46CkU+UV6UsgbyfHhzw==}
-
   terminal-link@2.1.1:
     resolution: {integrity: sha512-un0FmiRUQNr5PJqy9kP7c40F5BOfpGlYTrxonDChEZB7pzZxRNp/bt+ymiy9/npwXya9KH99nJ/GXFIiUkYGFQ==}
     engines: {node: '>=8'}
@@ -20505,10 +20496,6 @@ snapshots:
   tailwind-merge@3.5.0: {}
 
   tailwindcss@4.3.3: {}
-
-  tauri-plugin-background-service@1.0.1:
-    dependencies:
-      '@tauri-apps/api': 2.11.0
 
   terminal-link@2.1.1:
     dependencies:

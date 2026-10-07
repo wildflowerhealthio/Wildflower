@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Schema } from 'effect'
+import { Context, Data, Effect, Option, Schema } from 'effect'
 
 /**
  * The base's one way to call the Tauri host: a command name and its
@@ -14,15 +14,36 @@ class TauriInvoke extends Context.Tag('servers-core/TauriInvoke')<
   (command: string, args?: Readonly<Record<string, unknown>>) => Promise<unknown>
 >() {}
 
-/** The host refused or failed `command`: Tauri rejected the invoke with `cause`. */
+/**
+ * How a host command that ran refuses: its error as `{ kind, message }`,
+ * `kind` a stable camelCase name to branch on and `message` the sentence to
+ * show.
+ */
+const HostRefusal = Schema.Struct({ kind: Schema.String, message: Schema.String })
+type HostRefusal = typeof HostRefusal.Type
+
+/**
+ * The host refused or failed `command`: Tauri rejected the invoke with
+ * `cause`, the command's {@link HostRefusal} when the command ran, or
+ * Tauri's own string when it didn't.
+ */
 class HostCommandFailed extends Data.TaggedError('HostCommandFailed')<{
   readonly command: string
   readonly cause: unknown
 }> {
+  /** The command's refusal, when the host ran the command and refused. */
+  get refusal(): Option.Option<HostRefusal> {
+    return Schema.decodeUnknownOption(HostRefusal)(this.cause)
+  }
+
   // Data.TaggedError leaves `.message` empty by default; name the command so a
   // logged failure says which call it was.
   override get message(): string {
-    return `the host command ${this.command} failed: ${String(this.cause)}`
+    const reason = this.refusal.pipe(
+      Option.map((refusal) => refusal.message),
+      Option.getOrElse(() => String(this.cause))
+    )
+    return `the host command ${this.command} failed: ${reason}`
   }
 }
 
@@ -64,5 +85,5 @@ const invokeHostCommand = <A, I>(
     )
   )
 
-export { HostAnswerUndecodable, HostCommandFailed, invokeHostCommand, TauriInvoke }
+export { HostAnswerUndecodable, HostCommandFailed, HostRefusal, invokeHostCommand, TauriInvoke }
 export type { HostCommandError }

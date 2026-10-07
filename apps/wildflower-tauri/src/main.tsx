@@ -1,12 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
-import { Effect } from 'effect'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { addOsColorSchemeListener } from 'react-tundraish'
 import { BaseRoot } from 'servers-react'
-import { configureRecovery } from 'tauri-plugin-background-service'
 // Named imports, so only these two fields of the host's configuration reach
 // the bundle.
 import {
@@ -16,42 +15,26 @@ import {
 
 addOsColorSchemeListener()
 
-// The host's unit runner starts the background-service plugin's one service,
-// its background session, from Rust whenever a server should run. This records
-// that the service should keep running, so the plugin restarts it after the OS
-// ends the app: in an iOS background window, or through Android's tap-to-resume
-// notification. The start config is the one the unit runner starts with, read
-// from the same `tauri-shared-config.json` the host's `build.rs` reads. The
-// servers run either way, so a failure only costs those restarts, and is
-// logged.
-Effect.runFork(
-  Effect.tryPromise(() =>
-    configureRecovery({
-      enabled: true,
-      config: {
-        serviceLabel: backgroundServiceLabel,
-        foregroundServiceType: backgroundServiceForegroundType,
-      },
-    })
-  ).pipe(
-    Effect.catchAll((error) =>
-      Effect.logError(
-        '[background-service] the servers will not restart after the OS ends the app',
-        error
-      )
-    )
-  )
-)
+// How the host's unit runner starts its keep-alive, the background-service
+// plugin's one service, from the same `tauri-shared-config.json` the host's
+// `build.rs` reads. The base enables the plugin's recovery with it, so the
+// plugin starts the keep-alive again after the OS ends the app.
+const keepAliveStartConfig = {
+  serviceLabel: backgroundServiceLabel,
+  foregroundServiceType: backgroundServiceForegroundType,
+} as const
 
 const rootElement = document.getElementById('root')
 if (rootElement === null) throw new Error('index.html has no #root element')
 
 // The base: its own telemetry consent dialog first, then its screens, which
-// reach the host only through Tauri commands.
+// reach the host only through Tauri commands and events.
 createRoot(rootElement).render(
   <StrictMode>
     <BaseRoot
       invoke={invoke}
+      listen={listen}
+      keepAliveStartConfig={keepAliveStartConfig}
       telemetry={{
         dsn: import.meta.env.VITE_SENTRY_DSN_WILDFLOWER_TAURI ?? '',
         app: 'wildflower-tauri',

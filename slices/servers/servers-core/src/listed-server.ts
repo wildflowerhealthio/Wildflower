@@ -1,0 +1,42 @@
+import { Schema } from 'effect'
+
+import * as RunPolicy from './run-policy.ts'
+import * as ServerStatus from './server-status.ts'
+
+/** The relay a server's tunnel runs through. */
+const RelaySchema = Schema.Union(
+  Schema.Struct({ kind: Schema.Literal('wildflowerOfficial') }),
+  Schema.Struct({ kind: Schema.Literal('selfHostedWildflower'), baseUrl: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal('rathole') })
+)
+
+/** A decoded {@link RelaySchema}. */
+type Relay = typeof RelaySchema.Type
+
+/**
+ * One registered server as `servers_list` answers it: its domain, relay and
+ * tunnel name, the launcher it opens apps from, whether its certificates come
+ * from the ACME staging directory, its run policy, and its status on the
+ * host's unit runner.
+ *
+ * @remarks
+ * The status is one the `server-status` event carries for the same domain.
+ */
+const ListedServerSchema = Schema.Struct({
+  domain: Schema.String,
+  relay: RelaySchema,
+  tunnelName: Schema.String,
+  launcherUrl: Schema.String,
+  stagingCertificates: Schema.Boolean,
+  runPolicy: RunPolicy.Schema,
+  status: ServerStatus.Schema,
+})
+
+/** A decoded {@link ListedServerSchema}. */
+type Type = typeof ListedServerSchema.Type
+
+/** `server` with `status` in place of its own. */
+const withStatus = (server: Type, status: ServerStatus.Type): Type => ({ ...server, status })
+
+export { ListedServerSchema as Schema, RelaySchema, withStatus }
+export type { Relay, Type }

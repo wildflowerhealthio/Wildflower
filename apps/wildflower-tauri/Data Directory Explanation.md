@@ -25,9 +25,12 @@ unit runner with its run policy (see the servers slice's
 Each run of a server gets its folder as `ServerRuntimeConfig.server_dir`, and
 the server creates the folder, applies scheduled database deletions in it, and
 opens both databases there; the data-management screen (`/databases`) exports
-and deletes that server's databases only. A `servers.json` that can't be read
-is logged, and no server runs. Every slice that needs a path joins onto the
-data root or the server's folder rather than resolving its own.
+and deletes that server's databases only. The base's `server_remove` takes
+the server off the runner, waiting for its run to end, then deletes its whole
+folder and then its record. A `servers.json` that can't be read is logged,
+and no server runs; the base's `servers_list` answers with the error, which
+the base shows. Every slice that needs a path joins onto the data root or the
+server's folder rather than resolving its own.
 
 ## `servers.json`
 
