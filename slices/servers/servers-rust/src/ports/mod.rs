@@ -7,4 +7,4 @@ mod relay_client;
 mod server_registry;
 
 pub use relay_client::RelayClient;
-pub use server_registry::{NewRecord, ServerRegistry};
+pub use server_registry::{NewRecord, RegistryChange, ServerRegistry};

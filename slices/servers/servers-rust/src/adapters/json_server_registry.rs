@@ -22,10 +22,11 @@ use rathole_settings_rust::{
     NoisePattern, PublicRatholeSettings, RelayDomain, Transport, TunnelName,
 };
 use serde::{Deserialize, Serialize};
+use unit_runner::RunPolicy;
 use url::Url;
 
 use crate::domain::{RegistryError, RelayKind, ServerRecord, TunnelToken};
-use crate::ports::{NewRecord, ServerRegistry};
+use crate::ports::{NewRecord, RegistryChange, ServerRegistry};
 
 /// The registry's file name in the data root.
 pub const SERVERS_FILE_NAME: &str = "servers.json";
@@ -73,7 +74,7 @@ impl JsonServerRegistry {
 
     /// Read the registry, apply `change` to its servers, and replace the file
     /// with the result. Returns what `change` returns.
-    fn modify<T>(
+    fn change_servers<T>(
         &self,
         change: impl FnOnce(&mut Vec<ServerRecord>) -> Result<T, RegistryError>,
     ) -> Result<T, RegistryError> {
@@ -111,7 +112,7 @@ impl ServerRegistry for JsonServerRegistry {
     }
 
     fn insert(&self, new_record: NewRecord<'_>) -> Result<ServerRecord, RegistryError> {
-        self.modify(|servers| {
+        self.change_servers(|servers| {
             let record = new_record(servers);
             let domain = record.domain();
             if servers.iter().any(|server| server.domain() == domain) {
@@ -122,20 +123,12 @@ impl ServerRegistry for JsonServerRegistry {
         })
     }
 
-    fn update(&self, record: ServerRecord) -> Result<(), RegistryError> {
-        self.modify(|servers| {
-            let domain = record.domain();
-            let registered = servers
-                .iter_mut()
-                .find(|server| server.domain() == domain)
-                .ok_or(RegistryError::NotRegistered { domain })?;
-            *registered = record;
-            Ok(())
-        })
+    fn modify(&self, change: RegistryChange<'_>) -> Result<(), RegistryError> {
+        self.change_servers(|servers| change(servers))
     }
 
     fn remove(&self, domain: &str) -> Result<(), RegistryError> {
-        self.modify(|servers| {
+        self.change_servers(|servers| {
             let position = servers
                 .iter()
                 .position(|server| server.domain() == domain)
@@ -253,7 +246,7 @@ struct StoredServerFields {
     public_settings: PublicRatholeSettings,
     launcher_url: Url,
     staging_certificates: bool,
-    running: bool,
+    run_policy: RunPolicy,
 }
 
 /// [`PublicRatholeSettings`]' fields as `servers.json` names them, in
@@ -402,7 +395,7 @@ mod tests {
                 }},
                 "launcherUrl": "https://wildflowerhealth.io/app",
                 "stagingCertificates": false,
-                "running": false
+                "runPolicy": {{"kind": "off"}}
               }}]
             }}"#
         )
@@ -477,20 +470,52 @@ mod tests {
     }
 
     #[test]
-    fn whether_a_server_is_wanted_running_is_stored_per_server() {
+    fn each_server_s_run_policy_round_trips_through_the_file() {
+        use chrono::TimeZone;
+
         let (data_root, registry) = registry();
-        let mut running = official_record("ruth");
-        running.running = true;
-        registry.insert(Box::new(|_| running.clone())).unwrap();
-        registry
-            .insert(Box::new(|_| self_hosted_record("lab")))
-            .unwrap();
+        let until = RunPolicy::Until {
+            at: chrono::Utc
+                .with_ymd_and_hms(2026, 10, 6, 17, 42, 0)
+                .unwrap(),
+        };
+        let records: Vec<ServerRecord> = [
+            ("ruth", until),
+            ("lab", RunPolicy::Off),
+            ("demo", RunPolicy::WhileOpen),
+            ("clinic", RunPolicy::Always),
+        ]
+        .into_iter()
+        .map(|(tunnel_name, run_policy)| ServerRecord {
+            run_policy,
+            ..official_record(tunnel_name)
+        })
+        .collect();
+        for record in &records {
+            registry.insert(Box::new(|_| record.clone())).unwrap();
+        }
+
         let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
-        assert_eq!(written["servers"][0]["running"], serde_json::json!(true));
-        assert_eq!(written["servers"][1]["running"], serde_json::json!(false));
+        let written_policies: Vec<&serde_json::Value> = written["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|server| &server["runPolicy"])
+            .collect();
         assert_eq!(
-            registry.read_all().unwrap(),
-            vec![running, self_hosted_record("lab")]
+            written_policies,
+            [
+                &serde_json::json!({"kind": "until", "at": "2026-10-06T17:42:00Z"}),
+                &serde_json::json!({"kind": "off"}),
+                &serde_json::json!({"kind": "whileOpen"}),
+                &serde_json::json!({"kind": "always"}),
+            ]
+        );
+        assert_eq!(
+            JsonServerRegistry::in_data_root(data_root.path())
+                .read_all()
+                .unwrap(),
+            records
         );
     }
 
@@ -649,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    fn update_replaces_the_record_with_the_same_domain() {
+    fn modify_keeps_what_the_change_leaves() {
         let (_data_root, registry) = registry();
         registry
             .insert(Box::new(|_| official_record("ruth")))
@@ -661,7 +686,13 @@ mod tests {
         updated.staging_certificates = true;
         updated.launcher_url = Url::parse("http://localhost:5200/").unwrap();
 
-        registry.update(updated.clone()).unwrap();
+        registry
+            .modify(Box::new(|servers| {
+                servers[0].staging_certificates = true;
+                servers[0].launcher_url = Url::parse("http://localhost:5200/").unwrap();
+                Ok(())
+            }))
+            .unwrap();
 
         assert_eq!(
             registry.read_all().unwrap(),
@@ -670,13 +701,22 @@ mod tests {
     }
 
     #[test]
-    fn update_of_an_unregistered_domain_is_refused() {
-        let (_data_root, registry) = registry();
-        assert!(matches!(
-            registry.update(official_record("ruth")),
-            Err(RegistryError::NotRegistered { domain }) if domain == "ruth.relay.wildflowerhealth.io"
-        ));
-        assert_eq!(registry.read_all().unwrap(), Vec::new());
+    fn a_refused_modify_writes_nothing() {
+        let (data_root, registry) = registry();
+        registry
+            .insert(Box::new(|_| official_record("ruth")))
+            .unwrap();
+        let before = file_text(&data_root);
+
+        let refused = registry.modify(Box::new(|servers| {
+            servers[0].staging_certificates = true;
+            Err(RegistryError::NotRegistered {
+                domain: "lab.relay.example.com".to_owned(),
+            })
+        }));
+
+        assert!(matches!(refused, Err(RegistryError::NotRegistered { .. })));
+        assert_eq!(file_text(&data_root), before);
     }
 
     #[test]

@@ -25,6 +25,9 @@ serde_json = { workspace = true }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# The instant `.setup()` reads servers' run policies at, and the
+# `LoopbackConsentRequest` (its `expires_at`) the dialog tests render.
+chrono = { workspace = true, features = ["clock"] }
 tauri-plugin-opener = "2"
 openssl = {version = "0.10.36", features = ["vendored"] } 
 serde.workspace = true
@@ -82,8 +85,6 @@ tauri-plugin-background-service = "=1.0.1"
 workspace = true
 
 [dev-dependencies]
-# Builds the `LoopbackConsentRequest` (its `expires_at`) the dialog tests render.
-chrono = { version = "0.4", default-features = false }
 # Parses the Android manifest the merge-override tests read.
 roxmltree = "0.21"
 # Builds the server records the tests of which server `.setup()` runs read.

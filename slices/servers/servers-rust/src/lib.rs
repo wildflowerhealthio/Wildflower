@@ -3,8 +3,8 @@
 //! A server is a domain, a folder and an enrolment at a relay. Its
 //! [`ServerRecord`] holds the relay, the tunnel name and token there, what the
 //! relay's `GET /rathole` returned, the launcher apps open from, whether its
-//! certificates come from the ACME staging directory, and whether the user
-//! wants it run. Its [`domain`](ServerRecord::domain),
+//! certificates come from the ACME staging directory, and when the user wants
+//! it run, its [`RunPolicy`]. Its [`domain`](ServerRecord::domain),
 //! `<tunnel name>.<relay domain>`, is its only name: the registry key, the
 //! issuer, and its data folder `<data root>/servers/<domain>/`
 //! ([`server_dir`](ServerRecord::server_dir)). Records hold configuration
@@ -24,12 +24,20 @@
 //! address and noise key) is no longer the one the server was added with,
 //! and replaces a rathole server's without a request.
 //!
-//!  - [`domain`] — [`ServerRecord`], its [`RelayKind`] and [`TunnelToken`],
-//!    [`RegistryError`], and enrolment with its [`EnteredRelay`],
-//!    [`RelayIdentity`] and [`EnrolmentError`]. The token is a secret: its
-//!    `Debug` and `Serialize` write a redaction marker, and only `servers.json`
-//!    holds it in full.
-//!  - `ports` — the [`ServerRegistry`] port (read all, insert, update,
+//! A registered server's run policy is set by [`set_run_policy`], its
+//! launcher and certificate source by [`update_server`], and it is deleted,
+//! folder and all, by [`remove_server`]. Each changes only the server it
+//! names. The policy is the unit runner's [`RunPolicy`], stored as the runner
+//! writes it; the app stores it here and pushes it to the runner, which never
+//! reads `servers.json`.
+//!
+//!  - [`domain`] — [`ServerRecord`], its [`RelayKind`], [`TunnelToken`] and
+//!    [`RunPolicy`], [`RegistryError`], enrolment with its [`EnteredRelay`],
+//!    [`RelayIdentity`] and [`EnrolmentError`], and the changes to a
+//!    registered server with [`RunPolicyChoice`] and [`ServerChangeError`].
+//!    The token is a secret: its `Debug` and `Serialize` write a redaction
+//!    marker, and only `servers.json` holds it in full.
+//!  - `ports` — the [`ServerRegistry`] port (read all, insert, modify,
 //!    remove) and the [`RelayClient`] port (`GET /rathole`, signed
 //!    `GET /me`).
 //!  - `adapters` — [`JsonServerRegistry`], which replaces `servers.json`
@@ -45,7 +53,9 @@ mod ports;
 
 pub use adapters::{JsonServerRegistry, ReqwestRelayClient, SERVERS_FILE_NAME};
 pub use domain::{
-    add_server, set_server_credentials, EnrolmentError, EnteredRelay, RegistryError, RelayIdentity,
-    RelayKind, ServerRecord, TunnelToken, SERVERS_DIR_NAME,
+    add_server, remove_server, set_run_policy, set_server_credentials, update_server,
+    EnrolmentError, EnteredRelay, RegistryError, RelayIdentity, RelayKind, RunPolicyChoice,
+    ServerChangeError, ServerRecord, TunnelToken, SERVERS_DIR_NAME,
 };
-pub use ports::{NewRecord, RelayClient, ServerRegistry};
+pub use ports::{NewRecord, RegistryChange, RelayClient, ServerRegistry};
+pub use unit_runner::RunPolicy;

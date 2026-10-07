@@ -19,13 +19,48 @@ folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir` in
 
 `setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves the data
 root, hands it to the slices that keep install-wide files, and reads
-`servers.json`. The first server set `running` there is the one that starts: its
-folder goes to the server as `ServerRuntimeConfig.server_dir`, and the server
-creates the folder, applies scheduled database deletions in it, and opens both
-databases there; the data-management screen (`/databases`) exports and deletes
-that server's databases only. With no server set running, nothing starts and the
-host reports the server stopped, with no error. Every slice that needs a path
-joins onto the data root or the server's folder rather than resolving its own.
+`servers.json`. The first server whose run policy is active then is the one that
+starts: its folder goes to the server as `ServerRuntimeConfig.server_dir`, and
+the server creates the folder, applies scheduled database deletions in it, and
+opens both databases there; the data-management screen (`/databases`) exports
+and deletes that server's databases only. With no server's policy active,
+nothing starts and the host reports the server stopped, with no error. Every
+slice that needs a path joins onto the data root or the server's folder rather
+than resolving its own.
+
+## `servers.json`
+
+`servers-rust`'s `JsonServerRegistry` owns the file. It holds the install's
+configuration only, never whether a server is up:
+
+```json
+{
+  "version": 1,
+  "servers": [
+    {
+      "relay": { "kind": "wildflowerOfficial" },
+      "tunnelName": "ruth",
+      "token": "<the tunnel's token>",
+      "publicSettings": {
+        "remoteAddr": "relay.wildflowerhealth.io:2333",
+        "transport": "noise",
+        "noisePattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
+        "publicKey": "<the relay's noise key>",
+        "domain": "relay.wildflowerhealth.io"
+      },
+      "launcherUrl": "https://wildflowerhealth.io/app",
+      "stagingCertificates": false,
+      "runPolicy": { "kind": "whileOpen" }
+    }
+  ]
+}
+```
+
+`runPolicy` is when the user wants the server run, in the unit runner's own
+shape: `{"kind": "off"}`, `{"kind": "whileOpen"}`,
+`{"kind": "until", "at": "<RFC 3339>"}` or `{"kind": "always"}`. A new server
+gets `whileOpen` when no other server's policy is active, and `off` otherwise.
+An `until` whose `at` has passed stays in the file and counts as inactive.
 
 Where the data root lands is a per-platform decision, and on iOS it is a
 deliberate one.

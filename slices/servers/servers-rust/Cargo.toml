@@ -39,10 +39,15 @@ reqwest = { version = "0.12", default-features = false, features = [
 hmac = "0.12"
 sha2 = "0.10"
 base64.workspace = true
-# The signature's `created`, in unix seconds.
+# The signature's `created`, in unix seconds, and the instant a run policy is
+# chosen and checked at.
 chrono = { workspace = true, features = ["clock"] }
 # Each signature's nonce.
 rand = "0.10"
+# `RunPolicy`, the runner's own type, which each `ServerRecord` stores in the
+# runner's wire shape. The runner's Tauri-free core, so this crate stays
+# Tauri-free.
+unit-runner = { path = "../../../global/unit-runner" }
 
 [lints]
 workspace = true

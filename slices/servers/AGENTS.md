@@ -9,11 +9,15 @@ host's webview mounts to manage them.
   and the `ServerRegistry` port over the list of them, with its
   `JsonServerRegistry` adapter at `<data root>/servers.json`; and enrolment,
   which checks a tunnel's credentials with its Wildflower relay through the
-  `RelayClient` port, with its `ReqwestRelayClient` adapter.
+  `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
+  to a registered server: its run policy, its launcher and certificate source,
+  and its removal.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
-    `RegistryError`, and enrolment (`add_server`, `set_server_credentials`,
-    `EnteredRelay`, `RelayIdentity`, `EnrolmentError`); `ports/` the
-    `ServerRegistry` port (read all, insert, update, remove) and the
+    `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
+    `EnteredRelay`, `RelayIdentity`, `EnrolmentError`), and server changes
+    (`set_run_policy` with `RunPolicyChoice`, `update_server`,
+    `remove_server`, `ServerChangeError`); `ports/` the
+    `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses.
 - **`servers-tauri-rust`** — the base's Tauri commands over `servers-rust`:
@@ -148,13 +152,45 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   command: Tauri rejects it with the string
   ``invalid args `<parameter>` for command `<command>`: <reason>``. The app grants both to the `main` webview
   only, through its `allow-server-enrolment` permission.
-- **Configuration only.** `ServerRecord::running` is whether the user wants
-  the server run, which the host reads at startup to choose what to start.
-  Whether a run is up, its reachability and its certificate are live
-  state, held by whatever runs the server, never in a `ServerRecord`.
-- **The first server added is set running.** `add_server` sets `running` when
-  no registered server has it, and on no later server; nothing else changes
-  it yet.
+- **Configuration only.** `ServerRecord::run_policy` is when the user wants
+  the server run. Whether a run is up, its reachability and its certificate
+  are live state, held by whatever runs the server, never in a
+  `ServerRecord`.
+- **The run policy is the unit runner's `RunPolicy`.** `servers-rust` stores
+  `unit_runner::RunPolicy` itself, no mirror, in the runner's wire shape:
+  `{"kind": "off"}`, `{"kind": "whileOpen"}`,
+  `{"kind": "until", "at": "<RFC 3339>"}` or `{"kind": "always"}`. The app
+  stores it and pushes it to the runner; the runner never reads
+  `servers.json`. "Active now" is `RunPolicy::is_active(now, true)`: the app
+  is open whenever the user acts or the host starts.
+- **The user picks a `RunPolicyChoice`.** `off`, `whileOpen`,
+  `for {seconds}` or `always`. `RunPolicyChoice::into_run_policy_at(now)`
+  stores `for` as `until {at: now + seconds}`; zero seconds or less is
+  `ServerChangeError::NonPositiveDuration`, and a deadline after the year 9999
+  `ServerChangeError::DurationOutOfRange`.
+- **An expired `until` stays.** Nothing rewrites a policy when its deadline
+  passes; it only stops counting as active. Only the user's choices write a
+  policy.
+- **No cap on running servers.** `set_run_policy` changes only the server it
+  names; every other server keeps its policy, so several can be active at
+  once.
+- **A new server runs if nothing else does.** `add_server` gives a new server
+  `whileOpen` when no registered server's policy is active, and `off`
+  otherwise. An `off` policy or an `until` that has passed is inactive.
+- **Each change is one registry modify.** `set_run_policy`,
+  `update_server` (launcher URL and staging flag) and
+  `set_server_credentials` (token and `public_settings`) each edit only their
+  own fields inside one `ServerRegistry::modify`, so a change made
+  concurrently, such as a run policy set while a token is checked with the
+  relay, is kept. A server that isn't registered is
+  `RegistryError::NotRegistered`, with nothing written.
+- **Removal deletes the folder first.** `remove_server` deletes
+  `<data root>/servers/<domain>/` and then the record, so a folder that can't
+  be deleted (`ServerChangeError::DeletingFolder`) leaves the server
+  registered and the removal can be retried; a folder already gone is fine.
+- **A launcher URL is checked when entered.** `update_server` takes an
+  absolute `http` or `https` URL with a host and no credentials, or refuses it
+  as `ServerChangeError::InvalidLauncherUrl`.
 - **`servers.json` is versioned.** The file is
   `{"version": 1, "servers": [...]}`, its server fields `serde(remote)`
   mirrors of `ServerRecord` and `PublicRatholeSettings` renamed to camelCase,
@@ -178,7 +214,8 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   `VITE_SENTRY_DSN_WILDFLOWER_TAURI`, tagged `app: wildflower-tauri`. The web
   app's consent is its own, on its own origin.
 - **`servers-rust` has no `tauri` dependency**, so it builds and tests in the
-  non-Tauri partition of `scripts/checks/rust.sh`. `servers-tauri-rust` is in
+  non-Tauri partition of `scripts/checks/rust.sh`. Its one runner dependency
+  is `global/unit-runner`, the runner's Tauri-free core. `servers-tauri-rust` is in
   the Tauri partition.
 
 ## References

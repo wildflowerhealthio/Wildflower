@@ -8,6 +8,7 @@ use background_server_service_tauri_rust::{
     report_no_server, report_server_failure, start_background_server_service,
     WildflowerServerService,
 };
+use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use servers_rust::{JsonServerRegistry, RegistryError, ServerRecord, ServerRegistry};
 use shared_structures_rust::owner_ui::OwnerUiBase;
@@ -188,19 +189,20 @@ fn server_config(
     })
 }
 
-/// Find the registered server `setup()` runs: the first one set
-/// [`running`](ServerRecord::running). `None` when no server is set running,
-/// an empty registry included.
+/// Find the registered server `setup()` runs: the first one whose
+/// [`run_policy`](ServerRecord::run_policy) is active at `now`, with the app
+/// open. `None` when no server's is, an empty registry included.
 ///
-/// One server runs at a time for now; starting and stopping servers arrives
-/// with the base's server commands in #955.
+/// A deliberately thin interim: the host runs one server, chosen once, until
+/// it runs servers as units on the unit runner, which replaces this.
 fn find_server_to_run(
     registry: &dyn ServerRegistry,
+    now: DateTime<Utc>,
 ) -> Result<Option<ServerRecord>, RegistryError> {
     Ok(registry
         .read_all()?
         .into_iter()
-        .find(|server| server.running))
+        .find(|server| server.run_policy.is_active(now, true)))
 }
 
 /// Start `server` from its folder under `data_root`: wire the background
@@ -416,58 +418,64 @@ pub fn run() {
             // same data root.
             servers_tauri_rust::manage_servers(app.handle(), &data_root);
 
-            let server = match find_server_to_run(&JsonServerRegistry::in_data_root(&data_root)) {
-                Ok(Some(server)) => server,
-                // No server to run isn't a failure: the page shows the
-                // server stopped, with no error. A server set running since
-                // (the first one added is) starts on the page's restart; the
-                // publishers and the context sender wait here until then.
-                Ok(None) => {
-                    let waiting = Mutex::new(Some((publishers, host_context_sender)));
-                    report_no_server(app.handle(), move |app_handle| {
-                        let mut waiting = waiting.lock();
-                        let Some((publishers, host_context_sender)) = waiting.take() else {
-                            // Already started by an earlier restart.
-                            return true;
-                        };
-                        match find_server_to_run(&JsonServerRegistry::in_data_root(&data_root)) {
-                            Ok(Some(server)) => {
-                                start_server(
-                                    app_handle,
-                                    &data_root,
-                                    &server,
-                                    publishers,
-                                    &host_context_sender,
-                                );
-                                true
+            let server =
+                match find_server_to_run(&JsonServerRegistry::in_data_root(&data_root), Utc::now())
+                {
+                    Ok(Some(server)) => server,
+                    // No server to run isn't a failure: the page shows the
+                    // server stopped, with no error. A server whose policy is
+                    // active since (the first one added gets `WhileOpen`) starts
+                    // on the page's restart; the
+                    // publishers and the context sender wait here until then.
+                    Ok(None) => {
+                        let waiting = Mutex::new(Some((publishers, host_context_sender)));
+                        report_no_server(app.handle(), move |app_handle| {
+                            let mut waiting = waiting.lock();
+                            let Some((publishers, host_context_sender)) = waiting.take() else {
+                                // Already started by an earlier restart.
+                                return true;
+                            };
+                            match find_server_to_run(
+                                &JsonServerRegistry::in_data_root(&data_root),
+                                Utc::now(),
+                            ) {
+                                Ok(Some(server)) => {
+                                    start_server(
+                                        app_handle,
+                                        &data_root,
+                                        &server,
+                                        publishers,
+                                        &host_context_sender,
+                                    );
+                                    true
+                                }
+                                Ok(None) => {
+                                    *waiting = Some((publishers, host_context_sender));
+                                    false
+                                }
+                                Err(error) => {
+                                    *waiting = Some((publishers, host_context_sender));
+                                    report_server_failure(
+                                        app_handle,
+                                        &format!("failed to read the registered servers: {error}"),
+                                    );
+                                    false
+                                }
                             }
-                            Ok(None) => {
-                                *waiting = Some((publishers, host_context_sender));
-                                false
-                            }
-                            Err(error) => {
-                                *waiting = Some((publishers, host_context_sender));
-                                report_server_failure(
-                                    app_handle,
-                                    &format!("failed to read the registered servers: {error}"),
-                                );
-                                false
-                            }
-                        }
-                    });
-                    return Ok(());
-                }
-                // Without the registry there is no server to run; say so
-                // the way a failed run does, and keep the app up to show
-                // it.
-                Err(error) => {
-                    report_server_failure(
-                        app.handle(),
-                        &format!("failed to read the registered servers: {error}"),
-                    );
-                    return Ok(());
-                }
-            };
+                        });
+                        return Ok(());
+                    }
+                    // Without the registry there is no server to run; say so
+                    // the way a failed run does, and keep the app up to show
+                    // it.
+                    Err(error) => {
+                        report_server_failure(
+                            app.handle(),
+                            &format!("failed to read the registered servers: {error}"),
+                        );
+                        return Ok(());
+                    }
+                };
             start_server(
                 app.handle(),
                 &data_root,
@@ -483,9 +491,11 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, TimeDelta, TimeZone, Utc};
     use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
     use servers_rust::{
-        NewRecord, RegistryError, RelayKind, ServerRecord, ServerRegistry, TunnelToken,
+        NewRecord, RegistryChange, RegistryError, RelayKind, RunPolicy, ServerRecord,
+        ServerRegistry, TunnelToken,
     };
     use std::path::Path;
 
@@ -504,7 +514,7 @@ mod tests {
             unreachable!("choosing the server to run only reads the registry")
         }
 
-        fn update(&self, _record: ServerRecord) -> Result<(), RegistryError> {
+        fn modify(&self, _change: RegistryChange<'_>) -> Result<(), RegistryError> {
             unreachable!("choosing the server to run only reads the registry")
         }
 
@@ -513,13 +523,18 @@ mod tests {
         }
     }
 
-    /// A server on the official relay for each `(tunnel name, running)`, in
-    /// order.
-    fn servers(servers: &[(&str, bool)]) -> FakeRegistry {
+    /// The moment every choice in these tests is made at.
+    fn now() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 10, 6, 17, 0, 0).unwrap()
+    }
+
+    /// A server on the official relay for each `(tunnel name, run policy)`,
+    /// in order.
+    fn servers(servers: &[(&str, RunPolicy)]) -> FakeRegistry {
         FakeRegistry(Some(
             servers
                 .iter()
-                .map(|&(tunnel_name, running)| ServerRecord {
+                .map(|&(tunnel_name, run_policy)| ServerRecord {
                     relay: RelayKind::WildflowerOfficial,
                     tunnel_name: TunnelName::parse(tunnel_name).expect("a valid tunnel name"),
                     token: TunnelToken::new("s3cret-tunnel-token"),
@@ -532,7 +547,7 @@ mod tests {
                     },
                     launcher_url: ServerRecord::default_launcher_url(),
                     staging_certificates: false,
-                    running,
+                    run_policy,
                 })
                 .collect(),
         ))
@@ -540,7 +555,7 @@ mod tests {
 
     /// The domain of the server `setup()` would run from `registry`.
     fn domain_to_run(registry: &FakeRegistry) -> Option<String> {
-        super::find_server_to_run(registry)
+        super::find_server_to_run(registry, now())
             .expect("the registry reads")
             .map(|server| server.domain())
     }
@@ -551,16 +566,19 @@ mod tests {
     }
 
     #[test]
-    fn a_registry_with_no_server_set_running_runs_none() {
+    fn a_registry_with_no_active_policy_runs_none() {
+        let ended = RunPolicy::Until {
+            at: now() - TimeDelta::minutes(1),
+        };
         assert_eq!(
-            domain_to_run(&servers(&[("ruth", false), ("lab", false)])),
+            domain_to_run(&servers(&[("ruth", RunPolicy::Off), ("lab", ended)])),
             None
         );
     }
 
     #[test]
-    fn the_server_set_running_runs_from_its_own_folder() {
-        let server = super::find_server_to_run(&servers(&[("ruth", true)]))
+    fn the_server_that_runs_runs_from_its_own_folder() {
+        let server = super::find_server_to_run(&servers(&[("ruth", RunPolicy::WhileOpen)]), now())
             .expect("the registry reads")
             .expect("a server runs");
         assert_eq!(server.domain(), "ruth.relay.wildflowerhealth.io");
@@ -574,17 +592,28 @@ mod tests {
     }
 
     #[test]
-    fn the_first_server_set_running_is_the_one_that_runs() {
+    fn the_first_server_whose_policy_is_active_is_the_one_that_runs() {
         assert_eq!(
-            domain_to_run(&servers(&[("lab", false), ("ruth", true), ("demo", true)])),
+            domain_to_run(&servers(&[
+                ("lab", RunPolicy::Off),
+                ("ruth", RunPolicy::Always),
+                ("demo", RunPolicy::WhileOpen),
+            ])),
             Some("ruth.relay.wildflowerhealth.io".to_owned())
+        );
+        let ahead = RunPolicy::Until {
+            at: now() + TimeDelta::minutes(1),
+        };
+        assert_eq!(
+            domain_to_run(&servers(&[("lab", RunPolicy::Off), ("demo", ahead)])),
+            Some("demo.relay.wildflowerhealth.io".to_owned())
         );
     }
 
     /// The tunnel dials the record's relay as its tunnel name, with its token.
     #[test]
     fn the_tunnel_dials_the_relay_in_the_server_s_record() {
-        let server = super::find_server_to_run(&servers(&[("ruth", true)]))
+        let server = super::find_server_to_run(&servers(&[("ruth", RunPolicy::WhileOpen)]), now())
             .expect("the registry reads")
             .expect("a server runs");
         assert_eq!(
@@ -600,7 +629,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_registry_is_an_error() {
-        assert!(super::find_server_to_run(&FakeRegistry(None)).is_err());
+        assert!(super::find_server_to_run(&FakeRegistry(None), now()).is_err());
     }
 
     /// The plugin checks the type the service starts as against its config's

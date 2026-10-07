@@ -2,15 +2,17 @@
 //! stores it. A server is identified by its [`domain`](ServerRecord::domain),
 //! `<tunnel name>.<relay domain>`; it has no other name.
 //!
-//! The record holds configuration only, [`running`](ServerRecord::running)
-//! included: whether the user wants the server run, not whether a run is up.
-//! A run's state, its reachability and its certificate are live state,
-//! held by whatever runs the server, never here.
+//! The record holds configuration only, its
+//! [`run_policy`](ServerRecord::run_policy) included: when the user wants the
+//! server run, not whether a run is up. A run's state, its reachability and
+//! its certificate are live state, held by whatever runs the server, never
+//! here.
 
 use std::path::{Path, PathBuf};
 
 use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
 use serde::{Deserialize, Serialize, Serializer};
+use unit_runner::RunPolicy;
 use url::Url;
 
 /// The folder in the data root that holds one folder per server, named by its
@@ -44,11 +46,11 @@ pub struct ServerRecord {
     /// Whether this server's certificates come from the ACME staging directory
     /// instead of production.
     pub staging_certificates: bool,
-    /// Whether the user wants this server run: the host starts a server with
-    /// `running` set when it starts. Enrolment sets it on the first server
-    /// added while none is set, and on no later one. It says nothing about
-    /// whether a run is up, which is live state and never stored.
-    pub running: bool,
+    /// When the user wants this server run. Enrolment gives a new server
+    /// [`RunPolicy::WhileOpen`] when no other server's policy is active, and
+    /// [`RunPolicy::Off`] otherwise. It says nothing about whether a run is
+    /// up, which is live state and never stored.
+    pub run_policy: RunPolicy,
 }
 
 impl ServerRecord {
@@ -200,7 +202,7 @@ pub(crate) mod tests {
             },
             launcher_url: ServerRecord::default_launcher_url(),
             staging_certificates: false,
-            running: false,
+            run_policy: RunPolicy::Off,
         }
     }
 
@@ -220,7 +222,7 @@ pub(crate) mod tests {
             },
             launcher_url: Url::parse("https://launcher.example.com/").unwrap(),
             staging_certificates: true,
-            running: false,
+            run_policy: RunPolicy::Off,
         }
     }
 
