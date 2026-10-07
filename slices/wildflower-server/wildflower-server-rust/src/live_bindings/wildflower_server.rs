@@ -324,11 +324,12 @@ pub async fn set_up(
     // runs in-handler).
     let gated_apps = apps.router.layer(gatekeeper_auth_layer.clone());
 
-    // The server's `/health`: the FHIR R4 store and the shared database pool,
-    // checked in-process on each request.
+    // The server's `/health`: the FHIR R4 store, the shared database pool and
+    // the tunnel's connectivity, checked in-process on each request.
     let health_checks = ServerHealthChecks {
         fhir_r4_store,
         wildflower_db: diesel_pool,
+        tunnel_connectivity: tunnel_daemon.connectivity(),
     };
 
     // The data-management surface (`/databases`): export + delete the server's

@@ -68,9 +68,9 @@ pub struct HostPorts {
 #[derive(Clone)]
 pub struct ServerObservers {
     /// Whether the server's `/health` answers through its public origin, and
-    /// with what, published by the reachability monitor. `None` until its
-    /// first probe; the monitor stops when the server stops serving, so the
-    /// host resets it to `None` once a server is gone.
+    /// with what, published by the reachability monitor until the first
+    /// answer. `None` until its first probe; the monitor stops when the server
+    /// stops serving, so the host resets it to `None` once a server is gone.
     pub server_health_sender: watch::Sender<Option<ServerHealth>>,
     /// Each request the trusted front relayed through the tunnel, reported by
     /// the outermost layer after its response is ready (see

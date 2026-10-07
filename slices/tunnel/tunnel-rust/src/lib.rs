@@ -2,17 +2,19 @@
 //!
 //!  - [`domain`] — the [`RelayClient`](domain::RelayClient) trait and its
 //!    [`RelaySettings`], the [`TunnelDaemon`] that dials the relay and re-dials
-//!    with backoff, and the rule for a public host ([`public_origin_url`]).
+//!    with backoff, the [`TunnelConnectivity`] it publishes, and the rule for a
+//!    public host ([`public_origin_url`]).
 //!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
 //!    dials the Wildflower relay.
 //!
 //! The relay settings come from the server's record, through
 //! [`TunnelConfig`]. The tunnel dials whenever the server runs; nothing in this
-//! slice turns it off or edits it. The tunnel has no HTTP surface, keeps no
-//! rows and publishes no state: each dial and its outcome go to the tracing
-//! log. Whether the server is reachable through the relay is the server's own
-//! `/health`, which `wildflower-server-rust`'s reachability monitor reads
-//! through the public origin.
+//! slice turns it off or edits it. The tunnel has no HTTP surface and keeps no
+//! rows: each dial and its outcome go to the tracing log, and its only state is
+//! its [`TunnelConnectivity`], which the server's `/health` reports as its
+//! `connectivity` check. Whether the server is reachable through the relay is
+//! the server's own `/health`, which `wildflower-server-rust`'s reachability
+//! monitor reads through the public origin.
 
 pub mod config;
 pub mod domain;
@@ -21,7 +23,9 @@ mod relay_clients;
 use std::sync::Arc;
 
 pub use config::TunnelConfig;
-pub use domain::{public_origin_url, InvalidPublicHost, RelaySettings, TunnelDaemon};
+pub use domain::{
+    public_origin_url, InvalidPublicHost, RelaySettings, TunnelConnectivity, TunnelDaemon,
+};
 use relay_clients::RatholeRelayClient;
 
 /// Spawn the tunnel daemon over an embedded rathole client. The daemon dials

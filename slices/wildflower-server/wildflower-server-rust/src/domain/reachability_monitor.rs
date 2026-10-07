@@ -1,27 +1,28 @@
 //! The reachability monitor: asks the server's own `/health` through its public
-//! origin on a cadence, and publishes the answer as [`ServerHealth`].
+//! origin until it answers once, and publishes each answer as [`ServerHealth`].
 //!
 //! The request leaves the device, reaches the relay, and comes back down the
 //! tunnel to the server, so an answer proves the whole round trip a remote app
-//! makes. The monitor is spawned once per server run and stops when the
-//! [`ReachabilityMonitor`] is dropped, which [`WildflowerServer`](crate::WildflowerServer)
-//! does when it stops serving.
+//! makes. Once it has, the monitor stops: every app already reaches the server
+//! through the same relay, so a steady poll would only add traffic. The
+//! monitor is spawned once per server run, so the next run confirms reach
+//! again. It also stops when the [`ReachabilityMonitor`] is dropped, which
+//! [`WildflowerServer`](crate::WildflowerServer) does when it stops serving.
 //!
 //! ```text
 //!   spawn ─ nothing published ─► probe after 400 ms
 //!
-//!   probe answered          ──► Reachable(report)        next probe in 30 s
+//!   probe answered          ──► Reachable(report)        stop
 //!   probe failed / no answer
 //!     within 3 s            ──► Unreachable { error }    next probe in 400 ms
 //! ```
 //!
-//! Only a change is published: a report whose statuses match the last one's
-//! (its checks' `time`s aside), or the same unreachable reason, is not.
+//! An unreachable verdict is published only when its reason changes.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use shared_structures_rust::health_check::{ComponentType, HealthReport, HealthStatus};
+use shared_structures_rust::health_check::HealthReport;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -43,14 +44,9 @@ pub(crate) trait HealthProbe: Send + Sync {
 }
 
 /// How long to wait before the first probe (let the tunnel's handshake
-/// settle), and between probes while the server is not reachable. Short, so
-/// the first verdict and a recovery surface quickly.
+/// settle), and between probes until the server is reachable. Short, so the
+/// first verdict and the first reach surface quickly.
 const PROBE_INTERVAL: Duration = Duration::from_millis(400);
-
-/// How long to wait between probes once the server is reachable: a healthy
-/// steady state only needs an occasional check, not a back-to-back `/health`
-/// poll through the relay.
-const REACHABLE_PROBE_INTERVAL: Duration = Duration::from_secs(30);
 
 /// How long one probe may take before it counts as unreachable.
 pub(crate) const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -63,7 +59,7 @@ pub(crate) struct ReachabilityMonitor {
 impl ReachabilityMonitor {
     /// Start probing `health_url` with `probe`, publishing each answer on
     /// `server_health_sender`. Spawns onto the ambient tokio runtime, and
-    /// probes until the monitor is dropped.
+    /// probes until `/health` answers or the monitor is dropped.
     pub(crate) fn spawn(
         probe: Arc<dyn HealthProbe>,
         health_url: Url,
@@ -86,74 +82,37 @@ impl Drop for ReachabilityMonitor {
     }
 }
 
-/// Probe `health_url` until cancelled, sleeping after each probe for as long
-/// as its verdict asks. Sleeping after each probe, rather than ticking at a
-/// fixed period, means a slow probe never bursts catch-up probes.
+/// Probe `health_url` every [`PROBE_INTERVAL`] until it answers or the monitor
+/// is cancelled. Sleeping after each probe, rather than ticking at a fixed
+/// period, means a slow probe never bursts catch-up probes.
 async fn monitor(
     probe: Arc<dyn HealthProbe>,
     health_url: Url,
     server_health_sender: watch::Sender<Option<ServerHealth>>,
     cancel: CancellationToken,
 ) {
-    let mut next_delay = PROBE_INTERVAL;
     loop {
         tokio::select! {
-            () = tokio::time::sleep(next_delay) => {}
+            () = tokio::time::sleep(PROBE_INTERVAL) => {}
             () = cancel.cancelled() => return,
         }
         let server_health = tokio::select! {
             server_health = probe_once(probe.as_ref(), &health_url) => server_health,
             () = cancel.cancelled() => return,
         };
-        next_delay = match server_health {
-            ServerHealth::Reachable(_) => REACHABLE_PROBE_INTERVAL,
-            ServerHealth::Unreachable { .. } => PROBE_INTERVAL,
-        };
+        let reached = matches!(server_health, ServerHealth::Reachable(_));
         server_health_sender.send_if_modified(|published| {
-            if published
-                .as_ref()
-                .is_some_and(|published| says_the_same(published, &server_health))
-            {
+            if published.as_ref() == Some(&server_health) {
                 return false;
             }
             *published = Some(server_health);
             true
         });
-    }
-}
-
-/// Whether `probed` tells the host nothing `published` didn't: the same
-/// unreachable reason, or reports whose overall and per-check statuses agree.
-/// Each check's `time` is when it ran, so it differs on every probe; comparing
-/// it would republish a steady server every 30 s.
-fn says_the_same(published: &ServerHealth, probed: &ServerHealth) -> bool {
-    match (published, probed) {
-        (ServerHealth::Reachable(published), ServerHealth::Reachable(probed)) => {
-            published.status == probed.status
-                && check_statuses(published).eq(check_statuses(probed))
+        if reached {
+            tracing::info!(url = %health_url, "reachability: /health answered through the public origin");
+            return;
         }
-        (
-            ServerHealth::Unreachable {
-                error: published_error,
-            },
-            ServerHealth::Unreachable {
-                error: probed_error,
-            },
-        ) => published_error == probed_error,
-        _ => false,
     }
-}
-
-/// Each of `report`'s checks as its name, component type and status: the
-/// check without its `time`.
-fn check_statuses(
-    report: &HealthReport,
-) -> impl Iterator<Item = (&str, ComponentType, HealthStatus)> {
-    report.checks.iter().flat_map(|(check_name, checks)| {
-        checks
-            .iter()
-            .map(move |check| (check_name.as_str(), check.component_type, check.status))
-    })
 }
 
 /// One bounded probe: an answer is reachable; a failure or a timeout is
@@ -175,11 +134,9 @@ async fn probe_once(probe: &dyn HealthProbe, health_url: &Url) -> ServerHealth {
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
-
-    use std::collections::BTreeMap;
-
-    use shared_structures_rust::health_check::HealthCheck;
     use std::sync::Mutex;
+
+    use shared_structures_rust::health_check::HealthStatus;
     use tokio::time::Instant;
 
     use super::*;
@@ -251,18 +208,6 @@ mod tests {
         }
     }
 
-    /// A report of one `server` check with `status`, run at `time`.
-    fn report_at(status: HealthStatus, time: &str) -> HealthReport {
-        HealthReport::from_checks(BTreeMap::from([(
-            "server".to_owned(),
-            vec![HealthCheck {
-                component_type: ComponentType::System,
-                status,
-                time: time.parse().expect("an RFC 3339 time"),
-            }],
-        )]))
-    }
-
     fn spawn(
         probe: Arc<ScriptedProbe>,
     ) -> (ReachabilityMonitor, watch::Receiver<Option<ServerHealth>>) {
@@ -280,10 +225,10 @@ mod tests {
         assert!(probe.probe_times().is_empty());
     }
 
-    /// Unreachable while the probe fails, every 400 ms; reachable once it
-    /// answers, then re-probed every 30 s.
+    /// Unreachable while the probe fails, re-probed every 400 ms; reachable
+    /// once it answers, and then never probed again.
     #[tokio::test(start_paused = true)]
-    async fn goes_from_unreachable_to_reachable_and_slows_down() {
+    async fn goes_from_unreachable_to_reachable_and_stops() {
         let started = Instant::now();
         let probe = ScriptedProbe::new([
             Answer::Refused,
@@ -307,7 +252,7 @@ mod tests {
             .wait_for(|health| health == &Some(ServerHealth::Reachable(HealthReport::pass())))
             .await
             .expect("reachable");
-        tokio::time::sleep(Duration::from_secs(61)).await;
+        tokio::time::sleep(Duration::from_secs(60)).await;
 
         let offsets: Vec<Duration> = probe
             .probe_times()
@@ -315,14 +260,13 @@ mod tests {
             .map(|at| at - started)
             .collect();
         assert_eq!(
-            offsets[..5],
+            offsets,
             [
                 Duration::from_millis(400),
                 Duration::from_millis(800),
                 Duration::from_millis(1200),
-                Duration::from_millis(31_200),
-                Duration::from_millis(61_200),
-            ]
+            ],
+            "no probe follows the first answer"
         );
         assert!(
             probe
@@ -335,51 +279,26 @@ mod tests {
         );
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn a_reachable_server_drops_to_unreachable_with_the_error() {
-        let probe = ScriptedProbe::new([Answer::Report(HealthReport::pass()), Answer::Refused]);
-        let (_monitor, mut server_health) = spawn(probe);
-        server_health
-            .wait_for(|health| matches!(health, Some(ServerHealth::Reachable(_))))
-            .await
-            .expect("reachable");
-        let dropped = server_health
-            .wait_for(|health| matches!(health, Some(ServerHealth::Unreachable { .. })))
-            .await
-            .expect("unreachable")
-            .clone();
-        assert_eq!(
-            dropped,
-            Some(ServerHealth::Unreachable {
-                error: "connection refused".to_owned()
-            })
-        );
-    }
-
     /// A server that answers `fail` is reachable: it answered.
     #[tokio::test(start_paused = true)]
     async fn a_failing_report_is_still_reachable() {
         let probe = ScriptedProbe::new([Answer::Report(failing_report())]);
-        let (_monitor, mut server_health) = spawn(probe);
+        let (_monitor, mut server_health) = spawn(Arc::clone(&probe));
         let reached = server_health
             .wait_for(Option::is_some)
             .await
             .expect("published")
             .clone();
         assert_eq!(reached, Some(ServerHealth::Reachable(failing_report())));
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        assert_eq!(probe.probe_times().len(), 1, "an answer ends the probing");
     }
 
-    /// Each probe's checks carry the time they ran, which differs every time;
-    /// a server whose statuses hold still is published once, and a changed
-    /// status is published again.
+    /// Repeated failures for the same reason are published once; a new reason
+    /// is published again.
     #[tokio::test(start_paused = true)]
-    async fn only_a_changed_verdict_is_republished() {
-        let probe = ScriptedProbe::new([
-            Answer::Report(report_at(HealthStatus::Pass, "2026-10-06T00:00:00Z")),
-            Answer::Report(report_at(HealthStatus::Pass, "2026-10-06T00:00:30Z")),
-            Answer::Report(report_at(HealthStatus::Pass, "2026-10-06T00:01:00Z")),
-            Answer::Report(report_at(HealthStatus::Warn, "2026-10-06T00:01:30Z")),
-        ]);
+    async fn only_a_changed_unreachable_reason_is_republished() {
+        let probe = ScriptedProbe::new([Answer::Refused, Answer::Refused, Answer::Hang]);
         let (_monitor, mut server_health) = spawn(Arc::clone(&probe));
         server_health
             .wait_for(Option::is_some)
@@ -387,25 +306,31 @@ mod tests {
             .expect("published");
         server_health.borrow_and_update();
 
-        tokio::time::sleep(Duration::from_secs(61)).await;
-        assert_eq!(probe.probe_times().len(), 3);
+        // Past the second probe (at 800 ms), short of the third (at 1200 ms).
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(probe.probe_times().len(), 2);
         assert!(
             !server_health
                 .has_changed()
                 .expect("the monitor holds the sender"),
-            "the same statuses at a later time are not a change"
+            "the same reason again is not a change"
         );
 
-        tokio::time::sleep(Duration::from_secs(30)).await;
-        assert!(server_health
-            .has_changed()
-            .expect("the monitor holds the sender"));
+        let timed_out = server_health
+            .wait_for(|health| {
+                health.as_ref()
+                    != Some(&ServerHealth::Unreachable {
+                        error: "connection refused".to_owned(),
+                    })
+            })
+            .await
+            .expect("republished")
+            .clone();
         assert_eq!(
-            *server_health.borrow_and_update(),
-            Some(ServerHealth::Reachable(report_at(
-                HealthStatus::Warn,
-                "2026-10-06T00:01:30Z"
-            )))
+            timed_out,
+            Some(ServerHealth::Unreachable {
+                error: "/health did not answer within 3s".to_owned()
+            })
         );
     }
 

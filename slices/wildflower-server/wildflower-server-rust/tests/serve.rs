@@ -2,7 +2,7 @@
 //! databases there, and once it has bound the port, cancelling `serve`'s
 //! shutdown token makes it return `Ok`. The loopback port is then free for a
 //! second server over the same folder and the same host channels, which comes
-//! up and answers `/health` with its two passing checks. While serving, the
+//! up and answers `/health` with its three passing checks. While serving, the
 //! host's observers see the server's health through its public origin and each
 //! forwarded request, and the request log records
 //! each forwarded request and serves it back on `/requests` to a token holding
@@ -174,7 +174,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
             "{database} is not in the data root"
         );
     }
-    // `/health` is the two checks, both passing on a healthy server.
+    // `/health` is the three checks, all passing on a healthy server.
     let (status, report) = health_report(&loopback_base_url).await;
     assert_eq!(status, reqwest::StatusCode::OK);
     assert_eq!(report.status, HealthStatus::Pass);
@@ -194,6 +194,10 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     assert_eq!(
         checks,
         vec![
+            (
+                "connectivity",
+                vec![(ComponentType::Component, HealthStatus::Pass)]
+            ),
             (
                 "fhir-r4",
                 vec![(ComponentType::Component, HealthStatus::Pass)]

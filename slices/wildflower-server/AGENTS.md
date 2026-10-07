@@ -18,23 +18,26 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   origin). The unmatched-route `404` is here too.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
     (`shared_structures_rust::health_check`): `application/health+json`,
-    uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two
+    uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly three
     checks, a functional breakdown: `fhir-r4` (HFS's store readiness, called
-    in-process through emr's `FhirR4StoreReadiness`) and `server` (a
-    `wildflower.sqlite` pool connection answering `SELECT 1`). The overall
-    status is the worst check's. Each check is in-process and bounded at 1 s.
-    The route is public and unauthenticated, so the report carries only
-    statuses: no output, observed values, errors or versions.
+    in-process through emr's `FhirR4StoreReadiness`), `server` (a
+    `wildflower.sqlite` pool connection answering `SELECT 1`) and
+    `connectivity` (the tunnel daemon's `TunnelConnectivity`: `pass` while
+    normal, `warn` while degraded, never `fail`; nothing marks it degraded
+    yet). The overall status is the worst check's. Each check is in-process
+    and bounded at 1 s. The route is public and unauthenticated, so the report
+    carries only statuses: no output, observed values, errors or versions.
   - **Reachability** is the server's own: the reachability monitor GETs
     `https://<public host>/health`, out to the relay and back down the
-    tunnel, 400 ms after start, every 400 ms while unreachable and every 30 s
-    once reachable, each bounded at 3 s, and publishes `ServerHealth`
-    (`Reachable(HealthReport)` or `Unreachable { error }`) on the host's
-    `ServerObservers::server_health_sender`, only when the statuses or the
-    unreachable reason change (each check's `time` aside). `WildflowerServer`
-    holds it like the tunnel daemon, so it stops when the server stops
-    serving. The forwarded-request report skips `/health`, so the probes stay
-    out of the request log and the request notifications.
+    tunnel, 400 ms after start and every 400 ms until it answers, each bounded
+    at 3 s, and publishes `ServerHealth` (`Unreachable { error }` while it
+    doesn't, when the reason changes, then `Reachable(HealthReport)`) on the
+    host's `ServerObservers::server_health_sender`. The first answer ends the
+    probing: every app already reaches the server through the same relay, and
+    the next run confirms reach again. `WildflowerServer` holds the monitor
+    like the tunnel daemon, so it also stops when the server stops serving.
+    The forwarded-request report skips `/health`, so the probes stay out of
+    the request log and the request notifications.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig`, `HostPorts`, `ServerObservers`); `domain/`
     `ServerHealth` and the reachability monitor with its `HealthProbe` port;
@@ -58,7 +61,8 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   configuration or platform paths itself.
 - **The host watches the server through `ServerObservers`.** Host-owned senders
   that outlive any one server: the server's `ServerHealth` through its public
-  origin, published by the reachability monitor, and each request the trusted
+  origin, published by the reachability monitor until it first answers, and
+  each request the trusted
   front relayed through the
   tunnel, reported by the outermost layer as a `ForwardedRequest` record: the
   visitor's address, the path reduced to its route, the status, and the

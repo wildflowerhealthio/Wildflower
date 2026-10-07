@@ -1,15 +1,18 @@
 //! The server's `/health` checks: what [`health_router`](shared_structures_rust::health_check::health_router)
-//! serves at `GET /health`, a functional breakdown in two checks.
+//! serves at `GET /health`, a functional breakdown in three checks.
 //!
 //! - **`fhir-r4`** — the FHIR R4 surface: HFS's own store readiness check
 //!   ([`FhirR4StoreReadiness`]), called in-process.
 //! - **`server`** — everything else the server serves rides
 //!   `wildflower.sqlite`'s diesel pool: a pooled connection answering
 //!   `SELECT 1`.
+//! - **`connectivity`** — the tunnel's own [`TunnelConnectivity`]: `pass`
+//!   while it is normal, `warn` while it is degraded. It never fails: a server
+//!   answering `/health` is connected, and through the relay a down tunnel
+//!   means no answer at all.
 //!
-//! Each is cheap, in-process and touches no network, so the reachability
-//! monitor can ask through the relay as often as it does. A check that errors
-//! or outlasts [`CHECK_TIMEOUT`] fails; the reason goes to the log, never into
+//! Each is cheap, in-process and touches no network. A check that errors or
+//! outlasts [`CHECK_TIMEOUT`] fails; the reason goes to the log, never into
 //! the public report.
 
 use std::collections::BTreeMap;
@@ -23,6 +26,8 @@ use persistence_rust::DieselPool;
 use shared_structures_rust::health_check::{
     ComponentType, HealthCheck, HealthCheckService, HealthReport, HealthStatus,
 };
+use tokio::sync::watch;
+use tunnel_rust::TunnelConnectivity;
 
 /// How long one check may take before it fails.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(1);
@@ -33,10 +38,17 @@ const FHIR_R4_CHECK: &str = "fhir-r4";
 /// The `/health` check of everything else the server serves.
 const SERVER_CHECK: &str = "server";
 
-/// The server's [`HealthCheckService`]: the `fhir-r4` and `server` checks.
+/// The `/health` check of the tunnel carrying the server's remote traffic.
+const CONNECTIVITY_CHECK: &str = "connectivity";
+
+/// The server's [`HealthCheckService`]: the `fhir-r4`, `server` and
+/// `connectivity` checks.
 pub(crate) struct ServerHealthChecks {
     pub(crate) fhir_r4_store: FhirR4StoreReadiness,
     pub(crate) wildflower_db: DieselPool,
+    /// The tunnel daemon's [`TunnelConnectivity`]
+    /// ([`TunnelDaemon::connectivity`](tunnel_rust::TunnelDaemon::connectivity)).
+    pub(crate) tunnel_connectivity: watch::Receiver<TunnelConnectivity>,
 }
 
 #[async_trait::async_trait]
@@ -46,10 +58,26 @@ impl HealthCheckService for ServerHealthChecks {
             check_fhir_r4(&self.fhir_r4_store),
             check_server(self.wildflower_db.clone(), CHECK_TIMEOUT),
         );
+        let connectivity = check_connectivity(*self.tunnel_connectivity.borrow());
         HealthReport::from_checks(BTreeMap::from([
             (FHIR_R4_CHECK.to_owned(), vec![fhir_r4]),
             (SERVER_CHECK.to_owned(), vec![server]),
+            (CONNECTIVITY_CHECK.to_owned(), vec![connectivity]),
         ]))
+    }
+}
+
+/// The `connectivity` check: `pass` while the tunnel's connectivity is
+/// normal, `warn` while it is degraded.
+fn check_connectivity(tunnel_connectivity: TunnelConnectivity) -> HealthCheck {
+    let status = match tunnel_connectivity {
+        TunnelConnectivity::Normal => HealthStatus::Pass,
+        TunnelConnectivity::Degraded => HealthStatus::Warn,
+    };
+    HealthCheck {
+        component_type: ComponentType::Component,
+        status,
+        time: Utc::now(),
     }
 }
 
@@ -105,6 +133,22 @@ fn health_check(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connectivity_passes_while_normal_and_warns_while_degraded() {
+        let status_of = |tunnel_connectivity| {
+            let check = check_connectivity(tunnel_connectivity);
+            (check.component_type, check.status)
+        };
+        assert_eq!(
+            status_of(TunnelConnectivity::Normal),
+            (ComponentType::Component, HealthStatus::Pass)
+        );
+        assert_eq!(
+            status_of(TunnelConnectivity::Degraded),
+            (ComponentType::Component, HealthStatus::Warn)
+        );
+    }
 
     #[tokio::test]
     async fn the_server_check_passes_on_an_open_pool() {

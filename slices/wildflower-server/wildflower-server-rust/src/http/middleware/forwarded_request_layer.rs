@@ -37,9 +37,8 @@ pub(crate) struct ForwardedRequestSenders {
 /// Report a [`ForwardedRequest`] on both of `forwarded_request_senders` once
 /// the response to a forwarded request is ready. A loopback request is not
 /// reported, and neither is a forwarded `GET /health`
-/// ([`HEALTH_PATH`]): the reachability monitor asks it through the relay every
-/// 30 s (every 400 ms while unreachable), and a health check is nobody using
-/// the server.
+/// ([`HEALTH_PATH`]): the reachability monitor asks it through the relay at
+/// the start of every run, and a health check is nobody using the server.
 ///
 /// The forwarded test is [`is_forwarded`], the same presence-only predicate the
 /// loopback owner trust keys on, so a request with a malformed `Forwarded`

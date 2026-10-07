@@ -873,7 +873,6 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-notification",
  "tokio",
- "wildflower-server-rust",
 ]
 
 [[package]]

@@ -121,12 +121,13 @@ host, and the server's web surface knows nothing about it.
 ### Reachability is checked at the public origin
 
 Whether a remote app can reach the server is a question about the public
-origin, so that is where the server asks it. Its reachability monitor GETs the
-server's own `/health` at `https://<public_host>/health`: the request leaves the
-device, reaches the relay, and comes back down the tunnel as a forwarded
-request, the same round trip an app's makes. An answer, even one reporting
-`fail`, means reachable; no answer means unreachable. The tunnel only dials and
-says nothing about reachability.
+origin, so that is where the server asks it. Each run, its reachability
+monitor GETs the server's own `/health` at `https://<public_host>/health` until
+it first answers: the request leaves the device, reaches the relay, and comes
+back down the tunnel as a forwarded request, the same round trip an app's
+makes. An answer, even one reporting `fail`, means reachable; no answer means
+not reachable yet. The tunnel only dials and says nothing about reachability;
+how well it carries traffic is `/health`'s `connectivity` check.
 
 ### Discovery is fetched before a token exists
 

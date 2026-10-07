@@ -28,7 +28,6 @@ pub use bridge::{
 };
 pub use domain::foreground_resume::{ForegroundResume, ResumeAction};
 pub use domain::notification::LocalNotification;
-pub use domain::reach_drop_detector::ReachDropDetector;
 pub use domain::request_notifications::{CallerActivity, RequestNotificationCoalescer};
 pub use domain::run_gate::RunGate;
 pub use domain::server_run_state::ServerRunState;

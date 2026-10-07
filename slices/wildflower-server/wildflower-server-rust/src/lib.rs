@@ -7,7 +7,8 @@
 //! CORS policy and the forwarded-request observer, starts the tunnel and the
 //! reachability monitor, and binds the loopback port.
 //! [`WildflowerServer::serve`] then serves the result until its shutdown token
-//! is cancelled; the tunnel and the monitor run for as long as it serves.
+//! is cancelled; the tunnel runs for as long as it serves, and the monitor
+//! until the server first answers through its public origin.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's
