@@ -166,11 +166,10 @@ async fn access_grants_with_owner_token_returns_empty_list() {
     assert_eq!(body, serde_json::json!([]));
 }
 
-/// The host owner token must authenticate on a FORWARDED (tunnel-origin)
-/// request too, where the served origin is the tunnel public host, not
-/// loopback.
-/// Its canonical `aud` (= `CANONICAL_ISSUER`) is what makes one token valid on
-/// both; a served-origin audience would 401 here.
+/// The host owner token authenticates on a FORWARDED (tunnel-origin) request
+/// too, where the served origin is the tunnel public host, not loopback: its
+/// `iss` and `aud` are the server's origin, checked against the server's
+/// configuration rather than the request.
 #[tokio::test]
 async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
     let (g, host_owner_token, _db) = spin_up();
@@ -188,45 +187,67 @@ async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
     assert_eq!(res.status(), StatusCode::OK);
 }
 
-/// The canonical audience is accepted at every served origin, so it is reserved
-/// for the marked host owner token. A token that carries `aud = CANONICAL_ISSUER`
-/// AND the owner-defining scopes but LACKS the `wf_owner` marker — an otherwise
-/// owner-shaped token, the exact shape a future minting bug or a replay would
-/// produce — is rejected. Only the missing marker distinguishes it from the
-/// token that passes on line above, so this pins the marker as the gate.
+/// `GET /access/grants` with `token`, over loopback or relayed through the
+/// tunnel.
+async fn access_grants_status(g: &Gatekeeper, token: &str, forwarded: bool) -> StatusCode {
+    let mut builder = Request::get("/access/grants")
+        .header("host", "127.0.0.1")
+        .header("authorization", format!("Bearer {token}"));
+    if forwarded {
+        builder = builder.header("forwarded", "host=ruth.relay.example;proto=https");
+    }
+    let req = loopback_request(builder, Body::empty());
+    g.router
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("oneshot")
+        .status()
+}
+
+/// A token minted for this server is accepted whichever origin the request was
+/// served on: over loopback and relayed through the tunnel alike.
 #[tokio::test]
-async fn canonical_audience_without_owner_marker_is_rejected() {
+async fn a_token_for_this_server_passes_over_loopback_and_the_tunnel() {
     let (g, _host_owner_token, db) = spin_up();
-    let key = store_handle(&db)
-        .active_signing_key()
-        .expect("signing-key query")
-        .expect("a seeded active signing key");
-    let scopes = gatekeeper_rust::default_local_granted_scopes();
-    let unmarked = mint_access_token(
-        &key,
-        &NewJwtArgs {
-            client_id: "impostor",
-            scopes: &scopes,
-            ttl: Duration::seconds(300),
-            issuer: shared_structures_rust::CANONICAL_ISSUER,
-            audience: Some(shared_structures_rust::CANONICAL_ISSUER),
-            patient: None,
-            is_host_owner: false,
-        },
-    )
-    .expect("mint");
-    let req = loopback_request(
-        Request::get("/access/grants")
-            .header("host", "127.0.0.1")
-            .header(
-                "forwarded",
-                "host=ruth.wildflowerhealth.example;proto=https",
-            )
-            .header("authorization", format!("Bearer {unmarked}")),
-        Body::empty(),
-    );
-    let res = g.router.oneshot(req).await.expect("oneshot");
-    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    let owner_scopes: Vec<String> = gatekeeper_rust::default_local_granted_scopes();
+    let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
+    let token = mint_scoped_token(&db, &owner_scopes);
+    for forwarded in [false, true] {
+        assert_eq!(
+            access_grants_status(&g, &token, forwarded).await,
+            StatusCode::OK,
+            "forwarded: {forwarded}"
+        );
+    }
+}
+
+/// A token another server minted is refused, owner scopes and all, even signed
+/// with a key this server holds: its `iss` and `aud` name the other server.
+/// So is a token naming another server as only one of the two, and one whose
+/// `aud` is this server's FHIR base rather than its origin.
+#[tokio::test]
+async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
+    let (g, _host_owner_token, db) = spin_up();
+    let other_server = "https://lab.relay.example";
+    let fhir_base = format!("{SERVER_ORIGIN}/fhir-r4");
+    let owner_scopes: Vec<String> = gatekeeper_rust::default_local_granted_scopes();
+    let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
+    for (issuer, audience) in [
+        (other_server, other_server),
+        (other_server, SERVER_ORIGIN),
+        (SERVER_ORIGIN, other_server),
+        (SERVER_ORIGIN, fhir_base.as_str()),
+    ] {
+        let token = mint_token_naming(&db, &owner_scopes, issuer, audience);
+        for forwarded in [false, true] {
+            assert_eq!(
+                access_grants_status(&g, &token, forwarded).await,
+                StatusCode::UNAUTHORIZED,
+                "iss {issuer}, aud {audience}, forwarded: {forwarded}"
+            );
+        }
+    }
 }
 
 #[tokio::test]

@@ -68,10 +68,4 @@ impl TokenEntitlement<'_> {
             }
         }
     }
-
-    /// Whether this is the host's own owner token — the one token allowed to
-    /// authenticate via the canonical audience at every served origin.
-    pub(crate) fn is_host_owner(&self) -> bool {
-        matches!(self, TokenEntitlement::HostOwner(_))
-    }
 }

@@ -1,11 +1,11 @@
 # Origins Explanation
 
 How the on-device server decides **which origin it is answering as** for a given
-request, and why that one decision shows up in two places: a token's `iss`
-claim and a token's `aud` claim. The mechanics live in `shared-structures-rust`
-([`CANONICAL_ISSUER`], [`served_origin`]); this is the
-narrative those modules and their consumers (gatekeeper, emr, apps, tunnel)
-point back to instead of each re-deriving it.
+request, where that decision shows up (redirects, discovery documents, the links
+HFS emits), and why a token's `iss` and `aud` are the one origin that doesn't
+depend on it. The mechanics live in `shared-structures-rust` ([`origin_string`],
+[`served_origin`]); this is the narrative those modules and their consumers
+(gatekeeper, emr, apps, tunnel) point back to instead of each re-deriving it.
 
 ## Two origins: loopback and served
 
@@ -24,9 +24,10 @@ arrive having been addressed two different ways:
   recovers it per request with [`served_base_url_for`] (which returns the served
   base URL as a typed `Url`; the bare origin string is derived from it).
 
-"Served origin" is the load-bearing concept: a token, a redirect `Location`, or
-a discovery document must reference the URL the caller really used, not the
-loopback origin it happened to land on.
+"Served origin" is the load-bearing concept for what the server renders: a
+redirect `Location` or a discovery document's endpoints must reference the URL
+the caller really used, not the loopback origin it happened to land on. Tokens
+are the exception: they name the server, not the request (below).
 
 ### Recovering the served origin from `Forwarded` (RFC 7239)
 
@@ -49,61 +50,50 @@ desktop host's owner-token injection). Only the **absence** of the header reads
 as loopback. The parsing contract, the exact nginx directive, and the attack
 cases live on the [`served_origin`] module.
 
-## `iss` is the canonical origin; `aud` is the served origin
+## `iss` and `aud` are the server's origin
 
-Every JWT gatekeeper mints carries two origin-shaped claims, derived differently
-on purpose:
+Every JWT gatekeeper mints, whether through the OAuth flows or as the host owner
+token, names one origin in both its origin-shaped claims: **`iss` = `aud` =
+`https://<domain>`, the server's origin**. It is the public origin the server
+builds from its domain at startup (`wildflower_server.rs`), handed to gatekeeper
+as [`GatekeeperConfig::server_origin`] and to emr-rust as
+[`EmrConfig`]`.public_origin`, and spelled as a bare origin (no trailing slash,
+no path) by [`origin_string`].
 
-- **`iss` = [`CANONICAL_ISSUER`]** — a single, build-time-fixed string
-  (`https://wildflowerhealth.io`), the same value HFS validates against. Pinning
-  it means one `expected_issuer` accepts every gatekeeper-signed token whether it
-  was minted for a loopback caller or a tunnel caller, with no
-  loopback-vs-tunnel branching at mint time or validation time. Wildflower is
-  single-tenant for now; a per-deployment issuer is deferred until a second
-  tenant justifies it.
-- **`aud` = the served origin** ([`served_base_url_for`], per request) — so a
-  SMART client can match the token's `aud` to the FHIR base URL it discovered.
-  HFS leaves `aud` unvalidated; gatekeeper's own bearer gate enforces audience.
+The claims say which server the token is for, not which origin a request was
+served on, so they are checked against configuration, never against the request:
 
-One deliberate exception: the **host owner token** carries
-`aud = CANONICAL_ISSUER` (same value as its `iss`). The host presents that one
-boot-minted token over loopback (the provenance-injected bearer), and the same
-token must also verify on a forwarded (tunnel-origin) request, so a served-origin
-audience would bind it to exactly one of the two. Gatekeeper's bearer gate therefore accepts the canonical audience
-alongside the per-request served-origin pair. OAuth-minted tokens always get
-`{origin}/fhir-r4` — the canonical audience is never mintable through the OAuth
-surface.
+- **Gatekeeper's bearer gates** (the `/access` session gate and the bearer gate
+  in front of the FHIR server and the other slices) run the `TokenVerifier`,
+  which accepts a token only when its `iss` and its `aud` are both the
+  configured server origin.
+- **HFS** checks the same pair itself: emr-rust sets HFS's `expected_issuer` and
+  `expected_audience` to the server's origin, and HFS matches `aud` exactly. A
+  FHIR request is checked by gatekeeper's gate and again by HFS.
 
-Because the canonical audience is accepted at **every** served origin, accepting
-it can't rest on convention alone. The host owner token additionally carries a
-`wf_owner` marker claim, and the bearer gate honours the canonical audience
-**only** for a token that carries it. Any other token that reaches the gate via
-`aud = CANONICAL_ISSUER` — a future minting bug, a copied pattern, a
-leaked-and-replayed token — is rejected, so every non-owner token stays bound to
-its served origin. The marker is a private claim (absent, never `false`, on
-every other token), so it costs nothing on the wire and is invisible to SMART
-clients.
+Two things follow. A token for this server is accepted whichever way the request
+arrived, over loopback or relayed through the tunnel, so the host owner token
+and an OAuth token are the same kind of token, checked the same way. And a token
+another server minted names that server's origin, so it is refused here by
+construction, even if the two servers somehow shared a signing key.
 
-The SMART discovery document follows the same split: its `issuer` field is
-[`CANONICAL_ISSUER`], while its endpoint URLs are rendered from the served origin
-so the SMART app can actually reach them from where it is.
+The SMART discovery document reports the server's origin as its `issuer`, while
+its endpoint URLs are rendered from the served origin so the SMART app can
+reach them from where it is.
 
 ### HFS's `base_url` is the server's public host
 
 HFS is the one component that can't render URLs per request. Its `base_url`
 setting is the prefix of every URL it emits (search Bundle `self`/`next` links,
 `entry.fullUrl`, a create's `Location`), and it ignores `Forwarded`. A client
-that pages by following `next` therefore goes wherever `base_url` points, and
-its token's `aud` has to match.
+that pages by following `next` therefore goes wherever `base_url` points.
 
 So `base_url` is `https://<public_host>/fhir-r4`, where the public host is the
 server's domain from its record, because that is how remote clients reach the
-FHIR server. Loopback callers get the public URLs too. That suits the host
-owner token, whose canonical audience is accepted at every served origin, but
-not an OAuth-minted token whose `aud` is the loopback base: a client that
-authorised over loopback and follows a public `next` link through the tunnel is
-refused. A launched app never does, since every launch names the public origin
-(below).
+FHIR server. Loopback callers get the public URLs too. Their tokens still work
+there: a token names the server's origin, not the origin it was used on, so a
+client that authorised over loopback can follow a public `next` link through
+the tunnel.
 
 The public host can't change while the server runs, so the server hands
 emr-rust the public origin in its config ([`EmrConfig`]) and HFS's router is
@@ -186,7 +176,8 @@ restate the grammar.
 - [Gatekeeper Jargon Explanation](../../slices/gatekeeper/docs/Jargon%20Explanation.md)
   — `iss` / `aud` / Owner / Client / SMART terms.
 
-[`CANONICAL_ISSUER`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
+[`origin_string`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
+[`GatekeeperConfig::server_origin`]: ../../slices/gatekeeper/gatekeeper-rust/src/config.rs
 [`served_origin`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`served_base_url_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs

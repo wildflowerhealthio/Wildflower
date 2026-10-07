@@ -21,13 +21,15 @@ pub struct EmrConfig {
     /// Bearer JWTs. `Some(url)` enables HFS auth (every FHIR request must
     /// carry a token, scopes enforced); `None` leaves HFS open and relies
     /// on whatever middleware wraps this router from outside (e.g. the
-    /// Tauri host's gatekeeper gating layer). Validated `iss` =
-    /// [`shared_structures_rust::CANONICAL_ISSUER`]; see
+    /// Tauri host's gatekeeper gating layer). HFS validates each token's `iss`
+    /// and `aud` against [`Self::public_origin`]; see
     /// `docs/Origins/Explanation.md`.
     pub jwks_url: Option<String>,
     /// The server's public origin, e.g. `https://ruth.relay.wildflowerhealth.io`.
     /// HFS's `base_url` — the prefix of every URL it emits (search Bundle links,
     /// `entry.fullUrl`s, a create's `Location`) — is `{public_origin}/fhir-r4`,
-    /// fixed for the life of the router. See `docs/Origins/Explanation.md`.
+    /// fixed for the life of the router. Its bare origin is also the `iss` and
+    /// `aud` HFS requires of every token, and the `issuer` the SMART discovery
+    /// document reports. See `docs/Origins/Explanation.md`.
     pub public_origin: url::Url,
 }

@@ -8,7 +8,7 @@
 /// Proof that a token is the host's own owner token. Carries the first-party
 /// `client_id` and the host's configured grant (both sourced from
 /// `tauri-shared-config.json` on the live app), which the minter records
-/// verbatim and marks with the `wf_owner` claim.
+/// verbatim.
 pub(crate) struct HostOwnerEntitlement {
     client_id: String,
     scopes: Vec<String>,

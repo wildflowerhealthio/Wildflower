@@ -22,14 +22,16 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use serde::Serialize;
 use shared_structures_rust::served_origin::served_base_url_for;
-use shared_structures_rust::CANONICAL_ISSUER;
 
-/// State threaded to the discovery handler so it can fall back to the loopback
-/// origin when a request arrives without forwarding headers. Held as a typed
-/// [`Url`](url::Url) base URL; the handler derives the bare origin string from it.
+/// State threaded to the discovery handler: the loopback origin it falls back
+/// to when a request arrives without forwarding headers (a typed
+/// [`Url`](url::Url) base URL; the handler derives the bare origin string from
+/// it), and the server's origin it reports as `issuer`.
 #[derive(Clone)]
 pub(crate) struct SmartConfigState {
     pub loopback_base_url: url::Url,
+    /// The server's bare origin, every token's `iss` and `aud`.
+    pub server_origin: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -66,16 +68,16 @@ const SCOPES_SUPPORTED: &[&str] = &[
     "offline_access",
 ];
 
-fn build_smart_configuration(base_url: &url::Url) -> SmartConfiguration {
+fn build_smart_configuration(server_origin: &str, base_url: &url::Url) -> SmartConfiguration {
     // The advertised endpoints are per-request URL strings; derive the bare
     // origin (no trailing slash, no default port) once and interpolate.
     let origin = shared_structures_rust::origin_string(base_url);
     let host = format!("{origin}/fhir-r4");
     SmartConfiguration {
-        // `issuer` = `CANONICAL_ISSUER` (matches minted tokens' `iss`); the
-        // endpoint URLs below stay per-request, derived from the served origin.
-        // See `docs/Origins/Explanation.md`.
-        issuer: CANONICAL_ISSUER.to_string(),
+        // `issuer` = the server's origin (minted tokens' `iss`); the endpoint
+        // URLs below stay per-request, derived from the served origin. See
+        // `docs/Origins/Explanation.md`.
+        issuer: server_origin.to_owned(),
         jwks_uri: format!("{origin}/.well-known/jwks.json"),
         authorization_endpoint: format!("{origin}/oauth/authorize"),
         token_endpoint: format!("{origin}/oauth/token"),
@@ -111,12 +113,14 @@ pub(crate) async fn smart_configuration_handler(
     let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    Json(build_smart_configuration(&base_url)).into_response()
+    Json(build_smart_configuration(&state.server_origin, &base_url)).into_response()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SERVER_ORIGIN: &str = "https://ruth.wildflowerhealth.io";
 
     fn base(value: &str) -> url::Url {
         url::Url::parse(value).unwrap()
@@ -124,7 +128,8 @@ mod tests {
 
     #[test]
     fn discovery_doc_points_authorization_endpoint_at_root_oauth() {
-        let doc = build_smart_configuration(&base("https://ruth.wildflowerhealth.io"));
+        let doc =
+            build_smart_configuration(SERVER_ORIGIN, &base("https://ruth.wildflowerhealth.io"));
         assert_eq!(
             doc.authorization_endpoint,
             "https://ruth.wildflowerhealth.io/oauth/authorize"
@@ -137,13 +142,20 @@ mod tests {
             doc.jwks_uri,
             "https://ruth.wildflowerhealth.io/.well-known/jwks.json"
         );
-        // `issuer` is the canonical constant, not the per-request origin.
-        assert_eq!(doc.issuer, CANONICAL_ISSUER);
+    }
+
+    /// `issuer` is the server's origin whichever origin discovery was served
+    /// on, while the endpoint URLs follow the served origin.
+    #[test]
+    fn discovery_doc_reports_the_server_origin_as_issuer() {
+        let doc = build_smart_configuration(SERVER_ORIGIN, &base("http://127.0.0.1:8080/"));
+        assert_eq!(doc.issuer, SERVER_ORIGIN);
+        assert_eq!(doc.token_endpoint, "http://127.0.0.1:8080/oauth/token");
     }
 
     #[test]
     fn discovery_doc_advertises_smart_app_launch_capabilities() {
-        let doc = build_smart_configuration(&base("https://example.com"));
+        let doc = build_smart_configuration(SERVER_ORIGIN, &base("https://example.com"));
         assert!(doc.capabilities.contains(&"launch-ehr"));
         assert!(doc.capabilities.contains(&"permission-v2"));
         assert!(doc.grant_types_supported.contains(&"authorization_code"));
@@ -153,7 +165,7 @@ mod tests {
 
     #[test]
     fn discovery_doc_advertises_curated_public_scopes() {
-        let doc = build_smart_configuration(&base("https://example.com"));
+        let doc = build_smart_configuration(SERVER_ORIGIN, &base("https://example.com"));
         // The curated public SMART read set — standard SMART App Launch scopes,
         // not the system's internal/admin vocabulary.
         assert!(doc.scopes_supported.contains(&"openid"));

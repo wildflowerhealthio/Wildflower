@@ -2,8 +2,8 @@
 //! token, and the verification that produces it:
 //!
 //!  - [`TokenVerifier`] — the access-token verification policy both authN
-//!    gates run (signature, issuer, served-origin audiences, the owner-only
-//!    canonical audience, revocation last).
+//!    gates run (signature, `iss` and `aud` against the server's origin,
+//!    revocation last).
 //!  - [`SessionEnder`] and [`SessionReader`] — authenticated-only (no scope):
 //!    logout's self-revoke and reading back one's own scopes, acquired through
 //!    the shared `Authenticated<F>` extractor. A scope gate here would lock out

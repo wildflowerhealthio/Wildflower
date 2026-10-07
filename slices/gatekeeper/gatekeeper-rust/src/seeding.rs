@@ -407,10 +407,9 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
 /// the host can hand the resulting token to the `WebView` via the
 /// navigation bridge and let the Owner UI call `/access/*` endpoints.
 ///
-/// `iss` and `aud` are both [`shared_structures_rust::CANONICAL_ISSUER`], the one
-/// audience `require_auth` accepts over both loopback and the tunnel origin
-/// (#256). The token carries the `wf_owner` marker (`is_host_owner: true`) so
-/// `require_auth` honours that audience only for it. See `docs/Origins/Explanation.md`.
+/// `iss` and `aud` are both `server_origin`, like every token this server
+/// mints, so it is accepted over loopback and through the tunnel alike. See
+/// `docs/Origins/Explanation.md`.
 ///
 /// # Errors
 ///
@@ -418,8 +417,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
 /// failure, or a store failure. The boot path adds where it was minting.
 pub(crate) fn mint_host_owner_token(
     store: &SqliteGatekeeperStore,
-    iss: &str,
-    aud: &str,
+    server_origin: &str,
     ttl: Duration,
     host_owner_scopes: &[String],
     first_party_client_id: &str,
@@ -435,7 +433,8 @@ pub(crate) fn mint_host_owner_token(
     // `HostOwnerEntitlement` proof (constructible only here), through the same
     // minter.
     let entitlement = HostOwnerEntitlement::for_host(first_party_client_id, host_owner_scopes);
-    AccessTokenMinter::new(store, iss, aud, ttl).mint(TokenEntitlement::HostOwner(&entitlement))
+    AccessTokenMinter::new(store, server_origin, ttl)
+        .mint(TokenEntitlement::HostOwner(&entitlement))
 }
 
 #[cfg(test)]

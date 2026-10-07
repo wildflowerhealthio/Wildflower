@@ -62,11 +62,6 @@ pub struct AccessTokenClaims {
     /// Optional SMART-on-FHIR patient context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
-    /// Marks the boot-minted host owner token — the only token the
-    /// `TokenVerifier` lets authenticate via the canonical audience. A private claim, absent
-    /// (never `false`) on every other token. See `docs/Origins/Explanation.md`.
-    #[serde(rename = "wf_owner", skip_serializing_if = "Option::is_none")]
-    pub host_owner: Option<bool>,
 }
 
 /// Inputs required to mint a new JWT access token.
@@ -83,11 +78,6 @@ pub struct NewJwtArgs<'a> {
     pub audience: Option<&'a str>,
     /// Optional SMART-on-FHIR patient context.
     pub patient: Option<&'a str>,
-    /// Mark the token as the host owner token, adding the `wf_owner` claim that
-    /// the `TokenVerifier` requires before honouring the canonical audience. Only
-    /// [`mint_host_owner_token`](crate::seeding) sets this; every OAuth mint
-    /// leaves it `false`.
-    pub is_host_owner: bool,
 }
 
 /// Failures while minting an access token.
@@ -139,7 +129,6 @@ pub fn mint_access_token(
         issued_at: now,
         scope: args.scopes.join(" "),
         patient: args.patient.map(str::to_string),
-        host_owner: args.is_host_owner.then_some(true),
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(signing_key.kid.clone());
@@ -179,10 +168,6 @@ pub struct VerifiedClaims {
     /// SMART-on-FHIR patient context, if present.
     #[serde(default)]
     pub patient: Option<String>,
-    /// Present and `true` only on the host owner token (the `wf_owner` claim);
-    /// the `TokenVerifier` requires it before accepting the canonical audience.
-    #[serde(rename = "wf_owner", default)]
-    pub host_owner: Option<bool>,
 }
 
 /// Read the caller's authority from the verified `scope` claim so the shared

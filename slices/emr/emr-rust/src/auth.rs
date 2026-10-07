@@ -9,7 +9,6 @@ use helios_audit::{sinks::NullSink, AuditSink, ExclusionFilter};
 use helios_auth::error::AuthError;
 use helios_auth::{AuthConfig, AuthProvider, JwksBearerAuthProvider, JwksCache, Principal};
 use helios_rest::AuthMiddlewareState;
-use shared_structures_rust::CANONICAL_ISSUER;
 use token_revocation_rust::RevocationStore;
 
 /// The FHIR-side revocation enforcement point: wraps helios's JWKS validator
@@ -50,7 +49,11 @@ impl<P: AuthProvider> AuthProvider for RevocationCheckingProvider<P> {
 /// Translate an optional JWKS URL into the `(AuthConfig, auth_state)`
 /// pair HFS's `create_app_with_auth` expects. `None` leaves HFS auth off.
 ///
-/// `expected_issuer` = [`CANONICAL_ISSUER`]; see `docs/Origins/Explanation.md`.
+/// `expected_issuer` and `expected_audience` are both `server_origin`, the bare
+/// origin every token this server mints names as its `iss` and `aud`: HFS
+/// checks both (helios-auth matches `aud` exactly when set), so a token another
+/// server minted is refused here as well as at gatekeeper's gate. See
+/// `docs/Origins/Explanation.md`.
 /// The JWKS cache is *not* initial-fetched: gatekeeper's HTTP listener isn't
 /// bound yet when this runs, so a blocking fetch would deadlock. HFS's
 /// `JwksCache` supports lazy fetching — the first request that needs a signing
@@ -62,6 +65,7 @@ impl<P: AuthProvider> AuthProvider for RevocationCheckingProvider<P> {
 pub(crate) fn build_auth(
     jwks_url: Option<&str>,
     revocation_store: RevocationStore,
+    server_origin: &str,
 ) -> (AuthConfig, Option<Arc<AuthMiddlewareState>>) {
     let Some(jwks_url) = jwks_url else {
         return (AuthConfig::default(), None);
@@ -70,7 +74,8 @@ pub(crate) fn build_auth(
     let config = AuthConfig {
         enabled: true,
         jwks_url: Some(jwks_url.to_string()),
-        expected_issuer: Some(CANONICAL_ISSUER.to_string()),
+        expected_issuer: Some(server_origin.to_string()),
+        expected_audience: Some(server_origin.to_string()),
         ..AuthConfig::default()
     };
 
@@ -100,10 +105,19 @@ pub(crate) fn build_auth(
 mod tests {
     use super::{build_auth, RevocationCheckingProvider};
     use async_trait::async_trait;
+    use axum::routing::get;
+    use axum::{Json, Router};
+    use gatekeeper_rust::crypto_util::public_jwk::PublicJwk;
+    use gatekeeper_rust::domain::signing_key::SigningKey;
+    use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
     use helios_auth::error::AuthError;
     use helios_auth::{AuthProvider, Principal, ScopeSet};
-    use shared_structures_rust::CANONICAL_ISSUER;
     use token_revocation_rust::RevocationStore;
+
+    /// This server's origin.
+    const SERVER_ORIGIN: &str = "https://ruth.relay.example";
+    /// Another server's origin.
+    const OTHER_ORIGIN: &str = "https://lab.relay.example";
 
     fn store() -> RevocationStore {
         RevocationStore::open_in_memory().expect("open in-memory revocation store")
@@ -120,7 +134,7 @@ mod tests {
         async fn authenticate(&self, _authorization_header: &str) -> Result<Principal, AuthError> {
             Ok(Principal {
                 subject: "patient-1".to_string(),
-                issuer: CANONICAL_ISSUER.to_string(),
+                issuer: SERVER_ORIGIN.to_string(),
                 tenant_id: None,
                 scopes: ScopeSet::empty(),
                 jti: self.jti.clone(),
@@ -136,7 +150,7 @@ mod tests {
 
     #[test]
     fn jwks_url_none_leaves_hfs_auth_off() {
-        let (config, state) = build_auth(None, store());
+        let (config, state) = build_auth(None, store(), SERVER_ORIGIN);
         assert!(
             !config.enabled,
             "HFS auth must be disabled when no JWKS URL is configured"
@@ -148,18 +162,88 @@ mod tests {
     }
 
     #[test]
-    fn jwks_url_some_enables_auth_pinned_to_canonical_issuer() {
+    fn jwks_url_some_enables_auth_pinned_to_the_server_origin() {
         let url = "http://127.0.0.1:8080/.well-known/jwks.json";
-        let (config, state) = build_auth(Some(url), store());
+        let (config, state) = build_auth(Some(url), store(), SERVER_ORIGIN);
 
         assert!(config.enabled);
         assert_eq!(config.jwks_url.as_deref(), Some(url));
-        // `iss` = `CANONICAL_ISSUER`; see `docs/Origins/Explanation.md`.
-        assert_eq!(config.expected_issuer.as_deref(), Some(CANONICAL_ISSUER));
-        // `aud` left unvalidated by HFS (gatekeeper's bearer gate enforces it).
-        // Asserted so adding HFS-side audience validation later is deliberate.
-        assert!(config.expected_audience.is_none());
+        // `iss` = `aud` = the server's origin; see `docs/Origins/Explanation.md`.
+        assert_eq!(config.expected_issuer.as_deref(), Some(SERVER_ORIGIN));
+        assert_eq!(config.expected_audience.as_deref(), Some(SERVER_ORIGIN));
         assert!(state.is_some());
+    }
+
+    /// HFS's own validator as `build_auth` configures it for [`SERVER_ORIGIN`],
+    /// fetching its keys from a local JWKS endpoint that publishes `key`.
+    async fn hfs_provider_trusting(key: &SigningKey) -> std::sync::Arc<dyn AuthProvider> {
+        let jwks = serde_json::json!({ "keys": [PublicJwk::from(key)] });
+        let router = Router::new().route(
+            "/.well-known/jwks.json",
+            get(move || {
+                let jwks = jwks.clone();
+                async move { Json(jwks) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a JWKS listener");
+        let jwks_url = format!(
+            "http://{}/.well-known/jwks.json",
+            listener.local_addr().expect("JWKS listener address")
+        );
+        tokio::spawn(async move { axum::serve(listener, router).await });
+        let (_config, state) = build_auth(Some(&jwks_url), store(), SERVER_ORIGIN);
+        state.expect("auth is on with a JWKS URL").provider.clone()
+    }
+
+    /// A gatekeeper token signed by `key` naming `issuer` and `audience`.
+    fn bearer(key: &SigningKey, issuer: &str, audience: &str) -> String {
+        let token = mint_access_token(
+            key,
+            &NewJwtArgs {
+                client_id: "app",
+                scopes: &["patient/*.rs".to_owned()],
+                ttl: chrono::Duration::minutes(5),
+                issuer,
+                audience: Some(audience),
+                patient: None,
+            },
+        )
+        .expect("mint");
+        format!("Bearer {token}")
+    }
+
+    /// HFS accepts a token whose `iss` and `aud` are this server's origin, and
+    /// refuses one another server minted — even signed with a key this server
+    /// trusts — one naming another server as only its issuer or audience, and
+    /// one whose `aud` is the FHIR base rather than the origin.
+    #[tokio::test]
+    async fn hfs_accepts_only_tokens_naming_this_server_as_iss_and_aud() {
+        let key = SigningKey::generate().expect("generate a signing key");
+        let provider = hfs_provider_trusting(&key).await;
+
+        let principal = provider
+            .authenticate(&bearer(&key, SERVER_ORIGIN, SERVER_ORIGIN))
+            .await
+            .expect("a token for this server is accepted");
+        assert_eq!(principal.issuer, SERVER_ORIGIN);
+
+        let fhir_base = format!("{SERVER_ORIGIN}/fhir-r4");
+        for (issuer, audience) in [
+            (OTHER_ORIGIN, OTHER_ORIGIN),
+            (OTHER_ORIGIN, SERVER_ORIGIN),
+            (SERVER_ORIGIN, OTHER_ORIGIN),
+            (SERVER_ORIGIN, fhir_base.as_str()),
+        ] {
+            assert!(
+                matches!(
+                    provider.authenticate(&bearer(&key, issuer, audience)).await,
+                    Err(AuthError::ValidationError(_))
+                ),
+                "iss {issuer}, aud {audience} must be refused"
+            );
+        }
     }
 
     /// The HFS-side multi-use guard: a live `jti` passes on *every* call (the

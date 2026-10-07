@@ -5,6 +5,8 @@
 //! rotate. The proof is the hand-off between the validation half and the
 //! writers, so a token is never minted for a grant that didn't redeem.
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 
 use crate::domain::authority::{
@@ -34,17 +36,22 @@ pub(crate) struct IssuedTokens {
 /// instantiates it over the concrete `SqliteGatekeeperStore`.
 pub(crate) struct TokenExchanger<S: GatekeeperStore> {
     store: S,
+    /// The server's bare origin, every minted token's `iss` and `aud`.
+    server_origin: Arc<str>,
 }
 
 impl<S: GatekeeperStore> TokenExchanger<S> {
-    /// Build the exchanger over a store handle lifted from the state.
-    pub(crate) fn new(store: S) -> Self {
-        TokenExchanger { store }
+    /// Build the exchanger over a store handle and the server's origin, both
+    /// lifted from the state.
+    pub(crate) fn new(store: S, server_origin: Arc<str>) -> Self {
+        TokenExchanger {
+            store,
+            server_origin,
+        }
     }
 
     /// Redeem an authorization code with its PKCE verifier (RFC 6749 §4.1.3,
     /// RFC 7636 §4.6) and mint the token the code's consent authorized.
-    /// `served_origin` is the served served_origin the token's `aud` is bound to.
     ///
     /// # Errors
     ///
@@ -55,17 +62,12 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         &self,
         authenticated_client: &AuthenticatedClient,
         presented: &PresentedAuthorizationCode<'_>,
-        served_origin: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::AuthorizationCode)?;
         let redeemed_code =
             RedeemedAuthorizationCode::redeem(&self.store, authenticated_client, presented, now)?;
-        self.issue_for_redemption(
-            GrantRedemption::AuthorizationCode(&redeemed_code),
-            served_origin,
-            now,
-        )
+        self.issue_for_redemption(GrantRedemption::AuthorizationCode(&redeemed_code), now)
     }
 
     /// Poll a device request (RFC 8628 §3.4) and, once it is approved and this
@@ -80,17 +82,12 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         &self,
         authenticated_client: &AuthenticatedClient,
         device_code: &str,
-        served_origin: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::DeviceCode)?;
         let consumed_device_request =
             ConsumedDeviceRequest::consume(&self.store, authenticated_client, device_code, now)?;
-        self.issue_for_redemption(
-            GrantRedemption::DeviceCode(&consumed_device_request),
-            served_origin,
-            now,
-        )
+        self.issue_for_redemption(GrantRedemption::DeviceCode(&consumed_device_request), now)
     }
 
     /// Trade a live refresh token for a fresh access token and the refresh
@@ -109,7 +106,6 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         &self,
         authenticated_client: &AuthenticatedClient,
         presented_refresh_token: &str,
-        served_origin: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::RefreshToken)?;
@@ -119,10 +115,7 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
             presented_refresh_token,
             now,
         )?;
-        let access_token = self.mint(
-            TokenEntitlement::RefreshToken(&validated_refresh_token),
-            served_origin,
-        )?;
+        let access_token = self.mint(TokenEntitlement::RefreshToken(&validated_refresh_token))?;
         let successor =
             RefreshFamilyWriter::over(&self.store).rotate(&validated_refresh_token, now)?;
         Ok(IssuedTokens {
@@ -152,10 +145,9 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     fn issue_for_redemption(
         &self,
         redemption: GrantRedemption<'_>,
-        served_origin: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        let access_token = self.mint(redemption.entitlement(), served_origin)?;
+        let access_token = self.mint(redemption.entitlement())?;
         let refresh_token = if redemption.earns_refresh_token() {
             Some(RefreshFamilyWriter::over(&self.store).start_family(redemption, now)?)
         } else {
@@ -170,20 +162,11 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         })
     }
 
-    /// Mint an OAuth access token: `iss` is the canonical issuer, `aud` this
-    /// request's served origin's FHIR base (see `docs/Origins/Explanation.md`).
-    fn mint(
-        &self,
-        entitlement: TokenEntitlement<'_>,
-        served_origin: &str,
-    ) -> Result<String, TokenExchangeError> {
-        let audience = format!("{served_origin}/fhir-r4");
-        let minter = AccessTokenMinter::new(
-            &self.store,
-            shared_structures_rust::CANONICAL_ISSUER,
-            &audience,
-            ACCESS_TOKEN_TTL,
-        );
+    /// Mint an OAuth access token whose `iss` and `aud` are both the server's
+    /// origin, whichever origin the request was served on (see
+    /// `docs/Origins/Explanation.md`).
+    fn mint(&self, entitlement: TokenEntitlement<'_>) -> Result<String, TokenExchangeError> {
+        let minter = AccessTokenMinter::new(&self.store, &self.server_origin, ACCESS_TOKEN_TTL);
         Ok(minter.mint(entitlement)?)
     }
 }
@@ -199,17 +182,19 @@ mod tests {
     use crate::crypto_util::random_token::generate_authorization_code;
     use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
     use crate::domain::client::Client;
+    use crate::domain::token::{verify_jwt, VerifyOptions};
 
     use crate::domain::test_fake::{
         authenticated_public_client, client, seed_active_signing_key, FakeGatekeeperStore,
     };
 
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
+    const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
     fn exchanger() -> TokenExchanger<FakeGatekeeperStore> {
         let store = FakeGatekeeperStore::default();
         seed_active_signing_key(&store);
-        TokenExchanger::new(store)
+        TokenExchanger::new(store, SERVER_ORIGIN.into())
     }
 
     fn authenticated(
@@ -259,7 +244,6 @@ mod tests {
                 code_verifier: VERIFIER,
                 redirect_uri: "https://example.com/cb",
             },
-            "http://127.0.0.1",
             Utc::now(),
         );
         assert!(matches!(
@@ -276,9 +260,9 @@ mod tests {
         );
     }
 
-    /// The code flow end to end: a token for the code's granted scopes, a
-    /// refresh token only when `offline_access` was granted, and the
-    /// first-party flag keyed on the redeeming client.
+    /// The code flow end to end: a token for the code's granted scopes, issued
+    /// by and for the server's origin, and a refresh token only when
+    /// `offline_access` was granted.
     #[test]
     fn a_code_exchange_mints_for_the_granted_scopes() {
         let exchanger = exchanger();
@@ -292,11 +276,20 @@ mod tests {
                     code_verifier: VERIFIER,
                     redirect_uri: "https://example.com/cb",
                 },
-                "http://127.0.0.1",
                 Utc::now(),
             )
             .expect("exchanges");
         assert_eq!(token.granted_scopes, ["openid"]);
+        let claims = verify_jwt(
+            &token.access_token,
+            &exchanger.store.all_signing_keys().unwrap(),
+            &VerifyOptions {
+                expected_issuer: SERVER_ORIGIN,
+                accepted_audiences: &[SERVER_ORIGIN.to_owned()],
+            },
+        )
+        .expect("the token names the server's origin as iss and aud");
+        assert_eq!(claims.audience, [SERVER_ORIGIN]);
         assert_eq!(token.refresh_token, None);
         assert_eq!(token.expires_in, ACCESS_TOKEN_TTL.num_seconds());
 
@@ -310,7 +303,6 @@ mod tests {
                     code_verifier: VERIFIER,
                     redirect_uri: "https://example.com/cb",
                 },
-                "http://127.0.0.1",
                 Utc::now(),
             )
             .expect("exchanges");
@@ -334,7 +326,6 @@ mod tests {
                     code_verifier: VERIFIER,
                     redirect_uri: "https://example.com/cb",
                 },
-                "http://127.0.0.1",
                 now,
             )
             .unwrap()
@@ -342,29 +333,20 @@ mod tests {
             .unwrap();
 
         let rotated = exchanger
-            .exchange_refresh_token(&client, &first, "http://127.0.0.1", now)
+            .exchange_refresh_token(&client, &first, now)
             .expect("rotates");
         let successor = rotated.refresh_token.expect("successor issued");
         assert_eq!(rotated.granted_scopes, ["openid", "offline_access"]);
 
-        let replay = exchanger.exchange_refresh_token(
-            &client,
-            &first,
-            "http://127.0.0.1",
-            now + Duration::seconds(1),
-        );
+        let replay = exchanger.exchange_refresh_token(&client, &first, now + Duration::seconds(1));
         assert!(matches!(
             replay,
             Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenReplayed { .. }
             ))
         ));
-        let after_revoke = exchanger.exchange_refresh_token(
-            &client,
-            &successor,
-            "http://127.0.0.1",
-            now + Duration::seconds(2),
-        );
+        let after_revoke =
+            exchanger.exchange_refresh_token(&client, &successor, now + Duration::seconds(2));
         assert!(matches!(
             after_revoke,
             Err(TokenExchangeError::InvalidGrant(
