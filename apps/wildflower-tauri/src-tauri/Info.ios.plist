@@ -10,12 +10,12 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<!-- The background service keeps the Wildflower server running in the
-	     `BGAppRefreshTask` and `BGProcessingTask` windows iOS grants. The
+	<!-- The unit runner's keep-alive keeps the Wildflower servers running in
+	     the `BGAppRefreshTask` and `BGProcessingTask` windows iOS grants. The
 	     background-service plugin registers its tasks as the bundle identifier
 	     plus `.bg-refresh` and `.bg-processing`; iOS runs only identifiers
 	     listed here, and only with the matching background modes. See the
-	     background-server-service Design Explanation. -->
+	     servers slice's Server Runs Explanation. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

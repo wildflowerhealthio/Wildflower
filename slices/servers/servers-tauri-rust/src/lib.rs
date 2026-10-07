@@ -1,7 +1,25 @@
-//! Tauri host glue for the servers slice: the base's commands for adding a
+//! Tauri host glue for the servers slice: the install's servers on the unit
+//! runner, the notifications about them, and the base's commands for adding a
 //! server and re-entering its token. Every decision lives in
 //! [`servers_rust`], which needs no webview to be tested; this crate is only
 //! the glue.
+//!
+//! [`host_servers`], called once from the app's `setup()`:
+//!
+//! - pushes every server in `servers.json` to the app's
+//!   [`UnitRunner`](tauri_unit_runner::UnitRunner) as a unit whose id is its
+//!   domain, with its run policy and a factory that builds a fresh
+//!   [`ServerUnit`](servers_rust::ServerUnit) for each run (see
+//!   [`ServerUnits::push`]). An unreadable registry is logged, and no server
+//!   runs;
+//! - posts a stop notification for each new stop of a server's run, read from
+//!   the runner's statuses, and the per-caller notifications for the requests
+//!   the servers' tunnels relay;
+//! - puts the [`ServersState`] the commands read in the app's managed state.
+//!
+//! The commands write the registry, then push the server they changed. One
+//! async mutex orders each command's registry write and its push, so the
+//! runner always ends up with the record as last written.
 //!
 //! - [`server_add`], invoked as
 //!   `invoke('server_add', { relay, tunnelName, token })`, enrols a tunnel at
@@ -29,36 +47,103 @@
 //!
 //! The app registers both in its `invoke_handler` and grants them to the
 //! `main` webview only, through its app-defined `allow-server-enrolment`
-//! permission. [`manage_servers`] puts the [`ServersState`] they read in the
-//! app's managed state.
+//! permission.
 
 mod commands;
+mod notifications;
+mod server_units;
 
 use std::path::Path;
 use std::sync::Arc;
 
-use servers_rust::{JsonServerRegistry, ServerRegistry};
+use servers_rust::{JsonServerRegistry, ServerDetail, ServerRecord, ServerRegistry};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_log::log;
+use tauri_unit_runner::UnitRunner;
+use tokio::sync::{mpsc, Mutex};
+use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
 pub use commands::{server_add, server_set_credentials};
+pub use server_units::{ServerConfigBuilder, ServerUnits};
 
-/// What the servers commands work through: the install's registry.
+/// How many forwarded-request reports may wait for the request notifications
+/// before the servers start dropping them (see
+/// `wildflower_server_rust::ServerObservers`).
+pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
+
+/// What the servers commands work through: the install's registry, the
+/// runner's server units, and the lock that orders each registry write with
+/// its push.
 pub struct ServersState {
     pub(crate) registry: Arc<dyn ServerRegistry>,
+    pub(crate) server_units: ServerUnits,
+    /// Held by a command from before its registry write until after it has
+    /// pushed the result, so pushes reach the runner in the order the writes
+    /// were made.
+    pub(crate) registry_writes: Mutex<()>,
 }
 
 impl ServersState {
+    /// The commands' state over `registry`, pushing to `server_units`.
     #[must_use]
-    pub fn new(registry: Arc<dyn ServerRegistry>) -> Self {
-        Self { registry }
+    pub fn new(registry: Arc<dyn ServerRegistry>, server_units: ServerUnits) -> Self {
+        Self {
+            registry,
+            server_units,
+            registry_writes: Mutex::new(()),
+        }
     }
 }
 
-/// Manage the [`ServersState`] over `<data_root>/servers.json`. `data_root`
-/// is the directory the host already resolved and created in `setup()`.
-/// Call once per app lifecycle.
-pub fn manage_servers(app: &AppHandle, data_root: &Path) {
-    app.manage(ServersState::new(Arc::new(
-        JsonServerRegistry::in_data_root(data_root),
-    )));
+/// Run the install's servers on `runner` and post the notifications about
+/// them, then manage the [`ServersState`] the commands read: see the
+/// [crate docs](crate).
+///
+/// `data_root` is the directory the host already resolved and created in
+/// `setup()`, holding `servers.json`. Each run of a server reads the config
+/// `server_config` builds from its record, and uses the host's `host_ports`,
+/// which every run of every server shares. Call once per app lifecycle, from
+/// `setup()`.
+pub fn host_servers(
+    app: &AppHandle,
+    data_root: &Path,
+    runner: &UnitRunner<ServerDetail>,
+    host_ports: HostPorts,
+    server_config: impl Fn(&ServerRecord) -> anyhow::Result<WildflowerServerConfig>
+        + Send
+        + Sync
+        + 'static,
+) {
+    let registry = Arc::new(JsonServerRegistry::in_data_root(data_root));
+    let (forwarded_request_sender, forwarded_requests) = mpsc::channel(FORWARDED_REQUEST_CAPACITY);
+    let server_units = ServerUnits::new(
+        runner.clone(),
+        Arc::new(server_config),
+        host_ports,
+        forwarded_request_sender,
+    );
+    match registry.read_all() {
+        Ok(records) => {
+            for record in records {
+                log::info!(
+                    "[servers] setting {} on the runner, run policy {:?}",
+                    record.domain(),
+                    record.run_policy
+                );
+                server_units.push(record);
+            }
+        }
+        Err(error) => {
+            log::error!("[servers] the registered servers are unreadable, so none runs: {error}");
+        }
+    }
+    tauri::async_runtime::spawn(notifications::post_stop_notifications(
+        app.clone(),
+        runner.subscribe(),
+    ));
+    tauri::async_runtime::spawn(notifications::post_request_notifications(
+        app.clone(),
+        forwarded_requests,
+    ));
+    app.manage(ServersState::new(registry, server_units));
 }

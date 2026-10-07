@@ -57,12 +57,11 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time
   configuration or platform paths itself.
-- **The host watches the server through `ServerObservers`.** Host-owned senders
-  that outlive any one server: the server's `ServerHealth` through its public
-  origin, published by the reachability monitor until it first answers, and
-  each request the trusted
-  front relayed through the
-  tunnel, reported by the outermost layer as a `ForwardedRequest` record: the
+- **The host watches the server through `ServerObservers`.** Host-owned
+  senders: the server's `ServerHealth` through its public origin, published by
+  the reachability monitor until it first answers, on a channel the host makes
+  for each run, and each request the trusted front relayed through the
+  tunnel, on a channel the host shares across runs, reported by the outermost layer as a `ForwardedRequest` record: the
   visitor's address, the path reduced to its route, the status, and the
   `RequestCaller` or `RequestRefusal` the gatekeeper bearer gates stamped on the
   response. The layer sends the same record to the request-log slice.
@@ -70,15 +69,15 @@ The **Wildflower server**: the loopback API the Tauri host runs. Rust-only, no
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
   listener, not those tasks (the tunnel's supervisor and the reachability
-  monitor are the exception: they stop when `serve` returns). `background-server-service`
-  runs each server on a dedicated runtime it shuts down when the server stops,
-  which is what ends them.
+  monitor are the exception: they stop when `serve` returns). The host runs
+  each server as a unit on the unit runner, which gives each run a dedicated
+  runtime and shuts it down when the run ends, which is what ends them.
 
 ## References
 
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.
-- [background-server-service AGENTS.md](../background-server-service/AGENTS.md)
-  — how the host runs, restarts and watches the server.
+- [Server Runs Explanation](../servers/docs/Server%20Runs%20Explanation.md)
+  — how the host runs, restarts and watches each server, as a `ServerUnit`.
 - [Origins Explanation](../../docs/Origins/Explanation.md) — loopback vs
   forwarded served origins, which the owner trust, the 404 and HFS's base URL
   resolve per request.

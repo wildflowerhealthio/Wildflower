@@ -1,6 +1,7 @@
 //! The servers commands: thin wrappers that parse their arguments, call
 //! [`servers_rust`]'s enrolment with a [`ReqwestRelayClient`] for a
-//! Wildflower relay, and log the outcome by domain.
+//! Wildflower relay, push the server they wrote to the unit runner, and log
+//! the outcome by domain.
 //!
 //! Each takes its arguments as top-level parameters, which Tauri reads from
 //! the invoke payload under their camelCase names (`tunnel_name` is
@@ -23,7 +24,8 @@ use url::Url;
 
 use crate::ServersState;
 
-/// Enrol and register a server; answers with its domain. Invoked as
+/// Enrol and register a server, then push it to the runner; answers with its
+/// domain. Invoked as
 /// `invoke('server_add', { relay, tunnelName, token })`, `relay` being an
 /// [`EnteredRelay`]. The token is trimmed. No parameter is logged, and the
 /// token never is.
@@ -42,7 +44,8 @@ pub async fn server_add(
 }
 
 /// Replace a registered server's token once its relay accepts it, or at
-/// once for a rathole relay; answers with nothing. Invoked as
+/// once for a rathole relay, then push the server to the runner, which
+/// restarts a run of it with the new token; answers with nothing. Invoked as
 /// `invoke('server_set_credentials', { domain, token })`. The token is
 /// trimmed.
 ///
@@ -79,6 +82,7 @@ async fn add<S: RelayClient>(
     token: String,
     relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
 ) -> Result<String, EnrolmentError> {
+    let _registry_write = servers.registry_writes.lock().await;
     let result = async {
         let tunnel_name = TunnelName::parse(tunnel_name)?;
         let token = entered_token(&token)?;
@@ -97,6 +101,7 @@ async fn add<S: RelayClient>(
         Ok(record) => {
             let domain = record.domain();
             log::info!("[servers] added {domain}");
+            servers.server_units.push(record);
             Ok(domain)
         }
         Err(error) => {
@@ -112,6 +117,7 @@ async fn set_credentials<S: RelayClient>(
     token: String,
     relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
 ) -> Result<(), EnrolmentError> {
+    let _registry_write = servers.registry_writes.lock().await;
     let result = async {
         servers_rust::set_server_credentials(
             Arc::clone(&servers.registry),
@@ -123,8 +129,9 @@ async fn set_credentials<S: RelayClient>(
     }
     .await;
     match result {
-        Ok(_) => {
+        Ok(record) => {
             log::info!("[servers] replaced the token of {domain}");
+            servers.server_units.push(record);
             Ok(())
         }
         Err(error) => {
@@ -138,9 +145,16 @@ async fn set_credentials<S: RelayClient>(
 mod tests {
     use std::sync::{Mutex, OnceLock};
 
+    use gatekeeper_rust::NoLoopbackConsentPrompt;
     use rathole_settings_rust::{PublicRatholeSettings, TunnelHost};
     use serde::Deserialize;
-    use servers_rust::{JsonServerRegistry, RelayKind};
+    use servers_rust::{JsonServerRegistry, RelayKind, ServerDetail, ServerRecord};
+    use shared_structures_rust::OnDeviceWebviewHandle;
+    use tauri_unit_runner::{RunPolicy, StartConfig, UnitId, UnitRunner, UnitStatus};
+    use tokio::sync::{mpsc, watch};
+    use wildflower_server_rust::HostPorts;
+
+    use crate::ServerUnits;
 
     use super::*;
 
@@ -238,11 +252,50 @@ mod tests {
         panic!("built a relay client for {relay_base}")
     }
 
-    fn servers() -> (tempfile::TempDir, ServersState) {
+    /// An on-device webview handle with no popup: no server runs here.
+    struct NoOnDeviceWebview;
+
+    impl OnDeviceWebviewHandle for NoOnDeviceWebview {
+        fn open(&self, _app_id: String, _title: String, _url: String) {}
+    }
+
+    /// The commands' state over a registry in a fresh data root, pushing to
+    /// `runner`. The app is never open here, so a
+    /// `whileOpen` server never runs, and no run builds a config.
+    fn servers_on(runner: &UnitRunner<ServerDetail>) -> (tempfile::TempDir, ServersState) {
         let data_root = tempfile::tempdir().unwrap();
-        let servers =
-            ServersState::new(Arc::new(JsonServerRegistry::in_data_root(data_root.path())));
+        let (host_owner_token_sender, _) = watch::channel(None);
+        let (active_pending_consent_sender, _) = watch::channel(None);
+        let (forwarded_request_sender, _) = mpsc::channel(1);
+        let server_units = ServerUnits::new(
+            runner.clone(),
+            Arc::new(|record: &ServerRecord| {
+                anyhow::bail!("no config for {} in these tests", record.domain())
+            }),
+            HostPorts {
+                loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
+                on_device_webview_handle: Arc::new(NoOnDeviceWebview),
+                host_owner_token_sender,
+                active_pending_consent_sender,
+            },
+            forwarded_request_sender,
+        );
+        let servers = ServersState::new(
+            Arc::new(JsonServerRegistry::in_data_root(data_root.path())),
+            server_units,
+        );
         (data_root, servers)
+    }
+
+    fn runner() -> UnitRunner<ServerDetail> {
+        UnitRunner::new(StartConfig {
+            service_label: "Wildflower server is running".to_owned(),
+            foreground_service_type: "specialUse".to_owned(),
+        })
+    }
+
+    fn servers() -> (tempfile::TempDir, ServersState) {
+        servers_on(&runner())
     }
 
     /// `server_add`'s arguments for a self-hosted Wildflower relay, as the
@@ -363,6 +416,43 @@ mod tests {
         let registered = servers.registry.read_all().unwrap();
         assert_eq!(registered.len(), 1);
         assert_eq!(registered[0].token.expose(), TOKEN);
+    }
+
+    /// The server a command wrote is set on the runner, under its domain; a
+    /// failed command sets nothing.
+    #[tokio::test]
+    async fn the_commands_push_what_they_wrote_to_the_runner() {
+        let runner = runner();
+        let (_data_root, servers) = servers_on(&runner);
+        add_with(&servers, add_args("ruth", "the-wrong-s3cret"), fake_client)
+            .await
+            .unwrap_err();
+        assert!(runner.statuses().is_empty());
+
+        add_with(&servers, add_args("ruth", TOKEN), fake_client)
+            .await
+            .unwrap();
+        let registered = servers.registry.read_all().unwrap();
+        assert_eq!(registered[0].run_policy, RunPolicy::WhileOpen);
+        let statuses = runner.statuses();
+        assert_eq!(
+            statuses.keys().collect::<Vec<_>>(),
+            [&UnitId::from("ruth.relay.example.com")]
+        );
+        assert_eq!(
+            statuses[&UnitId::from("ruth.relay.example.com")],
+            UnitStatus::never_run(),
+            "the app isn't open, so a whileOpen server waits"
+        );
+
+        set_credentials_with(
+            &servers,
+            set_credentials_args("ruth.relay.example.com", TOKEN),
+            fake_client,
+        )
+        .await
+        .unwrap();
+        assert_eq!(runner.statuses().len(), 1);
     }
 
     #[tokio::test]

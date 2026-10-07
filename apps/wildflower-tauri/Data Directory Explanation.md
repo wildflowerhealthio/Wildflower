@@ -18,16 +18,16 @@ folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir` in
 `servers-rust`), so servers never share a database.
 
 `setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves the data
-root, hands it to the slices that keep install-wide files, and reads
-`servers.json`. The first server whose run policy wants it running then is the
-one that starts: its folder goes to the server as
-`ServerRuntimeConfig.server_dir`, and the server creates the folder, applies
-scheduled database deletions in it, and opens both databases there; the
-data-management screen (`/databases`) exports and deletes that server's
-databases only. With no server's policy wanting it running, nothing starts and
-the host reports the server stopped, with no error. Every slice that needs a
-path joins onto the data root or the server's folder rather than resolving its
-own.
+root and hands it to the slices that keep install-wide files, among them
+`servers-tauri-rust`, which reads `servers.json` and pushes every server to the
+unit runner with its run policy (see the servers slice's
+[Server Runs Explanation](../../slices/servers/docs/Server%20Runs%20Explanation.md)).
+Each run of a server gets its folder as `ServerRuntimeConfig.server_dir`, and
+the server creates the folder, applies scheduled database deletions in it, and
+opens both databases there; the data-management screen (`/databases`) exports
+and deletes that server's databases only. A `servers.json` that can't be read
+is logged, and no server runs. Every slice that needs a path joins onto the
+data root or the server's folder rather than resolving its own.
 
 ## `servers.json`
 
@@ -58,7 +58,7 @@ configuration only, never whether a server is up:
 ```
 
 `runPolicy` is when the user wants the server run, in the unit runner's own
-shape: `{"kind": "off"}`, `{"kind": "whileOpen"}`,
+shape, which the host pushes to the runner unchanged: `{"kind": "off"}`, `{"kind": "whileOpen"}`,
 `{"kind": "until", "at": "<RFC 3339>"}` or `{"kind": "always"}`. A new server
 gets `whileOpen` when no other server's policy wants it running, and `off`
 otherwise. An `until` whose `at` has passed stays in the file and no longer
