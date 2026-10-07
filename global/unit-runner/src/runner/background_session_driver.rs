@@ -41,15 +41,17 @@ pub(crate) async fn drive_background_session<D: Clone + Send + Sync + 'static>(
         let demand = *session_demand_rx.borrow_and_update();
         match (demand.some_unit_should_run, demand.session_phase) {
             (true, SessionPhase::NoSession) => {
-                if let Err(error) = platform.start().await {
-                    log::error!("[unit-runner] failed to start the background session: {error:#}");
+                if let Err(error) = platform.request_session_start().await {
+                    log::error!(
+                        "[unit-runner] failed to request the background session's start: {error:#}"
+                    );
                 }
             }
             (false, SessionPhase::Running) => {
                 if unit_runner.mark_session_no_longer_needed().is_some() {
-                    if let Err(error) = platform.stop().await {
+                    if let Err(error) = platform.request_session_end().await {
                         log::error!(
-                            "[unit-runner] failed to end the background session: {error:#}"
+                            "[unit-runner] failed to request the background session's end: {error:#}"
                         );
                     }
                 }

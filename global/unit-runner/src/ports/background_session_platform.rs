@@ -1,5 +1,5 @@
-//! [`BackgroundSessionPlatform`], how `UnitRunner` starts and ends the
-//! platform's background session.
+//! [`BackgroundSessionPlatform`], how `UnitRunner` asks the platform to start
+//! and end its background session.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -20,11 +20,11 @@ pub type BackgroundSessionOperation<'a> =
 /// it, before the session reports its start; an end resolves once the platform
 /// has asked the session to end, before the session reports its end.
 pub trait BackgroundSessionPlatform: Send + Sync + 'static {
-    /// Start the background session. A session already running counts as
-    /// started.
-    fn start(&self) -> BackgroundSessionOperation<'_>;
+    /// Ask the platform to start the background session. A session already
+    /// running counts as started.
+    fn request_session_start(&self) -> BackgroundSessionOperation<'_>;
 
-    /// End the background session, with `UnitRunner`'s own stop reason. A
-    /// session already ended counts as ended.
-    fn stop(&self) -> BackgroundSessionOperation<'_>;
+    /// Ask the platform to end the background session, with `UnitRunner`'s own
+    /// stop reason. A session already ended counts as ended.
+    fn request_session_end(&self) -> BackgroundSessionOperation<'_>;
 }

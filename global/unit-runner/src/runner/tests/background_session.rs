@@ -42,12 +42,16 @@ async fn a_session_runs_exactly_while_some_unit_should_run() {
         !harness.session_demand().some_unit_should_run,
         "no unit should run"
     );
-    assert_eq!(session.starts(), 0);
+    assert_eq!(session.session_start_requests(), 0);
 
     harness.set_unit_policy("first", RunPolicy::Always);
     harness.set_unit_policy("second", RunPolicy::Always);
     eventually("a session runs", || session.session_running()).await;
-    assert_eq!(session.starts(), 1, "one session for every unit");
+    assert_eq!(
+        session.session_start_requests(),
+        1,
+        "one session for every unit"
+    );
 
     harness.set_unit_policy("first", RunPolicy::Off);
     // The driver ends the session only once no unit should run.
@@ -59,7 +63,7 @@ async fn a_session_runs_exactly_while_some_unit_should_run() {
 
     harness.set_unit_policy("second", RunPolicy::Off);
     eventually("the session ends", || !session.session_running()).await;
-    assert_eq!(session.stops(), 1);
+    assert_eq!(session.session_end_requests(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -83,7 +87,7 @@ async fn a_unit_waiting_to_restart_still_wants_a_session() {
     assert_eq!(harness.phase("unit"), Some(UnitPhase::AwaitingRestart));
     assert!(harness.session_demand().some_unit_should_run);
     eventually("a session runs", || session.session_running()).await;
-    assert_eq!(session.stops(), 0);
+    assert_eq!(session.session_end_requests(), 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -117,7 +121,11 @@ async fn the_platform_ending_the_session_stops_every_unit_without_restart() {
         2,
         "nothing restarts after the platform ends the session"
     );
-    assert_eq!(session.starts(), 1, "`UnitRunner` doesn't start one again");
+    assert_eq!(
+        session.session_start_requests(),
+        1,
+        "`UnitRunner` doesn't start one again"
+    );
 
     // The platform starts a session again (an iOS background task).
     session.platform_starts_session();
@@ -152,7 +160,10 @@ async fn the_app_becoming_present_starts_a_session_again() {
         .await;
 
     harness.unit_runner.set_app_present(true);
-    eventually("a session starts again", || session.starts() == 2).await;
+    eventually("a session starts again", || {
+        session.session_start_requests() == 2
+    })
+    .await;
     harness.wait_until_running("unit").await;
     assert_eq!(probe.starts(), 2);
 }
@@ -167,7 +178,7 @@ async fn a_session_the_platform_starts_with_nothing_to_run_is_ended() {
         &Probe::default(),
     );
     session.platform_starts_session();
-    eventually("the session ends", || session.stops() == 1).await;
+    eventually("the session ends", || session.session_end_requests() == 1).await;
     assert!(!session.session_running());
 }
 
@@ -213,7 +224,10 @@ async fn a_unit_that_should_run_while_the_session_ends_gets_a_new_session() {
 
     session.hold_ends();
     harness.set_unit_policy("unit", RunPolicy::Off);
-    eventually("the session is asked to end", || session.stops() == 1).await;
+    eventually("the session is asked to end", || {
+        session.session_end_requests() == 1
+    })
+    .await;
 
     // The unit should run again before the session finishes ending.
     harness.set_unit_policy("unit", RunPolicy::Always);
@@ -222,5 +236,5 @@ async fn a_unit_that_should_run_while_the_session_ends_gets_a_new_session() {
 
     session.finish_ending_session();
     eventually("a new session runs", || session.session_running()).await;
-    assert_eq!(session.starts(), 2, "one start per session");
+    assert_eq!(session.session_start_requests(), 2, "one start per session");
 }

@@ -348,8 +348,8 @@ pub(super) struct FakeBackgroundSession {
     /// Asked to end, the session keeps running until
     /// [`finish_ending_session`](Self::finish_ending_session).
     ends_held: AtomicBool,
-    starts: AtomicUsize,
-    stops: AtomicUsize,
+    session_start_requests: AtomicUsize,
+    session_end_requests: AtomicUsize,
 }
 
 impl FakeBackgroundSession {
@@ -358,19 +358,19 @@ impl FakeBackgroundSession {
             unit_runner: Arc::clone(unit_runner),
             session: Mutex::new(None),
             ends_held: AtomicBool::new(false),
-            starts: AtomicUsize::new(0),
-            stops: AtomicUsize::new(0),
+            session_start_requests: AtomicUsize::new(0),
+            session_end_requests: AtomicUsize::new(0),
         })
     }
 
-    /// How many times `UnitRunner` started a session.
-    pub(super) fn starts(&self) -> usize {
-        self.starts.load(Ordering::SeqCst)
+    /// How many times `UnitRunner` asked for a session to start.
+    pub(super) fn session_start_requests(&self) -> usize {
+        self.session_start_requests.load(Ordering::SeqCst)
     }
 
-    /// How many times `UnitRunner` ended a session.
-    pub(super) fn stops(&self) -> usize {
-        self.stops.load(Ordering::SeqCst)
+    /// How many times `UnitRunner` asked for the session to end.
+    pub(super) fn session_end_requests(&self) -> usize {
+        self.session_end_requests.load(Ordering::SeqCst)
     }
 
     pub(super) fn session_running(&self) -> bool {
@@ -415,17 +415,17 @@ impl FakeBackgroundSession {
 }
 
 impl BackgroundSessionPlatform for FakeBackgroundSession {
-    fn start(&self) -> BackgroundSessionOperation<'_> {
+    fn request_session_start(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
-            self.starts.fetch_add(1, Ordering::SeqCst);
+            self.session_start_requests.fetch_add(1, Ordering::SeqCst);
             self.platform_starts_session();
             Ok(())
         })
     }
 
-    fn stop(&self) -> BackgroundSessionOperation<'_> {
+    fn request_session_end(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
-            self.stops.fetch_add(1, Ordering::SeqCst);
+            self.session_end_requests.fetch_add(1, Ordering::SeqCst);
             if !self.ends_held.load(Ordering::SeqCst) {
                 self.end_session();
             }

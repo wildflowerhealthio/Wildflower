@@ -113,8 +113,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
 pub trait BackgroundSessionPlatform: Send + Sync + 'static {
     // Each resolves once the platform has taken the request, before the
     // session reports its start or end.
-    fn start(&self) -> BackgroundSessionOperation<'_>; // a session already running counts as started
-    fn stop(&self) -> BackgroundSessionOperation<'_>;  // with `UnitRunner`'s own stop reason
+    fn request_session_start(&self) -> BackgroundSessionOperation<'_>; // a session already running counts as started
+    fn request_session_end(&self) -> BackgroundSessionOperation<'_>;   // with `UnitRunner`'s own stop reason
 }
 
 pub trait WallClock: Send + Sync + 'static {

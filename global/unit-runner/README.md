@@ -26,7 +26,7 @@ The design and its vocabulary are in the
 | `UnitStatus<D>`, `RunState`, `RunStop`    | What `UnitRunner` reports for a unit.                                                                 |
 | `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform ended the background session.                                 |
 | `UnitRunner<D>`                           | Holds the units and runs them, free of any platform. A host binds it; an app uses its host's binding. |
-| `BackgroundSessionPlatform`               | The port a host implements to start and end the background session.                                   |
+| `BackgroundSessionPlatform`               | The port a host implements to request the background session's start and end.                         |
 | `WallClock`, `SystemClock`                | The wall clock policies are judged on, and the system's.                                              |
 | `SessionId`                               | One background session, as the host reports its start and end.                                        |
 | `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                                    |

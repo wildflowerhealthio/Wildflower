@@ -14,8 +14,8 @@ use unit_runner::{BackgroundSessionOperation, BackgroundSessionPlatform};
 use super::notification_permission::ask_for_notification_permission;
 use super::session_end_pairing::NO_LONGER_NEEDED_STOP_REASON;
 
-/// Starts and stops the plugin's one service, which is the background session
-/// while it runs.
+/// Asks the plugin to start and stop its one service, which is the background
+/// session while it runs.
 pub(crate) struct PluginBackgroundSession<R: Runtime> {
     app: AppHandle<R>,
     start_config: BackgroundServiceStartConfig,
@@ -43,7 +43,7 @@ impl<R: Runtime> PluginBackgroundSession<R> {
 impl<R: Runtime> BackgroundSessionPlatform for PluginBackgroundSession<R> {
     /// Start the service with the start config, after asking for notification
     /// permission the first time. A service already running counts as started.
-    fn start(&self) -> BackgroundSessionOperation<'_> {
+    fn request_session_start(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
             if !self
                 .notification_permission_asked
@@ -64,7 +64,7 @@ impl<R: Runtime> BackgroundSessionPlatform for PluginBackgroundSession<R> {
 
     /// Stop the service with [`NO_LONGER_NEEDED_STOP_REASON`]. A service
     /// already stopped counts as stopped.
-    fn stop(&self) -> BackgroundSessionOperation<'_> {
+    fn request_session_end(&self) -> BackgroundSessionOperation<'_> {
         Box::pin(async move {
             match self
                 .service_manager()?
