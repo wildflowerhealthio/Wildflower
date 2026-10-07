@@ -64,6 +64,21 @@ pub struct RunStop {
     pub stopped_at: DateTime<Utc>,
 }
 
+/// One run's stop, as
+/// [`UnitRunner::subscribe_stops`](crate::UnitRunner::subscribe_stops) reports
+/// it: once per run, in the order the runs stopped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunStopped {
+    /// The unit whose run stopped.
+    pub unit_id: UnitId,
+    /// How the run stopped, the same [`RunStop`] the unit's status now holds.
+    pub stop: RunStop,
+    /// Whether the run had called
+    /// [`RunContext::announce_running`](crate::RunContext::announce_running)
+    /// before it stopped. `false` for a run that ended while starting.
+    pub announced_running: bool,
+}
+
 /// Why a run stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopReason {

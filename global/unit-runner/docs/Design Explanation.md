@@ -138,8 +138,14 @@ pub enum StopReason {
 ```
 
 `subscribe()` always holds every unit's current status; a slow reader sees the
-latest statuses, not every step. A new unit is `Stopped` with no last stop
-until its first run.
+latest statuses, not every step. `subscribe_stops()` reports every step that
+matters to a reader that acts on stops, such as one that notifies: each run's
+stop once, as a `RunStopped` with the unit id, the `RunStop` its status now
+holds, and whether the run had announced running. It is a broadcast
+`RUN_STOPS_CAPACITY` (64) deep; a reader that falls further behind is told how
+many stops it missed.
+
+A new unit is `Stopped` with no last stop until its first run.
 
 One `UnitRunner` has one `Detail` type. An app with several kinds of unit makes
 its `Detail` an enum.

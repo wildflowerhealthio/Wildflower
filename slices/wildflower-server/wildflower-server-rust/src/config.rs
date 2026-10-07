@@ -63,14 +63,15 @@ pub struct HostPorts {
     pub active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
 }
 
-/// The channels the host watches a running server through. Like [`HostPorts`],
-/// the senders are owned by the host and outlive any one server.
+/// The channels the host watches a running server through. The host owns the
+/// senders, and decides how long each lives: one per server run, or one
+/// shared by every run.
 #[derive(Clone)]
 pub struct ServerObservers {
     /// Whether the server's `/health` answers through its public origin, and
     /// with what, published by the reachability monitor until the first
     /// answer. `None` until its first probe; the monitor stops when the server
-    /// stops serving, so the host resets it to `None` once a server is gone.
+    /// stops serving, and publishes nothing after.
     pub server_health_sender: watch::Sender<Option<ServerHealth>>,
     /// Each request the trusted front relayed through the tunnel, reported by
     /// the outermost layer after its response is ready (see

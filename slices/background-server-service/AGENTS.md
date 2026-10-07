@@ -1,13 +1,13 @@
 # AGENTS.md — slices/background-server-service
 
-The **background server service**: the Tauri host runs the Wildflower server
-(`slices/wildflower-server`) through `tauri-plugin-background-service`, each
-start on its own OS thread and tokio runtime behind a run gate, and watches it:
-a status snapshot on the bridge, a restart from the page, and local
-notifications for stops and tunnel traffic. The page shows the snapshot in a
-banner and on `/settings/server`. Read the
-[Design Explanation](./docs/Design%20Explanation.md) before changing anything
-here.
+The **server-status wire**: `BackgroundServerServiceBridge`, a status snapshot
+of the Wildflower server (host → web) and a request to restart it
+(web → host), with the web app's banner and `/settings/server` page that
+render it. The wire is kept for the web app to read a server's status over a
+future websocket. Nothing sends or answers it today: the Tauri host runs its
+servers on the unit runner (see the servers slice's
+[Server Runs Explanation](../servers/docs/Server%20Runs%20Explanation.md)),
+and neither sends `ServerServiceStatus` nor listens for `RestartServer`.
 
 ## Package roles
 
@@ -18,79 +18,45 @@ here.
   — the page side: the status store and the boot-stable handler that fills it,
   `ServerStatusBanner`, the `/settings/server` page, and the `RestartServer`
   sender.
-- **`background-server-service-rust`** — no `tauri` dependency, so everything
-  in it tests without GTK.
-  - The serde mirror of the bridge (`bridge.rs`: `ServerServiceStatus`,
-    `RestartServer`) with golden tests, and of the plugin's lifecycle events
-    (`plugin_event.rs`).
-  - `ServerHostContext::run_server` (`live_bindings/server_run.rs`): one run
-    of the server behind the `RunGate`, on a dedicated runtime, publishing its
-    `ServerRunState`. `tests/restart.rs` restarts the real server through it.
-  - The notification decisions: the per-caller request coalescer and the stop
-    notification per reason; and what a foreground resume does.
-  - Layout: the wire mirrors (`bridge.rs`, `plugin_event.rs`) at the crate
-    root; `domain/` the run gate, `ServerRunState`, the foreground-resume rule
-    and the notification decisions, testable without I/O; `live_bindings/` a
-    server run bound to `wildflower-server-rust`, with its dedicated thread and
-    runtime in `server_run/dedicated_runtime.rs`.
-- **`background-server-service-tauri-rust`** — the glue: the plugin's
-  `BackgroundService` impl (`WildflowerServerService`), asking for the
-  notification permission, starting and restarting the service, the
-  plugin-event and bridge listeners, the status emitter, and posting
-  notifications and the native error dialog. Its tests pin the event
-  mirror against the plugin's own serializer.
-
-`apps/wildflower-tauri` registers the notification and background-service
-plugins, builds the `ServerHostContext` in `.setup()` for the server
-`servers.json` sets running, and hands it with the service's start config
-(label and foreground-service type, from `tauri-shared-config.json`) to
-`start_background_server_service`; with no server set running it calls
-`report_no_server` instead, whose `RestartServer` starts a server set running
-since. It also owns
-the mobile packaging: the plugin's `background-service` config in
-`tauri.conf.json`, the Android manifest's overrides of the plugin's manifest,
-the iOS background modes and `BGTask` identifiers, and the Tauri entry's
-`configureRecovery` call, the one plugin command the webview may invoke.
-The workspace patches the plugin to our fork (see the Design Explanation's
-"Plugin fork").
-Its web entry also seeds the status handler into the transport, and passes the
-banner and the Settings row for `/settings/server` to `wildflower-react`, which
-mounts the route and provides the store.
+- **`background-server-service-rust`** — the serde mirror of the wire
+  (`bridge.rs`), with its golden tests. No `tauri` dependency.
 
 `bridge-wire-golden.json`, at the slice root, holds the exact wire strings and
 stop reasons both `-rust`'s golden tests and `-core`'s `bridge.test.ts` read.
 
-## Layering
+## Wire (`BackgroundServerServiceBridge`)
 
-- **The server knows nothing of the service.** `wildflower-server-rust` exposes
-  `set_up` / `WildflowerServer::serve` and the host-owned `ServerObservers`; this
-  slice decides when a server runs and what the host does with what it reports.
-- **Decisions in `-rust`, wiring in `-tauri-rust`.** A new notification rule or
-  state goes in `-rust` with its tests; `-tauri-rust` only maps plugin events
-  and Tauri calls onto it.
-- **Every start goes through the run gate.** Don't start the server any other
-  way: the gate is what keeps a restart from binding the port while the
-  previous runtime is still shutting down.
-- **A restart stops with `RESTART_STOP_REASON`**, so its stop half doesn't
-  notify. Don't use that reason for anything else.
-- **One start config.** Every start uses the `StartConfig` the host passes in,
-  and the Tauri entry's `configureRecovery` reads the same
-  `tauri-shared-config.json` entries. Change the foreground-service type there,
-  and the host tests point at the plugin config and the Android manifest that
-  must follow.
+```text
+Host → Web  ServerServiceStatus {
+              state: "starting" | "running" | "stopped",
+              stopReason: StopReason | null,        // tauri-plugin-background-service's camelCase reasons
+              lastError: string | null,
+              notifications: "granted" | "denied" | "unknown"
+            }
+Web → Host  RestartServer {}
+```
+
+Exact strings:
+
+```text
+{"_tag":"ServerServiceStatus","state":"running","stopReason":null,"lastError":null,"notifications":"granted"}
+{"_tag":"ServerServiceStatus","state":"stopped","stopReason":"platformExpiration","lastError":"failed to bind to 127.0.0.1:8080: Address already in use","notifications":"denied"}
+{"_tag":"RestartServer"}
+```
+
+## Rules
+
 - **The page renders the latest snapshot and nothing else.** No client-side
   state machine: a store holds the last `ServerServiceStatus`, and the banner
   and page derive everything from it.
 - **A wire change edits `bridge-wire-golden.json`, the TS schema and the serde
-  mirror together.** Each side's tests read the shared file, so changing one
-  side alone fails.
+  mirror together.** The TS schema in `-core` is the contract. Each side's
+  tests read the shared file, `-rust`'s serializing to it and `-core`'s
+  decoding and re-encoding it byte for byte, so neither side can rename,
+  reorder or re-case a field alone.
 
 ## References
 
-- [Design Explanation](./docs/Design%20Explanation.md) — the flow, each
-  decision, the wire, and what is not here.
-- [wildflower-server AGENTS.md](../wildflower-server/AGENTS.md) — the server
-  each run sets up and serves.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.
 - [Bridge Explanation](../../docs/Messaging/Bridge%20Explanation.md) and the
   [Wire Pinning How-To](../../docs/Messaging/Wire%20Pinning%20How-To.md) — the

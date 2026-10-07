@@ -4,23 +4,10 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# The background server service's host-side logic: the bridge wire mirror, the
-# server run on its own runtime behind the run gate, and the notification
-# decisions. No `tauri` dependency, so it compiles and tests without GTK; the
-# Tauri glue lives in `background-server-service-tauri-rust`.
+# The serde mirror of the background server service's bridge wire, pinned by
+# golden tests to `bridge-wire-golden.json`. No `tauri` dependency.
 [dependencies]
-anyhow.workspace = true
 serde.workspace = true
-# `RequestCaller`/`ForwardedRequest`, which the request notifications count.
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
-# `rt-multi-thread` builds each run's dedicated runtime; `sync` carries the run
-# gate, the run-state watch and the result oneshot.
-tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
-# `CancellationToken`, the server's shutdown signal.
-tokio-util = "0.7"
-tracing = "0.1"
-# The server each run sets up and serves, and the `ServerHealth` it publishes.
-wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
@@ -29,12 +16,3 @@ workspace = true
 [dev-dependencies]
 proptest = "1"
 serde_json.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
-# The restart smoke test runs the real server twice on one port, as
-# `wildflower-server-rust`'s own lifecycle test does.
-gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
-tempfile = "3"
-# The relay settings the restart test's server config names.
-tunnel-rust = { path = "../../tunnel/tunnel-rust" }
-url = "2"

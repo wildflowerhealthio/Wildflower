@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use tokio::runtime::Handle;
-use tokio::sync::{watch, Notify};
+use tokio::sync::{broadcast, watch, Notify};
 use tokio_util::sync::CancellationToken;
 
 use super::erased_unit::{erase_factory, UnitFactory};
@@ -29,7 +29,7 @@ use crate::domain::unit_plan::{plan_unit, restarts_after, UnitAction};
 use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
-use crate::status::{PlatformStopReason, StopReason, UnitStatuses};
+use crate::status::{PlatformStopReason, RunStopped, StopReason, UnitStatuses};
 use crate::unit::{Unit, UnitId};
 
 /// Runs an app's units, free of any platform: holds the units, starts and stops
@@ -145,6 +145,17 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     #[must_use]
     pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>> {
         self.status_publisher.subscribe()
+    }
+
+    /// Each run's stop from now on, once per run, in the order the runs
+    /// stopped. Where [`subscribe`](Self::subscribe) shows where each unit is,
+    /// this shows every step a reader of the statuses could miss. A reader
+    /// more than [`RUN_STOPS_CAPACITY`](crate::RUN_STOPS_CAPACITY) stops
+    /// behind gets [`RecvError::Lagged`](broadcast::error::RecvError::Lagged)
+    /// and misses the oldest.
+    #[must_use]
+    pub fn subscribe_stops(&self) -> broadcast::Receiver<RunStopped> {
+        self.status_publisher.subscribe_stops()
     }
 
     pub(crate) fn subscribe_session_demand(&self) -> watch::Receiver<SessionDemand> {

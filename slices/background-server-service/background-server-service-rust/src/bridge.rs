@@ -9,9 +9,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::server_run_state::ServerRunState;
-use crate::plugin_event::ServiceStopReason;
-
 /// Host→web tag literal for [`BackgroundServerServiceHostToWeb::ServerServiceStatus`].
 pub const SERVER_SERVICE_STATUS: &str = "ServerServiceStatus";
 
@@ -61,30 +58,7 @@ pub struct ServerServiceStatus {
     pub notifications: NotificationPermission,
 }
 
-impl ServerServiceStatus {
-    /// The snapshot of `run_state`, with the plugin's `last_stop_reason` and the
-    /// current `notifications` permission.
-    #[must_use]
-    pub fn new(
-        run_state: &ServerRunState,
-        last_stop_reason: Option<ServiceStopReason>,
-        notifications: NotificationPermission,
-    ) -> Self {
-        let (state, last_error) = match run_state {
-            ServerRunState::Starting => (ServerServiceState::Starting, None),
-            ServerRunState::Running => (ServerServiceState::Running, None),
-            ServerRunState::Stopped { error } => (ServerServiceState::Stopped, error.clone()),
-        };
-        Self {
-            state,
-            stop_reason: last_stop_reason,
-            last_error,
-            notifications,
-        }
-    }
-}
-
-/// [`ServerRunState`] without its error, which the snapshot carries as
+/// Where the server's current run is. A stopped run's error is the snapshot's
 /// [`ServerServiceStatus::last_error`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -92,6 +66,34 @@ pub enum ServerServiceState {
     Starting,
     Running,
     Stopped,
+}
+
+/// Why the server's most recent run stopped: the `stopReason` of
+/// [`ServerServiceStatus`], in `tauri-plugin-background-service`'s own
+/// camelCase names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ServiceStopReason {
+    /// A stop through the plugin's `stop` (the desktop app quitting included).
+    UserStop,
+    /// The host stopped the server to restart it.
+    AppStop,
+    /// The platform's foreground-service time limit ran out (Android).
+    PlatformTimeout,
+    /// The platform ended the background execution window (an iOS `BGTask`).
+    PlatformExpiration,
+    /// The Stop action on the foreground-service notification (Android).
+    NativeNotificationStop,
+    /// The OS restarted the service.
+    OsRestart,
+    /// The service came back after the device booted.
+    BootRecovery,
+    /// The service's `run` returned `Ok` with no stop pending.
+    TaskCompleted,
+    /// A stop recorded as an error.
+    Error,
+    /// The host process is going away (the iOS app backgrounded or killed).
+    ProcessExit,
 }
 
 /// Whether the host may post notifications.
@@ -273,39 +275,6 @@ mod tests {
             r#"{"_tag":"SaveHar","fileName":"a.har","text":""}"#
         )
         .is_err());
-    }
-
-    #[test]
-    fn the_snapshot_splits_the_run_state_into_state_and_error() {
-        let stopped = ServerRunState::Stopped {
-            error: Some("failed to open shared database".to_owned()),
-        };
-        assert_eq!(
-            ServerServiceStatus::new(
-                &stopped,
-                Some(ServiceStopReason::TaskCompleted),
-                NotificationPermission::Granted
-            ),
-            ServerServiceStatus {
-                state: ServerServiceState::Stopped,
-                stop_reason: Some(ServiceStopReason::TaskCompleted),
-                last_error: Some("failed to open shared database".to_owned()),
-                notifications: NotificationPermission::Granted,
-            }
-        );
-        for (run_state, state) in [
-            (ServerRunState::Starting, ServerServiceState::Starting),
-            (ServerRunState::Running, ServerServiceState::Running),
-            (
-                ServerRunState::Stopped { error: None },
-                ServerServiceState::Stopped,
-            ),
-        ] {
-            let snapshot =
-                ServerServiceStatus::new(&run_state, None, NotificationPermission::Unknown);
-            assert_eq!(snapshot.state, state);
-            assert_eq!(snapshot.last_error, None);
-        }
     }
 
     fn stop_reason() -> impl Strategy<Value = ServiceStopReason> {
