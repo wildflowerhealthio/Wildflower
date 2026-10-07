@@ -843,36 +843,9 @@ dependencies = [
 name = "background-server-service-rust"
 version = "0.0.0"
 dependencies = [
- "anyhow",
- "gatekeeper-rust",
  "proptest",
- "reqwest 0.12.28",
  "serde",
  "serde_json",
- "shared-structures-rust",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
- "tunnel-rust",
- "url",
- "wildflower-server-rust",
-]
-
-[[package]]
-name = "background-server-service-tauri-rust"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "background-server-service-rust",
- "serde_json",
- "shared-structures-rust",
- "tauri",
- "tauri-plugin-background-service",
- "tauri-plugin-dialog",
- "tauri-plugin-log",
- "tauri-plugin-notification",
- "tokio",
 ]
 
 [[package]]
@@ -7380,11 +7353,14 @@ dependencies = [
 name = "servers-rust"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "base64 0.23.1",
  "chrono",
+ "gatekeeper-rust",
  "hmac 0.12.1",
  "parking_lot",
+ "proptest",
  "rand 0.10.3",
  "rathole-settings-rust",
  "rcgen 0.13.2",
@@ -7393,31 +7369,40 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "shared-structures-rust",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "tunnel-rust",
  "unit-runner",
  "url",
  "wildflower-relay",
+ "wildflower-server-rust",
 ]
 
 [[package]]
 name = "servers-tauri-rust"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
+ "gatekeeper-rust",
  "rathole-settings-rust",
  "serde",
  "serde_json",
  "servers-rust",
+ "shared-structures-rust",
  "tauri",
  "tauri-plugin-log",
+ "tauri-plugin-notification",
+ "tauri-unit-runner",
  "tempfile",
  "tokio",
  "url",
+ "wildflower-server-rust",
 ]
 
 [[package]]
@@ -9533,14 +9518,11 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "apps-rust",
- "background-server-service-rust",
- "background-server-service-tauri-rust",
  "browser-sniffer-tauri-rust",
  "chrono",
  "gatekeeper-rust",
  "har-recorder-tauri-rust",
  "openssl",
- "parking_lot",
  "rathole-settings-rust",
  "roxmltree 0.21.1",
  "serde",
@@ -9558,6 +9540,7 @@ dependencies = [
  "tauri-plugin-native-webview",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "tauri-unit-runner",
  "tokio",
  "tunnel-rust",
  "url",

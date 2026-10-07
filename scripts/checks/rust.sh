@@ -44,15 +44,14 @@ fi
 # path — not to split CI into two jobs.
 non_tauri=(--workspace
   --exclude wildflower-tauri
-  --exclude background-server-service-tauri-rust
   --exclude browser-sniffer-tauri-rust
   --exclude har-recorder-tauri-rust
   --exclude servers-tauri-rust
   --exclude shared-structures-tauri-rust
   --exclude tauri-plugin-native-webview
   --exclude tauri-unit-runner)
-tauri=(-p wildflower-tauri -p background-server-service-tauri-rust -p browser-sniffer-tauri-rust -p har-recorder-tauri-rust -p servers-tauri-rust -p shared-structures-tauri-rust -p tauri-plugin-native-webview -p tauri-unit-runner)
-tauri_names=" wildflower-tauri background-server-service-tauri-rust browser-sniffer-tauri-rust har-recorder-tauri-rust servers-tauri-rust shared-structures-tauri-rust tauri-plugin-native-webview tauri-unit-runner "
+tauri=(-p wildflower-tauri -p browser-sniffer-tauri-rust -p har-recorder-tauri-rust -p servers-tauri-rust -p shared-structures-tauri-rust -p tauri-plugin-native-webview -p tauri-unit-runner)
+tauri_names=" wildflower-tauri browser-sniffer-tauri-rust har-recorder-tauri-rust servers-tauri-rust shared-structures-tauri-rust tauri-plugin-native-webview tauri-unit-runner "
 
 # Exact-match a crate name against the Tauri set. Iterating + string equality
 # avoids the substring ambiguity a `case "$tauri_names" in *" $n "*)` glob would

@@ -37,8 +37,10 @@ pub use ports::background_session_platform::BackgroundSessionPlatform;
 pub use ports::wall_clock::{SystemClock, WallClock};
 pub use run_context::RunContext;
 pub use runner::{
-    UnitRunner, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT,
+    UnitRunner, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT, RUN_STOPS_CAPACITY,
     START_AND_STOP_RUNS_PER_POLICY_INTERVAL,
 };
-pub use status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus, UnitStatuses};
+pub use status::{
+    PlatformStopReason, RunState, RunStop, RunStopped, StopReason, UnitStatus, UnitStatuses,
+};
 pub use unit::{Unit, UnitId};

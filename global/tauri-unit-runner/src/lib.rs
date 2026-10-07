@@ -34,7 +34,7 @@ pub use tauri_plugin_background_service::StartConfig as BackgroundServiceStartCo
 pub use tauri_unit_runner::TauriUnitRunner;
 pub use unit_runner::{
     BackgroundSessionPlatform, PlatformStopReason, RunContext, RunPolicy, RunState, RunStop,
-    SessionId, StopReason, SystemClock, Unit, UnitId, UnitRunner, UnitStatus, UnitStatuses,
-    WallClock, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT,
+    RunStopped, SessionId, StopReason, SystemClock, Unit, UnitId, UnitRunner, UnitStatus,
+    UnitStatuses, WallClock, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT, RUN_STOPS_CAPACITY,
     START_AND_STOP_RUNS_PER_POLICY_INTERVAL, WHILE_OPEN_GRACE,
 };

@@ -75,9 +75,7 @@ page. Both render the host's latest `ServerServiceStatus` and send
 
 ## References
 
-- [slices/background-server-service AGENTS.md](../AGENTS.md) — the slice's role
-  and packages.
-- [Design Explanation](../docs/Design%20Explanation.md) — the snapshot, the
-  restart, and why the page keeps no state of its own.
+- [slices/background-server-service AGENTS.md](../AGENTS.md) — the slice's role,
+  its packages and the wire.
 - [Web Handler Coordinator Explanation](../../../docs/Effect/Web%20Handler%20Coordinator%20Explanation.md)
   — why the handler is boot-stable.

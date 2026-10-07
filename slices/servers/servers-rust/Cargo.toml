@@ -7,9 +7,13 @@ publish.workspace = true
 # The install's list of servers: `ServerRecord`s kept in `<data root>/servers.json`
 # behind the `ServerRegistry` port, and enrolment, which checks a tunnel's
 # credentials with its Wildflower relay behind the `RelayClient` port before a record
-# is written. No `tauri` dependency; the host builds a `JsonServerRegistry` over
-# its data root and a `ReqwestRelayClient` for each relay enrolment asks.
+# is written; a server as a `ServerUnit` the unit runner runs; and what the host
+# notifies about its servers. No `tauri` dependency; the host builds a
+# `JsonServerRegistry` over its data root, a `ReqwestRelayClient` for each relay
+# enrolment asks, and a `ServerUnit` for each run.
 [dependencies]
+# `Unit::run`'s result.
+anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # The relay's `GET /rathole` response a `ServerRecord` keeps as its
@@ -24,8 +28,10 @@ parking_lot = "0.12"
 thiserror = "2"
 # `RelayClient` is an `#[async_trait]`, so the base holds it as a trait object.
 async-trait = "0.1"
-# Runs the synchronous registry off the async runtime during enrolment.
-tokio = { workspace = true, features = ["rt"] }
+# Runs the synchronous registry off the async runtime during enrolment and
+# spawns a run's health reporter (`rt`); `sync` carries a run's server-health
+# watch and the forwarded-request channel.
+tokio = { workspace = true, features = ["rt", "sync"] }
 # `GET /rathole` and the signed `GET /me` on the relay's site. `rustls-tls`
 # (no openssl) as in `wildflower-server-rust`; `json` decodes both bodies.
 # Already in the tree.
@@ -45,9 +51,16 @@ chrono = { workspace = true, features = ["clock"] }
 # Each signature's nonce.
 rand = "0.10"
 # `RunPolicy`, `UnitRunner`'s own type, which each `ServerRecord` stores in
-# its wire shape. The Tauri-free `UnitRunner`, so this crate stays
-# Tauri-free.
+# its wire shape; the `Unit` a `ServerUnit` is; and the statuses and stop
+# reasons the stop notifications read. The Tauri-free `UnitRunner`, so this
+# crate stays Tauri-free.
 unit-runner = { path = "../../../global/unit-runner" }
+# The server a `ServerUnit` sets up and serves, and the `ServerHealth` its
+# detail carries. Tauri-free too.
+wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
+# `ForwardedRequest`/`RequestCaller`, which a run reports and the request
+# notifications count.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
 
 [lints]
 workspace = true
@@ -55,7 +68,14 @@ workspace = true
 [dev-dependencies]
 # The registry's atomic replace only exists against a real filesystem.
 tempfile = "3"
-tokio = { workspace = true, features = ["rt", "macros", "net", "sync", "time"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
+# The coalescer's property tests.
+proptest = "1"
+# The `ServerUnit` test runs the real server: gatekeeper's consent-free
+# loopback prompt and first-party client, and the relay settings its config
+# names.
+gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
+tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 # The relay's own site and signature verifier, served on a loopback port, so
 # enrolment is tested against the real relay rather than a copy of its rules.
 wildflower-relay = { path = "../../../apps/relay/server" }

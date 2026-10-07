@@ -41,9 +41,7 @@ and `apps/wildflower-tauri` (the bridge name its transport seeds).
 
 ## References
 
-- [slices/background-server-service AGENTS.md](../AGENTS.md) — the slice's role
-  and packages.
-- [Design Explanation](../docs/Design%20Explanation.md) — the wire and why the
-  page keeps no state of its own.
+- [slices/background-server-service AGENTS.md](../AGENTS.md) — the slice's role,
+  its packages and the wire.
 - [Wire Pinning How-To](../../../docs/Messaging/Wire%20Pinning%20How-To.md) —
   the discipline `src/bridge.ts` follows.

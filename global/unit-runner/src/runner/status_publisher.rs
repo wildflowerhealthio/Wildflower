@@ -1,13 +1,14 @@
-//! [`StatusPublisher`], where runs publish their units' statuses and the app
-//! reads and subscribes to them.
+//! [`StatusPublisher`], where runs publish their units' statuses and stops,
+//! and the app reads and subscribes to them.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 
+use super::RUN_STOPS_CAPACITY;
 use crate::ports::wall_clock::WallClock;
-use crate::status::{RunState, RunStop, StopReason, UnitStatus, UnitStatuses};
+use crate::status::{RunState, RunStop, RunStopped, StopReason, UnitStatus, UnitStatuses};
 use crate::unit::UnitId;
 
 /// Whether a run is still in progress, as its statuses see it. A run's
@@ -27,11 +28,14 @@ impl RunLiveness {
     }
 }
 
-/// Every unit's status, in one watch. Every write happens inside the watch's
-/// lock, where a run's liveness is also checked and changed, so a late write
-/// from a finished run can't land after its `Stopped`.
+/// Every unit's status, in one watch, and each run's stop, on one broadcast.
+/// Every write happens inside the watch's lock, where a run's liveness is also
+/// checked and changed, so a late write from a finished run can't land after
+/// its `Stopped`. A stop is broadcast inside the same lock, so stops go out in
+/// the order the statuses took them.
 pub(crate) struct StatusPublisher<D> {
     statuses_tx: Arc<watch::Sender<UnitStatuses<D>>>,
+    stops_tx: broadcast::Sender<RunStopped>,
     clock: Arc<dyn WallClock>,
 }
 
@@ -39,6 +43,7 @@ impl<D> Clone for StatusPublisher<D> {
     fn clone(&self) -> Self {
         Self {
             statuses_tx: Arc::clone(&self.statuses_tx),
+            stops_tx: self.stops_tx.clone(),
             clock: Arc::clone(&self.clock),
         }
     }
@@ -49,6 +54,7 @@ impl<D: Clone + Send + Sync + 'static> StatusPublisher<D> {
     pub(crate) fn new(clock: Arc<dyn WallClock>) -> Self {
         Self {
             statuses_tx: Arc::new(watch::Sender::new(UnitStatuses::new())),
+            stops_tx: broadcast::Sender::new(RUN_STOPS_CAPACITY),
             clock,
         }
     }
@@ -59,6 +65,10 @@ impl<D: Clone + Send + Sync + 'static> StatusPublisher<D> {
 
     pub(crate) fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>> {
         self.statuses_tx.subscribe()
+    }
+
+    pub(crate) fn subscribe_stops(&self) -> broadcast::Receiver<RunStopped> {
+        self.stops_tx.subscribe()
     }
 
     /// List `unit_id` as never having run, unless it is listed already.
@@ -126,7 +136,8 @@ impl<D: Clone + Send + Sync + 'static> StatusPublisher<D> {
     }
 
     /// The run's runtime is gone: `Stopped` for `reason`, with its `error`, and
-    /// no detail. Nothing the run's context publishes afterwards lands.
+    /// no detail, and the stop broadcast. Nothing the run's context publishes
+    /// afterwards lands.
     pub(crate) fn publish_stopped(
         &self,
         unit_id: &UnitId,
@@ -140,17 +151,25 @@ impl<D: Clone + Send + Sync + 'static> StatusPublisher<D> {
             let Some(status) = statuses.get_mut(unit_id) else {
                 return false;
             };
+            let stop = RunStop {
+                reason,
+                error,
+                stopped_at,
+            };
+            let announced_running = status.run_state == RunState::Running;
             *status = UnitStatus {
                 run_state: RunState::Stopped {
-                    last_stop: Some(RunStop {
-                        reason,
-                        error,
-                        stopped_at,
-                    }),
+                    last_stop: Some(stop.clone()),
                 },
                 running_since: None,
                 detail: None,
             };
+            // An error means no one is subscribed, which is fine.
+            let _subscribers = self.stops_tx.send(RunStopped {
+                unit_id: unit_id.clone(),
+                stop,
+                announced_running,
+            });
             true
         });
     }

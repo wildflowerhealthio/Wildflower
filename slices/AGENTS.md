@@ -107,16 +107,13 @@ SMART app around them.
 dependency; the host passes its native adapters in as trait objects, and
 watches the server through host-owned observer channels.
 
-`background-server-service` is how the host runs that server — see
+`background-server-service` is the server-status wire, kept for the web app
+to read a server's status over a future websocket — see
 [background-server-service/AGENTS.md](./background-server-service/AGENTS.md).
-`background-server-service-rust` runs each start on its own OS thread and tokio
-runtime behind a run gate, so a restart leaves nothing of the previous server
-behind, and holds the bridge's status mirror and the notification decisions,
-all without `tauri`; `background-server-service-tauri-rust` drives it from
-`tauri-plugin-background-service` and posts the notifications;
-`background-server-service-core` is the bridge's TS schema; and
+`background-server-service-core` is the wire's TS schema,
+`background-server-service-rust` its serde mirror with golden tests, and
 `background-server-service-react` the banner and `/settings/server` page that
-render the host's status snapshot and restart the server.
+render a status snapshot. Nothing sends or answers the wire today.
 
 `servers` is the install's list of servers — see
 [servers/AGENTS.md](./servers/AGENTS.md). `servers-rust` holds a
@@ -130,8 +127,16 @@ confirms the tunnel before the record is written; a rathole server, with
 no Wildflower relay site, is entered as its settings, which get the same
 checks. A relay's identity (its dial address and noise key) is pinned when
 the server is added, and re-entering a token refuses a relay that presents
-another. `servers-tauri-rust` is the base's `server_add` and `server_set_credentials`
-commands over it. The base itself, the UI the Tauri host's webview mounts in
+another. Each server runs as a `ServerUnit`, one unit on the Tauri host's
+unit runner (`global/tauri-unit-runner`), keyed by its domain: the host
+pushes every record with its run policy and a factory that builds a fresh
+unit for each run, and the unit reports its health as its detail.
+`servers-rust` also decides what the host notifies: the per-caller request
+notifications and each new stop of a server's run. `servers-tauri-rust` is
+the host side: it pushes the servers to `TauriUnitRunner`, posts the
+notifications, and holds the base's `server_add` and `server_set_credentials`
+commands, which write the registry and then push. See the
+[Server Runs Explanation](./servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in
 place of the owner UI, is `servers-react`'s `BaseRoot`: its own telemetry
 consent, then the server list and Host Settings, which reach the host
 only through `servers-core`'s Tauri commands (plain `invoke`, answers

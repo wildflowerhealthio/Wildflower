@@ -4,19 +4,36 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# Tauri host glue for the servers slice: the base's commands over
+# Tauri host glue for the servers slice: the install's servers on
+# `TauriUnitRunner`, the notifications about them, and the base's commands over
 # `servers-rust`, which holds every decision and its tests.
 [dependencies]
+# A server config builder's error, which fails the run it was building.
+anyhow.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
-# The registry, enrolment and the relay client adapter the commands drive.
+# Posting the stop and request notifications.
+tauri-plugin-notification = "2"
+# The app's `TauriUnitRunner`, which the servers are pushed to as units.
+tauri-unit-runner = { path = "../../../global/tauri-unit-runner" }
+# The registry, enrolment and the relay client adapter the commands drive;
+# `ServerUnit`; and the notification decisions.
 servers-rust = { path = "../servers-rust" }
+# The config and host ports each server's run reads.
+wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
+# `ForwardedRequest`, which the servers report and the request notifications
+# count.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
 # `TunnelName`, which the commands parse the entered tunnel name into.
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
 # The relay base URL enrolment builds a relay client for.
 url = "2"
 # The instant enrolment chooses a new server's run policy at.
 chrono = { workspace = true, features = ["clock"] }
+# `sync` for the lock ordering registry writes with their pushes and the
+# forwarded-request channel; `time` for the request-notification timer;
+# `macros` for `select!`.
+tokio = { workspace = true, features = ["macros", "sync", "time"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
@@ -24,6 +41,8 @@ workspace = true
 
 [dev-dependencies]
 async-trait = "0.1"
+# The consent-free loopback prompt the tests' host ports carry.
+gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"
