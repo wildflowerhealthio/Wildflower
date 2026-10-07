@@ -71,8 +71,9 @@ pub use domain::notifications::request_notifications::{
 pub use domain::notifications::stop_notification::{stop_notification, StopNotificationCoalescer};
 pub use domain::{
     add_server, remove_server, set_run_policy, set_server_credentials, update_server,
-    EnrolmentError, EnteredRelay, RegistryError, RelayIdentity, RelayKind, RunPolicyChoice,
-    ServerChangeError, ServerDetail, ServerRecord, TunnelToken, SERVERS_DIR_NAME,
+    EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayIdentity, RelayKind,
+    RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
+    ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_unit::ServerUnit;
 pub use ports::{NewRecord, RegistryChange, RelayClient, ServerRegistry};

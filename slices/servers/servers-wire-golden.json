@@ -1,0 +1,109 @@
+{
+  "listedServers": [
+    {
+      "domain": "ruth.relay.example.com",
+      "relay": { "kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com/" },
+      "tunnelName": "ruth",
+      "launcherUrl": "https://wildflowerhealth.io/app",
+      "stagingCertificates": false,
+      "runPolicy": { "kind": "until", "at": "2026-10-06T17:42:00Z" },
+      "status": {
+        "domain": "ruth.relay.example.com",
+        "runState": "running",
+        "runningSince": "2026-10-06T17:00:00Z",
+        "health": { "kind": "reachable", "status": "pass" }
+      }
+    },
+    {
+      "domain": "lab.rathole.example.com",
+      "relay": { "kind": "rathole" },
+      "tunnelName": "lab",
+      "launcherUrl": "http://localhost:5200/app",
+      "stagingCertificates": true,
+      "runPolicy": { "kind": "off" },
+      "status": {
+        "domain": "lab.rathole.example.com",
+        "runState": "stopped",
+        "lastStop": {
+          "reason": "endedOnItsOwn",
+          "error": "the server's config couldn't be built",
+          "stoppedAt": "2026-10-06T17:03:00Z"
+        }
+      }
+    }
+  ],
+  "serverStatuses": {
+    "runningAndReachable": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" }
+    },
+    "startingUnchecked": {
+      "domain": "ruth.relay.example.com",
+      "runState": "starting"
+    },
+    "runningUnreachable": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "unreachable", "error": "the relay answered 502" }
+    },
+    "neverRun": {
+      "domain": "ruth.relay.example.com",
+      "runState": "stopped"
+    },
+    "stoppedWithAnError": {
+      "domain": "ruth.relay.example.com",
+      "runState": "stopped",
+      "lastStop": {
+        "reason": "endedOnItsOwn",
+        "error": "the server's config couldn't be built",
+        "stoppedAt": "2026-10-06T17:03:00Z"
+      }
+    },
+    "stoppedByThePlatform": {
+      "domain": "ruth.relay.example.com",
+      "runState": "stopped",
+      "lastStop": {
+        "reason": "keepAliveRevoked",
+        "platformReason": "platformTimeout",
+        "stoppedAt": "2026-10-06T17:09:00Z"
+      }
+    },
+    "stoppedAsItsPolicyEnded": {
+      "domain": "ruth.relay.example.com",
+      "runState": "stopped",
+      "lastStop": {
+        "reason": "policyInactive",
+        "stoppedAt": "2026-10-06T17:42:00Z"
+      }
+    }
+  },
+  "runPolicies": [
+    { "kind": "off" },
+    { "kind": "whileOpen" },
+    { "kind": "until", "at": "2026-10-06T17:42:00Z" },
+    { "kind": "always" }
+  ],
+  "runPolicyChoices": [
+    { "kind": "off" },
+    { "kind": "whileOpen" },
+    { "kind": "for", "seconds": 1800 },
+    { "kind": "always" }
+  ],
+  "commandErrors": [
+    {
+      "kind": "nonPositiveDuration",
+      "message": "a server can't be run for 0 seconds: the duration must be more than zero"
+    },
+    {
+      "kind": "registry",
+      "message": "the server registry has format version 2, which this build doesn't read"
+    },
+    {
+      "kind": "notRegistered",
+      "message": "no server with the domain lab.relay.example.com is registered"
+    }
+  ]
+}

@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use unit_runner::RunPolicy;
 use url::Url;
 
-use crate::domain::{RegistryError, RunPolicyChoice, ServerChangeError};
+use crate::domain::{RegistryError, RunPolicyChoice, ServerChangeError, ServerRecord};
 use crate::ports::ServerRegistry;
 
 /// Set the run policy of the server with `domain` to `choice`, applied at
@@ -42,9 +42,21 @@ pub fn set_run_policy(
     Ok(run_policy)
 }
 
+/// What [`update_server`] wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerUpdate {
+    /// The server's record as written.
+    pub record: ServerRecord,
+    /// Whether a field a run reads changed (see
+    /// [`ServerRecord::run_inputs_differ`]), so a run built from the record
+    /// before could differ from one built from `record`.
+    pub run_inputs_changed: bool,
+}
+
 /// Set the launcher the server with `domain` opens apps from, and whether
-/// its certificates come from the ACME staging directory. Its other fields
-/// are kept as they are when the change is made.
+/// its certificates come from the ACME staging directory, and return what
+/// was written. Its other fields are kept as they are when the change is
+/// made.
 ///
 /// # Errors
 ///
@@ -57,18 +69,24 @@ pub fn update_server(
     domain: &str,
     launcher_url: &str,
     staging_certificates: bool,
-) -> Result<(), ServerChangeError> {
+) -> Result<ServerUpdate, ServerChangeError> {
     let launcher_url = parse_launcher_url(launcher_url)?;
+    let mut update = None;
     registry.modify(Box::new(|servers| {
         let server = servers
             .iter_mut()
             .find(|server| server.domain() == domain)
             .ok_or_else(|| not_registered(domain))?;
+        let before = server.clone();
         server.launcher_url = launcher_url;
         server.staging_certificates = staging_certificates;
+        update = Some(ServerUpdate {
+            run_inputs_changed: before.run_inputs_differ(server),
+            record: server.clone(),
+        });
         Ok(())
     }))?;
-    Ok(())
+    Ok(update.expect("a change that succeeds has updated the record"))
 }
 
 /// Delete the server with `domain`: its folder under `data_root`, which holds
@@ -142,7 +160,6 @@ mod tests {
 
     use super::*;
     use crate::domain::fixtures::{official_record, self_hosted_record};
-    use crate::domain::ServerRecord;
     use crate::JsonServerRegistry;
 
     fn now() -> DateTime<Utc> {
@@ -308,7 +325,7 @@ mod tests {
         let ruth = with_policy(official_record("ruth"), RunPolicy::Always);
         let (_data_root, registry) = registry_holding(&[ruth.clone(), self_hosted_record("lab")]);
 
-        update_server(
+        let update = update_server(
             registry.as_ref(),
             "ruth.relay.wildflowerhealth.io",
             "http://localhost:5200/app",
@@ -316,16 +333,49 @@ mod tests {
         )
         .unwrap();
 
+        let updated = ServerRecord {
+            launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
+            staging_certificates: true,
+            ..ruth
+        };
+        assert_eq!(
+            update,
+            ServerUpdate {
+                record: updated.clone(),
+                run_inputs_changed: true,
+            }
+        );
         assert_eq!(
             registry.read_all().unwrap(),
-            vec![
-                ServerRecord {
-                    launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
-                    staging_certificates: true,
-                    ..ruth
-                },
-                self_hosted_record("lab"),
-            ]
+            vec![updated, self_hosted_record("lab")]
+        );
+    }
+
+    #[test]
+    fn update_says_whether_a_field_a_run_reads_changed() {
+        let (_data_root, registry) = registry_holding(&[official_record("ruth")]);
+        let update = |launcher_url, staging_certificates| {
+            update_server(
+                registry.as_ref(),
+                "ruth.relay.wildflowerhealth.io",
+                launcher_url,
+                staging_certificates,
+            )
+            .unwrap()
+            .run_inputs_changed
+        };
+
+        assert!(
+            !update("http://localhost:5200/app", false),
+            "only the base reads the launcher"
+        );
+        assert!(
+            !update("http://localhost:5200/app", false),
+            "nothing changed"
+        );
+        assert!(
+            update("http://localhost:5200/app", true),
+            "the certificate source"
         );
     }
 

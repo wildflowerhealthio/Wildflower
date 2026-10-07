@@ -83,6 +83,32 @@ impl ServerRecord {
     pub fn server_dir(&self, data_root: &Path) -> PathBuf {
         data_root.join(SERVERS_DIR_NAME).join(self.domain())
     }
+
+    /// Whether a run of the server built from `other` could differ from one
+    /// built from `self`: whether any field a run reads differs.
+    ///
+    /// A run reads every field but two: the launcher URL, which only the base
+    /// reads to open apps, and the run policy, which says when the server
+    /// runs, not how, and reaches the runner on its own. The certificate
+    /// source is a run's: it is where the server's certificates come from.
+    #[must_use]
+    pub fn run_inputs_differ(&self, other: &Self) -> bool {
+        // Destructured, so a new field needs a decision here.
+        let Self {
+            relay,
+            tunnel_name,
+            token,
+            public_settings,
+            launcher_url: _,
+            staging_certificates,
+            run_policy: _,
+        } = self;
+        *relay != other.relay
+            || *tunnel_name != other.tunnel_name
+            || *token != other.token
+            || *public_settings != other.public_settings
+            || *staging_certificates != other.staging_certificates
+    }
 }
 
 /// The kind of relay a server's tunnel runs through, as the record stores
@@ -274,6 +300,47 @@ pub(crate) mod tests {
             serde_json::json!({"kind": "selfHostedWildflower", "base_url": "https://relay.example.com/"})
         )
         .is_err());
+    }
+
+    #[test]
+    fn only_the_launcher_and_the_run_policy_are_not_run_inputs() {
+        let ruth = official_record("ruth");
+        for not_read_by_a_run in [
+            ServerRecord {
+                launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
+                ..ruth.clone()
+            },
+            ServerRecord {
+                run_policy: RunPolicy::Always,
+                ..ruth.clone()
+            },
+        ] {
+            assert!(!ruth.run_inputs_differ(&not_read_by_a_run));
+        }
+        let mut other_public_settings = ruth.public_settings.clone();
+        other_public_settings.public_key =
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned();
+        for read_by_a_run in [
+            ServerRecord {
+                staging_certificates: true,
+                ..ruth.clone()
+            },
+            ServerRecord {
+                token: TunnelToken::new("another-token"),
+                ..ruth.clone()
+            },
+            ServerRecord {
+                public_settings: other_public_settings,
+                ..ruth.clone()
+            },
+            ServerRecord {
+                relay: RelayKind::Rathole,
+                ..ruth.clone()
+            },
+            official_record("lab"),
+        ] {
+            assert!(ruth.run_inputs_differ(&read_by_a_run));
+        }
     }
 
     #[test]
