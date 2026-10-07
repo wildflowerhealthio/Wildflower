@@ -130,6 +130,12 @@ impl StopNotificationTracker {
                         continue;
                     }
                     server.last_stop = Some(stop.clone());
+                    if stop.reason == StopReason::Replaced {
+                        // The app changed the server (a new token, say), so
+                        // its next failure is news even if it repeats the
+                        // last one.
+                        server.notified_failure = None;
+                    }
                     notifications.extend(server.notification_for_new(unit_id, stop));
                 }
             }
@@ -348,6 +354,18 @@ mod tests {
         tracker.new_stop_notifications(&statuses(vec![(DOMAIN, running())]));
         let after_running = statuses(vec![(DOMAIN, stopped(failure(address_in_use, 6)))]);
         assert_eq!(tracker.new_stop_notifications(&after_running).len(), 1);
+    }
+
+    #[test]
+    fn a_failure_notifies_again_after_the_app_replaced_the_server() {
+        let mut tracker = StopNotificationTracker::new();
+        let address_in_use = "failed to bind: Address already in use";
+        let failed = statuses(vec![(DOMAIN, stopped(failure(address_in_use, 1)))]);
+        assert_eq!(tracker.new_stop_notifications(&failed).len(), 1);
+        let replaced = statuses(vec![(DOMAIN, stopped(stop(StopReason::Replaced, None, 2)))]);
+        assert_eq!(tracker.new_stop_notifications(&replaced), Vec::new());
+        let failed_again = statuses(vec![(DOMAIN, stopped(failure(address_in_use, 3)))]);
+        assert_eq!(tracker.new_stop_notifications(&failed_again).len(), 1);
     }
 
     #[test]
