@@ -1,6 +1,6 @@
-//! [`RunnerCore`]: the units, their runs and pending restarts, the app's use and
-//! the lease, and the reconcile that brings the runs in line with the
-//! policies.
+//! [`RunnerCore`]: the units, their runs and pending restarts, whether the app
+//! is open, the keep-alive, and the reconcile that brings the runs in line
+//! with the policies.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
@@ -12,16 +12,18 @@ use tokio::sync::{watch, Notify};
 use tokio_util::sync::CancellationToken;
 
 use super::erased_unit::UnitFactory;
-use super::lease_driver::LeaseDemand;
+use super::keep_alive_sync::KeepAliveDemand;
 use super::run_supervisor::{supervise_run, RunSpec};
 use super::status_board::StatusBoard;
 use super::unit_entry::{ActiveRun, PendingRestart, UnitEntry};
 use super::wall_clock::WallClock;
 use super::wall_clock_ticker::reconcile_on_the_wall_clock;
 use super::RunnerTimings;
-use crate::domain::app_use::{AppUse, UseChange};
-use crate::domain::lease_book::{LeaseBook, LeaseEnd, LeaseId};
+use crate::domain::app_presence::{AppPresence, PresenceChange};
+use crate::domain::keep_alive_ledger::{KeepAliveEnd, KeepAliveId, KeepAliveLedger};
 use crate::domain::run_policy::RunPolicy;
+#[cfg(test)]
+use crate::domain::unit_plan::UnitPhase;
 use crate::domain::unit_plan::{plan_unit, restarts_after, UnitAction};
 use crate::status::{PlatformStopReason, StopReason, UnitStatuses};
 use crate::unit::UnitId;
@@ -35,26 +37,29 @@ pub(crate) struct RunnerCore<D> {
     runtime: Handle,
     clock: Arc<dyn WallClock>,
     timings: RunnerTimings,
-    lease_demand_tx: watch::Sender<LeaseDemand>,
+    keep_alive_demand_tx: watch::Sender<KeepAliveDemand>,
     /// Wakes the wall-clock reconcile when the next deadline moves.
     pub(super) next_deadline_moved: Notify,
 }
 
 struct RunnerState<D> {
     units: BTreeMap<UnitId, UnitEntry<D>>,
-    app_use: AppUse,
-    lease: LeaseBook,
-    /// The last run or restart number handed out.
-    issued_numbers: u64,
+    app_presence: AppPresence,
+    keep_alive: KeepAliveLedger,
+    /// The last generation handed out. Every run and every scheduled restart
+    /// gets a new generation. A late event about one (a restart timer firing,
+    /// a run ending) whose generation no longer matches its unit's entry is
+    /// stale and ignored.
+    last_generation: u64,
     /// The next wall-clock instant a policy or grace period runs out, as of
     /// the last reconcile.
     next_deadline: Option<DateTime<Utc>>,
 }
 
 impl<D> RunnerState<D> {
-    fn issue_number(&mut self) -> u64 {
-        self.issued_numbers += 1;
-        self.issued_numbers
+    fn issue_generation(&mut self) -> u64 {
+        self.last_generation += 1;
+        self.last_generation
     }
 }
 
@@ -66,20 +71,21 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         clock: Arc<dyn WallClock>,
         timings: RunnerTimings,
     ) -> Arc<Self> {
-        let (lease_demand_tx, _lease_demand_rx) = watch::channel(LeaseDemand::default());
+        let (keep_alive_demand_tx, _keep_alive_demand_rx) =
+            watch::channel(KeepAliveDemand::default());
         let core = Arc::new(Self {
             state: Mutex::new(RunnerState {
                 units: BTreeMap::new(),
-                app_use: AppUse::new(),
-                lease: LeaseBook::new(),
-                issued_numbers: 0,
+                app_presence: AppPresence::new(),
+                keep_alive: KeepAliveLedger::new(),
+                last_generation: 0,
                 next_deadline: None,
             }),
             board: StatusBoard::new(Arc::clone(&clock)),
             runtime,
             clock,
             timings,
-            lease_demand_tx,
+            keep_alive_demand_tx,
             next_deadline_moved: Notify::new(),
         });
         core.runtime
@@ -113,14 +119,22 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         self.board.subscribe()
     }
 
-    pub(crate) fn subscribe_lease_demand(&self) -> watch::Receiver<LeaseDemand> {
-        self.lease_demand_tx.subscribe()
+    pub(crate) fn subscribe_keep_alive_demand(&self) -> watch::Receiver<KeepAliveDemand> {
+        self.keep_alive_demand_tx.subscribe()
+    }
+
+    /// Where the unit `unit_id` is, as a reconcile sees it; `None` for a unit
+    /// the runner doesn't hold. Lets tests check that nothing happened
+    /// without waiting to see.
+    #[cfg(test)]
+    pub(crate) fn unit_phase(&self, unit_id: &UnitId) -> Option<UnitPhase> {
+        self.lock_state().units.get(unit_id).map(UnitEntry::phase)
     }
 
     /// Add the unit `unit_id`, or replace its policy and factory. A run of the
     /// replaced definition stops; the unit starts again from the new factory
     /// if it should run.
-    pub(crate) fn set(
+    pub(crate) fn set_unit(
         self: &Arc<Self>,
         unit_id: UnitId,
         policy: RunPolicy,
@@ -134,7 +148,7 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
                 entry.factory = factory;
                 entry.removing = false;
                 entry.pending_restart = None;
-                entry.stop_run(StopReason::StoppedByRunner);
+                entry.stop_run(StopReason::Replaced);
             }
             None => {
                 state.units.insert(unit_id, UnitEntry::new(policy, factory));
@@ -144,39 +158,42 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
     }
 
     /// Replace the policy of the unit `unit_id`. Drops a pending restart and
-    /// lets units start again after the platform ended the lease, so the unit
-    /// starts at once if it should run.
-    pub(crate) fn set_policy(self: &Arc<Self>, unit_id: &UnitId, policy: RunPolicy) {
+    /// clears a keep-alive revocation, so the unit starts at once if it should
+    /// run.
+    pub(crate) fn set_unit_policy(self: &Arc<Self>, unit_id: &UnitId, policy: RunPolicy) {
         let mut state = self.lock_state();
         let Some(entry) = state.units.get_mut(unit_id) else {
-            log::warn!("[unit-runner] set_policy for {unit_id}, which was never set; ignored");
+            log::warn!("[unit-runner] set_unit_policy for {unit_id}, which was never set; ignored");
             return;
         };
         entry.policy = policy;
         entry.pending_restart = None;
-        state.lease.forget_platform_end();
+        state.keep_alive.clear_revocation();
         self.reconcile_locked(&mut state);
     }
 
     /// Stop the unit `unit_id`, wait for its run to end, and forget it.
-    pub(crate) async fn remove(self: &Arc<Self>, unit_id: &UnitId) {
-        let ended_rx = {
+    pub(crate) async fn remove_unit(self: &Arc<Self>, unit_id: &UnitId) {
+        let finished_rx = {
             let mut state = self.lock_state();
             let Some(entry) = state.units.get_mut(unit_id) else {
-                log::warn!("[unit-runner] remove for {unit_id}, which was never set; ignored");
+                log::warn!("[unit-runner] remove_unit for {unit_id}, which was never set; ignored");
                 return;
             };
             entry.removing = true;
             entry.pending_restart = None;
-            entry.stop_run(StopReason::StoppedByRunner);
-            let ended_rx = entry.run.as_ref().map(|run| run.ended_rx.clone());
+            entry.stop_run(StopReason::Removed);
+            let finished_rx = entry.run.as_ref().map(|run| run.finished_rx.clone());
             self.reconcile_locked(&mut state);
-            ended_rx
+            finished_rx
         };
-        if let Some(mut ended_rx) = ended_rx {
-            // The sender lives until the run has ended, and says so first.
-            let _run_ended = ended_rx.wait_for(|ended| *ended).await;
+        // Wait without holding the lock until the run's thread and runtime
+        // are gone. The sender lives until then, and says so first.
+        if let Some(mut finished_rx) = finished_rx {
+            let _run_finished = finished_rx.wait_for(|finished| *finished).await;
         }
+        // Check again: a `set_unit` while we waited may have brought the unit
+        // back, and then it stays.
         let mut state = self.lock_state();
         let still_removing = state
             .units
@@ -188,14 +205,14 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         }
     }
 
-    /// The app is or isn't in use now. Coming back into use lets units start
-    /// again after the platform ended the lease.
-    pub(crate) fn set_in_use(self: &Arc<Self>, in_use: bool) {
+    /// The app is open now, or closed. Opening clears a keep-alive
+    /// revocation.
+    pub(crate) fn set_app_open(self: &Arc<Self>, open: bool) {
         let mut state = self.lock_state();
         let now = self.clock.now();
-        match state.app_use.update(in_use, now) {
-            UseChange::CameIntoUse => state.lease.forget_platform_end(),
-            UseChange::LeftUse | UseChange::Unchanged => {}
+        match state.app_presence.update(open, now) {
+            PresenceChange::Opened => state.keep_alive.clear_revocation(),
+            PresenceChange::Closed | PresenceChange::Unchanged => {}
         }
         self.reconcile_locked(&mut state);
     }
@@ -205,53 +222,55 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
     pub(crate) fn restart_running_units(self: &Arc<Self>) {
         let state = self.lock_state();
         for entry in state.units.values() {
-            entry.stop_run(StopReason::StoppedByRunner);
+            entry.stop_run(StopReason::StoppedForRestart);
         }
     }
 
-    /// A lease task began: the runner holds the lease.
-    pub(crate) fn lease_gained(self: &Arc<Self>) -> LeaseId {
+    /// A keep-alive task started. It clears a revocation.
+    pub(crate) fn keep_alive_started(self: &Arc<Self>) -> KeepAliveId {
         let mut state = self.lock_state();
-        let lease = state.lease.gained();
-        log::info!("[unit-runner] lease {lease:?} gained");
+        let id = state.keep_alive.task_started();
+        log::info!("[unit-runner] keep-alive {id:?} started");
         self.reconcile_locked(&mut state);
-        lease
+        id
     }
 
-    /// The runner is about to release the lease it holds; returns it, or `None`
-    /// when there is none to release.
-    pub(crate) fn begin_lease_release(self: &Arc<Self>) -> Option<LeaseId> {
+    /// The runner is about to stop the keep-alive task; returns it, or `None`
+    /// when there is none to stop or a unit should run again.
+    pub(crate) fn request_keep_alive_release(self: &Arc<Self>) -> Option<KeepAliveId> {
         let mut state = self.lock_state();
-        let lease_wanted = self.reconcile_locked(&mut state);
-        if lease_wanted {
+        let keep_alive_wanted = self.reconcile_locked(&mut state);
+        if keep_alive_wanted {
             // A unit should run again since the demand was read.
             return None;
         }
-        let lease = state.lease.begin_release();
+        let id = state.keep_alive.request_release();
         self.reconcile_locked(&mut state);
-        lease
+        id
     }
 
-    /// The lease task for `lease` ended, for `platform_reason` when the
-    /// platform gave one. When the platform ended the lease the runner holds,
-    /// every run stops with the platform's reason, and no unit starts until
-    /// the lease comes back, the app comes back into use, or a policy is set.
-    pub(crate) fn lease_ended(
+    /// The keep-alive task `id` ended, for `platform_reason` when the platform
+    /// gave one. When the platform ended the current task, every run stops
+    /// with the platform's reason, and no unit starts until the keep-alive
+    /// starts again, the app opens, or a policy is set.
+    pub(crate) fn keep_alive_ended(
         self: &Arc<Self>,
-        lease: LeaseId,
+        id: KeepAliveId,
         platform_reason: Option<PlatformStopReason>,
     ) {
         let mut state = self.lock_state();
-        match state.lease.ended(lease, platform_reason) {
-            LeaseEnd::EndedByPlatform(platform_reason) => {
-                log::warn!("[unit-runner] the platform ended lease {lease:?}: {platform_reason:?}");
+        match state.keep_alive.task_ended(id, platform_reason) {
+            KeepAliveEnd::Revoked(platform_reason) => {
+                log::warn!(
+                    "[unit-runner] the platform revoked keep-alive {id:?}: {platform_reason:?}"
+                );
                 for entry in state.units.values_mut() {
                     entry.pending_restart = None;
-                    entry.stop_run(StopReason::LeaseEnded { platform_reason });
+                    entry.stop_run(StopReason::KeepAliveRevoked { platform_reason });
                 }
             }
-            LeaseEnd::ReleasedByRunner => log::info!("[unit-runner] lease {lease:?} released"),
-            LeaseEnd::Stale => {}
+            KeepAliveEnd::Released => log::info!("[unit-runner] keep-alive {id:?} stopped"),
+            KeepAliveEnd::Superseded => {}
         }
         self.reconcile_locked(&mut state);
     }
@@ -272,27 +291,33 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
             .map_or(interval, |until_deadline| until_deadline.min(interval))
     }
 
-    /// The run `number` of `unit_id` ended for `reason`. Restarts it after the
-    /// restart delay when it ended on its own while its unit should still run.
-    pub(super) fn run_ended(self: &Arc<Self>, unit_id: &UnitId, number: u64, reason: StopReason) {
+    /// The run of `unit_id` with `generation` ended for `reason`. Restarts it
+    /// after the restart delay when it ended on its own while its unit should
+    /// still run.
+    pub(super) fn run_ended(
+        self: &Arc<Self>,
+        unit_id: &UnitId,
+        generation: u64,
+        reason: StopReason,
+    ) {
         let mut state = self.lock_state();
         let now = self.clock.now();
-        let in_use = state.app_use.in_use_or_in_grace(now);
-        let lease_allows_runs = state.lease.allows_runs();
-        let restart_number = state.issued_numbers + 1;
+        let app_open_or_in_grace = state.app_presence.open_or_in_grace(now);
+        let keep_alive_revoked = state.keep_alive.is_revoked();
+        let restart_generation = state.last_generation + 1;
         let Some(entry) = state.units.get_mut(unit_id) else {
             return;
         };
-        if entry.run.as_ref().map(|run| run.number) != Some(number) {
+        if entry.run.as_ref().map(|run| run.generation) != Some(generation) {
             return;
         }
         entry.run = None;
-        let should_run = entry.should_run(now, in_use, lease_allows_runs);
+        let should_run = entry.should_run(now, app_open_or_in_grace, keep_alive_revoked);
         if restarts_after(reason, should_run) {
             entry.pending_restart = Some(PendingRestart {
-                number: restart_number,
+                generation: restart_generation,
             });
-            state.issued_numbers = restart_number;
+            state.last_generation = restart_generation;
             log::info!(
                 "[unit-runner] {unit_id} restarts in {:?}",
                 self.timings.restart_delay
@@ -301,15 +326,15 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
             let unit_id = unit_id.clone();
             self.runtime.spawn(async move {
                 tokio::time::sleep(core.timings.restart_delay).await;
-                core.restart_due(&unit_id, restart_number);
+                core.restart_due(&unit_id, restart_generation);
             });
         }
         self.reconcile_locked(&mut state);
     }
 
-    /// The restart `number` of `unit_id` has waited out its delay. A restart
-    /// that was cancelled or replaced since does nothing.
-    fn restart_due(self: &Arc<Self>, unit_id: &UnitId, number: u64) {
+    /// The restart of `unit_id` with `generation` has waited out its delay. A
+    /// restart that was cancelled or replaced since does nothing.
+    fn restart_due(self: &Arc<Self>, unit_id: &UnitId, generation: u64) {
         let mut state = self.lock_state();
         let Some(entry) = state.units.get_mut(unit_id) else {
             return;
@@ -317,7 +342,7 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
         if entry
             .pending_restart
             .as_ref()
-            .is_some_and(|restart| restart.number == number)
+            .is_some_and(|restart| restart.generation == generation)
         {
             entry.pending_restart = None;
             self.reconcile_locked(&mut state);
@@ -325,22 +350,25 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
     }
 
     /// Start every unit that should run and isn't running, stop every running
-    /// unit that shouldn't be, publish whether the lease is wanted (whenever
-    /// any unit should run, one waiting out its restart delay included), and
-    /// move the wall-clock reconcile's next deadline. Returns whether the
-    /// lease is wanted.
+    /// unit that shouldn't be, publish whether the keep-alive is wanted
+    /// (whenever any unit should run, one waiting out its restart delay
+    /// included), and move the wall-clock reconcile's next deadline. Returns
+    /// whether the keep-alive is wanted.
     fn reconcile_locked(self: &Arc<Self>, state: &mut RunnerState<D>) -> bool {
         let now = self.clock.now();
-        let in_use = state.app_use.in_use_or_in_grace(now);
-        let lease_allows_runs = state.lease.allows_runs();
+        let app_open_or_in_grace = state.app_presence.open_or_in_grace(now);
+        let keep_alive_revoked = state.keep_alive.is_revoked();
         let mut starts = Vec::new();
-        let mut lease_wanted = false;
+        let mut keep_alive_wanted = false;
         for (unit_id, entry) in &mut state.units {
-            let should_run = entry.should_run(now, in_use, lease_allows_runs);
-            lease_wanted |= should_run;
-            match plan_unit(should_run, entry.activity()) {
+            let should_run = entry.should_run(now, app_open_or_in_grace, keep_alive_revoked);
+            keep_alive_wanted |= should_run;
+            match plan_unit(should_run, entry.phase()) {
                 UnitAction::Start => starts.push(unit_id.clone()),
-                UnitAction::Stop => entry.stop_run(StopReason::StoppedByRunner),
+                // A unit being removed, or stopped by a revocation, already
+                // has its run stopped with that reason. What's left is a
+                // policy that is no longer active.
+                UnitAction::Stop => entry.stop_run(StopReason::PolicyInactive),
                 UnitAction::CancelRestart => entry.pending_restart = None,
                 UnitAction::Keep => {}
             }
@@ -349,14 +377,14 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
             self.start_run(state, unit_id);
         }
 
-        self.publish_lease_demand(state, lease_wanted);
+        self.publish_keep_alive_demand(state, keep_alive_wanted);
         let next_deadline = state
             .units
             .values()
             .filter_map(|entry| entry.policy.expires_after(now))
             .chain(
                 state
-                    .app_use
+                    .app_presence
                     .grace_ends_at()
                     .filter(|ends_at| now < *ends_at),
             )
@@ -365,15 +393,15 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
             state.next_deadline = next_deadline;
             self.next_deadline_moved.notify_one();
         }
-        lease_wanted
+        keep_alive_wanted
     }
 
-    fn publish_lease_demand(&self, state: &RunnerState<D>, wanted: bool) {
-        let demand = LeaseDemand {
+    fn publish_keep_alive_demand(&self, state: &RunnerState<D>, wanted: bool) {
+        let demand = KeepAliveDemand {
             wanted,
-            held: state.lease.holds_and_keeps(),
+            kept: state.keep_alive.is_kept(),
         };
-        self.lease_demand_tx.send_if_modified(|current| {
+        self.keep_alive_demand_tx.send_if_modified(|current| {
             let changed = *current != demand;
             *current = demand;
             changed
@@ -381,28 +409,28 @@ impl<D: Clone + Send + Sync + 'static> RunnerCore<D> {
     }
 
     fn start_run(self: &Arc<Self>, state: &mut RunnerState<D>, unit_id: UnitId) {
-        let number = state.issue_number();
+        let generation = state.issue_generation();
         let Some(entry) = state.units.get_mut(&unit_id) else {
             return;
         };
         let shutdown = CancellationToken::new();
         let stop_reason = Arc::new(OnceLock::new());
-        let (ended_tx, ended_rx) = watch::channel(false);
+        let (finished_tx, finished_rx) = watch::channel(false);
         entry.run = Some(ActiveRun {
-            number,
+            generation,
             shutdown: shutdown.clone(),
             stop_reason: Arc::clone(&stop_reason),
-            ended_rx,
+            finished_rx,
         });
         log::info!("[unit-runner] starting {unit_id}");
         let spec = RunSpec {
             unit_id,
-            number,
+            generation,
             factory: Arc::clone(&entry.factory),
             gate: entry.gate.clone(),
             shutdown,
             stop_reason,
-            ended_tx,
+            finished_tx,
         };
         self.runtime.spawn(supervise_run(Arc::clone(self), spec));
     }

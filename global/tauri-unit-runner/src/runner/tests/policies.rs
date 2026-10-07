@@ -1,27 +1,28 @@
-//! Policies on the wall clock: `Until`, `WhileInUse` and its grace.
+//! Policies on the wall clock: `Until`, `WhileOpen` and its grace.
 
 use std::time::Duration;
 
 use chrono::TimeDelta;
 
-use super::fakes::{Harness, Probe, Script, A_WHILE};
-use crate::domain::app_use::WHILE_IN_USE_GRACE;
+use super::fakes::{Harness, Probe, Script};
+use crate::domain::app_presence::WHILE_OPEN_GRACE;
 use crate::domain::run_policy::RunPolicy;
+use crate::domain::unit_plan::UnitPhase;
 use crate::status::{StopReason, UnitStatus};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_expired_until_never_starts_and_stays_as_set() {
     let harness = Harness::new();
     let probe = Probe::default();
-    harness.set(
+    let at = harness.now() - TimeDelta::seconds(1);
+    harness.set_unit(
         "unit",
-        RunPolicy::Until {
-            at: harness.now() - TimeDelta::seconds(1),
-        },
+        RunPolicy::Until { at },
         Script::RunUntilStopped { detail: None },
         &probe,
     );
-    tokio::time::sleep(A_WHILE).await;
+    // `set_unit` reconciles before it returns: a start would show here.
+    assert_eq!(harness.phase("unit"), Some(UnitPhase::Idle));
     assert_eq!(probe.starts(), 0);
     assert_eq!(harness.status("unit"), Some(UnitStatus::never_run()));
 }
@@ -29,7 +30,7 @@ async fn an_expired_until_never_starts_and_stays_as_set() {
 #[tokio::test(flavor = "multi_thread")]
 async fn an_until_stops_its_unit_once_the_wall_clock_passes_it() {
     let harness = Harness::new();
-    harness.set(
+    harness.set_unit(
         "unit",
         RunPolicy::Until {
             at: harness.now() + TimeDelta::minutes(30),
@@ -43,68 +44,73 @@ async fn an_until_stops_its_unit_once_the_wall_clock_passes_it() {
     harness.clock.advance(Duration::from_secs(31 * 60));
     harness.core.reconcile();
     harness
-        .wait_until_stopped_for("unit", StopReason::StoppedByRunner)
+        .wait_until_stopped_for("unit", StopReason::PolicyInactive)
         .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn while_in_use_runs_while_in_use_and_through_the_grace() {
+async fn while_open_runs_while_open_and_through_the_grace() {
     let harness = Harness::new();
     let probe = Probe::default();
-    harness.set(
+    harness.set_unit(
         "unit",
-        RunPolicy::WhileInUse,
+        RunPolicy::WhileOpen,
         Script::RunUntilStopped { detail: None },
         &probe,
     );
-    tokio::time::sleep(A_WHILE).await;
-    assert_eq!(probe.starts(), 0, "the app isn't in use yet");
+    assert_eq!(
+        harness.phase("unit"),
+        Some(UnitPhase::Idle),
+        "the app isn't open yet"
+    );
 
-    harness.core.set_in_use(true);
+    harness.core.set_app_open(true);
     harness.wait_until_running("unit").await;
 
-    harness.core.set_in_use(false);
+    harness.core.set_app_open(false);
     harness
         .clock
-        .advance(WHILE_IN_USE_GRACE - Duration::from_secs(1));
+        .advance(WHILE_OPEN_GRACE - Duration::from_secs(1));
     harness.core.reconcile();
-    tokio::time::sleep(A_WHILE).await;
+    assert_eq!(
+        harness.phase("unit"),
+        Some(UnitPhase::Running),
+        "still within the grace"
+    );
     assert_eq!(probe.starts(), 1);
-    harness.wait_until_running("unit").await;
 
     harness.clock.advance(Duration::from_secs(1));
     harness.core.reconcile();
     harness
-        .wait_until_stopped_for("unit", StopReason::StoppedByRunner)
+        .wait_until_stopped_for("unit", StopReason::PolicyInactive)
         .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn coming_back_within_the_grace_keeps_the_same_run() {
+async fn opening_again_within_the_grace_keeps_the_same_run() {
     let harness = Harness::new();
     let probe = Probe::default();
-    harness.set(
+    harness.set_unit(
         "unit",
-        RunPolicy::WhileInUse,
+        RunPolicy::WhileOpen,
         Script::RunUntilStopped { detail: None },
         &probe,
     );
-    harness.core.set_in_use(true);
+    harness.core.set_app_open(true);
     harness.wait_until_running("unit").await;
-    harness.core.set_in_use(false);
+    harness.core.set_app_open(false);
     harness.clock.advance(Duration::from_secs(30));
-    harness.core.set_in_use(true);
-    harness.clock.advance(WHILE_IN_USE_GRACE * 2);
+    harness.core.set_app_open(true);
+    harness.clock.advance(WHILE_OPEN_GRACE * 2);
     harness.core.reconcile();
-    tokio::time::sleep(A_WHILE).await;
+    assert_eq!(harness.phase("unit"), Some(UnitPhase::Running));
     assert_eq!(probe.starts(), 1);
-    harness.wait_until_running("unit").await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_wall_clock_reconcile_waits_for_the_next_deadline() {
     let harness = Harness::new();
-    harness.set(
+    harness.set_unit(
         "unit",
         RunPolicy::Until {
             at: harness.now() + TimeDelta::seconds(3),
@@ -116,8 +122,8 @@ async fn the_wall_clock_reconcile_waits_for_the_next_deadline() {
         harness.core.time_until_next_reconcile(),
         Duration::from_secs(3)
     );
-    harness.core.set_policy(
-        &crate::unit::UnitId::from("unit"),
+    harness.set_unit_policy(
+        "unit",
         RunPolicy::Until {
             at: harness.now() + TimeDelta::hours(3),
         },

@@ -1,6 +1,7 @@
-//! The runner's lifecycle plugin: the app's use and resumes from its window
-//! events, the lease's end reasons from the background-service plugin's
-//! events, and the lease driver from the moment the app is ready.
+//! The runner's lifecycle plugin: whether the app is open, and its resumes,
+//! from its window events; the keep-alive's end reasons from the
+//! background-service plugin's events; and the keep-alive sync from the moment
+//! the app is ready.
 
 use std::sync::{Arc, PoisonError};
 
@@ -8,11 +9,11 @@ use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Listener, RunEvent, Runtime, WindowEvent};
 use tauri_plugin_background_service::PluginEvent;
 
-use super::lease_end_pairing::{LeaseTaskEnd, BACKGROUND_SERVICE_EVENT};
-use super::plugin_lease::PluginLease;
+use super::keep_alive_end_pairing::{KeepAliveTaskEnd, BACKGROUND_SERVICE_EVENT};
+use super::plugin_keep_alive::PluginKeepAlive;
 use super::UNIT_RUNNER_PLUGIN_NAME;
-use crate::domain::use_signals::{UseSignals, UseUpdate};
-use crate::runner::lease_driver::drive_lease;
+use crate::domain::window_state::{WindowState, WindowStateChange};
+use crate::runner::keep_alive_sync::sync_keep_alive;
 use crate::unit_runner::UnitRunner;
 
 /// The lifecycle plugin for `runner`.
@@ -23,19 +24,19 @@ pub(super) fn plugin<R: Runtime, D: Clone + Send + Sync + 'static>(
     let on_window_ready = runner.clone();
     tauri::plugin::Builder::new(UNIT_RUNNER_PLUGIN_NAME)
         .setup(move |app, _api| {
-            listen_for_lease_task_ends(app, &on_setup);
+            listen_for_keep_alive_task_ends(app, &on_setup);
             Ok(())
         })
         .on_window_ready(move |window| {
-            on_window_ready.apply_use_signal(|signals| signals.window_opened(window.label()));
+            on_window_ready.apply_window_event(|windows| windows.window_opened(window.label()));
         })
         .on_event(move |app, event| runner.follow_run_event(app, event))
         .build()
 }
 
-/// Hand each lease-task end the background-service plugin reports to the lease
-/// task waiting for its reason.
-fn listen_for_lease_task_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
+/// Hand each keep-alive task end the background-service plugin reports to the
+/// keep-alive task waiting for its reason.
+fn listen_for_keep_alive_task_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
     app: &AppHandle<R>,
     runner: &UnitRunner<D>,
 ) {
@@ -44,8 +45,8 @@ fn listen_for_lease_task_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
         BACKGROUND_SERVICE_EVENT,
         move |event| match serde_json::from_str::<PluginEvent>(event.payload()) {
             Ok(plugin_event) => {
-                if let Some(end) = LeaseTaskEnd::from_plugin_event(&plugin_event) {
-                    bindings.lease_end_pairing.deliver(end);
+                if let Some(end) = KeepAliveTaskEnd::from_plugin_event(&plugin_event) {
+                    bindings.keep_alive_end_pairing.deliver(end);
                 }
             }
             Err(error) => {
@@ -56,7 +57,7 @@ fn listen_for_lease_task_ends<R: Runtime, D: Clone + Send + Sync + 'static>(
 }
 
 impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
-    /// Follow the app's run events: start the lease driver once the app is
+    /// Follow the app's run events: start the keep-alive sync once the app is
     /// ready, and follow window destruction, and suspend and resume on a
     /// phone.
     ///
@@ -65,49 +66,49 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     fn follow_run_event<R: Runtime>(&self, app: &AppHandle<R>, event: &RunEvent) {
         match event {
             RunEvent::Ready => {
-                let platform = Arc::new(PluginLease::new(
+                let platform = Arc::new(PluginKeepAlive::new(
                     app.clone(),
                     self.bindings.start_config.clone(),
                 ));
                 self.core
                     .runtime()
-                    .spawn(drive_lease(Arc::clone(&self.core), platform));
+                    .spawn(sync_keep_alive(Arc::clone(&self.core), platform));
             }
             RunEvent::WindowEvent {
                 label,
                 event: WindowEvent::Destroyed,
                 ..
-            } => self.apply_use_signal(|signals| signals.window_destroyed(label)),
+            } => self.apply_window_event(|windows| windows.window_destroyed(label)),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             RunEvent::WindowEvent {
                 event: WindowEvent::Suspended,
                 ..
-            } => self.apply_use_signal(UseSignals::suspended),
+            } => self.apply_window_event(WindowState::suspended),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             RunEvent::WindowEvent {
                 event: WindowEvent::Resumed,
                 ..
-            } => self.apply_use_signal(UseSignals::resumed),
+            } => self.apply_window_event(WindowState::resumed),
             _ => {}
         }
     }
 
-    /// Record a window signal, and pass what it means on to the runner. Running
+    /// Record a window event, and pass what it means on to the runner. Running
     /// units restart first, so units the change starts aren't restarted too.
-    fn apply_use_signal(&self, signal: impl FnOnce(&mut UseSignals) -> UseUpdate) {
-        let update = {
-            // Each signal is one set insert or flag write, which no panic
+    fn apply_window_event(&self, event: impl FnOnce(&mut WindowState) -> WindowStateChange) {
+        let change = {
+            // Each event is one set insert or flag write, which no panic
             // leaves half-done.
-            let mut signals = self
+            let mut windows = self
                 .bindings
-                .use_signals
+                .window_state
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
-            signal(&mut signals)
+            event(&mut windows)
         };
-        if update.restart_running_units {
+        if change.restart_needed {
             self.core.restart_running_units();
         }
-        self.core.set_in_use(update.in_use);
+        self.core.set_app_open(change.open_after_event);
     }
 }

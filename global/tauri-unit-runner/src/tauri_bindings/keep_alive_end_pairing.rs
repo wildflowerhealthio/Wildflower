@@ -1,5 +1,5 @@
-//! Pairing each lease task's end with the reason the background-service plugin
-//! gives for it.
+//! Pairing each keep-alive task's end with the reason the background-service
+//! plugin gives for it.
 //!
 //! The service's task sees only its shutdown token; the reason comes on the
 //! plugin's `background-service://event`, emitted just after the task returns.
@@ -17,35 +17,35 @@ use crate::status::PlatformStopReason;
 /// The Tauri event the plugin emits its [`PluginEvent`]s on.
 pub(crate) const BACKGROUND_SERVICE_EVENT: &str = "background-service://event";
 
-/// The reason the runner releases the lease with. The plugin never stops the
-/// service with it itself (its own stops are `UserStop`, the platform's,
+/// The reason the runner stops the keep-alive task with. The plugin never stops
+/// the service with it itself (its own stops are `UserStop`, the platform's,
 /// `TaskCompleted` and `Error`), so its end is never taken for the platform's.
 pub(crate) const RUNNER_RELEASE_STOP_REASON: StopReason = StopReason::AppStop;
 
-/// How a lease task ended, by the plugin's account.
+/// How a keep-alive task ended, by the plugin's account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeaseTaskEnd {
-    /// The runner released it.
-    RunnerRelease,
+pub(crate) enum KeepAliveTaskEnd {
+    /// The runner stopped it.
+    Released,
     /// Anything else, for this reason.
     Platform(PlatformStopReason),
 }
 
-impl LeaseTaskEnd {
-    /// The platform's reason, unless the runner released the lease.
+impl KeepAliveTaskEnd {
+    /// The platform's reason, unless the runner stopped the task.
     pub(crate) fn platform_reason(self) -> Option<PlatformStopReason> {
         match self {
-            Self::RunnerRelease => None,
+            Self::Released => None,
             Self::Platform(platform_reason) => Some(platform_reason),
         }
     }
 
-    /// How the lease task that `event` reports on ended, or `None` when the
-    /// event isn't an end.
+    /// How the keep-alive task that `event` reports on ended, or `None` when
+    /// the event isn't an end.
     pub(crate) fn from_plugin_event(event: &PluginEvent) -> Option<Self> {
         match event {
             PluginEvent::Stopped { reason } if *reason == RUNNER_RELEASE_STOP_REASON => {
-                Some(Self::RunnerRelease)
+                Some(Self::Released)
             }
             PluginEvent::Stopped { reason } => Some(Self::Platform(platform_stop_reason(*reason))),
             PluginEvent::Error { .. } => Some(Self::Platform(PlatformStopReason::Error)),
@@ -74,33 +74,35 @@ fn platform_stop_reason(reason: StopReason) -> PlatformStopReason {
     }
 }
 
-/// The waiter the most recently ended lease task left for its reason.
+/// The waiter the most recently ended keep-alive task left for its reason.
 #[derive(Default)]
-pub(crate) struct LeaseEndPairing {
-    waiting_tx: Mutex<Option<oneshot::Sender<LeaseTaskEnd>>>,
+pub(crate) struct KeepAliveEndPairing {
+    waiting_tx: Mutex<Option<oneshot::Sender<KeepAliveTaskEnd>>>,
 }
 
-impl LeaseEndPairing {
-    /// Wait for the next lease-task end the plugin reports. Replaces an earlier
-    /// waiter, which then gets nothing.
-    pub(crate) fn wait_for_end(&self) -> oneshot::Receiver<LeaseTaskEnd> {
+impl KeepAliveEndPairing {
+    /// Wait for the next keep-alive task end the plugin reports. Replaces an
+    /// earlier waiter, which then gets nothing.
+    pub(crate) fn wait_for_end(&self) -> oneshot::Receiver<KeepAliveTaskEnd> {
         let (end_tx, end_rx) = oneshot::channel();
         *self.lock() = Some(end_tx);
         end_rx
     }
 
-    /// Hand `end` to the lease task waiting for it, if one is.
-    pub(crate) fn deliver(&self, end: LeaseTaskEnd) {
+    /// Hand `end` to the keep-alive task waiting for it, if one is.
+    pub(crate) fn deliver(&self, end: KeepAliveTaskEnd) {
         match self.lock().take() {
             Some(end_tx) => {
                 // A waiter that gave up has already reported its end.
                 let _waiter_gone = end_tx.send(end);
             }
-            None => log::debug!("[unit-runner] lease end {end:?} with no lease task waiting"),
+            None => {
+                log::debug!("[unit-runner] keep-alive end {end:?} with no keep-alive task waiting");
+            }
         }
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, Option<oneshot::Sender<LeaseTaskEnd>>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<oneshot::Sender<KeepAliveTaskEnd>>> {
         // Replacing or taking one value can't be left half-done by a panic.
         self.waiting_tx
             .lock()
@@ -135,11 +137,12 @@ mod tests {
     #[test]
     fn only_the_runner_s_own_reason_reads_as_its_release() {
         for reason in PLUGIN_STOP_REASONS {
-            let end = LeaseTaskEnd::from_plugin_event(&decoded(&PluginEvent::Stopped { reason }));
+            let end =
+                KeepAliveTaskEnd::from_plugin_event(&decoded(&PluginEvent::Stopped { reason }));
             if reason == RUNNER_RELEASE_STOP_REASON {
-                assert_eq!(end, Some(LeaseTaskEnd::RunnerRelease));
+                assert_eq!(end, Some(KeepAliveTaskEnd::Released));
             } else {
-                let Some(LeaseTaskEnd::Platform(platform_reason)) = end else {
+                let Some(KeepAliveTaskEnd::Platform(platform_reason)) = end else {
                     panic!("{reason:?} read as {end:?}");
                 };
                 assert_ne!(platform_reason, PlatformStopReason::Unknown, "{reason:?}");
@@ -160,26 +163,26 @@ mod tests {
     #[test]
     fn an_error_ends_the_task_and_a_start_doesn_t() {
         assert_eq!(
-            LeaseTaskEnd::from_plugin_event(&decoded(&PluginEvent::Error {
+            KeepAliveTaskEnd::from_plugin_event(&decoded(&PluginEvent::Error {
                 message: "Runtime error: gone".to_owned()
             })),
-            Some(LeaseTaskEnd::Platform(PlatformStopReason::Error))
+            Some(KeepAliveTaskEnd::Platform(PlatformStopReason::Error))
         );
         assert_eq!(
-            LeaseTaskEnd::from_plugin_event(&decoded(&PluginEvent::Started)),
+            KeepAliveTaskEnd::from_plugin_event(&decoded(&PluginEvent::Started)),
             None
         );
     }
 
     #[test]
     fn the_end_goes_to_the_latest_waiter() {
-        let pairing = LeaseEndPairing::default();
+        let pairing = KeepAliveEndPairing::default();
         let mut replaced_rx = pairing.wait_for_end();
         let mut latest_rx = pairing.wait_for_end();
-        pairing.deliver(LeaseTaskEnd::RunnerRelease);
+        pairing.deliver(KeepAliveTaskEnd::Released);
         assert!(replaced_rx.try_recv().is_err());
-        assert_eq!(latest_rx.try_recv(), Ok(LeaseTaskEnd::RunnerRelease));
+        assert_eq!(latest_rx.try_recv(), Ok(KeepAliveTaskEnd::Released));
         // With nobody waiting, an end is dropped.
-        pairing.deliver(LeaseTaskEnd::RunnerRelease);
+        pairing.deliver(KeepAliveTaskEnd::Released);
     }
 }

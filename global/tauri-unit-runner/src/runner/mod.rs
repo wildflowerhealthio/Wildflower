@@ -1,11 +1,12 @@
 //! The runner's engine, [`RunnerCore`]: the units and their runs, the
-//! reconcile, the restarts and the lease demand. It knows the lease only
-//! through [`lease_driver::LeasePlatform`], so it runs without Tauri.
+//! reconcile, the restarts and the keep-alive demand. It knows the keep-alive
+//! only through [`keep_alive_sync::KeepAlivePlatform`], so it runs without
+//! Tauri.
 
 mod core;
 mod dedicated_runtime;
 mod erased_unit;
-pub(crate) mod lease_driver;
+pub(crate) mod keep_alive_sync;
 mod run_gate;
 mod run_supervisor;
 pub(crate) mod status_board;

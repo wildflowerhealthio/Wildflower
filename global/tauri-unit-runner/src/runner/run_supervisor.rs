@@ -18,12 +18,12 @@ use crate::unit::UnitId;
 /// Everything one run needs, fixed when the runner starts it.
 pub(crate) struct RunSpec<D> {
     pub(crate) unit_id: UnitId,
-    pub(crate) number: u64,
+    pub(crate) generation: u64,
     pub(crate) factory: UnitFactory<D>,
     pub(crate) gate: RunGate,
     pub(crate) shutdown: CancellationToken,
     pub(crate) stop_reason: Arc<OnceLock<StopReason>>,
-    pub(crate) ended_tx: watch::Sender<bool>,
+    pub(crate) finished_tx: watch::Sender<bool>,
 }
 
 /// Run `spec`'s unit once.
@@ -41,19 +41,21 @@ pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
 ) {
     let RunSpec {
         unit_id,
-        number,
+        generation,
         factory,
         gate,
         shutdown,
         stop_reason,
-        ended_tx,
+        finished_tx,
     } = spec;
     let run_gate_guard = gate.wait_for_previous_run().await;
-    if shutdown.is_cancelled() {
+    // Before the run starts, only the runner stops it, and it sets the stop
+    // reason before it cancels `shutdown`. So a reason set by now means the
+    // run was stopped while it waited.
+    if let Some(&reason) = stop_reason.get() {
         drop(run_gate_guard);
-        let reason = *stop_reason.get_or_init(|| StopReason::StoppedByRunner);
-        core.run_ended(&unit_id, number, reason);
-        ended_tx.send_replace(true);
+        core.run_ended(&unit_id, generation, reason);
+        finished_tx.send_replace(true);
         return;
     }
 
@@ -71,10 +73,10 @@ pub(crate) async fn supervise_run<D: Clone + Send + Sync + 'static>(
     }
     // The runner records the end (scheduling a restart, or starting the next
     // run behind the gate) before anyone can see `Stopped`, so whatever the
-    // app does on seeing it, a `set_policy` included, acts on a run that has
-    // ended.
-    core.run_ended(&unit_id, number, reason);
+    // app does on seeing it, a `set_unit_policy` included, acts on a run that
+    // has ended.
+    core.run_ended(&unit_id, generation, reason);
     core.board().publish_stopped(&unit_id, &run, reason, error);
     drop(run_gate_guard);
-    ended_tx.send_replace(true);
+    finished_tx.send_replace(true);
 }

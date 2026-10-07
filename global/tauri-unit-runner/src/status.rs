@@ -15,7 +15,8 @@ pub type UnitStatuses<D> = BTreeMap<UnitId, UnitStatus<D>>;
 pub struct UnitStatus<D> {
     /// Where the unit's latest run is.
     pub run_state: RunState,
-    /// When the current run called [`RunContext::running`](crate::RunContext::running);
+    /// When the current run called
+    /// [`RunContext::announce_running`](crate::RunContext::announce_running);
     /// `None` unless the run state is [`RunState::Running`].
     pub running_since: Option<DateTime<Utc>>,
     /// The unit's own status, as the current run last set it; `None` before
@@ -42,7 +43,8 @@ impl<D> UnitStatus<D> {
 pub enum RunState {
     /// A run has begun and its unit is starting up.
     Starting,
-    /// The run's unit has called [`RunContext::running`](crate::RunContext::running).
+    /// The run's unit has called
+    /// [`RunContext::announce_running`](crate::RunContext::announce_running).
     Running,
     /// No run is in progress. `last_stop` is how the latest run stopped, or
     /// `None` when the unit has never run. A run stopped while it waits for
@@ -65,23 +67,36 @@ pub struct RunStop {
 /// Why a run stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopReason {
-    /// The runner stopped the run: the unit stopped being due to run, was set
-    /// again or removed, or was restarted on an iOS resume. Not restarted.
-    StoppedByRunner,
+    /// The runner stopped the run because the unit's policy stopped being
+    /// active: the app set another policy, an `Until` ran out, or the app's
+    /// grace period ended. Starts again only once the policy is active again.
+    PolicyInactive,
+    /// The app set the unit again, so the runner stopped the run of the old
+    /// definition. The new definition starts once this run has ended, if it
+    /// should run.
+    Replaced,
+    /// The app removed the unit, so the runner stopped its run.
+    Removed,
+    /// The runner stopped the run to start it again at once: every running
+    /// unit restarts on an iOS resume. The unit starts again once this run has
+    /// ended, with no restart delay, if it should still run.
+    StoppedForRestart,
     /// The run ended without being asked to: its unit returned (`Ok` or an
     /// error), its factory failed, or it panicked. Restarted after
     /// [`RESTART_DELAY`](crate::RESTART_DELAY) while the unit should still run.
     EndedOnItsOwn,
-    /// The platform ended the lease, for `platform_reason`. Not restarted until
-    /// the lease comes back.
-    LeaseEnded {
-        /// The platform's reason for ending the lease.
+    /// The platform ended the keep-alive task, for `platform_reason`. Not
+    /// restarted until the app opens again, the app sets a policy, or the
+    /// keep-alive starts again.
+    KeepAliveRevoked {
+        /// The platform's reason for ending the keep-alive task.
         platform_reason: PlatformStopReason,
     },
 }
 
-/// Why the platform ended the lease, as `tauri-plugin-background-service`
-/// names it. The runner's own releases never appear here.
+/// Why the platform ended the keep-alive task, as
+/// `tauri-plugin-background-service` names it. The runner's own stops of the
+/// task never appear here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlatformStopReason {
     /// A stop through the plugin's own `stop`, the desktop app quitting
@@ -97,13 +112,13 @@ pub enum PlatformStopReason {
     OsRestart,
     /// The service came back after the device booted.
     BootRecovery,
-    /// The lease task ended with no stop pending.
+    /// The keep-alive task ended with no stop pending.
     TaskCompleted,
-    /// The plugin reported the lease task as failed.
+    /// The plugin reported the keep-alive task as failed.
     Error,
     /// The app's process is going away (the iOS app backgrounded or killed).
     ProcessExit,
     /// The plugin gave no reason this runner knows, or none arrived within
-    /// [`LEASE_END_REASON_WAIT`](crate::LEASE_END_REASON_WAIT).
+    /// [`KEEP_ALIVE_END_REASON_WAIT`](crate::KEEP_ALIVE_END_REASON_WAIT).
     Unknown,
 }

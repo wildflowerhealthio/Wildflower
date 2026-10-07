@@ -12,19 +12,19 @@ The design and its vocabulary are in the
 
 ## Main exports
 
-| Export                                      | What it is                                                                                     |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `UnitRunner<D>`                             | The runner. `set`, `set_policy`, `remove`, `statuses`, `subscribe`, and the two plugins below. |
-| `UnitRunner::background_service_plugin`     | `tauri-plugin-background-service` with the runner's lease as its one service.                  |
-| `UnitRunner::lifecycle_plugin`              | Follows the app's windows and resumes, and takes and releases the lease.                       |
-| `Unit`                                      | Work the runner can run, with its own `Detail` type.                                           |
-| `RunContext<D>`                             | What a run is handed: `shutdown()`, `running()`, `set_detail()`.                               |
-| `RunPolicy`                                 | `Off`, `WhileInUse`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`.         |
-| `UnitId`                                    | The app's key for a unit.                                                                      |
-| `UnitStatus<D>`, `RunState`, `RunStop`      | What the runner reports for a unit.                                                            |
-| `StopReason`, `PlatformStopReason`          | Why a run stopped, and why the platform ended the lease.                                       |
-| `StartConfig`                               | The plugin's start config (Android notification label and service type), re-exported.          |
-| `RESTART_DELAY`, `WHILE_IN_USE_GRACE`, etc. | The fixed timings.                                                                             |
+| Export                                    | What it is                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `UnitRunner<D>`                           | The runner. `set_unit`, `set_unit_policy`, `remove_unit`, `statuses`, `subscribe`, and the two plugins below. |
+| `UnitRunner::background_service_plugin`   | `tauri-plugin-background-service` with the runner's keep-alive as its one service.                            |
+| `UnitRunner::lifecycle_plugin`            | Follows the app's windows and resumes, and starts and stops the keep-alive.                                   |
+| `Unit`                                    | Work the runner can run, with its own `Detail` type.                                                          |
+| `RunContext<D>`                           | What a run is handed: `shutdown()`, `announce_running()`, `set_detail()`.                                     |
+| `RunPolicy`                               | `Off`, `WhileOpen`, `Until { at }` or `Always`; serde as `{"kind":"until","at":"…"}`.                         |
+| `UnitId`                                  | The app's key for a unit.                                                                                     |
+| `UnitStatus<D>`, `RunState`, `RunStop`    | What the runner reports for a unit.                                                                           |
+| `StopReason`, `PlatformStopReason`        | Why a run stopped, and why the platform revoked the keep-alive.                                               |
+| `StartConfig`                             | The plugin's start config (Android notification label and service type), re-exported.                         |
+| `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                                            |
 
 ## Use
 
@@ -37,7 +37,7 @@ impl Unit for Sync {
     type Detail = String;
 
     async fn run(self, ctx: RunContext<String>) -> anyhow::Result<()> {
-        ctx.running();
+        ctx.announce_running();
         ctx.set_detail("connected".to_owned());
         ctx.shutdown().cancelled().await;
         Ok(())
@@ -53,7 +53,7 @@ tauri::Builder::default()
     .plugin(runner.background_service_plugin())
     .plugin(runner.lifecycle_plugin())
     .setup(move |_app| {
-        runner.set(UnitId::from("sync"), RunPolicy::WhileInUse, || Ok(Sync));
+        runner.set_unit(UnitId::from("sync"), RunPolicy::WhileOpen, || Ok(Sync));
         Ok(())
     });
 ```

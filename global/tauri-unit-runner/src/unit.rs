@@ -57,9 +57,9 @@ pub trait Unit: Send + 'static {
 
     /// Run until `ctx.shutdown()` is cancelled, or fail.
     ///
-    /// Call [`RunContext::running`] once the unit is up. Returning `Ok` without
-    /// being asked to stop counts as ending on its own, like an error, and is
-    /// restarted while the unit should still run.
+    /// Call [`RunContext::announce_running`] once the unit is up. Returning
+    /// `Ok` without being asked to stop counts as ending on its own, like an
+    /// error, and is restarted while the unit should still run.
     ///
     /// # Errors
     ///

@@ -31,6 +31,8 @@ impl RunGate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
+    use std::task::Poll;
     use std::time::Duration;
 
     #[tokio::test]
@@ -38,22 +40,17 @@ mod tests {
         let gate = RunGate::default();
         let first_run = gate.wait_for_previous_run().await;
 
-        let second_gate = gate.clone();
-        let mut second_run = tokio::spawn(async move {
-            let _second_run = second_gate.wait_for_previous_run().await;
-        });
+        let mut second_run = Box::pin(gate.wait_for_previous_run());
+        let first_poll = std::future::poll_fn(|cx| Poll::Ready(second_run.as_mut().poll(cx))).await;
         assert!(
-            tokio::time::timeout(Duration::from_millis(50), &mut second_run)
-                .await
-                .is_err(),
+            first_poll.is_pending(),
             "the second run must wait while the first holds the gate"
         );
 
         drop(first_run);
         tokio::time::timeout(Duration::from_secs(5), second_run)
             .await
-            .expect("the second run is admitted once the first releases the gate")
-            .expect("the second run's task doesn't panic");
+            .expect("the second run is admitted once the first releases the gate");
     }
 
     #[tokio::test]

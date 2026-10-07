@@ -1,5 +1,5 @@
-//! [`PluginLease`]: the runner's lease seam, through the background-service
-//! plugin's `ServiceManagerHandle`.
+//! [`PluginKeepAlive`]: the runner's keep-alive seam, through the
+//! background-service plugin's `ServiceManagerHandle`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -7,19 +7,19 @@ use anyhow::{anyhow, Context};
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_background_service::{ServiceError, ServiceManagerHandle, StartConfig};
 
-use super::lease_end_pairing::RUNNER_RELEASE_STOP_REASON;
+use super::keep_alive_end_pairing::RUNNER_RELEASE_STOP_REASON;
 use super::notification_permission::ask_for_notification_permission;
-use crate::runner::lease_driver::{LeaseOperation, LeasePlatform};
+use crate::runner::keep_alive_sync::{KeepAliveOperation, KeepAlivePlatform};
 
-/// Starts and stops the plugin's one service, which holds the lease while it
-/// runs.
-pub(crate) struct PluginLease<R: Runtime> {
+/// Starts and stops the plugin's one service, which is the keep-alive task
+/// while it runs.
+pub(crate) struct PluginKeepAlive<R: Runtime> {
     app: AppHandle<R>,
     start_config: StartConfig,
     notification_permission_asked: AtomicBool,
 }
 
-impl<R: Runtime> PluginLease<R> {
+impl<R: Runtime> PluginKeepAlive<R> {
     pub(crate) fn new(app: AppHandle<R>, start_config: StartConfig) -> Self {
         Self {
             app,
@@ -35,10 +35,10 @@ impl<R: Runtime> PluginLease<R> {
     }
 }
 
-impl<R: Runtime> LeasePlatform for PluginLease<R> {
+impl<R: Runtime> KeepAlivePlatform for PluginKeepAlive<R> {
     /// Start the service with the start config, after asking for notification
     /// permission the first time. A service already running counts as started.
-    fn take(&self) -> LeaseOperation<'_> {
+    fn start(&self) -> KeepAliveOperation<'_> {
         Box::pin(async move {
             if !self
                 .notification_permission_asked
@@ -59,7 +59,7 @@ impl<R: Runtime> LeasePlatform for PluginLease<R> {
 
     /// Stop the service with [`RUNNER_RELEASE_STOP_REASON`]. A service already
     /// stopped counts as stopped.
-    fn release(&self) -> LeaseOperation<'_> {
+    fn stop(&self) -> KeepAliveOperation<'_> {
         Box::pin(async move {
             match self
                 .service_manager()?

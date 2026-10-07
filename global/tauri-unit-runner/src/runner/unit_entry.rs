@@ -10,20 +10,21 @@ use tokio_util::sync::CancellationToken;
 use super::erased_unit::UnitFactory;
 use super::run_gate::RunGate;
 use crate::domain::run_policy::RunPolicy;
-use crate::domain::unit_plan::UnitActivity;
+use crate::domain::unit_plan::UnitPhase;
 use crate::status::StopReason;
 
 /// The runner's record of one unit.
 pub(crate) struct UnitEntry<D> {
     pub(crate) policy: RunPolicy,
     pub(crate) factory: UnitFactory<D>,
-    /// Shared by every run of the unit, the next one included after a `set`
-    /// or a `remove` that the app undoes with a `set`.
+    /// Shared by every run of the unit, the next one included after a
+    /// `set_unit`, or a `remove_unit` that the app undoes with a `set_unit`.
     pub(crate) gate: RunGate,
     /// The latest run, until it has ended.
     pub(crate) run: Option<ActiveRun>,
     pub(crate) pending_restart: Option<PendingRestart>,
-    /// `remove` is waiting for the unit's run to end before forgetting it.
+    /// `remove_unit` is waiting for the unit's run to end before forgetting
+    /// it.
     pub(crate) removing: bool,
 }
 
@@ -40,24 +41,25 @@ impl<D> UnitEntry<D> {
     }
 
     /// Whether the unit should run at the wall-clock instant `now`, given
-    /// whether the app is in use or within its grace period and whether the
-    /// lease lets units run. A unit being removed never should.
+    /// whether the app is open or within its grace period and whether the
+    /// platform revoked the keep-alive. A unit being removed never should, and
+    /// no unit should while the keep-alive is revoked.
     pub(crate) fn should_run(
         &self,
         now: DateTime<Utc>,
-        app_in_use_or_in_grace: bool,
-        lease_allows_runs: bool,
+        app_open_or_in_grace: bool,
+        keep_alive_revoked: bool,
     ) -> bool {
-        !self.removing && lease_allows_runs && self.policy.is_active(now, app_in_use_or_in_grace)
+        !self.removing && !keep_alive_revoked && self.policy.is_active(now, app_open_or_in_grace)
     }
 
     /// Where the unit is, as a reconcile sees it.
-    pub(crate) fn activity(&self) -> UnitActivity {
+    pub(crate) fn phase(&self) -> UnitPhase {
         match (&self.run, &self.pending_restart) {
-            (Some(run), _) if run.stop_requested() => UnitActivity::Stopping,
-            (Some(_), _) => UnitActivity::Running,
-            (None, Some(_)) => UnitActivity::RestartPending,
-            (None, None) => UnitActivity::Idle,
+            (Some(run), _) if run.stop_requested() => UnitPhase::Stopping,
+            (Some(_), _) => UnitPhase::Running,
+            (None, Some(_)) => UnitPhase::RestartPending,
+            (None, None) => UnitPhase::Idle,
         }
     }
 
@@ -72,13 +74,14 @@ impl<D> UnitEntry<D> {
 /// A run that has begun and not yet ended.
 pub(crate) struct ActiveRun {
     /// Tells this run's end from a later run's.
-    pub(crate) number: u64,
+    pub(crate) generation: u64,
     pub(crate) shutdown: CancellationToken,
     /// Why the run stopped: set once, by whoever is first, the runner asking
     /// it to stop or the run ending on its own.
     pub(crate) stop_reason: Arc<OnceLock<StopReason>>,
-    /// `true` once the run has ended and the runner has recorded it.
-    pub(crate) ended_rx: watch::Receiver<bool>,
+    /// `true` once the run's thread and runtime are gone and the runner has
+    /// recorded its end.
+    pub(crate) finished_rx: watch::Receiver<bool>,
 }
 
 impl ActiveRun {
@@ -98,5 +101,5 @@ impl ActiveRun {
 /// A restart waiting out the restart delay.
 pub(crate) struct PendingRestart {
     /// Tells this restart's timer from a cancelled one's.
-    pub(crate) number: u64,
+    pub(crate) generation: u64,
 }

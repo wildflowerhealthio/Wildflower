@@ -49,8 +49,8 @@ impl<D: Clone + Send + Sync + 'static> RunContext<D> {
         &self.unit_id
     }
 
-    /// Cancelled when the runner, or the platform through the lease, stops this
-    /// run. The unit should wind down and return once it is.
+    /// Cancelled when the runner stops this run, or the platform revokes the
+    /// keep-alive. The unit should wind down and return once it is.
     #[must_use]
     pub fn shutdown(&self) -> &CancellationToken {
         &self.shutdown
@@ -58,7 +58,7 @@ impl<D: Clone + Send + Sync + 'static> RunContext<D> {
 
     /// Report that the unit is up: the run state goes from `Starting` to
     /// `Running`. Later calls do nothing.
-    pub fn running(&self) {
+    pub fn announce_running(&self) {
         self.board.publish_running(&self.unit_id, &self.run);
     }
 

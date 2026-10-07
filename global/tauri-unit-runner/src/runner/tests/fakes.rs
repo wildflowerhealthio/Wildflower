@@ -1,5 +1,5 @@
 //! The doubles the runner tests share: a hand-set wall clock, scripted units
-//! that record their runs, a fake lease platform, and status waits.
+//! that record their runs, a fake keep-alive platform, and status waits.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -8,22 +8,25 @@ use std::time::Duration;
 use chrono::{DateTime, TimeDelta, Utc};
 use tokio::sync::{Barrier, Semaphore};
 
-use crate::domain::lease_book::LeaseId;
+use crate::domain::keep_alive_ledger::KeepAliveId;
 use crate::domain::run_policy::RunPolicy;
+use crate::domain::unit_plan::UnitPhase;
 use crate::run_context::RunContext;
 use crate::runner::erase_factory;
-use crate::runner::lease_driver::{LeaseOperation, LeasePlatform};
+use crate::runner::keep_alive_sync::{KeepAliveDemand, KeepAliveOperation, KeepAlivePlatform};
 use crate::runner::wall_clock::WallClock;
 use crate::runner::{RunnerCore, RunnerTimings};
 use crate::status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus};
 use crate::unit::{Unit, UnitId};
 
-/// How long a test waits for something that should happen promptly before it
-/// fails rather than hangs.
-pub(super) const PROMPTLY: Duration = Duration::from_secs(30);
+/// The ceiling on a test's wait for something that should happen, so a broken
+/// runner fails the test rather than hangs it.
+pub(super) const HANG_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long a test watches for something that must not happen.
-pub(super) const A_WHILE: Duration = Duration::from_millis(300);
+/// How long a test watches for something that must not happen, where nothing
+/// marks the moment it would have happened. Most checks for what must not
+/// happen read the runner's state instead (see [`Harness::phase`]).
+pub(super) const QUIET_PERIOD: Duration = Duration::from_millis(300);
 
 /// The detail the scripted units report.
 pub(super) type Detail = String;
@@ -77,9 +80,9 @@ impl Harness {
     }
 
     /// Set `unit_id` to run `script` under `policy`, recording on `probe`.
-    pub(super) fn set(&self, unit_id: &str, policy: RunPolicy, script: Script, probe: &Probe) {
+    pub(super) fn set_unit(&self, unit_id: &str, policy: RunPolicy, script: Script, probe: &Probe) {
         let probe = probe.clone();
-        self.core.set(
+        self.core.set_unit(
             UnitId::from(unit_id),
             policy,
             erase_factory(move || {
@@ -91,12 +94,28 @@ impl Harness {
         );
     }
 
+    pub(super) fn set_unit_policy(&self, unit_id: &str, policy: RunPolicy) {
+        self.core.set_unit_policy(&UnitId::from(unit_id), policy);
+    }
+
     pub(super) fn status(&self, unit_id: &str) -> Option<UnitStatus<Detail>> {
         self.core.statuses().get(&UnitId::from(unit_id)).cloned()
     }
 
+    /// Where `unit_id` is, as a reconcile sees it, right now. Every runner
+    /// call that changes it has done so by the time it returns, so a test can
+    /// read it to check that something didn't happen.
+    pub(super) fn phase(&self, unit_id: &str) -> Option<UnitPhase> {
+        self.core.unit_phase(&UnitId::from(unit_id))
+    }
+
+    /// The runner's keep-alive demand right now.
+    pub(super) fn keep_alive_demand(&self) -> KeepAliveDemand {
+        *self.core.subscribe_keep_alive_demand().borrow()
+    }
+
     /// Wait until `unit_id`'s status satisfies `predicate`, failing the test
-    /// after [`PROMPTLY`].
+    /// after [`HANG_TIMEOUT`].
     pub(super) async fn wait_for(
         &self,
         unit_id: &str,
@@ -106,7 +125,7 @@ impl Harness {
         let unit_id = UnitId::from(unit_id);
         let mut statuses_rx = self.core.subscribe();
         let waited = tokio::time::timeout(
-            PROMPTLY,
+            HANG_TIMEOUT,
             statuses_rx.wait_for(|statuses| statuses.get(&unit_id).is_some_and(&predicate)),
         )
         .await;
@@ -262,7 +281,7 @@ impl Unit for ScriptedUnit {
 async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<()> {
     match script {
         Script::RunUntilStopped { detail } => {
-            ctx.running();
+            ctx.announce_running();
             if let Some(detail) = detail {
                 ctx.set_detail(detail);
             }
@@ -270,44 +289,44 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
             Ok(())
         }
         Script::WindDownSlowly { shutdown_takes } => {
-            ctx.running();
+            ctx.announce_running();
             ctx.shutdown().cancelled().await;
             tokio::time::sleep(shutdown_takes).await;
             Ok(())
         }
         Script::WindDownWhenReleased { release } => {
-            ctx.running();
+            ctx.announce_running();
             ctx.shutdown().cancelled().await;
             let _permit = release.acquire().await?;
             Ok(())
         }
         Script::MeetOthers { barrier } => {
             barrier.wait().await;
-            ctx.running();
+            ctx.announce_running();
             ctx.shutdown().cancelled().await;
             Ok(())
         }
         Script::Fail { detail, error } => {
-            ctx.running();
+            ctx.announce_running();
             if let Some(detail) = detail {
                 ctx.set_detail(detail);
             }
             Err(anyhow::anyhow!(error).context("the scripted unit failed"))
         }
         Script::Return => {
-            ctx.running();
+            ctx.announce_running();
             Ok(())
         }
         Script::Panic { message } => panic!("{message}"),
         Script::LeakContext { leaked } => {
-            ctx.running();
+            ctx.announce_running();
             let leaked_ctx = ctx.clone();
             std::thread::spawn(move || {
                 while !leaked.write_now.load(Ordering::SeqCst) {
                     std::thread::sleep(Duration::from_millis(5));
                 }
                 leaked_ctx.set_detail("written after the run".to_owned());
-                leaked_ctx.running();
+                leaked_ctx.announce_running();
                 leaked.written.store(true, Ordering::SeqCst);
             });
             ctx.shutdown().cancelled().await;
@@ -316,79 +335,81 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
     }
 }
 
-/// A lease platform that starts and stops a pretend lease task at once, as the
-/// plugin would, and records the calls.
-pub(super) struct FakeLease {
+/// A keep-alive platform that starts and stops a pretend keep-alive task at
+/// once, as the plugin would, and records the calls.
+pub(super) struct FakeKeepAlive {
     core: Arc<RunnerCore<Detail>>,
-    task: Mutex<Option<LeaseId>>,
-    takes: AtomicUsize,
-    releases: AtomicUsize,
+    task: Mutex<Option<KeepAliveId>>,
+    starts: AtomicUsize,
+    stops: AtomicUsize,
 }
 
-impl FakeLease {
+impl FakeKeepAlive {
     pub(super) fn new(core: &Arc<RunnerCore<Detail>>) -> Arc<Self> {
         Arc::new(Self {
             core: Arc::clone(core),
             task: Mutex::new(None),
-            takes: AtomicUsize::new(0),
-            releases: AtomicUsize::new(0),
+            starts: AtomicUsize::new(0),
+            stops: AtomicUsize::new(0),
         })
     }
 
-    pub(super) fn takes(&self) -> usize {
-        self.takes.load(Ordering::SeqCst)
+    /// How many times the runner started the task.
+    pub(super) fn starts(&self) -> usize {
+        self.starts.load(Ordering::SeqCst)
     }
 
-    pub(super) fn releases(&self) -> usize {
-        self.releases.load(Ordering::SeqCst)
+    /// How many times the runner stopped the task.
+    pub(super) fn stops(&self) -> usize {
+        self.stops.load(Ordering::SeqCst)
     }
 
     pub(super) fn task_running(&self) -> bool {
         self.task.lock().expect("task lock").is_some()
     }
 
-    /// The platform starts the lease task itself (an iOS background task, the
-    /// plugin's recovery).
+    /// The platform starts the keep-alive task itself (an iOS background
+    /// task, the plugin's recovery).
     pub(super) fn platform_starts(&self) {
         let mut task = self.task.lock().expect("task lock");
         if task.is_none() {
-            *task = Some(self.core.lease_gained());
+            *task = Some(self.core.keep_alive_started());
         }
     }
 
-    /// The platform ends the lease task, for `reason`.
-    pub(super) fn platform_ends(&self, reason: PlatformStopReason) {
+    /// The platform ends the keep-alive task, for `reason`.
+    pub(super) fn platform_revokes(&self, reason: PlatformStopReason) {
         let ended = self.task.lock().expect("task lock").take();
-        if let Some(lease) = ended {
-            self.core.lease_ended(lease, Some(reason));
+        if let Some(id) = ended {
+            self.core.keep_alive_ended(id, Some(reason));
         }
     }
 }
 
-impl LeasePlatform for FakeLease {
-    fn take(&self) -> LeaseOperation<'_> {
+impl KeepAlivePlatform for FakeKeepAlive {
+    fn start(&self) -> KeepAliveOperation<'_> {
         Box::pin(async move {
-            self.takes.fetch_add(1, Ordering::SeqCst);
+            self.starts.fetch_add(1, Ordering::SeqCst);
             self.platform_starts();
             Ok(())
         })
     }
 
-    fn release(&self) -> LeaseOperation<'_> {
+    fn stop(&self) -> KeepAliveOperation<'_> {
         Box::pin(async move {
-            self.releases.fetch_add(1, Ordering::SeqCst);
+            self.stops.fetch_add(1, Ordering::SeqCst);
             let ended = self.task.lock().expect("task lock").take();
-            if let Some(lease) = ended {
-                self.core.lease_ended(lease, None);
+            if let Some(id) = ended {
+                self.core.keep_alive_ended(id, None);
             }
             Ok(())
         })
     }
 }
 
-/// Wait until `condition` holds, failing the test after [`PROMPTLY`].
+/// Wait until `condition` holds, failing the test after [`HANG_TIMEOUT`].
 pub(super) async fn eventually(what: &str, condition: impl Fn() -> bool) {
-    let waited = tokio::time::timeout(PROMPTLY, async {
+    let waited = tokio::time::timeout(HANG_TIMEOUT, async {
         while !condition() {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }

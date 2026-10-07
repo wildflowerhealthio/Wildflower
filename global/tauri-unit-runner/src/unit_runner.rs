@@ -13,8 +13,8 @@ use crate::status::UnitStatuses;
 use crate::tauri_bindings::TauriBindings;
 use crate::unit::{Unit, UnitId};
 
-/// Holds the app's units, reconciles their runs with their policies, and holds
-/// the lease.
+/// Holds the app's units, reconciles their runs with their policies, and keeps
+/// the app alive while any of them should run.
 ///
 /// Build it before the Tauri builder, and register both of its plugins:
 ///
@@ -29,7 +29,7 @@ use crate::unit::{Unit, UnitId};
 ///     .plugin(runner.lifecycle_plugin())
 ///     .setup(move |app| {
 ///         for (id, policy) in read_my_registry(app)? {
-///             runner.set(id, policy, move || Ok(MyUnit::new(/* … */)));
+///             runner.set_unit(id, policy, move || Ok(MyUnit::new(/* … */)));
 ///         }
 ///         Ok(())
 ///     })
@@ -52,8 +52,8 @@ impl<D> Clone for UnitRunner<D> {
 }
 
 impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
-    /// A runner with no units, whose lease starts the background service with
-    /// `start_config`: on Android, its label is the text of the persistent
+    /// A runner with no units, whose keep-alive starts the background service
+    /// with `start_config`: on Android, its label is the text of the persistent
     /// foreground-service notification that covers every unit, and its type
     /// must be one the plugin config's `androidForegroundServiceTypes` allows.
     ///
@@ -78,28 +78,28 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// run of the old definition. The unit starts at once if it should run.
     ///
     /// A factory that fails is a failed run.
-    pub fn set<U: Unit<Detail = D>>(
+    pub fn set_unit<U: Unit<Detail = D>>(
         &self,
         unit_id: UnitId,
         policy: RunPolicy,
         factory: impl Fn() -> anyhow::Result<U> + Send + Sync + 'static,
     ) {
-        self.core.set(unit_id, policy, erase_factory(factory));
+        self.core.set_unit(unit_id, policy, erase_factory(factory));
     }
 
     /// Replace the policy of the unit `unit_id`. Even with the policy it already
     /// has, this cancels a pending restart and starts the unit at once if it
-    /// should run, after the platform ended the lease too. A unit never set is
-    /// logged and ignored.
-    pub fn set_policy(&self, unit_id: &UnitId, policy: RunPolicy) {
-        self.core.set_policy(unit_id, policy);
+    /// should run, after the platform revoked the keep-alive too. A unit never
+    /// set is logged and ignored.
+    pub fn set_unit_policy(&self, unit_id: &UnitId, policy: RunPolicy) {
+        self.core.set_unit_policy(unit_id, policy);
     }
 
     /// Stop the unit `unit_id`, wait for its run to end, and forget it, status
     /// included. Run shutdown is bounded, so this always finishes. A unit never
     /// set is logged and ignored.
-    pub async fn remove(&self, unit_id: &UnitId) {
-        self.core.remove(unit_id).await;
+    pub async fn remove_unit(&self, unit_id: &UnitId) {
+        self.core.remove_unit(unit_id).await;
     }
 
     /// Every unit's current status.
