@@ -94,8 +94,12 @@ function BaseRouter({
         // until a yes starts Sentry.
         queryClient: new QueryClient({
           // A host command is a local call: one that failed fails the same way
-          // again, so it shows its error at once.
-          defaultOptions: { queries: { retry: false } },
+          // again, so it shows its error at once; and it needs no network, so
+          // it runs while the device is offline.
+          defaultOptions: {
+            queries: { retry: false, networkMode: 'always' },
+            mutations: { networkMode: 'always' },
+          },
           queryCache: new QueryCache({
             onError: (queryError) => {
               Sentry.captureException(queryError, { tags: { source: 'query' } })

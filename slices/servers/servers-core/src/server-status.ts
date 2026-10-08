@@ -1,4 +1,4 @@
-import { type DateTime, Option, Schema } from 'effect'
+import { Option, Schema } from 'effect'
 
 /** Why a server's run stopped: `UnitRunner`'s stop reason. */
 const StopReasonSchema = Schema.Literal(
@@ -118,10 +118,6 @@ const healthOf = (status: Type): Option.Option<Health> =>
 const lastStopOf = (status: Type): Option.Option<RunStop> =>
   status.runState === 'stopped' ? status.lastStop : Option.none()
 
-/** When the current run came up, while it is running. */
-const runningSinceOf = (status: Type): Option.Option<DateTime.Utc> =>
-  status.runState === 'running' ? Option.some(status.runningSince) : Option.none()
-
 export {
   decodeEvent,
   EVENT,
@@ -129,7 +125,6 @@ export {
   healthOf,
   lastStopOf,
   PlatformStopReasonSchema,
-  runningSinceOf,
   RunStopSchema,
   ServerStatusSchema as Schema,
   StopReasonSchema,
