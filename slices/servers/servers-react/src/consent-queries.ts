@@ -107,7 +107,7 @@ const consentQueryOptions = (
 
 /** The Owner's answer to a consent: an approval, or a denial of its key. */
 type ConsentDecision =
-  | { readonly kind: 'approve'; readonly approval: ConsentApproval }
+  | { readonly kind: 'approve'; readonly approval: ConsentApproval.Type }
   | { readonly kind: 'deny'; readonly consent: ConsentKey.Type }
 
 /**
@@ -117,13 +117,13 @@ type ConsentDecision =
 const useDecideConsent = (
   runHostCommand: RunHostCommand,
   domain: string
-): UseMutationResult<ApprovalOutcome, HostCommandError, ConsentDecision> =>
+): UseMutationResult<ApprovalOutcome.Type, HostCommandError, ConsentDecision> =>
   useMutation({
     mutationFn: (decision) =>
       decision.kind === 'approve'
         ? runHostCommand(approveConsent({ domain, approval: decision.approval }))
         : runHostCommand(denyConsent({ domain, consent: decision.consent })).then(
-            (): ApprovalOutcome => ({ status: 'denied' })
+            (): ApprovalOutcome.Type => ({ status: 'denied' })
           ),
   })
 

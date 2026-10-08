@@ -299,7 +299,7 @@ describe('ConsentSheet', () => {
     ])
   })
 
-  it('should say so when an approval granted nothing, and keep the request open', async () => {
+  it('should say so when an approval granted nothing, and move on, as the request was denied', async () => {
     // Arrange
     const user = userEvent.setup()
     const host = twoWaiting({ status: 'denied' })
@@ -311,8 +311,39 @@ describe('ConsentSheet', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Allow' }))
 
     // Assert
-    expect(await within(dialog).findByText(/could be granted/)).toBeDefined()
-    expect(within(dialog).getByText('1 of 2')).toBeDefined()
+    const next = await sheet()
+    expect(await within(next).findByRole('heading', { name: 'Lifting' })).toBeDefined()
+    expect(within(next).getByText(/nothing you allowed could be granted/)).toBeDefined()
+    expect(within(next).getByText('1 of 1')).toBeDefined()
+  })
+
+  it('should keep saying an approval granted nothing when nothing else waits, until closed', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = fakeHost({
+      waiting: [golden.pendingConsents[0]],
+      details: { 'ABCD-EFGH': golden.consentDetails.device },
+      approval: { status: 'denied' },
+    })
+    renderSheet(host)
+    const dialog = await sheet()
+    await within(dialog).findByRole('heading', { name: 'Pebble sync' })
+
+    // Act
+    await user.click(within(dialog).getByRole('button', { name: 'Allow' }))
+
+    // Assert
+    const notice = await sheet()
+    expect(await within(notice).findByText(/nothing you allowed could be granted/)).toBeDefined()
+    expect(within(notice).queryByRole('button', { name: 'Allow' })).toBeNull()
+
+    // Act
+    await user.click(within(notice).getByRole('button', { name: 'Close' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(document.querySelector('dialog[open]')).toBeNull()
+    })
   })
 
   it('should add a consent the host announces, and set one aside when closed unanswered', async () => {

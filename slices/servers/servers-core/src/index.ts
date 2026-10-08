@@ -1,13 +1,12 @@
 export { readAppVersion } from './app-version.ts'
+export * as ApprovalOutcome from './approval-outcome.ts'
 export {
-  ApprovalOutcomeSchema,
   approveConsent,
   denyConsent,
   listPendingConsents,
   readConsent,
-  type ApprovalOutcome,
-  type ConsentApproval,
 } from './consent-commands.ts'
+export * as ConsentApproval from './consent-approval.ts'
 export * as ConsentDetails from './consent-details.ts'
 export * as ConsentKey from './consent-key.ts'
 export {

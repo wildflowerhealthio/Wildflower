@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { type JSX, useState } from 'react'
 import { Dialog, ErrorBanner, PageLoading } from 'react-tundraish'
-import { ConsentKey, type PendingConsent } from 'servers-core'
+import { ApprovalOutcome, ConsentKey, type PendingConsent } from 'servers-core'
 
 import { ConsentForm } from './consent-form.tsx'
 import {
@@ -23,8 +23,14 @@ interface ConsentSheetProps {
 const waitingId = ({ domain, key }: PendingConsent.Waiting): string =>
   `${domain} ${ConsentKey.asString(key)}`
 
-/** What an approval that granted nothing says. */
-const NOTHING_GRANTED = 'Nothing you allowed could be granted, so the request was denied.'
+/** What the sheet says after an approval that granted nothing, which the server records as a denial. */
+const NOTHING_GRANTED = 'The last request was denied: nothing you allowed could be granted.'
+
+/** The sheet's title while `front` is the consent in front, if any. */
+const sheetTitleFor = (front: PendingConsent.Waiting | undefined): string => {
+  if (front === undefined) return 'Nothing was granted'
+  return front.key.kind === 'device' ? 'A device wants to pair' : 'An app wants access'
+}
 
 /** The consent at the front of the queue: loaded, then asked. */
 function WaitingConsent({
@@ -34,11 +40,11 @@ function WaitingConsent({
 }: {
   readonly runHostCommand: RunHostCommand
   readonly waiting: PendingConsent.Waiting
-  readonly onDecided: () => void
+  /** The consent is no longer waiting; `grantedNothing` when an approval came to a denial. */
+  readonly onDecided: (grantedNothing: boolean) => void
 }): JSX.Element {
   const consent = useQuery(consentQueryOptions(runHostCommand, waiting))
   const decide = useDecideConsent(runHostCommand, waiting.domain)
-  const [nothingGranted, setNothingGranted] = useState(false)
   if (consent.isPending) return <PageLoading message="Loading the request…" />
   if (consent.isError) return <ErrorBanner error={consent.error} />
   return (
@@ -46,16 +52,11 @@ function WaitingConsent({
       domain={waiting.domain}
       details={consent.data}
       deciding={decide.isPending}
-      decisionError={decide.error ?? (nothingGranted ? NOTHING_GRANTED : null)}
+      decisionError={decide.error}
       onDecide={(decision) => {
-        setNothingGranted(false)
         decide.mutate(decision, {
           onSuccess: (outcome) => {
-            if (decision.kind === 'approve' && outcome.status === 'denied') {
-              setNothingGranted(true)
-              return
-            }
-            onDecided()
+            onDecided(decision.kind === 'approve' && !ApprovalOutcome.isApproved(outcome))
           },
         })
       }}
@@ -73,12 +74,15 @@ function WaitingConsent({
  * Closing the sheet without answering leaves the consent waiting and moves
  * on to the next; it comes back when the base opens again. An answered
  * consent leaves the sheet at once, before the host's `pending-consent` event
- * confirms it.
+ * confirms it. An approval that granted nothing is a denial too, and the
+ * sheet says so over the next consent, or on its own when nothing else
+ * waits, until the Owner answers or closes it.
  */
 function ConsentSheet({ runHostCommand, listenToHostEvent }: ConsentSheetProps): JSX.Element {
   usePendingConsentEvents(listenToHostEvent)
   const pendingConsents = useQuery(pendingConsentsQueryOptions(runHostCommand))
   const [setAside, setSetAside] = useState<ReadonlySet<string>>(() => new Set())
+  const [grantedNothing, setGrantedNothing] = useState(false)
   const queue = (pendingConsents.data ?? []).filter((waiting) => !setAside.has(waitingId(waiting)))
   const front = queue[0]
   const putAside = (waiting: PendingConsent.Waiting): void => {
@@ -90,27 +94,32 @@ function ConsentSheet({ runHostCommand, listenToHostEvent }: ConsentSheetProps):
     // when its `open` changes.
     <Dialog
       key={front === undefined ? 'nothing-waiting' : waitingId(front)}
-      open={front !== undefined}
-      title={front?.key.kind === 'device' ? 'A device wants to pair' : 'An app wants access'}
+      open={front !== undefined || grantedNothing}
+      title={sheetTitleFor(front)}
       onClose={() => {
+        setGrantedNothing(false)
         if (front !== undefined) putAside(front)
       }}
     >
-      {front === undefined ? null : (
-        <div className={styles['consent-sheet']}>
-          <p className={styles['consent-sheet__position']} aria-live="polite">
-            {`1 of ${queue.length}`}
-          </p>
-          <WaitingConsent
-            key={waitingId(front)}
-            runHostCommand={runHostCommand}
-            waiting={front}
-            onDecided={() => {
-              putAside(front)
-            }}
-          />
-        </div>
-      )}
+      <div className={styles['consent-sheet']}>
+        <ErrorBanner error={grantedNothing ? NOTHING_GRANTED : null} />
+        {front === undefined ? null : (
+          <>
+            <p className={styles['consent-sheet__position']} aria-live="polite">
+              {`1 of ${queue.length}`}
+            </p>
+            <WaitingConsent
+              key={waitingId(front)}
+              runHostCommand={runHostCommand}
+              waiting={front}
+              onDecided={(decisionGrantedNothing) => {
+                setGrantedNothing(decisionGrantedNothing)
+                putAside(front)
+              }}
+            />
+          </>
+        )}
+      </div>
     </Dialog>
   )
 }

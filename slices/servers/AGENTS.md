@@ -58,8 +58,9 @@ changing how servers run or what the host notifies about them.
   `approveConsent`, `denyConsent`); and the wire's namespaces, `ListedServer`,
   `ServerStatus` (with the `server-status` event's name and decoder),
   `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
-  `pending-consent` event's), `ConsentKey` and `ConsentDetails`, each a
-  `Schema` and its `Type` with getters. A refused
+  `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
+  `ConsentApproval` and `ApprovalOutcome`, each a `Schema` and its `Type`
+  with getters. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. No DOM, no React, no `@tauri-apps/api`.
 - **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
@@ -86,7 +87,8 @@ changing how servers run or what the host notifies about them.
   of 3"), kept current by the `pending-consent` event: the server's domain, the
   app or device and where it asks from, the access in plain words through
   `scopes-react`'s `ScopePicker`, the patient when the access is for one, and
-  Deny or Allow.
+  Deny or Allow. An approval that granted nothing is a denial, which the sheet
+  says until it is closed or the next consent is answered.
 
 ## Rules
 

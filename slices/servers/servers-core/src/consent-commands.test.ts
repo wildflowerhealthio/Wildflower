@@ -2,12 +2,13 @@ import { Cause, Effect, Either, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
+import * as ApprovalOutcome from './approval-outcome.ts'
+import * as ConsentApproval from './consent-approval.ts'
 import {
   approveConsent,
   denyConsent,
   listPendingConsents,
   readConsent,
-  type ConsentApproval,
 } from './consent-commands.ts'
 import * as ConsentDetails from './consent-details.ts'
 import * as ConsentKey from './consent-key.ts'
@@ -149,15 +150,44 @@ describe('ConsentDetails', () => {
   })
 })
 
+describe('ConsentApproval', () => {
+  it('should take the approvals the host decodes, and refuse an unknown kind', () => {
+    // Act
+    const approvals = golden.consentApprovals.map((approval) =>
+      Schema.decodeUnknownEither(ConsentApproval.Schema)(approval)
+    )
+    const unknownKind = Schema.decodeUnknownEither(ConsentApproval.Schema)({
+      kind: 'password',
+      approvedScopes: [],
+    })
+
+    // Assert
+    expect(approvals.map(Either.isRight)).toEqual([true, true])
+    expect(Either.isLeft(unknownKind)).toBe(true)
+  })
+})
+
+describe('ApprovalOutcome', () => {
+  it('should decode each outcome, only an approval granting anything', () => {
+    // Act
+    const outcomes = golden.approvalOutcomes.map((outcome) =>
+      Schema.decodeUnknownSync(ApprovalOutcome.Schema)(outcome)
+    )
+
+    // Assert
+    expect(outcomes.map(ApprovalOutcome.isApproved)).toEqual([true, false])
+  })
+})
+
 describe('the consent commands', () => {
   it('should send each command the arguments the host decodes', async () => {
     // Arrange
-    const deviceApproval: ConsentApproval = {
+    const deviceApproval: ConsentApproval.Type = {
       kind: 'device',
       userCode: 'ABCD-EFGH',
       approvedScopes: ['system/Observation.rs'],
     }
-    const oauthApproval: ConsentApproval = {
+    const oauthApproval: ConsentApproval.Type = {
       kind: 'oauth',
       id: 'req-1',
       approvedScopes: ['launch/patient'],

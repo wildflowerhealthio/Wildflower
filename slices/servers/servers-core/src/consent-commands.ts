@@ -1,38 +1,12 @@
 import type { Effect } from 'effect'
 import { Schema } from 'effect'
 
+import * as ApprovalOutcome from './approval-outcome.ts'
+import type * as ConsentApproval from './consent-approval.ts'
 import * as ConsentDetails from './consent-details.ts'
 import type * as ConsentKey from './consent-key.ts'
 import { type HostCommandError, invokeHostCommand, type TauriInvoke } from './host-commands.ts'
 import * as PendingConsent from './pending-consent.ts'
-
-/**
- * The Owner's approval of a waiting consent: the scopes left ticked, the
- * patient chosen for an app, and, for an app whose registration is `new` or
- * `changed`, whether the Owner acknowledged it.
- */
-type ConsentApproval =
-  | {
-      readonly kind: 'device'
-      readonly userCode: string
-      readonly approvedScopes: readonly string[]
-    }
-  | {
-      readonly kind: 'oauth'
-      readonly id: string
-      readonly approvedScopes: readonly string[]
-      readonly patient?: string
-      readonly acknowledgedRegistration: boolean
-    }
-
-/**
- * What an approval came to: `denied` when none of the approved scopes could
- * be granted, which the server records as a denial.
- */
-const ApprovalOutcomeSchema = Schema.Struct({ status: Schema.Literal('approved', 'denied') })
-
-/** A decoded {@link ApprovalOutcomeSchema}. */
-type ApprovalOutcome = typeof ApprovalOutcomeSchema.Type
 
 /** The oldest consent waiting on each running server that has one. */
 const listPendingConsents: Effect.Effect<
@@ -71,9 +45,9 @@ const approveConsent = ({
   approval,
 }: {
   readonly domain: string
-  readonly approval: ConsentApproval
-}): Effect.Effect<ApprovalOutcome, HostCommandError, TauriInvoke> =>
-  invokeHostCommand('server_consent_approve', ApprovalOutcomeSchema, { domain, approval })
+  readonly approval: ConsentApproval.Type
+}): Effect.Effect<ApprovalOutcome.Type, HostCommandError, TauriInvoke> =>
+  invokeHostCommand('server_consent_approve', ApprovalOutcome.Schema, { domain, approval })
 
 /** Deny the consent `consent` waiting on the server `domain`. */
 const denyConsent = ({
@@ -85,5 +59,4 @@ const denyConsent = ({
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
   invokeHostCommand('server_consent_deny', Schema.Null, { domain, consent })
 
-export { ApprovalOutcomeSchema, approveConsent, denyConsent, listPendingConsents, readConsent }
-export type { ApprovalOutcome, ConsentApproval }
+export { approveConsent, denyConsent, listPendingConsents, readConsent }

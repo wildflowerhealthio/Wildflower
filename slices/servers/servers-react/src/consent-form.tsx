@@ -15,7 +15,7 @@ interface ConsentFormProps {
   readonly details: ConsentDetails.Type
   /** Whether a decision is on its way to the host; the buttons wait for it. */
   readonly deciding: boolean
-  /** Why the last decision failed, or why it came to nothing; `null` when it didn't. */
+  /** Why the last decision failed; `null` when it didn't. */
   readonly decisionError: unknown
   readonly onDecide: (decision: ConsentDecision) => void
 }

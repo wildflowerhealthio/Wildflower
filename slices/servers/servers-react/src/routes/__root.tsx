@@ -1,4 +1,4 @@
-import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
+import { createRootRouteWithContext, Outlet, useRouteContext } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { pageLayoutStyles } from 'react-tundraish'
 
@@ -10,7 +10,14 @@ import type { RouterContext } from '../router-context.ts'
  * sheet over whichever screen is showing.
  */
 function BaseShell(): JSX.Element {
-  const { runHostCommand, listenToHostEvent } = Route.useRouteContext()
+  const runHostCommand = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.runHostCommand,
+  })
+  const listenToHostEvent = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.listenToHostEvent,
+  })
   return (
     <div className={pageLayoutStyles['page']}>
       <Outlet />
