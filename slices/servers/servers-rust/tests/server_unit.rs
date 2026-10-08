@@ -133,9 +133,9 @@ struct ServerOnARunner {
     loopback_base_url: Url,
     running_server_consents: RunningServerConsents,
     /// The host's pending-consent channel, which every run forwards its head to.
-    host_pending_consents: watch::Receiver<Option<PendingConsentHead>>,
+    host_pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     /// Held so gatekeeper can publish the host owner token.
-    _owner_tokens: watch::Receiver<Option<String>>,
+    _host_owner_token_rx: watch::Receiver<Option<String>>,
     _server_dir: tempfile::TempDir,
 }
 
@@ -143,8 +143,8 @@ fn server_on_a_runner() -> ServerOnARunner {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    let (host_owner_token_tx, owner_tokens) = watch::channel(None);
-    let (active_pending_consent_tx, host_pending_consents) =
+    let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
+    let (active_pending_consent_tx, host_pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
@@ -171,8 +171,8 @@ fn server_on_a_runner() -> ServerOnARunner {
         unit_runner,
         loopback_base_url,
         running_server_consents,
-        host_pending_consents,
-        _owner_tokens: owner_tokens,
+        host_pending_consent_rx,
+        _host_owner_token_rx: host_owner_token_rx,
         _server_dir: server_dir,
     }
 }
@@ -279,7 +279,7 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     })
     .await;
     assert_eq!(
-        *server.host_pending_consents.borrow(),
+        *server.host_pending_consent_rx.borrow(),
         Some(first),
         "the run forwards its head to the host's channel"
     );

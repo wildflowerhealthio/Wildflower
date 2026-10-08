@@ -58,13 +58,13 @@ impl Unit for ServerUnit {
     /// run's own, so each server's head is its own; each head is forwarded to
     /// the host's `active_pending_consent_tx` too, which every run shares.
     async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
-        let (server_health_tx, server_health) = watch::channel(None);
-        let (pending_consent_sender, pending_consent) = watch::channel(None);
-        let host_pending_consent_sender = self.host_ports.active_pending_consent_tx.clone();
+        let (server_health_tx, server_health_rx) = watch::channel(None);
+        let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
+        let host_pending_consent_tx = self.host_ports.active_pending_consent_tx.clone();
         let server = wildflower_server_rust::set_up(
             self.config,
             HostPorts {
-                active_pending_consent_tx: pending_consent_sender,
+                active_pending_consent_tx: pending_consent_tx,
                 ..self.host_ports
             },
             ServerObservers {
@@ -78,9 +78,9 @@ impl Unit for ServerUnit {
             .enter(ctx.unit_id().as_str(), server.host_owner_consents().clone());
         tokio::spawn(report_detail(
             DetailSources {
-                server_health,
-                pending_consent,
-                host_pending_consent_sender,
+                server_health_rx,
+                pending_consent_rx,
+                host_pending_consent_tx,
             },
             ctx.clone(),
         ));
@@ -92,11 +92,11 @@ impl Unit for ServerUnit {
 /// What a run's detail is read from.
 struct DetailSources {
     /// The run's reachability monitor's health.
-    server_health: watch::Receiver<Option<ServerHealth>>,
+    server_health_rx: watch::Receiver<Option<ServerHealth>>,
     /// The head of the run's gatekeeper's pending-consent queue.
-    pending_consent: watch::Receiver<Option<PendingConsentHead>>,
+    pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     /// The host's channel each head is forwarded to.
-    host_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
+    host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
 }
 
 /// Set the run's detail from its health and its queue's head, now and each
@@ -108,9 +108,9 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
     // the run's gatekeeper.
     let mut health_open = true;
     loop {
-        let pending_consent = sources.pending_consent.borrow_and_update().clone();
+        let pending_consent = sources.pending_consent_rx.borrow_and_update().clone();
         sources
-            .host_pending_consent_sender
+            .host_pending_consent_tx
             .send_if_modified(|host_head| {
                 let changed = *host_head != pending_consent;
                 if changed {
@@ -119,14 +119,14 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
                 changed
             });
         ctx.set_detail(ServerDetail {
-            health: sources.server_health.borrow_and_update().clone(),
+            health: sources.server_health_rx.borrow_and_update().clone(),
             pending_consent,
         });
         tokio::select! {
-            changed = sources.server_health.changed(), if health_open => {
+            changed = sources.server_health_rx.changed(), if health_open => {
                 health_open = changed.is_ok();
             }
-            changed = sources.pending_consent.changed() => {
+            changed = sources.pending_consent_rx.changed() => {
                 if changed.is_err() {
                     return;
                 }

@@ -167,8 +167,8 @@ mod tests {
     struct TestGatekeeper {
         consents: HostOwnerConsents,
         store: SqliteGatekeeperStore,
-        _pending_consent: watch::Receiver<Option<PendingConsentHead>>,
-        _owner_tokens: watch::Receiver<Option<String>>,
+        _pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+        _owner_token_rx: watch::Receiver<Option<String>>,
         _database_dir: tempfile::TempDir,
     }
 
@@ -180,8 +180,8 @@ mod tests {
             persistence_rust::Connection::open_in_memory().unwrap(),
         )
         .unwrap();
-        let (owner_token_sender, owner_tokens) = watch::channel(None);
-        let (pending_consent_sender, pending_consent) = watch::channel(None);
+        let (owner_token_tx, owner_token_rx) = watch::channel(None);
+        let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
         let gatekeeper = setup_gatekeeper(
             pool.clone(),
             revocation_store,
@@ -192,16 +192,16 @@ mod tests {
                 first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
                 owner_ui_base: OwnerUiBase::parse("https://owner-ui.test/app/").unwrap(),
             },
-            &owner_token_sender,
-            pending_consent_sender,
+            &owner_token_tx,
+            pending_consent_tx,
             Arc::new(NoLoopbackConsentPrompt),
         )
         .unwrap();
         TestGatekeeper {
             consents: HostOwnerConsents::new(gatekeeper.state),
             store: SqliteGatekeeperStore::new(pool).unwrap(),
-            _pending_consent: pending_consent,
-            _owner_tokens: owner_tokens,
+            _pending_consent_rx: pending_consent_rx,
+            _owner_token_rx: owner_token_rx,
             _database_dir: database_dir,
         }
     }

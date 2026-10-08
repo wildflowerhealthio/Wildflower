@@ -280,7 +280,7 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
 - **One `pending-consent` per change.** A run's gatekeeper publishes its
   queue's head on the run's own channel; the run sets it as
   `ServerDetail::pending_consent` (and forwards it to the host's shared
-  `active_pending_consent_sender`). `PendingConsentTracker` picks the servers
+  `active_pending_consent_tx`). `PendingConsentTracker` picks the servers
   whose head changed from `UnitRunner`'s statuses, and the host emits
   `{domain, head?}` to the `main` webview, `head` left out once nothing waits,
   as when the run ends; on the desktop it brings the window forward when a
