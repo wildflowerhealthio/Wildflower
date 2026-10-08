@@ -193,34 +193,45 @@ fn parse_cache_entry(cache_entry: &[u8]) -> anyhow::Result<IssuedCertificate> {
 }
 
 /// The certificate the cache in `config`'s `certificate_dir` holds for
-/// `domain` from `config`'s CA; `None` when it holds none, or one it
-/// can't read, which a run orders afresh.
+/// `domain` from `config`'s CA; `None` when it holds none.
+///
+/// # Errors
+///
+/// Returns an error if the cache can't be read, or the entry it holds isn't a
+/// certificate (see [`parse_cache_entry`]).
 async fn cached_certificate(
     domain: &str,
     config: &DeviceCertificateConfig,
-) -> Option<IssuedCertificate> {
-    let entry = DirCache::new(&config.certificate_dir)
+) -> anyhow::Result<Option<IssuedCertificate>> {
+    let Some(entry) = DirCache::new(&config.certificate_dir)
         .load_cert(&[domain.to_owned()], config.acme_directory_url.as_str())
         .await
-        .inspect_err(|error| tracing::warn!("certificate: reading the cache failed: {error}"))
-        .ok()??;
+        .context("reading the certificate cache failed")?
+    else {
+        return Ok(None);
+    };
     parse_cache_entry(&entry)
-        .inspect_err(|error| tracing::warn!("certificate: the cached one is unreadable: {error:#}"))
-        .ok()
+        .context("the cached certificate is unreadable")
+        .map(Some)
 }
 
 /// What the cache of the server at `domain` that `config` describes says of
 /// its certificate now (see [`CertificateState::of_cached`]): the state of
-/// any server without a run's state.
+/// any server without a run's state. A cache that can't be read, or holds an
+/// entry that isn't a certificate, is
+/// [`CacheUnreadable`](crate::CertificateStatus::CacheUnreadable), with the
+/// error.
 pub async fn cached_certificate_state(
     domain: &str,
     config: &DeviceCertificateConfig,
 ) -> CertificateState {
-    CertificateState::of_cached(
-        cached_certificate(domain, config).await,
-        config.certificate_authority,
-        Utc::now(),
-    )
+    match cached_certificate(domain, config).await {
+        Ok(cached) => CertificateState::of_cached(cached, config.certificate_authority, Utc::now()),
+        Err(error) => CertificateState::of_unreadable_cache(
+            config.certificate_authority,
+            format!("{error:#}"),
+        ),
+    }
 }
 
 /// The running certificate: the resolver serving whatever it has deployed,
@@ -297,8 +308,15 @@ fn certificate_task(
     let domain = domain.to_owned();
     let config = config.clone();
     let task = async move {
-        let cached = cached_certificate(&domain, &config).await;
-        order_and_renew(acme_state, reporter, cached, cancel).await;
+        let observed = match cached_certificate(&domain, &config).await {
+            Ok(cached) => ObservedCertificate::starting_with(cached),
+            Err(error) => {
+                ObservedCertificate::starting_with(None).after(CertificateEvent::CacheFailed {
+                    message: format!("{error:#}"),
+                })
+            }
+        };
+        order_and_renew(acme_state, reporter, observed, cancel).await;
     };
     (resolver, task)
 }
@@ -329,16 +347,20 @@ impl CertificateReporter {
     }
 
     /// The certificate the cache entry rustls-acme last loaded or stored
-    /// holds.
-    fn last_cached(&self) -> Option<IssuedCertificate> {
+    /// holds; `None` before it has loaded or stored one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if that entry isn't a certificate.
+    fn last_cached(&self) -> anyhow::Result<Option<IssuedCertificate>> {
         let entry = self
             .last_cache_entry
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()?;
-        parse_cache_entry(&entry)
-            .inspect_err(|error| tracing::warn!("certificate: unreadable cache entry: {error:#}"))
-            .ok()
+            .clone();
+        entry
+            .map(|entry| parse_cache_entry(&entry).context("the cache entry is unreadable"))
+            .transpose()
     }
 
     /// Record `issued` in the server's history, unless it records it
@@ -360,17 +382,16 @@ impl CertificateReporter {
 }
 
 /// Poll `acme_state` until `cancel`, logging each event and reporting the
-/// certificate through `reporter`, from `cached`, the certificate the cache
-/// held at start: polling is what makes rustls-acme deploy, order and renew
-/// the certificate. It retries a failed order itself, with backoff; until a
+/// certificate through `reporter`, from what the run `observed` of its cache
+/// at start: polling is what makes rustls-acme deploy, order and renew the
+/// certificate. It retries a failed order itself, with backoff; until a
 /// certificate is deployed, the tunnel listener's handshakes fail.
 async fn order_and_renew(
     mut acme_state: AcmeState<io::Error>,
     reporter: CertificateReporter,
-    cached: Option<IssuedCertificate>,
+    mut observed: ObservedCertificate,
     cancel: CancellationToken,
 ) {
-    let mut observed = ObservedCertificate::starting_with(cached);
     reporter.publish(&observed);
     loop {
         let next_status_change = observed.next_status_change(Utc::now());
@@ -414,11 +435,17 @@ async fn sleep_until(instant: Option<DateTime<Utc>>) {
 /// event deployed with `last_cached`: rustls-acme deploys a cached
 /// certificate as it loads it, and a new one just before it stores it, so a
 /// new one is read once its store is done, whether the store worked or not.
+/// A certificate that can't be read is a cache failure.
 fn certificate_events(
     event: &rustls_acme::Event<io::Error, io::Error>,
-    last_cached: impl FnOnce() -> Option<IssuedCertificate>,
+    last_cached: impl FnOnce() -> anyhow::Result<Option<IssuedCertificate>>,
 ) -> Vec<CertificateEvent> {
-    let deployed = || last_cached().map(CertificateEvent::Deployed);
+    let deployed = || match last_cached() {
+        Ok(cached) => cached.map(CertificateEvent::Deployed),
+        Err(error) => Some(CertificateEvent::CacheFailed {
+            message: format!("{error:#}"),
+        }),
+    };
     match event {
         Ok(EventOk::DeployedCachedCert | EventOk::CertCacheStore) => {
             deployed().into_iter().collect()
@@ -911,6 +938,47 @@ mod tests {
         assert_eq!(state.status, CertificateStatus::NoRenewalNeeded);
     }
 
+    /// A cache entry that isn't a certificate makes the cache's state
+    /// `CacheUnreadable`, with the error, and a run's start `Ordering` with
+    /// the cache's error, never a certificate it doesn't hold.
+    #[tokio::test]
+    async fn an_unreadable_cache_entry_is_reported_not_dropped() {
+        let data_root = data_root();
+        let acme_directory_url = unreachable_acme_directory_url();
+        let config = data_root.config(&data_root.certificate_dir, &acme_directory_url);
+        cache_certificate(
+            &data_root.certificate_dir,
+            DOMAIN,
+            &acme_directory_url,
+            b"no PEM here",
+        )
+        .await;
+
+        let state = cached_certificate_state(DOMAIN, &config).await;
+        assert_eq!(state.status, CertificateStatus::CacheUnreadable);
+        assert!(
+            matches!(
+                &state.last_error,
+                Some(CertificateOrderError::Cache { message })
+                    if message.contains("the cached certificate is unreadable")
+            ),
+            "{state:?}"
+        );
+
+        let (certificate_tx, mut certificate_rx) = watch::channel(None);
+        let cancel = CancellationToken::new();
+        let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let _task = tokio::spawn(task);
+        let state = published(&mut certificate_rx, |_| true).await;
+        cancel.cancel();
+        assert_eq!(state.status, CertificateStatus::Ordering);
+        assert_eq!(state.held, None);
+        assert!(
+            matches!(state.last_error, Some(CertificateOrderError::Cache { .. })),
+            "{state:?}"
+        );
+    }
+
     /// Wait until the published state satisfies `predicate`.
     async fn published(
         certificate_rx: &mut watch::Receiver<Option<CertificateState>>,
@@ -1006,7 +1074,7 @@ mod tests {
     fn a_new_certificate_is_read_once_its_store_is_done() {
         let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
         let issued = parse_cache_entry(&cache_entry).unwrap();
-        let last_cached = || Some(issued.clone());
+        let last_cached = || Ok(Some(issued.clone()));
 
         assert_eq!(
             certificate_events(&Ok(EventOk::DeployedNewCert), last_cached),
@@ -1027,11 +1095,27 @@ mod tests {
         ));
     }
 
+    /// A deployed certificate whose cache entry can't be read is a cache
+    /// failure, not a certificate.
+    #[test]
+    fn an_unreadable_deployed_certificate_is_a_cache_failure() {
+        let events = certificate_events(&Ok(EventOk::DeployedCachedCert), || {
+            Err(anyhow::anyhow!("not a certificate"))
+        });
+        assert!(
+            matches!(
+                &events[..],
+                [CertificateEvent::CacheFailed { message }] if message.contains("not a certificate")
+            ),
+            "{events:?}"
+        );
+    }
+
     /// A fault in the account or certificate cache is a cache failure, not an
     /// order's.
     #[test]
     fn a_cache_fault_is_not_an_order_failure() {
-        let no_certificate = || None;
+        let no_certificate = || Ok(None);
         for fault in [
             EventError::CertCacheLoad(io::Error::other("unreadable")),
             EventError::AccountCacheLoad(io::Error::other("unreadable")),

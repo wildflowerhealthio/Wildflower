@@ -296,11 +296,12 @@ stoppedAt}, runningSince?, health?, certificate?}`. A removed server gets no eve
   reported one, a server's `CertificateState` is the run's, in its
   `ServerDetail` and the `server-status` event: `ordering`,
   `noRenewalNeeded`, `renewalDue` or `orderFailing`, with the last error: an
-  order's, or a `cache` fault, which never makes it `orderFailing`. With none, `servers_list` reads what the certificate cached in the
-  server's `certificates/` folder says
+  order's, or a `cache` fault, which never makes it `orderFailing`. With
+  none, `servers_list` reads what the certificate cached in the server's
+  `certificates/` folder says
   (`wildflower_server_rust::cached_certificate_state`): `notIssued`,
-  `noRenewalNeeded`, `renewalDue` or `expired`, never `ordering` or
-  `orderFailing`. A stopped server's certificate lapses and renews when the
+  `noRenewalNeeded`, `renewalDue` or `expired`, or `cacheUnreadable` with
+  the error, never `ordering` or `orderFailing`. A stopped server's certificate lapses and renews when the
   server starts, so `expired` is not a failure. The certificate state's wire
   shape is `{status, issuer, held?: {notBefore, notAfter, fingerprint},
 lastError?: {kind, …}}`.

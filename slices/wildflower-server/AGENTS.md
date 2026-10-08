@@ -80,8 +80,11 @@ port and on the tunnel. Rust-only, no `-core`.
     less of the lifetime left, rustls-acme's renewal point. Any server
     without a run's state has what its cache says
     (`cached_certificate_state`): `NotIssued`, `NoRenewalNeeded`,
-    `RenewalDue` or `Expired`, never `Ordering` or `OrderFailing`; `Expired`
-    is only ever the cache's, and renews when the server starts.
+    `RenewalDue` or `Expired`, or `CacheUnreadable` with the error when the
+    cache can't be read or holds an entry that isn't a certificate; never
+    `Ordering` or `OrderFailing`. `Expired` is only ever the cache's, and
+    renews when the server starts. In a run, a cache that can't be read is a
+    `cache` error, as above.
   - **The certificate history** (`adapters/certificate_history.rs`) is
     `history.json` in the server's `certificate_dir`, a JSON array of
     `CertificateHistoryEntry` (`{deployedAt, issuer, fingerprint, notBefore,

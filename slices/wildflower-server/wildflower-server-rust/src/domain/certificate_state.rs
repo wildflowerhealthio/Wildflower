@@ -14,6 +14,9 @@
 //!   cache  NotIssued     NoRenewalNeeded  RenewalDue  Expired       —
 //! ```
 //!
+//! A cache that can't be read, or holds an entry that isn't a certificate,
+//! says `CacheUnreadable`, with the error.
+//!
 //! A cache fault is recorded as the last error but never makes a run
 //! `OrderFailing`: rustls-acme keeps ordering, and that order may succeed.
 //!
@@ -72,6 +75,10 @@ pub enum CertificateStatus {
     /// a running server's expired certificate is `Ordering` or
     /// `OrderFailing`.
     Expired,
+    /// The cache couldn't be read, or holds an entry that isn't a
+    /// certificate: the state's [`last_error`](CertificateState::last_error)
+    /// says why. A run orders a new certificate.
+    CacheUnreadable,
     /// The run holds no valid certificate, and its latest error is an order's
     /// failure, the state's [`last_error`](CertificateState::last_error).
     /// rustls-acme retries it, with backoff.
@@ -131,7 +138,8 @@ pub struct CertificateState {
     /// The certificate the server holds from `issuer`, valid or expired.
     pub held: Option<IssuedCertificate>,
     /// The run's latest error since it last deployed a certificate: an
-    /// order's, or the cache's. Always `None` in the cache's state.
+    /// order's, or the cache's. In the cache's state, only a
+    /// `CacheUnreadable` one has one.
     pub last_error: Option<CertificateOrderError>,
 }
 
@@ -158,6 +166,18 @@ impl CertificateState {
             issuer,
             held: cached,
             last_error: None,
+        }
+    }
+
+    /// What a cache of certificates from `issuer` that couldn't be read says:
+    /// `CacheUnreadable`, with the error's `message`.
+    #[must_use]
+    pub fn of_unreadable_cache(issuer: CertificateAuthority, message: String) -> Self {
+        Self {
+            status: CertificateStatus::CacheUnreadable,
+            issuer,
+            held: None,
+            last_error: Some(CertificateOrderError::Cache { message }),
         }
     }
 }
@@ -432,6 +452,19 @@ mod tests {
         let state = CertificateState::of_cached(Some(ninety_day("a")), ISSUER, expired);
         assert_eq!(state.status, CertificateStatus::Expired);
         assert_eq!(state.last_error, None);
+    }
+
+    #[test]
+    fn an_unreadable_cache_is_cache_unreadable_with_its_error() {
+        let state = CertificateState::of_unreadable_cache(ISSUER, "permission denied".to_owned());
+        assert_eq!(state.status, CertificateStatus::CacheUnreadable);
+        assert_eq!(state.held, None);
+        assert_eq!(
+            state.last_error,
+            Some(CertificateOrderError::Cache {
+                message: "permission denied".to_owned()
+            })
+        );
     }
 
     #[test]

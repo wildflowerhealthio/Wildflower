@@ -6,8 +6,9 @@ import * as CertificateAuthority from './certificate-authority.ts'
  * Where a server's certificate stands.
  *
  * @remarks
- * `ordering` and `orderFailing` come only from a run; `notIssued` and
- * `expired` only from what a cache says, for a server without a run's state. A
+ * `ordering` and `orderFailing` come only from a run; `notIssued`, `expired`
+ * and `cacheUnreadable` only from what a cache says, for a server without a
+ * run's state. A
  * stopped server's certificate lapses because nothing renews it, and renews
  * when the server starts: `expired` is not a failure.
  */
@@ -23,7 +24,9 @@ const StatusSchema = Schema.Literal(
   /** The cache's certificate has expired; it renews when the server starts. */
   'expired',
   /** The run holds no valid certificate, and its latest error, `lastError`, is an order's failure. */
-  'orderFailing'
+  'orderFailing',
+  /** The cache couldn't be read, or holds an entry that isn't a certificate; `lastError` says why. */
+  'cacheUnreadable'
 )
 
 /** A decoded {@link StatusSchema}. */

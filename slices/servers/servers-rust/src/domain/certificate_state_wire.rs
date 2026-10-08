@@ -7,7 +7,7 @@
 //! ```json
 //! {
 //!   "status": "notIssued" | "ordering" | "noRenewalNeeded" | "renewalDue" | "expired"
-//!           | "orderFailing",
+//!           | "orderFailing" | "cacheUnreadable",
 //!   "issuer": "letsEncryptStaging" | "letsEncrypt",
 //!   "held": {
 //!     "notBefore": "<RFC 3339>",
@@ -64,6 +64,7 @@ enum CertificateStatusWire {
     RenewalDue,
     Expired,
     OrderFailing,
+    CacheUnreadable,
 }
 
 impl CertificateStatusWire {
@@ -75,6 +76,7 @@ impl CertificateStatusWire {
             CertificateStatus::RenewalDue => Self::RenewalDue,
             CertificateStatus::Expired => Self::Expired,
             CertificateStatus::OrderFailing => Self::OrderFailing,
+            CertificateStatus::CacheUnreadable => Self::CacheUnreadable,
         }
     }
 }
