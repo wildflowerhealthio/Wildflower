@@ -68,6 +68,14 @@ from a `{launch}` placeholder in a URL template. The SMART client type —
 **public** or **confidential** — is carried by the linked `clients` row; it is
 documented here, not separately badged.
 
+A SMART app's launch carries a SMART App Launch `launch` value in place of
+`{launch}`. The launch endpoint mints it through the gatekeeper, which records
+it as a launch context for the app's `client_id`. The app's `/oauth/authorize`
+must present it within five minutes, as that client, and it works once (see the
+gatekeeper's [Jargon Explanation](../../slices/gatekeeper/docs/Jargon%20Explanation.md)).
+A non-SMART app has no OAuth client to bind a launch to, so its `{launch}` is
+empty.
+
 ## Data model
 
 One **`app_registrations`** table holds the whole app: `id` (the global id
@@ -96,8 +104,8 @@ order (`position` stays on the host). `GET /apps/{id}` returns the same shape fo
 one app.
 
 The `url` on the wire is the **stored template**, never a resolved launch URL:
-the concrete target — with the server's public origin and a fresh `{launch}`
-nonce substituted — is materialized only by the launch endpoint
+the concrete target — with the server's public origin and, for a SMART app, a
+fresh `{launch}` substituted — is materialized only by the launch endpoint
 (`POST /apps/{id}`), per request.
 
 ### Creating and editing

@@ -30,6 +30,13 @@ pub(crate) fn generate_refresh_token() -> String {
     generate_authorization_code()
 }
 
+/// Generate an opaque SMART App Launch `launch` value — same construction as
+/// [`generate_authorization_code`]: it is a single-use credential an app
+/// presents at `/authorize`, so it gets the same unguessability bar.
+pub(crate) fn generate_launch_nonce() -> String {
+    generate_authorization_code()
+}
+
 /// SHA-256 digest of an opaque token, base64url-encoded without padding —
 /// the at-rest form for refresh tokens, so a stolen database never yields a
 /// presentable credential. Public so integration tests can plant rows with

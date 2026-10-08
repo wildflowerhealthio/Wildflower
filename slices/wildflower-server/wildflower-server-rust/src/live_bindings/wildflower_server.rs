@@ -8,7 +8,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use apps_rust::{ports::AppLaunchScopes, setup_apps, AppsConfig};
+use apps_rust::ports::{AppLaunchScopes, LaunchContextMinter};
+use apps_rust::{setup_apps, AppsConfig};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
@@ -22,6 +23,7 @@ use tunnel_rust::{TunnelDaemon, TunnelStream};
 
 use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
+use crate::adapters::launch_context_minter::GatekeeperLaunchContextMinter;
 use crate::domain::reachability_monitor::ReachabilityMonitor;
 use crate::http::health::ServerHealthChecks;
 use crate::http::middleware::cors::api_cors_layer;
@@ -70,9 +72,21 @@ pub struct WildflowerServer {
     /// The monitor probing the server's `/health` through its public origin,
     /// which stops when it's dropped. Held for the same reason.
     reachability_monitor: ReachabilityMonitor,
+    /// Mints the SMART App Launch `launch` values this server's
+    /// `/oauth/authorize` consumes.
+    launch_context_minter: gatekeeper_rust::LaunchContextMinter,
 }
 
 impl WildflowerServer {
+    /// A handle that mints a SMART App Launch `launch` value for an OAuth
+    /// client of this server, for the host to launch an app with. Clone it
+    /// before [`serve`](Self::serve); it mints for as long as the server's
+    /// database is open.
+    #[must_use]
+    pub fn launch_context_minter(&self) -> gatekeeper_rust::LaunchContextMinter {
+        self.launch_context_minter.clone()
+    }
+
     /// A sender onto the tunnel listener, as the tunnel holds: each stream
     /// sent is served as a visitor's connection through the tunnel. Test
     /// support only (the `test-support` feature).
@@ -99,7 +113,8 @@ impl WildflowerServer {
             tunnel_router,
             tunnel_daemon,
             reachability_monitor,
-            // The `test-support` feature's `tunnel_stream_tx`.
+            // The launch context minter, and the `test-support` feature's
+            // `tunnel_stream_tx`.
             ..
         } = self;
         let loopback = axum::serve(
@@ -354,6 +369,13 @@ pub async fn set_up(
         state: gatekeeper.state.clone(),
     });
 
+    // A SMART app's launch URL carries a `launch` value minted through
+    // gatekeeper, which its `/oauth/authorize` then consumes.
+    let launch_context_minter: Arc<dyn LaunchContextMinter> =
+        Arc::new(GatekeeperLaunchContextMinter {
+            launch_context_minter: gatekeeper.launch_context_minter.clone(),
+        });
+
     // A loopback launch hands the resolved URL to the host's on-device webview
     // handle, which opens it in a native popup (the server 204s).
     let apps = setup_apps(
@@ -361,6 +383,7 @@ pub async fn set_up(
         &apps_config,
         host.on_device_webview_handle,
         launch_scopes,
+        launch_context_minter,
     )
     .context("failed to set up apps")?;
     // The bearer gate gives every `Scoped<…>` extractor the caller's scope claims,
@@ -518,5 +541,6 @@ pub async fn set_up(
         tunnel_stream_tx,
         tunnel_daemon,
         reachability_monitor,
+        launch_context_minter: gatekeeper.launch_context_minter,
     })
 }

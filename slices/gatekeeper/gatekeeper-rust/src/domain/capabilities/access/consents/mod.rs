@@ -100,7 +100,9 @@ pub(crate) enum ConsentOutcome {
 pub(crate) struct ApproveOAuthConsentInput {
     /// The scopes the Owner ticked.
     pub owner_approved_scopes: Vec<String>,
-    /// Optional SMART-on-FHIR patient context to bind to the grant.
+    /// Optional SMART-on-FHIR patient context to bind to the grant. When the
+    /// request's SMART launch bound a patient, it must be that patient, or the
+    /// approval fails with [`GatekeeperError::LaunchPatientMismatch`].
     pub patient: Option<String>,
     /// The Owner's explicit acknowledgement that they recognise this app and
     /// its redirect address. Required when the
@@ -281,7 +283,7 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
-    use crate::domain::authorization_request::RequestStatus;
+    use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
     use crate::domain::test_fake::{
         client, code_request, device_request, FakeGatekeeperStore, RecordingPublisher,
     };
@@ -396,6 +398,83 @@ mod tests {
             RequestStatus::Denied,
         );
         assert_eq!(publisher.count(), 1);
+    }
+
+    /// A request whose SMART launch bound a patient is approved only for that
+    /// patient: another patient, or none, is refused and writes nothing (no
+    /// code, no grant, still pending); the launch's own patient goes through
+    /// and is bound to the code.
+    #[test]
+    fn approve_oauth_consent_requires_the_launch_bound_patient() {
+        let (store, publisher) = live_code_store();
+        store
+            .insert_authorization_request(&AuthorizationRequest {
+                launch: Some("launch-1".to_owned()),
+                launch_bound_patient: Some("pat-1".to_owned()),
+                ..code_request(
+                    "req-1",
+                    RequestStatus::Pending,
+                    Utc::now() + Duration::minutes(5),
+                )
+            })
+            .unwrap();
+        for patient in [Some("pat-2"), None] {
+            let result = approve_code(
+                &store,
+                &publisher,
+                "req-1",
+                ApproveOAuthConsentInput {
+                    patient: patient.map(str::to_owned),
+                    ..approved(&["read"])
+                },
+                &owner_grant(),
+                || panic!("must not mint a code for another patient"),
+            );
+            assert_eq!(
+                result,
+                Err(GatekeeperError::LaunchPatientMismatch {
+                    id: "req-1".to_owned()
+                }),
+                "approving for {patient:?}",
+            );
+        }
+        assert!(store
+            .grant_by_client_and_redirect(
+                "client",
+                &url::Url::parse("https://example.com/cb").unwrap(),
+            )
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .unwrap()
+                .status,
+            RequestStatus::Pending,
+        );
+
+        approve_code(
+            &store,
+            &publisher,
+            "req-1",
+            ApproveOAuthConsentInput {
+                patient: Some("pat-1".to_owned()),
+                ..approved(&["read"])
+            },
+            &owner_grant(),
+            || "the-code".to_owned(),
+        )
+        .expect("the launch's own patient is approved");
+        assert_eq!(
+            store
+                .authorization_code_by_request_id("req-1")
+                .unwrap()
+                .expect("a code")
+                .patient
+                .as_deref(),
+            Some("pat-1"),
+        );
     }
 
     /// A client this gatekeeper has never seen reaches consent (nothing is

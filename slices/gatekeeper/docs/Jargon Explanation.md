@@ -182,8 +182,34 @@ resolved.
   rate limit); `deviceName` (see [Device name](#device-name)).
 
 Code-flow rows carry the OAuth client's PKCE `code_challenge`,
-`redirect_uri`, requested `scope`, and the `state` parameter. Device-flow
-rows leave those columns null.
+`redirect_uri`, requested `scope`, and the `state` parameter. A code-flow row
+started by a SMART App Launch also carries the consumed `launch` and the
+patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
+Device-flow rows leave those columns null.
+
+### LaunchContext
+
+One SMART App Launch `launch` value this server handed out, and what it
+binds. An in-process launcher (the apps slice's `POST /apps/{id}`, the base's
+Launch) mints it through gatekeeper's `LaunchContextMinter` and puts it in the
+app's launch URL; the app forwards it to `/oauth/authorize`.
+
+- **Table:** `launch_contexts`, owned by gatekeeper. No other slice touches it.
+- **Identifier:** `nonce`, the opaque `launch` value (32 CSPRNG bytes,
+  base64url).
+- **Binds:** the app's `client_id`, and a nullable `patient`. Nothing sets the
+  patient yet: apps pick it in-app.
+- **TTL:** 5 minutes, the same as an `AuthorizationRequest`.
+- **Single use:** `/oauth/authorize` consumes it with one conditional `UPDATE`
+  (unconsumed, unexpired, minted for the presenting client), so of two racing
+  authorizes only one wins. Expired rows are pruned when the next one is
+  minted.
+- **Refusals:** an unknown, expired, consumed or other client's `launch` is
+  `invalid_request`, the same for every reason. A request with no `launch` is
+  plain OAuth.
+- **Patient:** when the context binds a patient, the consent approval must name
+  the same patient (`409 LaunchPatientMismatch` otherwise), and a standing
+  grant for another patient doesn't take the fast path.
 
 ### AuthorizationCode
 
@@ -545,7 +571,7 @@ holds.
 JWT claims (RFC 7519 §4.1.1, §4.1.3) — _who_ minted this token and _for
 whom_ it's intended. Both are the server's origin, `https://<domain>` (no
 path suffix), on every token gatekeeper mints — OAuth and host owner alike. See
-[Origins Explanation](../../docs/Origins/Explanation.md).
+[Origins Explanation](../../../docs/Origins/Explanation.md).
 
 A loose intuition: **`iss` is "who I am, the signer"; `aud` is "who I'm
 talking to, the verifier."** A token signed for `aud=A` should not be
@@ -676,8 +702,13 @@ imitating. Concretely it adds:
 - `patient` launch context (carried on `AuthorizationCode.patient` and
   the access-token JWT's `patient` claim).
 - Scope strings shaped like `patient/Observation.read`.
-- The `aud` parameter on `/oauth/authorize` matching the FHIR base URL
-  (`${origin}/fhir`).
+- The `launch` parameter on `/oauth/authorize`: a
+  [LaunchContext](#launchcontext) this server minted for the client.
+- The `aud` parameter on `/oauth/authorize`: when present it must be the
+  server's origin, `https://<domain>`, or its FHIR base,
+  `https://<domain>/fhir-r4`, else `invalid_request`. The token's `aud` claim
+  is the server's origin either way (see
+  [`iss` and `aud`](#iss-issuer-and-aud-audience)).
 
 ## See-also: where these concepts may overlap
 

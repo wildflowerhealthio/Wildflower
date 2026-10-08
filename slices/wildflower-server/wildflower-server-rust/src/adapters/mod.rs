@@ -6,6 +6,9 @@
 //!   clients.
 //! - [`health_probe`] — the reachability monitor's `HealthProbe`, over
 //!   `reqwest`.
+//! - [`launch_context_minter`] — apps' `LaunchContextMinter`, from gatekeeper's
+//!   launch contexts.
 
 pub(crate) mod app_launch_scopes;
 pub(crate) mod health_probe;
+pub(crate) mod launch_context_minter;

@@ -84,7 +84,10 @@ pub(crate) fn load_pending_code_request(
 /// [`acknowledged_registration`](ApproveOAuthConsentInput::acknowledged_registration),
 /// else it fails with
 /// [`RegistrationNotAcknowledged`](GatekeeperError::RegistrationNotAcknowledged)
-/// and nothing is written.
+/// and nothing is written. A request whose SMART launch bound a patient must be
+/// approved for that patient, else it fails with
+/// [`LaunchPatientMismatch`](GatekeeperError::LaunchPatientMismatch) and nothing
+/// is written.
 pub(crate) fn approve_oauth_consent(
     store: &impl GatekeeperStore,
     publisher: &dyn PendingConsentPublisher,
@@ -113,6 +116,9 @@ pub(crate) fn approve_oauth_consent(
     });
     if registration_verdict.needs_acknowledgement() && !input.acknowledged_registration {
         return Err(GatekeeperError::RegistrationNotAcknowledged { id: id.to_owned() });
+    }
+    if !request.admits_patient(input.patient.as_deref()) {
+        return Err(GatekeeperError::LaunchPatientMismatch { id: id.to_owned() });
     }
 
     // The proof every write below demands: the Owner's approval clamped to

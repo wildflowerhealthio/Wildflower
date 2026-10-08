@@ -92,6 +92,15 @@ const RegistrationNotAcknowledgedSchema = Schema.Struct({
   id: Schema.String,
 })
 
+/**
+ * Returned when the consent's SMART App Launch bound a patient and the approval
+ * names a different patient, or none. Nothing is written.
+ */
+const LaunchPatientMismatchSchema = Schema.Struct({
+  error: Schema.Literal('LaunchPatientMismatch'),
+  id: Schema.String,
+})
+
 const httpApiGroup = HttpApiGroup.make('oauth-consent', { topLevel: false })
   .add(
     HttpApiEndpoint.get('GetOAuthConsent', '/oauth-consents/:id')
@@ -106,6 +115,7 @@ const httpApiGroup = HttpApiGroup.make('oauth-consent', { topLevel: false })
       .addSuccess(OAuthConsentResultSchema)
       .addError(OAuthConsentNotFoundSchema, { status: 404 })
       .addError(RegistrationNotAcknowledgedSchema, { status: 409 })
+      .addError(LaunchPatientMismatchSchema, { status: 409 })
   )
   .add(
     HttpApiEndpoint.post('DenyOAuthConsent', '/oauth-consents/:id/deny')
@@ -123,5 +133,6 @@ export {
   OAuthConsentResultSchema,
   OAuthConsentNotFoundSchema,
   RegistrationNotAcknowledgedSchema,
+  LaunchPatientMismatchSchema,
   ApproveOAuthConsentBody,
 }

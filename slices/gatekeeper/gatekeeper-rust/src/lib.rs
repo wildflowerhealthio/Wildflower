@@ -65,6 +65,7 @@ pub use http::{
     is_pre_auth_public_path, require_loopback_peer_middleware, GatekeeperAuthMiddleware,
     GatekeeperState, RequireLoopbackPeerMiddleware,
 };
+pub use live_bindings::LaunchContextMinter;
 pub use persistence_rust::DieselPool;
 // The loopback-dialog seam: the host implements it with its native dialog
 // plugin and passes it into `setup_gatekeeper`, so its trait + types are public.
@@ -185,11 +186,15 @@ const RETENTION_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_
 const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Result of `setup_gatekeeper`: the public router that should be merged
-/// into the app's root router and the shared `Arc<GatekeeperState>` needed to
-/// gate emr-rust traffic.
+/// into the app's root router, the shared `Arc<GatekeeperState>` needed to
+/// gate emr-rust traffic, and the minter app launches mint their `launch`
+/// values through.
 pub struct Gatekeeper {
     pub router: axum::Router,
     pub state: Arc<GatekeeperState>,
+    /// Mints the SMART App Launch contexts `/oauth/authorize` consumes — for
+    /// the in-process launchers (the apps slice, the host).
+    pub launch_context_minter: LaunchContextMinter,
 }
 
 /// Build the gatekeeper-rust HTTP surface over the host-owned diesel
@@ -213,7 +218,10 @@ pub struct Gatekeeper {
 ///    scope gates via the `Scoped<…>` extractors) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
 ///  - returns the `Arc<GatekeeperState>` the caller passes to
-///    [`gatekeeper_auth_middleware`] to gate emr-rust.
+///    [`gatekeeper_auth_middleware`] to gate emr-rust;
+///  - returns the [`LaunchContextMinter`] an in-process launcher mints each
+///    SMART App Launch `launch` value through, which `/oauth/authorize` then
+///    consumes.
 ///
 /// Every token this server mints — OAuth and host owner alike — carries the
 /// server's origin ([`GatekeeperConfig::server_origin`]) as both `iss` and
@@ -313,7 +321,12 @@ pub fn setup_gatekeeper(
     // Reclaim expired denylist rows: once at startup, then daily.
     spawn_revocation_purge(revocation_store);
     let router = http::router(state.clone());
-    Ok(Gatekeeper { router, state })
+    let launch_context_minter = LaunchContextMinter::new(state.store.clone());
+    Ok(Gatekeeper {
+        router,
+        state,
+        launch_context_minter,
+    })
 }
 
 /// Spawn the timer that re-mints the host owner token every

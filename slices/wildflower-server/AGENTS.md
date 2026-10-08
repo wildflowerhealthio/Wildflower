@@ -61,8 +61,9 @@ port and on the tunnel. Rust-only, no `-core`.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig`, `HostPorts`, `ServerObservers`); `domain/`
     `ServerHealth` and the reachability monitor with its `HealthProbe` port;
-    `adapters/` ports implemented here (apps' `AppLaunchScopes` from
-    gatekeeper, the monitor's `HealthProbe` over reqwest); `http/` the
+    `adapters/` ports implemented here (apps' `AppLaunchScopes` and
+    `LaunchContextMinter` from gatekeeper, the monitor's `HealthProbe` over
+    reqwest); `http/` the
     server's own middleware (CORS, the loopback owner trust, the
     forwarded-request report, the tunnel front), the tunnel listener and its
     PROXY header reader, the `/health` checks and the `404`;

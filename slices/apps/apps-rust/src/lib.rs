@@ -33,7 +33,9 @@
 //! surface is scope-gated on the `wildflower/launch` umbrella (a SMART app
 //! additionally requires the caller's grant to cover its client scopes). Every
 //! launch resolves `{origin}` to the server's public origin from [`AppsConfig`];
-//! the slice knows nothing about the tunnel itself.
+//! the slice knows nothing about the tunnel itself. A SMART app's `{launch}` is
+//! a launch context the gatekeeper mints for its OAuth client, through the
+//! [`LaunchContextMinter`](ports::LaunchContextMinter) port.
 
 pub mod config;
 pub mod db;
@@ -75,7 +77,7 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 
 pub mod ports;
 
-use ports::AppLaunchScopes;
+use ports::{AppLaunchScopes, LaunchContextMinter};
 
 /// Result of [`setup_apps`]: the router a host mounts, plus the shared state.
 pub struct Apps {
@@ -87,7 +89,7 @@ pub struct Apps {
     /// claims the `Scoped<…>` capabilities read.
     pub router: Router,
     /// Shared handler state (the store, the public origin, the on-device
-    /// webview seam, and the launch-scope port).
+    /// webview seam, the launch-scope port, and the launch-context port).
     pub state: Arc<AppsState>,
 }
 
@@ -105,6 +107,11 @@ pub struct Apps {
 /// for the per-app launch check (see [`AppLaunchScopes`]). The Tauri host passes a
 /// gatekeeper-backed adapter; others pass [`NoAppLaunchScopes`](ports::NoAppLaunchScopes).
 ///
+/// `launch_context_minter` is the host seam minting the SMART `launch` value a
+/// SMART app's launch URL carries (see [`LaunchContextMinter`]). The host passes
+/// a gatekeeper-backed adapter, so the gatekeeper can consume it at the app's
+/// `/oauth/authorize`.
+///
 /// # Errors
 ///
 /// Returns an error if the store can't be migrated.
@@ -113,6 +120,7 @@ pub fn setup_apps(
     config: &AppsConfig,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
+    launch_context_minter: Arc<dyn LaunchContextMinter>,
 ) -> anyhow::Result<Apps> {
     // `SqliteAppsStore::new` runs the embedded migrations — building the
     // `app_registrations` table the store serves.
@@ -122,6 +130,7 @@ pub fn setup_apps(
         config.public_origin.clone(),
         webview_handle,
         launch_scopes,
+        launch_context_minter,
     ));
 
     Ok(Apps {

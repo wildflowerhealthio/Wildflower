@@ -58,9 +58,11 @@ mod tests {
     use crate::domain::test_fake::registration;
     use crate::domain::{AppRegistration, AppsStore};
     use crate::http::test_support::{
-        state, state_with_launch_scopes, state_with_sink, FixedLaunchScopes, PUBLIC_ORIGIN,
+        state, state_full, state_with_launch_scopes, state_with_sink, FixedLaunchScopes,
+        RecordingLaunchContextMinter, PUBLIC_ORIGIN,
     };
     use crate::live_bindings::state::AppsState;
+    use crate::ports::NoAppLaunchScopes;
     use scope_capabilities_rust::ScopeClaims;
 
     /// The owner-level scope claim the host's bearer gate would insert for the
@@ -373,6 +375,97 @@ mod tests {
         seed_plain(&st.store, "app-y");
         let res = send_raw_scoped(&st, post_launch("/apps/app-y"), Some("wildflower/launch")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    }
+
+    /// Apps state whose launch-context port is `minter`, with no per-app launch
+    /// scopes.
+    fn state_with_minter(minter: Arc<RecordingLaunchContextMinter>) -> Arc<AppsState> {
+        state_full(
+            Arc::new(RecordingStubWebviewHandle::default()),
+            Arc::new(NoAppLaunchScopes),
+            minter,
+        )
+    }
+
+    /// A SMART app's `{launch}` is a launch context minted for its OAuth client
+    /// before the URL is handed back — one per launch.
+    #[tokio::test]
+    async fn launch_smart_app_mints_a_launch_for_its_client() {
+        let minter = Arc::new(RecordingLaunchContextMinter::default());
+        let st = state_with_minter(Arc::clone(&minter));
+        seed_app(
+            &st.store,
+            "smart-app",
+            "https://app.example/launch?iss={origin}/fhir-r4&launch={launch}",
+            Some("client-1"),
+        );
+
+        let res = send_raw(&st, post_forwarded("/apps/smart-app")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            launch_url(res).await,
+            format!(
+                "https://app.example/launch?iss={PUBLIC_ORIGIN}/fhir-r4&launch=launch-for-client-1"
+            ),
+        );
+        assert_eq!(minter.minted_for(), ["client-1"]);
+
+        send_raw(&st, post_forwarded("/apps/smart-app")).await;
+        assert_eq!(minter.minted_for(), ["client-1", "client-1"]);
+    }
+
+    /// A non-SMART app has no client to bind a launch to: its `{launch}` is
+    /// empty and nothing is minted.
+    #[tokio::test]
+    async fn launch_non_smart_app_mints_no_launch() {
+        let minter = Arc::new(RecordingLaunchContextMinter::default());
+        let st = state_with_minter(Arc::clone(&minter));
+        seed_app(
+            &st.store,
+            "plain-app",
+            "https://app.example/launch?launch={launch}",
+            None,
+        );
+        let res = send_raw(&st, post_forwarded("/apps/plain-app")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(launch_url(res).await, "https://app.example/launch?launch=");
+        assert!(minter.minted_for().is_empty());
+    }
+
+    /// A launch refused by the gates mints nothing: the SMART check runs before
+    /// the side effect.
+    #[tokio::test]
+    async fn an_under_scoped_smart_launch_mints_no_launch() {
+        let minter = Arc::new(RecordingLaunchContextMinter::default());
+        let st = state_full(
+            Arc::new(RecordingStubWebviewHandle::default()),
+            FixedLaunchScopes::requiring("patient/Observation.r"),
+            Arc::clone(&minter) as Arc<dyn crate::ports::LaunchContextMinter>,
+        );
+        seed_smart(&st.store, "smart-app");
+        let res = send_raw_scoped(
+            &st,
+            post_launch("/apps/smart-app"),
+            Some("wildflower/launch"),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        assert!(minter.minted_for().is_empty());
+    }
+
+    /// A launch whose launch can't be minted fails as a `500` and opens nothing.
+    #[tokio::test]
+    async fn a_failed_mint_fails_the_launch() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_full(
+            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
+            Arc::new(NoAppLaunchScopes),
+            Arc::new(RecordingLaunchContextMinter::failing()),
+        );
+        seed_smart(&st.store, "smart-app");
+        let res = send_raw(&st, post_launch("/apps/smart-app")).await;
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 
     /// No launch sets a cookie — forwarded or loopback.
