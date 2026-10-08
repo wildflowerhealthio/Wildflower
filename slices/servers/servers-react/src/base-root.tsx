@@ -1,7 +1,8 @@
+import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createBrowserHistory, RouterProvider, type RouterHistory } from '@tanstack/react-router'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
-import { type Context, Effect } from 'effect'
+import { type Context, Effect, type Layer } from 'effect'
 import { useEffect, useState, type JSX } from 'react'
 import {
   enableBackgroundSessionRecovery,
@@ -16,7 +17,7 @@ import {
 } from 'telemetry-react'
 import { Sentry } from 'telemetry-web'
 
-import { type ListenToHostEvent, runHostCommandWith } from './router-context.ts'
+import { type ListenToHostEvent, runHostCommandWith, runHttpRequestWith } from './router-context.ts'
 import { buildBaseRouter } from './router.ts'
 
 /** Where the base's telemetry goes, once the user consents to it. */
@@ -44,6 +45,11 @@ interface BaseRootProps {
   readonly backgroundServiceStartConfig: BackgroundServiceStartConfig
   /** Where the base's telemetry goes once the user consents to it. */
   readonly telemetry: BaseTelemetry
+  /**
+   * The client the base's own HTTP requests go through, such as a server's
+   * `/health`. Defaults to the webview's `fetch`; tests pass a stub.
+   */
+  readonly httpClient?: Layer.Layer<HttpClient.HttpClient>
   /** The router's history. Defaults to the webview's own; tests pass a memory one. */
   readonly history?: RouterHistory
   /** Where the consent answer is kept. Defaults to the webview's `localStorage`. */
@@ -80,10 +86,11 @@ function BaseRouter({
   invoke,
   listen,
   backgroundServiceStartConfig,
+  httpClient,
   history,
 }: Pick<
   BaseRootProps,
-  'invoke' | 'listen' | 'backgroundServiceStartConfig' | 'history'
+  'invoke' | 'listen' | 'backgroundServiceStartConfig' | 'httpClient' | 'history'
 >): JSX.Element {
   useBackgroundSessionRecovery(invoke, backgroundServiceStartConfig)
   const [router] = useState(() =>
@@ -107,6 +114,7 @@ function BaseRouter({
           }),
         }),
         runHostCommand: runHostCommandWith(invoke),
+        runHttpRequest: runHttpRequestWith(httpClient ?? FetchHttpClient.layer),
         listenToHostEvent: listen,
       },
     })
@@ -138,6 +146,7 @@ function BaseRoot({
   listen,
   backgroundServiceStartConfig,
   telemetry,
+  httpClient,
   history,
   storage,
 }: BaseRootProps): JSX.Element {
@@ -156,6 +165,7 @@ function BaseRoot({
           invoke={invoke}
           listen={listen}
           backgroundServiceStartConfig={backgroundServiceStartConfig}
+          httpClient={httpClient}
           history={history}
         />
       </CrashReportingBoundary>

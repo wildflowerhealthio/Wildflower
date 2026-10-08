@@ -1,5 +1,6 @@
+import type { HttpClient } from '@effect/platform'
 import type { QueryClient } from '@tanstack/react-query'
-import { type Context, Effect } from 'effect'
+import { type Context, Effect, type Layer } from 'effect'
 import { TauriInvoke } from 'servers-core'
 
 /**
@@ -8,6 +9,13 @@ import { TauriInvoke } from 'servers-core'
  * `HostCommandError`.
  */
 type RunHostCommand = <A, E>(command: Effect.Effect<A, E, TauriInvoke>) => Promise<A>
+
+/**
+ * Runs an HTTP request the base makes from its webview itself, such as a
+ * server's `/health`, resolving with its result and rejecting with its
+ * error.
+ */
+type RunHttpRequest = <A, E>(request: Effect.Effect<A, E, HttpClient.HttpClient>) => Promise<A>
 
 /**
  * How the base listens to a host event: `listen` from
@@ -25,6 +33,8 @@ interface RouterContext {
   readonly queryClient: QueryClient
   /** How a route reaches the host. */
   readonly runHostCommand: RunHostCommand
+  /** How a route makes an HTTP request from the webview. */
+  readonly runHttpRequest: RunHttpRequest
   /** How a route hears the host's events. */
   readonly listenToHostEvent: ListenToHostEvent
 }
@@ -35,5 +45,14 @@ const runHostCommandWith =
   (command) =>
     Effect.runPromise(Effect.provideService(command, TauriInvoke, invoke))
 
-export { runHostCommandWith }
-export type { ListenToHostEvent, RouterContext, RunHostCommand }
+/**
+ * A {@link RunHttpRequest} over `layer`: `@effect/platform`'s
+ * `FetchHttpClient.layer`, or a test's stub client.
+ */
+const runHttpRequestWith =
+  (layer: Layer.Layer<HttpClient.HttpClient>): RunHttpRequest =>
+  (request) =>
+    Effect.runPromise(Effect.provide(request, layer))
+
+export { runHostCommandWith, runHttpRequestWith }
+export type { ListenToHostEvent, RouterContext, RunHostCommand, RunHttpRequest }

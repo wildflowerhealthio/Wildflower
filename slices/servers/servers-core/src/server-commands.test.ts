@@ -8,7 +8,13 @@ import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as ListedServer from './listed-server.ts'
 import * as RunPolicyChoice from './run-policy-choice.ts'
 import * as RunPolicy from './run-policy.ts'
-import { listServers, removeServer, setServerRunPolicy, updateServer } from './server-commands.ts'
+import {
+  listServers,
+  removeServer,
+  setServerCredentials,
+  setServerRunPolicy,
+  updateServer,
+} from './server-commands.ts'
 import * as ServerStatus from './server-status.ts'
 
 /** One invoke the fake host saw. */
@@ -219,6 +225,10 @@ describe('the server commands', () => {
         }),
         () => Promise.resolve(null)
       ),
+      runAgainstHostAnswering(
+        setServerCredentials({ domain: 'ruth.relay.example.com', token: 'tunnel-token' }),
+        () => Promise.resolve(null)
+      ),
       runAgainstHostAnswering(removeServer({ domain: 'ruth.relay.example.com' }), () =>
         Promise.resolve(null)
       ),
@@ -247,6 +257,12 @@ describe('the server commands', () => {
             launcherUrl: 'http://localhost:5200/app',
             certificateAuthority: 'letsEncryptStaging',
           },
+        },
+      ],
+      [
+        {
+          command: 'server_set_credentials',
+          args: { domain: 'ruth.relay.example.com', token: 'tunnel-token' },
         },
       ],
       [{ command: 'server_remove', args: { domain: 'ruth.relay.example.com' } }],

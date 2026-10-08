@@ -27,6 +27,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/router-plugin": "catalog:",
@@ -56,6 +57,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@effect/platform": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "branding-core": "workspace:*",

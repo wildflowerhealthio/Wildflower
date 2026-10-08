@@ -1529,6 +1529,9 @@ importers:
 
   apps/wildflower-tauri:
     dependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.104.0(react@19.3.0)
@@ -5339,6 +5342,9 @@ importers:
 
   slices/servers/servers-core:
     devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
       '@types/node':
         specifier: ^26
         version: 26.1.0
@@ -5366,6 +5372,9 @@ importers:
 
   slices/servers/servers-react:
     devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.104.0(react@19.3.0)
