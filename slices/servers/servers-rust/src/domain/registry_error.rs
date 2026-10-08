@@ -84,7 +84,7 @@ mod tests {
                 },
                 "alreadyRegistered",
             ),
-            (RegistryError::UnsupportedVersion { version: 2 }, "registry"),
+            (RegistryError::UnsupportedVersion { version: 3 }, "registry"),
             (
                 RegistryError::storage("reading servers.json", "disk on fire"),
                 "registry",

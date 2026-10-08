@@ -57,7 +57,7 @@ alive in the background while any server should run. It never reads
 [command] server_set_run_policy(domain, choice)
   lock ─▶ write the policy (for ─▶ until) ─▶ runner.set_unit_policy(domain, policy) ─▶ unlock
           └─ the runner doesn't hold it ─▶ ServerUnits::push(the record as stored)
-[command] server_update(domain, launcherUrl, stagingCertificates)
+[command] server_update(domain, launcherUrl, certificateAuthority)
   lock ─▶ write the record ─▶ a run input changed, or the runner doesn't hold it? ServerUnits::push(record) ─▶ unlock
 [command] server_remove(domain)
   lock ─▶ runner.remove_unit(domain), awaited ─▶ store policy Off, delete the folder, then the record ─▶ unlock

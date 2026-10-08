@@ -5,7 +5,7 @@
       "relay": { "kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com/" },
       "tunnelName": "ruth",
       "launcherUrl": "https://wildflowerhealth.io/app",
-      "stagingCertificates": false,
+      "certificateAuthority": "letsEncrypt",
       "runPolicy": { "kind": "until", "at": "2026-10-06T17:42:00Z" },
       "status": {
         "domain": "ruth.relay.example.com",
@@ -19,7 +19,7 @@
       "relay": { "kind": "rathole" },
       "tunnelName": "lab",
       "launcherUrl": "http://localhost:5200/app",
-      "stagingCertificates": true,
+      "certificateAuthority": "letsEncryptStaging",
       "runPolicy": { "kind": "off" },
       "status": {
         "domain": "lab.rathole.example.com",
@@ -99,7 +99,7 @@
     },
     {
       "kind": "registry",
-      "message": "the server registry has format version 2, which this build doesn't read"
+      "message": "the server registry has format version 3, which this build doesn't read"
     },
     {
       "kind": "notRegistered",
