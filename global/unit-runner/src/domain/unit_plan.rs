@@ -1,5 +1,7 @@
-//! What starting and stopping runs per policy does to one unit, and whether a
-//! run that stopped restarts.
+//! What starting and stopping runs per policy does to one unit, whether a run
+//! that stopped restarts, and how long its restart waits.
+
+use std::time::Duration;
 
 use crate::status::StopReason;
 
@@ -58,6 +60,25 @@ pub fn restarts_after(reason: StopReason, should_run: bool) -> bool {
     should_run && reason == StopReason::EndedOnItsOwn
 }
 
+/// How long a restart waits when its unit has already restarted
+/// `restarts_in_a_row` times in a row: none the first time, so a one-off fault
+/// recovers at once; then `first_backoff`, doubled for each restart after
+/// that, and never longer than `max_backoff`.
+#[must_use]
+pub fn backed_off_restart_delay(
+    restarts_in_a_row: u32,
+    first_backoff: Duration,
+    max_backoff: Duration,
+) -> Duration {
+    let Some(backoffs_in_a_row) = restarts_in_a_row.checked_sub(1) else {
+        return Duration::ZERO;
+    };
+    2_u32
+        .checked_pow(backoffs_in_a_row)
+        .and_then(|factor| first_backoff.checked_mul(factor))
+        .map_or(max_backoff, |delay| delay.min(max_backoff))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,6 +132,37 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_first_restart_is_at_once_and_each_after_it_waits_twice_as_long_up_to_the_cap() {
+        let delays: Vec<u64> = (0..9)
+            .map(|restarts_in_a_row| {
+                backed_off_restart_delay(
+                    restarts_in_a_row,
+                    Duration::from_secs(5),
+                    Duration::from_secs(5 * 60),
+                )
+                .as_secs()
+            })
+            .collect();
+        assert_eq!(delays, [0, 5, 10, 20, 40, 80, 160, 300, 300]);
+    }
+
+    #[test]
+    fn the_restart_delay_stays_at_the_cap_however_many_restarts_in_a_row() {
+        let max_unit_restart_backoff = Duration::from_secs(5 * 60);
+        for restarts_in_a_row in [31, 32, 64, u32::MAX] {
+            assert_eq!(
+                backed_off_restart_delay(
+                    restarts_in_a_row,
+                    Duration::from_secs(5),
+                    max_unit_restart_backoff
+                ),
+                max_unit_restart_backoff,
+                "{restarts_in_a_row}"
+            );
+        }
+    }
+
     fn phase() -> impl Strategy<Value = UnitPhase> {
         proptest::sample::select(PHASES.to_vec())
     }
@@ -127,6 +179,23 @@ mod tests {
                 UnitAction::Keep => before,
             };
             prop_assert_eq!(plan_unit(should_run, after), UnitAction::Keep);
+        }
+
+        /// One more restart in a row never waits less, and no restart waits
+        /// longer than the cap.
+        #[test]
+        fn one_more_restart_in_a_row_never_waits_less(
+            restarts_in_a_row in 0_u32..80,
+            first_backoff_ms in 1_u64..10_000,
+            max_backoff_ms in 1_u64..1_000_000,
+        ) {
+            let first_backoff = Duration::from_millis(first_backoff_ms);
+            let max_backoff = Duration::from_millis(max_backoff_ms);
+            let delay = backed_off_restart_delay(restarts_in_a_row, first_backoff, max_backoff);
+            let next_delay =
+                backed_off_restart_delay(restarts_in_a_row + 1, first_backoff, max_backoff);
+            prop_assert!(delay <= next_delay);
+            prop_assert!(next_delay <= max_backoff);
         }
     }
 }

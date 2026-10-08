@@ -219,7 +219,7 @@ either way.
 | `Replaced`               | The app set the unit again.                                                                                              | The new definition starts once this run has ended, if it should run.      |
 | `Removed`                | The app removed the unit.                                                                                                | `UnitRunner` forgets the unit once this run has ended.                    |
 | `StoppedForRestart`      | The host restarted every running unit, as the Tauri host does when an iOS app returns to the foreground.                 | It starts again once this run has ended, with no delay, if it should run. |
-| `EndedOnItsOwn`          | The unit returned, failed, panicked, or its factory failed.                                                              | It restarts after `RESTART_DELAY` if it should still run.                 |
+| `EndedOnItsOwn`          | The unit returned, failed, panicked, or its factory failed.                                                              | It restarts after the restart delay if it should still run.               |
 | `SessionEndedByPlatform` | The platform ended the background session.                                                                               | It stays stopped until that is cleared (see The background session).      |
 
 A run keeps the first reason it was stopped for.
@@ -259,16 +259,34 @@ session to start: it only keeps the app alive in the background.
 
 ## Restart on failure
 
-A run that ends on its own while its unit should still run is restarted after a
-fixed delay, `RESTART_DELAY` (5 s). That covers a run that fails, and a run
-that returns `Ok` without being asked to stop. Runs `UnitRunner` stopped itself,
-and runs stopped by the platform's end of the background session, never wait
-out that delay. A run stopped for
-a restart starts again as soon as it has ended.
+A run that ends on its own while its unit should still run is restarted after
+the restart delay. That covers a run that fails, and a run that returns `Ok`
+without being asked to stop. Runs `UnitRunner` stopped itself, and runs stopped
+by the platform's end of the background session, never wait out that delay. A
+run stopped for a restart starts again as soon as it has ended.
 
-Calling `set_unit_policy` (even with the unchanged policy) cancels a pending
-restart and starts the unit at once if it should run. A unit waiting out its
-delay still should run, so it keeps a background session wanted.
+The restart delay backs off per unit. The first restart in a row is at once,
+so a one-off fault recovers without waiting. The second waits
+`FIRST_UNIT_RESTART_BACKOFF` (5 s), and each after it twice as long as the one
+before, up to `MAX_UNIT_RESTART_BACKOFF` (5 minutes): 0 s, 5 s, 10 s, 20 s, and
+so on. So a unit that can never come up, such as a server whose configuration
+can't be built, settles at one attempt every 5 minutes. The count of restarts
+in a row starts over:
+
+- when a run that had been running for `STABLE_UNIT_UPTIME` (2 minutes) ends,
+  so a unit that stayed up and later failed restarts at once again, while one
+  that comes up and fails soon after keeps backing off;
+- while the unit shouldn't run (its policy is inactive, the platform ended the
+  background session, or it is being removed), so failures don't carry over
+  into the next time it should run;
+- on every fresh instruction: `set_unit` and `set_unit_policy` for the unit,
+  and `restart_running_units` and the app becoming present for every unit.
+
+A fresh instruction (`set_unit_policy` even with the unchanged policy
+included) also cancels a pending restart, so the unit starts at once if it
+should run. A unit waiting out its delay still should run, so it keeps a
+background session wanted. The delay runs on `tokio::time` from the run's end, so time a laptop spends asleep
+doesn't count toward it.
 
 ## The background session: one platform task for every unit
 
@@ -326,8 +344,8 @@ one is stale, and changes nothing.
 ## Deliberately not here
 
 - A cap on how many units run at once.
-- Backoff, restart limits or other restart strategies; a failed run restarts
-  after a fixed delay.
+- Restart limits or other restart strategies: a unit whose runs keep failing
+  keeps restarting, every `MAX_UNIT_RESTART_BACKOFF` at most, while it should run.
 - Dependencies between units, or an order for starting them.
 - Notification text, and any wire format.
 - Any platform: a host binds one.

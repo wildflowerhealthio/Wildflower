@@ -16,8 +16,8 @@
 //!
 //!  - `domain` — the pure rules: when a policy wants a unit running, when the
 //!    app counts as present, what starting and stopping runs per policy does
-//!    to each unit, when a run restarts, how a background session ends, and
-//!    when to ask the platform for a session's start or end.
+//!    to each unit, when a run restarts and after how long, how a background
+//!    session ends, and when to ask the platform for a session's start or end.
 //!  - `ports` — what `UnitRunner` needs from its host: the [`WallClock`] and
 //!    the [`BackgroundSessionPlatform`].
 //!  - `runner` — [`UnitRunner`]'s state, each run's thread and runtime,
@@ -37,8 +37,8 @@ pub use ports::background_session_platform::BackgroundSessionPlatform;
 pub use ports::wall_clock::{SystemClock, WallClock};
 pub use run_context::RunContext;
 pub use runner::{
-    UnitRunner, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT, RUN_STOPS_CAPACITY,
-    START_AND_STOP_RUNS_PER_POLICY_INTERVAL,
+    UnitRunner, FIRST_UNIT_RESTART_BACKOFF, MAX_UNIT_RESTART_BACKOFF, RUN_RUNTIME_SHUTDOWN_TIMEOUT,
+    RUN_STOPS_CAPACITY, STABLE_UNIT_UPTIME, START_AND_STOP_RUNS_PER_POLICY_INTERVAL,
 };
 pub use status::{
     PlatformStopReason, RunState, RunStop, RunStopped, StopReason, UnitStatus, UnitStatuses,

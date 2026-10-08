@@ -16,7 +16,7 @@ use crate::domain::unit_plan::UnitPhase;
 use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
-use crate::runner::{RunnerTimings, UnitRunner};
+use crate::runner::{RunnerTimings, UnitRunner, MAX_UNIT_RESTART_BACKOFF, STABLE_UNIT_UPTIME};
 use crate::status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus};
 use crate::unit::{Unit, UnitId};
 
@@ -55,7 +55,9 @@ pub(super) struct Harness {
 }
 
 impl Harness {
-    /// A `UnitRunner` that restarts after `restart_delay`.
+    /// A `UnitRunner` that first restarts after `restart_delay`, backing off
+    /// to [`MAX_UNIT_RESTART_BACKOFF`] until a run stays running for
+    /// [`STABLE_UNIT_UPTIME`].
     pub(super) fn with_restart_delay(restart_delay: Duration) -> Self {
         let clock = Arc::new(ManualClock(Mutex::new(
             DateTime::from_timestamp(1_800_000_000, 0).expect("a valid instant"),
@@ -64,7 +66,9 @@ impl Harness {
             tokio::runtime::Handle::current(),
             Arc::clone(&clock) as Arc<dyn WallClock>,
             RunnerTimings {
-                restart_delay,
+                first_unit_restart_backoff: restart_delay,
+                max_unit_restart_backoff: MAX_UNIT_RESTART_BACKOFF,
+                stable_unit_uptime: STABLE_UNIT_UPTIME,
                 run_runtime_shutdown_timeout: Duration::from_secs(1),
                 start_and_stop_runs_per_policy_interval: Duration::from_secs(10),
             },
@@ -188,6 +192,14 @@ pub(super) enum Script {
     /// Report running and `detail`, then fail with `error`.
     Fail {
         detail: Option<Detail>,
+        error: &'static str,
+    },
+    /// Report running if `announces_running` is set, then fail with `error`
+    /// once the test adds a permit to `allow_failure`, or return `Ok` once
+    /// asked to stop.
+    FailWhenAllowed {
+        announces_running: Arc<AtomicBool>,
+        allow_failure: Arc<Semaphore>,
         error: &'static str,
     },
     /// Report running, then return `Ok` without being asked to.
@@ -316,6 +328,23 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
             }
             Err(anyhow::anyhow!(error).context("the scripted unit failed"))
         }
+        Script::FailWhenAllowed {
+            announces_running,
+            allow_failure,
+            error,
+        } => {
+            if announces_running.load(Ordering::SeqCst) {
+                ctx.announce_running();
+            }
+            tokio::select! {
+                permit = allow_failure.acquire() => {
+                    // Each failure uses up its permit.
+                    permit?.forget();
+                    Err(anyhow::anyhow!(error).context("the scripted unit failed"))
+                }
+                () = ctx.shutdown_token().cancelled() => Ok(()),
+            }
+        }
         Script::Return => {
             ctx.announce_running();
             Ok(())
@@ -425,6 +454,21 @@ impl BackgroundSessionPlatform for FakeBackgroundSession {
             self.end_session();
         }
         Ok(())
+    }
+}
+
+/// Wait until `condition` holds, on a test runtime whose clock is paused,
+/// failing the test after [`HANG_TIMEOUT`] of real time. The wait never lets
+/// the paused clock jump ahead to the next timer, as [`eventually`]'s sleeps
+/// would while a run's thread works, so only the test's
+/// `tokio::time::advance` moves it.
+pub(super) async fn eventually_on_the_paused_clock(what: &str, condition: impl Fn() -> bool) {
+    let waiting_since = std::time::Instant::now();
+    while !condition() {
+        assert!(waiting_since.elapsed() < HANG_TIMEOUT, "never: {what}");
+        // A yield leaves the runtime with work to do, so it polls its timers
+        // and the runs' wakeups without advancing the paused clock.
+        tokio::task::yield_now().await;
     }
 }
 
