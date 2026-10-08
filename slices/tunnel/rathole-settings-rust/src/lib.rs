@@ -13,12 +13,17 @@
 //! A device decodes the relay's domain, which ends each of its servers'
 //! domains and folder names, as a [`RelayDomain`].
 //!
+//! With the `proxy-header` feature, [`proxy_header`](mod@proxy_header) builds
+//! the PROXY protocol v2 header the relay writes ahead of each visitor's bytes.
+//!
 //! [`Transport`] and [`NoisePattern`] each have one value, the one the relay
 //! and the device's rathole are both built for. The relay renders its rathole
 //! server TOML from the same values, and a response naming anything else
 //! fails to deserialize instead of becoming a client config the device
 //! cannot run.
 
+#[cfg(feature = "proxy-header")]
+pub mod proxy_header;
 mod public_addr;
 mod relay_domain;
 mod tunnel_name;

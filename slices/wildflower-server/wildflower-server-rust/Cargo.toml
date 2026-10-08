@@ -78,8 +78,11 @@ workspace = true
 [dev-dependencies]
 # This crate with its test support, for `tests/serve.rs`.
 wildflower-server-rust = { path = ".", features = ["test-support"] }
-# PROXY headers the tunnel listener tests send.
-ppp.workspace = true
+# The PROXY headers the tunnel listener tests send, built as the relay
+# builds them.
+rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust", features = [
+  "proxy-header",
+] }
 serde_json.workspace = true
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"

@@ -6365,6 +6365,7 @@ dependencies = [
 name = "rathole-settings-rust"
 version = "0.0.0"
 dependencies = [
+ "ppp",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -9497,6 +9498,7 @@ dependencies = [
  "persistence-rust",
  "ppp",
  "proptest",
+ "rathole-settings-rust",
  "request-log-rust",
  "reqwest 0.12.28",
  "scopes-rust",
