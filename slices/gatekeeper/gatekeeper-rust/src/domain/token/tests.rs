@@ -19,7 +19,6 @@ proptest! {
         origin in "https://[a-z]{3,16}\\.[a-z]{2,8}",
         audience_suffix in prop::option::of("/[a-z]{2,16}"),
         patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
-        is_host_owner in any::<bool>(),
     ) {
         let key = shared_key();
         let audience: Option<String> = audience_suffix.map(|s| format!("{origin}{s}"));
@@ -35,7 +34,6 @@ proptest! {
                 issuer: &origin,
                 audience: audience.as_deref(),
                 patient: patient.as_deref(),
-                is_host_owner,
             },
         ).expect("mint");
 
@@ -69,8 +67,6 @@ proptest! {
         // Every mint stamps a non-empty `jti` (uniqueness is covered by
         // `each_mint_carries_a_unique_jti`).
         prop_assert!(verified_claims.jti.as_deref().is_some_and(|jti| !jti.is_empty()));
-        // The `wf_owner` marker round-trips: present-and-`true` only when minted.
-        prop_assert_eq!(verified_claims.host_owner, is_host_owner.then_some(true));
 
         let iat = verified_claims.issued_at.expect("iat present");
         let exp = verified_claims.expires_at.expect("exp present");
@@ -93,7 +89,6 @@ fn verify_rejects_wrong_issuer() {
             issuer: "tauri://localhost",
             audience: None,
             patient: None,
-            is_host_owner: false,
         },
     )
     .expect("mint");
@@ -146,7 +141,6 @@ fn owner_args<'a>(client_id: &'a str, origin: &'a str) -> NewJwtArgs<'a> {
         issuer: origin,
         audience: None,
         patient: None,
-        is_host_owner: false,
     }
 }
 

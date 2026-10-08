@@ -2415,6 +2415,7 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "chrono",
+ "gatekeeper-rust",
  "helios-audit",
  "helios-auth",
  "helios-persistence",

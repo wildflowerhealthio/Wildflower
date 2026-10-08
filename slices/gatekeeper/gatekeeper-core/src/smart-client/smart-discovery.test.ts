@@ -19,7 +19,7 @@ import {
  * `build_smart_configuration` serves, trimmed to the fields this client reads.
  */
 const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> => ({
-  issuer: 'https://wildflowerhealth.io',
+  issuer: origin,
   jwks_uri: `${origin}/.well-known/jwks.json`,
   authorization_endpoint: `${origin}/oauth/authorize`,
   token_endpoint: `${origin}/oauth/token`,

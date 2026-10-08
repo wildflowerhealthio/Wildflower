@@ -14,9 +14,6 @@ mod state;
 mod wire_representations;
 
 pub(crate) use extractors::served_origin::ServedOrigin;
-// Re-export so call sites read `crate::http::served_base_url_for` without the
-// `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
-pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // FHIR bearer gate and the Tauri loopback-owner-trust middleware both use it.
 pub use middleware::ensure_bearer_header;

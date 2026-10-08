@@ -17,6 +17,6 @@ pub(crate) type LiveTokenExchanger = TokenExchanger<SqliteGatekeeperStore>;
 
 impl FromState for LiveTokenExchanger {
     fn from_state(state: &Arc<GatekeeperState>) -> Self {
-        TokenExchanger::new(state.store.clone())
+        TokenExchanger::new(state.store.clone(), state.server_origin.clone())
     }
 }

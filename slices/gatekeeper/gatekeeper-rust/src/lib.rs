@@ -196,7 +196,7 @@ pub struct Gatekeeper {
 /// connection `pool` (the same app-wide `persistence_rust::open_pool` pool the
 /// collector rides). Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, first-party client seed), mints
-/// the boot-time host owner token against `config.loopback_base_url`, and:
+/// the boot-time host owner token for `config.server_origin`, and:
 ///
 ///  - publishes the host owner token on `local_owner_token_tx` so subscribers (e.g.
 ///    the `WebView` bridge listener) observe it the moment it exists;
@@ -215,10 +215,9 @@ pub struct Gatekeeper {
 ///  - returns the `Arc<GatekeeperState>` the caller passes to
 ///    [`gatekeeper_auth_middleware`] to gate emr-rust.
 ///
-/// Token claims follow the canonical model — `iss` is the fixed
-/// [`shared_structures_rust::CANONICAL_ISSUER`] and `aud` is the per-request
-/// served origin (derived from
-/// [`served_base_url_for`](crate::http::served_base_url_for)). See
+/// Every token this server mints — OAuth and host owner alike — carries the
+/// server's origin ([`GatekeeperConfig::server_origin`]) as both `iss` and
+/// `aud`, and the bearer gates accept no other. See
 /// `docs/Origins/Explanation.md`.
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
@@ -269,13 +268,11 @@ pub fn setup_gatekeeper(
         &config.host_owner_scopes,
         &config.first_party_client_id,
     )?;
-    // `iss` and `aud` are both the canonical issuer: the one token is presented
-    // over loopback and at the tunnel origin (#256), so a served-origin `aud`
-    // couldn't cover both. See `docs/Origins/Explanation.md`.
+    let server_origin: Arc<str> =
+        shared_structures_rust::origin_string(&config.server_origin).into();
     let host_owner_token = seeding::mint_host_owner_token(
         &store,
-        shared_structures_rust::CANONICAL_ISSUER,
-        shared_structures_rust::CANONICAL_ISSUER,
+        &server_origin,
         HOST_OWNER_TOKEN_TTL,
         &config.host_owner_scopes,
         &config.first_party_client_id,
@@ -288,6 +285,7 @@ pub fn setup_gatekeeper(
         store: store.clone(),
         revocation_store: revocation_store.clone(),
         loopback_base_url: config.loopback_base_url.clone(),
+        server_origin: server_origin.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
         owner_ui_base: config.owner_ui_base.clone(),
         active_pending_consent_sender: active_pending_consent_tx,
@@ -307,6 +305,7 @@ pub fn setup_gatekeeper(
     // the (now-short) owner-token TTL. See #269.
     spawn_owner_token_reminter(
         store,
+        server_origin,
         config.host_owner_scopes.clone(),
         config.first_party_client_id.clone(),
         local_owner_token_tx.clone(),
@@ -325,6 +324,7 @@ pub fn setup_gatekeeper(
 /// shutdown) it stops.
 fn spawn_owner_token_reminter(
     store: SqliteGatekeeperStore,
+    server_origin: Arc<str>,
     host_owner_scopes: Vec<String>,
     first_party_client_id: String,
     sender: watch::Sender<Option<String>>,
@@ -339,8 +339,7 @@ fn spawn_owner_token_reminter(
             ticks.tick().await;
             match seeding::mint_host_owner_token(
                 &store,
-                shared_structures_rust::CANONICAL_ISSUER,
-                shared_structures_rust::CANONICAL_ISSUER,
+                &server_origin,
                 HOST_OWNER_TOKEN_TTL,
                 &host_owner_scopes,
                 &first_party_client_id,

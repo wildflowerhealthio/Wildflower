@@ -1,9 +1,9 @@
 //! URL/path builders for the gatekeeper's user-facing pages (the
 //! `/gatekeeper/*` routes of the hosted owner UI). The `*_path` helpers return
 //! the owner-UI-relative route; the `*_url` helpers resolve it on the hosted
-//! owner UI ([`OwnerUiBase`]) pointed at `server_origin` — typically the
+//! owner UI ([`OwnerUiBase`]) pointed at `served_origin` — typically the
 //! per-request served origin from
-//! [`served_base_url_for`](crate::http::served_base_url_for).
+//! [`served_base_url_for`](shared_structures_rust::served_origin::served_base_url_for).
 
 use shared_structures_rust::owner_ui::OwnerUiBase;
 
@@ -13,24 +13,24 @@ pub fn device_entry_path() -> &'static str {
 }
 
 /// Absolute URL of the device-flow code-entry page, on the hosted owner UI,
-/// pointed at `server_origin`.
-pub fn device_entry_url(owner_ui: &OwnerUiBase, server_origin: &str) -> String {
+/// pointed at `served_origin`.
+pub fn device_entry_url(owner_ui: &OwnerUiBase, served_origin: &str) -> String {
     owner_ui
-        .route_url(device_entry_path(), server_origin, &[])
+        .route_url(device_entry_path(), served_origin, &[])
         .into()
 }
 
 /// Absolute URL of the device-flow code-entry page with `user_code` pre-filled
-/// in the query string, on the hosted owner UI, pointed at `server_origin`.
+/// in the query string, on the hosted owner UI, pointed at `served_origin`.
 pub fn device_entry_url_with_code(
     owner_ui: &OwnerUiBase,
-    server_origin: &str,
+    served_origin: &str,
     user_code: &str,
 ) -> String {
     owner_ui
         .route_url(
             device_entry_path(),
-            server_origin,
+            served_origin,
             &[("user_code", user_code)],
         )
         .into()

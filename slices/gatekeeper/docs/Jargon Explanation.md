@@ -543,19 +543,19 @@ holds.
 ### `iss` (issuer) and `aud` (audience)
 
 JWT claims (RFC 7519 §4.1.1, §4.1.3) — _who_ minted this token and _for
-whom_ it's intended. Today: `iss` is the `Origin` value (no path suffix);
-`aud` is `${origin}/fhir` for tokens minted off the OAuth code flow and
-just `origin` for host-minted owner tokens.
+whom_ it's intended. Both are the server's origin, `https://<domain>` (no
+path suffix), on every token gatekeeper mints — OAuth and host owner alike. See
+[Origins Explanation](../../docs/Origins/Explanation.md).
 
 A loose intuition: **`iss` is "who I am, the signer"; `aud` is "who I'm
 talking to, the verifier."** A token signed for `aud=A` should not be
 honored by `aud=B`, even if the signature is valid.
 
-`verifyJwt` accepts either `origin` or `${origin}/fhir` as the audience.
-Both checks are performed by `jose.jwtVerify`'s `{ issuer, audience }`
-options — not by manual post-verify checks — so a future caller using
-`SigningKey#verifyJwt` directly is forced to pass them and can't silently
-accept any iss/aud.
+The `TokenVerifier` accepts only the server's origin, as `iss` and as `aud`,
+whichever origin the request was served on. Both checks are performed by
+`verify_jwt`'s `VerifyOptions` (`expected_issuer`, `accepted_audiences`) — not
+by manual post-verify checks — so a caller using `verify_jwt` directly is forced
+to pass them and can't silently accept any iss/aud.
 
 ### `sub` (subject)
 

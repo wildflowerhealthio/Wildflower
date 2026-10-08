@@ -74,7 +74,6 @@ mod tests {
             issued_at: None,
             scope: None,
             patient: None,
-            host_owner: None,
         }
     }
 

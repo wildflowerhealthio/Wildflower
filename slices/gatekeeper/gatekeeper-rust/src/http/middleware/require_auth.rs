@@ -9,7 +9,6 @@ use shared_structures_rust::request_caller::{RequestCaller, RequestRefusal};
 
 use crate::domain::token::VerifiedClaims;
 use crate::http::errors;
-use crate::http::served_base_url_for;
 use crate::http::state::GatekeeperState;
 use crate::live_bindings::{FromState, LiveTokenVerifier};
 
@@ -63,13 +62,11 @@ pub async fn require_valid_session(
 }
 
 /// The shared authN pipeline both claims-inserting gates run: extract the
-/// `Authorization: Bearer` access token, resolve the request's served
-/// origin, verify the token against it through the
+/// `Authorization: Bearer` access token, verify it through the
 /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier)
-/// (signature, issuer/audience, revocation), and map each failure to its
-/// response — a missing token is a `401` stamped
-/// [`RequestRefusal::MissingToken`], an unresolvable origin a `500`, a verify
-/// failure whatever [`errors::verify_error_response`] maps it to (a rejected
+/// (signature, `iss`/`aud` against the server's origin, revocation), and map
+/// each failure to its response — a missing token is a `401` stamped
+/// [`RequestRefusal::MissingToken`], a verify failure whatever [`errors::verify_error_response`] maps it to (a rejected
 /// or revoked token's `401` stamped with that refusal). Extracted so
 /// [`require_valid_session`] and
 /// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
@@ -86,18 +83,10 @@ pub(crate) fn verify_request_claims(
     let Some(token) = try_bearer_token_from_headers(headers) else {
         return Err(Box::new(errors::unauthorized(RequestRefusal::MissingToken)));
     };
-    // Verify against the request's served origin (loopback for a direct hit,
-    // the forwarded public origin via the tunnel) so the token's `iss`/`aud`
-    // match the surface it was minted for. See `docs/Origins/Explanation.md`.
-    let Some(base_url) = served_base_url_for(headers, &state.loopback_base_url) else {
-        return Err(Box::new(errors::internal_error(
-            "served base url",
-            "forwarded header did not indicate a valid base URL",
-        )));
-    };
-    let origin = shared_structures_rust::origin_string(&base_url);
+    // The token must name the server's origin, whichever origin this request
+    // was served on (loopback or the tunnel). See `docs/Origins/Explanation.md`.
     LiveTokenVerifier::from_state(state)
-        .verify(&origin, token)
+        .verify(token)
         .map_err(|e| Box::new(errors::verify_error_response(log_context, e)))
 }
 

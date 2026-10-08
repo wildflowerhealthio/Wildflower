@@ -118,7 +118,8 @@ pub async fn set_up(
     } = config;
 
     // The server's public origin, from its domain: what HFS's links and every app
-    // launch name. It doesn't change while the server runs.
+    // launch name, and every token's `iss` and `aud`. It doesn't change while the
+    // server runs.
     let public_origin = tunnel_rust::public_origin_url(&public_host)
         .context("the server's public host doesn't name an origin")?;
 
@@ -148,15 +149,16 @@ pub async fn set_up(
         log_level: "debug".to_string(),
         db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
         // HFS-enforced auth: every FHIR request must carry a Bearer JWT
-        // signed by a gatekeeper-issued key. `iss` is pinned to
-        // [`shared_structures_rust::CANONICAL_ISSUER`] by both gatekeeper
-        // (at mint) and emr-rust (at validation).
+        // signed by a gatekeeper-issued key whose `iss` and `aud` are the
+        // server's origin — set by gatekeeper at mint, checked by both
+        // gatekeeper's gate and HFS.
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
         search_parameter_data_dir,
         public_origin: public_origin.clone(),
     };
     let gatekeeper_config = GatekeeperConfig {
         loopback_base_url: loopback_base_url.clone(),
+        server_origin: public_origin.clone(),
         host_owner_scopes,
         first_party_client_id,
         owner_ui_base: owner_ui_base.clone(),
