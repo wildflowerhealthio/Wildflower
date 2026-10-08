@@ -25,9 +25,9 @@
 //! `TauriUnitRunner` always ends up with the record as last written.
 //!
 //! - [`servers_list`], invoked as `invoke('servers_list')`, answers with
-//!   every registered server and its status on `TauriUnitRunner`, as
-//!   [`ListedServer`](servers_rust::ListedServer)s, or with the error
-//!   `servers.json` couldn't be read with.
+//!   every registered server, its status on `TauriUnitRunner` and its
+//!   certificate's state, as [`ListedServer`](servers_rust::ListedServer)s,
+//!   or with the error `servers.json` couldn't be read with.
 //! - [`server_add`], invoked as
 //!   `invoke('server_add', { relay, tunnelName, token })`, enrols a tunnel at
 //!   a relay and registers the server (see [`servers_rust::add_server`]),

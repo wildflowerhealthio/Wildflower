@@ -53,13 +53,35 @@ port and on the tunnel. Rust-only, no `-core`.
     server keeps running; until a certificate is deployed, tunnel handshakes
     fail. Where it comes from is the host's
     `WildflowerServerConfig::device_certificate`, a `DeviceCertificateConfig`
-    built from the server's record: the CA at its `acme_directory_url`
-    (Let's Encrypt's staging or production CA). The order has no contact.
+    built from the server's record: its `certificate_authority` (Let's
+    Encrypt's staging or production CA), ordered from at its
+    `acme_directory_url`. The order has no contact.
     Keys are files: the certificate and its key in `certificate_dir`, the
     server's own, and the account key, one per CA, in `acme_account_dir`,
     shared by the install's servers. Starting the certificate makes both
     folders readable by this user only, and a folder that can't be created
     fails `set_up`.
+  - **The certificate's state** (`domain/certificate_state.rs`) is a
+    `CertificateState`: its status (`None`, `Ordering`, `Valid`,
+    `RenewalDue`, `Expired`, `Failed`), its issuer, the certificate held
+    (`IssuedCertificate`: validity and the SHA-256 fingerprint of its leaf)
+    and the last order error (`CertificateOrderError`: rate limited, with
+    when to retry; a challenge that didn't reach the device; the CA
+    unreachable; or other). A run derives it with the pure `CertificateRun`
+    reducer from rustls-acme's events, read from the cache entry rustls-acme
+    last loaded or stored, and publishes it on
+    `ServerObservers::certificate_tx` at start, on each event, and when the
+    certificate's renewal falls due or it expires. `RenewalDue` is a third or
+    less of the lifetime left, rustls-acme's renewal point. A stopped
+    server's state comes from its cache (`stopped_certificate_state`):
+    `None`, `Valid`, `RenewalDue` or `Expired`, never `Ordering` or `Failed`;
+    `Expired` is only ever a stopped server's, and renews when it starts.
+  - **The certificate history** (`adapters/certificate_history.rs`) is
+    `history.json` in the server's `certificate_dir`, a JSON array of
+    `CertificateHistoryEntry` (`{deployedAt, issuer, fingerprint, notBefore,
+notAfter}`). A run appends each certificate it deploys unless it is the
+    latest entry already, replacing the file atomically;
+    `read_certificate_history` reads it.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
     (`shared_structures_rust::health_check`): `application/health+json`,
     uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two
@@ -85,10 +107,13 @@ port and on the tunnel. Rust-only, no `-core`.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig` with its `DeviceCertificateConfig`, `HostPorts`,
     `ServerObservers`); `domain/`
-    `ServerHealth` and the reachability monitor with its `HealthProbe` port;
+    `ServerHealth` and the reachability monitor with its `HealthProbe` port,
+    `CertificateAuthority`, `CertificateState` with its `CertificateRun`
+    reducer, and `CertificateHistoryEntry`;
     `adapters/` ports implemented here (apps' `AppLaunchScopes` and
     `LaunchContextMinter` from gatekeeper, the monitor's `HealthProbe` over
-    reqwest) and the device certificate over rustls-acme; `http/` the
+    reqwest), the device certificate over rustls-acme with its state, and
+    the certificate history file; `http/` the
     server's own middleware (CORS, the loopback owner trust, the
     forwarded-request report, the tunnel front), the tunnel listener with its
     PROXY header reader and its TLS acceptor, the `/health` checks and the
@@ -108,15 +133,18 @@ port and on the tunnel. Rust-only, no `-core`.
   from its platform paths (the server's folder, the FHIR SearchParameter
   bundle dir) or from the server's record (the tunnel's relay settings, the
   public host, and the `DeviceCertificateConfig` its
-  `ServerRecord::device_certificate_config` builds: the CA's directory, the
-  server's certificate folder and the install's ACME account folder). `HostPorts` carries its native adapters as trait
+  `ServerRecord::device_certificate_config` builds: the CA and its
+  directory, the server's certificate folder and the install's ACME account
+  folder). `HostPorts` carries its native adapters as trait
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time
   configuration or platform paths itself.
 - **The host watches the server through `ServerObservers`.** Host-owned
   senders: the server's `ServerHealth` through its public origin, published by
   the reachability monitor until it first answers, on a channel the host makes
-  for each run, and each forwarded request (every request through the tunnel,
+  for each run; the server's `CertificateState`, published by the device
+  certificate for as long as the server runs, on a channel the host makes for
+  each run; and each forwarded request (every request through the tunnel,
   and each one a front run on this machine relayed), on a channel the host
   shares across runs, reported by the forwarded-request layer as a
   `ForwardedRequest` record: the

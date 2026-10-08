@@ -46,8 +46,8 @@ use tokio_util::sync::CancellationToken;
 use tunnel_rust::TunnelStream;
 use url::Url;
 use wildflower_server_rust::{
-    set_up, DeviceCertificateConfig, HostPorts, ServerHealth, ServerObservers,
-    WildflowerServerConfig,
+    set_up, CertificateAuthority, DeviceCertificateConfig, HostPorts, ServerHealth,
+    ServerObservers, WildflowerServerConfig,
 };
 
 /// The `Forwarded` header a front run on this machine stamps on a request it
@@ -114,6 +114,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         },
         public_host: PUBLIC_HOST.to_owned(),
         device_certificate: DeviceCertificateConfig {
+            certificate_authority: CertificateAuthority::LetsEncryptStaging,
             acme_directory_url: Url::parse(UNREACHABLE_ACME_DIRECTORY_URL)
                 .expect("the CA directory URL"),
             // The test's one temporary folder stands in for the data root too.
@@ -195,6 +196,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
+        certificate_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
     let config = server_config(server_dir.clone(), loopback_base_url.clone());
@@ -433,6 +435,7 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
+        certificate_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
     let shutdown = CancellationToken::new();
@@ -688,6 +691,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
+        certificate_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
     let server = tokio::time::timeout(
@@ -941,6 +945,7 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
+        certificate_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
     let shutdown = CancellationToken::new();

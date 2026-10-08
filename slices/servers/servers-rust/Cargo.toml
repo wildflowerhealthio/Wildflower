@@ -22,13 +22,6 @@ serde_json.workspace = true
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
 # `launcher_url` and a self-hosted relay's `base_url`, stored as URLs in the file.
 url = { version = "2", features = ["serde"] }
-# Let's Encrypt's staging and production directory URLs, which a record's
-# `staging_certificates` picks between. The same features as
-# `wildflower-server-rust`'s, which already builds it, so this adds nothing.
-rustls-acme = { version = "0.15", default-features = false, features = [
-  "ring",
-  "webpki-roots",
-] }
 # Serialises read-modify-write cycles on `servers.json` within the process.
 parking_lot = "0.12"
 # `RegistryError`'s and `EnrolmentError`'s `Display`/`source` wiring.
@@ -36,9 +29,10 @@ thiserror = "2"
 # `RelayClient` is an `#[async_trait]`, so the base holds it as a trait object.
 async-trait = "0.1"
 # Runs the synchronous registry off the async runtime during enrolment and
-# spawns a run's health reporter (`rt`); `sync` carries a run's server-health
-# watch and the forwarded-request channel.
-tokio = { workspace = true, features = ["rt", "sync"] }
+# spawns a run's detail reporter (`rt`); `sync` carries a run's server-health
+# and certificate watches and the forwarded-request channel; `macros` selects
+# over the two watches.
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
 # `GET /rathole` and the signed `GET /me` on the relay's site. `rustls-tls`
 # (no openssl) as in `wildflower-server-rust`; `json` decodes both bodies.
 # Already in the tree.
@@ -62,8 +56,9 @@ rand = "0.10"
 # reasons the stop notifications read. The Tauri-free `UnitRunner`, so this
 # crate stays Tauri-free.
 unit-runner = { path = "../../../global/unit-runner" }
-# The server a `ServerUnit` sets up and serves, and the `ServerHealth` its
-# detail carries. Tauri-free too.
+# The server a `ServerUnit` sets up and serves, the `ServerHealth` and
+# `CertificateState` its detail carries, and the `CertificateAuthority` a
+# record names. Tauri-free too.
 wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
 # `ForwardedRequest`/`RequestCaller`, which a run reports and the request
 # notifications count, and `HealthStatus`, which a server's status carries.

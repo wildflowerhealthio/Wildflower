@@ -23,19 +23,26 @@
 //! native adapters and the channels its bridge reads arrive in [`HostPorts`];
 //! the channels the host watches the server through arrive in
 //! [`ServerObservers`], among them the [`ServerHealth`] the reachability
-//! monitor reads from the server's own `/health` through its public origin.
+//! monitor reads from the server's own `/health` through its public origin,
+//! and the [`CertificateState`] the run publishes as its certificate is
+//! deployed, ordered and renewed. A stopped server's certificate state is read
+//! from its cache by [`stopped_certificate_state`], and the certificates its
+//! runs deployed by [`read_certificate_history`].
 //!
 //! Layered like the other Rust slices:
 //!
 //!  - `config` — the host's inputs above, at the crate root like
 //!    `gatekeeper-rust`'s `config`.
 //!  - `domain` — [`ServerHealth`] and the reachability monitor that publishes
-//!    it, through its `HealthProbe` port.
+//!    it, through its `HealthProbe` port; [`CertificateAuthority`],
+//!    [`CertificateState`] with the reducer a run derives it with, and
+//!    [`CertificateHistoryEntry`].
 //!  - `adapters` — ports implemented here, where both sides are in reach:
 //!    apps' `AppLaunchScopes` from gatekeeper's OAuth clients, and the
 //!    monitor's `HealthProbe` over `reqwest`; and the device certificate,
 //!    rustls-acme's order and renewal of the tunnel listener's certificate
-//!    as [`DeviceCertificateConfig`] says.
+//!    as [`DeviceCertificateConfig`] says, which reports its state and
+//!    records each new certificate in the server's certificate history.
 //!  - `http` — the server's own middleware (CORS, the loopback owner trust,
 //!    the forwarded-request report, the tunnel front), the tunnel listener
 //!    with its PROXY header reader and its TLS, the `/health` checks and the
@@ -48,6 +55,13 @@ mod domain;
 mod http;
 mod live_bindings;
 
+pub use adapters::acme_certificate::stopped_certificate_state;
+pub use adapters::certificate_history::read_certificate_history;
 pub use config::{DeviceCertificateConfig, HostPorts, ServerObservers, WildflowerServerConfig};
+pub use domain::certificate_authority::CertificateAuthority;
+pub use domain::certificate_history::CertificateHistoryEntry;
+pub use domain::certificate_state::{
+    CertificateOrderError, CertificateState, CertificateStatus, IssuedCertificate,
+};
 pub use domain::server_health::ServerHealth;
 pub use live_bindings::{set_up, WildflowerServer};

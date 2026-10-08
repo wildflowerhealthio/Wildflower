@@ -35,7 +35,9 @@ use url::Url;
 use crate::ServersState;
 
 /// Every registered server, in the order they were added, each with its
-/// status on `TauriUnitRunner`. Invoked as `invoke('servers_list')`.
+/// status on `TauriUnitRunner` and its certificate's state: its run's, or
+/// for a server with no run reporting one, the state of the certificate its
+/// cache holds. Invoked as `invoke('servers_list')`.
 ///
 /// # Errors
 ///
@@ -180,8 +182,17 @@ async fn list(servers: &ServersState) -> Result<Vec<ListedServer>, RegistryError
     let records = on_registry(servers, |registry| registry.read_all())
         .await
         .inspect_err(|error| log::error!("[servers] listing the servers failed: {error}"))?;
+    let mut with_cached_certificates = Vec::with_capacity(records.len());
+    for record in records {
+        let cached_certificate = wildflower_server_rust::stopped_certificate_state(
+            &record.domain(),
+            &record.device_certificate_config(&servers.data_root),
+        )
+        .await;
+        with_cached_certificates.push((record, cached_certificate));
+    }
     Ok(ListedServer::list(
-        records,
+        with_cached_certificates,
         &servers.server_units.statuses(),
     ))
 }
@@ -1173,6 +1184,10 @@ mod tests {
         assert_eq!(
             listed[0]["runPolicy"],
             serde_json::json!({"kind": "whileOpen"})
+        );
+        assert_eq!(
+            listed[0]["certificate"]["status"], "none",
+            "nothing is cached, and the test's unit reports no certificate"
         );
     }
 

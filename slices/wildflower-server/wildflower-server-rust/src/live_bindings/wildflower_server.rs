@@ -356,8 +356,11 @@ pub async fn set_up(
     // runs. A failed order is retried by rustls-acme, and the server keeps
     // running meanwhile: its tunnel handshakes fail until a certificate is
     // deployed. Its key folders, readable by this user only, are created
-    // first; one that can't be fails the setup.
-    let device_certificate = DeviceCertificate::start(&public_host, &device_certificate)?;
+    // first; one that can't be fails the setup. It publishes its state on the
+    // host's channel, and records each new certificate in the server's
+    // certificate history.
+    let device_certificate =
+        DeviceCertificate::start(&public_host, &device_certificate, observers.certificate_tx)?;
     let tunnel_tls_acceptor = TunnelTlsAcceptor::new(&public_host, device_certificate.resolver());
     #[cfg(feature = "test-support")]
     let tunnel_stream_tx = tunnel_config.tunnel_stream_tx;

@@ -127,6 +127,7 @@ impl ServerRecord {
     #[must_use]
     pub fn device_certificate_config(&self, data_root: &Path) -> DeviceCertificateConfig {
         DeviceCertificateConfig {
+            certificate_authority: self.certificate_authority,
             acme_directory_url: self.certificate_authority.directory_url(),
             certificate_dir: self.certificate_dir(data_root),
             acme_account_dir: data_root.join(ACME_ACCOUNT_DIR_NAME),
@@ -422,6 +423,7 @@ pub(crate) mod tests {
         assert_eq!(
             official_record("ruth").device_certificate_config(data_root),
             DeviceCertificateConfig {
+                certificate_authority: CertificateAuthority::LetsEncrypt,
                 acme_directory_url: Url::parse("https://acme-v02.api.letsencrypt.org/directory")
                     .unwrap(),
                 certificate_dir: PathBuf::from(
@@ -433,6 +435,7 @@ pub(crate) mod tests {
         assert_eq!(
             self_hosted_record("lab").device_certificate_config(data_root),
             DeviceCertificateConfig {
+                certificate_authority: CertificateAuthority::LetsEncryptStaging,
                 acme_directory_url: Url::parse(
                     "https://acme-staging-v02.api.letsencrypt.org/directory"
                 )

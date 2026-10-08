@@ -161,6 +161,7 @@ mod tests {
             running_since: None,
             detail: Some(ServerDetail {
                 health: None,
+                certificate: None,
                 pending_consent,
                 consent_decider: None,
             }),

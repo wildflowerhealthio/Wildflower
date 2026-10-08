@@ -12,7 +12,7 @@ use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
 use url::Url;
 
-use crate::ServerHealth;
+use crate::{CertificateAuthority, CertificateState, ServerHealth};
 
 /// What the host hands [`set_up`](crate::set_up): the values it derives at
 /// build time (`tauri-shared-config.json`), from its platform paths, or from
@@ -52,9 +52,12 @@ pub struct WildflowerServerConfig {
 /// cached in. The host builds it from the server's record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceCertificateConfig {
+    /// The ACME CA the server's certificate is ordered from, as the server's
+    /// record names it: the issuer its state and history report.
+    pub certificate_authority: CertificateAuthority,
     /// The directory of the ACME CA the server's certificate is ordered
-    /// from: Let's Encrypt's staging or production CA, as the server's record
-    /// says.
+    /// from: `certificate_authority`'s, except in tests, which point it at
+    /// one nothing answers at.
     pub acme_directory_url: Url,
     /// The folder the server's certificates and their keys are cached in,
     /// its own: deleting the server deletes them.
@@ -95,6 +98,11 @@ pub struct ServerObservers {
     /// answer. `None` until its first probe; the monitor stops when the server
     /// stops serving, and publishes nothing after.
     pub server_health_tx: watch::Sender<Option<ServerHealth>>,
+    /// Where the server's certificate stands, published by the run as it
+    /// starts, on each of rustls-acme's events, and when the certificate's
+    /// renewal falls due or it expires. `None` until the run's certificate
+    /// starts; the run publishes nothing after it stops.
+    pub certificate_tx: watch::Sender<Option<CertificateState>>,
     /// Each forwarded request (every request through the tunnel, and each one
     /// a front run on this machine relayed), reported by the forwarded-request
     /// layer after its response is ready (see `forwarded_request_layer`). A

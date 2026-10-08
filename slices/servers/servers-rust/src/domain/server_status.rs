@@ -19,14 +19,16 @@
 //!   },
 //!   "runningSince": "<RFC 3339>",
 //!   "health": {"kind": "reachable", "status": "pass" | "warn" | "fail"}
-//!           | {"kind": "unreachable", "error": "…"}
+//!           | {"kind": "unreachable", "error": "…"},
+//!   "certificate": <the run's certificate state>
 //! }
 //! ```
 //!
 //! `lastStop` is there only while the run state is `stopped`, and only once
 //! the server has run; `platformReason` only for `sessionEndedByPlatform`;
-//! `runningSince` only while `running`; `health` only while a run has
-//! reported it.
+//! `runningSince` only while `running`; `health` and `certificate` only while
+//! a run has reported them. `certificate` is written as
+//! [`certificate_state_wire`](crate::domain::certificate_state_wire) says.
 
 use std::collections::BTreeMap;
 
@@ -38,6 +40,7 @@ use unit_runner::{
 };
 use wildflower_server_rust::ServerHealth;
 
+use crate::domain::certificate_state_wire::CertificateStateWire;
 use crate::domain::ServerDetail;
 
 /// One server's status on `UnitRunner`: `UnitRunner`'s [`UnitStatus`] for the
@@ -70,6 +73,8 @@ pub(crate) struct ServerStatusWire<'a> {
     running_since: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     health: Option<ServerHealthWire<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    certificate: Option<CertificateStateWire<'a>>,
 }
 
 impl<'a> ServerStatusWire<'a> {
@@ -83,16 +88,18 @@ impl<'a> ServerStatusWire<'a> {
                 last_stop.as_ref().map(RunStopWire::of),
             ),
         };
+        let detail = unit_status.detail.as_ref();
         Self {
             domain,
             run_state,
             last_stop,
             running_since: unit_status.running_since,
-            health: unit_status
-                .detail
-                .as_ref()
+            health: detail
                 .and_then(|detail| detail.health.as_ref())
                 .map(ServerHealthWire::of),
+            certificate: detail
+                .and_then(|detail| detail.certificate.as_ref())
+                .map(CertificateStateWire::of),
         }
     }
 }
@@ -249,9 +256,12 @@ pub(crate) mod tests {
     use chrono::TimeZone;
     use shared_structures_rust::health_check::HealthReport;
     use unit_runner::RunPolicy;
+    use wildflower_server_rust::{
+        CertificateOrderError, CertificateState, CertificateStatus, IssuedCertificate,
+    };
 
     use super::*;
-    use crate::domain::{RegistryError, RunPolicyChoice, ServerChangeError};
+    use crate::domain::{CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError};
 
     pub(crate) const RUTH: &str = "ruth.relay.example.com";
     pub(crate) const LAB: &str = "lab.rathole.example.com";
@@ -260,13 +270,30 @@ pub(crate) mod tests {
         Utc.with_ymd_and_hms(2026, 10, 6, 17, minute, 0).unwrap()
     }
 
-    /// A run that is up, its `/health` answering `pass` through the relay.
+    /// A 90-day certificate issued on 1 October 2026.
+    pub(crate) fn issued_certificate() -> IssuedCertificate {
+        IssuedCertificate {
+            not_before: Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap(),
+            not_after: Utc.with_ymd_and_hms(2026, 12, 30, 0, 0, 0).unwrap(),
+            fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+                .to_owned(),
+        }
+    }
+
+    /// A run that is up, its `/health` answering `pass` through the relay,
+    /// with a valid certificate.
     pub(crate) fn running_and_reachable() -> UnitStatus<ServerDetail> {
         UnitStatus {
             run_state: RunState::Running,
             running_since: Some(at(0)),
             detail: Some(ServerDetail {
                 health: Some(ServerHealth::Reachable(HealthReport::pass())),
+                certificate: Some(CertificateState {
+                    status: CertificateStatus::Valid,
+                    issuer: CertificateAuthority::LetsEncrypt,
+                    issued: Some(issued_certificate()),
+                    last_error: None,
+                }),
                 pending_consent: None,
                 consent_decider: None,
             }),
@@ -312,6 +339,34 @@ pub(crate) mod tests {
                     detail: Some(ServerDetail {
                         health: Some(ServerHealth::Unreachable {
                             error: "the relay answered 502".to_owned(),
+                        }),
+                        certificate: Some(CertificateState {
+                            status: CertificateStatus::Failed,
+                            issuer: CertificateAuthority::LetsEncrypt,
+                            issued: None,
+                            last_error: Some(CertificateOrderError::RateLimited {
+                                retry_after: Some(at(59)),
+                            }),
+                        }),
+                        pending_consent: None,
+                        consent_decider: None,
+                    }),
+                }),
+            ),
+            (
+                "runningRenewalFailed",
+                status(UnitStatus {
+                    run_state: RunState::Running,
+                    running_since: Some(at(0)),
+                    detail: Some(ServerDetail {
+                        health: None,
+                        certificate: Some(CertificateState {
+                            status: CertificateStatus::RenewalDue,
+                            issuer: CertificateAuthority::LetsEncryptStaging,
+                            issued: Some(issued_certificate()),
+                            last_error: Some(CertificateOrderError::ChallengeFailed {
+                                detail: Some("Connection refused".to_owned()),
+                            }),
                         }),
                         pending_consent: None,
                         consent_decider: None,

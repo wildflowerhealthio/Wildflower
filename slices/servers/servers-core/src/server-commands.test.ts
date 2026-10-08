@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import { enableBackgroundSessionRecovery } from './background-session-recovery.ts'
+import type * as CertificateState from './certificate-state.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as ListedServer from './listed-server.ts'
 import * as RunPolicyChoice from './run-policy-choice.ts'
@@ -280,5 +281,75 @@ describe('ListedServer', () => {
     // Assert
     expect(updated.status).toBe(stopped)
     expect(updated.runPolicy).toBe(ruth.runPolicy)
+    expect(updated.certificate).toBe(ruth.certificate)
+  })
+
+  it("should take a run's certificate state from a newer status", () => {
+    // Arrange
+    const [ruth] = Schema.decodeUnknownSync(Schema.Array(ListedServer.Schema))(golden.listedServers)
+    const renewalFailed = Schema.decodeUnknownSync(ServerStatus.Schema)(
+      golden.serverStatuses.runningRenewalFailed
+    )
+
+    // Act
+    const updated = ListedServer.withStatus(ruth, renewalFailed)
+
+    // Assert
+    expect(updated.certificate.status).toBe('renewalDue')
+  })
+
+  it("should decode a stopped server's lapsed certificate as expired", () => {
+    // Act
+    const [, lab] = Schema.decodeUnknownSync(Schema.Array(ListedServer.Schema))(
+      golden.listedServers
+    )
+
+    // Assert
+    expect(lab.certificate.status).toBe('expired')
+    expect(lab.certificate.issuer).toBe('letsEncryptStaging')
+    expect(lab.certificate.lastError).toEqual(Option.none())
+  })
+})
+
+describe('CertificateState', () => {
+  const certificateOf = (status: unknown): Option.Option<CertificateState.Type> =>
+    ServerStatus.certificateOf(Schema.decodeUnknownSync(ServerStatus.Schema)(status))
+
+  it("should decode a run's valid certificate with its validity and fingerprint", () => {
+    // Act
+    const certificate = certificateOf(golden.serverStatuses.runningAndReachable)
+
+    // Assert
+    expect(certificate).toEqual(
+      Option.some({
+        status: 'valid',
+        issuer: 'letsEncrypt',
+        issued: Option.some({
+          notBefore: utc('2026-10-01T00:00:00Z'),
+          notAfter: utc('2026-12-30T00:00:00Z'),
+          fingerprint: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+        }),
+        lastError: Option.none(),
+      })
+    )
+  })
+
+  it('should decode a rate limit with when to retry, and a failed challenge with its detail', () => {
+    // Act
+    const rateLimited = certificateOf(golden.serverStatuses.runningUnreachable)
+    const challengeFailed = certificateOf(golden.serverStatuses.runningRenewalFailed)
+
+    // Assert
+    expect(rateLimited.pipe(Option.flatMap((state) => state.lastError))).toEqual(
+      Option.some({ kind: 'rateLimited', retryAfter: Option.some(utc('2026-10-06T17:59:00Z')) })
+    )
+    expect(rateLimited.pipe(Option.map((state) => state.status))).toEqual(Option.some('failed'))
+    expect(challengeFailed.pipe(Option.flatMap((state) => state.lastError))).toEqual(
+      Option.some({ kind: 'challengeFailed', detail: Option.some('Connection refused') })
+    )
+  })
+
+  it('should have no certificate state for a stopped status', () => {
+    expect(certificateOf(golden.serverStatuses.stoppedWithAnError)).toEqual(Option.none())
   })
 })
