@@ -14,7 +14,7 @@ use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
     gatekeeper_auth_middleware, require_loopback_peer_middleware, setup_gatekeeper,
-    GatekeeperConfig,
+    GatekeeperConfig, HostOwnerConsents,
 };
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -80,6 +80,8 @@ pub struct WildflowerServer {
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
+    /// The server's pending consents, as the host's Owner decides them.
+    host_owner_consents: HostOwnerConsents,
 }
 
 impl WildflowerServer {
@@ -90,6 +92,14 @@ impl WildflowerServer {
     #[must_use]
     pub fn launch_context_minter(&self) -> gatekeeper_rust::LaunchContextMinter {
         self.launch_context_minter.clone()
+    }
+
+    /// The server's pending consents, which the host reads, approves and
+    /// denies in-process as its Owner, with no token. The host holds them
+    /// only while the server runs.
+    #[must_use]
+    pub fn host_owner_consents(&self) -> &HostOwnerConsents {
+        &self.host_owner_consents
     }
 
     /// A sender onto the tunnel listener, as the tunnel holds: each stream
@@ -119,7 +129,8 @@ impl WildflowerServer {
             tunnel_daemon,
             reachability_monitor,
             device_certificate,
-            // The launch context minter, and the `test-support` feature's
+            // The launch context minter, the host owner consents, and the
+            // `test-support` feature's
             // `tunnel_stream_tx`.
             ..
         } = self;
@@ -306,6 +317,7 @@ pub async fn set_up(
         host.loopback_consent_prompt,
     )
     .context("failed to set up gatekeeper")?;
+    let host_owner_consents = HostOwnerConsents::new(gatekeeper.state.clone());
 
     // The FHIR router carries discovery docs (metadata, SMART well-known) that a
     // client fetches before it holds a token, so those paths are exempted from
@@ -561,5 +573,6 @@ pub async fn set_up(
         reachability_monitor,
         launch_context_minter: gatekeeper.launch_context_minter,
         device_certificate,
+        host_owner_consents,
     })
 }

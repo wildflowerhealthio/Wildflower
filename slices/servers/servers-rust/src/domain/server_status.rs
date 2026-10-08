@@ -267,6 +267,7 @@ pub(crate) mod tests {
             running_since: Some(at(0)),
             detail: Some(ServerDetail {
                 health: Some(ServerHealth::Reachable(HealthReport::pass())),
+                pending_consent: None,
             }),
         }
     }
@@ -311,6 +312,7 @@ pub(crate) mod tests {
                         health: Some(ServerHealth::Unreachable {
                             error: "the relay answered 502".to_owned(),
                         }),
+                        pending_consent: None,
                     }),
                 }),
             ),

@@ -68,6 +68,10 @@ wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rus
 # `ForwardedRequest`/`RequestCaller`, which a run reports and the request
 # notifications count, and `HealthStatus`, which a server's status carries.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["health-check"] }
+# The head of a run's pending-consent queue, which its detail carries, and
+# `HostOwnerConsents`, through which the base's commands read, approve and
+# deny a running server's consents in-process. Tauri-free.
+gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 
 [lints]
 workspace = true
@@ -78,10 +82,8 @@ tempfile = "3"
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
 # The coalescer's property tests.
 proptest = "1"
-# The `ServerUnit` test runs the real server: gatekeeper's consent-free
-# loopback prompt and first-party client, and the relay settings its config
+# The `ServerUnit` test runs the real server: the relay settings its config
 # names.
-gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 # The relay's own site and signature verifier, served on a loopback port, so
 # enrolment is tested against the real relay rather than a copy of its rules.

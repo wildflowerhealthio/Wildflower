@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use servers_rust::{ServerDetail, ServerRecord, ServerUnit};
+use servers_rust::{RunningServerConsents, ServerDetail, ServerRecord, ServerUnit};
 use shared_structures_rust::request_caller::ForwardedRequest;
 use tauri_unit_runner::{RunPolicy, TauriUnitRunner, UnitId, UnitStatuses};
 use tokio::sync::mpsc;
@@ -19,20 +19,22 @@ pub type ServerConfigBuilder =
 /// Pushes the install's servers to `TauriUnitRunner`, each as a unit whose id
 /// is the server's domain, and reads their statuses back.
 ///
-/// The host's ports and the forwarded-request channel are the host's, shared
-/// by every run of every server.
+/// The host's ports, the forwarded-request channel and the running servers'
+/// consents are the host's, shared by every run of every server.
 #[derive(Clone)]
 pub struct ServerUnits {
     runner: TauriUnitRunner<ServerDetail>,
     server_config: ServerConfigBuilder,
     host_ports: HostPorts,
     forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
+    running_server_consents: RunningServerConsents,
 }
 
 impl ServerUnits {
     /// Server units on `runner`, whose runs read the config `server_config`
-    /// builds, use the host's `host_ports`, and report each request their
-    /// tunnels relay on `forwarded_request_tx`.
+    /// builds, use the host's `host_ports`, report each request their
+    /// tunnels relay on `forwarded_request_tx`, and put their consents in
+    /// [`Self::consents`] while they are up.
     #[must_use]
     pub fn new(
         runner: TauriUnitRunner<ServerDetail>,
@@ -45,6 +47,7 @@ impl ServerUnits {
             server_config,
             host_ports,
             forwarded_request_tx,
+            running_server_consents: RunningServerConsents::new(),
         }
     }
 
@@ -60,11 +63,13 @@ impl ServerUnits {
         let server_config = Arc::clone(&self.server_config);
         let host_ports = self.host_ports.clone();
         let forwarded_request_tx = self.forwarded_request_tx.clone();
+        let running_server_consents = self.running_server_consents.clone();
         self.runner.set_unit(unit_id, run_policy, move || {
             Ok(ServerUnit::new(
                 server_config(&record)?,
                 host_ports.clone(),
                 forwarded_request_tx.clone(),
+                running_server_consents.clone(),
             ))
         });
     }
@@ -102,5 +107,12 @@ impl ServerUnits {
     #[must_use]
     pub fn statuses(&self) -> UnitStatuses<ServerDetail> {
         self.runner.statuses()
+    }
+
+    /// The consents of the servers whose runs are up, which the consent
+    /// commands read and decide.
+    #[must_use]
+    pub fn consents(&self) -> &RunningServerConsents {
+        &self.running_server_consents
     }
 }

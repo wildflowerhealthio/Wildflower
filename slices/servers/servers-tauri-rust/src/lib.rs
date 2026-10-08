@@ -1,6 +1,6 @@
 //! Tauri host glue for the servers slice: the install's servers on the unit
-//! runner, the notifications about them, the `server-status` event, and the
-//! base's commands. Every decision lives in [`servers_rust`], which needs no
+//! runner, the notifications about them, the `server-status` and
+//! `pending-consent` events, and the base's commands. Every decision lives in [`servers_rust`], which needs no
 //! webview to be tested; this crate is only the glue.
 //!
 //! [`host_servers`], called once from the app's `setup()`:
@@ -12,7 +12,9 @@
 //!   [`ServerUnits::push`]). An unreadable registry is logged, and no server
 //!   runs;
 //! - emits the [`SERVER_STATUS_EVENT`] to the base for each server whose
-//!   status on `TauriUnitRunner` changed;
+//!   status on `TauriUnitRunner` changed, and the [`PENDING_CONSENT_EVENT`]
+//!   for each server whose oldest waiting consent changed, bringing the
+//!   desktop window forward when a server gets one;
 //! - posts a stop notification for each new stop of a server's run, read from
 //!   `TauriUnitRunner`'s statuses, and the per-caller notifications for the
 //!   requests the servers' tunnels relay;
@@ -46,6 +48,14 @@
 //! - [`server_remove`], invoked as `invoke('server_remove', { domain })`,
 //!   takes the server off `TauriUnitRunner`, waiting for its run to end, then
 //!   deletes its folder and its record.
+//! - [`pending_consents_list`], invoked as `invoke('pending_consents_list')`,
+//!   answers with the oldest consent waiting on each running server.
+//! - [`server_consent_get`], [`server_consent_approve`] and
+//!   [`server_consent_deny`], invoked with the server's `domain` and a
+//!   consent's key or approval, read a waiting consent and decide it as the
+//!   host's Owner, through the running server's gatekeeper in-process (see
+//!   [`servers_rust::RunningServerConsents`]); a server that isn't running
+//!   answers `serverNotRunning`.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
@@ -62,11 +72,14 @@
 //!
 //! The app registers every command in its `invoke_handler` and grants them
 //! to the `main` webview only, through its app-defined
-//! `allow-server-enrolment` (`server_add`, `server_set_credentials`) and
+//! `allow-server-enrolment` (`server_add`, `server_set_credentials`),
+//! `allow-server-consents` (the consent commands) and
 //! `allow-server-management` (the rest) permissions.
 
 mod commands;
+mod consent_commands;
 mod notifications;
+mod pending_consents;
 mod server_status;
 mod server_units;
 
@@ -84,8 +97,16 @@ pub use commands::{
     server_add, server_remove, server_set_credentials, server_set_run_policy, server_update,
     servers_list,
 };
+pub use consent_commands::{
+    pending_consents_list, server_consent_approve, server_consent_deny, server_consent_get,
+};
+pub use pending_consents::PENDING_CONSENT_EVENT;
 pub use server_status::SERVER_STATUS_EVENT;
 pub use server_units::{ServerConfigBuilder, ServerUnits};
+
+/// The webview the servers' events go to and the window brought forward for a
+/// consent: the base's.
+pub(crate) const BASE_WEBVIEW_LABEL: &str = "main";
 
 /// How many forwarded-request reports may wait for the request notifications
 /// before the servers start dropping them (see
@@ -167,6 +188,10 @@ pub fn host_servers(
         }
     }
     tauri::async_runtime::spawn(server_status::emit_server_statuses(
+        app.clone(),
+        runner.subscribe(),
+    ));
+    tauri::async_runtime::spawn(pending_consents::emit_pending_consents(
         app.clone(),
         runner.subscribe(),
     ));

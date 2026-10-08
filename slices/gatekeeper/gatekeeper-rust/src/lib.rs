@@ -51,6 +51,17 @@ pub use seeding::seed_dev_app_clients;
 // the primitive contract a composed transaction hands out.
 pub use domain::pending_consent::PendingConsentHead;
 pub use domain::{GatekeeperStore, GatekeeperTx};
+
+// The pending consents as the host's Owner reads and decides them in-process
+// (`HostOwnerConsents`, built from `Gatekeeper::state`), and the shapes it
+// reads and decides them in.
+pub use domain::capabilities::{
+    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
+    OAuthConsentView,
+};
+pub use domain::client_registration::ClientRegistrationVerdict;
+pub use live_bindings::HostOwnerConsents;
+
 // Re-exported so the host can name the pool type at the `setup_gatekeeper`
 // call site without a direct diesel dependency; the canonical home is
 // persistence-rust (collector re-exports it the same way).

@@ -5,6 +5,7 @@ mod client_management;
 mod common;
 mod device_code;
 mod grant_flows;
+mod host_owner_consents;
 mod loopback_dialog;
 mod oauth_endpoints;
 mod request_caller;

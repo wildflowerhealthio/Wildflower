@@ -1,0 +1,22 @@
+"$schema" = "../gen/schemas/desktop-schema.json"
+
+[[permission]]
+identifier = "allow-server-consents"
+description = """
+Grants the webview the right to invoke the app-defined
+`pending_consents_list`, `server_consent_get`, `server_consent_approve` and
+`server_consent_deny` commands (`servers-tauri-rust`): reading the consents
+waiting on the install's running servers, and approving or denying them as
+the host's Owner, through each server's gatekeeper in-process.
+
+SECURITY: granted to the `main` webview only (capabilities/default.json),
+which runs the base. A webview holding this grant can let any app or device
+into the install's servers with the Owner's authority, so it must never reach
+a capability that matches a webview loading remote content.
+"""
+commands.allow = [
+  "pending_consents_list",
+  "server_consent_get",
+  "server_consent_approve",
+  "server_consent_deny",
+]

@@ -22,7 +22,7 @@ use crate::domain::client::Client;
 /// [`PresentedClientRegistration`]) is accepted as it stands against the current
 /// `clients` row — the Owner-facing warning the consent prompt renders.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ClientRegistrationVerdict {
+pub enum ClientRegistrationVerdict {
     /// The row exists, the `redirect_uri` is on its allowlist, and
     /// every requested scope is covered by `allowed_scopes`. The only verdict
     /// that may take the existing-grant fast path at `/authorize`.

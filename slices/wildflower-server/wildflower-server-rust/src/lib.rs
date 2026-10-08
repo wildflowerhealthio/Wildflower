@@ -15,6 +15,8 @@
 //! token is cancelled; the tunnel and the certificate's ordering and renewal
 //! run for as long as it serves, and the monitor until the server first
 //! answers through its public origin.
+//! [`WildflowerServer::host_owner_consents`] is the server's pending consents
+//! for the host to decide in-process.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's

@@ -55,29 +55,32 @@ pub(crate) fn consent_decider_scopes() -> Vec<Scope> {
 
 // ---------------------------------------------------------------------------
 // Read models the Owner UI renders — the shapes the `GET` consent handlers
-// return. Pure domain data (no axum), produced by `ConsentReader`.
+// return, and `HostOwnerConsents` hands the host. Pure domain data (no axum),
+// produced by `ConsentReader`.
 // ---------------------------------------------------------------------------
 
-/// A consent prompt loaded for the Owner UI to render — the data a `GET`
-/// authorization-code consent handler needs, with the client's display name and
-/// its [registration verdict](ClientRegistrationVerdict) already resolved.
-pub(crate) struct OAuthConsentView {
-    pub(crate) request: AuthorizationRequest,
-    pub(crate) requested_redirect_uri: url::Url,
-    pub(crate) client_name: String,
+/// A consent prompt loaded for the Owner UI or the host to render — the data a
+/// `GET` authorization-code consent handler needs, with the client's display
+/// name and its [registration verdict](ClientRegistrationVerdict) already
+/// resolved.
+pub struct OAuthConsentView {
+    pub request: AuthorizationRequest,
+    pub requested_redirect_uri: url::Url,
+    pub client_name: String,
     /// How this request compares against the client's registration **as it
     /// stands now** — the warning the prompt leads with when the app, its
     /// redirect, or its scopes are new to the Owner. Recomputed on every read,
     /// never stored.
-    pub(crate) registration_verdict: ClientRegistrationVerdict,
+    pub registration_verdict: ClientRegistrationVerdict,
 }
 
-/// A device-code consent prompt loaded for the Owner UI — adds the client's full
-/// `allowed_scopes` (the expansion envelope the approver may grant up to).
-pub(crate) struct DeviceConsentView {
-    pub(crate) request: AuthorizationRequest,
-    pub(crate) client_name: String,
-    pub(crate) registered_client_scopes: Vec<String>,
+/// A device-code consent prompt loaded for the Owner UI or the host — adds the
+/// client's full `allowed_scopes` (the expansion envelope the approver may
+/// grant up to).
+pub struct DeviceConsentView {
+    pub request: AuthorizationRequest,
+    pub client_name: String,
+    pub registered_client_scopes: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +89,7 @@ pub(crate) struct DeviceConsentView {
 
 /// The Owner's decision on a consent prompt, after the action has applied it.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum ConsentOutcome {
+pub enum ConsentOutcome {
     /// Approved. `redirect` is the client callback URL to hand back so an
     /// approving surface that *is* the requesting client can finish inline
     /// (code flow with a `client_state`); `None` for the device flow.
@@ -97,7 +100,7 @@ pub(crate) enum ConsentOutcome {
 }
 
 /// The Owner's approval of an authorization-code consent prompt.
-pub(crate) struct ApproveOAuthConsentInput {
+pub struct ApproveOAuthConsentInput {
     /// The scopes the Owner ticked.
     pub owner_approved_scopes: Vec<String>,
     /// Optional SMART-on-FHIR patient context to bind to the grant. When the
@@ -116,7 +119,7 @@ pub(crate) struct ApproveOAuthConsentInput {
 }
 
 /// The Owner's approval of a device-code consent prompt.
-pub(crate) struct ApproveDeviceConsentInput {
+pub struct ApproveDeviceConsentInput {
     /// The scopes the Owner ticked.
     pub owner_approved_scopes: Vec<String>,
     /// Optional SMART-on-FHIR patient context to bind to the grant.
