@@ -3,14 +3,12 @@
 //! connection over with no address of its own. See
 //! <https://www.haproxy.org/download/2.9/doc/proxy-protocol.txt>, section 2.2.
 
-use std::io;
+use std::io::Cursor;
 use std::net::SocketAddr;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 use anyhow::ensure;
 use ppp::v2::{Addresses, Command, Header, PROTOCOL_PREFIX};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
+use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, Chain, Join, ReadHalf, WriteHalf};
 
 /// The bytes of a v2 header ahead of its addresses: the 12-byte signature, the
 /// version and command, the address family and protocol, and the big-endian
@@ -40,7 +38,7 @@ const FIXED_LENGTH: usize = 16;
 ///
 /// Nothing here bounds how long the sender takes; the caller runs it under a
 /// timeout.
-pub(super) async fn read_client_address<S: AsyncRead + Unpin>(
+pub(super) async fn read_client_address<S: AsyncRead + AsyncWrite + Unpin>(
     mut stream: S,
 ) -> anyhow::Result<(Rewound<S>, Option<SocketAddr>)> {
     let mut first_bytes = [0; PROTOCOL_PREFIX.len()];
@@ -54,7 +52,7 @@ pub(super) async fn read_client_address<S: AsyncRead + Unpin>(
     }
     ensure!(read > 0, "the connection closed before sending anything");
     if first_bytes[..read] != *PROTOCOL_PREFIX {
-        return Ok((Rewound::new(first_bytes[..read].to_vec(), stream), None));
+        return Ok((rewound(first_bytes[..read].to_vec(), stream), None));
     }
 
     let mut header = first_bytes.to_vec();
@@ -66,76 +64,18 @@ pub(super) async fn read_client_address<S: AsyncRead + Unpin>(
     header.resize(FIXED_LENGTH + usize::from(address_length), 0);
     stream.read_exact(&mut header[FIXED_LENGTH..]).await?;
     let header = Header::try_from(header.as_slice())?;
-    Ok((Rewound::new(Vec::new(), stream), client_address(&header)))
+    Ok((rewound(Vec::new(), stream), client_address(&header)))
 }
 
 /// A stream with the bytes [`read_client_address`] read off its front and
-/// found no header in put back: they are read again before the rest of the
-/// stream. Writes go straight to the stream.
-pub(crate) struct Rewound<S> {
-    /// The bytes put back, read again from `position` on.
-    put_back: Vec<u8>,
-    /// How many of `put_back` have been read again.
-    position: usize,
-    stream: S,
-}
+/// found no header in put back: reads take them before the rest of the stream,
+/// and writes go straight to the stream.
+pub(crate) type Rewound<S> = Join<Chain<Cursor<Vec<u8>>, ReadHalf<S>>, WriteHalf<S>>;
 
-impl<S> Rewound<S> {
-    fn new(put_back: Vec<u8>, stream: S) -> Self {
-        Self {
-            put_back,
-            position: 0,
-            stream,
-        }
-    }
-}
-
-impl<S: AsyncRead + Unpin> AsyncRead for Rewound<S> {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        let this = self.get_mut();
-        let put_back = &this.put_back[this.position..];
-        if put_back.is_empty() {
-            return Pin::new(&mut this.stream).poll_read(cx, buf);
-        }
-        let length = put_back.len().min(buf.remaining());
-        buf.put_slice(&put_back[..length]);
-        this.position += length;
-        Poll::Ready(Ok(()))
-    }
-}
-
-impl<S: AsyncWrite + Unpin> AsyncWrite for Rewound<S> {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.get_mut().stream).poll_write(cx, buf)
-    }
-
-    fn poll_write_vectored(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bufs: &[io::IoSlice<'_>],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.get_mut().stream).poll_write_vectored(cx, bufs)
-    }
-
-    fn is_write_vectored(&self) -> bool {
-        self.stream.is_write_vectored()
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.get_mut().stream).poll_flush(cx)
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
-    }
+/// `stream` with `put_back` read again ahead of it.
+fn rewound<S: AsyncRead + AsyncWrite>(put_back: Vec<u8>, stream: S) -> Rewound<S> {
+    let (read, write) = io::split(stream);
+    io::join(Cursor::new(put_back).chain(read), write)
 }
 
 /// The source address a parsed `header` names. A `LOCAL` header (the relay's
