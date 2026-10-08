@@ -76,7 +76,9 @@ port and on the tunnel. Rust-only, no `-core`.
     entry rustls-acme last loaded or stored (`LastEntryCertCache`), derives
     its state from that, and publishes it on
     `ServerObservers::certificate_tx` at start, on each event, and when the
-    certificate's renewal falls due or it expires. A cache entry is read as
+    certificate's renewal falls due or it expires, which it checks against
+    the wall clock at least once a minute, since a suspended device's
+    monotonic clock stops. A cache entry is read as
     rustls-acme reads it before deploying it (a PKCS #8 ECDSA key, then the
     chain), so an entry it refuses is never a certificate held, and one it
     refuses at start is dropped. `RenewalDue` is a third or less of the

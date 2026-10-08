@@ -29,7 +29,9 @@
 //! of rustls-acme's events as a [`CertificateEvent`], adds it to what the run
 //! has observed of its certificate ([`ObservedCertificate`]), and publishes
 //! the [`CertificateState`] derived from that on the host's channel, and
-//! again whenever the certificate's renewal falls due or it expires.
+//! again whenever the certificate's renewal falls due or it expires, checked
+//! against the wall clock at least once a minute ([`LONGEST_STATUS_WAIT`]),
+//! so a device waking from suspend catches up.
 //! rustls-acme's events don't carry the certificate, so the run reads it from
 //! the cache entry rustls-acme last loaded or stored ([`LastEntryCertCache`]).
 //! Each newly deployed certificate is recorded in the server's
@@ -41,6 +43,7 @@ use std::fmt::Write as _;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use anyhow::Context;
 use async_trait::async_trait;
@@ -417,7 +420,8 @@ async fn order_and_renew(
         let next_status_change = observed.next_status_change(Utc::now());
         let event = tokio::select! {
             event = acme_state.next() => event,
-            () = sleep_until(next_status_change) => {
+            () = wait_toward(next_status_change) => {
+                // Published only if the wall clock says it changed.
                 reporter.publish(&observed);
                 continue;
             }
@@ -441,14 +445,29 @@ async fn order_and_renew(
     }
 }
 
-/// Wait until `instant`, or forever when there is none.
-async fn sleep_until(instant: Option<DateTime<Utc>>) {
+/// The longest a run waits before it derives its certificate's state again.
+///
+/// A wait is measured on the monotonic clock, which stops while the device is
+/// suspended, but a status changes at a wall-clock instant: a run waiting the
+/// whole way to a renewal could wake long after it. Each wait is cut to this,
+/// and the state is derived again from the wall clock on each wake.
+const LONGEST_STATUS_WAIT: Duration = Duration::from_secs(60);
+
+/// Wait toward `instant`, the next status change: until it, or for
+/// [`LONGEST_STATUS_WAIT`], whichever is sooner. Forever when there is none.
+async fn wait_toward(instant: Option<DateTime<Utc>>) {
     match instant {
-        Some(instant) => {
-            tokio::time::sleep((instant - Utc::now()).to_std().unwrap_or_default()).await;
-        }
+        Some(instant) => tokio::time::sleep(status_wait(instant, Utc::now())).await,
         None => std::future::pending().await,
     }
+}
+
+/// How long to wait at `now` toward the status change at `instant`: until
+/// it, at most [`LONGEST_STATUS_WAIT`], and not at all once it has passed.
+fn status_wait(instant: DateTime<Utc>, now: DateTime<Utc>) -> Duration {
+    (instant - now)
+        .to_std()
+        .map_or(Duration::ZERO, |until| until.min(LONGEST_STATUS_WAIT))
 }
 
 /// What `event` says the run's certificate did, reading the certificate an
@@ -565,8 +584,6 @@ fn retry_after(message: &str) -> Option<DateTime<Utc>> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use chrono::TimeZone;
     use rcgen::{CertificateParams, KeyPair};
     use tempfile::TempDir;
@@ -1252,6 +1269,25 @@ mod tests {
             &failed_store[1],
             CertificateEvent::CacheFailed { message } if message.contains("disk full")
         ));
+    }
+
+    /// A wait toward a status change is cut to a minute, so a suspended
+    /// device's run catches up within one once it wakes.
+    #[test]
+    fn a_status_wait_is_at_most_a_minute() {
+        let now = Utc.with_ymd_and_hms(2026, 10, 8, 12, 0, 0).unwrap();
+        assert_eq!(
+            status_wait(now + chrono::Duration::days(30), now),
+            LONGEST_STATUS_WAIT
+        );
+        assert_eq!(
+            status_wait(now + chrono::Duration::seconds(10), now),
+            Duration::from_secs(10)
+        );
+        assert_eq!(
+            status_wait(now - chrono::Duration::seconds(10), now),
+            Duration::ZERO
+        );
     }
 
     /// A deployed certificate whose cache entry can't be read is a cache
