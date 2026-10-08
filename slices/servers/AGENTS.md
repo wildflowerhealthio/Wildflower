@@ -14,30 +14,40 @@ changing how servers run or what the host notifies about them.
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher and certificate source,
   and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
-  `ServerDetail`, what its runs report; `ServerStatus`, a server's status on
-  `UnitRunner` as the base receives it, and `ListedServer`; and the
-  notification decisions: the per-caller request coalescer and the stop
-  notification for each new stop of a server's run.
+  `ServerDetail`, what its runs report, its `ServerConsentDecider` included,
+  through which the base reads and decides a running server's consents;
+  `ServerStatus`, a server's status on
+  `UnitRunner` as the base receives it, and `ListedServer`; `PendingConsent`,
+  the oldest consent waiting on a server, with `PendingConsentTracker`; and the
+  notification decisions: the per-caller request
+  coalescer and the stop notification for each new stop of a server's run.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `RelayIdentity`, `EnrolmentError`), server changes
     (`set_run_policy` with `RunPolicyChoice`, `update_server` with
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
-    `ServerStatus` with `ServerStatusTracker`, `ListedServer`, and
-    `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
+    `ServerStatus` with `ServerStatusTracker`, `ListedServer`,
+    `PendingConsent` with `ConsentKey` and `PendingConsentTracker`, the
+    consent commands' wire (`ConsentDetails`, `ConsentApproval`,
+    `ApprovalOutcome`, `ConsentError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
     `StopNotificationCoalescer` with `ServerStop` and `StopCause`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
-    `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`.
-    `tests/server_unit.rs` runs the real server through `UnitRunner`.
+    `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`, and
+    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`.
+    `tests/server_unit.rs` runs the real
+    server through `UnitRunner`, its consents included.
 - **`servers-tauri-rust`** — the host side. `host_servers`, called from the
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
   `ServerUnits::push`, emits the `server-status` event, posts the stop and
-  request notifications, and manages the commands' `ServersState`. The base's
-  Tauri commands: `servers_list`, `server_add`, `server_set_credentials`,
-  `server_set_run_policy`, `server_update` and `server_remove`, each writing
-  the registry and then pushing what it wrote. Only glue; every decision and
+  request notifications, emits the `pending-consent` event and brings the
+  desktop window forward for a new consent (`raise_main_window`), and manages
+  the commands' `ServersState`. The base's Tauri commands: `servers_list`,
+  `server_add`, `server_set_credentials`, `server_set_run_policy`,
+  `server_update` and `server_remove`, each writing the registry and then
+  pushing what it wrote; and the consent commands, `pending_consents_list`,
+  `server_consent_get`, `server_consent_approve` and `server_consent_deny`. Only glue; every decision and
   its tests are in `servers-rust`, except the commands' own order of write and
   push, tested here against a real `TauriUnitRunner`.
 - **`servers-core`** — the host commands the base calls, as Effects over the
@@ -45,9 +55,13 @@ changing how servers run or what the host notifies about them.
   Schema: the server commands (`listServers`, `setServerRunPolicy`,
   `updateServer`, `removeServer`), the background session's recovery
   (`enableBackgroundSessionRecovery`), the app's version and the notification
-  permission; and the wire's namespaces, `ListedServer`, `ServerStatus` (with
-  the `server-status` event's name and decoder), `RunPolicy` and
-  `RunPolicyChoice`, each a `Schema` and its `Type` with getters. A refused
+  permission, and the consent commands (`listPendingConsents`, `readConsent`,
+  `approveConsent`, `denyConsent`); and the wire's namespaces, `ListedServer`,
+  `ServerStatus` (with the `server-status` event's name and decoder),
+  `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
+  `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
+  `ConsentApproval` and `ApprovalOutcome`, each a `Schema` and its `Type`
+  with getters. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. No DOM, no React, no `@tauri-apps/api`.
 - **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
@@ -69,6 +83,13 @@ changing how servers run or what the host notifies about them.
   webview is offline (`navigator.onLine`), the list says that launching needs
   a connection; the host commands themselves need none, so the base's query
   client runs them offline too (`networkMode: 'always'`).
+  Over every screen, `ConsentSheet` asks about the consents waiting on the
+  running servers, one server at a time, with where it stands in the queue ("1
+  of 3"), kept current by the `pending-consent` event: the server's domain, the
+  app or device and where it asks from, the access in plain words through
+  `scopes-react`'s `ScopePicker`, the patient when the access is for one, and
+  Deny or Allow. An approval that granted nothing is a denial, which the sheet
+  says until it is closed or the next consent is answered.
 
 ## Rules
 
@@ -231,8 +252,9 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   record. A deletion that fails pushes the server back as `servers.json` holds
   it, with the `Off` policy `remove_server` stored first.
 - **One `server-status` per change.** The host emits a server's
-  `ServerStatus` to the `main` webview whenever its `UnitStatus` changes,
-  camelCase, each optional member left out when absent:
+  `ServerStatus` to the `main` webview whenever its `UnitStatus` changes (its
+  pending consent's head included), camelCase, each optional member left out
+  when absent:
   `{domain, runState, lastStop?: {reason, platformReason?, error?,
 stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   base drops a server once `servers_list` no longer lists it, and reads the
@@ -246,6 +268,26 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   `subscribe_stops()`'s; nothing in the slice tracks runs itself.
   A run's health goes out through `ctx.set_detail`, and `UnitRunner` clears
   it.
+- **Consents are decided in-process.** A run puts a `ServerConsentDecider`
+  over its gatekeeper's `HostConsentDecider` in every `ServerDetail` it sets,
+  and `UnitRunner` clears the detail when the run ends, so the consent
+  commands, which look the decider up in `statuses()`, reach only a running
+  server and answer `serverNotRunning` otherwise. They call the capabilities behind `/access/devices/{userCode}`
+  and `/access/oauth-consents/{id}` with the host Owner's grant, on a
+  blocking thread: no HTTP, and no owner bearer in the webview. An approval
+  is remembered as a standing grant, as one in the Owner UI is. Errors are
+  `{kind, message}`: `serverNotRunning`, `notPending`,
+  `registrationNotAcknowledged` or `gatekeeper`.
+- **One `pending-consent` per change.** A run's gatekeeper publishes its
+  queue's head on the run's own channel; the run sets it as
+  `ServerDetail::pending_consent` (and forwards it to the host's shared
+  `active_pending_consent_tx`). `PendingConsentTracker` picks the servers
+  whose head changed from `UnitRunner`'s statuses, and the host emits
+  `{domain, head?}` to the `main` webview, `head` left out once nothing waits,
+  as when the run ends; on the desktop it brings the window forward when a
+  server that had nothing waiting gets a consent. `pending_consents_list`
+  answers with every head on start. The golden file pins the event, the
+  keys, the details, the approvals, the outcomes and the errors.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
   `domain/notifications/` with its tests; `servers-tauri-rust` only posts.
 - **Configuration only.** `ServerRecord::run_policy` is when the user wants
@@ -316,8 +358,8 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   type. The base mounts no effect-messaging transport. A command the base
   calls is granted to the `main` webview in
   `apps/wildflower-tauri/src-tauri/capabilities/default.json`; the server
-  commands through the app-defined `allow-server-enrolment` and
-  `allow-server-management` permissions.
+  commands through the app-defined `allow-server-enrolment`,
+  `allow-server-consents` and `allow-server-management` permissions.
 - **The base enables the background session's recovery.** Once its consent is
   answered, `BaseRoot` calls the background-service plugin's
   `configure_recovery` with the start config the app passes, read from

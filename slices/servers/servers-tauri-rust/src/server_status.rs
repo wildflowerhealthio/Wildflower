@@ -7,15 +7,14 @@ use tauri_plugin_log::log;
 use tauri_unit_runner::UnitStatuses;
 use tokio::sync::watch;
 
+use crate::BASE_WEBVIEW_LABEL;
+
 /// The Tauri event a server's [`ServerStatus`] is emitted on, one event per
 /// server whose status changed, to the `main` webview, which runs the base.
 ///
 /// A removed server gets no event: the base drops a server it no longer
 /// lists, and `server_remove` answers once the server is gone.
 pub const SERVER_STATUS_EVENT: &str = "server-status";
-
-/// The webview the statuses go to: the base's.
-const BASE_WEBVIEW_LABEL: &str = "main";
 
 /// Emit the [`SERVER_STATUS_EVENT`] for each server whose status changed,
 /// every time `TauriUnitRunner`'s statuses change, as [`ServerStatusTracker`]

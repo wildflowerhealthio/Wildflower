@@ -203,7 +203,9 @@ fn server_config(
 ///
 /// The owner-token and pending-consent channels are the host's, so several
 /// servers running at once publish onto the same two channels; the latest
-/// publish wins.
+/// publish wins. Each run's gatekeeper publishes its pending-consent head on
+/// a channel of the run's own, which the run forwards to this one (see
+/// `servers_rust::ServerUnit`).
 fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublishers) -> HostPorts {
     HostPorts {
         // The native Approve / Reject dialog gatekeeper raises when the hosted
@@ -263,6 +265,12 @@ pub fn run() {
             servers_tauri_rust::server_set_run_policy,
             servers_tauri_rust::server_update,
             servers_tauri_rust::server_remove,
+            // The base's consent commands, granted to the `main` webview only
+            // (`allow-server-consents`).
+            servers_tauri_rust::pending_consents_list,
+            servers_tauri_rust::server_consent_get,
+            servers_tauri_rust::server_consent_approve,
+            servers_tauri_rust::server_consent_deny,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

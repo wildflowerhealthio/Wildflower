@@ -373,10 +373,16 @@ flows have no shared lookup key:
 
 The Rust side recomputes the head (`oldest_pending_consent_head`) after every
 transition that could move it — either flow's insert, approve, or deny — and
-publishes it on a `watch` channel. The Tauri host forwards each change to the
-webview as `bridge:PendingConsentRequested`, and raises the window on a
-`None → Some` transition (a brand-new request, not a queue advance). The SPA's
-`PendingConsentModalHost` branches on `kind` to mount the matching consent form.
+publishes it on a `watch` channel. The Tauri host emits each server's head to
+its base as the `pending-consent` event, raises the window when a server with
+nothing waiting gets a request (not when its queue advances), and gives the base
+commands that read and decide a request in-process through
+`HostConsentDecider`, the same consent capabilities with the host Owner's grant
+(see the servers slice's
+[Server Runs Explanation](../../servers/docs/Server%20Runs%20Explanation.md)).
+The host also forwards each change as `bridge:PendingConsentRequested`, on
+which the SPA's `PendingConsentModalHost` branches on `kind` to mount the
+matching consent form.
 
 A request that the [grant](#grant) fast path fully pre-approves never enters the
 queue: `/oauth/authorize` approves it in the same handler, so it never sits

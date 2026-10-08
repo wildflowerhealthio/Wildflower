@@ -5,12 +5,6 @@ use gatekeeper_rust::PendingConsentHead;
 use serde::Deserialize;
 use shared_structures_rust::bridge::{BRIDGE_EVENT, READY_TAG};
 use tauri::{AppHandle, Emitter, Listener};
-// `Manager` brings in `get_webview_window`, used only by the desktop
-// `raise_main_window` (the mobile variant is an empty stub), so gating it to
-// desktop keeps mobile builds free of an `unused_imports` warning — same posture
-// as `MAIN_WINDOW_LABEL` above.
-#[cfg(desktop)]
-use tauri::Manager;
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
 
@@ -18,18 +12,6 @@ use tokio::sync::{watch, Notify};
 /// shared [`READY_TAG`]). Matches the TS-side schema in
 /// `effect-messaging-core/src/logging.ts`.
 const LOG_TAG: &str = "Log";
-
-/// Tauri window label of the main webview, set in
-/// `tauri.conf.json`. The consent-popup arrival path looks the window
-/// up by label to raise/focus it; an unknown label is a config drift
-/// and the focus call is skipped with a log.
-///
-/// `cfg(desktop)`-only: the only consumer is `raise_main_window`, which
-/// is gated to desktop (iOS forbids unsolicited focus stealing and
-/// Android exposes the surface differently). The constant tags along
-/// with the function so mobile builds don't emit a `dead_code` warning.
-#[cfg(desktop)]
-const MAIN_WINDOW_LABEL: &str = "main";
 
 /// Wire shape of a `Log` payload, pinned by
 /// `effect-messaging-core/src/logging.ts` (`LogMessageBody`). The
@@ -164,40 +146,6 @@ pub struct BridgePublishers {
     pub active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
 }
 
-/// Raise the main webview window to the foreground so a freshly-arrived
-/// consent popup is visible to the operator (the whole point of the
-/// popup — a `verification_uri` could pair, or a SMART app could launch
-/// from another device's browser, while the user is in another app).
-/// `unminimize` plus `set_focus` is the desktop pattern;
-/// `is_minimized` short-circuits the unminimize call so we don't reset
-/// a window that's already in view.
-///
-/// Scoped behind `cfg(desktop)` because mobile Tauri targets either
-/// have no concept of foreground-raise (iOS forbids unsolicited focus
-/// stealing) or expose the surface differently — leaving it on the
-/// desktop branch keeps the iOS/Android builds linkable without a
-/// stub.
-#[cfg(desktop)]
-fn raise_main_window(handle: &AppHandle) {
-    let Some(window) = handle.get_webview_window(MAIN_WINDOW_LABEL) else {
-        log::warn!("[bridge] window '{MAIN_WINDOW_LABEL}' missing; consent popup focus skipped");
-        return;
-    };
-    if matches!(window.is_minimized(), Ok(true)) {
-        if let Err(error) = window.unminimize() {
-            log::warn!("[bridge] window unminimize failed: {error}");
-        }
-    }
-    if let Err(error) = window.set_focus() {
-        log::warn!("[bridge] window set_focus failed: {error}");
-    }
-}
-
-/// Mobile builds don't raise the window themselves — see the desktop
-/// variant. An empty stub keeps the dispatch loop platform-blind.
-#[cfg(not(desktop))]
-fn raise_main_window(_handle: &AppHandle) {}
-
 /// Wire the webview↔host bridge onto Tauri's event bus and return the
 /// publishers the server task feeds.
 ///
@@ -227,16 +175,11 @@ fn raise_main_window(_handle: &AppHandle) {}
 ///   past the just-delivered value; without that, a `__Ready` that
 ///   races a fresh boot-time republish would emit, then the `changed`
 ///   arm would immediately wake on the same unseen value and emit
-///   again (and re-fire the focus path). A real later change still
-///   bumps the watch version and wakes `changed` regardless of
-///   whether the previous value was marked seen.
-/// - Window focus: only on a `None → Some` consent transition — that
-///   is the "a new popup just appeared" signal the user needs to be
-///   pulled to. `Some(A) → Some(B)` (the user actively interacting
-///   with the popup as the queue head advances) does not re-focus, so
-///   a window that's already foreground doesn't get a redundant
-///   focus-steal pulse on every approve/deny. Clears and `__Ready`
-///   re-deliveries also skip the focus call.
+///   again. A real later change still bumps the watch version and
+///   wakes `changed` regardless of whether the previous value was
+///   marked seen. Each server's run forwards its own head here; the
+///   window is brought forward for a new consent by
+///   `servers-tauri-rust`'s `pending-consent` event, not here.
 /// - `Log` tag: forwards the webview's intercepted `console.*` output
 ///   into the host's `log` facade. Logging is one-way — the log plugin
 ///   has no Webview target, so nothing here can echo back into the
@@ -290,16 +233,9 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     );
     tauri::async_runtime::spawn(async move {
         let _channels_kept_open = channels_kept_open;
-        // Tracks the consent head we last delivered, so a `Some(A) →
-        // Some(B)` transition does not re-raise an already-foreground
-        // window — focus is for "a brand new popup appeared", not for
-        // the user advancing through a queue they are already looking
-        // at.
-        let mut last_delivered_consent: Option<PendingConsentHead> = None;
         loop {
-            // Which arm woke the loop drives whether we re-deliver token,
-            // re-deliver consent, and/or focus the window — see the per-
-            // outcome match below.
+            // Which arm woke the loop drives whether we re-deliver the token
+            // or the consent — see the per-outcome match below.
             enum Outcome {
                 Ready,
                 TokenChanged,
@@ -320,21 +256,12 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     // republish doesn't leave the value unseen and re-wake the
                     // `ConsentChanged` arm (see the doc comment).
                     let consent = consent_rx.borrow_and_update().clone();
-                    last_delivered_consent = consent.clone();
                     emit_pending_consent(&handle, &consent);
                 }
                 Outcome::TokenChanged => notify_if_token_present(&handle, &mut token_rx),
                 Outcome::ConsentChanged => {
                     let consent = consent_rx.borrow_and_update().clone();
-                    let was_none = last_delivered_consent.is_none();
-                    let is_some = consent.is_some();
-                    last_delivered_consent = consent.clone();
                     emit_pending_consent(&handle, &consent);
-                    // Raise the window only on `None → Some` — a brand-new
-                    // popup. See the doc comment's "Window focus" note.
-                    if was_none && is_some {
-                        raise_main_window(&handle);
-                    }
                 }
             }
         }

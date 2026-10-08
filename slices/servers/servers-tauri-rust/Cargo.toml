@@ -21,6 +21,8 @@ tauri-unit-runner = { path = "../../../global/tauri-unit-runner" }
 servers-rust = { path = "../servers-rust" }
 # The config and host ports each server's run reads.
 wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
+# The gatekeeper's failure a consent command that couldn't run answers with.
+gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 # `ForwardedRequest`, which the servers report and the request notifications
 # count.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
@@ -42,8 +44,10 @@ workspace = true
 
 [dev-dependencies]
 async-trait = "0.1"
-# The consent-free loopback prompt the tests' host ports carry.
-gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
+# A gatekeeper over a temporary database, whose consents the consent commands'
+# tests decide.
+persistence-rust = { path = "../../persistence/persistence-rust" }
+token-revocation-rust = { path = "../../gatekeeper/token-revocation-rust" }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"

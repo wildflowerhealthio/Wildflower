@@ -105,5 +105,79 @@
       "kind": "notRegistered",
       "message": "no server with the domain lab.relay.example.com is registered"
     }
+  ],
+  "pendingConsents": [
+    { "domain": "ruth.relay.example.com", "head": { "kind": "device", "userCode": "ABCD-EFGH" } },
+    { "domain": "lab.rathole.example.com", "head": { "kind": "oauth", "id": "req-1" } },
+    { "domain": "ruth.relay.example.com" }
+  ],
+  "consentKeys": [
+    { "kind": "device", "userCode": "ABCD-EFGH" },
+    { "kind": "oauth", "id": "req-1" }
+  ],
+  "consentDetails": {
+    "device": {
+      "kind": "device",
+      "userCode": "ABCD-EFGH",
+      "clientId": "pebble-sync",
+      "clientName": "Pebble sync",
+      "deviceName": "Ruth's watch",
+      "requestedScopes": ["system/Observation.rs"],
+      "registeredScopes": ["system/Observation.rs", "system/Patient.rs"]
+    },
+    "oauthRegistered": {
+      "kind": "oauth",
+      "id": "req-1",
+      "clientId": "lifting",
+      "clientName": "Lifting",
+      "requestedScopes": ["launch/patient", "patient/Observation.rs"],
+      "redirectUri": "https://lifting.example.com/callback",
+      "launchPatient": "pat-1",
+      "registration": { "status": "registered" }
+    },
+    "oauthNew": {
+      "kind": "oauth",
+      "id": "req-2",
+      "clientId": "https://new.example.com/client",
+      "clientName": "https://new.example.com/client",
+      "requestedScopes": ["openid"],
+      "redirectUri": "https://new.example.com/cb",
+      "registration": { "status": "new" }
+    },
+    "oauthChanged": {
+      "kind": "oauth",
+      "id": "req-3",
+      "clientId": "lifting",
+      "clientName": "Lifting",
+      "requestedScopes": ["patient/Observation.rs", "patient/Condition.rs"],
+      "redirectUri": "https://lifting.example.com/elsewhere",
+      "registration": {
+        "status": "changed",
+        "redirectUriIsNew": true,
+        "newScopes": ["patient/Condition.rs"]
+      }
+    }
+  },
+  "consentApprovals": [
+    { "kind": "device", "userCode": "ABCD-EFGH", "approvedScopes": ["system/Observation.rs"] },
+    {
+      "kind": "oauth",
+      "id": "req-1",
+      "approvedScopes": ["launch/patient"],
+      "patient": "pat-1",
+      "acknowledgedRegistration": false
+    }
+  ],
+  "approvalOutcomes": [{ "status": "approved" }, { "status": "denied" }],
+  "consentErrors": [
+    { "kind": "serverNotRunning", "message": "the server ruth.relay.example.com isn't running" },
+    {
+      "kind": "notPending",
+      "message": "the request is no longer waiting: it was answered elsewhere or expired"
+    },
+    {
+      "kind": "registrationNotAcknowledged",
+      "message": "the app is new or asks for more than it registered, so approving it needs that acknowledged"
+    }
   ]
 }

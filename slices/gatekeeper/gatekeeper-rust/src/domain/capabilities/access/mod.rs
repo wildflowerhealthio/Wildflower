@@ -16,10 +16,11 @@ pub(crate) mod grants;
 pub(crate) mod tokens;
 
 pub(crate) use clients::{ClientView, ClientsDisabler, ClientsReader};
-pub(crate) use consents::{
-    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentDecider, ConsentOutcome,
-    ConsentReader, DeviceConsentView, OAuthConsentView,
+pub use consents::{
+    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
+    OAuthConsentView,
 };
+pub(crate) use consents::{ConsentDecider, ConsentReader};
 pub(crate) use grants::{GrantsReader, GrantsRevoker};
 pub(crate) use tokens::TokenRevoker;
 
