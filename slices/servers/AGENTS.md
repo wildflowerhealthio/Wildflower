@@ -25,7 +25,7 @@ changing how servers run or what the host notifies about them.
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`, and
     `notifications/` (`LocalNotification`, `RequestNotificationCoalescer`,
-    `StopNotificationCoalescer` with `ServerStopped` and `StopCause`); `ports/` the
+    `StopNotificationCoalescer` with `ServerStop` and `StopCause`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;

@@ -59,8 +59,8 @@ pub(crate) async fn post_stop_notifications<R: Runtime>(
     loop {
         match stops.recv().await {
             Ok(stopped) => {
-                if let Some(server_stopped) = coalescer.record(&stopped) {
-                    post_notification(&app, &server_stopped.notification());
+                if let Some(server_stop) = coalescer.record(&stopped) {
+                    post_notification(&app, &server_stop.notification());
                 }
             }
             Err(RecvError::Lagged(missed)) => {

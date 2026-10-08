@@ -1,5 +1,5 @@
 //! The notifications for the servers' stopped runs: [`StopCause`], why a run
-//! stopped among the stops that notify, [`ServerStopped`], what one
+//! stopped among the stops that notify, [`ServerStop`], what one
 //! notification says, and [`StopNotificationCoalescer`], which keeps a
 //! server's failure from notifying again on every retry.
 
@@ -57,14 +57,14 @@ impl StopCause {
 /// What one stop notification says: the server `domain`'s run stopped, for
 /// `cause`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServerStopped {
+pub struct ServerStop {
     /// The server's domain, its unit id.
     pub domain: String,
     /// Why its run stopped.
     pub cause: StopCause,
 }
 
-impl ServerStopped {
+impl ServerStop {
     /// The notification for this stop, under the server's own id
     /// (`server-stopped:<domain>`), with its body starting with the domain.
     #[must_use]
@@ -142,7 +142,7 @@ impl StopNotificationCoalescer {
     /// Take in `stopped`, returning the notification it warrants, if any:
     /// `None` when it doesn't notify or repeats the failure last notified for
     /// its server.
-    pub fn record(&mut self, stopped: &RunStopped) -> Option<ServerStopped> {
+    pub fn record(&mut self, stopped: &RunStopped) -> Option<ServerStop> {
         let RunStopped {
             unit_id,
             stop,
@@ -166,7 +166,7 @@ impl StopNotificationCoalescer {
                 self.notified_failures.remove(unit_id);
             }
         }
-        Some(ServerStopped {
+        Some(ServerStop {
             domain: unit_id.as_str().to_owned(),
             cause,
         })
@@ -211,7 +211,7 @@ mod tests {
 
     /// What the stop of `domain`'s run for `cause` says.
     fn notification_for(cause: StopCause) -> LocalNotification {
-        ServerStopped {
+        ServerStop {
             domain: DOMAIN.to_owned(),
             cause,
         }
@@ -396,7 +396,7 @@ mod tests {
         let mut coalescer = StopNotificationCoalescer::new();
         assert_eq!(
             coalescer.record(&stopped(DOMAIN, failure("disk full", 1), false)),
-            Some(ServerStopped {
+            Some(ServerStop {
                 domain: DOMAIN.to_owned(),
                 cause: StopCause::Failed("disk full".to_owned()),
             })
@@ -409,7 +409,7 @@ mod tests {
         let ids: Vec<String> = [DOMAIN, OTHER_DOMAIN]
             .into_iter()
             .filter_map(|domain| coalescer.record(&stopped(domain, failure("disk full", 1), false)))
-            .map(|server_stopped| server_stopped.notification().id)
+            .map(|server_stop| server_stop.notification().id)
             .collect();
         assert_eq!(
             ids,

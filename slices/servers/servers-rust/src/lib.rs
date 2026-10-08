@@ -69,7 +69,7 @@ pub use domain::notifications::request_notifications::{
     CallerActivity, RequestNotificationCoalescer,
 };
 pub use domain::notifications::stop_notifications::{
-    ServerStopped, StopCause, StopNotificationCoalescer,
+    ServerStop, StopCause, StopNotificationCoalescer,
 };
 pub use domain::{
     add_server, remove_server, set_run_policy, set_server_credentials, update_server,
