@@ -26,7 +26,8 @@ pub(crate) struct UnitEntry<D> {
     /// How many times in a row the unit has restarted after a run that ended
     /// on its own; each restart waits twice as long as the one before. Back
     /// to zero once a run announces running, and on every fresh instruction
-    /// for the unit (`set_unit`, `set_unit_policy`, `restart_running_units`).
+    /// for the unit: `set_unit`, `set_unit_policy`, and
+    /// `restart_running_units` while its run is in progress.
     pub(crate) restarts_in_a_row: u32,
     /// `remove_unit` is waiting for the unit's run to end before forgetting
     /// it.

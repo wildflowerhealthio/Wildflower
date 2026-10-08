@@ -98,14 +98,9 @@ impl FailingUnit {
     }
 }
 
-/// A `UnitRunner` with the timings an app gets.
-fn harness_with_app_restart_delays() -> Harness {
-    Harness::with_restart_delays(RESTART_DELAY, MAX_RESTART_DELAY)
-}
-
 #[tokio::test(start_paused = true)]
 async fn each_restart_in_a_row_waits_twice_as_long_up_to_the_cap() {
-    let harness = harness_with_app_restart_delays();
+    let harness = Harness::with_restart_delay(RESTART_DELAY);
     let failing_unit = FailingUnit::set(&harness).await;
     for restart_delay_secs in [5, 10, 20, 40, 80, 160, 300, 300] {
         failing_unit
@@ -116,7 +111,7 @@ async fn each_restart_in_a_row_waits_twice_as_long_up_to_the_cap() {
 
 #[tokio::test(start_paused = true)]
 async fn a_run_that_announces_running_starts_the_delay_over() {
-    let harness = harness_with_app_restart_delays();
+    let harness = Harness::with_restart_delay(RESTART_DELAY);
     let failing_unit = FailingUnit::set(&harness).await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
@@ -141,7 +136,7 @@ async fn a_run_that_announces_running_starts_the_delay_over() {
 
 #[tokio::test(start_paused = true)]
 async fn set_unit_policy_after_failures_starts_at_once_and_starts_the_delay_over() {
-    let harness = harness_with_app_restart_delays();
+    let harness = Harness::with_restart_delay(RESTART_DELAY);
     let failing_unit = FailingUnit::set(&harness).await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
@@ -160,7 +155,7 @@ async fn set_unit_policy_after_failures_starts_at_once_and_starts_the_delay_over
 
 #[tokio::test(start_paused = true)]
 async fn a_restart_of_running_units_starts_the_delay_over() {
-    let harness = harness_with_app_restart_delays();
+    let harness = Harness::with_restart_delay(RESTART_DELAY);
     let failing_unit = FailingUnit::set(&harness).await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
@@ -182,7 +177,7 @@ async fn a_restart_of_running_units_starts_the_delay_over() {
 
 #[tokio::test(start_paused = true)]
 async fn a_removed_unit_s_pending_restart_never_fires() {
-    let harness = harness_with_app_restart_delays();
+    let harness = Harness::with_restart_delay(RESTART_DELAY);
     let failing_unit = FailingUnit::set(&harness).await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))

@@ -58,15 +58,6 @@ impl Harness {
     /// A `UnitRunner` that first restarts after `restart_delay`, backing off
     /// to [`MAX_RESTART_DELAY`].
     pub(super) fn with_restart_delay(restart_delay: Duration) -> Self {
-        Self::with_restart_delays(restart_delay, MAX_RESTART_DELAY)
-    }
-
-    /// A `UnitRunner` that first restarts after `restart_delay`, backing off
-    /// to `max_restart_delay`.
-    pub(super) fn with_restart_delays(
-        restart_delay: Duration,
-        max_restart_delay: Duration,
-    ) -> Self {
         let clock = Arc::new(ManualClock(Mutex::new(
             DateTime::from_timestamp(1_800_000_000, 0).expect("a valid instant"),
         )));
@@ -75,7 +66,7 @@ impl Harness {
             Arc::clone(&clock) as Arc<dyn WallClock>,
             RunnerTimings {
                 restart_delay,
-                max_restart_delay,
+                max_restart_delay: MAX_RESTART_DELAY,
                 run_runtime_shutdown_timeout: Duration::from_secs(1),
                 start_and_stop_runs_per_policy_interval: Duration::from_secs(10),
             },

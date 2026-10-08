@@ -10,9 +10,10 @@ notifications.
 
 A unit whose runs keep failing restarts after `RESTART_DELAY` (5 s), then
 twice as long each time in a row, up to `MAX_RESTART_DELAY` (5 minutes). A run
-that announces running, and every fresh instruction for the unit (`set_unit`,
-`set_unit_policy`, or a return to the foreground that restarts running units),
-start the delay over.
+that announces running, `set_unit`, `set_unit_policy`, and a return to the
+foreground that restarts the unit's run in progress start the delay over. A
+unit already waiting out its delay keeps waiting through a return to the
+foreground.
 
 This crate is the Tauri bindings of [`unit-runner`](../unit-runner/README.md),
 which holds the units, policies, statuses, and starting and stopping runs per

@@ -9,8 +9,10 @@ owns its own wire and notifications.
 
 A unit whose runs keep failing restarts after `RESTART_DELAY` (5 s), then
 twice as long each time in a row, up to `MAX_RESTART_DELAY` (5 minutes). A run
-that announces running, and every fresh instruction for the unit, start the
-delay over.
+that announces running, `set_unit`, `set_unit_policy`, and
+`restart_running_units` while the unit's run is in progress start the delay
+over. A unit already waiting out its delay keeps waiting through
+`restart_running_units`.
 
 This crate has no Tauri dependency, so an app's domain crates can define units
 and store run policies without depending on Tauri.
