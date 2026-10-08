@@ -1,17 +1,9 @@
-import { DateTime, Option, pipe } from 'effect'
-import { type ChangeEvent, type JSX, useState } from 'react'
-import { ConfirmDialog, ErrorBanner, StatusBadge, type StatusTone } from 'react-tundraish'
-import {
-  HostCommandFailed,
-  type HostCommandError,
-  type ListedServer,
-  RunPolicy,
-  type RunPolicyChoice,
-  ServerStatus,
-} from 'servers-core'
+import { Link } from '@tanstack/react-router'
+import { DateTime, Option } from 'effect'
+import type { ChangeEvent, JSX } from 'react'
+import type { StatusTone } from 'react-tundraish'
+import { type ListedServer, RunPolicy, type RunPolicyChoice, ServerStatus } from 'servers-core'
 
-import { useRemoveServer, useSetServerRunPolicy } from './queries.ts'
-import type { RunHostCommand } from './router-context.ts'
 import styles from './server-card.module.css'
 
 /** An instant as the base shows it, in the device's locale and time zone. */
@@ -27,7 +19,7 @@ const RUN_POLICY_CHOICES: ReadonlyArray<{
   readonly choice: RunPolicyChoice.Type
 }> = [
   { value: 'off', label: 'Off', choice: { kind: 'off' } },
-  { value: 'whileOpen', label: 'While open', choice: { kind: 'whileOpen' } },
+  { value: 'whileOpen', label: 'While Wildflower is open', choice: { kind: 'whileOpen' } },
   { value: 'for-15m', label: 'For 15 minutes', choice: { kind: 'for', seconds: 15 * 60 } },
   { value: 'for-1h', label: 'For 1 hour', choice: { kind: 'for', seconds: 60 * 60 } },
   { value: 'for-8h', label: 'For 8 hours', choice: { kind: 'for', seconds: 8 * 60 * 60 } },
@@ -51,36 +43,36 @@ const deadlineText = (policy: RunPolicy.Type, now: DateTime.Utc): Option.Option<
     )
   )
 
-/** A badge's tone and label. */
-interface Badge {
+/** A server's status as the card shows it: the tone of its dot and field, and its words. */
+interface StatusSummary {
   readonly tone: StatusTone
   readonly label: string
 }
 
-/** The badge of a running server that answered `/health`, by the status it answered with. */
-const REACHABLE_BADGE: Readonly<Record<'pass' | 'warn' | 'fail', Badge>> = {
+/** The status of a running server that answered `/health`, by the status it answered with. */
+const REACHABLE_STATUS: Readonly<Record<'pass' | 'warn' | 'fail', StatusSummary>> = {
   pass: { tone: 'success', label: 'Running' },
   warn: { tone: 'warning', label: 'Running, degraded' },
   fail: { tone: 'danger', label: 'Running, failing its health checks' },
 }
 
-/** The badge of a running server, by its health. */
-const runningBadge = (health: ServerStatus.Health): Badge =>
+/** The status of a running server, by its health. */
+const runningStatus = (health: ServerStatus.Health): StatusSummary =>
   health.kind === 'reachable'
-    ? REACHABLE_BADGE[health.status]
+    ? REACHABLE_STATUS[health.status]
     : { tone: 'warning', label: 'Running, not reachable yet' }
 
 /**
- * The status badge, merged from the run state and the health: a running
- * server is a success only once it answers `/health`, and a stopped server
- * whose latest run failed is in danger.
+ * The status, merged from the run state and the health: a running server is
+ * a success only once it answers `/health`, and a stopped server whose
+ * latest run failed is in danger.
  */
-const statusBadge = (status: ServerStatus.Type): Badge => {
+const statusSummary = (status: ServerStatus.Type): StatusSummary => {
   if (status.runState === 'starting') return { tone: 'info', label: 'Starting' }
   if (status.runState === 'running') {
     return ServerStatus.healthOf(status).pipe(
-      Option.map(runningBadge),
-      Option.getOrElse((): Badge => ({
+      Option.map(runningStatus),
+      Option.getOrElse((): StatusSummary => ({
         tone: 'info',
         label: 'Running, checking it can be reached',
       }))
@@ -92,14 +84,14 @@ const statusBadge = (status: ServerStatus.Type): Badge => {
   return { tone: failed ? 'danger' : 'neutral', label: 'Stopped' }
 }
 
-/** What the status line says of when the server runs, for every policy but `until`. */
+/** What the field says of when the server runs, for every policy but `until`. */
 const RUN_POLICY_TEXT: Readonly<Record<Exclude<RunPolicy.Kind, 'until'>, string>> = {
   off: 'Off',
   whileOpen: 'On while Wildflower is open',
   always: 'Always on',
 }
 
-/** What the status line says of when the server runs. */
+/** What the field says of when the server runs. */
 const runPolicyText = (policy: RunPolicy.Type, now: DateTime.Utc): string => {
   if (policy.kind !== 'until') return RUN_POLICY_TEXT[policy.kind]
   return RunPolicy.hasEndedAt(policy, now)
@@ -127,126 +119,91 @@ const lastStopText = (stop: ServerStatus.RunStop): string =>
       )
     : STOP_REASON_TEXT[stop.reason]
 
-/** The sentence a failed host command shows: the host's own message, when it ran. */
-const failureText = (error: HostCommandError): string =>
-  error instanceof HostCommandFailed
-    ? error.refusal.pipe(
-        Option.map((refusal) => refusal.message),
-        Option.getOrElse(() => error.message)
-      )
-    : error.message
-
-/** Why the Launch button is disabled. */
-const LAUNCH_UNAVAILABLE = "Launching apps from a server isn't available yet."
-
 /**
- * One server's card in the base's list: its domain; a status line of its
- * status, merged from its run state and health, and when it runs; why its
- * latest run stopped; its run-policy control; Launch; and its removal,
- * behind a confirm.
+ * One server's card in the base's list: its domain and a status dot; a
+ * run-policy field that says when it runs, outlined in its status's tone,
+ * over the native picker that changes it; why its latest run stopped; and
+ * Launch and Edit.
+ *
+ * @param onRunPolicyChange - Called with each choice the user picks.
  *
  * @remarks
- * Launch is disabled: launching an app from the base isn't built yet.
+ * Launch does nothing yet: launching an app from the base isn't built. Edit
+ * opens the server's page, `/servers/$domain`, where it is removed.
  */
 const ServerCard = ({
   server,
-  runHostCommand,
+  onRunPolicyChange,
 }: {
   readonly server: ListedServer.Type
-  readonly runHostCommand: RunHostCommand
+  readonly onRunPolicyChange: (choice: RunPolicyChoice.Type) => void
 }): JSX.Element => {
-  const setRunPolicy = useSetServerRunPolicy(runHostCommand)
-  const removeServer = useRemoveServer(runHostCommand)
-  const [confirmingRemoval, setConfirmingRemoval] = useState(false)
-  const status = statusBadge(server.status)
+  const status = statusSummary(server.status)
   const now = DateTime.unsafeNow()
-  const failure = pipe(
-    Option.fromNullable(setRunPolicy.error),
-    Option.orElse(() => Option.fromNullable(removeServer.error))
-  )
-  const onRunPolicyChange = (event: ChangeEvent<HTMLSelectElement>): void => {
+  const onPick = (event: ChangeEvent<HTMLSelectElement>): void => {
     const picked = RUN_POLICY_CHOICES.find((option) => option.value === event.target.value)
     if (picked === undefined) return
-    setRunPolicy.mutate({ domain: server.domain, choice: picked.choice })
+    onRunPolicyChange(picked.choice)
   }
   return (
-    <li className={styles['server-card']} aria-label={server.domain}>
-      <span className={`text-heading-4 ${styles['server-card__domain']}`}>{server.domain}</span>
-      <p className={styles['server-card__status']}>
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
-        <span className="text-body-2">{runPolicyText(server.runPolicy, now)}</span>
-      </p>
+    <li className={styles['server-card']} data-tone={status.tone} aria-label={server.domain}>
+      <div className={styles['server-card__title']}>
+        <span className={styles['server-card__domain']} title={server.domain}>
+          {server.domain}
+        </span>
+        <span
+          className={styles['server-card__dot']}
+          role="img"
+          aria-label={status.label}
+          title={status.label}
+        />
+      </div>
+      <label className={styles['server-card__run-policy']} title="Change when this server runs">
+        <span className={styles['server-card__run-policy-text']}>
+          {runPolicyText(server.runPolicy, now)}
+        </span>
+        <span className={styles['server-card__chevron']} aria-hidden="true" />
+        <select
+          className={styles['server-card__picker']}
+          aria-label={`When ${server.domain} runs`}
+          value={runPolicyValue(server.runPolicy)}
+          onChange={onPick}
+        >
+          {deadlineText(server.runPolicy, now).pipe(
+            Option.map((text) => (
+              <option key={UNTIL_VALUE} value={UNTIL_VALUE} disabled>
+                {text}
+              </option>
+            )),
+            Option.getOrNull
+          )}
+          {RUN_POLICY_CHOICES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
       {ServerStatus.lastStopOf(server.status).pipe(
         Option.map((stop) => (
-          <p key="last-stop" className="text-body-2">
+          <p key="last-stop" className={`text-body-3 ${styles['server-card__last-stop']}`}>
             {lastStopText(stop)}
           </p>
         )),
         Option.getOrNull
       )}
-      <div className={styles['server-card__controls']}>
-        <label className={styles['server-card__run-policy']}>
-          <span className="text-body-2">Runs</span>
-          <select
-            value={runPolicyValue(server.runPolicy)}
-            disabled={setRunPolicy.isPending}
-            onChange={onRunPolicyChange}
-          >
-            {deadlineText(server.runPolicy, now).pipe(
-              Option.map((text) => (
-                <option key={UNTIL_VALUE} value={UNTIL_VALUE} disabled>
-                  {text}
-                </option>
-              )),
-              Option.getOrNull
-            )}
-            {RUN_POLICY_CHOICES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" className="button-2 filled" disabled title={LAUNCH_UNAVAILABLE}>
+      <div className={styles['server-card__actions']}>
+        <button type="button" className={`button-2 filled ${styles['server-card__action']}`}>
           Launch
         </button>
-        <button
-          type="button"
-          className="button-2 outline accent-red"
-          onClick={() => {
-            setConfirmingRemoval(true)
-          }}
+        <Link
+          to="/servers/$domain"
+          params={{ domain: server.domain }}
+          className={`button button-2 outline ${styles['server-card__action']}`}
         >
-          Remove
-        </button>
+          Edit
+        </Link>
       </div>
-      {failure.pipe(
-        Option.map((error) => <ErrorBanner key="failure" error={failureText(error)} />),
-        Option.getOrNull
-      )}
-      <ConfirmDialog
-        open={confirmingRemoval}
-        title={`Remove ${server.domain}?`}
-        confirmLabel="Remove"
-        destructive
-        pending={removeServer.isPending}
-        onConfirm={() => {
-          removeServer.mutate(
-            { domain: server.domain },
-            {
-              onSettled: () => {
-                setConfirmingRemoval(false)
-              },
-            }
-          )
-        }}
-        onCancel={() => {
-          setConfirmingRemoval(false)
-        }}
-      >
-        This stops the server and deletes it from this device, with its databases and certificates.
-        It can't be undone.
-      </ConfirmDialog>
     </li>
   )
 }

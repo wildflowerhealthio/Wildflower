@@ -1,10 +1,11 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { Link, useRouteContext } from '@tanstack/react-router'
 import type { JSX } from 'react'
-import { GateCard, PageBodyError, PageHeader } from 'react-tundraish'
+import { ErrorBanner, GateCard, PageBodyError, PageHeader } from 'react-tundraish'
 import type { HostCommandError, ListedServer } from 'servers-core'
 
-import { serversQueryOptions, useServerStatusEvents } from './queries.ts'
+import { failureText } from './failure-text.ts'
+import { serversQueryOptions, useServerStatusEvents, useSetServerRunPolicy } from './queries.ts'
 import type { RouterContext, RunHostCommand } from './router-context.ts'
 import { ServerCard } from './server-card.tsx'
 import { useOnline } from './use-online.ts'
@@ -27,6 +28,36 @@ const NoServers = (): JSX.Element => (
   </div>
 )
 
+/**
+ * The servers, a card each, under the error of the latest run-policy change
+ * when the host refused it.
+ */
+const ServerCards = ({
+  servers,
+  runHostCommand,
+}: {
+  readonly servers: readonly ListedServer.Type[]
+  readonly runHostCommand: RunHostCommand
+}): JSX.Element => {
+  const setRunPolicy = useSetServerRunPolicy(runHostCommand)
+  return (
+    <>
+      <ErrorBanner error={setRunPolicy.error === null ? null : failureText(setRunPolicy.error)} />
+      <ul className={styles['server-list-page__servers']}>
+        {servers.map((server) => (
+          <ServerCard
+            key={server.domain}
+            server={server}
+            onRunPolicyChange={(choice) => {
+              setRunPolicy.mutate({ domain: server.domain, choice })
+            }}
+          />
+        ))}
+      </ul>
+    </>
+  )
+}
+
 /** The page's body for the `servers_list` answer, or its failure. */
 const ServerListBody = ({
   servers,
@@ -48,13 +79,7 @@ const ServerListBody = ({
     )
   }
   if (servers.data.length === 0) return <NoServers />
-  return (
-    <ul className={styles['server-list-page__servers']}>
-      {servers.data.map((server) => (
-        <ServerCard key={server.domain} server={server} runHostCommand={runHostCommand} />
-      ))}
-    </ul>
-  )
+  return <ServerCards servers={servers.data} runHostCommand={runHostCommand} />
 }
 
 /**
@@ -84,8 +109,14 @@ const ServerListPage = (): JSX.Element => {
       <PageHeader
         title="Servers"
         actions={
-          <Link to="/settings" className="button button-2 outline">
-            Host Settings
+          // U+FE0E keeps the gear in text presentation, never an emoji.
+          <Link
+            to="/settings"
+            className={`button button-2 ghost ${styles['server-list-page__settings']}`}
+            aria-label="Host Settings"
+            title="Host Settings"
+          >
+            ⛭︎
           </Link>
         }
       />

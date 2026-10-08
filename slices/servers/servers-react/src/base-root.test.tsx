@@ -345,7 +345,7 @@ describe('the server list', () => {
   it.each([
     ['one server', [golden.listedServers[0]]],
     ['several servers', golden.listedServers],
-  ] as const)('should show a card, with Launch disabled, for each of %s', async (_, servers) => {
+  ] as const)('should show a card, with Launch and Edit, for each of %s', async (_, servers) => {
     // Act
     renderListed(servers)
 
@@ -355,31 +355,32 @@ describe('the server list', () => {
       servers.map((server) => server.domain)
     )
     for (const card of screen.getAllByRole('listitem')) {
-      expect(within(card).getByRole('button', { name: 'Launch' })).toHaveProperty('disabled', true)
+      expect(within(card).getByRole('button', { name: 'Launch' })).toHaveProperty('disabled', false)
+      expect(within(card).getByRole('link', { name: 'Edit' })).toBeDefined()
     }
   })
 
   it.each([
-    ['runningAndReachable', 'Success: Running'],
-    ['startingUnchecked', 'Starting'],
-    ['runningUnreachable', 'Warning: Running, not reachable yet'],
-    ['neverRun', 'Stopped'],
-    ['stoppedWithAnError', 'Error: Stopped'],
-  ] as const)('should merge a %s status into the badge "%s"', async (statusName, badge) => {
-    // Act
-    renderListed([
-      { ...golden.listedServers[0], status: golden.serverStatuses[statusName] },
-      golden.listedServers[1],
-    ])
+    ['runningAndReachable', 'Running', 'success'],
+    ['startingUnchecked', 'Starting', 'info'],
+    ['runningUnreachable', 'Running, not reachable yet', 'warning'],
+    ['neverRun', 'Stopped', 'neutral'],
+    ['stoppedWithAnError', 'Stopped', 'danger'],
+  ] as const)(
+    'should merge a %s status into the dot "%s", in the %s tone',
+    async (statusName, label, tone) => {
+      // Act
+      renderListed([
+        { ...golden.listedServers[0], status: golden.serverStatuses[statusName] },
+        golden.listedServers[1],
+      ])
 
-    // Assert
-    const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
-    expect(
-      within(ruth)
-        .getAllByRole('status')
-        .map((status) => status.textContent)
-    ).toContain(badge)
-  })
+      // Assert
+      const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+      expect(within(ruth).getByRole('img', { name: label })).toBeDefined()
+      expect(ruth.dataset['tone']).toBe(tone)
+    }
+  )
 
   it.each([
     [{ kind: 'off' }, /^Off$/],
@@ -404,7 +405,7 @@ describe('the server list', () => {
 
     // Assert
     const lab = await screen.findByRole('listitem', { name: 'lab.rathole.example.com' })
-    expect(within(lab).getByText('Stopped')).toBeDefined()
+    expect(within(lab).getByRole('img', { name: 'Stopped' })).toBeDefined()
     expect(
       within(lab).getByText("It stopped with an error: the server's config couldn't be built")
     ).toBeDefined()
@@ -465,7 +466,7 @@ describe('the server list', () => {
     expect(
       await within(ruth).findByText('The system ended its time in the background.')
     ).toBeDefined()
-    expect(within(ruth).queryByText('Running')).toBeNull()
+    expect(within(ruth).queryByRole('img', { name: 'Running' })).toBeNull()
   })
 
   it('should keep a server-status event over a read of the list that was in flight when it came', async () => {
@@ -516,7 +517,7 @@ describe('the server list', () => {
     await waitFor(() => {
       expect(host.seen.filter(({ command }) => command === 'servers_list')).toHaveLength(3)
     })
-    expect(within(ruth).queryByText('Running')).toBeNull()
+    expect(within(ruth).queryByRole('img', { name: 'Running' })).toBeNull()
   })
 
   it('should offer the run-policy presets', async () => {
@@ -527,12 +528,19 @@ describe('the server list', () => {
     await screen.findByRole('listitem', { name: 'lab.rathole.example.com' })
     expect(
       Array.from(runPolicyOf('lab.rathole.example.com').control.options, (option) => option.text)
-    ).toEqual(['Off', 'While open', 'For 15 minutes', 'For 1 hour', 'For 8 hours', 'Always'])
+    ).toEqual([
+      'Off',
+      'While Wildflower is open',
+      'For 15 minutes',
+      'For 1 hour',
+      'For 8 hours',
+      'Always',
+    ])
   })
 
   it.each([
     ['Off', { kind: 'off' }],
-    ['While open', { kind: 'whileOpen' }],
+    ['While Wildflower is open', { kind: 'whileOpen' }],
     ['For 15 minutes', { kind: 'for', seconds: 15 * 60 }],
     ['For 1 hour', { kind: 'for', seconds: 60 * 60 }],
     ['For 8 hours', { kind: 'for', seconds: 8 * 60 * 60 }],
@@ -633,7 +641,106 @@ describe('the server list', () => {
     })
   })
 
-  it('should remove a server only once the user confirms', async () => {
+  it('should show the policy a choice becomes before the host answers', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = hostWith({
+      servers: () => Promise.resolve(golden.listedServers),
+      answers: { server_set_run_policy: () => new Promise(() => {}) },
+    })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+    })
+    await screen.findByRole('listitem', { name: 'lab.rathole.example.com' })
+
+    // Act
+    await user.selectOptions(runPolicyOf('lab.rathole.example.com').control, 'For 1 hour')
+
+    // Assert
+    await waitFor(() => {
+      expect(runPolicyOf('lab.rathole.example.com').shown).toMatch(/^Until /)
+    })
+    expect(
+      within(serverRow('lab.rathole.example.com')).getByText(/^On until \S/, { selector: 'span' })
+    ).toBeDefined()
+  })
+
+  it("should put the previous policy back, and show the host's refusal above the list, when the host refuses", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = hostWith({
+      servers: () => Promise.resolve(golden.listedServers),
+      answers: { server_set_run_policy: () => Promise.reject(golden.commandErrors[0]) },
+    })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+    })
+    await screen.findByRole('listitem', { name: 'lab.rathole.example.com' })
+
+    // Act
+    await user.selectOptions(runPolicyOf('lab.rathole.example.com').control, 'Always')
+
+    // Assert
+    const banner = await screen.findByRole('alert')
+    expect(banner.textContent).toContain(golden.commandErrors[0].message)
+    expect(banner.closest('li')).toBeNull()
+    expect(runPolicyOf('lab.rathole.example.com').shown).toBe('Off')
+  })
+})
+
+describe('the server page', () => {
+  const renderServerPage = (host: FakeHost, domain: string): void => {
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: `/servers/${domain}`,
+    })
+  }
+
+  it("should open from a card's Edit, show the server's details, and go back to the list", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderBase({
+      invoke: hostWith({ servers: () => Promise.resolve(golden.listedServers) }).invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+    })
+    const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+
+    // Act
+    await user.click(within(ruth).getByRole('link', { name: 'Edit' }))
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Server' })).toBeDefined()
+    expect(screen.getByText('ruth.relay.example.com')).toBeDefined()
+    expect(
+      screen.getByText('Self-hosted Wildflower relay at https://relay.example.com/')
+    ).toBeDefined()
+    expect(screen.getByText('ruth')).toBeDefined()
+    expect(screen.getByText('https://wildflowerhealth.io/app')).toBeDefined()
+    expect(screen.getByText("Let's Encrypt")).toBeDefined()
+
+    // Act
+    await user.click(screen.getByRole('link', { name: 'Servers' }))
+
+    // Assert
+    expect(await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })).toBeDefined()
+  })
+
+  it('should say so for a domain the device has no server at', async () => {
+    // Act
+    renderServerPage(
+      hostWith({ servers: () => Promise.resolve(golden.listedServers) }),
+      'gone.relay.example.com'
+    )
+
+    // Assert
+    expect(await screen.findByText('This device has no server at this address.')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
+  })
+
+  it('should remove the server only once the user confirms, then return to the list', async () => {
     // Arrange
     const user = userEvent.setup()
     let listed: readonly unknown[] = golden.listedServers
@@ -646,21 +753,18 @@ describe('the server list', () => {
         },
       },
     })
-    renderBase({
-      invoke: host.invoke,
-      storage: storageAnswered({ crashReports: false, performance: false }),
-    })
-    const lab = await screen.findByRole('listitem', { name: 'lab.rathole.example.com' })
+    renderServerPage(host, 'lab.rathole.example.com')
+    const remove = await screen.findByRole('button', { name: 'Remove' })
 
     // Act
-    await user.click(within(lab).getByRole('button', { name: 'Remove' }))
-    await user.click(within(lab).getByRole('button', { name: 'Cancel' }))
+    await user.click(remove)
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
     // Assert
     expect(host.seen.map(({ command }) => command)).not.toContain('server_remove')
 
     // Act
-    await user.click(within(lab).getByRole('button', { name: 'Remove' }))
+    await user.click(remove)
     const dialog = openDialog()
     if (dialog === null) throw new Error('no confirm dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
@@ -670,9 +774,30 @@ describe('the server list', () => {
       command: 'server_remove',
       args: { domain: 'lab.rathole.example.com' },
     })
-    await waitFor(() => {
-      expect(screen.queryByRole('listitem', { name: 'lab.rathole.example.com' })).toBeNull()
+    expect(await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })).toBeDefined()
+    expect(screen.queryByRole('listitem', { name: 'lab.rathole.example.com' })).toBeNull()
+  })
+
+  it("should show the host's refusal, and stay on the page, when the host can't remove the server", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = hostWith({
+      servers: () => Promise.resolve(golden.listedServers),
+      answers: { server_remove: () => Promise.reject(golden.commandErrors[2]) },
     })
+    renderServerPage(host, 'lab.rathole.example.com')
+    await user.click(await screen.findByRole('button', { name: 'Remove' }))
+    const dialog = openDialog()
+    if (dialog === null) throw new Error('no confirm dialog')
+
+    // Act
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
+
+    // Assert
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      golden.commandErrors[2].message
+    )
+    expect(screen.getByRole('heading', { name: 'Server' })).toBeDefined()
   })
 })
 

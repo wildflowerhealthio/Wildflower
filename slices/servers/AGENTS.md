@@ -54,14 +54,18 @@ changing how servers run or what the host notifies about them.
   mounts with `@tauri-apps/api/core`'s `invoke`, `@tauri-apps/api/event`'s
   `listen` and the background service's start config: the base's telemetry
   consent gate, then the background session's recovery and its router over
-  `routes/`, `/` the server list and `/settings` Host Settings, for the app on
-  this device rather than any one server (Notifications, Telemetry, About). The
-  server list is a card per server, kept current by the `server-status` event:
-  its domain, a status line of one badge merged from its run state and health
-  and of when its run policy runs it, why its latest run stopped, its
-  run-policy control, Launch, and its removal behind a confirm. With no
-  servers it says what a server is, beside Add server. Launch and Add server
-  are disabled until the base launches apps and adds servers. While the
+  `routes/`, `/` the server list, `/servers/$domain` a server's page and
+  `/settings` Host Settings, for the app on this device rather than any one
+  server (Notifications, Telemetry, About). The server list is a card per
+  server, kept current by the `server-status` event: its domain and a status
+  dot merged from its run state and health; a run-policy field that says when
+  it runs, outlined in the dot's tone, over a native picker that changes it at
+  once, putting the previous policy back if the host refuses (the refusal
+  shows above the list); why its latest run stopped; Launch; and Edit, which
+  opens the server's page: its relay, tunnel name, launcher and certificates,
+  read-only, and its removal behind a confirm. With no servers it says what a
+  server is, beside Add server. Launch does nothing and Add server is disabled
+  until the base launches apps and adds servers. While the
   webview is offline (`navigator.onLine`), the list says that launching needs
   a connection; the host commands themselves need none, so the base's query
   client runs them offline too (`networkMode: 'always'`).

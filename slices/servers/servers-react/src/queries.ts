@@ -6,7 +6,7 @@ import {
   type UseMutationResult,
   type UseQueryOptions,
 } from '@tanstack/react-query'
-import { Effect, Either } from 'effect'
+import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import { useEffect } from 'react'
 import {
   type HostCommandError,
@@ -17,8 +17,8 @@ import {
   readNotificationPermission,
   removeServer,
   requestNotificationPermission,
-  type RunPolicy,
-  type RunPolicyChoice,
+  RunPolicy,
+  RunPolicyChoice,
   ServerStatus,
   setServerRunPolicy,
 } from 'servers-core'
@@ -126,24 +126,70 @@ const useServerStatusEvents = (listenToHostEvent: ListenToHostEvent): void => {
   }, [listenToHostEvent, queryClient])
 }
 
+/** `servers` with the server `domain`'s run policy set to `runPolicy`. */
+const withRunPolicy =
+  (domain: string, runPolicy: RunPolicy.Type) =>
+  (servers: readonly ListedServer.Type[]): readonly ListedServer.Type[] =>
+    servers.map((server) => (server.domain === domain ? { ...server, runPolicy } : server))
+
+/** Whether two run policies are the same policy, deadline and all. */
+const sameRunPolicy = Schema.equivalence(RunPolicy.Schema)
+
+/** What a run-policy change wrote to the cache before the host answered. */
+interface OptimisticRunPolicy {
+  /** The policy the choice becomes, written at once. */
+  readonly optimistic: RunPolicy.Type
+  /** The policy the cache held before, when it held the server. */
+  readonly previous: Option.Option<RunPolicy.Type>
+}
+
 /**
- * Sets when a server runs, and puts the policy the host stored into the
- * cached server list.
+ * Sets when a server runs: writes the policy the choice becomes into the
+ * cached server list at once, then the policy the host stored.
+ *
+ * @remarks
+ * When the host refuses, the server's previous policy is put back, unless
+ * the cache has since moved on from the one this change wrote, as when a
+ * later change was picked before this one failed. When there was no previous
+ * policy to put back, the list is read again.
  */
 const useSetServerRunPolicy = (
   runHostCommand: RunHostCommand
 ): UseMutationResult<
   RunPolicy.Type,
   HostCommandError,
-  { readonly domain: string; readonly choice: RunPolicyChoice.Type }
+  { readonly domain: string; readonly choice: RunPolicyChoice.Type },
+  OptimisticRunPolicy
 > => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (change) => runHostCommand(setServerRunPolicy(change)),
+    onMutate: async ({ domain, choice }) => {
+      const previous = Option.fromNullable(
+        queryClient
+          .getQueryData<readonly ListedServer.Type[]>(SERVERS_QUERY_KEY)
+          ?.find((server) => server.domain === domain)
+      ).pipe(Option.map((server) => server.runPolicy))
+      const optimistic = RunPolicyChoice.toRunPolicyAt(choice, DateTime.unsafeNow())
+      await updateCachedServers(queryClient, withRunPolicy(domain, optimistic))
+      return { optimistic, previous }
+    },
+    onError: (_error, { domain }, written) => {
+      if (written === undefined || Option.isNone(written.previous)) {
+        return queryClient.invalidateQueries({ queryKey: SERVERS_QUERY_KEY })
+      }
+      const { optimistic } = written
+      const runPolicy = written.previous.value
+      return updateCachedServers(queryClient, (servers) =>
+        servers.map((server) =>
+          server.domain === domain && sameRunPolicy(server.runPolicy, optimistic)
+            ? { ...server, runPolicy }
+            : server
+        )
+      )
+    },
     onSuccess: (runPolicy, { domain }) =>
-      updateCachedServers(queryClient, (servers) =>
-        servers.map((server) => (server.domain === domain ? { ...server, runPolicy } : server))
-      ),
+      updateCachedServers(queryClient, withRunPolicy(domain, runPolicy)),
   })
 }
 

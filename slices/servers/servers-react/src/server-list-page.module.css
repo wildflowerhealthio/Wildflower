@@ -1,7 +1,28 @@
+/*
+ * The gear sits in the header bar at its normal height, in the main text
+ * colour of the colour scheme, resting or hovered, while `ghost`'s hover
+ * background still applies. The selectors name `.button.ghost` to outrank
+ * tundra's own `.button.ghost` and `.button.ghost:hover`, which set the
+ * foreground to the accent.
+ */
+.server-list-page__settings:global(.button.ghost),
+.server-list-page__settings:global(.button.ghost):hover,
+.server-list-page__settings:global(.button.ghost):focus-visible {
+  --button-color-foreground: var(--color-neutral-1);
+}
+
+.server-list-page__settings {
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  font-size: var(--font-size-6);
+  line-height: var(--line-height-1);
+}
+
+/* One column at every width. */
 .server-list-page__servers {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-9);
   margin: 0;
   padding: 0;
   list-style: none;

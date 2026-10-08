@@ -1,33 +1,157 @@
+/*
+ * The card's status tone, set by `data-tone` on the card: the dot's colour
+ * and the run-policy field's border. A neutral (stopped) card keeps the
+ * input's own border.
+ */
 .server-card {
+  --server-card-dot: var(--color-neutral-5);
+  --server-card-field-border: var(--element-color-border);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
+  gap: var(--space-8);
+  min-width: 0;
+  padding: var(--space-7) var(--space-9);
   border: 1px solid var(--card-color-border);
   border-radius: var(--card-border-radius);
+  background: var(--card-color-background);
+  box-shadow: var(--card-box-shadow);
 }
 
+.server-card[data-tone='info'] {
+  --server-card-dot: var(--color-blue-5);
+  --server-card-field-border: var(--color-blue-7);
+}
+
+.server-card[data-tone='success'] {
+  --server-card-dot: var(--color-success);
+  --server-card-field-border: var(--color-success-border);
+}
+
+.server-card[data-tone='warning'] {
+  --server-card-dot: var(--color-warning);
+  --server-card-field-border: var(--color-warning-border);
+}
+
+.server-card[data-tone='danger'] {
+  --server-card-dot: var(--color-red-5);
+  --server-card-field-border: var(--color-red-7);
+}
+
+.server-card__title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+/* A domain is a machine string, so it is set in mono, on one line, cut short with an ellipsis. */
 .server-card__domain {
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-3);
+  color: var(--color-neutral-1);
 }
 
-.server-card__status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
+/* The top margin centres the dot on the domain's first line. */
+.server-card__dot {
+  flex: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  margin-top: var(--space-2);
+  border-radius: 999px;
+  background: var(--server-card-dot);
+  transition: background-color 0.6s ease;
 }
 
-.server-card__controls {
+/* `StatusBadge`'s pulse: a running server that answers `/health` is kept fresh. */
+.server-card[data-tone='success'] .server-card__dot {
+  animation: tundra-pulse-dot 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .server-card[data-tone='success'] .server-card__dot {
+    animation: none;
+  }
+}
+
+/*
+ * The run-policy field reads as the card's status line; the native picker
+ * stretched invisibly over it opens the platform's own menu, wheel or sheet.
+ */
+.server-card__run-policy {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+  min-height: var(--space-12);
+  padding-inline: var(--space-5) var(--space-6);
+  border: var(--element-border-width) solid var(--server-card-field-border);
+  border-radius: var(--radius-2);
+  background: var(--input-color-background);
+  color: var(--color-neutral-1);
+  cursor: pointer;
+  transition: border-color 0.6s ease;
 }
 
-.server-card__run-policy {
+.server-card__run-policy:hover {
+  border-color: var(--color-neutral-5);
+}
+
+.server-card__run-policy:focus-within {
+  outline: var(--element-border-width) solid var(--color-accent);
+  outline-offset: var(--space-1);
+}
+
+.server-card__run-policy-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.server-card__chevron {
+  flex: none;
+  width: var(--space-3);
+  height: var(--space-3);
+  margin: calc(-1 * var(--space-2)) 0 0 var(--space-2);
+  border-right: var(--space-1) solid currentColor;
+  border-bottom: var(--space-1) solid currentColor;
+  transform: rotate(45deg);
+}
+
+/* 16px keeps iOS from zooming in when the picker takes focus. */
+.server-card__picker {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: var(--font-size-4);
+  cursor: pointer;
+}
+
+.server-card__last-stop {
+  margin: 0;
+  color: var(--color-neutral-3);
+}
+
+.server-card__actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4);
+}
+
+.server-card__action {
+  flex: 1 1 0;
 }
