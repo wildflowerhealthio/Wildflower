@@ -1155,6 +1155,22 @@ mod tests {
         );
     }
 
+    /// Wait until the history in `certificate_dir` has `length` entries,
+    /// failing the test if it doesn't in time.
+    async fn history_of_length(certificate_dir: &Path, length: usize) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while read_certificate_history(certificate_dir)
+                .expect("the history")
+                .len()
+                != length
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the history in time");
+    }
+
     /// Wait until the published state satisfies `predicate`.
     async fn published(
         certificate_rx: &mut watch::Receiver<Option<CertificateState>>,
@@ -1186,7 +1202,7 @@ mod tests {
         .await;
         let config = data_root.config(&data_root.certificate_dir, &acme_directory_url);
 
-        for _start in 0..2 {
+        for start in 0..2 {
             let (certificate_tx, mut certificate_rx) = watch::channel(None);
             let cancel = CancellationToken::new();
             let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
@@ -1199,8 +1215,10 @@ mod tests {
                 state.held.map(|issued| issued.fingerprint),
                 Some(sha256_hex(&der))
             );
-            // The deploy event, which records it, follows the cache read.
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            if start == 0 {
+                // The deploy event, which records it, follows the cache read.
+                history_of_length(&data_root.certificate_dir, 1).await;
+            }
             cancel.cancel();
             task.await.expect("the task doesn't panic");
         }
