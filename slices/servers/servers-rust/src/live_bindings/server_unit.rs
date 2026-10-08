@@ -100,7 +100,7 @@ struct DetailSources {
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
 /// run's health, the head of its gatekeeper's pending-consent queue and its
 /// consent decider into the detail, now and each time the health or the head
-/// changes. It also forwards each new head to the host's shared
+/// changes. It also forwards each change of its head to the host's shared
 /// `active_pending_consent_tx`, which the legacy bridge reads until #965
 /// deletes it. The task dies with the run's runtime, and `UnitRunner` clears
 /// the detail when the run ends.
@@ -108,17 +108,17 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
     // The monitor drops its sender once it stops; the head's lives as long as
     // the run's gatekeeper.
     let mut health_open = true;
+    // The head this run last forwarded. Only a change to the run's own head
+    // is forwarded, so a wake for health never overwrites another run's head.
+    let mut forwarded_head: Option<PendingConsentHead> = None;
     loop {
         let pending_consent = sources.pending_consent_rx.borrow_and_update().clone();
-        sources
-            .host_pending_consent_tx
-            .send_if_modified(|host_head| {
-                let changed = *host_head != pending_consent;
-                if changed {
-                    host_head.clone_from(&pending_consent);
-                }
-                changed
-            });
+        if pending_consent != forwarded_head {
+            sources
+                .host_pending_consent_tx
+                .send_replace(pending_consent.clone());
+            forwarded_head.clone_from(&pending_consent);
+        }
         ctx.set_detail(ServerDetail {
             health: sources.server_health_rx.borrow_and_update().clone(),
             pending_consent,

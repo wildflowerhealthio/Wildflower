@@ -1,11 +1,13 @@
 //! The real server as a unit: a `ServerUnit` run through `UnitRunner`, with no
 //! platform bound (units run without a background session). It comes up
 //! `Running` and answers `/health` on its loopback port, reports its health
-//! as the run's detail, and once its policy turns it off, stops with the
-//! detail cleared. Turned back on, the next run binds the same port, so the
-//! previous run's runtime is gone, and serves again. A consent its gatekeeper
-//! parks is the run's detail, and is read and decided through the
-//! `ServerConsentDecider` the run's detail holds until the run ends.
+//! as the run's detail, and leaves another server's head on the host's
+//! pending-consent channel alone while nothing of its own waits. Once its
+//! policy turns it off, it stops with the detail cleared. Turned back on, the
+//! next run binds the same port, so the previous run's runtime is gone, and
+//! serves again. A consent its gatekeeper parks is the run's detail, and is
+//! read and decided through the `ServerConsentDecider` the run's detail holds
+//! until the run ends.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -131,7 +133,9 @@ async fn health_status(loopback_base_url: &Url) -> reqwest::StatusCode {
 struct ServerOnARunner {
     unit_runner: Arc<UnitRunner<ServerDetail>>,
     loopback_base_url: Url,
-    /// The host's pending-consent channel, which every run forwards its head to.
+    /// The host's pending-consent channel, which every run forwards its head
+    /// to; the sender stands in for another server's run.
+    host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     host_pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     /// Held so gatekeeper can publish the host owner token.
     _host_owner_token_rx: watch::Receiver<Option<String>>,
@@ -149,7 +153,7 @@ fn server_on_a_runner() -> ServerOnARunner {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
         on_device_webview_handle: Arc::new(NoOnDeviceWebview),
         host_owner_token_tx,
-        active_pending_consent_tx,
+        active_pending_consent_tx: active_pending_consent_tx.clone(),
     };
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(16);
     let config = server_config(server_dir.path().to_owned(), loopback_base_url.clone());
@@ -166,6 +170,7 @@ fn server_on_a_runner() -> ServerOnARunner {
     ServerOnARunner {
         unit_runner,
         loopback_base_url,
+        host_pending_consent_tx: active_pending_consent_tx,
         host_pending_consent_rx,
         _host_owner_token_rx: host_owner_token_rx,
         _server_dir: server_dir,
@@ -180,6 +185,13 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         loopback_base_url,
         ..
     } = &server;
+    // Another server's consent waits on the host's channel.
+    let other_servers_head = PendingConsentHead::Device {
+        user_code: "OTHER-SERVER".to_owned(),
+    };
+    server
+        .host_pending_consent_tx
+        .send_replace(Some(other_servers_head.clone()));
 
     wait_for(unit_runner, "running", |status| {
         status.run_state == RunState::Running
@@ -198,6 +210,11 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
             .is_some_and(|detail| detail.health.is_some())
     })
     .await;
+    assert_eq!(
+        *server.host_pending_consent_rx.borrow(),
+        Some(other_servers_head),
+        "a run with nothing waiting leaves another server's head alone"
+    );
 
     unit_runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Off);
     let stopped = wait_for(unit_runner, "stopped", |status| {
