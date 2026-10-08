@@ -35,7 +35,9 @@ pub use run_policy_choice::RunPolicyChoice;
 pub use server_change_error::ServerChangeError;
 pub use server_changes::{remove_server, set_run_policy, update_server, ServerUpdate};
 pub use server_detail::ServerDetail;
-pub use server_record::{RelayKind, ServerRecord, TunnelToken, SERVERS_DIR_NAME};
+pub use server_record::{
+    RelayKind, ServerRecord, TunnelToken, ACME_ACCOUNT_DIR_NAME, SERVERS_DIR_NAME,
+};
 pub use server_status::{ServerStatus, ServerStatusTracker};
 
 #[cfg(test)]

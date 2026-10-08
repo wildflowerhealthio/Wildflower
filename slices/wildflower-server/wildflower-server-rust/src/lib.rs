@@ -9,10 +9,12 @@
 //! the forwarded-request report and the tunnel front, which holds each request
 //! to the server's public host and writes its `Forwarded` header. It starts the
 //! tunnel, which hands each visitor's stream to the tunnel listener in
-//! process, and the reachability monitor, and binds the loopback port.
+//! process, the device certificate, which the tunnel listener's TLS serves,
+//! and the reachability monitor, and binds the loopback port.
 //! [`WildflowerServer::serve`] then serves both listeners until its shutdown
-//! token is cancelled; the tunnel runs for as long as it serves, and the
-//! monitor until the server first answers through its public origin.
+//! token is cancelled; the tunnel and the certificate's ordering and renewal
+//! run for as long as it serves, and the monitor until the server first
+//! answers through its public origin.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's
@@ -32,9 +34,11 @@
 //!    monitor's `HealthProbe` over `reqwest`.
 //!  - `http` — the server's own middleware (CORS, the loopback owner trust,
 //!    the forwarded-request report, the tunnel front), the tunnel listener
-//!    with its PROXY header reader, the `/health` checks and the
+//!    with its PROXY header reader and its TLS, the `/health` checks and the
 //!    unmatched-route `404`.
-//!  - `live_bindings` — [`set_up`] and [`WildflowerServer`].
+//!  - `live_bindings` — [`set_up`], [`WildflowerServer`] and the device
+//!    certificate, rustls-acme's order and renewal of the tunnel listener's
+//!    certificate, with [`lets_encrypt_directory_url`].
 
 mod adapters;
 mod config;
@@ -44,4 +48,4 @@ mod live_bindings;
 
 pub use config::{HostPorts, ServerObservers, WildflowerServerConfig};
 pub use domain::server_health::ServerHealth;
-pub use live_bindings::{set_up, WildflowerServer};
+pub use live_bindings::{lets_encrypt_directory_url, set_up, WildflowerServer};

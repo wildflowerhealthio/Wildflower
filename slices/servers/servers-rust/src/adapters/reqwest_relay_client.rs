@@ -428,7 +428,10 @@ mod tests {
         assert_eq!(record.domain(), format!("ruth.{RELAY_DOMAIN}"));
         assert_eq!(record.public_settings, served_settings());
         assert_eq!(record.launcher_url, ServerRecord::default_launcher_url());
-        assert!(!record.staging_certificates);
+        assert_eq!(
+            record.staging_certificates,
+            ServerRecord::DEFAULT_STAGING_CERTIFICATES
+        );
         assert_eq!(registry.read_all().unwrap(), vec![record]);
         assert!(matches!(
             add_server(

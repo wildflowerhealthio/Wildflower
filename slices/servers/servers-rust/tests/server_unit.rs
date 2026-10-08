@@ -42,10 +42,6 @@ fn free_loopback_port() -> u16 {
 
 fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {
     WildflowerServerConfig {
-        runtime: ServerRuntimeConfig {
-            loopback_base_url,
-            server_dir,
-        },
         search_parameter_data_dir: PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../emr/emr-rust/assets"
@@ -66,6 +62,16 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             service_name: "test".to_owned(),
         },
         public_host: DOMAIN.to_owned(),
+        // A CA nothing answers at: the order fails and is retried in the
+        // background, which the server's lifecycle doesn't wait on.
+        acme_directory_url: Url::parse("https://127.0.0.1:9/directory")
+            .expect("the CA directory URL"),
+        certificate_dir: server_dir.join("certificates"),
+        acme_account_dir: server_dir.join("acme-account"),
+        runtime: ServerRuntimeConfig {
+            loopback_base_url,
+            server_dir,
+        },
     }
 }
 

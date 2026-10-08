@@ -21,10 +21,14 @@ from the one router every slice's routes are composed into:
   the relay. It binds no port: the tunnel's rathole client hands each
   visitor's stream to it in process. Before HTTP, the listener reads the
   connection's PROXY protocol v2 header, when it opens with one, for the
-  visitor's address. Its router has no owner trust and no loopback-peer gate,
+  visitor's address, then terminates its TLS with the certificate the device
+  holds for the server's domain, ordered from Let's Encrypt over TLS-ALPN-01.
+  The relay passes TLS through by its SNI, so the device is the only place
+  a visitor's connection is decrypted. A handshake whose SNI names another
+  host gets no certificate. Its router has no owner trust and no loopback-peer gate,
   so no tunnel connection is ever a local caller, whatever its peer or
   headers. Its tunnel front, outside every layer but CORS, holds each request
-  to the server's public host (see
+  to the server's public host, the same host the SNI named (see
   [The tunnel front writes `Forwarded`](#the-tunnel-front-writes-forwarded)).
 
 ## Two origins: loopback and served

@@ -19,6 +19,15 @@ use url::Url;
 /// [`domain`](ServerRecord::domain).
 pub const SERVERS_DIR_NAME: &str = "servers";
 
+/// The folder in the data root that holds the install's ACME account keys,
+/// one per CA, which every server orders its certificates with. Removing a
+/// server leaves it.
+pub const ACME_ACCOUNT_DIR_NAME: &str = "acme-account";
+
+/// The folder in a server's folder that holds its certificates and their
+/// keys (see [`ServerRecord::certificate_dir`]).
+const CERTIFICATES_DIR_NAME: &str = "certificates";
+
 /// One server: the relay it is reached through, the tunnel it holds there,
 /// and how it launches apps.
 ///
@@ -44,7 +53,8 @@ pub struct ServerRecord {
     /// [`DEFAULT_LAUNCHER_URL`](ServerRecord::DEFAULT_LAUNCHER_URL).
     pub launcher_url: Url,
     /// Whether this server's certificates come from the ACME staging directory
-    /// instead of production.
+    /// instead of production. A new server gets
+    /// [`DEFAULT_STAGING_CERTIFICATES`](ServerRecord::DEFAULT_STAGING_CERTIFICATES).
     pub staging_certificates: bool,
     /// When the user wants this server run. Enrolment gives a new server
     /// [`RunPolicy::WhileOpen`] when no other server's policy wants it
@@ -57,6 +67,17 @@ impl ServerRecord {
     /// The launcher a new server gets: the hosted owner UI's app section
     /// (`sectionUrl('app')`).
     pub const DEFAULT_LAUNCHER_URL: &'static str = "https://wildflowerhealth.io/app";
+
+    /// Whether a new server's certificates come from Let's Encrypt's staging
+    /// CA: `true`, and setting it to `false` is the switch to production
+    /// certificates for new servers.
+    ///
+    /// Staging, because every server's domain is under its relay's domain,
+    /// so all of a relay's servers share one registered domain, and Let's
+    /// Encrypt issues at most 50 certificates per registered domain in 7 days.
+    /// Production waits for the relay's limit increase (#899). Staging
+    /// certificates aren't publicly trusted.
+    pub const DEFAULT_STAGING_CERTIFICATES: bool = true;
 
     /// [`DEFAULT_LAUNCHER_URL`](Self::DEFAULT_LAUNCHER_URL) as a [`Url`].
     ///
@@ -82,6 +103,15 @@ impl ServerRecord {
     #[must_use]
     pub fn server_dir(&self, data_root: &Path) -> PathBuf {
         data_root.join(SERVERS_DIR_NAME).join(self.domain())
+    }
+
+    /// The folder the server's certificates and their keys are cached in,
+    /// `<data_root>/servers/<domain>/certificates/`, inside its
+    /// [`server_dir`](Self::server_dir), so removing the server deletes them.
+    /// Only the path: nothing is created here.
+    #[must_use]
+    pub fn certificate_dir(&self, data_root: &Path) -> PathBuf {
+        self.server_dir(data_root).join(CERTIFICATES_DIR_NAME)
     }
 
     /// Whether a run of the server built from `other` could differ from one
@@ -362,6 +392,19 @@ pub(crate) mod tests {
         assert_eq!(
             self_hosted_record("lab").server_dir(data_root),
             Path::new("/data/root/servers/lab.relay.example.com")
+        );
+    }
+
+    #[test]
+    fn a_server_s_certificates_are_in_its_own_folder() {
+        let data_root = Path::new("/data/root");
+        assert_eq!(
+            official_record("ruth").certificate_dir(data_root),
+            Path::new("/data/root/servers/ruth.relay.wildflowerhealth.io/certificates")
+        );
+        assert_eq!(
+            self_hosted_record("lab").certificate_dir(data_root),
+            Path::new("/data/root/servers/lab.relay.example.com/certificates")
         );
     }
 

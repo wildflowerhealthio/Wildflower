@@ -26,9 +26,11 @@ port and on the tunnel. Rust-only, no `-core`.
       stream over in process, on a channel `set_up` creates. Each stream is
       prepared on a task of its own (`prepare_tunnel_connection`), at most 64
       at once, the rest waiting on the channel: its PROXY protocol v2 header,
-      when it opens with the whole signature, is read under a 5 s timeout for
-      the visitor's address, and a malformed or late header closes the
-      connection. The tunnel router adds the forwarded-request report, the
+      when it opens with the whole signature, is read for the visitor's
+      address, then its TLS is accepted, both under one 5 s timeout. A
+      malformed or late header, a failed or late handshake, or an SNI naming
+      another host closes the connection; a TLS-ALPN-01 validation handshake
+      (ALPN `acme-tls/1`) is answered and closed. The tunnel router adds the forwarded-request report, the
       tunnel front and, outermost so even a `421` is readable cross-origin,
       CORS, and never the owner trust or the loopback-peer gate. The front drops any inbound `Forwarded`, answers
       `421` (unreported) unless every host the request names (each `Host`, and
@@ -38,6 +40,21 @@ port and on the tunnel. Rust-only, no `-core`.
       request as forwarded, at the public origin. `WildflowerServer` holds
       the tunnel's daemon, so it dials for exactly as long as the server
       serves.
+  - **The device certificate** (`live_bindings/device_certificate.rs`) is
+    the tunnel listener's certificate for the server's domain, from
+    rustls-acme over TLS-ALPN-01, the CA reaching the device through the
+    relay and the tunnel like any visitor. `set_up` starts driving its ACME
+    state for the run, and `WildflowerServer` holds it like the tunnel
+    daemon: a valid cached certificate is deployed, a missing or expired one
+    is ordered at once, and it is renewed once a third of its lifetime is
+    left. A failed order is retried by rustls-acme with backoff while the
+    server keeps running; until a certificate is deployed, tunnel handshakes
+    fail. The CA is the one at `WildflowerServerConfig::acme_directory_url`,
+    which the host picks from the record's `staging_certificates`
+    (`lets_encrypt_directory_url`). The order has no contact. Keys are files:
+    the certificate and its key in `certificate_dir`, the server's own, and
+    the account key, one per CA, in `acme_account_dir`, shared by the
+    install's servers.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
     (`shared_structures_rust::health_check`): `application/health+json`,
     uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two
@@ -54,7 +71,9 @@ port and on the tunnel. Rust-only, no `-core`.
     doesn't, when the reason changes, then `Reachable(HealthReport)`) on the
     host's `ServerObservers::server_health_tx`. The first answer ends the
     probing: every app already reaches the server through the same relay, and
-    the next run confirms reach again. `WildflowerServer` holds the monitor
+    the next run confirms reach again. The probe trusts only publicly trusted
+    CAs, so it fails while no certificate is deployed, and against a staging
+    certificate. `WildflowerServer` holds the monitor
     like the tunnel daemon, so it also stops when the server stops serving.
     The forwarded-request report skips `/health`, so the probes stay out of
     the request log and the request notifications.
@@ -65,12 +84,14 @@ port and on the tunnel. Rust-only, no `-core`.
     `LaunchContextMinter` from gatekeeper, the monitor's `HealthProbe` over
     reqwest); `http/` the
     server's own middleware (CORS, the loopback owner trust, the
-    forwarded-request report, the tunnel front), the tunnel listener and its
-    PROXY header reader, the `/health` checks and the `404`;
-    `live_bindings/` `set_up`, `WildflowerServer` and the database catalogue.
+    forwarded-request report, the tunnel front), the tunnel listener with its
+    PROXY header reader and its TLS, the `/health` checks and the `404`;
+    `live_bindings/` `set_up`, `WildflowerServer`, the database catalogue and
+    the device certificate.
   - The `test-support` feature adds `WildflowerServer::tunnel_stream_tx`
     for `tests/serve.rs`, which hands the tunnel listener connections the way
-    the tunnel does. Only the crate's own dev-dependency enables it.
+    the tunnel does, over TLS with a self-signed certificate it puts in the
+    certificate cache. Only the crate's own dev-dependency enables it.
 
 ## Layering
 
@@ -78,9 +99,10 @@ port and on the tunnel. Rust-only, no `-core`.
   non-Tauri partition of `scripts/checks/rust.sh`.
 - **The host hands in what it owns.** `WildflowerServerConfig` carries the values
   `apps/wildflower-tauri` derives at build time (`tauri-shared-config.json`),
-  from its platform paths (the server's folder, the FHIR SearchParameter bundle
-  dir) or from the server's record (the tunnel's relay settings and the public
-  host). `HostPorts` carries its native adapters as trait
+  from its platform paths (the server's folder, its certificate folder, the
+  install's ACME account folder, the FHIR SearchParameter bundle dir) or from
+  the server's record (the tunnel's relay settings, the public host and the
+  CA's directory). `HostPorts` carries its native adapters as trait
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time
   configuration or platform paths itself.
@@ -97,8 +119,9 @@ port and on the tunnel. Rust-only, no `-core`.
   A full report channel drops the report; it never delays a response.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
-  listeners, not those tasks (the tunnel's supervisor and the reachability
-  monitor are the exception: they stop when `serve` returns). The host runs
+  listeners, not those tasks (the tunnel's supervisor, the reachability
+  monitor and the device certificate's ACME driver are the exception: they
+  stop when `serve` returns). The host runs
   each server as a unit on the unit runner, which gives each run a dedicated
   runtime and shuts it down when the run ends, which is what ends them.
 

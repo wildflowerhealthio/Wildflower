@@ -6,8 +6,8 @@ publish.workspace = true
 
 # The Wildflower server: `serve` composes every server slice (gatekeeper, emr,
 # OHIF, collector, tunnel, request log, apps, databases) into the API and serves
-# it on the loopback port and the tunnel listener until its shutdown token is
-# cancelled, with its `/health` and the reachability monitor that reads it
+# it on the loopback port and the tunnel listener, over TLS with a certificate
+# it orders itself, until its shutdown token is cancelled, with its `/health` and the reachability monitor that reads it
 # through the public origin. No `tauri` dependency —
 # the Tauri host hands in its native adapters as trait objects — so it compiles
 # and tests without GTK.
@@ -34,6 +34,24 @@ tokio = { workspace = true, features = ["net", "rt", "sync", "time", "macros", "
 ppp.workspace = true
 # `CancellationToken`, the shutdown signal `serve` takes.
 tokio-util = "0.7"
+# The tunnel listener's certificate for the server's domain, ordered over
+# TLS-ALPN-01 and renewed while the server runs, cached on disk (see
+# `src/live_bindings/device_certificate.rs`). `ring` instead of the default
+# aws-lc-rs, as the relay does; `webpki-roots` so the ACME client trusts the
+# CA's API.
+rustls-acme = { version = "0.15", default-features = false, features = [
+  "ring",
+  "webpki-roots",
+] }
+# The tunnel listener's TLS (see `src/http/tunnel_listener/tls.rs`), with the
+# `ring` provider rustls-acme uses.
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "ring",
+] }
+tokio-rustls = { version = "0.26", default-features = false }
+# `StreamExt::next` on rustls-acme's state stream.
+futures-util = { version = "0.3", default-features = false }
 tracing = "0.1"
 # Typed loopback base URL handed to the slices' configs and the 404 fallback.
 url = "2"
@@ -86,6 +104,8 @@ rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust", features 
 serde_json.workspace = true
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
+# The self-signed certificates the tests put in the certificate cache.
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring", "pem"] }
 # `test-util` drives the reachability monitor on virtual time.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time", "test-util"] }
 # `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.

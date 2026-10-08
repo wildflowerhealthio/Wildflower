@@ -66,7 +66,18 @@ changing how servers run or what the host notifies about them.
   `GET /rathole` returned. There's no separate display name; the registry is
   keyed by the domain, and each server runs from its own folder,
   `<data root>/servers/<domain>/` (`ServerRecord::server_dir`), which holds
-  its databases.
+  its databases and, in `certificates/` (`ServerRecord::certificate_dir`),
+  its certificates and their keys.
+- **New servers get staging certificates.**
+  `ServerRecord::DEFAULT_STAGING_CERTIFICATES` is `true`: a new server's
+  certificates come from Let's Encrypt's staging CA, because all of a relay's
+  servers share its registered domain and its limit of 50 certificates in 7
+  days until the limit increase (#899). Setting it to `false` is the switch to
+  production. A record's `staging_certificates` picks the CA its runs order
+  from (`wildflower_server_rust::lets_encrypt_directory_url`).
+- **One ACME account per install.** Every server orders its certificates
+  with the account whose key is in `<data root>/acme-account/`
+  (`ACME_ACCOUNT_DIR_NAME`), one key per CA, created by the first order.
 - **The tunnel name is one DNS label.** `ServerRecord::tunnel_name` is a
   `TunnelName` from `rathole-settings-rust`, the same check the relay applies
   to its tunnels: one lowercase DNS label, never `admin`. It is checked on
@@ -103,7 +114,7 @@ changing how servers run or what the host notifies about them.
   `GET /rathole`, checks its relay settings, compares them with the user's
   pin when there is one, then confirms the tunnel name and token with a
   signed `GET /me`. The record gets that response as `public_settings`, the
-  default launcher and production certificates.
+  default launcher and the default certificate source.
 - **A relay's identity is pinned when the server is added.** Its
   `RelayIdentity`, the `remoteAddr` its rathole client dials and its noise
   `publicKey`, is kept in the record's `public_settings`. When
@@ -258,7 +269,8 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   `RegistryError::NotRegistered`, with nothing written.
 - **Removal turns the server off, then deletes the folder first.**
   `remove_server` stores the run policy `Off`, then deletes
-  `<data root>/servers/<domain>/` and then the record, so a folder that can't
+  `<data root>/servers/<domain>/`, its certificates with it but not the
+  install's ACME account, and then the record, so a folder that can't
   be deleted (`ServerChangeError::DeletingFolder`) leaves the server
   registered and the removal can be retried; a folder already gone is fine.
   A deletion that fails partway leaves the server registered with part of its

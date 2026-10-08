@@ -33,7 +33,9 @@ use crate::http::middleware::loopback_owner_trust::{
 };
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
 use crate::http::not_found;
+use crate::http::tunnel_listener::tls::TunnelTls;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
+use crate::live_bindings::device_certificate::{acme_config, DeviceCertificate};
 use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 
 // Filenames of the server's SQLite databases in its folder. These
@@ -75,6 +77,9 @@ pub struct WildflowerServer {
     /// Mints the SMART App Launch `launch` values this server's
     /// `/oauth/authorize` consumes.
     launch_context_minter: gatekeeper_rust::LaunchContextMinter,
+    /// The tunnel listener's certificate, ordered and renewed until it's
+    /// dropped. Held for the same reason.
+    device_certificate: DeviceCertificate,
 }
 
 impl WildflowerServer {
@@ -99,8 +104,8 @@ impl WildflowerServer {
     /// Serve the composed API on the bound loopback port and the tunnel
     /// listener until `shutdown` is cancelled. Cancelling stops both accepting
     /// connections, and the call returns `Ok` once the open ones on both
-    /// close. The tunnel and the reachability monitor stop when the call
-    /// returns.
+    /// close. The tunnel, the reachability monitor and the certificate's
+    /// ordering and renewal stop when the call returns.
     ///
     /// # Errors
     ///
@@ -113,6 +118,7 @@ impl WildflowerServer {
             tunnel_router,
             tunnel_daemon,
             reachability_monitor,
+            device_certificate,
             // The launch context minter, and the `test-support` feature's
             // `tunnel_stream_tx`.
             ..
@@ -130,6 +136,7 @@ impl WildflowerServer {
         tokio::try_join!(loopback.into_future(), tunnel.into_future())?;
         drop(reachability_monitor);
         drop(tunnel_daemon);
+        drop(device_certificate);
         Ok(())
     }
 }
@@ -152,9 +159,10 @@ impl WildflowerServer {
 /// # Remarks
 ///
 /// Slices spawn background tasks (the tunnel supervisor, the reachability
-/// monitor, gatekeeper's re-mint and sweeps) onto the runtime that runs this
-/// future. They are not tied to the shutdown token: the tunnel supervisor and
-/// the reachability monitor stop when the returned [`WildflowerServer`] is
+/// monitor, the certificate's ordering and renewal, gatekeeper's re-mint and
+/// sweeps) onto the runtime that runs this future. They are not tied to the
+/// shutdown token: the tunnel supervisor, the reachability monitor and the
+/// certificate stop when the returned [`WildflowerServer`] is
 /// dropped (at the latest when [`serve`](WildflowerServer::serve) returns), the
 /// rest when that runtime shuts down.
 pub async fn set_up(
@@ -170,6 +178,9 @@ pub async fn set_up(
         first_party_client_id,
         relay_settings,
         public_host,
+        acme_directory_url,
+        certificate_dir,
+        acme_account_dir,
     } = config;
 
     // The server's public origin, from its domain: what HFS's links and every app
@@ -330,6 +341,19 @@ pub async fn set_up(
         relay_settings,
     };
     let tunnel_daemon = tunnel_rust::setup_tunnel(&tunnel_config);
+    // The tunnel listener's certificate for the server's domain: a cached one
+    // when it is still valid, otherwise ordered now, over TLS-ALPN-01
+    // handshakes that arrive through the tunnel; renewed while the server
+    // runs. A failed order is retried by rustls-acme, and the server keeps
+    // running meanwhile: its tunnel handshakes fail until a certificate is
+    // deployed.
+    let device_certificate = DeviceCertificate::spawn(acme_config(
+        &public_host,
+        &acme_directory_url,
+        &certificate_dir,
+        &acme_account_dir,
+    ));
+    let tunnel_tls = TunnelTls::new(&public_host, device_certificate.resolver());
     #[cfg(feature = "test-support")]
     let tunnel_stream_tx = tunnel_config.tunnel_stream_tx;
     // Whether a remote app can reach the server: the monitor GETs the server's
@@ -535,12 +559,13 @@ pub async fn set_up(
     Ok(WildflowerServer {
         loopback_listener,
         loopback_router,
-        tunnel_listener: TunnelListener::new(tunnel_stream_rx),
+        tunnel_listener: TunnelListener::new(tunnel_stream_rx, tunnel_tls),
         tunnel_router,
         #[cfg(feature = "test-support")]
         tunnel_stream_tx,
         tunnel_daemon,
         reachability_monitor,
         launch_context_minter: gatekeeper.launch_context_minter,
+        device_certificate,
     })
 }

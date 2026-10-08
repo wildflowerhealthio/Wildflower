@@ -1059,12 +1059,13 @@ mod tests {
     async fn an_update_pushes_the_server_again_only_when_its_runs_read_the_change() {
         let runner = runner();
         let (_data_root, servers, run) = running_server(&runner).await;
+        let staging_certificates = servers.registry.read_all().unwrap()[0].staging_certificates;
 
         update(
             &servers,
             RATHOLE_DOMAIN.to_owned(),
             "http://localhost:5200/app".to_owned(),
-            false,
+            staging_certificates,
         )
         .await
         .unwrap();
@@ -1083,11 +1084,14 @@ mod tests {
             &servers,
             RATHOLE_DOMAIN.to_owned(),
             "http://localhost:5200/app".to_owned(),
-            true,
+            !staging_certificates,
         )
         .await
         .unwrap();
-        assert!(servers.registry.read_all().unwrap()[0].staging_certificates);
+        assert_eq!(
+            servers.registry.read_all().unwrap()[0].staging_certificates,
+            !staging_certificates
+        );
         assert!(
             shutdown_of(&run).is_cancelled(),
             "the certificate source is a run's, so the run is replaced"
