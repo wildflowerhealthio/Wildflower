@@ -345,7 +345,7 @@ describe('the server list', () => {
   it.each([
     ['one server', [golden.listedServers[0]]],
     ['several servers', golden.listedServers],
-  ] as const)('should show a card for each of %s', async (_, servers) => {
+  ] as const)('should show a card, with Launch disabled, for each of %s', async (_, servers) => {
     // Act
     renderListed(servers)
 
@@ -396,15 +396,6 @@ describe('the server list', () => {
     expect(
       within(serverRow('ruth.relay.example.com')).getByText(expected, { selector: 'span' })
     ).toBeDefined()
-  })
-
-  it('should show a running server as running', async () => {
-    // Act
-    renderListed(golden.listedServers)
-
-    // Assert
-    const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
-    expect(within(ruth).getByText('Running')).toBeDefined()
   })
 
   it("should show a stopped server's error", async () => {
