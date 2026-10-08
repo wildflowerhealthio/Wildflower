@@ -1,4 +1,5 @@
 import {
+  type QueryClient,
   queryOptions,
   useMutation,
   useQueryClient,
@@ -48,6 +49,34 @@ const serversQueryOptions = (
   })
 
 /**
+ * Cancel a read of the server list still in flight, then write `update` into
+ * the cached list, then read the list again if a read was cancelled. When
+ * nothing is cached, or `update` answers `undefined` because the list can't
+ * take the change, the list is read again instead.
+ *
+ * @remarks
+ * A read in flight could answer with what the host held before the change
+ * `update` writes, and replace it.
+ */
+const updateCachedServers = async (
+  queryClient: QueryClient,
+  update: (servers: readonly ListedServer.Type[]) => readonly ListedServer.Type[] | undefined
+): Promise<void> => {
+  const readWasInFlight = queryClient.isFetching({ queryKey: SERVERS_QUERY_KEY }) > 0
+  await queryClient.cancelQueries({ queryKey: SERVERS_QUERY_KEY })
+  const servers = queryClient.getQueryData<readonly ListedServer.Type[]>(SERVERS_QUERY_KEY)
+  const updated = servers === undefined ? undefined : update(servers)
+  if (updated === undefined) {
+    await queryClient.invalidateQueries({ queryKey: SERVERS_QUERY_KEY })
+    return
+  }
+  queryClient.setQueryData<readonly ListedServer.Type[]>(SERVERS_QUERY_KEY, updated)
+  if (readWasInFlight) {
+    await queryClient.invalidateQueries({ queryKey: SERVERS_QUERY_KEY })
+  }
+}
+
+/**
  * While mounted, put each `server-status` event's status into the cached
  * server list, in place of the listed server's own.
  *
@@ -55,22 +84,20 @@ const serversQueryOptions = (
  * A status for a server the list doesn't hold, such as one just added,
  * reads the list again. A removed server gets no event; reading the list
  * again after its removal drops it. Once listening, the list is read again,
- * so a status that changed before the listener was up is not missed.
+ * so a status that changed before the listener was up is not missed. A read
+ * still in flight when a status arrives is read again (see
+ * {@link updateCachedServers}).
  */
 const useServerStatusEvents = (listenToHostEvent: ListenToHostEvent): void => {
   const queryClient = useQueryClient()
   useEffect(() => {
     const putStatus = (status: ServerStatus.Type): void => {
-      const servers = queryClient.getQueryData<readonly ListedServer.Type[]>(SERVERS_QUERY_KEY)
-      if (servers?.some((server) => server.domain === status.domain) !== true) {
-        void queryClient.invalidateQueries({ queryKey: SERVERS_QUERY_KEY })
-        return
-      }
-      queryClient.setQueryData<readonly ListedServer.Type[]>(
-        SERVERS_QUERY_KEY,
-        servers.map((server) =>
-          server.domain === status.domain ? ListedServer.withStatus(server, status) : server
-        )
+      void updateCachedServers(queryClient, (servers) =>
+        servers.some((server) => server.domain === status.domain)
+          ? servers.map((server) =>
+              server.domain === status.domain ? ListedServer.withStatus(server, status) : server
+            )
+          : undefined
       )
     }
     let unmounted = false
@@ -113,11 +140,10 @@ const useSetServerRunPolicy = (
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (change) => runHostCommand(setServerRunPolicy(change)),
-    onSuccess: (runPolicy, { domain }) => {
-      queryClient.setQueryData<readonly ListedServer.Type[]>(SERVERS_QUERY_KEY, (servers) =>
-        servers?.map((server) => (server.domain === domain ? { ...server, runPolicy } : server))
-      )
-    },
+    onSuccess: (runPolicy, { domain }) =>
+      updateCachedServers(queryClient, (servers) =>
+        servers.map((server) => (server.domain === domain ? { ...server, runPolicy } : server))
+      ),
   })
 }
 

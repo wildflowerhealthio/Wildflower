@@ -404,6 +404,57 @@ describe('the server list', () => {
     expect(within(ruth).queryByText('Running')).toBeNull()
   })
 
+  it('should keep a server-status event over a read of the list that was in flight when it came', async () => {
+    // Arrange
+    const events = fakeEvents()
+    const stopped = [
+      { ...golden.listedServers[0], status: golden.serverStatuses.stoppedByThePlatform },
+      golden.listedServers[1],
+    ]
+    const inFlightReads: Array<(servers: readonly unknown[]) => void> = []
+    let readsAnswered = 0
+    const host = hostWith({
+      servers: () => {
+        readsAnswered += 1
+        // The first read answers at once; the second, for a server the list
+        // doesn't hold, is held, so ruth's event arrives while it is in flight.
+        if (readsAnswered === 1) return Promise.resolve(golden.listedServers)
+        if (readsAnswered === 2) {
+          return new Promise((resolve) => {
+            inFlightReads.push(resolve)
+          })
+        }
+        return Promise.resolve(stopped)
+      },
+    })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      events,
+    })
+    const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+    events.emit('server-status', {
+      ...golden.serverStatuses.stoppedByThePlatform,
+      domain: 'new.relay.example.com',
+    })
+    await waitFor(() => {
+      expect(inFlightReads).toHaveLength(1)
+    })
+
+    // Act
+    events.emit('server-status', golden.serverStatuses.stoppedByThePlatform)
+    inFlightReads[0]?.(golden.listedServers)
+
+    // Assert
+    expect(
+      await within(ruth).findByText('The system ended its time in the background.')
+    ).toBeDefined()
+    await waitFor(() => {
+      expect(host.seen.filter(({ command }) => command === 'servers_list')).toHaveLength(3)
+    })
+    expect(within(ruth).queryByText('Running')).toBeNull()
+  })
+
   it('should set the run policy the user picks, and show the one the host stored', async () => {
     // Arrange
     const user = userEvent.setup()
