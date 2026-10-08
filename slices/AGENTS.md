@@ -133,14 +133,16 @@ pushes every record with its run policy and a factory that builds a fresh
 unit for each run, and the unit reports its health as its detail.
 `servers-rust` also decides what the host notifies: the per-caller request
 notifications and each new stop of a server's run. `servers-tauri-rust` is
-the host side: it pushes the servers to `TauriUnitRunner`, posts the
-notifications, and holds the base's `server_add` and `server_set_credentials`
-commands, which write the registry and then push. See the
+the host side: it pushes the servers to `TauriUnitRunner`, emits each server's
+status to the base as the `server-status` event, posts the notifications,
+and holds the base's commands (list, add, re-enter credentials, set the run
+policy, update, remove), which write the registry and then push. See the
 [Server Runs Explanation](./servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in
 place of the owner UI, is `servers-react`'s `BaseRoot`: its own telemetry
 consent, then the server list and Host Settings, which reach the host
 only through `servers-core`'s Tauri commands (plain `invoke`, answers
-decoded by Effect Schema), never the effect-messaging bridge.
+decoded by Effect Schema) and the `server-status` event, never the
+effect-messaging bridge.
 
 `smart-app` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 

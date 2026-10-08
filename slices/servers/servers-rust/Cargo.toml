@@ -59,8 +59,8 @@ unit-runner = { path = "../../../global/unit-runner" }
 # detail carries. Tauri-free too.
 wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
 # `ForwardedRequest`/`RequestCaller`, which a run reports and the request
-# notifications count.
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
+# notifications count, and `HealthStatus`, which a server's status carries.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["health-check"] }
 
 [lints]
 workspace = true

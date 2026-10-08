@@ -1,17 +1,18 @@
-//! Tauri host glue for the servers slice: the install's servers on
-//! `TauriUnitRunner`, the notifications about them, and the base's commands for
-//! adding a server and re-entering its token. Every decision lives in
-//! [`servers_rust`], which needs no webview to be tested; this crate is only
-//! the glue.
+//! Tauri host glue for the servers slice: the install's servers on the unit
+//! runner, the notifications about them, the `server-status` event, and the
+//! base's commands. Every decision lives in [`servers_rust`], which needs no
+//! webview to be tested; this crate is only the glue.
 //!
 //! [`host_servers`], called once from the app's `setup()`:
 //!
 //! - pushes every server in `servers.json` to the app's
-//!   [`TauriUnitRunner`](tauri_unit_runner::TauriUnitRunner) as a unit whose id
-//!   is its domain, with its run policy and a factory that builds a fresh
+//!   [`TauriUnitRunner`](tauri_unit_runner::TauriUnitRunner) as a unit whose
+//!   id is its domain, with its run policy and a factory that builds a fresh
 //!   [`ServerUnit`](servers_rust::ServerUnit) for each run (see
 //!   [`ServerUnits::push`]). An unreadable registry is logged, and no server
 //!   runs;
+//! - emits the [`SERVER_STATUS_EVENT`] to the base for each server whose
+//!   status on `TauriUnitRunner` changed;
 //! - posts a stop notification for each new stop of a server's run, read from
 //!   `TauriUnitRunner`'s statuses, and the per-caller notifications for the
 //!   requests the servers' tunnels relay;
@@ -21,6 +22,10 @@
 //! async mutex orders each command's registry write and its push, so
 //! `TauriUnitRunner` always ends up with the record as last written.
 //!
+//! - [`servers_list`], invoked as `invoke('servers_list')`, answers with
+//!   every registered server and its status on `TauriUnitRunner`, as
+//!   [`ListedServer`](servers_rust::ListedServer)s, or with the error
+//!   `servers.json` couldn't be read with.
 //! - [`server_add`], invoked as
 //!   `invoke('server_add', { relay, tunnelName, token })`, enrols a tunnel at
 //!   a relay and registers the server (see [`servers_rust::add_server`]),
@@ -30,30 +35,42 @@
 //!   registered server's token, checked with its relay the same way, or
 //!   replaced at once for a rathole relay (see
 //!   [`servers_rust::set_server_credentials`]).
+//! - [`server_set_run_policy`], invoked as
+//!   `invoke('server_set_run_policy', { domain, choice })`, stores the
+//!   [`RunPolicyChoice`](servers_rust::RunPolicyChoice) as a run policy and
+//!   gives `TauriUnitRunner` that policy, answering with it.
+//! - [`server_update`], invoked as
+//!   `invoke('server_update', { domain, launcherUrl, stagingCertificates })`,
+//!   sets the launcher and the certificate source, and pushes the server
+//!   again only when a field its runs read changed.
+//! - [`server_remove`], invoked as `invoke('server_remove', { domain })`,
+//!   takes the server off `TauriUnitRunner`, waiting for its run to end, then
+//!   deletes its folder and its record.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
-//! maps onto the commands' snake_case parameters; answers are camelCase. Each
-//! command trims the token's surrounding whitespace, as the relay does, and
-//! refuses one left empty. Enrolment gets a
+//! maps onto the commands' snake_case parameters; answers are camelCase. The
+//! enrolment commands trim the token's surrounding whitespace, as the relay
+//! does, and refuse one left empty. Enrolment gets a
 //! [`ReqwestRelayClient`](servers_rust::ReqwestRelayClient) for a relay's site,
 //! built when it asks for one.
 //!
-//! The token goes in and never comes back: neither command answers with it
-//! or logs it. A failure the command reaches answers with the
-//! [`EnrolmentError`](servers_rust::EnrolmentError), serialised as
-//! `{"kind", "message"}`; every value a user types is checked there. A
+//! The token goes in and never comes back: no command answers with it or
+//! logs it. A failure the command reaches answers with its error serialised
+//! as `{"kind", "message"}`; every value a user types is checked there. A
 //! payload Tauri can't decode into the parameters is rejected by Tauri before
 //! the command runs, with a plain string naming the parameter.
 //!
-//! The app registers both in its `invoke_handler` and grants them to the
-//! `main` webview only, through its app-defined `allow-server-enrolment`
-//! permission.
+//! The app registers every command in its `invoke_handler` and grants them
+//! to the `main` webview only, through its app-defined
+//! `allow-server-enrolment` (`server_add`, `server_set_credentials`) and
+//! `allow-server-management` (the rest) permissions.
 
 mod commands;
 mod notifications;
+mod server_status;
 mod server_units;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use servers_rust::{JsonServerRegistry, ServerDetail, ServerRecord, ServerRegistry};
@@ -63,7 +80,11 @@ use tauri_unit_runner::TauriUnitRunner;
 use tokio::sync::{mpsc, Mutex};
 use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
-pub use commands::{server_add, server_set_credentials};
+pub use commands::{
+    server_add, server_remove, server_set_credentials, server_set_run_policy, server_update,
+    servers_list,
+};
+pub use server_status::SERVER_STATUS_EVENT;
 pub use server_units::{ServerConfigBuilder, ServerUnits};
 
 /// How many forwarded-request reports may wait for the request notifications
@@ -71,11 +92,13 @@ pub use server_units::{ServerConfigBuilder, ServerUnits};
 /// `wildflower_server_rust::ServerObservers`).
 pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
 
-/// What the servers commands work through: the install's registry,
-/// `TauriUnitRunner`'s server units, and the lock that orders each registry
-/// write with its push.
+/// What the servers commands work through: the install's registry and the
+/// data root its servers' folders are in, `TauriUnitRunner`'s server units,
+/// and the lock that orders each registry write with its push.
 pub struct ServersState {
     pub(crate) registry: Arc<dyn ServerRegistry>,
+    /// The directory holding `servers.json` and each server's folder.
+    pub(crate) data_root: PathBuf,
     pub(crate) server_units: ServerUnits,
     /// Held by a command from before its registry write until after it has
     /// pushed the result, so pushes reach `TauriUnitRunner` in the order the
@@ -84,11 +107,17 @@ pub struct ServersState {
 }
 
 impl ServersState {
-    /// The commands' state over `registry`, pushing to `server_units`.
+    /// The commands' state over `registry`, whose servers' folders are in
+    /// `data_root`, pushing to `server_units`.
     #[must_use]
-    pub fn new(registry: Arc<dyn ServerRegistry>, server_units: ServerUnits) -> Self {
+    pub fn new(
+        registry: Arc<dyn ServerRegistry>,
+        data_root: PathBuf,
+        server_units: ServerUnits,
+    ) -> Self {
         Self {
             registry,
+            data_root,
             server_units,
             registry_writes: Mutex::new(()),
         }
@@ -137,6 +166,10 @@ pub fn host_servers(
             log::error!("[servers] the registered servers are unreadable, so none runs: {error}");
         }
     }
+    tauri::async_runtime::spawn(server_status::emit_server_statuses(
+        app.clone(),
+        runner.subscribe(),
+    ));
     tauri::async_runtime::spawn(notifications::post_stop_notifications(
         app.clone(),
         runner.subscribe_stops(),
@@ -145,5 +178,9 @@ pub fn host_servers(
         app.clone(),
         forwarded_requests,
     ));
-    app.manage(ServersState::new(registry, server_units));
+    app.manage(ServersState::new(
+        registry,
+        data_root.to_path_buf(),
+        server_units,
+    ));
 }

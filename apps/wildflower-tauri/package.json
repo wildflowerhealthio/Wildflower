@@ -26,7 +26,6 @@
     "react-tundraish": "workspace:*",
     "servers-core": "workspace:*",
     "servers-react": "workspace:*",
-    "tauri-plugin-background-service": "catalog:",
     "telemetry-core": "workspace:*",
     "telemetry-react": "workspace:*",
     "telemetry-web": "workspace:*",
