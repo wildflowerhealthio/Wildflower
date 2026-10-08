@@ -20,6 +20,7 @@ use rathole::ClientServiceEvent;
 use rathole_settings_rust::{NoisePattern, Transport};
 use serde::Serialize;
 use tokio::sync::{broadcast, mpsc};
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 /// The real client: renders a rathole client config and runs an embedded
@@ -95,28 +96,39 @@ impl RelayClient for RatholeRelayClient {
 
 /// Send each visitor stream of each TCP service the client starts to
 /// `tunnel_stream_sender`, until the client stops reporting services.
+///
+/// Each service's streams are sent from a task of their own, since a service's
+/// queue ends only after its in-flight data channels, which the client's
+/// return need not wait for. The tasks end with this call, which `run_once`
+/// awaits, so a dial's streams are never handed over once it is done.
 async fn hand_over_tunnel_streams(
     mut service_events: mpsc::UnboundedReceiver<ClientServiceEvent>,
     tunnel_stream_sender: mpsc::Sender<TunnelStream>,
 ) {
-    while let Some(service_event) = service_events.recv().await {
-        if let ClientServiceEvent::TcpStarted {
-            mut visitor_stream_rx,
-            ..
-        } = service_event
-        {
-            let tunnel_stream_sender = tunnel_stream_sender.clone();
-            // A task of its own: the queue ends only after the service's
-            // in-flight data channels, which the client's return need not
-            // wait for.
-            tokio::spawn(async move {
-                while let Some(tunnel_stream) = visitor_stream_rx.recv().await {
-                    if tunnel_stream_sender.send(tunnel_stream).await.is_err() {
-                        // The server stopped taking tunnel connections.
-                        return;
-                    }
+    let mut services = JoinSet::new();
+    loop {
+        tokio::select! {
+            service_event = service_events.recv() => match service_event {
+                Some(ClientServiceEvent::TcpStarted {
+                    mut visitor_stream_rx,
+                    ..
+                }) => {
+                    let tunnel_stream_sender = tunnel_stream_sender.clone();
+                    services.spawn(async move {
+                        while let Some(tunnel_stream) = visitor_stream_rx.recv().await {
+                            if tunnel_stream_sender.send(tunnel_stream).await.is_err() {
+                                // The server stopped taking tunnel connections.
+                                return;
+                            }
+                        }
+                    });
                 }
-            });
+                Some(_) => {}
+                // Dropping `services` aborts the tasks still running.
+                None => return,
+            },
+            // Reap the services whose queues have ended.
+            Some(_) = services.join_next() => {}
         }
     }
 }
@@ -283,7 +295,8 @@ mod tests {
     }
 
     /// Each TCP service's visitor streams go to the sender, in order, and the
-    /// hand-over ends with the client's service events.
+    /// hand-over, with every service's, ends with the client's service
+    /// events.
     #[tokio::test]
     async fn each_visitor_stream_is_handed_over() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -297,9 +310,10 @@ mod tests {
                 visitor_stream_rx,
             })
             .expect("the hand-over takes events");
-        // The client returning drops its events sender.
-        drop(service_event_tx);
-        hand_over_tunnel_streams(service_event_rx, tunnel_stream_sender).await;
+        let hand_over = tokio::spawn(hand_over_tunnel_streams(
+            service_event_rx,
+            tunnel_stream_sender,
+        ));
 
         for visitor_bytes in [b"first", b"other"] {
             let (mut visitor, visitor_stream) = tokio::io::duplex(64);
@@ -313,8 +327,11 @@ mod tests {
             tunnel_stream.read_exact(&mut received).await.expect("read");
             assert_eq!(&received, visitor_bytes);
         }
-        // The service stopped: its queue ends, and so does the hand-over.
-        drop(visitor_stream_tx);
+        // The client returning drops its events sender: the hand-over ends,
+        // and with it the service's, though its queue is still open.
+        drop(service_event_tx);
+        hand_over.await.expect("the hand-over doesn't panic");
         assert!(tunnel_streams.recv().await.is_none());
+        drop(visitor_stream_tx);
     }
 }
