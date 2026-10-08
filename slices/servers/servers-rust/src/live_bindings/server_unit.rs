@@ -1,11 +1,13 @@
 //! [`ServerUnit`]: one server, as a unit `UnitRunner` runs.
 
+use gatekeeper_rust::PendingConsentHead;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use tokio::sync::{mpsc, watch};
 use unit_runner::{RunContext, Unit};
 use wildflower_server_rust::{HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig};
 
 use crate::domain::ServerDetail;
+use crate::live_bindings::server_consent_decider::ServerConsentDecider;
 
 /// One run of one server: the Wildflower server `wildflower-server-rust` sets
 /// up and serves, as a unit `UnitRunner` runs.
@@ -43,35 +45,94 @@ impl ServerUnit {
 impl Unit for ServerUnit {
     type Detail = ServerDetail;
 
-    /// Set the server up, announce it running once it is bound, and serve it
-    /// until `UnitRunner` stops the run. Its health goes out as the run's
-    /// [`ServerDetail`].
+    /// Set the server up, announce it running, and serve it until
+    /// `UnitRunner` stops the run. Its health, the head of its pending-consent
+    /// queue and the [`ServerConsentDecider`] over its gatekeeper go out as
+    /// the run's [`ServerDetail`].
+    ///
+    /// The run's gatekeeper publishes its queue's head on a channel of the
+    /// run's own, so each server's head is its own; each head is forwarded to
+    /// the host's `active_pending_consent_tx` too, which every run shares.
     async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
         let (server_health_tx, server_health_rx) = watch::channel(None);
-        tokio::spawn(report_health_as_detail(server_health_rx, ctx.clone()));
+        let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
+        let host_pending_consent_tx = self.host_ports.active_pending_consent_tx.clone();
         let server = wildflower_server_rust::set_up(
             self.config,
-            self.host_ports,
+            HostPorts {
+                active_pending_consent_tx: pending_consent_tx,
+                ..self.host_ports
+            },
             ServerObservers {
                 server_health_tx,
                 forwarded_request_tx: self.forwarded_request_tx,
             },
         )
         .await?;
+        tokio::spawn(report_detail(
+            DetailSources {
+                consent_decider: ServerConsentDecider::new(
+                    server.consent_decider_for_host().clone(),
+                ),
+                server_health_rx,
+                pending_consent_rx,
+                host_pending_consent_tx,
+            },
+            ctx.clone(),
+        ));
         ctx.announce_running();
         server.serve(ctx.shutdown_token().clone()).await
     }
 }
 
-/// Set each health the run's reachability monitor publishes as the run's
-/// detail, until the server drops its sender. The task dies with the run's
-/// runtime, and `UnitRunner` clears the detail when the run ends.
-async fn report_health_as_detail(
-    mut server_health_rx: watch::Receiver<Option<ServerHealth>>,
-    ctx: RunContext<ServerDetail>,
-) {
-    while server_health_rx.changed().await.is_ok() {
-        let health = server_health_rx.borrow_and_update().clone();
-        ctx.set_detail(ServerDetail { health });
+/// What a run's detail is read from.
+struct DetailSources {
+    /// The run's consent decider, the same in every detail the run sets.
+    consent_decider: ServerConsentDecider,
+    /// The run's reachability monitor's health.
+    server_health_rx: watch::Receiver<Option<ServerHealth>>,
+    /// The head of the run's gatekeeper's pending-consent queue.
+    pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+    /// The host's channel each head is forwarded to.
+    host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
+}
+
+/// The task each run spawns to report its [`ServerDetail`]: it merges the
+/// run's health, the head of its gatekeeper's pending-consent queue and its
+/// consent decider into the detail, now and each time the health or the head
+/// changes. It also forwards each change of its head to the host's shared
+/// `active_pending_consent_tx`, which the legacy bridge reads until #965
+/// deletes it. The task dies with the run's runtime, and `UnitRunner` clears
+/// the detail when the run ends.
+async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
+    // The monitor drops its sender once it stops; the head's lives as long as
+    // the run's gatekeeper.
+    let mut health_open = true;
+    // The head this run last forwarded. Only a change to the run's own head
+    // is forwarded, so a wake for health never overwrites another run's head.
+    let mut forwarded_head: Option<PendingConsentHead> = None;
+    loop {
+        let pending_consent = sources.pending_consent_rx.borrow_and_update().clone();
+        if pending_consent != forwarded_head {
+            sources
+                .host_pending_consent_tx
+                .send_replace(pending_consent.clone());
+            forwarded_head.clone_from(&pending_consent);
+        }
+        ctx.set_detail(ServerDetail {
+            health: sources.server_health_rx.borrow_and_update().clone(),
+            pending_consent,
+            consent_decider: Some(sources.consent_decider.clone()),
+        });
+        tokio::select! {
+            changed = sources.server_health_rx.changed(), if health_open => {
+                health_open = changed.is_ok();
+            }
+            changed = sources.pending_consent_rx.changed() => {
+                if changed.is_err() {
+                    return;
+                }
+            }
+        }
     }
 }

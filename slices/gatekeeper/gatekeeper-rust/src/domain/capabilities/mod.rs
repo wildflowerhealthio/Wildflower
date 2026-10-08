@@ -31,10 +31,13 @@ pub(crate) mod session;
 pub(crate) mod writers;
 
 pub use access::grantable_admin_scopes;
+pub use access::{
+    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
+    OAuthConsentView,
+};
 pub(crate) use access::{
-    ApproveDeviceConsentInput, ApproveOAuthConsentInput, Capability, ClientView, ClientsDisabler,
-    ClientsReader, ConsentDecider, ConsentOutcome, ConsentReader, DeviceConsentView,
-    FixedScopeCapability, GrantsReader, GrantsRevoker, OAuthConsentView, Scoped, TokenRevoker,
+    Capability, ClientView, ClientsDisabler, ClientsReader, ConsentDecider, ConsentReader,
+    FixedScopeCapability, GrantsReader, GrantsRevoker, Scoped, TokenRevoker,
 };
 
 #[cfg(test)]

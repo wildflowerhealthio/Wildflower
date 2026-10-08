@@ -1556,9 +1556,18 @@ importers:
       react-dom:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/react-kitchen-sink
       react-tundraish:
         specifier: workspace:*
         version: link:../../global/react-tundraish
+      scopes-core:
+        specifier: workspace:*
+        version: link:../../slices/scopes/scopes-core
+      scopes-react:
+        specifier: workspace:*
+        version: link:../../slices/scopes/scopes-react
       servers-core:
         specifier: workspace:*
         version: link:../../slices/servers/servers-core
@@ -5402,9 +5411,18 @@ importers:
       react-dom:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/react-kitchen-sink
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      scopes-core:
+        specifier: workspace:*
+        version: link:../../scopes/scopes-core
+      scopes-react:
+        specifier: workspace:*
+        version: link:../../scopes/scopes-react
       servers-core:
         specifier: workspace:*
         version: link:../servers-core
