@@ -75,10 +75,19 @@ impl ServerUnits {
     /// server starts at once if it should run.
     ///
     /// Call it after every registry write that changes only the server's run
-    /// policy.
+    /// policy, when the server is set (see [`Self::holds`]); push a server that
+    /// isn't.
     pub fn set_run_policy(&self, domain: &str, run_policy: RunPolicy) {
         self.runner
             .set_unit_policy(&UnitId::new(domain), run_policy);
+    }
+
+    /// Whether the server `domain` is set on `TauriUnitRunner`. It isn't when
+    /// `servers.json` was unreadable at launch, or a failed removal couldn't
+    /// read it to put the server back.
+    #[must_use]
+    pub fn holds(&self, domain: &str) -> bool {
+        self.runner.statuses().contains_key(&UnitId::new(domain))
     }
 
     /// Stop the server `domain`, wait for its run to end, and take it off

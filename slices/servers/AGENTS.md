@@ -196,11 +196,13 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   `server_update` pushes the record again only when
   `ServerRecord::run_inputs_differ` says a field a run reads changed: every
   field but the launcher URL and the run policy. A new field needs a decision
-  there.
+  there. Either pushes the whole record when `ServerUnits::holds` says
+  `TauriUnitRunner` doesn't hold the server, as when `servers.json` was
+  unreadable at launch.
 - **Stop, then delete.** `server_remove` awaits `TauriUnitRunner`'s
   `remove_unit`, so the server's run has ended, then deletes its folder and its
   record. A deletion that fails pushes the server back as `servers.json` holds
-  it.
+  it, with the `Off` policy `remove_server` stored first.
 - **One `server-status` per change.** The host emits a server's
   `ServerStatus` to the `main` webview whenever its `UnitStatus` changes,
   camelCase, each optional member left out when absent:
@@ -254,13 +256,14 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   concurrently, such as a run policy set while a token is checked with the
   relay, is kept. A server that isn't registered is
   `RegistryError::NotRegistered`, with nothing written.
-- **Removal deletes the folder first.** `remove_server` deletes
+- **Removal turns the server off, then deletes the folder first.**
+  `remove_server` stores the run policy `Off`, then deletes
   `<data root>/servers/<domain>/` and then the record, so a folder that can't
   be deleted (`ServerChangeError::DeletingFolder`) leaves the server
   registered and the removal can be retried; a folder already gone is fine.
   A deletion that fails partway leaves the server registered with part of its
-  folder, some databases or certificates possibly gone; retrying deletes the
-  rest.
+  folder, some databases or certificates possibly gone, and `Off`, so it
+  doesn't run on what's left; retrying deletes the rest.
 - **A launcher URL is checked when entered.** `update_server` takes an
   absolute `http` or `https` URL with a host and no credentials, or refuses it
   as `ServerChangeError::InvalidLauncherUrl`.

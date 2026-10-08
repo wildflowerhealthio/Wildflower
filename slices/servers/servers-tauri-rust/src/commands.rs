@@ -266,7 +266,11 @@ async fn set_run_policy(
     match result {
         Ok(run_policy) => {
             log::info!("[servers] set the run policy of {domain} to {run_policy:?}");
-            servers.server_units.set_run_policy(&domain, run_policy);
+            if servers.server_units.holds(&domain) {
+                servers.server_units.set_run_policy(&domain, run_policy);
+            } else {
+                push_as_registered(servers, &domain).await;
+            }
             Ok(run_policy)
         }
         Err(error) => {
@@ -298,6 +302,9 @@ async fn update(
             if update.run_inputs_changed {
                 log::info!("[servers] updated {domain}; its runs read the change");
                 servers.server_units.push(update.record);
+            } else if !servers.server_units.holds(&domain) {
+                log::info!("[servers] updated {domain}, which wasn't on the unit runner");
+                servers.server_units.push(update.record);
             } else {
                 log::info!("[servers] updated {domain}");
             }
@@ -326,16 +333,17 @@ async fn remove(servers: &ServersState, domain: String) -> Result<(), ServerChan
         }
         Err(error) => {
             log::warn!("[servers] removing {domain} failed: {error}");
-            put_back_on_the_unit_runner(servers, &domain).await;
+            push_as_registered(servers, &domain).await;
             Err(error)
         }
     }
 }
 
-/// Push the server `domain` to `TauriUnitRunner` again, as `servers.json`
-/// holds it, after a removal that took it off `TauriUnitRunner` but failed to
-/// delete it.
-async fn put_back_on_the_unit_runner(servers: &ServersState, domain: &str) {
+/// Push the server `domain` to `TauriUnitRunner` as `servers.json` holds it:
+/// after a removal that took it off `TauriUnitRunner` but failed to delete it,
+/// with the `Off` policy the removal stored, or after a policy change for a
+/// server `TauriUnitRunner` doesn't hold.
+async fn push_as_registered(servers: &ServersState, domain: &str) {
     match on_registry(servers, |registry| registry.read_all()).await {
         Ok(records) => {
             if let Some(record) = records.into_iter().find(|record| record.domain() == domain) {
@@ -1016,6 +1024,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_policy_for_a_server_off_the_runner_pushes_the_server() {
+        let runner = runner();
+        let (_data_root, servers, _run) = running_server(&runner).await;
+        runner.remove_unit(&UnitId::from(RATHOLE_DOMAIN)).await;
+
+        set_run_policy(&servers, RATHOLE_DOMAIN.to_owned(), RunPolicyChoice::Off)
+            .await
+            .unwrap();
+
+        assert!(servers.server_units.holds(RATHOLE_DOMAIN));
+    }
+
+    #[tokio::test]
+    async fn an_update_pushes_a_server_off_the_runner_even_when_its_runs_read_no_change() {
+        let runner = runner();
+        let (_data_root, servers, _run) = running_server(&runner).await;
+        runner.remove_unit(&UnitId::from(RATHOLE_DOMAIN)).await;
+        let record = servers.registry.read_all().unwrap().remove(0);
+
+        update(
+            &servers,
+            RATHOLE_DOMAIN.to_owned(),
+            record.launcher_url.to_string(),
+            record.staging_certificates,
+        )
+        .await
+        .unwrap();
+
+        assert!(servers.server_units.holds(RATHOLE_DOMAIN));
+    }
+
+    #[tokio::test]
     async fn an_update_pushes_the_server_again_only_when_its_runs_read_the_change() {
         let runner = runner();
         let (_data_root, servers, run) = running_server(&runner).await;
@@ -1085,7 +1125,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_removal_that_fails_puts_the_server_back_on_the_runner() {
+    async fn a_removal_that_fails_puts_the_server_back_on_the_runner_off() {
         let runner = runner();
         let (data_root, servers, _run) = running_server(&runner).await;
         // A file where the folder should be can't be deleted as a folder.
@@ -1099,10 +1139,15 @@ mod tests {
             serde_json::to_value(result.unwrap_err()).unwrap()["kind"],
             "deletingFolder"
         );
-        assert_eq!(servers.registry.read_all().unwrap().len(), 1);
-        assert!(runner
-            .statuses()
-            .contains_key(&UnitId::from(RATHOLE_DOMAIN)));
+        assert_eq!(stored_policy(&servers), RunPolicy::Off);
+        let status = status_on(&runner, |status| {
+            status.is_some_and(|status| matches!(status.run_state, RunState::Stopped { .. }))
+        })
+        .await;
+        assert!(
+            status.is_some(),
+            "the server is back on the runner, stopped"
+        );
     }
 
     #[tokio::test]

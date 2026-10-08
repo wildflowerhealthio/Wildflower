@@ -89,15 +89,17 @@ pub fn update_server(
     Ok(update.expect("a change that succeeds has updated the record"))
 }
 
-/// Delete the server with `domain`: its folder under `data_root`, which holds
-/// its databases and certificates, then its record. The server must not be
-/// running.
+/// Delete the server with `domain`: its run policy is set to
+/// [`RunPolicy::Off`], then its folder under `data_root`, which holds its
+/// databases and certificates, is deleted, then its record. The server must
+/// not be running.
 ///
-/// The folder goes first, so a folder that can't be deleted leaves the server
-/// registered and the removal can be retried; a folder already gone is fine.
-/// A deletion that fails partway leaves the server registered with only part
-/// of its folder, so some of its databases or certificates may already be
-/// gone; retrying deletes the rest.
+/// The folder goes before the record, so a folder that can't be deleted
+/// leaves the server registered and the removal can be retried; a folder
+/// already gone is fine. A deletion that fails partway leaves the server
+/// registered with only part of its folder, so some of its databases or
+/// certificates may already be gone; retrying deletes the rest. Its policy is
+/// already `Off` by then, so it doesn't run on what's left.
 ///
 /// # Errors
 ///
@@ -109,12 +111,18 @@ pub fn remove_server(
     data_root: &Path,
     domain: &str,
 ) -> Result<(), ServerChangeError> {
-    let server = registry
-        .read_all()?
-        .into_iter()
-        .find(|server| server.domain() == domain)
-        .ok_or_else(|| not_registered(domain))?;
-    match std::fs::remove_dir_all(server.server_dir(data_root)) {
+    let mut server_dir = None;
+    registry.modify(Box::new(|servers| {
+        let server = servers
+            .iter_mut()
+            .find(|server| server.domain() == domain)
+            .ok_or_else(|| not_registered(domain))?;
+        server.run_policy = RunPolicy::Off;
+        server_dir = Some(server.server_dir(data_root));
+        Ok(())
+    }))?;
+    let server_dir = server_dir.expect("a change that succeeds has found the record");
+    match std::fs::remove_dir_all(server_dir) {
         Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(source) => {
@@ -482,11 +490,16 @@ mod tests {
     }
 
     /// A folder that can't be deleted keeps the server registered, so the
-    /// removal can be tried again.
+    /// removal can be tried again, with its run policy `Off`, so it doesn't run
+    /// on what's left of its folder.
     #[cfg(unix)]
     #[test]
-    fn a_folder_that_cannot_be_deleted_keeps_the_server() {
-        let (data_root, registry) = registry_holding(&[official_record("ruth")]);
+    fn a_folder_that_cannot_be_deleted_keeps_the_server_off() {
+        let always = ServerRecord {
+            run_policy: RunPolicy::Always,
+            ..official_record("ruth")
+        };
+        let (data_root, registry) = registry_holding(&[always]);
         let ruth_dir = official_record("ruth").server_dir(data_root.path());
         std::fs::create_dir_all(ruth_dir.parent().unwrap()).unwrap();
         // A file where the folder should be fails `remove_dir_all` for any
@@ -503,6 +516,12 @@ mod tests {
             matches!(result, Err(ServerChangeError::DeletingFolder { ref domain, .. }) if domain == "ruth.relay.wildflowerhealth.io"),
             "{result:?}"
         );
-        assert_eq!(registry.read_all().unwrap(), vec![official_record("ruth")]);
+        assert_eq!(
+            registry.read_all().unwrap(),
+            vec![ServerRecord {
+                run_policy: RunPolicy::Off,
+                ..official_record("ruth")
+            }]
+        );
     }
 }
