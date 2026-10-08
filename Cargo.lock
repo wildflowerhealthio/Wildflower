@@ -9498,6 +9498,7 @@ dependencies = [
  "futures-util",
  "gatekeeper-rust",
  "ohif-server-rust",
+ "pem",
  "persistence-rust",
  "ppp",
  "proptest",

@@ -46,8 +46,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures_util::StreamExt;
-use rustls::pki_types::pem::PemObject;
-use rustls::pki_types::CertificateDer;
+use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls_acme::acme::AcmeError;
 use rustls_acme::caches::DirCache;
 use rustls_acme::{
@@ -165,21 +164,36 @@ impl CertCache for LastEntryCertCache {
 
 /// The certificate a cache entry holds: its leaf's validity and fingerprint.
 ///
+/// The entry is checked as rustls-acme 0.15's `AcmeState::parse_cert` checks
+/// it before deploying it: its PEM sections, at least two, are the private
+/// key, a PKCS #8 ECDSA key, then the certificate chain, leaf first. So an
+/// entry rustls-acme won't deploy is never read as a certificate the run
+/// holds.
+///
 /// # Errors
 ///
-/// Returns an error if the entry holds no certificate, or its leaf isn't
-/// X.509.
+/// Returns an error if the entry isn't PEM, has fewer than two sections, its
+/// key isn't an ECDSA key, or its leaf isn't X.509.
 fn parse_cache_entry(cache_entry: &[u8]) -> anyhow::Result<IssuedCertificate> {
-    let leaf = CertificateDer::from_pem_slice(cache_entry)
-        .context("the cache entry holds no certificate")?;
+    let sections = pem::parse_many(cache_entry).context("the cache entry isn't PEM")?;
+    let [key, leaf, ..] = &sections[..] else {
+        anyhow::bail!(
+            "the cache entry has {} PEM sections, not a key and a certificate chain",
+            sections.len()
+        );
+    };
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.contents()));
+    rustls::crypto::ring::sign::any_ecdsa_type(&key)
+        .context("the cache entry's key isn't an ECDSA key")?;
+    let leaf = leaf.contents();
     let (_, certificate) =
-        x509_parser::parse_x509_certificate(&leaf).context("the leaf isn't X.509")?;
+        x509_parser::parse_x509_certificate(leaf).context("the leaf isn't X.509")?;
     let validity = certificate.validity();
     let instant = |time: x509_parser::time::ASN1Time| {
         DateTime::from_timestamp(time.timestamp(), 0).context("the validity is out of range")
     };
     let fingerprint =
-        Sha256::digest(&leaf)
+        Sha256::digest(leaf)
             .iter()
             .fold(String::with_capacity(64), |mut hex, byte| {
                 let _ = write!(hex, "{byte:02x}");
@@ -464,6 +478,11 @@ fn certificate_events(
         ) => vec![CertificateEvent::CacheFailed {
             message: error.to_string(),
         }],
+        Err(error @ EventError::CachedCertParse(_)) => {
+            vec![CertificateEvent::CachedCertificateUnusable {
+                message: error.to_string(),
+            }]
+        }
         Err(error) => vec![CertificateEvent::OrderFailed(order_error(error))],
     }
 }
@@ -566,10 +585,19 @@ mod tests {
         domain: &str,
         not_after: (i32, u8, u8),
     ) -> (Vec<u8>, rustls::pki_types::CertificateDer<'static>) {
+        self_signed_cache_entry_signed_with(domain, not_after, &rcgen::PKCS_ECDSA_P256_SHA256)
+    }
+
+    /// [`self_signed_cache_entry`], with a key of `algorithm`.
+    fn self_signed_cache_entry_signed_with(
+        domain: &str,
+        not_after: (i32, u8, u8),
+        algorithm: &'static rcgen::SignatureAlgorithm,
+    ) -> (Vec<u8>, rustls::pki_types::CertificateDer<'static>) {
         let mut params = CertificateParams::new(vec![domain.to_owned()]).expect("params");
         params.not_before = rcgen::date_time_ymd(2020, 1, 1);
         params.not_after = rcgen::date_time_ymd(not_after.0, not_after.1, not_after.2);
-        let key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("key pair");
+        let key_pair = KeyPair::generate_for(algorithm).expect("key pair");
         let certificate = params.self_signed(&key_pair).expect("self-signed");
         let cache_entry = [key_pair.serialize_pem(), certificate.pem()]
             .concat()
@@ -897,6 +925,98 @@ mod tests {
             }
         );
         assert!(parse_cache_entry(b"no PEM here").is_err());
+    }
+
+    /// Every entry rustls-acme refuses to deploy is refused here too: one
+    /// with no key before its certificate, one whose key isn't ECDSA, and one
+    /// that isn't PEM. Each is checked against rustls-acme itself.
+    #[tokio::test]
+    async fn an_entry_rustls_acme_cannot_use_is_not_a_certificate() {
+        let (ecdsa_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
+        let certificate_only = String::from_utf8(ecdsa_entry)
+            .expect("PEM")
+            .split_inclusive("-----END PRIVATE KEY-----\n")
+            .nth(1)
+            .expect("the certificate after the key")
+            .to_owned()
+            .into_bytes();
+        let (ed25519_entry, _) =
+            self_signed_cache_entry_signed_with(DOMAIN, (2099, 1, 1), &rcgen::PKCS_ED25519);
+        let acme_directory_url = unreachable_acme_directory_url();
+        for (name, entry) in [
+            ("a certificate alone", certificate_only),
+            ("an Ed25519 key", ed25519_entry),
+            ("not PEM", b"no PEM here".to_vec()),
+        ] {
+            assert!(parse_cache_entry(&entry).is_err(), "{name}");
+
+            let data_root = data_root();
+            cache_certificate(
+                &data_root.certificate_dir,
+                DOMAIN,
+                &acme_directory_url,
+                &entry,
+            )
+            .await;
+            let mut acme_state = acme_state(&data_root, &acme_directory_url);
+            assert!(
+                matches!(
+                    next_event(&mut acme_state).await,
+                    Err(EventError::CachedCertParse(_))
+                ),
+                "{name}"
+            );
+        }
+    }
+
+    /// A run whose cached certificate rustls-acme can't use starts without
+    /// it, ordering, with the cache's error.
+    #[tokio::test]
+    async fn a_run_does_not_hold_a_cached_certificate_rustls_acme_cannot_use() {
+        let data_root = data_root();
+        let acme_directory_url = unreachable_acme_directory_url();
+        let (ed25519_entry, _) =
+            self_signed_cache_entry_signed_with(DOMAIN, (2099, 1, 1), &rcgen::PKCS_ED25519);
+        cache_certificate(
+            &data_root.certificate_dir,
+            DOMAIN,
+            &acme_directory_url,
+            &ed25519_entry,
+        )
+        .await;
+        let config = data_root.config(&data_root.certificate_dir, &acme_directory_url);
+        assert_eq!(
+            cached_certificate_state(DOMAIN, &config).await.status,
+            CertificateStatus::CacheUnreadable
+        );
+
+        let (certificate_tx, mut certificate_rx) = watch::channel(None);
+        let cancel = CancellationToken::new();
+        let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let _task = tokio::spawn(task);
+        let state = published(&mut certificate_rx, |_| true).await;
+        cancel.cancel();
+        assert_eq!(state.status, CertificateStatus::Ordering);
+        assert_eq!(state.held, None);
+    }
+
+    /// rustls-acme refusing the cached certificate is a cache failure that
+    /// drops it.
+    #[test]
+    fn a_cached_certificate_rustls_acme_refuses_is_unusable() {
+        let (ed25519_entry, _) =
+            self_signed_cache_entry_signed_with(DOMAIN, (2099, 1, 1), &rcgen::PKCS_ED25519);
+        let refused = rustls_acme::CertParseError::InvalidPrivateKey;
+        let events = certificate_events(&Err(EventError::CachedCertParse(refused)), || {
+            parse_cache_entry(&ed25519_entry).map(Some)
+        });
+        assert!(
+            matches!(
+                &events[..],
+                [CertificateEvent::CachedCertificateUnusable { .. }]
+            ),
+            "{events:?}"
+        );
     }
 
     /// A lapsed cached certificate reads as `Expired`, never `OrderFailing`;

@@ -58,6 +58,9 @@ futures-util = { version = "0.3", default-features = false }
 x509-parser = "0.18"
 # A certificate's SHA-256 fingerprint. Already in the tree.
 sha2 = "0.10"
+# A cache entry's PEM sections, split as rustls-acme splits them (see
+# `src/adapters/acme_certificate.rs`); the version rustls-acme already builds.
+pem = "3"
 # The certificate history file (see `src/adapters/certificate_history.rs`).
 serde_json.workspace = true
 tracing = "0.1"

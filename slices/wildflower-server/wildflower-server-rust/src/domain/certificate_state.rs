@@ -216,6 +216,12 @@ pub(crate) enum CertificateEvent {
         /// The error, for the log and the base's details.
         message: String,
     },
+    /// rustls-acme couldn't use the cached certificate, so the run doesn't
+    /// hold it, and orders a new one.
+    CachedCertificateUnusable {
+        /// The error, for the log and the base's details.
+        message: String,
+    },
 }
 
 /// What a run has observed of its certificate: the one it holds and the
@@ -254,6 +260,10 @@ impl ObservedCertificate {
             CertificateEvent::CacheFailed { message } => Self {
                 last_error: Some(CertificateOrderError::Cache { message }),
                 ..self
+            },
+            CertificateEvent::CachedCertificateUnusable { message } => Self {
+                held: None,
+                last_error: Some(CertificateOrderError::Cache { message }),
             },
         }
     }
@@ -385,6 +395,22 @@ mod tests {
             CertificateStatus::Ordering,
             "the latest error is the cache's"
         );
+    }
+
+    #[test]
+    fn a_cached_certificate_rustls_acme_cannot_use_is_no_longer_held() {
+        let observed = ObservedCertificate::starting_with(Some(ninety_day("a"))).after(
+            CertificateEvent::CachedCertificateUnusable {
+                message: "cached cert parse: unsupported private key type".to_owned(),
+            },
+        );
+        let state = observed.state(ISSUER, on(1, 2));
+        assert_eq!(state.status, CertificateStatus::Ordering);
+        assert_eq!(state.held, None);
+        assert!(matches!(
+            state.last_error,
+            Some(CertificateOrderError::Cache { .. })
+        ));
     }
 
     #[test]
