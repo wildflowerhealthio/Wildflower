@@ -107,29 +107,36 @@ fn acme_config(
         )
 }
 
+/// The certificate the cache entry rustls-acme last loaded or stored holds,
+/// or why that entry isn't one; `None` before it has loaded or stored one.
+/// Only what [`parse_cache_entry`] reads is kept, never the entry's key.
+type LastEntryCertificate = Arc<Mutex<Option<Result<IssuedCertificate, String>>>>;
+
 /// The server's certificate cache, a [`DirCache`] over its
-/// `certificate_dir`, keeping the entry rustls-acme last loaded or stored so
-/// the run can read the certificate an event is about.
+/// `certificate_dir`, keeping the certificate in the entry rustls-acme last
+/// loaded or stored so the run can read the certificate an event is about.
 struct LastEntryCertCache {
     dir_cache: DirCache<PathBuf>,
-    /// The cache entry rustls-acme last loaded or stored: the key's PEM, then
-    /// the certificate chain's.
-    last_entry: Arc<Mutex<Option<Vec<u8>>>>,
+    last_entry_certificate: LastEntryCertificate,
 }
 
 impl LastEntryCertCache {
     fn new(certificate_dir: PathBuf) -> Self {
         Self {
             dir_cache: DirCache::new(certificate_dir),
-            last_entry: Arc::default(),
+            last_entry_certificate: Arc::default(),
         }
     }
 
+    /// Keep the certificate `entry` holds, or why it holds none, and drop
+    /// the entry, its private key included.
     fn keep(&self, entry: &[u8]) {
+        let certificate = parse_cache_entry(entry)
+            .map_err(|error| format!("the cache entry is unreadable: {error:#}"));
         *self
-            .last_entry
+            .last_entry_certificate
             .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(entry.to_vec());
+            .unwrap_or_else(PoisonError::into_inner) = Some(certificate);
     }
 }
 
@@ -314,7 +321,7 @@ fn certificate_task(
     let reporter = CertificateReporter {
         issuer: config.certificate_authority,
         certificate_dir: config.certificate_dir.clone(),
-        last_cache_entry: Arc::clone(&certificate_cache.last_entry),
+        last_entry_certificate: Arc::clone(&certificate_cache.last_entry_certificate),
         certificate_tx,
     };
     let acme_state = acme_config(domain, config, certificate_cache).state();
@@ -342,8 +349,9 @@ struct CertificateReporter {
     issuer: CertificateAuthority,
     /// The server's `certificates/` folder, which holds its history.
     certificate_dir: PathBuf,
-    /// The entry the run's [`LastEntryCertCache`] last loaded or stored.
-    last_cache_entry: Arc<Mutex<Option<Vec<u8>>>>,
+    /// The certificate in the entry the run's [`LastEntryCertCache`] last
+    /// loaded or stored.
+    last_entry_certificate: LastEntryCertificate,
     /// The host's channel for the run's [`CertificateState`].
     certificate_tx: watch::Sender<Option<CertificateState>>,
 }
@@ -367,14 +375,12 @@ impl CertificateReporter {
     ///
     /// Returns an error if that entry isn't a certificate.
     fn last_cached(&self) -> anyhow::Result<Option<IssuedCertificate>> {
-        let entry = self
-            .last_cache_entry
+        self.last_entry_certificate
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        entry
-            .map(|entry| parse_cache_entry(&entry).context("the cache entry is unreadable"))
+            .clone()
             .transpose()
+            .map_err(anyhow::Error::msg)
     }
 
     /// Record `issued` in the server's history, unless it records it
@@ -1096,6 +1102,39 @@ mod tests {
         assert!(
             matches!(state.last_error, Some(CertificateOrderError::Cache { .. })),
             "{state:?}"
+        );
+    }
+
+    /// The cache keeps the certificate an entry holds, or why it holds none,
+    /// and never the entry's private key.
+    #[tokio::test]
+    async fn the_cache_keeps_the_certificate_not_the_key() {
+        let data_root = data_root();
+        let cache = LastEntryCertCache::new(data_root.certificate_dir.clone());
+        let (cache_entry, der) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
+        let domains = [DOMAIN.to_owned()];
+        let directory_url = unreachable_acme_directory_url();
+
+        cache
+            .store_cert(&domains, directory_url.as_str(), &cache_entry)
+            .await
+            .expect("stored");
+        let kept = cache
+            .last_entry_certificate
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("an entry kept");
+        assert_eq!(kept.map(|kept| kept.fingerprint), Ok(sha256_hex(&der)));
+
+        cache
+            .store_cert(&domains, directory_url.as_str(), b"no PEM here")
+            .await
+            .expect("stored");
+        let kept = cache.last_entry_certificate.lock().unwrap().clone();
+        assert!(
+            matches!(&kept, Some(Err(reason)) if reason.contains("unreadable")),
+            "{kept:?}"
         );
     }
 
