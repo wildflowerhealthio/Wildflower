@@ -8,63 +8,61 @@ use wildflower_server_rust::CertificateState;
 
 use crate::domain::certificate_state_wire::CertificateStateWire;
 use crate::domain::server_status::ServerStatusWire;
-use crate::domain::{CertificateAuthority, RelayKind, ServerDetail, ServerRecord};
+use crate::domain::{CertificateAuthority, RelayKind, ServerDetail, ServerRecord, ServerStatus};
 
-/// One registered server, with its status on the unit runner and the state
-/// of the certificate its cache holds.
+/// One registered server, with its status on the unit runner and its
+/// certificate's state.
 ///
 /// `Serialize` writes camelCase
 /// `{domain, relay, tunnelName, launcherUrl, certificateAuthority,
-/// runPolicy, status, certificate}`, `status` being a
-/// [`ServerStatus`](crate::ServerStatus) as the `server-status` event carries
-/// it, and `certificate` the certificate state its run reported, or, with
-/// none, its `cached_certificate`, written as the status writes one. Neither
-/// the token nor the relay's dial settings are written.
+/// runPolicy, status, certificate}`, `status` being a [`ServerStatus`] as the
+/// `server-status` event carries it, and `certificate` the status's
+/// certificate state, written as the status writes it. Neither the token nor
+/// the relay's dial settings are written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListedServer {
     /// The server's record.
     pub record: ServerRecord,
-    /// What `UnitRunner` reports for the server.
-    pub unit_status: UnitStatus<ServerDetail>,
-    /// What the server's certificate cache says (see
-    /// [`CertificateState::of_cached`]).
-    pub cached_certificate: CertificateState,
+    /// The server's status, with its certificate's state.
+    pub status: ServerStatus,
 }
 
 impl ListedServer {
     /// Each of `records`, in order, with its status in `statuses`, keyed by
-    /// domain, and the state of the certificate its cache holds. A server
-    /// `UnitRunner` doesn't hold is listed as never run.
+    /// domain: a server `UnitRunner` doesn't hold is listed as never run.
+    /// Each server's certificate state is still to be found (see
+    /// [`ServerStatus::run_certificate`]).
     #[must_use]
-    pub fn list(
-        records: Vec<(ServerRecord, CertificateState)>,
+    pub fn unit_statuses(
+        records: Vec<ServerRecord>,
         statuses: &UnitStatuses<ServerDetail>,
-    ) -> Vec<Self> {
+    ) -> Vec<(ServerRecord, UnitStatus<ServerDetail>)> {
         records
             .into_iter()
-            .map(|(record, cached_certificate)| {
+            .map(|record| {
                 let unit_status = statuses
                     .get(&UnitId::new(record.domain()))
                     .cloned()
                     .unwrap_or_else(UnitStatus::never_run);
-                Self {
-                    record,
-                    unit_status,
-                    cached_certificate,
-                }
+                (record, unit_status)
             })
             .collect()
     }
 
-    /// The certificate state the server's run reported, or, without one,
-    /// the state of the certificate its cache holds.
+    /// The server `record` describes, with its `unit_status` and its
+    /// `certificate`'s state.
     #[must_use]
-    pub fn certificate(&self) -> &CertificateState {
-        self.unit_status
-            .detail
-            .as_ref()
-            .and_then(|detail| detail.certificate.as_ref())
-            .unwrap_or(&self.cached_certificate)
+    pub fn new(
+        record: ServerRecord,
+        unit_status: UnitStatus<ServerDetail>,
+        certificate: CertificateState,
+    ) -> Self {
+        let status = ServerStatus {
+            domain: record.domain(),
+            unit_status,
+            certificate,
+        };
+        Self { record, status }
     }
 }
 
@@ -84,16 +82,16 @@ struct ListedServerWire<'a> {
 
 impl Serialize for ListedServer {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let domain = self.record.domain();
+        let status = &self.status;
         ListedServerWire {
-            domain: &domain,
+            domain: &status.domain,
             relay: &self.record.relay,
             tunnel_name: self.record.tunnel_name.as_str(),
             launcher_url: self.record.launcher_url.as_str(),
             certificate_authority: self.record.certificate_authority,
             run_policy: self.record.run_policy,
-            status: ServerStatusWire::of(&domain, &self.unit_status),
-            certificate: CertificateStateWire::of(self.certificate()),
+            status: ServerStatusWire::of(&status.domain, &status.unit_status, &status.certificate),
+            certificate: CertificateStateWire::of(&status.certificate),
         }
         .serialize(serializer)
     }
@@ -113,20 +111,26 @@ mod tests {
     };
     use crate::TunnelToken;
 
-    /// What each golden server's cache holds: the certificate its run
-    /// reports, for the running one, and an expired one for the stopped one.
-    fn with_cached_certificates(
+    /// Each of `records` with its status in `statuses` and its run's
+    /// certificate state, or else what its cache says: an expired
+    /// certificate.
+    fn list(
         records: Vec<ServerRecord>,
-    ) -> Vec<(ServerRecord, CertificateState)> {
-        records
+        statuses: &UnitStatuses<ServerDetail>,
+    ) -> Vec<ListedServer> {
+        ListedServer::unit_statuses(records, statuses)
             .into_iter()
-            .map(|record| {
-                let cached = CertificateState::of_cached(
-                    Some(issued_certificate()),
-                    record.certificate_authority,
-                    Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap(),
-                );
-                (record, cached)
+            .map(|(record, unit_status)| {
+                let certificate = ServerStatus::run_certificate(&unit_status)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        CertificateState::of_cached(
+                            Some(issued_certificate()),
+                            record.certificate_authority,
+                            Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap(),
+                        )
+                    });
+                ListedServer::new(record, unit_status, certificate)
             })
             .collect()
     }
@@ -181,7 +185,7 @@ mod tests {
         .into_iter()
         .collect();
 
-        let listed = ListedServer::list(with_cached_certificates(golden_records()), &statuses);
+        let listed = list(golden_records(), &statuses);
 
         assert_eq!(
             serde_json::to_value(&listed).unwrap(),
@@ -191,36 +195,45 @@ mod tests {
 
     #[test]
     fn a_server_the_runner_does_not_hold_is_listed_as_never_run() {
-        let listed = ListedServer::list(
-            with_cached_certificates(golden_records()),
-            &UnitStatuses::new(),
-        );
-        assert_eq!(listed[0].unit_status, UnitStatus::never_run());
-        assert_eq!(listed[1].unit_status, UnitStatus::never_run());
+        let listed = ListedServer::unit_statuses(golden_records(), &UnitStatuses::new());
+        assert_eq!(listed[0].1, UnitStatus::never_run());
+        assert_eq!(listed[1].1, UnitStatus::never_run());
     }
 
-    /// A running server lists the certificate state its run reports; a
-    /// stopped one the state of the certificate its cache holds, a lapsed one
-    /// `Expired`.
+    /// Only a status whose run has reported a certificate state carries it;
+    /// any other needs what the cache says.
     #[test]
-    fn a_server_lists_its_run_s_certificate_or_else_its_cached_one() {
+    fn only_a_run_that_reported_one_has_a_certificate_state() {
+        assert_eq!(
+            ServerStatus::run_certificate(&running_and_reachable())
+                .map(|certificate| certificate.status),
+            Some(CertificateStatus::NoRenewalNeeded)
+        );
+        assert_eq!(
+            ServerStatus::run_certificate(&stopped_with_an_error()),
+            None
+        );
+        assert_eq!(
+            ServerStatus::run_certificate(&UnitStatus::never_run()),
+            None
+        );
+    }
+
+    /// A listed server's certificate is its status's.
+    #[test]
+    fn a_listed_server_s_certificate_is_its_status_s() {
         let statuses = [(UnitId::from(RUTH), running_and_reachable())]
             .into_iter()
             .collect();
-        let listed = ListedServer::list(with_cached_certificates(golden_records()), &statuses);
-        assert_eq!(
-            listed[0].certificate().status,
-            CertificateStatus::NoRenewalNeeded
-        );
-        assert_eq!(listed[1].certificate().status, CertificateStatus::Expired);
+        let listed = serde_json::to_value(list(golden_records(), &statuses)).unwrap();
+        for server in listed.as_array().unwrap() {
+            assert_eq!(server["certificate"], server["status"]["certificate"]);
+        }
     }
 
     #[test]
     fn the_token_is_never_listed() {
-        let listed = ListedServer::list(
-            with_cached_certificates(golden_records()),
-            &UnitStatuses::new(),
-        );
+        let listed = list(golden_records(), &UnitStatuses::new());
         let rendered = serde_json::to_string(&listed).unwrap();
         assert!(!rendered.contains("s3cret-tunnel-token"), "{rendered}");
         assert!(!rendered.contains("redacted"), "{rendered}");

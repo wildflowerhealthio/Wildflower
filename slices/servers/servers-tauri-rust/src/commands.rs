@@ -24,6 +24,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use futures_util::future::join_all;
 use rathole_settings_rust::TunnelName;
 use servers_rust::{
     CertificateAuthority, EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayClient,
@@ -32,6 +33,7 @@ use servers_rust::{
 use tauri_plugin_log::log;
 use url::Url;
 
+use crate::server_status::certificate_state;
 use crate::ServersState;
 
 /// Every registered server, in the order they were added, each with its
@@ -182,19 +184,19 @@ async fn list(servers: &ServersState) -> Result<Vec<ListedServer>, RegistryError
     let records = on_registry(servers, |registry| registry.read_all())
         .await
         .inspect_err(|error| log::error!("[servers] listing the servers failed: {error}"))?;
-    let mut with_cached_certificates = Vec::with_capacity(records.len());
-    for record in records {
-        let cached_certificate = wildflower_server_rust::cached_certificate_state(
-            &record.domain(),
-            &record.device_certificate_config(&servers.data_root),
-        )
+    let with_unit_statuses = ListedServer::unit_statuses(records, &servers.server_units.statuses());
+    let certificates =
+        join_all(with_unit_statuses.iter().map(|(record, unit_status)| {
+            certificate_state(&servers.data_root, record, unit_status)
+        }))
         .await;
-        with_cached_certificates.push((record, cached_certificate));
-    }
-    Ok(ListedServer::list(
-        with_cached_certificates,
-        &servers.server_units.statuses(),
-    ))
+    Ok(with_unit_statuses
+        .into_iter()
+        .zip(certificates)
+        .map(|((record, unit_status), certificate)| {
+            ListedServer::new(record, unit_status, certificate)
+        })
+        .collect())
 }
 
 async fn add<S: RelayClient>(
@@ -388,7 +390,7 @@ mod tests {
     };
     use tokio::sync::{mpsc, watch};
     use tokio_util::sync::CancellationToken;
-    use wildflower_server_rust::HostPorts;
+    use wildflower_server_rust::{CertificateState, CertificateStatus, HostPorts};
 
     use crate::ServerUnits;
 
@@ -1180,7 +1182,7 @@ mod tests {
 
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].record.domain(), RATHOLE_DOMAIN);
-        assert_eq!(listed[0].unit_status.run_state, RunState::Running);
+        assert_eq!(listed[0].status.unit_status.run_state, RunState::Running);
         let listed = serde_json::to_value(&listed).unwrap();
         assert_eq!(listed[0]["status"]["runState"], "running");
         assert_eq!(
@@ -1206,6 +1208,73 @@ mod tests {
             error["message"].as_str().unwrap().contains("servers.json"),
             "{error}"
         );
+    }
+
+    /// A status whose run hasn't reported a certificate state carries what
+    /// its cache says, an unreadable one included; a server the registry
+    /// doesn't hold gets no status.
+    #[tokio::test]
+    async fn a_status_without_a_run_s_certificate_carries_what_the_cache_says() {
+        let (data_root, servers) = servers();
+        add_with(&servers, rathole_add_args(TOKEN), no_client)
+            .await
+            .unwrap();
+        let server_dir = data_root.path().join("servers").join(RATHOLE_DOMAIN);
+        std::fs::create_dir_all(&server_dir).unwrap();
+        std::fs::write(server_dir.join("certificates"), "not a folder").unwrap();
+
+        let statuses = crate::server_status::with_certificates(
+            &servers.registry,
+            data_root.path(),
+            vec![
+                (RATHOLE_DOMAIN.to_owned(), UnitStatus::never_run()),
+                ("removed.example.com".to_owned(), UnitStatus::never_run()),
+            ],
+        )
+        .await;
+
+        assert_eq!(statuses.len(), 1, "{statuses:?}");
+        assert_eq!(statuses[0].domain, RATHOLE_DOMAIN);
+        assert_eq!(
+            statuses[0].certificate.status,
+            CertificateStatus::CacheUnreadable
+        );
+    }
+
+    /// A status whose run reported a certificate state carries it, and needs
+    /// no registry read: an unreadable registry doesn't hold it back.
+    #[tokio::test]
+    async fn a_status_with_a_run_s_certificate_carries_it_without_reading_the_registry() {
+        let (data_root, servers) = servers();
+        std::fs::write(data_root.path().join(SERVERS_FILE_NAME), "not json").unwrap();
+        let run_certificate = CertificateState::of_cached(
+            None,
+            CertificateAuthority::LetsEncrypt,
+            chrono::Utc::now(),
+        );
+        let running = UnitStatus {
+            run_state: RunState::Running,
+            running_since: Some(chrono::Utc::now()),
+            detail: Some(ServerDetail {
+                health: None,
+                certificate: Some(CertificateState {
+                    status: CertificateStatus::Ordering,
+                    ..run_certificate
+                }),
+                pending_consent: None,
+                consent_decider: None,
+            }),
+        };
+
+        let statuses = crate::server_status::with_certificates(
+            &servers.registry,
+            data_root.path(),
+            vec![(RATHOLE_DOMAIN.to_owned(), running)],
+        )
+        .await;
+
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].certificate.status, CertificateStatus::Ordering);
     }
 
     /// The parameters are top-level and camelCase, as the docs give them.

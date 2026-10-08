@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { Schema } from 'effect'
 
 import * as CertificateAuthority from './certificate-authority.ts'
 import * as CertificateState from './certificate-state.ts'
@@ -22,9 +22,9 @@ type Relay = typeof RelaySchema.Type
  * its certificate's state.
  *
  * @remarks
- * The status is one the `server-status` event carries for the same domain.
- * The certificate is the one the server's run reported, or, with none, the
- * state of the certificate its cache holds, as a stopped server's.
+ * The status is one the `server-status` event carries for the same domain,
+ * and the certificate is the status's: the one the server's run reported, or,
+ * with none, what its certificate cache says.
  */
 const ListedServerSchema = Schema.Struct({
   domain: Schema.String,
@@ -40,18 +40,11 @@ const ListedServerSchema = Schema.Struct({
 /** A decoded {@link ListedServerSchema}. */
 type Type = typeof ListedServerSchema.Type
 
-/**
- * `server` with `status` in place of its own, and the certificate state the
- * status's run reported, when it has one, in place of its certificate.
- *
- * @remarks
- * A stopped status carries no certificate state, so `server` keeps the one it
- * had until the list is read again.
- */
+/** `server` with `status` in place of its own, and the status's certificate state. */
 const withStatus = (server: Type, status: ServerStatus.Type): Type => ({
   ...server,
   status,
-  certificate: Option.getOrElse(ServerStatus.certificateOf(status), () => server.certificate),
+  certificate: status.certificate,
 })
 
 export { ListedServerSchema as Schema, RelaySchema, withStatus }

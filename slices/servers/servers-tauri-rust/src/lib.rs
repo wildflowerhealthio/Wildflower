@@ -12,7 +12,8 @@
 //!   [`ServerUnits::push`]). An unreadable registry is logged, and no server
 //!   runs;
 //! - emits the [`SERVER_STATUS_EVENT`] to the base for each server whose
-//!   status on `TauriUnitRunner` changed, and the [`PENDING_CONSENT_EVENT`]
+//!   status on `TauriUnitRunner` changed, with its certificate's state: its
+//!   run's, or what its cache says; and the [`PENDING_CONSENT_EVENT`]
 //!   for each server whose oldest waiting consent changed, bringing the
 //!   desktop window forward when a server gets one;
 //! - posts a stop notification for each new stop of a server's run, read from
@@ -190,6 +191,8 @@ pub fn host_servers(
     tauri::async_runtime::spawn(server_status::emit_server_statuses(
         app.clone(),
         runner.subscribe(),
+        Arc::clone(&registry) as Arc<dyn ServerRegistry>,
+        data_root.to_path_buf(),
     ));
     tauri::async_runtime::spawn(pending_consents::emit_pending_consents(
         app.clone(),

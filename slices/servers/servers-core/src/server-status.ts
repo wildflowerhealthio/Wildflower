@@ -66,41 +66,35 @@ type Health = typeof HealthSchema.Type
 const optionalHealth = Schema.optionalWith(HealthSchema, { as: 'Option', exact: true })
 
 /**
- * `certificate` while a run is in progress: absent until the run's
- * certificate first reports its state.
- */
-const optionalCertificate = Schema.optionalWith(CertificateState.Schema, {
-  as: 'Option',
-  exact: true,
-})
-
-/**
- * One server's status on the host's unit runner, keyed by its domain, as
- * `servers_list` and the {@link EVENT} carry it.
+ * One server's status on the host's unit runner, keyed by its domain, with
+ * its certificate's state, as `servers_list` and the {@link EVENT} carry it.
  *
  * @remarks
  * Narrowed by its run state: a `running` status has `runningSince`; a
  * `stopped` one has the `lastStop` of its latest run, once it has run; only
- * a run in progress has `health` and `certificate`.
+ * a run in progress has `health`. Every status has `certificate`: the state
+ * the run reported, while it has reported one, or else what the server's
+ * certificate cache says.
  */
 const ServerStatusSchema = Schema.Union(
   Schema.Struct({
     domain: Schema.String,
     runState: Schema.Literal('starting'),
     health: optionalHealth,
-    certificate: optionalCertificate,
+    certificate: CertificateState.Schema,
   }),
   Schema.Struct({
     domain: Schema.String,
     runState: Schema.Literal('running'),
     runningSince: Schema.DateTimeUtc,
     health: optionalHealth,
-    certificate: optionalCertificate,
+    certificate: CertificateState.Schema,
   }),
   Schema.Struct({
     domain: Schema.String,
     runState: Schema.Literal('stopped'),
     lastStop: Schema.optionalWith(RunStopSchema, { as: 'Option', exact: true }),
+    certificate: CertificateState.Schema,
   })
 )
 
@@ -127,16 +121,11 @@ const decodeEvent = Schema.decodeUnknownEither(ServerStatusSchema)
 const healthOf = (status: Type): Option.Option<Health> =>
   status.runState === 'stopped' ? Option.none() : status.health
 
-/** The run's certificate state, while a run in progress has reported it. */
-const certificateOf = (status: Type): Option.Option<CertificateState.Type> =>
-  status.runState === 'stopped' ? Option.none() : status.certificate
-
 /** How the server's latest run stopped, while it is stopped and once it has run. */
 const lastStopOf = (status: Type): Option.Option<RunStop> =>
   status.runState === 'stopped' ? status.lastStop : Option.none()
 
 export {
-  certificateOf,
   decodeEvent,
   EVENT,
   HealthSchema,

@@ -268,7 +268,7 @@ describe('the server commands', () => {
 })
 
 describe('ListedServer', () => {
-  it("should replace a listed server's status with a newer one", () => {
+  it("should replace a listed server's status, and its certificate, with a newer one", () => {
     // Arrange
     const [ruth] = Schema.decodeUnknownSync(Schema.Array(ListedServer.Schema))(golden.listedServers)
     const stopped = Schema.decodeUnknownSync(ServerStatus.Schema)(
@@ -281,7 +281,8 @@ describe('ListedServer', () => {
     // Assert
     expect(updated.status).toBe(stopped)
     expect(updated.runPolicy).toBe(ruth.runPolicy)
-    expect(updated.certificate).toBe(ruth.certificate)
+    expect(updated.certificate).toBe(stopped.certificate)
+    expect(updated.certificate.status).toBe('expired')
   })
 
   it("should take a run's certificate state from a newer status", () => {
@@ -298,7 +299,7 @@ describe('ListedServer', () => {
     expect(updated.certificate.status).toBe('renewalDue')
   })
 
-  it("should decode a stopped server's lapsed certificate as expired", () => {
+  it("should decode a stopped server's lapsed certificate as expired, in its status too", () => {
     // Act
     const [, lab] = Schema.decodeUnknownSync(Schema.Array(ListedServer.Schema))(
       golden.listedServers
@@ -308,30 +309,29 @@ describe('ListedServer', () => {
     expect(lab.certificate.status).toBe('expired')
     expect(lab.certificate.issuer).toBe('letsEncryptStaging')
     expect(lab.certificate.lastError).toEqual(Option.none())
+    expect(lab.status.certificate).toEqual(lab.certificate)
   })
 })
 
 describe('CertificateState', () => {
-  const certificateOf = (status: unknown): Option.Option<CertificateState.Type> =>
-    ServerStatus.certificateOf(Schema.decodeUnknownSync(ServerStatus.Schema)(status))
+  const certificateOf = (status: unknown): CertificateState.Type =>
+    Schema.decodeUnknownSync(ServerStatus.Schema)(status).certificate
 
   it("should decode a run's certificate that needs no renewal with its validity and fingerprint", () => {
     // Act
     const certificate = certificateOf(golden.serverStatuses.runningAndReachable)
 
     // Assert
-    expect(certificate).toEqual(
-      Option.some({
-        status: 'noRenewalNeeded',
-        issuer: 'letsEncrypt',
-        held: Option.some({
-          notBefore: utc('2026-10-01T00:00:00Z'),
-          notAfter: utc('2026-12-30T00:00:00Z'),
-          fingerprint: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-        }),
-        lastError: Option.none(),
-      })
-    )
+    expect(certificate).toEqual({
+      status: 'noRenewalNeeded',
+      issuer: 'letsEncrypt',
+      held: Option.some({
+        notBefore: utc('2026-10-01T00:00:00Z'),
+        notAfter: utc('2026-12-30T00:00:00Z'),
+        fingerprint: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+      }),
+      lastError: Option.none(),
+    })
   })
 
   it('should decode a rate limit with when to retry, and a failed challenge with its detail', () => {
@@ -340,13 +340,11 @@ describe('CertificateState', () => {
     const challengeFailed = certificateOf(golden.serverStatuses.runningRenewalFailed)
 
     // Assert
-    expect(rateLimited.pipe(Option.flatMap((state) => state.lastError))).toEqual(
+    expect(rateLimited.lastError).toEqual(
       Option.some({ kind: 'rateLimited', retryAfter: Option.some(utc('2026-10-06T17:59:00Z')) })
     )
-    expect(rateLimited.pipe(Option.map((state) => state.status))).toEqual(
-      Option.some('orderFailing')
-    )
-    expect(challengeFailed.pipe(Option.flatMap((state) => state.lastError))).toEqual(
+    expect(rateLimited.status).toBe('orderFailing')
+    expect(challengeFailed.lastError).toEqual(
       Option.some({ kind: 'challengeFailed', detail: Option.some('Connection refused') })
     )
   })
@@ -356,13 +354,13 @@ describe('CertificateState', () => {
     const certificate = certificateOf(golden.serverStatuses.startingCaUnreachable)
 
     // Assert
-    expect(certificate.pipe(Option.flatMap((state) => state.lastError))).toEqual(
+    expect(certificate.lastError).toEqual(
       Option.some({
         kind: 'caUnreachable',
         message: 'http request error: io error: Connection refused',
       })
     )
-    expect(certificate.pipe(Option.flatMap((state) => state.held))).toEqual(Option.none())
+    expect(certificate.held).toEqual(Option.none())
   })
 
   it("should decode a cache fault as the cache's, while the run is still ordering", () => {
@@ -370,13 +368,28 @@ describe('CertificateState', () => {
     const certificate = certificateOf(golden.serverStatuses.runningCacheFailed)
 
     // Assert
-    expect(certificate.pipe(Option.map((state) => state.status))).toEqual(Option.some('ordering'))
-    expect(certificate.pipe(Option.flatMap((state) => state.lastError))).toEqual(
+    expect(certificate.status).toBe('ordering')
+    expect(certificate.lastError).toEqual(
       Option.some({ kind: 'cache', message: 'account cache store: disk full' })
     )
   })
 
-  it('should have no certificate state for a stopped status', () => {
-    expect(certificateOf(golden.serverStatuses.stoppedWithAnError)).toEqual(Option.none())
+  it("should decode what a stopped server's cache says, an unreadable cache included", () => {
+    // Act
+    const lapsed = certificateOf(golden.serverStatuses.stoppedWithAnError)
+    const unreadable = certificateOf(golden.serverStatuses.stoppedByThePlatform)
+    const notIssued = certificateOf(golden.serverStatuses.neverRun)
+
+    // Assert
+    expect(lapsed.status).toBe('expired')
+    expect(unreadable.status).toBe('cacheUnreadable')
+    expect(unreadable.lastError).toEqual(
+      Option.some({
+        kind: 'cache',
+        message: 'reading the certificate cache failed: Permission denied (os error 13)',
+      })
+    )
+    expect(notIssued.status).toBe('notIssued')
+    expect(notIssued.held).toEqual(Option.none())
   })
 })

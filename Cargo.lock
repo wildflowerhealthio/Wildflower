@@ -7391,6 +7391,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "futures-util",
  "gatekeeper-rust",
  "persistence-rust",
  "rathole-settings-rust",

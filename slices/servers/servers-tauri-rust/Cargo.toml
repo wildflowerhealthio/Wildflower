@@ -31,6 +31,9 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
 # The relay base URL enrolment builds a relay client for.
 url = "2"
+# `join_all`, to read several servers' certificate caches at once. Already in
+# the tree.
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 # The instant enrolment chooses a new server's run policy at.
 chrono = { workspace = true, features = ["clock"] }
 # `sync` for the lock ordering registry writes with their pushes, the

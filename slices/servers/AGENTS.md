@@ -260,7 +260,8 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   pending consent's head included), camelCase, each optional member left out
   when absent:
   `{domain, runState, lastStop?: {reason, platformReason?, error?,
-stoppedAt}, runningSince?, health?, certificate?}`. A removed server gets no event; the
+stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
+  there. A removed server gets no event; the
   base drops a server once `servers_list` no longer lists it, and reads the
   list again after `server_remove` and for a status of a server it doesn't
   list. `servers-wire-golden.json` pins the list and the event, read by both
@@ -292,17 +293,23 @@ stoppedAt}, runningSince?, health?, certificate?}`. A removed server gets no eve
   server that had nothing waiting gets a consent. `pending_consents_list`
   answers with every head on start. The golden file pins the event, the
   keys, the details, the approvals, the outcomes and the errors.
-- **A certificate's state is its run's, or its cache's.** While a run has
-  reported one, a server's `CertificateState` is the run's, in its
-  `ServerDetail` and the `server-status` event: `ordering`,
-  `noRenewalNeeded`, `renewalDue` or `orderFailing`, with the last error: an
-  order's, or a `cache` fault, which never makes it `orderFailing`. With
-  none, `servers_list` reads what the certificate cached in the server's
+- **A certificate's state is its run's, or its cache's.** Every
+  `ServerStatus`, in the `server-status` event and in `servers_list`,
+  carries one. While a run has reported one
+  (`ServerStatus::run_certificate`), it is the run's, from its
+  `ServerDetail`: `ordering`, `noRenewalNeeded`, `renewalDue` or
+  `orderFailing`, with the last error: an order's, or a `cache` fault, which
+  never makes it `orderFailing`. With none, as for a stopped or starting
+  server, the host reads what the certificate cached in the server's
   `certificates/` folder says
-  (`wildflower_server_rust::cached_certificate_state`): `notIssued`,
-  `noRenewalNeeded`, `renewalDue` or `expired`, or `cacheUnreadable` with
-  the error, never `ordering` or `orderFailing`. A stopped server's certificate lapses and renews when the
-  server starts, so `expired` is not a failure. The certificate state's wire
+  (`wildflower_server_rust::cached_certificate_state`) when it emits the
+  status or answers `servers_list`, only for those servers, and
+  concurrently: `notIssued`, `noRenewalNeeded`, `renewalDue` or `expired`,
+  or `cacheUnreadable` with the error, never `ordering` or `orderFailing`.
+  So a stopped server never shows its last run's `orderFailing`. A stopped
+  server's certificate lapses and renews when the server starts, so
+  `expired` is not a failure. A listed server's `certificate` is its
+  status's. The certificate state's wire
   shape is `{status, issuer, held?: {notBefore, notAfter, fingerprint},
 lastError?: {kind, …}}`.
 - **Each new certificate is recorded once.** A run appends each certificate
