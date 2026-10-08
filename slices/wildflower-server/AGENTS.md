@@ -79,8 +79,8 @@ port and on the tunnel. Rust-only, no `-core`.
   - **The certificate history** (`adapters/certificate_history.rs`) is
     `history.json` in the server's `certificate_dir`, a JSON array of
     `CertificateHistoryEntry` (`{deployedAt, issuer, fingerprint, notBefore,
-notAfter}`). A run appends each certificate it deploys unless it is the
-    latest entry already, replacing the file atomically;
+notAfter}`). A run appends each certificate it deploys unless the history
+    records it already, replacing the file atomically;
     `read_certificate_history` reads it.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
     (`shared_structures_rust::health_check`): `application/health+json`,

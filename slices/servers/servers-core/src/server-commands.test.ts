@@ -349,6 +349,20 @@ describe('CertificateState', () => {
     )
   })
 
+  it("should decode a starting run's unreachable CA with its message", () => {
+    // Act
+    const certificate = certificateOf(golden.serverStatuses.startingCaUnreachable)
+
+    // Assert
+    expect(certificate.pipe(Option.flatMap((state) => state.lastError))).toEqual(
+      Option.some({
+        kind: 'caUnreachable',
+        message: 'http request error: io error: Connection refused',
+      })
+    )
+    expect(certificate.pipe(Option.flatMap((state) => state.issued))).toEqual(Option.none())
+  })
+
   it('should have no certificate state for a stopped status', () => {
     expect(certificateOf(golden.serverStatuses.stoppedWithAnError)).toEqual(Option.none())
   })

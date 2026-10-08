@@ -79,6 +79,18 @@
       "domain": "ruth.relay.example.com",
       "runState": "starting"
     },
+    "startingCaUnreachable": {
+      "domain": "ruth.relay.example.com",
+      "runState": "starting",
+      "certificate": {
+        "status": "failed",
+        "issuer": "letsEncrypt",
+        "lastError": {
+          "kind": "caUnreachable",
+          "message": "http request error: io error: Connection refused"
+        }
+      }
+    },
     "runningUnreachable": {
       "domain": "ruth.relay.example.com",
       "runState": "running",

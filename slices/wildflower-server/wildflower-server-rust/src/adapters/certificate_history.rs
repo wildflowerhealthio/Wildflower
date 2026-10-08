@@ -35,8 +35,8 @@ pub fn read_certificate_history(
     }
 }
 
-/// Append `entry` to the history in `certificate_dir`, unless it is the
-/// latest entry already. Answers whether it was appended.
+/// Append `entry` to the history in `certificate_dir`, unless it records the
+/// certificate already. Answers whether it was appended.
 ///
 /// # Errors
 ///
@@ -115,6 +115,10 @@ mod tests {
             "deploying the cached certificate again at the next start"
         );
         assert!(record_in_certificate_history(dir, entry("b", 3)).unwrap());
+        assert!(
+            !record_in_certificate_history(dir, entry("a", 4)).unwrap(),
+            "deploying the cached certificate again after its successor's store failed"
+        );
 
         assert_eq!(
             read_certificate_history(dir).unwrap(),

@@ -332,6 +332,27 @@ pub(crate) mod tests {
                 }),
             ),
             (
+                "startingCaUnreachable",
+                status(UnitStatus {
+                    run_state: RunState::Starting,
+                    running_since: None,
+                    detail: Some(ServerDetail {
+                        health: None,
+                        certificate: Some(CertificateState {
+                            status: CertificateStatus::Failed,
+                            issuer: CertificateAuthority::LetsEncrypt,
+                            issued: None,
+                            last_error: Some(CertificateOrderError::CaUnreachable {
+                                message: "http request error: io error: Connection refused"
+                                    .to_owned(),
+                            }),
+                        }),
+                        pending_consent: None,
+                        consent_decider: None,
+                    }),
+                }),
+            ),
+            (
                 "runningUnreachable",
                 status(UnitStatus {
                     run_state: RunState::Running,

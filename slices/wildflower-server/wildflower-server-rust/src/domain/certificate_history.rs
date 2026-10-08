@@ -42,13 +42,14 @@ impl CertificateHistoryEntry {
         }
     }
 
-    /// Whether `self` is a certificate `history` hasn't recorded last: a run
+    /// Whether `self` is a certificate `history` hasn't recorded: a run
     /// deploys its cached certificate again at every start, and that one is
-    /// the latest entry already.
+    /// recorded already, as the latest entry or, when a newer one's store
+    /// failed, an earlier one.
     #[must_use]
     pub(crate) fn is_new_to(&self, history: &[Self]) -> bool {
         history
-            .last()
-            .is_none_or(|latest| latest.fingerprint != self.fingerprint)
+            .iter()
+            .all(|recorded| recorded.fingerprint != self.fingerprint)
     }
 }

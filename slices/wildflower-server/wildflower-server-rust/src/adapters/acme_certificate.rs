@@ -343,8 +343,8 @@ impl CertificateReporter {
             .ok()
     }
 
-    /// Record `issued` in the server's history, unless it is the latest
-    /// entry already, as the cached certificate a run deploys at start is.
+    /// Record `issued` in the server's history, unless it records it
+    /// already, as it does the cached certificate a run deploys at start.
     async fn record(&self, issued: &IssuedCertificate) {
         let entry = CertificateHistoryEntry::deployed(issued, self.issuer, Utc::now());
         let certificate_dir = self.certificate_dir.clone();
@@ -440,7 +440,7 @@ fn certificate_events(
 fn order_error(error: &EventError<io::Error, io::Error>) -> CertificateOrderError {
     match error {
         EventError::Order(OrderError::Acme(error @ AcmeError::HttpRequest(_))) => {
-            ca_answer_error(&error.to_string())
+            ca_request_error(&error.to_string())
         }
         EventError::Order(OrderError::BadAuth(auth)) => CertificateOrderError::ChallengeFailed {
             detail: auth
@@ -478,7 +478,7 @@ const ACME_PROBLEM_PREFIX: &str = "urn:ietf:params:acme:error:";
 /// whether it was a rate limit and whose detail, from Let's Encrypt, says
 /// `retry after <YYYY-MM-DD HH:MM:SS> UTC`. A failure with no problem document
 /// never reached the CA's ACME server.
-fn ca_answer_error(message: &str) -> CertificateOrderError {
+fn ca_request_error(message: &str) -> CertificateOrderError {
     if message.contains(RATE_LIMITED_PROBLEM) {
         CertificateOrderError::RateLimited {
             retry_after: retry_after(message),
@@ -1062,26 +1062,26 @@ mod tests {
     fn a_ca_s_answer_is_read_from_its_problem_document() {
         let rate_limited = r#"http request error: non 2xx http status: 429 "{\n  \"type\": \"urn:ietf:params:acme:error:rateLimited\",\n  \"detail\": \"too many certificates (50) already issued for \\\"relay.test\\\" in the last 168h0m0s, retry after 2026-10-09 12:34:56 UTC: see https://letsencrypt.org/docs/rate-limits/\"\n}""#;
         assert_eq!(
-            ca_answer_error(rate_limited),
+            ca_request_error(rate_limited),
             CertificateOrderError::RateLimited {
                 retry_after: Some(Utc.with_ymd_and_hms(2026, 10, 9, 12, 34, 56).unwrap())
             }
         );
         assert_eq!(
-            ca_answer_error(
+            ca_request_error(
                 r#"http request error: non 2xx http status: 429 "{\"type\": \"urn:ietf:params:acme:error:rateLimited\"}""#
             ),
             CertificateOrderError::RateLimited { retry_after: None }
         );
         let malformed = r#"http request error: non 2xx http status: 400 "{\"type\": \"urn:ietf:params:acme:error:malformed\"}""#;
         assert_eq!(
-            ca_answer_error(malformed),
+            ca_request_error(malformed),
             CertificateOrderError::Other {
                 message: malformed.to_owned()
             }
         );
         assert_eq!(
-            ca_answer_error("http request error: io error: Connection refused"),
+            ca_request_error("http request error: io error: Connection refused"),
             CertificateOrderError::CaUnreachable {
                 message: "http request error: io error: Connection refused".to_owned()
             }

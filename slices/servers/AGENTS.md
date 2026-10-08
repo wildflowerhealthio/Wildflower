@@ -304,7 +304,7 @@ stoppedAt}, runningSince?, health?, certificate?}`. A removed server gets no eve
   `{status, issuer, issued?: {notBefore, notAfter, fingerprint},
 lastError?: {kind, …}}`.
 - **Each new certificate is recorded once.** A run appends each certificate
-  it deploys that isn't the latest entry already to `certificates/history.json`
+  it deploys that the history doesn't record already to `certificates/history.json`
   (`wildflower_server_rust::read_certificate_history`), so it is deleted with
   the server.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
