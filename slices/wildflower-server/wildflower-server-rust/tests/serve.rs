@@ -16,7 +16,6 @@
 //! as the public origin whatever `Forwarded` they carry, and name the visitor
 //! from a PROXY protocol v2 header.
 
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -497,6 +496,19 @@ async fn tunnel_exchange(
     proxy_header: Option<&[u8]>,
     request: &str,
 ) -> Option<(u16, String)> {
+    let response = raw_tunnel_exchange(tunnel_stream_sender, proxy_header, request).await;
+    let status = response.split(' ').nth(1)?.parse().ok()?;
+    let (_, body) = response.split_once("\r\n\r\n")?;
+    Some((status, body.to_owned()))
+}
+
+/// [`tunnel_exchange`]'s whole response, unparsed: empty when the server
+/// closes the connection without answering.
+async fn raw_tunnel_exchange(
+    tunnel_stream_sender: &mpsc::Sender<TunnelStream>,
+    proxy_header: Option<&[u8]>,
+    request: &str,
+) -> String {
     let (mut visitor, tunnel_stream) = tokio::io::duplex(64 * 1024);
     tunnel_stream_sender
         .send(Box::new(tunnel_stream))
@@ -510,10 +522,7 @@ async fn tunnel_exchange(
     let _ = visitor.write_all(request.as_bytes()).await;
     let mut response = Vec::new();
     let _ = visitor.read_to_end(&mut response).await;
-    let response = String::from_utf8(response).expect("utf-8 response");
-    let status = response.split(' ').nth(1)?.parse().ok()?;
-    let (_, body) = response.split_once("\r\n\r\n")?;
-    Some((status, body.to_owned()))
+    String::from_utf8(response).expect("utf-8 response")
 }
 
 /// A `GET path` addressed to `host` over a connection the server closes after
@@ -538,23 +547,13 @@ fn next_report(
     )
 }
 
-/// A PROXY protocol v2 header for the visitor at `source`.
+/// A PROXY protocol v2 header for the visitor at `source`, as the relay
+/// writes it.
 fn proxy_header(source: &str) -> Vec<u8> {
-    use ppp::v2::{Builder, Command, Protocol, Version};
-    let source: SocketAddr = source.parse().expect("source address");
-    // `ppp` writes no addresses for a pair of mixed families.
-    let relay: SocketAddr = match source {
-        SocketAddr::V4(_) => "198.51.100.1:443",
-        SocketAddr::V6(_) => "[2001:db8::443]:443",
-    }
-    .parse()
-    .expect("relay address");
-    Builder::with_addresses(
-        Version::Two | Command::Proxy,
-        Protocol::Stream,
-        (source, relay),
+    rathole_settings_rust::proxy_header::proxy_header(
+        source.parse().expect("source address"),
+        "198.51.100.1:443".parse().expect("relay address"),
     )
-    .build()
     .expect("PROXY header")
 }
 
@@ -655,6 +654,22 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     .expect("the tunnel listener answers");
     assert_eq!(status, 421);
     assert!(forwarded_requests.try_recv().is_err());
+    // A remote app can read the `421`: it carries the CORS headers.
+    let response = raw_tunnel_exchange(
+        &tunnel_stream_sender,
+        None,
+        &tunnel_get(
+            "/fhir-r4/metadata",
+            "other.example.com",
+            "Origin: https://app.example.com\r\n",
+        ),
+    )
+    .await;
+    assert!(response.starts_with("HTTP/1.1 421 "), "{response}");
+    assert!(
+        response.contains("\r\naccess-control-allow-origin: "),
+        "{response}"
+    );
 
     // A token for this server is accepted through the tunnel listener too, and
     // one another server minted is refused there as well.

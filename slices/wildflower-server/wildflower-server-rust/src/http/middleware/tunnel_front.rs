@@ -1,11 +1,12 @@
-//! The tunnel listener's front: the outermost layer of the tunnel router, which
-//! writes each tunnel request's `Forwarded` header from its `Host` and the
+//! The tunnel listener's front: the layer of the tunnel router, outside all
+//! but CORS, that writes each tunnel request's `Forwarded` header from its `Host` and the
 //! visitor's PROXY address, so the layers and handlers that read `Forwarded`
 //! (`shared_structures_rust::served_origin`) see a tunnel request exactly as
 //! they see one a trusted front relayed.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 
+use anyhow::Context;
 use axum::extract::{ConnectInfo, Request, State};
 use axum::http::header::{FORWARDED, HOST};
 use axum::http::{HeaderValue, StatusCode};
@@ -19,12 +20,54 @@ use crate::http::tunnel_listener::TunnelVisitor;
 /// The body of the `421` a request naming another host gets.
 const MISDIRECTED_BODY: &str = "request host is not this server's public host";
 
+/// The tunnel front's state: the server's public origin, and the part of every
+/// `Forwarded` header it writes that names it.
+#[derive(Debug, Clone)]
+pub(crate) struct TunnelFront {
+    /// The server's public origin, `https://<public host>`.
+    public_origin: Url,
+    /// `host="<public host>";proto=https`, which every written `Forwarded`
+    /// ends with.
+    host_and_proto: HeaderValue,
+}
+
+impl TunnelFront {
+    /// The front of the server served at `public_origin`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the public host can't be written into a header.
+    pub(crate) fn new(public_origin: Url) -> anyhow::Result<Self> {
+        let host_and_proto = HeaderValue::from_str(&format!(
+            "host=\"{}\";proto=https",
+            public_origin.authority()
+        ))
+        .context("the public host can't be written into a Forwarded header")?;
+        Ok(Self {
+            public_origin,
+            host_and_proto,
+        })
+    }
+
+    /// The `Forwarded` header for a tunnel request, from the visitor at
+    /// `client_ip` when the PROXY header named one.
+    fn forwarded(&self, client_ip: Option<IpAddr>) -> HeaderValue {
+        let mut forwarded = match client_ip {
+            Some(IpAddr::V4(client_ip)) => format!("for={client_ip};"),
+            Some(IpAddr::V6(client_ip)) => format!("for=\"[{client_ip}]\";"),
+            None => return self.host_and_proto.clone(),
+        }
+        .into_bytes();
+        forwarded.extend_from_slice(self.host_and_proto.as_bytes());
+        HeaderValue::from_bytes(&forwarded)
+            .expect("an IP address ahead of a valid header value is a valid header value")
+    }
+}
+
 /// Write the `Forwarded` header of a request on the tunnel listener, replacing
 /// any it carried: `for=<visitor>;host="<public host>";proto=https`. A request
 /// whose host isn't the server's public host is answered `421 Misdirected
 /// Request` instead.
-///
-/// `public_origin` is the server's public origin, `https://<public host>`.
 ///
 /// # Remarks
 ///
@@ -46,21 +89,19 @@ const MISDIRECTED_BODY: &str = "request host is not this server's public host";
 /// address is bracketed and quoted, as RFC 7239 requires, which
 /// `served_origin::forwarded_client_address` unquotes.
 pub(crate) async fn stamp_tunnel_forwarded(
-    State(public_origin): State<Url>,
+    State(tunnel_front): State<TunnelFront>,
     ConnectInfo(tunnel_visitor): ConnectInfo<TunnelVisitor>,
     mut request: Request,
     next: Next,
 ) -> Response {
-    if !names_only_public_origin(&request, &public_origin) {
+    if !names_only_public_origin(&request, &tunnel_front.public_origin) {
         return (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY).into_response();
     }
-    let forwarded = match tunnel_forwarded(tunnel_visitor.client_address, &public_origin) {
-        Ok(forwarded) => forwarded,
-        Err(error) => {
-            tracing::error!("a tunnel request's Forwarded header can't be written: {error}");
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    };
+    let forwarded = tunnel_front.forwarded(
+        tunnel_visitor
+            .client_address
+            .map(|client_address| client_address.ip()),
+    );
     // `insert` replaces every inbound `Forwarded` value.
     request.headers_mut().insert(FORWARDED, forwarded);
     next.run(request).await
@@ -86,21 +127,6 @@ fn names_only_public_origin(request: &Request, public_origin: &Url) -> bool {
                 .and_then(|request_host| public_origin_url(request_host).ok())
                 .is_some_and(|request_origin| request_origin.origin() == public_origin.origin())
         })
-}
-
-/// The `Forwarded` header for a tunnel request served as `public_origin`, from
-/// the visitor at `client_address` when the PROXY header named one.
-fn tunnel_forwarded(
-    client_address: Option<SocketAddr>,
-    public_origin: &Url,
-) -> Result<HeaderValue, axum::http::header::InvalidHeaderValue> {
-    let host_and_proto = format!("host=\"{}\";proto=https", public_origin.authority());
-    let forwarded = match client_address.map(|client_address| client_address.ip()) {
-        Some(IpAddr::V4(client_ip)) => format!("for={client_ip};{host_and_proto}"),
-        Some(IpAddr::V6(client_ip)) => format!("for=\"[{client_ip}]\";{host_and_proto}"),
-        None => host_and_proto,
-    };
-    HeaderValue::from_str(&forwarded)
 }
 
 #[cfg(test)]
@@ -132,7 +158,8 @@ mod tests {
                 }),
             )
             .layer(axum::middleware::from_fn_with_state(
-                public_origin_url(public_host).expect("public origin"),
+                TunnelFront::new(public_origin_url(public_host).expect("public origin"))
+                    .expect("tunnel front"),
                 stamp_tunnel_forwarded,
             ))
     }

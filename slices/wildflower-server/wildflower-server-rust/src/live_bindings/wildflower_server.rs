@@ -29,7 +29,7 @@ use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSen
 use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
-use crate::http::middleware::tunnel_front::stamp_tunnel_forwarded;
+use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
 use crate::http::not_found;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
 use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
@@ -330,8 +330,8 @@ pub async fn set_up(
         observers.server_health_sender,
     );
 
-    // The `/requests` surface: the request log the forwarded-request layer
-    // (outermost, below) feeds, over the same diesel pool. Scope-gated on
+    // The `/requests` surface: the request log the forwarded-request report
+    // (below) feeds, over the same diesel pool. Scope-gated on
     // `wildflower/RequestLog.r` behind the bearer gate.
     let request_log = request_log_rust::setup_request_log(diesel_pool.clone())
         .context("failed to set up the request log")?;
@@ -490,23 +490,25 @@ pub async fn set_up(
         // Outermost, so every response is reported as it leaves.
         .layer(forwarded_request_report.clone());
 
-    // The tunnel listener's router: the inner router behind CORS, the
-    // forwarded-request report and the tunnel front, innermost first. It has
-    // no loopback owner trust and no loopback-peer gate: no tunnel connection
-    // is a local caller, whatever its peer or headers.
+    // The tunnel listener's router: the inner router behind the
+    // forwarded-request report, the tunnel front and CORS, innermost first. It
+    // has no loopback owner trust and no loopback-peer gate: no tunnel
+    // connection is a local caller, whatever its peer or headers.
     let tunnel_router = inner_router
-        // The same CORS policy as the loopback listener: a remote app's
-        // fetches are cross-origin too, and auth rides the bearer header.
-        .layer(api_cors_layer())
         .layer(forwarded_request_report)
-        // Outermost: hold the request to the server's public host and write
-        // its `Forwarded` header (see `stamp_tunnel_forwarded`), so every
-        // layer and handler inside reads it as a forwarded request, served at
-        // the public origin. A misdirected request's `421` is not reported.
+        // Hold the request to the server's public host and write its
+        // `Forwarded` header (see `stamp_tunnel_forwarded`), so every layer
+        // and handler inside reads it as a forwarded request, served at the
+        // public origin. A misdirected request's `421` is not reported.
         .layer(axum::middleware::from_fn_with_state(
-            public_origin,
+            TunnelFront::new(public_origin)?,
             stamp_tunnel_forwarded,
-        ));
+        ))
+        // Outermost, so a remote app can read even the front's `421`: the
+        // same CORS policy as the loopback listener, since a remote app's
+        // fetches are cross-origin too and auth rides the bearer header. A
+        // preflight is answered here, before the front, and isn't reported.
+        .layer(api_cors_layer());
 
     Ok(WildflowerServer {
         loopback_listener,
