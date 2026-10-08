@@ -1,8 +1,7 @@
 //! [`TokenVerifier`] — the access-token verification policy both authN gates
-//! run: signature and issuer against the stored keys, the accepted audiences
-//! for the request's served origin, the canonical-audience rule for the host
-//! owner token, and revocation as the last gate. The middleware only extracts
-//! the token, resolves the origin, and maps the outcome to a status.
+//! run: signature against the stored keys, `iss` and `aud` against this
+//! server's origin, and revocation as the last gate. The middleware only
+//! extracts the token and maps the outcome to a status.
 
 use std::sync::Arc;
 
@@ -16,19 +15,29 @@ use crate::ports::RevocationCheck;
 pub(crate) struct TokenVerifier<S: GatekeeperStore> {
     store: S,
     revocation: Arc<dyn RevocationCheck>,
+    /// The server's bare origin: the one `iss` and the one `aud` accepted.
+    server_origin: Arc<str>,
 }
 
 impl<S: GatekeeperStore> TokenVerifier<S> {
-    /// Build the verifier over the store and the revocation-check port, both
-    /// lifted from the state.
-    pub(crate) fn new(store: S, revocation: Arc<dyn RevocationCheck>) -> Self {
-        TokenVerifier { store, revocation }
+    /// Build the verifier over the store, the revocation-check port, and the
+    /// server's origin, all lifted from the state.
+    pub(crate) fn new(
+        store: S,
+        revocation: Arc<dyn RevocationCheck>,
+        server_origin: Arc<str>,
+    ) -> Self {
+        TokenVerifier {
+            store,
+            revocation,
+            server_origin,
+        }
     }
 
-    /// Verify `token` for `served_origin`, accepting the per-request served-origin
-    /// audiences (`{origin}` and `{origin}/fhir-r4`) plus the canonical
-    /// audience — honoured only for the `wf_owner`-marked host owner token,
-    /// which is presented at every served origin (#256). See
+    /// Verify `token`: its `iss` and `aud` must both be this server's origin.
+    /// The origin the request was served on plays no part, so a token for this
+    /// server is accepted over loopback and through the tunnel alike, and a
+    /// token another server minted is refused by construction. See
     /// `docs/Origins/Explanation.md`.
     ///
     /// Revocation is the last gate: the token is cryptographically valid, but
@@ -40,39 +49,22 @@ impl<S: GatekeeperStore> TokenVerifier<S> {
     ///
     /// # Errors
     ///
-    /// [`VerifyError::TokenRejected`] for a bad, expired, wrong-audience, or
-    /// non-owner-canonical-audience token; [`VerifyError::Revoked`] for a
-    /// revoked one; the server-side variants when the key or revocation store
-    /// can't be read.
-    pub(crate) fn verify(
-        &self,
-        served_origin: &str,
-        token: &str,
-    ) -> Result<VerifiedClaims, VerifyError> {
+    /// [`VerifyError::TokenRejected`] for a bad, expired, wrong-issuer or
+    /// wrong-audience token; [`VerifyError::Revoked`] for a revoked one; the
+    /// server-side variants when the key or revocation store can't be read.
+    pub(crate) fn verify(&self, token: &str) -> Result<VerifiedClaims, VerifyError> {
         let keys = self
             .store
             .all_signing_keys()
             .map_err(VerifyError::KeyStoreUnavailable)?;
-        let accepted = vec![
-            format!("{served_origin}/fhir-r4"),
-            served_origin.to_string(),
-            shared_structures_rust::CANONICAL_ISSUER.to_string(),
-        ];
         let claims = verify_jwt(
             token,
             &keys,
             &VerifyOptions {
-                expected_issuer: shared_structures_rust::CANONICAL_ISSUER,
-                accepted_audiences: &accepted,
+                expected_issuer: &self.server_origin,
+                accepted_audiences: &[self.server_origin.to_string()],
             },
         )?;
-        let via_canonical_audience = claims
-            .audience
-            .iter()
-            .any(|aud| aud == shared_structures_rust::CANONICAL_ISSUER);
-        if via_canonical_audience && claims.host_owner != Some(true) {
-            return Err(VerifyError::TokenRejected);
-        }
         let revoked = self
             .revocation
             .is_revoked(claims.jti.as_deref(), claims.issued_at, &claims.subject)
@@ -119,7 +111,10 @@ mod tests {
         }
     }
 
-    const ORIGIN: &str = "http://127.0.0.1";
+    /// This server's origin.
+    const ORIGIN: &str = "https://ruth.relay.example";
+    /// Another server's origin.
+    const OTHER_ORIGIN: &str = "https://lab.relay.example";
 
     fn store_with_key() -> (FakeGatekeeperStore, SigningKey) {
         let store = FakeGatekeeperStore::default();
@@ -127,49 +122,68 @@ mod tests {
         (store, key)
     }
 
-    fn mint(key: &SigningKey, audience: &str, is_host_owner: bool) -> String {
+    fn verifier(store: FakeGatekeeperStore) -> TokenVerifier<FakeGatekeeperStore> {
+        TokenVerifier::new(store, Arc::new(FakeRevocation::default()), ORIGIN.into())
+    }
+
+    fn mint(key: &SigningKey, issuer: &str, audience: &str) -> String {
         mint_access_token(
             key,
             &NewJwtArgs {
                 client_id: "client",
                 scopes: &["openid".to_owned()],
                 ttl: Duration::minutes(5),
-                issuer: shared_structures_rust::CANONICAL_ISSUER,
+                issuer,
                 audience: Some(audience),
                 patient: None,
-                is_host_owner,
             },
         )
         .expect("mint")
     }
 
-    /// A token for this origin's FHIR audience verifies, and the revocation
-    /// check is consulted for its subject.
+    /// A token whose `iss` and `aud` are this server's origin verifies, and the
+    /// revocation check is consulted for its subject.
     #[test]
-    fn verifies_a_served_origin_token_and_consults_revocation() {
+    fn verifies_a_token_for_this_server_and_consults_revocation() {
         let (store, key) = store_with_key();
         let revocation = Arc::new(FakeRevocation::default());
-        let verifier = TokenVerifier::new(store, revocation.clone());
+        let verifier = TokenVerifier::new(store, revocation.clone(), ORIGIN.into());
         let claims = verifier
-            .verify(ORIGIN, &mint(&key, &format!("{ORIGIN}/fhir-r4"), false))
+            .verify(&mint(&key, ORIGIN, ORIGIN))
             .expect("verifies");
         assert_eq!(claims.subject, "client");
         assert_eq!(*revocation.asked.lock().unwrap(), vec!["client".to_owned()]);
     }
 
-    /// The canonical audience is honoured only for the host owner token: a
-    /// non-owner token presenting it is rejected even though its signature is
-    /// valid.
+    /// A token another server minted is refused, even signed with a key this
+    /// server holds, and so is one naming another server as only its issuer or
+    /// only its audience.
     #[test]
-    fn canonical_audience_is_owner_only() {
+    fn rejects_a_token_for_another_server() {
         let (store, key) = store_with_key();
-        let verifier = TokenVerifier::new(store, Arc::new(FakeRevocation::default()));
-        let canonical = shared_structures_rust::CANONICAL_ISSUER;
-        assert!(verifier
-            .verify(ORIGIN, &mint(&key, canonical, true))
-            .is_ok());
+        let verifier = verifier(store);
+        for (issuer, audience) in [
+            (OTHER_ORIGIN, OTHER_ORIGIN),
+            (OTHER_ORIGIN, ORIGIN),
+            (ORIGIN, OTHER_ORIGIN),
+        ] {
+            assert!(
+                matches!(
+                    verifier.verify(&mint(&key, issuer, audience)),
+                    Err(VerifyError::TokenRejected)
+                ),
+                "iss {issuer}, aud {audience} must be rejected"
+            );
+        }
+    }
+
+    /// `aud` must be the bare origin: the FHIR base under it is refused.
+    #[test]
+    fn rejects_the_fhir_base_as_audience() {
+        let (store, key) = store_with_key();
+        let verifier = verifier(store);
         assert!(matches!(
-            verifier.verify(ORIGIN, &mint(&key, canonical, false)),
+            verifier.verify(&mint(&key, ORIGIN, &format!("{ORIGIN}/fhir-r4"))),
             Err(VerifyError::TokenRejected)
         ));
     }
@@ -180,12 +194,12 @@ mod tests {
     #[test]
     fn revocation_is_the_last_gate_and_fails_closed() {
         let (store, key) = store_with_key();
-        let token = mint(&key, ORIGIN, false);
+        let token = mint(&key, ORIGIN, ORIGIN);
         let jti = verify_jwt(
             &token,
             &store.all_signing_keys().unwrap(),
             &VerifyOptions {
-                expected_issuer: shared_structures_rust::CANONICAL_ISSUER,
+                expected_issuer: ORIGIN,
                 accepted_audiences: &[ORIGIN.to_owned()],
             },
         )
@@ -199,13 +213,11 @@ mod tests {
                 revoked_jtis: vec![jti],
                 ..FakeRevocation::default()
             }),
+            ORIGIN.into(),
         );
         // Re-seed the key so the revoked verifier can check the signature.
         revoked.store.insert_signing_key(&key).unwrap();
-        assert!(matches!(
-            revoked.verify(ORIGIN, &token),
-            Err(VerifyError::Revoked)
-        ));
+        assert!(matches!(revoked.verify(&token), Err(VerifyError::Revoked)));
 
         let failing = TokenVerifier::new(
             store,
@@ -213,9 +225,10 @@ mod tests {
                 fail: true,
                 ..FakeRevocation::default()
             }),
+            ORIGIN.into(),
         );
         assert!(matches!(
-            failing.verify(ORIGIN, &token),
+            failing.verify(&token),
             Err(VerifyError::RevocationStoreUnavailable(_))
         ));
     }

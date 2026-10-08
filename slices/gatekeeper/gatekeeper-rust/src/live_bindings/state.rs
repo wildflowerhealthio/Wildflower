@@ -47,10 +47,17 @@ pub struct GatekeeperState {
     /// [`GatekeeperConfig`](crate::GatekeeperConfig) at
     /// [`crate::setup_gatekeeper`]. Handlers don't read it directly: it is only
     /// the loopback fallback passed to
-    /// [`served_base_url_for`](crate::http::served_base_url_for), which resolves
-    /// each request's served base URL (and hence its token `aud`). See
+    /// [`served_base_url_for`](shared_structures_rust::served_origin::served_base_url_for), which resolves
+    /// each request's served base URL for the owner UI links it renders. See
     /// `docs/Origins/Explanation.md`.
     pub(crate) loopback_base_url: url::Url,
+    /// The server's bare origin (`https://<domain>`), reduced once from
+    /// [`GatekeeperConfig::server_origin`](crate::GatekeeperConfig::server_origin)
+    /// at [`crate::setup_gatekeeper`]: the `iss` and `aud` of every token this
+    /// server mints, and the only ones its
+    /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier)
+    /// accepts. An `Arc<str>` so each capability built from the state shares it.
+    pub(crate) server_origin: Arc<str>,
     /// The host's first-party `client_id`, pinned from
     /// [`GatekeeperConfig`](crate::GatekeeperConfig) at
     /// [`crate::setup_gatekeeper`] — the same id [`crate::seeding`] seeds the

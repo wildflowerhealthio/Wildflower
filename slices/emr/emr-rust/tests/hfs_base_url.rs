@@ -1,6 +1,7 @@
 //! HFS's `base_url` — the prefix of its search Bundle links, `entry.fullUrl`s
 //! and a create's `Location` — is the configured public origin's FHIR base, on
-//! both routers `setup_fhir_r4` hands back.
+//! both routers `setup_fhir_r4` hands back. The SMART discovery document names
+//! the public origin itself as its `issuer`.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -165,4 +166,24 @@ async fn the_delegation_router_is_on_the_public_origin() {
     let (_, _, bundle) = send(&routers.raw_hfs_router, "GET", "/Patient", None).await;
     let self_link = link(&bundle, "self").unwrap_or_else(|| panic!("no self link: {bundle}"));
     assert!(self_link.starts_with(PUBLIC_BASE), "self: {self_link}");
+}
+
+/// Discovery reports the server's origin as `issuer` (every token's `iss`),
+/// even when served over loopback, where its endpoint URLs are loopback ones.
+#[tokio::test]
+async fn smart_discovery_reports_the_public_origin_as_issuer() {
+    let (routers, _db) = build_routers();
+    let (status, _, document) = send(
+        &routers.augmented_fhir_r4_router,
+        "GET",
+        "/fhir-r4/.well-known/smart-configuration",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {document}");
+    assert_eq!(document["issuer"], PUBLIC_ORIGIN);
+    assert_eq!(
+        document["token_endpoint"],
+        "http://127.0.0.1:8080/oauth/token"
+    );
 }

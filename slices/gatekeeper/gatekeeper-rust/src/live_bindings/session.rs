@@ -20,7 +20,7 @@ pub(crate) type LiveTokenVerifier = TokenVerifier<SqliteGatekeeperStore>;
 impl FromState for LiveTokenVerifier {
     fn from_state(state: &Arc<GatekeeperState>) -> Self {
         let revocation: Arc<dyn RevocationCheck> = Arc::new(state.revocation_store.clone());
-        TokenVerifier::new(state.store.clone(), revocation)
+        TokenVerifier::new(state.store.clone(), revocation, state.server_origin.clone())
     }
 }
 

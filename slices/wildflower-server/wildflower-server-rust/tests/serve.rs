@@ -6,7 +6,9 @@
 //! host's observers see the server's health through its public origin and each
 //! forwarded request, and the request log records
 //! each forwarded request and serves it back on `/requests` to a token holding
-//! the request log's read scope.
+//! the request log's read scope — a token naming the server's origin as `iss`
+//! and `aud`, accepted over loopback and through the tunnel, while one another
+//! server minted is refused.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -32,8 +34,15 @@ use wildflower_server_rust::{
 /// through the tunnel, from client `192.0.2.1` to `demo.example.com`.
 const FORWARDED: &str = "for=192.0.2.1;host=demo.example.com;proto=https";
 
-/// The origin [`FORWARDED`] names: the audience of a client token for it.
-const FORWARDED_ORIGIN: &str = "https://demo.example.com";
+/// The server's domain, which the tunnel would serve it on.
+const PUBLIC_HOST: &str = "test.relay.invalid";
+
+/// The server's origin, from [`PUBLIC_HOST`]: the `iss` and `aud` of every
+/// token the server accepts, whichever origin a request was served on.
+const SERVER_ORIGIN: &str = "https://test.relay.invalid";
+
+/// Another server's origin.
+const OTHER_SERVER_ORIGIN: &str = "https://other.relay.invalid";
 
 /// How long one server may take to come up or wind down before the test fails
 /// rather than hangs. Startup indexes the FHIR SearchParameter bundle, which is
@@ -80,7 +89,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
             service_name: "test".to_owned(),
         },
-        public_host: "test.relay.invalid".to_owned(),
+        public_host: PUBLIC_HOST.to_owned(),
     }
 }
 
@@ -272,9 +281,9 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         .expect("a cancelled serve returns Ok");
 }
 
-/// A client token for [`FORWARDED_ORIGIN`] granting `scopes`, signed with the
-/// key gatekeeper keeps in the server's database under `app_data_dir`.
-fn client_token(app_data_dir: &Path, scopes: &[String]) -> String {
+/// A client token issued by and for `server_origin`, granting `scopes`, signed
+/// with the key gatekeeper keeps in the server's database under `app_data_dir`.
+fn client_token(app_data_dir: &Path, server_origin: &str, scopes: &[String]) -> String {
     // The server's shared database (`WILDFLOWER_DB` in `set_up`); a wrong name
     // opens an empty one, with no signing key to find.
     let pool = persistence_rust::open_pool(&app_data_dir.join("wildflower.sqlite"))
@@ -290,13 +299,27 @@ fn client_token(app_data_dir: &Path, scopes: &[String]) -> String {
             client_id: "request-log-reader",
             scopes,
             ttl: chrono::Duration::minutes(5),
-            issuer: shared_structures_rust::CANONICAL_ISSUER,
-            audience: Some(FORWARDED_ORIGIN),
+            issuer: server_origin,
+            audience: Some(server_origin),
             patient: None,
-            is_host_owner: false,
         },
     )
     .expect("mint a client token")
+}
+
+/// The status of a `GET /requests` sent straight to the loopback port with
+/// `bearer_token`.
+async fn loopback_request_log_status(
+    loopback_base_url: &Url,
+    bearer_token: &str,
+) -> reqwest::StatusCode {
+    reqwest::Client::new()
+        .get(loopback_base_url.join("requests").expect("requests URL"))
+        .bearer_auth(bearer_token)
+        .send()
+        .await
+        .expect("GET /requests reaches the server")
+        .status()
 }
 
 /// `GET /requests` relayed through the tunnel, with `bearer_token` when given.
@@ -382,14 +405,21 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     )
     .await
     .expect("the server binds in time");
-    let request_log_reader = client_token(
+    let request_log_scopes = request_log_rust::grantable_request_log_scopes()
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let request_log_reader = client_token(app_data_dir.path(), SERVER_ORIGIN, &request_log_scopes);
+    let other_servers_reader = client_token(
         app_data_dir.path(),
-        &request_log_rust::grantable_request_log_scopes()
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>(),
+        OTHER_SERVER_ORIGIN,
+        &request_log_scopes,
     );
-    let apps_reader = client_token(app_data_dir.path(), &["wildflower/Apps.r".to_owned()]);
+    let apps_reader = client_token(
+        app_data_dir.path(),
+        SERVER_ORIGIN,
+        &["wildflower/Apps.r".to_owned()],
+    );
 
     assert_eq!(
         forwarded_metadata_status(&loopback_base_url).await,
@@ -415,6 +445,24 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
         forwarded_request_log_read(&loopback_base_url, None)
             .await
             .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    // The token names the server's origin, not the origin a request was served
+    // on, so it is accepted over loopback as well as through the tunnel.
+    assert_eq!(
+        loopback_request_log_status(&loopback_base_url, &request_log_reader).await,
+        reqwest::StatusCode::OK
+    );
+    // A token another server minted is refused, though it carries the scope and
+    // this server's own key signed it.
+    assert_eq!(
+        forwarded_request_log_read(&loopback_base_url, Some(&other_servers_reader))
+            .await
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        loopback_request_log_status(&loopback_base_url, &other_servers_reader).await,
         reqwest::StatusCode::UNAUTHORIZED
     );
 

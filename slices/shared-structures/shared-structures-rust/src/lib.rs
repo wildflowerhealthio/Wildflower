@@ -9,21 +9,11 @@ pub use server_runtime_config::ServerRuntimeConfig;
 mod on_device_webview_handle;
 pub use on_device_webview_handle::OnDeviceWebviewHandle;
 
-/// Canonical, build-time-fixed `iss` claim baked into every JWT minted by
-/// gatekeeper and the value HFS validates against on every FHIR request.
-///
-/// A single, deliberate constant: Wildflower is single-tenant for now, so there
-/// is intentionally **no** per-deployment override. Pinning a stable `iss` lets
-/// one `expected_issuer` accept both loopback- and tunnel-minted tokens with no
-/// branching at mint or validation time; a multi-tenant issuer is deferred until
-/// a second tenant justifies it. See `docs/Origins/Explanation.md`.
-pub const CANONICAL_ISSUER: &str = "https://wildflowerhealth.io";
-
 /// Reduce a base URL to its bare origin string — `scheme://host[:port]`, no
 /// trailing slash (e.g. `http://127.0.0.1:8080`). The one place the
 /// `url::Origin::ascii_serialization` reduction is spelled, so the callers that
-/// stringify a loopback or per-request served base URL (loopback config origins,
-/// forwarded served origins, discovery-doc issuer URLs) can't each render it a
+/// stringify a base URL (loopback config origins, forwarded served origins, the
+/// server's origin every token's `iss` and `aud` name) can't each render it a
 /// slightly different way — the flap PR #224 warned about. Pure `url` code, so
 /// it stays out of the axum-gated `served_origin` module and non-HTTP crates can
 /// use it too. See `docs/Origins/Explanation.md`.

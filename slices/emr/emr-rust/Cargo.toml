@@ -49,6 +49,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 base64.workspace = true
+# The HFS auth tests mint real gatekeeper tokens (and serve the key's JWKS) to
+# check HFS refuses one naming another server. Test-only: the FHIR server itself
+# still doesn't depend on the OAuth server.
+gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 http-body-util.workspace = true
 ohif-server-rust = { path = "../../dicom/ohif-server-rust" }
 # Lets the auth tests break a revocation store's schema to exercise the

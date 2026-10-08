@@ -144,7 +144,9 @@ pub fn setup_fhir_r4(
         ..ServerConfig::default()
     };
 
-    let (auth_config, auth_state) = build_auth(config.jwks_url.as_deref(), revocation_store);
+    let server_origin = shared_structures_rust::origin_string(&config.public_origin);
+    let (auth_config, auth_state) =
+        build_auth(config.jwks_url.as_deref(), revocation_store, &server_origin);
     let hfs_router = create_app_with_auth(
         sqlite_backend,
         server_config,
@@ -166,6 +168,7 @@ pub fn setup_fhir_r4(
         )
         .with_state(SmartConfigState {
             loopback_base_url: loopback_base_url.clone(),
+            server_origin,
         });
 
     // `$everything` delegates back into HFS in-process (see

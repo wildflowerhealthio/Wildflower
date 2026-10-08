@@ -10,6 +10,10 @@ pub use tokio::sync::watch;
 
 pub const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
 
+/// The server's origin: the `iss` and `aud` of every token it mints, and the
+/// only ones its bearer gates accept.
+pub const SERVER_ORIGIN: &str = "https://ruth.relay.example";
+
 /// The hosted owner UI the gatekeeper's browser-facing pages resolve on in
 /// these tests — deliberately not the production address, so an assertion
 /// can't pass by accident against a hard-coded one.
@@ -89,6 +93,7 @@ fn spin_up_on(
 ) -> (Gatekeeper, String, TestDb) {
     let config = GatekeeperConfig {
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
+        server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
         host_owner_scopes: gatekeeper_rust::default_local_granted_scopes(),
         first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
         owner_ui_base: OwnerUiBase::parse(OWNER_UI_BASE).expect("OWNER_UI_BASE is a valid URL"),
@@ -177,12 +182,18 @@ pub fn seed_client_with_redirect(
 }
 
 /// Mint a **non-owner** access token carrying exactly `scopes`, signed by the
-/// seeded active key. `iss` is the canonical issuer (as every mint is) and `aud`
-/// is the loopback served origin (NOT the canonical audience, which is reserved
-/// for the `wf_owner`-marked host token) — so it passes `require_valid_session`'s
-/// authN but is authorized only up to `scopes`. Lets the scope-gating tests drive
-/// the `403` path a real client token would hit, without walking the OAuth flow.
+/// seeded active key and naming [`SERVER_ORIGIN`] as `iss` and `aud`, as every
+/// token this server mints does — so it passes `require_valid_session`'s authN
+/// but is authorized only up to `scopes`. Lets the scope-gating tests drive the
+/// `403` path a real client token would hit, without walking the OAuth flow.
 pub fn mint_scoped_token(db: &TestDb, scopes: &[&str]) -> String {
+    mint_token_naming(db, scopes, SERVER_ORIGIN, SERVER_ORIGIN)
+}
+
+/// Mint a token carrying `scopes`, signed by the seeded active key, with the
+/// given `iss` and `aud` — for the tests that present a token this server
+/// didn't mint for itself.
+pub fn mint_token_naming(db: &TestDb, scopes: &[&str], issuer: &str, audience: &str) -> String {
     let key = store_handle(db)
         .active_signing_key()
         .expect("signing-key query")
@@ -194,13 +205,12 @@ pub fn mint_scoped_token(db: &TestDb, scopes: &[&str]) -> String {
             client_id: "scoped-app",
             scopes: &scope,
             ttl: Duration::seconds(300),
-            issuer: shared_structures_rust::CANONICAL_ISSUER,
-            audience: Some(LOOPBACK_ORIGIN),
+            issuer,
+            audience: Some(audience),
             patient: None,
-            is_host_owner: false,
         },
     )
-    .expect("mint scoped token")
+    .expect("mint token")
 }
 
 pub fn loopback_request(builder: http::request::Builder, body: Body) -> Request<Body> {

@@ -20,7 +20,7 @@ use crate::http::ServedOrigin;
 /// origin — the server its pages should talk back to.
 pub(crate) struct OwnerUiPages {
     base: OwnerUiBase,
-    server_origin: ServedOrigin,
+    served_origin: ServedOrigin,
 }
 
 impl OwnerUiPages {
@@ -31,12 +31,12 @@ impl OwnerUiPages {
 
     /// The device-flow code-entry page.
     pub(crate) fn device_entry_url(&self) -> String {
-        page_paths::device_entry_url(&self.base, &self.server_origin)
+        page_paths::device_entry_url(&self.base, &self.served_origin)
     }
 
     /// The device-flow code-entry page with `user_code` pre-filled.
     pub(crate) fn device_entry_url_with_code(&self, user_code: &str) -> String {
-        page_paths::device_entry_url_with_code(&self.base, &self.server_origin, user_code)
+        page_paths::device_entry_url_with_code(&self.base, &self.served_origin, user_code)
     }
 }
 
@@ -49,7 +49,7 @@ impl FromRequestParts<Arc<GatekeeperState>> for OwnerUiPages {
     ) -> Result<Self, Self::Rejection> {
         Ok(Self {
             base: state.owner_ui_base.clone(),
-            server_origin: ServedOrigin::from_request_parts(parts, state).await?,
+            served_origin: ServedOrigin::from_request_parts(parts, state).await?,
         })
     }
 }

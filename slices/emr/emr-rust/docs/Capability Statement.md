@@ -48,7 +48,7 @@ Two limits worth noting:
 
 ## Auth is off unless a JWKS URL is configured
 
-When `EmrConfig::jwks_url` is `Some`, HFS auth is enabled: it validates the bearer JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes, and gates each FHIR operation against them (against gatekeeper's JWKS in the app). When it is `None`, the FHIR surface is unauthenticated.
+When `EmrConfig::jwks_url` is `Some`, HFS auth is enabled: it validates the bearer JWT against the configured JWKS, requires its `iss` and `aud` to be the server's origin (`EmrConfig::public_origin`), parses SMART v2 scopes, and gates each FHIR operation against them (against gatekeeper's JWKS in the app). When it is `None`, the FHIR surface is unauthenticated.
 
 Either way, a fixed set of discovery/health paths stays unauthenticated per the SMART spec (`UNAUTHENTICATED_FHIR_PATHS` in `src/lib.rs`): `/metadata`, `/.well-known/smart-configuration`, `/$versions`, `/health`, `/_liveness`, `/_readiness`.
 

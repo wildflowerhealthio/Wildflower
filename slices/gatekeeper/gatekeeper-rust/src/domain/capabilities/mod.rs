@@ -63,6 +63,7 @@ mod source_guards {
             ".first_party_client_id",
             ".active_pending_consent_sender",
             ".loopback_base_url",
+            ".server_origin",
             ".loopback_consent_prompt",
             ".host_owner_grant",
         ];

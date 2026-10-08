@@ -9,7 +9,6 @@ use crate::domain::authority::PresentedAuthorizationCode;
 use crate::domain::capabilities::oauth::IssuedTokens;
 use crate::http::extractors::Live;
 use crate::http::wire_representations::{OAuthError, TokenResponse};
-use crate::http::ServedOrigin;
 use crate::live_bindings::LiveTokenExchanger;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
@@ -54,7 +53,6 @@ pub enum TokenPayload {
 )]
 pub(super) async fn handle_token_request(
     exchanger: Live<LiveTokenExchanger>,
-    origin: ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Response {
     let TokenRequest {
@@ -74,14 +72,13 @@ pub(super) async fn handle_token_request(
                 code_verifier: &code_verifier,
                 redirect_uri: &redirect_uri,
             },
-            &origin,
             now,
         ),
         TokenPayload::DeviceCode { device_code } => {
-            exchanger.exchange_device_code(&authenticated_client, &device_code, &origin, now)
+            exchanger.exchange_device_code(&authenticated_client, &device_code, now)
         }
         TokenPayload::RefreshToken { refresh_token } => {
-            exchanger.exchange_refresh_token(&authenticated_client, &refresh_token, &origin, now)
+            exchanger.exchange_refresh_token(&authenticated_client, &refresh_token, now)
         }
     };
     let token = match exchanged {
