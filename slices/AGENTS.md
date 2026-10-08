@@ -57,11 +57,12 @@ the store that keeps the admin key as a non-extractable `CryptoKey`; its
 `relay-react` is the admin screen; `apps/relay/admin-web` is the page the relay
 (`apps/relay/server`) embeds and serves at `admin.<domain>`.
 
-`request-log` keeps each request the trusted front relayed to the server.
-Its `request-log-rust` owns the `logged_requests` table in `wildflower.sqlite`:
+`request-log` keeps each forwarded request the server served: through the
+tunnel, or relayed by a front run on this machine. Its `request-log-rust` owns the `logged_requests` table in `wildflower.sqlite`:
 the server's forwarded-request layer reports each request on
-`RequestLog::sender`, a writer task records them in batches, trimmed to a row
-cap per caller class, and a sweep drops rows past 30 days. It serves the log at
+`RequestLog::forwarded_request_tx`, a writer task records them in batches,
+trimmed to a row cap per caller class, and a sweep drops rows past 30
+days. It serves the log at
 `GET /requests` and `GET /requests/callers`, gated by `wildflower/RequestLog.r`.
 `request-log-core` is that API as an `HttpApi` and its client;
 `request-log-react` is the `/settings/requests` page: the recent-activity card,
@@ -101,8 +102,9 @@ plan editor and the workout history over that core; `apps/lifting-app` is the
 SMART app around them.
 
 `wildflower-server` is the server the Tauri host runs: `wildflower-server-rust`'s
-`set_up` composes every server slice into the loopback API and binds it, and
-`WildflowerServer::serve` serves it until its shutdown token is cancelled — see
+`set_up` composes every server slice into one API, binds the loopback port and
+opens the tunnel listener, and `WildflowerServer::serve` serves the API on both
+until its shutdown token is cancelled — see
 [wildflower-server/AGENTS.md](./wildflower-server/AGENTS.md). It has no `tauri`
 dependency; the host passes its native adapters in as trait objects, and
 watches the server through host-owned observer channels.

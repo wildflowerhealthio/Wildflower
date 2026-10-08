@@ -5,7 +5,22 @@
 //! through it so they can't drift. See `docs/Origins/Explanation.md` for the
 //! model; this module owns the parsing contract and validation below.
 //!
-//! ## The contract
+//! ## Who writes the header
+//!
+//! The server has two listeners, and the header reaches a handler from one of
+//! two writers:
+//!
+//! - **The tunnel listener's front** (`wildflower-server-rust`'s
+//!   `stamp_tunnel_forwarded`) writes it on every request through the tunnel,
+//!   replacing whatever the visitor sent: `for=` the visitor's address from the
+//!   connection's PROXY header (left out when there is none), `host=` the
+//!   server's public host once the request's `Host` names it, `proto=https`.
+//! - **A trusted front run on this machine** (nginx) relays remote callers to
+//!   the loopback listener, as below.
+//!
+//! A direct caller on the loopback listener sends none.
+//!
+//! ## The nginx contract
 //!
 //! The trusted front (nginx) appends its hop to any inbound `Forwarded` chain
 //! and tacks the public `host`/`proto` onto that trailing element:
@@ -19,7 +34,8 @@
 //! lands on that element. So the host and scheme we trust are always in the
 //! **last** forwarded-element — any client-supplied elements sit to its left.
 //! We read `host` and `proto` from that last element and ignore the rest of the
-//! chain (trust is gated at the loopback socket, not derived from the header).
+//! chain (trust comes from the listener the request arrived on, not from the
+//! header).
 //! The element's `for` is read too, by [`forwarded_client_address`], as the
 //! visitor's address the request log records; no trust derives from it. Both
 //! `host` and `proto` are load-bearing: a `Forwarded` header
@@ -40,9 +56,9 @@
 //! means the request came through the front, and a malformed one is *rejected*
 //! ([`request_provenance`] returns `None`, the caller `500`s) rather than
 //! collapsed to loopback. Collapsing a malformed forwarded request to loopback
-//! would let a tunnel-relayed remote caller be mistaken for a direct-local one —
-//! e.g. handed the host owner token (`is_forwarded` gates that trust). See
-//! `docs/Origins/Explanation.md`.
+//! would let a relayed remote caller be mistaken for a direct-local one —
+//! e.g. handed the host owner token (`is_forwarded` gates that trust on the
+//! loopback listener). See `docs/Origins/Explanation.md`.
 
 use axum::http::HeaderMap;
 use url::Url;
@@ -410,8 +426,8 @@ mod tests {
     #[test]
     fn is_forwarded_stays_true_for_a_present_but_malformed_forwarded_header() {
         // SECURITY REGRESSION GUARD: a malformed `Host` must not flip `is_forwarded`
-        // to `false`, or a tunnel-relayed caller (which arrives over loopback) would
-        // inherit the `!is_forwarded`-gated owner trust. See the `is_forwarded` doc.
+        // to `false`, or a caller a front relayed over loopback would inherit the
+        // `!is_forwarded`-gated owner trust. See the `is_forwarded` doc.
         for malformed in [
             "host=",                                     // empty host
             "for=192.0.2.1;proto=https",                 // no host param

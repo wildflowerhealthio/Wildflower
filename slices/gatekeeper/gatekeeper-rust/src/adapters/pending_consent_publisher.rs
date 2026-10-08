@@ -39,23 +39,22 @@ impl PendingConsentPublisher for GatekeeperState {
     /// surviving pending row will republish on the next mutation or
     /// reaper tick.
     fn republish_active(&self) {
-        self.active_pending_consent_sender
-            .send_if_modified(|current| {
-                let next = match self.store.oldest_pending_consent_head() {
-                    Ok(next) => next,
-                    Err(error) => {
-                        tracing::warn!(
-                            "oldest_pending_consent_head query failed; clearing popup head: {error}"
-                        );
-                        None
-                    }
-                };
-                if *current == next {
-                    false
-                } else {
-                    *current = next;
-                    true
+        self.active_pending_consent_tx.send_if_modified(|current| {
+            let next = match self.store.oldest_pending_consent_head() {
+                Ok(next) => next,
+                Err(error) => {
+                    tracing::warn!(
+                        "oldest_pending_consent_head query failed; clearing popup head: {error}"
+                    );
+                    None
                 }
-            });
+            };
+            if *current == next {
+                false
+            } else {
+                *current = next;
+                true
+            }
+        });
     }
 }

@@ -1,7 +1,8 @@
-//! The PROXY protocol v2 header the front sends to the device ahead of the
-//! visitor's bytes. It carries the visitor's address, which the device would
+//! The PROXY protocol v2 header the relay's front sends to the device ahead of
+//! the visitor's bytes. It carries the visitor's address, which the device would
 //! otherwise never see: to the device every connection comes from its own
-//! rathole client.
+//! rathole client. The device's tests build their headers here too, so they
+//! read what the relay writes.
 
 use std::io;
 use std::net::SocketAddr;
@@ -12,7 +13,7 @@ use ppp::v2::{Builder, Command, Protocol, Version};
 /// relay at `destination`. IPv4-mapped IPv6 addresses (from a dual-stack
 /// listener) are unmapped first; if the families still differ the IPv4 side
 /// is mapped so both are IPv6, which the header requires.
-pub(super) fn proxy_header(source: SocketAddr, destination: SocketAddr) -> io::Result<Vec<u8>> {
+pub fn proxy_header(source: SocketAddr, destination: SocketAddr) -> io::Result<Vec<u8>> {
     let mut source = unmapped(source);
     let mut destination = unmapped(destination);
     if source.is_ipv4() != destination.is_ipv4() {

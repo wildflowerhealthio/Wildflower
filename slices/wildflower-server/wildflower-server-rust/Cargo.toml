@@ -5,20 +5,33 @@ edition.workspace = true
 publish.workspace = true
 
 # The Wildflower server: `serve` composes every server slice (gatekeeper, emr,
-# OHIF, collector, tunnel, request log, apps, databases) into the loopback API
-# and serves it until its shutdown token is cancelled, with its `/health` and the
-# reachability monitor that reads it through the public origin. No `tauri` dependency —
+# OHIF, collector, tunnel, request log, apps, databases) into the API and serves
+# it on the loopback port and the tunnel listener until its shutdown token is
+# cancelled, with its `/health` and the reachability monitor that reads it
+# through the public origin. No `tauri` dependency —
 # the Tauri host hands in its native adapters as trait objects — so it compiles
 # and tests without GTK.
+[features]
+# Test support for this crate's own integration tests:
+# `WildflowerServer::tunnel_stream_tx`, which hands the tunnel listener a
+# visitor's connection the way the tunnel does. Only the dev-dependency on this
+# crate below enables it.
+test-support = []
+
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
 tower-http.workspace = true
 # `net` binds the loopback listener; `sync` carries the host's owner-token,
-# pending-consent and server-health `watch` channels; `time` and `macros` pace
-# and bound the reachability monitor's probes and the `/health` checks.
-tokio = { workspace = true, features = ["net", "rt", "sync", "time", "macros"] }
+# pending-consent and server-health `watch` channels and the tunnel's visitor
+# streams; `time` and `macros` pace and bound the reachability monitor's probes
+# and the `/health` checks, and bound a tunnel connection's PROXY header, which
+# `io-util` reads.
+tokio = { workspace = true, features = ["net", "rt", "sync", "time", "macros", "io-util"] }
+# The PROXY protocol v2 header ahead of a tunnel connection (see
+# `src/http/tunnel_listener/proxy_header.rs`).
+ppp.workspace = true
 # `CancellationToken`, the shutdown signal `serve` takes.
 tokio-util = "0.7"
 tracing = "0.1"
@@ -63,6 +76,13 @@ tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 workspace = true
 
 [dev-dependencies]
+# This crate with its test support, for `tests/serve.rs`.
+wildflower-server-rust = { path = ".", features = ["test-support"] }
+# The PROXY headers the tunnel listener tests send, built as the relay
+# builds them.
+rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust", features = [
+  "proxy-header",
+] }
 serde_json.workspace = true
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
@@ -70,5 +90,6 @@ tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time", "test-util"] }
 # `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.
 tower = { version = "0.5", features = ["util"] }
-# The forwarded-request path reducer's property test.
+# The forwarded-request path reducer's and the PROXY header reader's property
+# tests.
 proptest = "1"

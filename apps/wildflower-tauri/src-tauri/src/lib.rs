@@ -220,8 +220,8 @@ fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublisher
         // here; `bridge::attach_bridge` documents how the resident task delivers
         // them to the webview. The senders outlive every server run, so a
         // restarted server publishes to the same webview.
-        host_owner_token_sender: publishers.host_owner_token_sender,
-        active_pending_consent_sender: publishers.active_pending_consent_sender,
+        host_owner_token_tx: publishers.host_owner_token_tx,
+        active_pending_consent_tx: publishers.active_pending_consent_tx,
     }
 }
 

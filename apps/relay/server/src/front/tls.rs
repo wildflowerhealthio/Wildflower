@@ -20,8 +20,9 @@ use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
+use rathole_settings_rust::proxy_header::proxy_header;
+
 use super::hello::{read_client_hello, ClientHello};
-use super::proxy_header::proxy_header;
 use super::Front;
 use crate::route::{Destination, Route};
 use crate::tunnels::TunnelDown;

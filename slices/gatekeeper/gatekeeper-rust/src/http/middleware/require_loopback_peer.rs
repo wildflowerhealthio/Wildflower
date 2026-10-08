@@ -26,7 +26,6 @@ pub fn require_loopback_peer_middleware() -> RequireLoopbackPeerMiddleware {
                     tracing::warn!(peer = %ip, "rejected non-loopback peer at the loopback gate");
                     (StatusCode::FORBIDDEN, "non-loopback peer rejected").into_response()
                 }
-                // TODO(tunnel): tunnel-trusted peers will bypass this gate.
                 None => {
                     tracing::warn!(
                         "rejected request with no peer info at the loopback gate (fail closed)"

@@ -1,5 +1,5 @@
-//! The request log: what the trusted front relayed to the server, kept on the
-//! device. The [`RequestLogStore`] port, the row caps that bound it,
+//! The request log: the forwarded requests the server served (through the
+//! tunnel, or relayed by a front run on its machine), kept on the device. The [`RequestLogStore`] port, the row caps that bound it,
 //! [`record_requests`], the action the request-log writer runs on each batch,
 //! and the shapes the log is read back in: a page of [`LoggedRequest`]s and one
 //! [`CallerSummary`] per caller. Its time-based retention is

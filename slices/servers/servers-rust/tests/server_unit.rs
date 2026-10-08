@@ -118,16 +118,16 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
-    let (active_pending_consent_sender, _pending_consents) =
+    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
+    let (active_pending_consent_tx, _active_pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
         on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-        host_owner_token_sender,
-        active_pending_consent_sender,
+        host_owner_token_tx,
+        active_pending_consent_tx,
     };
-    let (forwarded_request_sender, _forwarded_requests) = mpsc::channel(16);
+    let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(16);
     let config = server_config(server_dir.path().to_owned(), loopback_base_url.clone());
 
     let unit_runner =
@@ -136,7 +136,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         Ok(ServerUnit::new(
             config.clone(),
             host_ports.clone(),
-            forwarded_request_sender.clone(),
+            forwarded_request_tx.clone(),
         ))
     });
 

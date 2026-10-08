@@ -489,9 +489,9 @@ mod tests {
     /// runs, and no run builds a config.
     fn servers_on(runner: &TauriUnitRunner<ServerDetail>) -> (tempfile::TempDir, ServersState) {
         let data_root = tempfile::tempdir().unwrap();
-        let (host_owner_token_sender, _) = watch::channel(None);
-        let (active_pending_consent_sender, _) = watch::channel(None);
-        let (forwarded_request_sender, _) = mpsc::channel(1);
+        let (host_owner_token_tx, _) = watch::channel(None);
+        let (active_pending_consent_tx, _) = watch::channel(None);
+        let (forwarded_request_tx, _) = mpsc::channel(1);
         let server_units = ServerUnits::new(
             runner.clone(),
             Arc::new(|record: &ServerRecord| {
@@ -500,10 +500,10 @@ mod tests {
             HostPorts {
                 loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
                 on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-                host_owner_token_sender,
-                active_pending_consent_sender,
+                host_owner_token_tx,
+                active_pending_consent_tx,
             },
-            forwarded_request_sender,
+            forwarded_request_tx,
         );
         let servers = ServersState::new(
             Arc::new(JsonServerRegistry::in_data_root(data_root.path())),

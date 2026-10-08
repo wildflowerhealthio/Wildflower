@@ -7,8 +7,14 @@
 //! forwarded request, and the request log records
 //! each forwarded request and serves it back on `/requests` to a token holding
 //! the request log's read scope — a token naming the server's origin as `iss`
-//! and `aud`, accepted over loopback and through the tunnel, while one another
-//! server minted is refused.
+//! and `aud`, accepted from a direct loopback caller, from a front run on this
+//! machine and through the tunnel listener, while one another server minted is
+//! refused.
+//!
+//! The tunnel listener serves the same API as a remote origin: its requests
+//! are held to the server's public host, never get the owner token, are served
+//! as the public origin whatever `Forwarded` they carry, and name the visitor
+//! from a PROXY protocol v2 header.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,20 +27,25 @@ use gatekeeper_rust::{
 use serde_json::Value;
 use shared_structures_rust::health_check::{ComponentType, HealthReport, HealthStatus};
 use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tunnel_rust::TunnelStream;
 use url::Url;
 use wildflower_server_rust::{
     set_up, HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig,
 };
 
-/// The `Forwarded` header the trusted front stamps on a request it relayed
-/// through the tunnel, from client `192.0.2.1` to `demo.example.com`.
+/// The `Forwarded` header a front run on this machine stamps on a request it
+/// relayed to the loopback listener, from client `192.0.2.1` to
+/// `demo.example.com`.
 const FORWARDED: &str = "for=192.0.2.1;host=demo.example.com;proto=https";
 
-/// The server's domain, which the tunnel would serve it on.
+/// The server's domain: the host every tunnel request must name. No relay
+/// serves it, so the reachability monitor never reaches the server.
 const PUBLIC_HOST: &str = "test.relay.invalid";
 
 /// The server's origin, from [`PUBLIC_HOST`]: the `iss` and `aud` of every
@@ -143,20 +154,20 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
 
     // Host-owned channels, shared by both runs as the host's bridge shares them.
     // The receivers stand in for the bridge's.
-    let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
-    let (active_pending_consent_sender, _pending_consents) =
+    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
+    let (active_pending_consent_tx, _active_pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
         on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-        host_owner_token_sender,
-        active_pending_consent_sender,
+        host_owner_token_tx,
+        active_pending_consent_tx,
     };
-    let (server_health_sender, mut server_health) = watch::channel(None);
-    let (forwarded_request_sender, mut forwarded_requests) = mpsc::channel(8);
+    let (server_health_tx, mut server_health_rx) = watch::channel(None);
+    let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
-        server_health_sender,
-        forwarded_request_sender,
+        server_health_tx,
+        forwarded_request_tx,
     };
     let config = server_config(server_dir.clone(), loopback_base_url.clone());
 
@@ -224,7 +235,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         forwarded_metadata_status(&loopback_base_url).await,
         reqwest::StatusCode::OK
     );
-    let forwarded_request = tokio::time::timeout(LIFECYCLE_TIMEOUT, forwarded_requests.recv())
+    let forwarded_request = tokio::time::timeout(LIFECYCLE_TIMEOUT, forwarded_request_rx.recv())
         .await
         .expect("the forwarded request is reported in time")
         .expect("the test holds the report sender");
@@ -238,17 +249,19 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         ("/fhir-r4", 200, Some("192.0.2.1"), None)
     );
     assert!(
-        forwarded_requests.try_recv().is_err(),
+        forwarded_request_rx.try_recv().is_err(),
         "only the forwarded request is reported"
     );
     // The host sees the server's health through its public origin, which no
     // relay serves here: unreachable, with why.
-    let published =
-        tokio::time::timeout(LIFECYCLE_TIMEOUT, server_health.wait_for(Option::is_some))
-            .await
-            .expect("the server health is published in time")
-            .expect("the test holds the server-health sender")
-            .clone();
+    let published = tokio::time::timeout(
+        LIFECYCLE_TIMEOUT,
+        server_health_rx.wait_for(Option::is_some),
+    )
+    .await
+    .expect("the server health is published in time")
+    .expect("the test holds the server-health sender")
+    .clone();
     assert!(
         matches!(&published, Some(ServerHealth::Unreachable { error }) if !error.is_empty()),
         "{published:?}"
@@ -322,7 +335,8 @@ async fn loopback_request_log_status(
         .status()
 }
 
-/// `GET /requests` relayed through the tunnel, with `bearer_token` when given.
+/// `GET /requests` relayed to the loopback listener by a front run on this
+/// machine, with `bearer_token` when given.
 async fn forwarded_request_log_read(
     loopback_base_url: &Url,
     bearer_token: Option<&str>,
@@ -378,20 +392,20 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
     // The receivers stand in for the host bridge's, held for the whole run.
-    let (host_owner_token_sender, _owner_tokens) = watch::channel(None);
-    let (active_pending_consent_sender, _pending_consents) =
+    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
+    let (active_pending_consent_tx, _active_pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
         on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-        host_owner_token_sender,
-        active_pending_consent_sender,
+        host_owner_token_tx,
+        active_pending_consent_tx,
     };
-    let (server_health_sender, _server_health) = watch::channel(None);
-    let (forwarded_request_sender, _forwarded_requests) = mpsc::channel(8);
+    let (server_health_tx, _server_health_rx) = watch::channel(None);
+    let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
-        server_health_sender,
-        forwarded_request_sender,
+        server_health_tx,
+        forwarded_request_tx,
     };
     let shutdown = CancellationToken::new();
     let serving = tokio::time::timeout(
@@ -448,7 +462,8 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
         reqwest::StatusCode::UNAUTHORIZED
     );
     // The token names the server's origin, not the origin a request was served
-    // on, so it is accepted over loopback as well as through the tunnel.
+    // on, so it is accepted from a direct loopback caller as well as through
+    // the front.
     assert_eq!(
         loopback_request_log_status(&loopback_base_url, &request_log_reader).await,
         reqwest::StatusCode::OK
@@ -465,6 +480,275 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
         loopback_request_log_status(&loopback_base_url, &other_servers_reader).await,
         reqwest::StatusCode::UNAUTHORIZED
     );
+
+    shutdown.cancel();
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, serving)
+        .await
+        .expect("serve returns in time once cancelled")
+        .expect("the serve task doesn't panic")
+        .expect("a cancelled serve returns Ok");
+}
+
+/// Hand the tunnel listener a visitor's connection, as the tunnel does, and
+/// send `request` (raw HTTP/1.1, asking the server to close) on it, after
+/// `proxy_header` if given. Returns the response's status code and body;
+/// `None` when the server closes the connection without answering.
+async fn tunnel_exchange(
+    tunnel_stream_tx: &mpsc::Sender<TunnelStream>,
+    proxy_header: Option<&[u8]>,
+    request: &str,
+) -> Option<(u16, String)> {
+    let response = raw_tunnel_exchange(tunnel_stream_tx, proxy_header, request).await;
+    let status = response.split(' ').nth(1)?.parse().ok()?;
+    let (_, body) = response.split_once("\r\n\r\n")?;
+    Some((status, body.to_owned()))
+}
+
+/// [`tunnel_exchange`]'s whole response, unparsed: empty when the server
+/// closes the connection without answering.
+async fn raw_tunnel_exchange(
+    tunnel_stream_tx: &mpsc::Sender<TunnelStream>,
+    proxy_header: Option<&[u8]>,
+    request: &str,
+) -> String {
+    let (mut visitor, tunnel_stream) = tokio::io::duplex(64 * 1024);
+    tunnel_stream_tx
+        .send(Box::new(tunnel_stream))
+        .await
+        .expect("the tunnel listener takes streams");
+    if let Some(proxy_header) = proxy_header {
+        visitor.write_all(proxy_header).await.expect("write header");
+    }
+    // A server that already closed the connection fails the write; the read
+    // says so.
+    let _ = visitor.write_all(request.as_bytes()).await;
+    let mut response = Vec::new();
+    let _ = visitor.read_to_end(&mut response).await;
+    String::from_utf8(response).expect("utf-8 response")
+}
+
+/// A `GET path` addressed to `host` over a connection the server closes after
+/// answering, with `extra_headers` (each ending in CRLF).
+fn tunnel_get(path: &str, host: &str, extra_headers: &str) -> String {
+    format!("GET {path} HTTP/1.1\r\nHost: {host}\r\n{extra_headers}Connection: close\r\n\r\n")
+}
+
+/// The served host, visitor address and status of the request reported next.
+/// The report is sent before the response, so it is already queued once the
+/// response has been read.
+fn next_report(
+    forwarded_request_rx: &mut mpsc::Receiver<ForwardedRequest>,
+) -> (Option<String>, Option<String>, u16) {
+    let forwarded_request = forwarded_request_rx
+        .try_recv()
+        .expect("the request was reported");
+    (
+        forwarded_request.served_host,
+        forwarded_request.client_address,
+        forwarded_request.status,
+    )
+}
+
+/// A PROXY protocol v2 header for the visitor at `source`, as the relay
+/// writes it.
+fn proxy_header(source: &str) -> Vec<u8> {
+    rathole_settings_rust::proxy_header::proxy_header(
+        source.parse().expect("source address"),
+        "198.51.100.1:443".parse().expect("relay address"),
+    )
+    .expect("PROXY header")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
+    let server_dir = tempfile::tempdir().expect("temp server folder");
+    let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
+        .expect("loopback base URL");
+    // The receivers stand in for the host bridge's, held for the whole run.
+    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
+    let (active_pending_consent_tx, _active_pending_consent_rx) =
+        watch::channel::<Option<PendingConsentHead>>(None);
+    let host_ports = HostPorts {
+        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
+        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
+        host_owner_token_tx,
+        active_pending_consent_tx,
+    };
+    let (server_health_tx, _server_health_rx) = watch::channel(None);
+    let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
+    let observers = ServerObservers {
+        server_health_tx,
+        forwarded_request_tx,
+    };
+    let server = tokio::time::timeout(
+        LIFECYCLE_TIMEOUT,
+        set_up(
+            server_config(server_dir.path().to_owned(), loopback_base_url.clone()),
+            host_ports,
+            observers,
+        ),
+    )
+    .await
+    .expect("the server sets up in time")
+    .expect("the server sets up and binds");
+    let tunnel_stream_tx = server.tunnel_stream_tx();
+    let shutdown = CancellationToken::new();
+    let serving = tokio::spawn(server.serve(shutdown.clone()));
+
+    // The owner-gated `/apps` answers a loopback caller, who gets the owner
+    // token, and nothing is reported.
+    let loopback_apps = reqwest::get(loopback_base_url.join("apps").expect("apps URL"))
+        .await
+        .expect("GET /apps reaches the loopback listener");
+    assert_eq!(loopback_apps.status(), reqwest::StatusCode::OK);
+    assert!(forwarded_request_rx.try_recv().is_err());
+
+    // The same request through the tunnel, from a loopback-looking connection
+    // with no `Forwarded`, gets no owner token. It is reported as served at
+    // the public host, with no visitor address (no PROXY header).
+    let (status, _) = tunnel_exchange(
+        &tunnel_stream_tx,
+        None,
+        &tunnel_get("/apps", PUBLIC_HOST, ""),
+    )
+    .await
+    .expect("the tunnel listener answers");
+    assert_eq!(status, 401);
+    assert_eq!(
+        next_report(&mut forwarded_request_rx),
+        (Some(PUBLIC_HOST.to_owned()), None, 401),
+        "a tunnel request is forwarded, for the public host"
+    );
+
+    // Discovery renders the public origin, even when the visitor sends a
+    // `Forwarded` of its own naming another host and scheme.
+    let (status, smart_configuration) = tunnel_exchange(
+        &tunnel_stream_tx,
+        None,
+        &tunnel_get(
+            "/fhir-r4/.well-known/smart-configuration",
+            PUBLIC_HOST,
+            "Forwarded: for=203.0.113.9;host=evil.example.com;proto=http\r\n",
+        ),
+    )
+    .await
+    .expect("the tunnel listener answers");
+    assert_eq!(status, 200);
+    let smart_configuration: Value =
+        serde_json::from_str(&smart_configuration).expect("a JSON discovery document");
+    assert_eq!(
+        smart_configuration["token_endpoint"],
+        format!("https://{PUBLIC_HOST}/oauth/token")
+    );
+    assert_eq!(
+        next_report(&mut forwarded_request_rx),
+        (Some(PUBLIC_HOST.to_owned()), None, 200),
+        "the visitor's `Forwarded` is replaced"
+    );
+
+    // A host other than the public host is misdirected, and not reported.
+    let (status, _) = tunnel_exchange(
+        &tunnel_stream_tx,
+        None,
+        &tunnel_get("/fhir-r4/metadata", "other.example.com", ""),
+    )
+    .await
+    .expect("the tunnel listener answers");
+    assert_eq!(status, 421);
+    assert!(forwarded_request_rx.try_recv().is_err());
+    // A remote app can read the `421`: it carries the CORS headers.
+    let response = raw_tunnel_exchange(
+        &tunnel_stream_tx,
+        None,
+        &tunnel_get(
+            "/fhir-r4/metadata",
+            "other.example.com",
+            "Origin: https://app.example.com\r\n",
+        ),
+    )
+    .await;
+    assert!(response.starts_with("HTTP/1.1 421 "), "{response}");
+    assert!(
+        response.contains("\r\naccess-control-allow-origin: "),
+        "{response}"
+    );
+
+    // A token for this server is accepted through the tunnel listener too, and
+    // one another server minted is refused there as well.
+    let request_log_scopes = request_log_rust::grantable_request_log_scopes()
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    for (server_origin, expected_status) in [(SERVER_ORIGIN, 200), (OTHER_SERVER_ORIGIN, 401)] {
+        let request_log_reader =
+            client_token(server_dir.path(), server_origin, &request_log_scopes);
+        let (status, _) = tunnel_exchange(
+            &tunnel_stream_tx,
+            None,
+            &tunnel_get(
+                "/requests",
+                PUBLIC_HOST,
+                &format!("Authorization: Bearer {request_log_reader}\r\n"),
+            ),
+        )
+        .await
+        .expect("the tunnel listener answers");
+        assert_eq!(
+            status, expected_status,
+            "a token minted for {server_origin}"
+        );
+        assert_eq!(
+            next_report(&mut forwarded_request_rx),
+            (Some(PUBLIC_HOST.to_owned()), None, expected_status)
+        );
+    }
+
+    // A PROXY header names the visitor to the request log, and is stripped
+    // before HTTP.
+    for (source, client_address) in [
+        ("192.0.2.1:4711", "192.0.2.1"),
+        ("[2001:db8::1]:4711", "[2001:db8::1]"),
+    ] {
+        let (status, _) = tunnel_exchange(
+            &tunnel_stream_tx,
+            Some(&proxy_header(source)),
+            &tunnel_get("/fhir-r4/metadata", PUBLIC_HOST, ""),
+        )
+        .await
+        .expect("the tunnel listener answers after a PROXY header");
+        assert_eq!(status, 200);
+        assert_eq!(
+            next_report(&mut forwarded_request_rx),
+            (
+                Some(PUBLIC_HOST.to_owned()),
+                Some(client_address.to_owned()),
+                200
+            )
+        );
+    }
+
+    // A malformed PROXY header closes the connection unanswered, and the
+    // listener keeps serving.
+    let mut malformed = proxy_header("192.0.2.1:4711");
+    malformed[ppp::v2::PROTOCOL_PREFIX.len()] = 0x11;
+    assert_eq!(
+        tunnel_exchange(
+            &tunnel_stream_tx,
+            Some(&malformed),
+            &tunnel_get("/fhir-r4/metadata", PUBLIC_HOST, "")
+        )
+        .await,
+        None
+    );
+    assert!(forwarded_request_rx.try_recv().is_err());
+    let (status, _) = tunnel_exchange(
+        &tunnel_stream_tx,
+        None,
+        &tunnel_get("/fhir-r4/metadata", PUBLIC_HOST, ""),
+    )
+    .await
+    .expect("the tunnel listener still answers");
+    assert_eq!(status, 200);
 
     shutdown.cancel();
     tokio::time::timeout(LIFECYCLE_TIMEOUT, serving)
