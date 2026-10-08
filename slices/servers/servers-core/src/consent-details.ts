@@ -22,7 +22,7 @@ type Registration = typeof RegistrationSchema.Type
 
 /**
  * A waiting consent as `server_consent_get` answers it. A device pairing may
- * be granted any of `allowedScopes`, the scopes its client is registered for;
+ * be granted any of `registeredScopes`, the scopes its client is registered for;
  * an app's `/authorize` is granted at most its `requestedScopes`, and gets
  * its answer at `redirectUri`. `patient` is the patient a standing grant
  * already names for the app.
@@ -35,7 +35,7 @@ const ConsentDetailsSchema = Schema.Union(
     clientName: Schema.String,
     deviceName: Schema.optionalWith(Schema.String, { as: 'Option', exact: true }),
     requestedScopes: Schema.Array(Schema.String),
-    allowedScopes: Schema.Array(Schema.String),
+    registeredScopes: Schema.Array(Schema.String),
   }),
   Schema.Struct({
     kind: Schema.Literal('oauth'),

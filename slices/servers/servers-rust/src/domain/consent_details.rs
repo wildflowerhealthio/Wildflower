@@ -23,7 +23,7 @@ pub enum ConsentDetails {
         device_name: Option<String>,
         requested_scopes: Vec<String>,
         /// The scopes the client is registered for.
-        allowed_scopes: Vec<String>,
+        registered_scopes: Vec<String>,
     },
     /// An app's `/authorize`, waiting with the browser that opened it.
     #[serde(rename = "oauth", rename_all = "camelCase")]
@@ -58,7 +58,7 @@ impl ConsentDetails {
             client_name,
             device_name: request.device_name,
             requested_scopes: request.requested_scopes,
-            allowed_scopes: registered_client_scopes,
+            registered_scopes: registered_client_scopes,
         }
     }
 

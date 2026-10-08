@@ -118,7 +118,7 @@ const scopeRequestFor = (details: ConsentDetails.Type): ScopeRequest.ScopeReques
   details.kind === 'device'
     ? ScopeRequest.expandable({
         requested: details.requestedScopes,
-        available: details.allowedScopes,
+        available: details.registeredScopes,
       })
     : ScopeRequest.fromRequestedScopes({ optional: details.requestedScopes })
 
