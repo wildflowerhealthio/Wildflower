@@ -1,6 +1,6 @@
-//! `request-log-rust` — the host-side request-log slice: each request the
-//! trusted front relayed to the server, as the server's forwarded-request layer
-//! reports it on [`RequestLog::sender`], kept in the shared database and served
+//! `request-log-rust` — the host-side request-log slice: each forwarded request
+//! the server served (through the tunnel, or relayed by a front run on its
+//! machine), as the server's forwarded-request layer reports it on [`RequestLog::sender`], kept in the shared database and served
 //! back on the `/requests` HTTP surface.
 //!
 //! A writer task inserts the reports in batches off the request path, trimming
@@ -62,7 +62,7 @@ const REQUEST_LOG_RETENTION_SWEEP_INTERVAL: std::time::Duration =
     std::time::Duration::from_secs(60 * 60);
 
 /// What [`setup_request_log`] hands back: the `/requests` HTTP router to mount,
-/// and where the server's forwarded-request layer reports each relayed request.
+/// and where the server's forwarded-request layer reports each forwarded request.
 pub struct RequestLog {
     pub router: Router,
     /// A full channel drops the report rather than delay a response; the writer

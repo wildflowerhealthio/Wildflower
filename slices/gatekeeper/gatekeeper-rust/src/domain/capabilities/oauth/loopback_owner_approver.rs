@@ -46,8 +46,8 @@ use crate::ports::{
 pub(crate) const HOSTED_OWNER_UI_CLIENT_ID: &str = "wildflower-react";
 
 /// Whether a parked `/authorize` request is put to the host's loopback dialog:
-/// only a **direct-loopback** request (no `Forwarded` header — a tunnel-relayed
-/// caller is remote, whoever sits at the machine) presenting the hosted owner
+/// only a **direct-loopback** request (no `Forwarded` header — a caller
+/// through the tunnel or a front is remote, whoever sits at the machine) presenting the hosted owner
 /// UI's `client_id`. Every other request is decided in the Owner UI alone.
 ///
 /// The `client_id` is only a claim — any local process can present it. What
@@ -365,7 +365,7 @@ mod tests {
 
     /// The trigger: only the hosted owner UI's `client_id`, only over direct
     /// loopback. Flipping either guard alone withholds the dialog — most
-    /// critically, a tunnel-relayed request never reaches it.
+    /// critically, a request through the tunnel or a front never reaches it.
     #[test]
     fn only_a_direct_loopback_hosted_ui_login_asks_the_dialog() {
         assert!(asks_loopback_dialog(true, "wildflower-react"));

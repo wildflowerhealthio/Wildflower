@@ -144,7 +144,7 @@
               "string",
               "null"
             ],
-            "description": "The visitor's address the trusted front recorded, or `null` when it\nrecorded none."
+            "description": "The visitor's address the request's `Forwarded` header named, or `null`\nwhen it named none."
           },
           "firstSeen": {
             "type": "string",

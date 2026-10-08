@@ -50,8 +50,8 @@ pub enum WildflowerResource {
     /// surface (a remote's config may carry origin credentials, so reads need
     /// `.r`). The scope-layer name for what the collector code calls a `Remote`.
     Accounts,
-    /// The request log (`/requests`): each request the trusted front relayed to
-    /// the server. Read it (`.r`).
+    /// The request log (`/requests`): each forwarded request the server served,
+    /// through the tunnel or relayed by a front. Read it (`.r`).
     RequestLog,
 }
 

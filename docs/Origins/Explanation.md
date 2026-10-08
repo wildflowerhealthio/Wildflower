@@ -23,8 +23,8 @@ from the one router every slice's routes are composed into:
   connection's PROXY protocol v2 header, when it opens with one, for the
   visitor's address. Its router has no owner trust and no loopback-peer gate,
   so no tunnel connection is ever a local caller, whatever its peer or
-  headers. Its outermost layer, the tunnel front, holds each request to the
-  server's public host (see
+  headers. Its tunnel front, outside every layer but CORS, holds each request
+  to the server's public host (see
   [The tunnel front writes `Forwarded`](#the-tunnel-front-writes-forwarded)).
 
 ## Two origins: loopback and served
@@ -75,8 +75,8 @@ parsing contract, the exact nginx directive, and the attack cases live on the
 
 Nothing on the path from a tunnel visitor vouches for the request's headers:
 the relay passes bytes through and the visitor writes the rest. So the tunnel
-front, the outermost layer of the tunnel listener's router, writes the header
-itself:
+front, outside every layer of the tunnel listener's router but CORS, writes
+the header itself:
 
 - It drops any `Forwarded` the visitor sent.
 - It compares every host the request names (each `Host` header, and the

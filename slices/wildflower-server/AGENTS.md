@@ -24,12 +24,13 @@ port and on the tunnel. Rust-only, no `-core`.
     - The **tunnel listener** serves the tunnel. The tunnel has no route on
       the server and binds no port: its rathole client hands each visitor's
       stream over in process, on a channel `set_up` creates. Each stream is
-      prepared on a task of its own (`prepare_tunnel_connection`): its PROXY
-      protocol v2 header, when it opens with one, is read under a 5 s timeout
-      for the visitor's address, and a malformed or late header closes the
-      connection. The tunnel router adds CORS, the forwarded-request report and,
-      outermost, the tunnel front, and never the owner trust or the
-      loopback-peer gate. The front drops any inbound `Forwarded`, answers
+      prepared on a task of its own (`prepare_tunnel_connection`), at most 64
+      at once, the rest waiting on the channel: its PROXY protocol v2 header,
+      when it opens with the whole signature, is read under a 5 s timeout for
+      the visitor's address, and a malformed or late header closes the
+      connection. The tunnel router adds the forwarded-request report, the
+      tunnel front and, outermost so even a `421` is readable cross-origin,
+      CORS, and never the owner trust or the loopback-peer gate. The front drops any inbound `Forwarded`, answers
       `421` (unreported) unless every host the request names (each `Host`, and
       the request target's authority) is the server's public host, and writes
       `Forwarded: for=<visitor>;host="<public host>";proto=https` (no `for`
