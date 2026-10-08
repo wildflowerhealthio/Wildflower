@@ -67,21 +67,21 @@ changing how servers run or what the host notifies about them.
   keyed by the domain, and each server runs from its own folder,
   `<data root>/servers/<domain>/` (`ServerRecord::server_dir`), which holds
   its databases and, in `certificates/`, its certificates and their keys.
-- **New servers get staging certificates.**
-  `ServerRecord::DEFAULT_STAGING_CERTIFICATES` is `true`: a new server's
-  certificates come from Let's Encrypt's staging CA, because all of a relay's
-  servers share its registered domain and its limit of 50 certificates in 7
-  days until the limit increase (#899). Setting it to `false` is the switch to
-  production. A record's `staging_certificates` picks the CA its runs order
-  from.
+- **New servers get staging certificates.** A record's
+  `certificate_authority`, a `CertificateAuthority` (`LetsEncryptStaging` or
+  `LetsEncrypt`), is the ACME CA its runs order from.
+  `ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY` is `LetsEncryptStaging`,
+  because all of a relay's servers share its registered domain and its limit
+  of 50 certificates in 7 days until the limit increase (#899). Setting it to
+  `LetsEncrypt` is the switch to production.
 - **One ACME account per install.** Every server orders its certificates
   with the account whose key is in `<data root>/acme-account/`, one key per
   CA, created by the first order.
 - **The record is the certificate's one source.**
   `ServerRecord::device_certificate_config` builds a run's
-  `DeviceCertificateConfig`: Let's Encrypt's staging or production directory
-  from `staging_certificates`, the server's `certificates/` folder and the
-  install's `acme-account/` folder. The host passes it through to
+  `DeviceCertificateConfig`: the directory of its `certificate_authority`
+  (`CertificateAuthority::directory_url`), the server's `certificates/`
+  folder and the install's `acme-account/` folder. The host passes it through to
   `wildflower-server-rust` unchanged.
 - **The tunnel name is one DNS label.** `ServerRecord::tunnel_name` is a
   `TunnelName` from `rathole-settings-rust`, the same check the relay applies
@@ -185,11 +185,11 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   server's domain and `server_set_credentials` with nothing; a failure the
   command reaches is the `EnrolmentError` as `{"kind", "message"}`, and their
   logs name the domain, never a parameter. `servers_list` lists a server's
-  domain, relay, tunnel name, launcher, certificate source, run policy and
+  domain, relay, tunnel name, launcher, certificate authority, run policy and
   status, never its token or the relay's dial settings.
 - **The change commands answer with `{kind, message}` too.**
   `server_set_run_policy` (`{domain, choice}`) answers with the run policy
-  stored, `server_update` (`{domain, launcherUrl, stagingCertificates}`) and
+  stored, `server_update` (`{domain, launcherUrl, certificateAuthority}`) and
   `server_remove` (`{domain}`) with nothing; a failure is the
   `ServerChangeError`. `servers_list` answers an unreadable `servers.json`
   with its `RegistryError`, kind `registry`, which the base shows.
@@ -285,11 +285,16 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   absolute `http` or `https` URL with a host and no credentials, or refuses it
   as `ServerChangeError::InvalidLauncherUrl`.
 - **`servers.json` is versioned.** The file is
-  `{"version": 1, "servers": [...]}`, its server fields `serde(remote)`
+  `{"version": 2, "servers": [...]}`, its server fields `serde(remote)`
   mirrors of `ServerRecord` and `PublicRatholeSettings` renamed to camelCase,
-  which the compiler keeps in step with those types. A version this build doesn't read is
+  which the compiler keeps in step with those types. A change to the stored
+  shape bumps the version, with a migration from the previous one: a version
+  1 file, whose servers have a boolean `stagingCertificates`, is read with
+  each server's `certificateAuthority` (`true` is `letsEncryptStaging`,
+  `false` `letsEncrypt`) and written as version 2 by the next change. Any
+  other version this build doesn't read is
   `RegistryError::UnsupportedVersion`, and the file is neither read nor
-  overwritten. A change to the stored shape bumps the version.
+  overwritten.
 - **Writes are atomic.** Every change writes the whole document to
   `.servers.json.tmp` beside the file, fsyncs it, renames it over
   `servers.json` and fsyncs the directory, so a crash leaves either the old

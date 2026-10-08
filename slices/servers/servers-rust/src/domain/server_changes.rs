@@ -12,7 +12,9 @@ use chrono::{DateTime, Utc};
 use unit_runner::RunPolicy;
 use url::Url;
 
-use crate::domain::{RegistryError, RunPolicyChoice, ServerChangeError, ServerRecord};
+use crate::domain::{
+    CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError, ServerRecord,
+};
 use crate::ports::ServerRegistry;
 
 /// Set the run policy of the server with `domain` to `choice`, applied at
@@ -53,10 +55,9 @@ pub struct ServerUpdate {
     pub run_inputs_changed: bool,
 }
 
-/// Set the launcher the server with `domain` opens apps from, and whether
-/// its certificates come from the ACME staging directory, and return what
-/// was written. Its other fields are kept as they are when the change is
-/// made.
+/// Set the launcher the server with `domain` opens apps from, and the ACME CA
+/// its certificates are ordered from, and return what was written. Its other
+/// fields are kept as they are when the change is made.
 ///
 /// # Errors
 ///
@@ -68,7 +69,7 @@ pub fn update_server(
     registry: &dyn ServerRegistry,
     domain: &str,
     launcher_url: &str,
-    staging_certificates: bool,
+    certificate_authority: CertificateAuthority,
 ) -> Result<ServerUpdate, ServerChangeError> {
     let launcher_url = parse_launcher_url(launcher_url)?;
     let mut update = None;
@@ -79,7 +80,7 @@ pub fn update_server(
             .ok_or_else(|| not_registered(domain))?;
         let before = server.clone();
         server.launcher_url = launcher_url;
-        server.staging_certificates = staging_certificates;
+        server.certificate_authority = certificate_authority;
         update = Some(ServerUpdate {
             run_inputs_changed: before.run_inputs_differ(server),
             record: server.clone(),
@@ -254,7 +255,7 @@ mod tests {
             registry.as_ref(),
             "ruth.relay.wildflowerhealth.io",
             "https://launcher.example.com/",
-            false,
+            CertificateAuthority::LetsEncrypt,
         )
         .unwrap();
 
@@ -329,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn update_sets_the_launcher_and_staging_and_keeps_the_rest() {
+    fn update_sets_the_launcher_and_certificate_authority_and_keeps_the_rest() {
         let ruth = with_policy(official_record("ruth"), RunPolicy::Always);
         let (_data_root, registry) = registry_holding(&[ruth.clone(), self_hosted_record("lab")]);
 
@@ -337,13 +338,13 @@ mod tests {
             registry.as_ref(),
             "ruth.relay.wildflowerhealth.io",
             "http://localhost:5200/app",
-            true,
+            CertificateAuthority::LetsEncryptStaging,
         )
         .unwrap();
 
         let updated = ServerRecord {
             launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
-            staging_certificates: true,
+            certificate_authority: CertificateAuthority::LetsEncryptStaging,
             ..ruth
         };
         assert_eq!(
@@ -362,28 +363,37 @@ mod tests {
     #[test]
     fn update_says_whether_a_field_a_run_reads_changed() {
         let (_data_root, registry) = registry_holding(&[official_record("ruth")]);
-        let update = |launcher_url, staging_certificates| {
+        let update = |launcher_url, certificate_authority| {
             update_server(
                 registry.as_ref(),
                 "ruth.relay.wildflowerhealth.io",
                 launcher_url,
-                staging_certificates,
+                certificate_authority,
             )
             .unwrap()
             .run_inputs_changed
         };
 
         assert!(
-            !update("http://localhost:5200/app", false),
+            !update(
+                "http://localhost:5200/app",
+                CertificateAuthority::LetsEncrypt
+            ),
             "only the base reads the launcher"
         );
         assert!(
-            !update("http://localhost:5200/app", false),
+            !update(
+                "http://localhost:5200/app",
+                CertificateAuthority::LetsEncrypt
+            ),
             "nothing changed"
         );
         assert!(
-            update("http://localhost:5200/app", true),
-            "the certificate source"
+            update(
+                "http://localhost:5200/app",
+                CertificateAuthority::LetsEncryptStaging
+            ),
+            "the certificate authority"
         );
     }
 
@@ -404,7 +414,7 @@ mod tests {
                         registry.as_ref(),
                         "ruth.relay.wildflowerhealth.io",
                         launcher_url,
-                        true,
+                        CertificateAuthority::LetsEncryptStaging,
                     ),
                     Err(ServerChangeError::InvalidLauncherUrl { .. })
                 ),
@@ -422,7 +432,7 @@ mod tests {
                 registry.as_ref(),
                 "ruth.relay.wildflowerhealth.io",
                 "https://wildflowerhealth.io/app",
-                false,
+                CertificateAuthority::LetsEncrypt,
             ),
             Err(ServerChangeError::Registry(
                 RegistryError::NotRegistered { .. }

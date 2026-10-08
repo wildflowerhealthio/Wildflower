@@ -230,7 +230,7 @@ mod tests {
                 "notRegistered",
             ),
             (
-                RegistryError::UnsupportedVersion { version: 2 }.into(),
+                RegistryError::UnsupportedVersion { version: 3 }.into(),
                 "registry",
             ),
             (

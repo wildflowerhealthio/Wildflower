@@ -2,9 +2,9 @@
 //!
 //! A server is a domain, a folder and an enrolment at a relay. Its
 //! [`ServerRecord`] holds the relay, the tunnel name and token there, what the
-//! relay's `GET /rathole` returned, the launcher apps open from, whether its
-//! certificates come from the ACME staging directory, and when the user wants
-//! it run, its [`RunPolicy`]. Its [`domain`](ServerRecord::domain),
+//! relay's `GET /rathole` returned, the launcher apps open from, the ACME CA
+//! its certificates are ordered from, its [`CertificateAuthority`], and when
+//! the user wants it run, its [`RunPolicy`]. Its [`domain`](ServerRecord::domain),
 //! `<tunnel name>.<relay domain>`, is its only name: the registry key, the
 //! issuer, and its data folder `<data root>/servers/<domain>/`
 //! ([`server_dir`](ServerRecord::server_dir)), which holds its databases and
@@ -29,7 +29,7 @@
 //! and replaces a rathole server's without a request.
 //!
 //! A registered server's run policy is set by [`set_run_policy`], its
-//! launcher and certificate source by [`update_server`], and it is deleted,
+//! launcher and certificate authority by [`update_server`], and it is deleted,
 //! folder and all, by [`remove_server`]. Each changes only the server it
 //! names. The policy is `UnitRunner`'s [`RunPolicy`], stored in its wire
 //! shape; the app stores it here and pushes it to `UnitRunner`, which never
@@ -77,8 +77,8 @@ pub use domain::notifications::stop_notifications::{
 };
 pub use domain::{
     add_server, remove_server, set_run_policy, set_server_credentials, update_server,
-    EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayIdentity, RelayKind,
-    RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
+    CertificateAuthority, EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayIdentity,
+    RelayKind, RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
     ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_unit::ServerUnit;

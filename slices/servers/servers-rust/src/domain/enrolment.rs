@@ -125,8 +125,8 @@ impl RelayIdentity {
 }
 
 /// Enrol `tunnel_name` at `relay` with `token` and register the server, with
-/// the default launcher and certificate source
-/// ([`ServerRecord::DEFAULT_STAGING_CERTIFICATES`]). Its
+/// the default launcher and certificate authority
+/// ([`ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY`]). Its
 /// [`run_policy`](ServerRecord::run_policy) is [`RunPolicy::WhileOpen`] when
 /// no registered server's policy wants it running at `now`, so the first
 /// server added runs, and [`RunPolicy::Off`] otherwise, so a later one doesn't
@@ -205,7 +205,7 @@ pub async fn add_server<S: RelayClient>(
             token,
             public_settings,
             launcher_url: ServerRecord::default_launcher_url(),
-            staging_certificates: ServerRecord::DEFAULT_STAGING_CERTIFICATES,
+            certificate_authority: ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY,
             // The user is enrolling, so the app is present: a `WhileOpen`
             // policy wants its server running.
             run_policy: if registered
@@ -453,6 +453,7 @@ mod tests {
 
     use super::*;
     use crate::domain::fixtures::{official_record, TOKEN};
+    use crate::CertificateAuthority;
     use crate::JsonServerRegistry;
 
     const RELAY_DOMAIN: &str = "relay.example.com";
@@ -621,7 +622,7 @@ mod tests {
                 token: TunnelToken::new(TOKEN),
                 public_settings: served_settings(),
                 launcher_url: ServerRecord::default_launcher_url(),
-                staging_certificates: ServerRecord::DEFAULT_STAGING_CERTIFICATES,
+                certificate_authority: ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY,
                 run_policy: RunPolicy::WhileOpen,
             }
         );
@@ -981,7 +982,7 @@ mod tests {
                 token: TunnelToken::new("any-token"),
                 public_settings: served_settings(),
                 launcher_url: ServerRecord::default_launcher_url(),
-                staging_certificates: ServerRecord::DEFAULT_STAGING_CERTIFICATES,
+                certificate_authority: ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY,
                 run_policy: RunPolicy::WhileOpen,
             }
         );
@@ -1092,7 +1093,7 @@ mod tests {
         let mut registered = official_record("ruth");
         registered.token = TunnelToken::new("the-old-token");
         registered.public_settings = served_settings();
-        registered.staging_certificates = true;
+        registered.certificate_authority = CertificateAuthority::LetsEncryptStaging;
         registered.launcher_url = Url::parse("http://localhost:5200/").unwrap();
         registry.insert(Box::new(|_| registered.clone())).unwrap();
         let relay_client = FakeRelayClient::serving(served_settings());

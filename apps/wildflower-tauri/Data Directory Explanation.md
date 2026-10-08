@@ -39,7 +39,7 @@ configuration only, never whether a server is up:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "servers": [
     {
       "relay": { "kind": "wildflowerOfficial" },
@@ -53,7 +53,7 @@ configuration only, never whether a server is up:
         "domain": "relay.wildflowerhealth.io"
       },
       "launcherUrl": "https://wildflowerhealth.io/app",
-      "stagingCertificates": false,
+      "certificateAuthority": "letsEncrypt",
       "runPolicy": { "kind": "whileOpen" }
     }
   ]
@@ -67,6 +67,9 @@ shape, which the host pushes to `TauriUnitRunner` unchanged:
 gets `whileOpen` when no other server's policy wants it running, and `off`
 otherwise. An `until` whose `at` has passed stays in the file and no longer
 wants its server running.
+
+`certificateAuthority` is the ACME CA the server's certificates are ordered
+from: `"letsEncryptStaging"` or `"letsEncrypt"`.
 
 Where the data root lands is a per-platform decision, and on iOS it is a
 deliberate one.

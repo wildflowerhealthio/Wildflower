@@ -429,8 +429,8 @@ mod tests {
         assert_eq!(record.public_settings, served_settings());
         assert_eq!(record.launcher_url, ServerRecord::default_launcher_url());
         assert_eq!(
-            record.staging_certificates,
-            ServerRecord::DEFAULT_STAGING_CERTIFICATES
+            record.certificate_authority,
+            ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY
         );
         assert_eq!(registry.read_all().unwrap(), vec![record]);
         assert!(matches!(

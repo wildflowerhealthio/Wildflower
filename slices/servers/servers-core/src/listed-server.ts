@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+import * as CertificateAuthority from './certificate-authority.ts'
 import * as RunPolicy from './run-policy.ts'
 import * as ServerStatus from './server-status.ts'
 
@@ -15,9 +16,9 @@ type Relay = typeof RelaySchema.Type
 
 /**
  * One registered server as `servers_list` answers it: its domain, relay and
- * tunnel name, the launcher it opens apps from, whether its certificates come
- * from the ACME staging directory, its run policy, and its status on the
- * host's unit runner.
+ * tunnel name, the launcher it opens apps from, the ACME CA its certificates
+ * are ordered from, its run policy, and its status on the host's unit
+ * runner.
  *
  * @remarks
  * The status is one the `server-status` event carries for the same domain.
@@ -27,7 +28,7 @@ const ListedServerSchema = Schema.Struct({
   relay: RelaySchema,
   tunnelName: Schema.String,
   launcherUrl: Schema.String,
-  stagingCertificates: Schema.Boolean,
+  certificateAuthority: CertificateAuthority.Schema,
   runPolicy: RunPolicy.Schema,
   status: ServerStatus.Schema,
 })

@@ -386,7 +386,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
-    use servers_rust::{RelayKind, RunPolicy, ServerRecord, TunnelToken};
+    use servers_rust::{CertificateAuthority, RelayKind, RunPolicy, ServerRecord, TunnelToken};
 
     /// A server on the official relay.
     fn server() -> ServerRecord {
@@ -402,7 +402,7 @@ mod tests {
                 domain: "relay.wildflowerhealth.io".to_owned(),
             },
             launcher_url: ServerRecord::default_launcher_url(),
-            staging_certificates: false,
+            certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::WhileOpen,
         }
     }

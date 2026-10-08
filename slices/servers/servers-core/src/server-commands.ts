@@ -1,6 +1,7 @@
 import type { Effect } from 'effect'
 import { Schema } from 'effect'
 
+import type * as CertificateAuthority from './certificate-authority.ts'
 import { type HostCommandError, invokeHostCommand, type TauriInvoke } from './host-commands.ts'
 import * as ListedServer from './listed-server.ts'
 import type * as RunPolicyChoice from './run-policy-choice.ts'
@@ -32,19 +33,19 @@ const setServerRunPolicy = ({
   invokeHostCommand('server_set_run_policy', RunPolicy.Schema, { domain, choice })
 
 /**
- * Set the launcher the server `domain` opens apps from, and whether its
- * certificates come from the ACME staging directory.
+ * Set the launcher the server `domain` opens apps from, and the ACME CA its
+ * certificates are ordered from.
  */
 const updateServer = ({
   domain,
   launcherUrl,
-  stagingCertificates,
+  certificateAuthority,
 }: {
   readonly domain: string
   readonly launcherUrl: string
-  readonly stagingCertificates: boolean
+  readonly certificateAuthority: CertificateAuthority.Type
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
-  invokeHostCommand('server_update', Schema.Null, { domain, launcherUrl, stagingCertificates })
+  invokeHostCommand('server_update', Schema.Null, { domain, launcherUrl, certificateAuthority })
 
 /**
  * Stop the server `domain` and delete it, with its folder, databases and

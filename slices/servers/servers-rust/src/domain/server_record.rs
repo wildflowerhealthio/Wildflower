@@ -16,6 +16,8 @@ use unit_runner::RunPolicy;
 use url::Url;
 use wildflower_server_rust::DeviceCertificateConfig;
 
+use crate::domain::CertificateAuthority;
+
 /// The folder in the data root that holds one folder per server, named by its
 /// [`domain`](ServerRecord::domain).
 pub const SERVERS_DIR_NAME: &str = "servers";
@@ -28,23 +30,6 @@ const ACME_ACCOUNT_DIR_NAME: &str = "acme-account";
 /// The folder in a server's folder that holds its certificates and their
 /// keys (see [`ServerRecord::certificate_dir`]).
 const CERTIFICATES_DIR_NAME: &str = "certificates";
-
-/// The directory of Let's Encrypt's staging CA when `staging_certificates`,
-/// and of its production CA otherwise: where a server's record says its
-/// certificates come from.
-///
-/// # Panics
-///
-/// Never: both directories are rustls-acme's constant URLs, which a test
-/// parses.
-fn lets_encrypt_directory_url(staging_certificates: bool) -> Url {
-    let directory_url = if staging_certificates {
-        rustls_acme::acme::LETS_ENCRYPT_STAGING_DIRECTORY
-    } else {
-        rustls_acme::acme::LETS_ENCRYPT_PRODUCTION_DIRECTORY
-    };
-    Url::parse(directory_url).expect("rustls-acme's Let's Encrypt directories are URLs")
-}
 
 /// One server: the relay it is reached through, the tunnel it holds there,
 /// and how it launches apps.
@@ -70,10 +55,10 @@ pub struct ServerRecord {
     /// and `launch` in its query. A new server gets
     /// [`DEFAULT_LAUNCHER_URL`](ServerRecord::DEFAULT_LAUNCHER_URL).
     pub launcher_url: Url,
-    /// Whether this server's certificates come from the ACME staging directory
-    /// instead of production. A new server gets
-    /// [`DEFAULT_STAGING_CERTIFICATES`](ServerRecord::DEFAULT_STAGING_CERTIFICATES).
-    pub staging_certificates: bool,
+    /// The ACME CA this server's certificates are ordered from. A new server
+    /// gets
+    /// [`DEFAULT_CERTIFICATE_AUTHORITY`](ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY).
+    pub certificate_authority: CertificateAuthority,
     /// When the user wants this server run. Enrolment gives a new server
     /// [`RunPolicy::WhileOpen`] when no other server's policy wants it
     /// running, and [`RunPolicy::Off`] otherwise. It says nothing about whether
@@ -86,16 +71,17 @@ impl ServerRecord {
     /// (`sectionUrl('app')`).
     pub const DEFAULT_LAUNCHER_URL: &'static str = "https://wildflowerhealth.io/app";
 
-    /// Whether a new server's certificates come from Let's Encrypt's staging
-    /// CA: `true`, and setting it to `false` is the switch to production
-    /// certificates for new servers.
+    /// The CA a new server's certificates are ordered from: Let's Encrypt's
+    /// staging CA, and setting it to [`CertificateAuthority::LetsEncrypt`] is
+    /// the switch to production certificates for new servers.
     ///
     /// Staging, because every server's domain is under its relay's domain,
     /// so all of a relay's servers share one registered domain, and Let's
     /// Encrypt issues at most 50 certificates per registered domain in 7 days.
     /// Production waits for the relay's limit increase (#899). Staging
     /// certificates aren't publicly trusted.
-    pub const DEFAULT_STAGING_CERTIFICATES: bool = true;
+    pub const DEFAULT_CERTIFICATE_AUTHORITY: CertificateAuthority =
+        CertificateAuthority::LetsEncryptStaging;
 
     /// [`DEFAULT_LAUNCHER_URL`](Self::DEFAULT_LAUNCHER_URL) as a [`Url`].
     ///
@@ -132,18 +118,16 @@ impl ServerRecord {
         self.server_dir(data_root).join(CERTIFICATES_DIR_NAME)
     }
 
-    /// Where a run of the server orders and caches its certificate: from
-    /// Let's Encrypt's staging CA when
-    /// [`staging_certificates`](Self::staging_certificates) and its production
-    /// CA otherwise, cached in `certificates/` in its
-    /// [`server_dir`](Self::server_dir), so removing the server deletes them,
-    /// and ordered with the install's ACME account, cached in
+    /// Where a run of the server orders and caches its certificate: from its
+    /// [`certificate_authority`](Self::certificate_authority), cached in
+    /// `certificates/` in its [`server_dir`](Self::server_dir), so removing
+    /// the server deletes them, and ordered with the install's ACME account, cached in
     /// `<data_root>/acme-account/`, which removing a server leaves. Only the
     /// paths: nothing is created here.
     #[must_use]
     pub fn device_certificate_config(&self, data_root: &Path) -> DeviceCertificateConfig {
         DeviceCertificateConfig {
-            acme_directory_url: lets_encrypt_directory_url(self.staging_certificates),
+            acme_directory_url: self.certificate_authority.directory_url(),
             certificate_dir: self.certificate_dir(data_root),
             acme_account_dir: data_root.join(ACME_ACCOUNT_DIR_NAME),
         }
@@ -155,7 +139,7 @@ impl ServerRecord {
     /// A run reads every field but two: the launcher URL, which only the base
     /// reads to open apps, and the run policy, which says when the server
     /// runs, not how, and reaches `UnitRunner` on its own. The certificate
-    /// source is a run's: it is where the server's certificates come from.
+    /// authority is a run's: it is where the server's certificates come from.
     #[must_use]
     pub fn run_inputs_differ(&self, other: &Self) -> bool {
         // Destructured, so a new field needs a decision here.
@@ -165,14 +149,14 @@ impl ServerRecord {
             token,
             public_settings,
             launcher_url: _,
-            staging_certificates,
+            certificate_authority,
             run_policy: _,
         } = self;
         *relay != other.relay
             || *tunnel_name != other.tunnel_name
             || *token != other.token
             || *public_settings != other.public_settings
-            || *staging_certificates != other.staging_certificates
+            || *certificate_authority != other.certificate_authority
     }
 }
 
@@ -292,7 +276,7 @@ pub(crate) mod tests {
                 domain: "relay.wildflowerhealth.io".to_owned(),
             },
             launcher_url: ServerRecord::default_launcher_url(),
-            staging_certificates: false,
+            certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::Off,
         }
     }
@@ -312,7 +296,7 @@ pub(crate) mod tests {
                 domain: "relay.example.com".to_owned(),
             },
             launcher_url: Url::parse("https://launcher.example.com/").unwrap(),
-            staging_certificates: true,
+            certificate_authority: CertificateAuthority::LetsEncryptStaging,
             run_policy: RunPolicy::Off,
         }
     }
@@ -387,7 +371,7 @@ pub(crate) mod tests {
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned();
         for read_by_a_run in [
             ServerRecord {
-                staging_certificates: true,
+                certificate_authority: CertificateAuthority::LetsEncryptStaging,
                 ..ruth.clone()
             },
             ServerRecord {
@@ -458,18 +442,6 @@ pub(crate) mod tests {
                 ),
                 acme_account_dir: PathBuf::from("/data/root/acme-account"),
             }
-        );
-    }
-
-    #[test]
-    fn the_staging_flag_picks_let_s_encrypt_s_staging_directory() {
-        assert_eq!(
-            lets_encrypt_directory_url(true).as_str(),
-            "https://acme-staging-v02.api.letsencrypt.org/directory"
-        );
-        assert_eq!(
-            lets_encrypt_directory_url(false).as_str(),
-            "https://acme-v02.api.letsencrypt.org/directory"
         );
     }
 
