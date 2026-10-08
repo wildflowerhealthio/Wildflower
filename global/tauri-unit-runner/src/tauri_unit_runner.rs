@@ -91,9 +91,10 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     }
 
     /// Replace the policy of the unit `unit_id`. Even with the policy it
-    /// already has, this cancels a pending restart and starts the unit at once
-    /// if it should run, after the platform ended the background session too. A
-    /// unit never set is logged and ignored.
+    /// already has, this cancels a pending restart, starts the restart delay
+    /// over, and starts the unit at once if it should run, after the platform
+    /// ended the background session too. A unit never set is logged and
+    /// ignored.
     pub fn set_unit_policy(&self, unit_id: &UnitId, policy: RunPolicy) {
         self.unit_runner.set_unit_policy(unit_id, policy);
     }

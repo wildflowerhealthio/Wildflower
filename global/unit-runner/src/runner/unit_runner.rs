@@ -25,7 +25,7 @@ use crate::domain::session_ledger::{SessionEnd, SessionId, SessionLedger};
 use crate::domain::session_plan::SessionDemand;
 #[cfg(test)]
 use crate::domain::unit_plan::UnitPhase;
-use crate::domain::unit_plan::{plan_unit, restarts_after, UnitAction};
+use crate::domain::unit_plan::{backed_off_restart_delay, plan_unit, restarts_after, UnitAction};
 use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
@@ -205,6 +205,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
                 entry.factory = factory;
                 entry.awaiting_removal = false;
                 entry.pending_restart = None;
+                entry.restarts_in_a_row = 0;
                 entry.stop_run(StopReason::Replaced);
             }
             None => {
@@ -218,7 +219,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// already has. A unit never set is logged and ignored. Setting a policy:
     ///
     ///  - drops a pending restart, so a fresh instruction acts now rather than
-    ///    after the delay left over from the last run;
+    ///    after the delay left over from the last run, and starts the restart
+    ///    delay over from [`RESTART_DELAY`](crate::RESTART_DELAY);
     ///  - clears an end of the background session by the platform, so the
     ///    app's instruction counts for more than the platform's earlier end;
     ///  - starts and stops runs per policy, so the unit starts at once if it
@@ -231,6 +233,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         };
         entry.policy = policy;
         entry.pending_restart = None;
+        entry.restarts_in_a_row = 0;
         state.session_ledger.clear_ended_by_platform();
         self.start_and_stop_runs_per_policy_locked(&mut state);
     }
@@ -286,11 +289,15 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     }
 
     /// Restart every unit whose run is in progress: each run stops, and the
-    /// unit starts again once it has ended.
+    /// unit starts again once it has ended, its restart delay starting over
+    /// from [`RESTART_DELAY`](crate::RESTART_DELAY).
     pub fn restart_running_units(self: &Arc<Self>) {
-        let state = self.lock_state();
-        for entry in state.units.values() {
-            entry.stop_run(StopReason::StoppedForRestart);
+        let mut state = self.lock_state();
+        for entry in state.units.values_mut() {
+            if entry.current_run.is_some() {
+                entry.restarts_in_a_row = 0;
+                entry.stop_run(StopReason::StoppedForRestart);
+            }
         }
     }
 
@@ -398,6 +405,9 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// `error` when it failed, and its runtime is gone. Records the end, then
     /// publishes `Stopped`, so whatever the app does on seeing `Stopped`, a
     /// `set_unit_policy` included, acts on a run that has ended.
+    ///
+    /// The run's reports stop first, so whether it announced running can't
+    /// change between recording the end and publishing it.
     pub(super) fn run_finished(
         self: &Arc<Self>,
         unit_id: &UnitId,
@@ -406,7 +416,9 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         reason: StopReason,
         error: Option<String>,
     ) {
-        self.record_run_end(unit_id, generation, reason);
+        self.status_publisher.stop_run_reports(run_liveness);
+        let announced_running = self.status_publisher.announced_running(unit_id);
+        self.record_run_end(unit_id, generation, reason, announced_running);
         self.status_publisher
             .publish_stopped(unit_id, run_liveness, reason, error);
     }
@@ -420,17 +432,21 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         generation: RunGeneration,
         reason: StopReason,
     ) {
-        self.record_run_end(unit_id, generation, reason);
+        self.record_run_end(unit_id, generation, reason, false);
     }
 
-    /// The run of `unit_id` with `generation` ended for `reason`. Restarts it
-    /// after the restart delay when it ended on its own while its unit should
-    /// still run.
+    /// The run of `unit_id` with `generation` ended for `reason`, having
+    /// announced running or not. Restarts it after the restart delay when it
+    /// ended on its own while its unit should still run. The delay doubles
+    /// with each restart in a row, and starts over from
+    /// [`RESTART_DELAY`](crate::RESTART_DELAY) after a run that announced
+    /// running.
     fn record_run_end(
         self: &Arc<Self>,
         unit_id: &UnitId,
         generation: RunGeneration,
         reason: StopReason,
+        announced_running: bool,
     ) {
         let mut state = self.lock_state();
         let now = self.clock.now();
@@ -443,18 +459,29 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             return;
         }
         entry.current_run = None;
+        if announced_running {
+            entry.restarts_in_a_row = 0;
+        }
         let should_run =
             entry.should_run(now, app_present_or_in_grace, runs_discouraged_by_platform);
         if restarts_after(reason, should_run) {
             let (pending_restart, restart_token) = PendingRestart::new();
             entry.pending_restart = Some(pending_restart);
-            let restart_delay = self.timings.restart_delay;
+            let restart_delay = backed_off_restart_delay(
+                entry.restarts_in_a_row,
+                self.timings.restart_delay,
+                self.timings.max_restart_delay,
+            );
+            entry.restarts_in_a_row = entry.restarts_in_a_row.saturating_add(1);
             log::info!("[unit-runner] {unit_id} restarts in {restart_delay:?}");
+            // The delay counts from the run's end, not from the timer task's
+            // first poll.
+            let restart_at = tokio::time::Instant::now() + restart_delay;
             let unit_runner = Arc::clone(self);
             let unit_id = unit_id.clone();
             self.runtime.spawn(async move {
                 tokio::select! {
-                    () = tokio::time::sleep(restart_delay) => {
+                    () = tokio::time::sleep_until(restart_at) => {
                         unit_runner.finish_restart_delay(&unit_id, &restart_token);
                     }
                     () = restart_token.cancelled() => {}

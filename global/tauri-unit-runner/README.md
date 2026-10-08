@@ -8,6 +8,12 @@ reports each unit's status. It knows nothing about what a unit does: the app
 supplies the units, stores their policies, and owns its own wire and
 notifications.
 
+A unit whose runs keep failing restarts after `RESTART_DELAY` (5 s), then
+twice as long each time in a row, up to `MAX_RESTART_DELAY` (5 minutes). A run
+that announces running, and every fresh instruction for the unit (`set_unit`,
+`set_unit_policy`, or a return to the foreground that restarts running units),
+start the delay over.
+
 This crate is the Tauri bindings of [`unit-runner`](../unit-runner/README.md),
 which holds the units, policies, statuses, and starting and stopping runs per
 policy, free of Tauri. It

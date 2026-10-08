@@ -35,6 +35,6 @@ pub use tauri_unit_runner::TauriUnitRunner;
 pub use unit_runner::{
     BackgroundSessionPlatform, PlatformStopReason, RunContext, RunPolicy, RunState, RunStop,
     RunStopped, SessionId, StopReason, SystemClock, Unit, UnitId, UnitRunner, UnitStatus,
-    UnitStatuses, WallClock, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT, RUN_STOPS_CAPACITY,
-    START_AND_STOP_RUNS_PER_POLICY_INTERVAL, WHILE_OPEN_GRACE,
+    UnitStatuses, WallClock, MAX_RESTART_DELAY, RESTART_DELAY, RUN_RUNTIME_SHUTDOWN_TIMEOUT,
+    RUN_STOPS_CAPACITY, START_AND_STOP_RUNS_PER_POLICY_INTERVAL, WHILE_OPEN_GRACE,
 };

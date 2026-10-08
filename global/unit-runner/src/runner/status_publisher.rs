@@ -135,6 +135,25 @@ impl<D: Clone + Send + Sync + 'static> StatusPublisher<D> {
         });
     }
 
+    /// The run's runtime is gone: nothing its context publishes from now on
+    /// lands, so its unit's status stays as the run left it until
+    /// [`publish_stopped`](Self::publish_stopped).
+    pub(crate) fn stop_run_reports(&self, run_liveness: &RunLiveness) {
+        self.statuses_tx.send_if_modified(|_statuses| {
+            run_liveness.set_liveness(false);
+            false
+        });
+    }
+
+    /// Whether the latest run of `unit_id` is `Running`: it announced running,
+    /// and its `Stopped` isn't published yet.
+    pub(crate) fn announced_running(&self, unit_id: &UnitId) -> bool {
+        self.statuses_tx
+            .borrow()
+            .get(unit_id)
+            .is_some_and(|status| status.run_state == RunState::Running)
+    }
+
     /// The run's runtime is gone: `Stopped` for `reason`, with its `error`, and
     /// no detail, and the stop broadcast. Nothing the run's context publishes
     /// afterwards lands.

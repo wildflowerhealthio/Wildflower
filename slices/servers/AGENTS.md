@@ -244,8 +244,8 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
 - **No cap on running servers.** `set_run_policy` changes only the server it
   names; every other server keeps its policy, so several can want their
   servers running at once. They all bind the one loopback port, so a second
-  server run fails and `UnitRunner` retries it every 5 s; nothing guards
-  against that.
+  server run fails and `UnitRunner` retries it, backing off to every 5
+  minutes; nothing guards against that.
 - **A new server runs if nothing else does.** `add_server` gives a new server
   `whileOpen` when no registered server's policy wants it running, and `off`
   otherwise. An `off` policy or an `until` that has passed doesn't.
