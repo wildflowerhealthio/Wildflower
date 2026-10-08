@@ -1,0 +1,66 @@
+.consent-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.consent-form__identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.consent-form__app {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.consent-form__server,
+.consent-form__asking-from {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.consent-form__client-id {
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.consent-form__warning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-warning-foreground);
+  background: var(--color-warning-background);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-3);
+}
+
+.consent-form__warning > p {
+  margin: 0;
+}
+
+.consent-form__acknowledge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.consent-form__patient {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.consent-form__eyebrow,
+.consent-form__note {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.consent-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}

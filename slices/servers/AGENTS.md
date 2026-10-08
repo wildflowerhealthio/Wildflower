@@ -54,9 +54,12 @@ changing how servers run or what the host notifies about them.
   Schema: the server commands (`listServers`, `setServerRunPolicy`,
   `updateServer`, `removeServer`), the background session's recovery
   (`enableBackgroundSessionRecovery`), the app's version and the notification
-  permission; and the wire's namespaces, `ListedServer`, `ServerStatus` (with
-  the `server-status` event's name and decoder), `RunPolicy` and
-  `RunPolicyChoice`, each a `Schema` and its `Type` with getters. A refused
+  permission, and the consent commands (`listPendingConsents`, `readConsent`,
+  `approveConsent`, `denyConsent`); and the wire's namespaces, `ListedServer`,
+  `ServerStatus` (with the `server-status` event's name and decoder),
+  `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
+  `pending-consent` event's), `ConsentKey` and `ConsentDetails`, each a
+  `Schema` and its `Type` with getters. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. No DOM, no React, no `@tauri-apps/api`.
 - **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
@@ -78,6 +81,12 @@ changing how servers run or what the host notifies about them.
   webview is offline (`navigator.onLine`), the list says that launching needs
   a connection; the host commands themselves need none, so the base's query
   client runs them offline too (`networkMode: 'always'`).
+  Over every screen, `ConsentSheet` asks about the consents waiting on the
+  running servers, one server at a time, with where it stands in the queue ("1
+  of 3"), kept current by the `pending-consent` event: the server's domain, the
+  app or device and where it asks from, the access in plain words through
+  `scopes-react`'s `ScopePicker`, the patient when the access is for one, and
+  Deny or Allow.
 
 ## Rules
 

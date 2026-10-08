@@ -94,6 +94,7 @@ const fakeHost = (answers: Readonly<Record<string, () => Promise<unknown>>>): Fa
 /** The answers every host gives that a test doesn't change. */
 const steadyAnswers = {
   'plugin:background-service|configure_recovery': () => Promise.resolve(null),
+  pending_consents_list: () => Promise.resolve([]),
 } as const
 
 /**

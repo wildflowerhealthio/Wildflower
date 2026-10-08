@@ -1,5 +1,16 @@
 export { readAppVersion } from './app-version.ts'
 export {
+  ApprovalOutcomeSchema,
+  approveConsent,
+  denyConsent,
+  listPendingConsents,
+  readConsent,
+  type ApprovalOutcome,
+  type ConsentApproval,
+} from './consent-commands.ts'
+export * as ConsentDetails from './consent-details.ts'
+export * as ConsentKey from './consent-key.ts'
+export {
   HostAnswerUndecodable,
   HostCommandFailed,
   HostRefusal,
@@ -18,6 +29,7 @@ export {
   readNotificationPermission,
   requestNotificationPermission,
 } from './notifications.ts'
+export * as PendingConsent from './pending-consent.ts'
 export * as RunPolicy from './run-policy.ts'
 export * as RunPolicyChoice from './run-policy-choice.ts'
 export { listServers, removeServer, setServerRunPolicy, updateServer } from './server-commands.ts'
