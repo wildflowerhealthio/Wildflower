@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { Schema } from 'effect'
 
 /**
  * How an app's request compares with its registration on the server:
@@ -52,16 +52,15 @@ const ConsentDetailsSchema = Schema.Union(
 /** A decoded {@link ConsentDetailsSchema}. */
 type Type = typeof ConsentDetailsSchema.Type
 
+/** A device's pairing. */
+type Device = Extract<Type, { readonly kind: 'device' }>
+
+/** An app's `/authorize`. */
+type OAuth = Extract<Type, { readonly kind: 'oauth' }>
+
 /** The app's name as the Owner knows it: its registered name, or its id when that is all it has. */
 const appNameOf = (details: Type): string =>
   details.clientName === '' ? details.clientId : details.clientName
 
-/**
- * Where the request is asking from: the origin of the app's redirect for an
- * app, the name the device gave itself for a device.
- */
-const askingFromOf = (details: Type): Option.Option<string> =>
-  details.kind === 'oauth' ? Option.some(details.redirectUri.origin) : details.deviceName
-
-export { appNameOf, askingFromOf, ConsentDetailsSchema as Schema, RegistrationSchema }
-export type { Registration, Type }
+export { appNameOf, ConsentDetailsSchema as Schema, RegistrationSchema }
+export type { Device, OAuth, Registration, Type }

@@ -1,15 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
+import { Match } from 'effect'
 import { type JSX, useState } from 'react'
 import { Dialog, ErrorBanner, PageLoading } from 'react-tundraish'
 import { ApprovalOutcome, ConsentKey, type PendingConsent } from 'servers-core'
 
-import { ConsentForm } from './consent-form.tsx'
 import {
+  type ConsentDecision,
   consentQueryOptions,
   pendingConsentsQueryOptions,
   useDecideConsent,
   usePendingConsentEvents,
 } from './consent-queries.ts'
+import { DeviceConsentForm } from './device-consent-form.tsx'
+import { OAuthConsentForm } from './oauth-consent-form.tsx'
 import type { ListenToHostEvent, RunHostCommand } from './router-context.ts'
 import styles from './consent-sheet.module.css'
 
@@ -47,20 +50,26 @@ function WaitingConsent({
   const decide = useDecideConsent(runHostCommand, waiting.domain)
   if (consent.isPending) return <PageLoading message="Loading the request…" />
   if (consent.isError) return <ErrorBanner error={consent.error} />
-  return (
-    <ConsentForm
-      domain={waiting.domain}
-      details={consent.data}
-      deciding={decide.isPending}
-      decisionError={decide.error}
-      onDecide={(decision) => {
-        decide.mutate(decision, {
-          onSuccess: (outcome) => {
-            onDecided(decision.kind === 'approve' && !ApprovalOutcome.isApproved(outcome))
-          },
-        })
-      }}
-    />
+  const formProps = {
+    domain: waiting.domain,
+    deciding: decide.isPending,
+    decisionError: decide.error,
+    onDecide: (decision: ConsentDecision): void => {
+      decide.mutate(decision, {
+        onSuccess: (outcome) => {
+          onDecided(decision.kind === 'approve' && !ApprovalOutcome.isApproved(outcome))
+        },
+      })
+    },
+  }
+  return Match.value(consent.data).pipe(
+    Match.when({ kind: 'device' }, (details) => (
+      <DeviceConsentForm details={details} {...formProps} />
+    )),
+    Match.when({ kind: 'oauth' }, (details) => (
+      <OAuthConsentForm details={details} {...formProps} />
+    )),
+    Match.exhaustive
   )
 }
 

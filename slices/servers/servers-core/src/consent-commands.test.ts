@@ -110,6 +110,16 @@ describe('ConsentKey', () => {
       ConsentKey.asString({ kind: 'oauth', id: 'x' })
     )
   })
+
+  it('should key a consent by the details the host read it as', () => {
+    // Act
+    const keys = [golden.consentDetails.device, golden.consentDetails.oauthRegistered].map(
+      (details) => ConsentKey.of(decodeDetails(details))
+    )
+
+    // Assert
+    expect(keys).toEqual([DEVICE_KEY, OAUTH_KEY])
+  })
 })
 
 describe('ConsentDetails', () => {
@@ -120,15 +130,19 @@ describe('ConsentDetails', () => {
     // Assert
     expect(details.kind).toBe('device')
     expect(ConsentDetails.appNameOf(details)).toBe('Pebble sync')
-    expect(ConsentDetails.askingFromOf(details)).toEqual(Option.some("Ruth's watch"))
+    expect(details.kind === 'device' ? details.deviceName : Option.none()).toEqual(
+      Option.some("Ruth's watch")
+    )
   })
 
-  it("should decode an app's request, asking from its redirect's origin", () => {
+  it("should decode an app's request, with its redirect and the patient its grant names", () => {
     // Act
     const details = decodeDetails(golden.consentDetails.oauthRegistered)
 
     // Assert
-    expect(ConsentDetails.askingFromOf(details)).toEqual(Option.some('https://lifting.example.com'))
+    expect(details.kind === 'oauth' ? details.redirectUri.origin : undefined).toBe(
+      'https://lifting.example.com'
+    )
     expect(details.kind === 'oauth' ? details.patient : Option.none()).toEqual(Option.some('pat-1'))
   })
 
@@ -164,6 +178,47 @@ describe('ConsentApproval', () => {
     // Assert
     expect(approvals.map(Either.isRight)).toEqual([true, true])
     expect(Either.isLeft(unknownKind)).toBe(true)
+  })
+
+  it('should approve a device or an app as the host decodes it', () => {
+    // Arrange
+    const device = decodeDetails(golden.consentDetails.device)
+    const app = decodeDetails(golden.consentDetails.oauthRegistered)
+    if (device.kind !== 'device' || app.kind !== 'oauth') throw new Error('golden kinds')
+
+    // Act
+    const approvals = [
+      ConsentApproval.ofDevice(device, ['system/Observation.rs']),
+      ConsentApproval.ofOAuth(app, {
+        approvedScopes: ['launch/patient'],
+        patient: Option.some('pat-1'),
+        acknowledged: true,
+      }),
+    ]
+
+    // Assert
+    expect(approvals).toEqual(golden.consentApprovals)
+  })
+
+  it("should acknowledge an app's registration only when it is new or changed", () => {
+    // Arrange
+    const unseen = decodeDetails(golden.consentDetails.oauthNew)
+    if (unseen.kind !== 'oauth') throw new Error('golden kind')
+
+    // Act
+    const approval = ConsentApproval.ofOAuth(unseen, {
+      approvedScopes: ['openid'],
+      patient: Option.none(),
+      acknowledged: true,
+    })
+
+    // Assert
+    expect(approval).toEqual({
+      kind: 'oauth',
+      id: 'req-2',
+      approvedScopes: ['openid'],
+      acknowledgedRegistration: true,
+    })
   })
 })
 

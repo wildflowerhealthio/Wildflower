@@ -1,0 +1,28 @@
+.consent-form-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.consent-form-layout__identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.consent-form-layout__identity > p,
+.consent-form-layout__app {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.consent-form-layout__client-id {
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.consent-form-layout__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}

@@ -1,0 +1,32 @@
+.oauth-consent-form__warning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-warning-foreground);
+  background: var(--color-warning-background);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-3);
+}
+
+.oauth-consent-form__warning > p {
+  margin: 0;
+}
+
+.oauth-consent-form__acknowledge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.oauth-consent-form__patient {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.oauth-consent-form__eyebrow,
+.oauth-consent-form__note {
+  margin: 0;
+  color: var(--color-text-secondary);
+}

@@ -1,4 +1,6 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
+
+import type * as ConsentDetails from './consent-details.ts'
 
 /**
  * The Owner's approval of a waiting consent, `kind`-tagged as its
@@ -27,5 +29,39 @@ const ConsentApprovalSchema = Schema.Union(
 /** A decoded {@link ConsentApprovalSchema}. */
 type Type = typeof ConsentApprovalSchema.Type
 
-export { ConsentApprovalSchema as Schema }
+/** The approval of the device pairing `details`, granting `approvedScopes`. */
+const ofDevice = (details: ConsentDetails.Device, approvedScopes: readonly string[]): Type => ({
+  kind: 'device',
+  userCode: details.userCode,
+  approvedScopes,
+})
+
+/**
+ * The approval of the app request `details`, granting `approvedScopes` for
+ * `patient`, if any. `acknowledged` is whether the Owner ticked the
+ * acknowledgement, which counts only for a `new` or `changed` registration.
+ */
+const ofOAuth = (
+  details: ConsentDetails.OAuth,
+  {
+    approvedScopes,
+    patient,
+    acknowledged,
+  }: {
+    readonly approvedScopes: readonly string[]
+    readonly patient: Option.Option<string>
+    readonly acknowledged: boolean
+  }
+): Type => ({
+  kind: 'oauth',
+  id: details.id,
+  approvedScopes,
+  ...patient.pipe(
+    Option.map((id) => ({ patient: id })),
+    Option.getOrElse(() => ({}))
+  ),
+  acknowledgedRegistration: details.registration.status !== 'registered' && acknowledged,
+})
+
+export { ConsentApprovalSchema as Schema, ofDevice, ofOAuth }
 export type { Type }
