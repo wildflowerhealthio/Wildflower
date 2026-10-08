@@ -9,12 +9,10 @@
 //! - `tls`: one `:443` connection, from ClientHello to byte pipe, or to the
 //!   relay's own site for a local hostname.
 //! - `hello`: reading the ClientHello and taking its server name.
-//! - `proxy_header`: the PROXY protocol v2 header sent ahead of the hello.
 //! - `http`: one `:80` request, answered with a redirect or a 404.
 
 mod hello;
 mod http;
-mod proxy_header;
 mod tls;
 
 use std::sync::Arc;

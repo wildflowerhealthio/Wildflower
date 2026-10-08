@@ -6,8 +6,8 @@ publish.workspace = true
 
 # The Tauri-side tunnel slice: an embedded `rathole` client (noise transport, no
 # TLS/openssl) that dials the wildflower-relay named in the server's record and
-# forwards the server's local port through it, re-dialing with backoff. No HTTP
-# surface; the tunnel keeps no rows.
+# hands each visitor's stream, in process, to the server's tunnel listener,
+# re-dialing with backoff. No HTTP surface; the tunnel keeps no rows.
 [dependencies]
 anyhow.workspace = true
 serde = { workspace = true }
@@ -29,7 +29,6 @@ rand = "0.10"
 tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
 tokio-util = "0.7"
 toml = "0.9"
-tempfile = "3"
 tracing = "0.1"
 
 [lints]
@@ -42,6 +41,8 @@ tokio = { workspace = true, features = [
   "sync",
   "time",
   "test-util",
+  # `duplex` streams stand in for the visitor streams a client hands over.
+  "io-util",
 ] }
 serde_json.workspace = true
 parking_lot = "0.12"

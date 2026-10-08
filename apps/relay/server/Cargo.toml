@@ -45,9 +45,6 @@ hyper-util = { version = "0.1", features = ["tokio", "service"] }
 # The tunnel store's diesel connection pool and namespaced migration runner,
 # as the slices use them. The relay names the pool type but not rusqlite.
 persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
-# PROXY protocol v2 header ahead of each replayed ClientHello, so the device
-# sees the visitor's address instead of the relay's.
-ppp = "2.3"
 # OS randomness (`SysRng`) for created tunnels' tokens and default names. The
 # version the slices use.
 rand = "0.10"
@@ -60,7 +57,11 @@ rathole = { version = "0.5", default-features = false, features = [
 ] }
 # The wire shapes of `GET /rathole` and `GET /me`, shared with the device, and
 # `TunnelName`, the tunnel-name check the device's server registry shares.
-rathole-settings-rust = { path = "../../../slices/tunnel/rathole-settings-rust" }
+# `proxy-header`: the PROXY protocol v2 header ahead of each replayed
+# ClientHello, so the device sees the visitor's address instead of the relay's.
+rathole-settings-rust = { path = "../../../slices/tunnel/rathole-settings-rust", features = [
+  "proxy-header",
+] }
 # `rustls::server::Acceptor` reads the ClientHello's server name for routing.
 # `ring` is the provider for the site's TLS, the same one rustls-acme uses;
 # aws-lc-rs would need cmake to build.
@@ -129,6 +130,8 @@ rathole = { version = "0.5", default-features = false, features = [
   "client",
   "noise",
 ] }
+# Parses the PROXY header the front writes ahead of each visitor's bytes.
+ppp.workspace = true
 # Property tests of the name generator and the admin API's defaults.
 proptest = "1"
 # Drive the site's router in unit tests.

@@ -75,7 +75,7 @@ pub struct GatekeeperState {
     /// surfaces in its popup. Handlers whose write may change the head call the
     /// [`PendingConsentPublisher::republish_active`](crate::ports::PendingConsentPublisher::republish_active)
     /// seam after the write completes.
-    pub(crate) active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
+    pub(crate) active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     /// The host's native loopback dialog (see
     /// [`LoopbackConsentPrompt`](crate::ports::LoopbackConsentPrompt)):
     /// `/authorize` puts a direct-loopback login by the hosted owner UI to it. A

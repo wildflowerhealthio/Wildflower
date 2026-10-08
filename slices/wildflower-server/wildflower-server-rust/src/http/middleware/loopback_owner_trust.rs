@@ -1,7 +1,9 @@
 //! Desktop loopback-owner trust: the middleware that presents the host's owner
 //! `Authorization: Bearer` header on behalf of a direct-local caller, so the
 //! webview (which holds no credential of its own) authenticates on connection
-//! provenance.
+//! provenance. It is a layer of the loopback listener's router only: the
+//! tunnel listener's router has no owner trust, so no tunnel connection is
+//! ever presented the owner token.
 
 use std::net::SocketAddr;
 
@@ -22,7 +24,7 @@ pub(crate) struct LoopbackOwnerTrust {
 
 /// Present the host's own owner token on behalf of a **direct-local** request —
 /// one that reached the loopback API over a loopback socket peer AND without a
-/// `Forwarded` header (a tunnel-relayed remote caller carries one). The desktop
+/// `Forwarded` header (a remote caller a front relayed carries one). The desktop
 /// webview holds no credential of its own, so it authenticates on *connection
 /// provenance*: the server attaches the host's owner bearer, and the gatekeeper
 /// gate and emr's own JWKS bearer check both validate it normally — no
@@ -32,7 +34,7 @@ pub(crate) struct LoopbackOwnerTrust {
 /// webview — any local process on the machine reaches the same surface. That is
 /// the desktop single-user trust model (a local process running as the user can
 /// already read the app's data on disk). It stays gated on `!forwarded` so it
-/// never extends to tunnel-relayed remote callers, and skips gatekeeper's
+/// never extends to remote callers a front relayed, and skips gatekeeper's
 /// pre-auth public surface ([`is_pre_auth_public_path`]) where a stray owner
 /// bearer could confuse client authentication. A request that already presents
 /// its own bearer is left untouched (via the shared [`ensure_bearer_header`]).
@@ -60,8 +62,8 @@ pub(crate) async fn inject_loopback_owner_token(
 /// The stamp gate: present the owner bearer only for a **direct-local**,
 /// non-forwarded request that isn't on the pre-auth public surface. Pulled out
 /// as a pure conjunction so the security-critical rule is unit-tested — e.g. an
-/// inverted `forwarded` check (which would extend owner trust to tunnel-relayed
-/// remote callers) fails the test rather than shipping silently.
+/// inverted `forwarded` check (which would extend owner trust to remote callers
+/// a front relayed) fails the test rather than shipping silently.
 fn should_present_owner_token(
     peer_is_loopback: bool,
     forwarded: bool,
@@ -86,14 +88,14 @@ mod tests {
     /// The owner bearer is stamped only for a direct-local, non-forwarded request
     /// off the pre-auth public surface. Each guard, flipped alone, must withhold
     /// the stamp — most critically an inverted `forwarded` check must NOT extend
-    /// owner trust to a tunnel-relayed remote caller.
+    /// owner trust to a remote caller a front relayed.
     #[test]
     fn owner_token_presented_only_for_direct_local_private_requests() {
         // The one case that stamps: loopback peer, not forwarded, not public.
         assert!(should_present_owner_token(true, false, false));
         // Not a loopback peer → never (the loopback-peer gate rejects it anyway).
         assert!(!should_present_owner_token(false, false, false));
-        // Forwarded (tunnel-relayed) → never, even from a loopback proxy peer.
+        // Forwarded (front-relayed) → never, even from a loopback proxy peer.
         assert!(!should_present_owner_token(true, true, false));
         // Pre-auth public surface (`/oauth`, `/.well-known`) → never.
         assert!(!should_present_owner_token(true, false, true));

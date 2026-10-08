@@ -14,7 +14,15 @@ publish.workspace = true
 # and its public control address with `parse_public_addr`; `tunnel-rust` (the
 # device's rathole client) deserializes `GET /rathole`, and `servers-rust`
 # stores it and reads `GET /me`.
+[features]
+# The PROXY protocol v2 header the relay writes ahead of each visitor's bytes
+# (`proxy_header`). The relay enables it to write the header, and
+# `wildflower-server-rust`'s tests to build the headers its tunnel listener
+# reads.
+proxy-header = ["dep:ppp"]
+
 [dependencies]
+ppp = { workspace = true, optional = true }
 serde.workspace = true
 # The `Display`/`Error` wiring of `InvalidTunnelName`, `InvalidRelayDomain` and
 # `InvalidPublicAddr`.

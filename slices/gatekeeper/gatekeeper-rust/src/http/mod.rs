@@ -62,11 +62,11 @@ fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
 /// Build the gatekeeper's public HTTP surface. Routes live at
 /// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (authenticated
 /// bearer JWT + per-resource scope gates) — the module owns its mount paths so the caller just
-/// `.merge()`s. This router carries **no** loopback-peer gate of its own —
-/// the host applies that defense-in-depth to the whole merged surface via
-/// [`require_loopback_peer_middleware`]. Mounting `router()` directly
-/// without that wrapper leaves `/oauth/*` and `/access/*` reachable from
-/// non-loopback peers.
+/// `.merge()`s. This router carries **no** loopback-peer gate of its own, so
+/// the host decides per listener: its loopback listener wraps the whole merged
+/// surface in [`require_loopback_peer_middleware`], and its tunnel listener
+/// serves `/oauth/*` and `/access/*` to remote visitors, behind the same
+/// bearer and session gates.
 pub fn router(state: Arc<GatekeeperState>) -> Router {
     let (documented, _spec) = documented_public_router().split_for_parts();
     let (clients, _spec) = routes::clients::openapi_router().split_for_parts();

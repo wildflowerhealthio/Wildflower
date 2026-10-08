@@ -160,8 +160,8 @@ fn format_log_payload(payload: &[serde_json::Value]) -> String {
 /// keeps answering `__Ready` and a server started later publishes to the
 /// same webview.
 pub struct BridgePublishers {
-    pub host_owner_token_sender: watch::Sender<Option<String>>,
-    pub active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
+    pub host_owner_token_tx: watch::Sender<Option<String>>,
+    pub active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
 }
 
 /// Raise the main webview window to the foreground so a freshly-arrived
@@ -248,8 +248,8 @@ fn raise_main_window(_handle: &AppHandle) {}
 /// emit echoes, sibling slices' web→host traffic, …) are dropped
 /// silently.
 pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
-    let (host_owner_token_sender, mut token_rx) = watch::channel::<Option<String>>(None);
-    let (active_pending_consent_sender, mut consent_rx) =
+    let (host_owner_token_tx, mut token_rx) = watch::channel::<Option<String>>(None);
+    let (active_pending_consent_tx, mut consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
 
     // The bridge channel is shared across listeners with no automated
@@ -285,8 +285,8 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     // app, whether or not a server ever takes the publishers (see
     // `BridgePublishers`), so its `changed` arms never see them close.
     let channels_kept_open = (
-        host_owner_token_sender.clone(),
-        active_pending_consent_sender.clone(),
+        host_owner_token_tx.clone(),
+        active_pending_consent_tx.clone(),
     );
     tauri::async_runtime::spawn(async move {
         let _channels_kept_open = channels_kept_open;
@@ -341,8 +341,8 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     });
 
     BridgePublishers {
-        host_owner_token_sender,
-        active_pending_consent_sender,
+        host_owner_token_tx,
+        active_pending_consent_tx,
     }
 }
 
