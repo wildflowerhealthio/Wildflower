@@ -21,7 +21,7 @@ use tokio::task::JoinSet;
 use tokio_rustls::server::TlsStream;
 use tunnel_rust::TunnelStream;
 
-use self::tls::TunnelTls;
+use self::tls::TunnelTlsAcceptor;
 
 /// How long a tunnel connection has to be prepared for HTTP before it is
 /// closed: to send its PROXY header, when it opens with one, and to complete
@@ -70,22 +70,22 @@ impl Connected<IncomingStream<'_, TunnelListener>> for TunnelVisitor {
 pub(crate) struct TunnelListener {
     /// The visitor streams the tunnel hands over.
     tunnel_stream_rx: mpsc::Receiver<TunnelStream>,
-    /// The TLS each connection is accepted with.
-    tunnel_tls: TunnelTls,
+    /// The acceptor each connection's TLS handshake completes with.
+    tls_acceptor: TunnelTlsAcceptor,
     /// The handed-over streams being prepared.
     preparing: JoinSet<anyhow::Result<Option<(PreparedTunnelStream, TunnelVisitor)>>>,
 }
 
 impl TunnelListener {
     /// A listener over the streams arriving on `tunnel_stream_rx`, accepting
-    /// each one's TLS with `tunnel_tls`.
+    /// each one's TLS with `tls_acceptor`.
     pub(crate) fn new(
         tunnel_stream_rx: mpsc::Receiver<TunnelStream>,
-        tunnel_tls: TunnelTls,
+        tls_acceptor: TunnelTlsAcceptor,
     ) -> Self {
         Self {
             tunnel_stream_rx,
-            tunnel_tls,
+            tls_acceptor,
             preparing: JoinSet::new(),
         }
     }
@@ -107,7 +107,7 @@ impl axum::serve::Listener for TunnelListener {
                 {
                     self.preparing.spawn(prepare_tunnel_connection(
                         tunnel_stream,
-                        self.tunnel_tls.clone(),
+                        self.tls_acceptor.clone(),
                     ));
                 }
                 Some(prepared) = self.preparing.join_next() => match prepared {
@@ -137,22 +137,22 @@ impl axum::serve::Listener for TunnelListener {
 /// Prepare a handed-over `tunnel_stream` for HTTP, returning its TLS stream
 /// with the visitor behind it. Every step a tunnel connection takes before
 /// HTTP happens here, in order, all under one [`PREPARATION_TIMEOUT`]: reading
-/// its PROXY header, then accepting its TLS with `tunnel_tls`. Returns `None`
+/// its PROXY header, then accepting its TLS with `tls_acceptor`. Returns `None`
 /// for a certificate validation handshake, which is answered and closed.
 ///
 /// # Errors
 ///
 /// Returns an error, and the connection is closed, when the header is
 /// malformed (see [`read_client_address`](proxy_header::read_client_address)),
-/// the TLS handshake fails (see [`TunnelTls::accept`]), or the two don't
+/// the TLS handshake fails (see [`TunnelTlsAcceptor::accept`]), or the two don't
 /// finish in time.
 async fn prepare_tunnel_connection(
     tunnel_stream: TunnelStream,
-    tunnel_tls: TunnelTls,
+    tls_acceptor: TunnelTlsAcceptor,
 ) -> anyhow::Result<Option<(PreparedTunnelStream, TunnelVisitor)>> {
     tokio::time::timeout(PREPARATION_TIMEOUT, async {
         let (stream, client_address) = proxy_header::read_client_address(tunnel_stream).await?;
-        let tls_stream = tunnel_tls.accept(stream).await?;
+        let tls_stream = tls_acceptor.accept(stream).await?;
         anyhow::Ok(tls_stream.map(|tls_stream| (tls_stream, TunnelVisitor { client_address })))
     })
     .await
@@ -162,7 +162,7 @@ async fn prepare_tunnel_connection(
 #[cfg(test)]
 mod tests {
     use super::proxy_header::tests::proxy_header;
-    use super::tls::tests::{connect, tunnel_tls, PUBLIC_HOST};
+    use super::tls::tests::{connect, tls_acceptor, PUBLIC_HOST};
     use super::*;
     use axum::serve::Listener;
     use rustls::pki_types::CertificateDer;
@@ -181,10 +181,10 @@ mod tests {
         CertificateDer<'static>,
     ) {
         let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel(backlog);
-        let (tunnel_tls, certificate) = tunnel_tls();
+        let (tls_acceptor, certificate) = tls_acceptor();
         (
             tunnel_stream_tx,
-            TunnelListener::new(tunnel_stream_rx, tunnel_tls),
+            TunnelListener::new(tunnel_stream_rx, tls_acceptor),
             certificate,
         )
     }

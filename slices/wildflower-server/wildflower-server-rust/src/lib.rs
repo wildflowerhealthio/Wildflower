@@ -31,14 +31,14 @@
 //!    it, through its `HealthProbe` port.
 //!  - `adapters` — ports implemented here, where both sides are in reach:
 //!    apps' `AppLaunchScopes` from gatekeeper's OAuth clients, and the
-//!    monitor's `HealthProbe` over `reqwest`.
+//!    monitor's `HealthProbe` over `reqwest`; and the device certificate,
+//!    rustls-acme's order and renewal of the tunnel listener's certificate
+//!    as [`DeviceCertificateConfig`] says.
 //!  - `http` — the server's own middleware (CORS, the loopback owner trust,
 //!    the forwarded-request report, the tunnel front), the tunnel listener
 //!    with its PROXY header reader and its TLS, the `/health` checks and the
 //!    unmatched-route `404`.
-//!  - `live_bindings` — [`set_up`], [`WildflowerServer`] and the device
-//!    certificate, rustls-acme's order and renewal of the tunnel listener's
-//!    certificate, with [`lets_encrypt_directory_url`].
+//!  - `live_bindings` — [`set_up`] and [`WildflowerServer`].
 
 mod adapters;
 mod config;
@@ -46,6 +46,6 @@ mod domain;
 mod http;
 mod live_bindings;
 
-pub use config::{HostPorts, ServerObservers, WildflowerServerConfig};
+pub use config::{DeviceCertificateConfig, HostPorts, ServerObservers, WildflowerServerConfig};
 pub use domain::server_health::ServerHealth;
-pub use live_bindings::{lets_encrypt_directory_url, set_up, WildflowerServer};
+pub use live_bindings::{set_up, WildflowerServer};

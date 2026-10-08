@@ -42,9 +42,19 @@ pub struct WildflowerServerConfig {
     /// app launches and the reachability monitor's `/health` use, and the
     /// one name on its certificate.
     pub public_host: String,
+    /// Where the server's certificate is ordered from and cached, from its
+    /// record.
+    pub device_certificate: DeviceCertificateConfig,
+}
+
+/// Where the server's certificate for its public host comes from: the ACME CA
+/// it is ordered from, and the folders it and the install's ACME account are
+/// cached in. The host builds it from the server's record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceCertificateConfig {
     /// The directory of the ACME CA the server's certificate is ordered
     /// from: Let's Encrypt's staging or production CA, as the server's record
-    /// says (see [`lets_encrypt_directory_url`](crate::lets_encrypt_directory_url)).
+    /// says.
     pub acme_directory_url: Url,
     /// The folder the server's certificates and their keys are cached in,
     /// its own: deleting the server deletes them.

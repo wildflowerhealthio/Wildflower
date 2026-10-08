@@ -36,7 +36,7 @@ ppp.workspace = true
 tokio-util = "0.7"
 # The tunnel listener's certificate for the server's domain, ordered over
 # TLS-ALPN-01 and renewed while the server runs, cached on disk (see
-# `src/live_bindings/device_certificate.rs`). `ring` instead of the default
+# `src/adapters/acme_certificate.rs`). `ring` instead of the default
 # aws-lc-rs, as the relay does; `webpki-roots` so the ACME client trusts the
 # CA's API.
 rustls-acme = { version = "0.15", default-features = false, features = [

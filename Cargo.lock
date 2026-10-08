@@ -7368,6 +7368,7 @@ dependencies = [
  "rcgen 0.13.2",
  "reqwest 0.12.28",
  "rustls",
+ "rustls-acme",
  "serde",
  "serde_json",
  "sha2 0.10.9",

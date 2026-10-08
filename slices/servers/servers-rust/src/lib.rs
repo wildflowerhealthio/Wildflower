@@ -8,11 +8,12 @@
 //! `<tunnel name>.<relay domain>`, is its only name: the registry key, the
 //! issuer, and its data folder `<data root>/servers/<domain>/`
 //! ([`server_dir`](ServerRecord::server_dir)), which holds its databases and
-//! its certificates ([`certificate_dir`](ServerRecord::certificate_dir)). Every
-//! server orders its certificates with the install's one ACME account, in
-//! `<data root>/acme-account/` ([`ACME_ACCOUNT_DIR_NAME`]). Records hold configuration
-//! only; whether a run is up, its tunnel and its certificate are never stored
-//! here.
+//! its certificates in `certificates/`. Every server orders its certificates
+//! with the install's one ACME account, in `<data root>/acme-account/`, from
+//! the CA its record names: the three make up the
+//! [`device_certificate_config`](ServerRecord::device_certificate_config) a
+//! run starts its certificate with. Records hold configuration only; whether
+//! a run is up, its tunnel and its certificate are never stored here.
 //!
 //! The list lives in `<data root>/servers.json`, behind the
 //! [`ServerRegistry`] port, and holds any number of servers.
@@ -78,7 +79,7 @@ pub use domain::{
     add_server, remove_server, set_run_policy, set_server_credentials, update_server,
     EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayIdentity, RelayKind,
     RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
-    ServerStatusTracker, ServerUpdate, TunnelToken, ACME_ACCOUNT_DIR_NAME, SERVERS_DIR_NAME,
+    ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_unit::ServerUnit;
 pub use ports::{NewRecord, RegistryChange, RelayClient, ServerRegistry};

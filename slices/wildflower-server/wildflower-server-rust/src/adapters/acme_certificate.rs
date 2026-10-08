@@ -1,11 +1,13 @@
-//! The server's device-held certificate for its domain, from an ACME CA over
-//! TLS-ALPN-01.
+//! The server's device-held certificate for its public host, from an ACME CA
+//! over TLS-ALPN-01, cached in the folders its [`DeviceCertificateConfig`]
+//! names.
 //!
 //! rustls-acme does the work. [`acme_config`] configures it: the server's
 //! domain as the certificate's one name, the CA's directory, no contact, the
 //! install's ACME account (one per CA, shared by every server) and the
-//! server's own certificate cache. [`DeviceCertificate::spawn`] drives its
-//! state for as long as the server runs:
+//! server's own certificate cache. [`DeviceCertificate::start`] creates the
+//! cache folders and orders and renews the certificate for as long as the
+//! server runs:
 //!
 //! ```text
 //!   start ─ cached certificate for (domain, CA)?
@@ -18,37 +20,22 @@
 //! ```
 //!
 //! The CA's validation handshakes reach the server like any visitor, through
-//! the relay and the tunnel, and are answered by the tunnel listener with the
-//! state's resolver (see `http::tunnel_listener::tls`). Nothing renews a
-//! stopped server's certificate: it lapses, and the next start orders again.
+//! the relay and the tunnel, and are answered by the tunnel listener's
+//! [`TunnelTlsAcceptor`](crate::http::tunnel_listener::tls::TunnelTlsAcceptor)
+//! with the certificate's resolver. Nothing renews a stopped server's
+//! certificate: it lapses, and the next start orders again.
 
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::Context;
 use futures_util::StreamExt;
 use rustls_acme::caches::DirCache;
 use rustls_acme::{AcmeConfig, AcmeState, ResolvesServerCertAcme};
 use tokio_util::sync::CancellationToken;
-use url::Url;
 
-/// The directory of Let's Encrypt's staging CA when `staging_certificates`,
-/// and of its production CA otherwise: where a server's record says its
-/// certificates come from.
-///
-/// # Panics
-///
-/// Never: both directories are rustls-acme's constant URLs, which a test
-/// parses.
-#[must_use]
-pub fn lets_encrypt_directory_url(staging_certificates: bool) -> Url {
-    let directory_url = if staging_certificates {
-        rustls_acme::acme::LETS_ENCRYPT_STAGING_DIRECTORY
-    } else {
-        rustls_acme::acme::LETS_ENCRYPT_PRODUCTION_DIRECTORY
-    };
-    Url::parse(directory_url).expect("rustls-acme's Let's Encrypt directories are URLs")
-}
+use crate::DeviceCertificateConfig;
 
 /// Create `key_dir`, a folder rustls-acme caches private keys in, readable by
 /// this user only, and narrow an existing one to this user.
@@ -61,7 +48,7 @@ pub fn lets_encrypt_directory_url(staging_certificates: bool) -> Url {
 ///
 /// rustls-acme writes its files with the default permissions, so the folder
 /// is what keeps the keys from other users on the device.
-pub(crate) fn create_key_dir(key_dir: &Path) -> io::Result<()> {
+fn create_key_dir(key_dir: &Path) -> io::Result<()> {
     std::fs::create_dir_all(key_dir)?;
     #[cfg(unix)]
     std::fs::set_permissions(key_dir, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
@@ -69,8 +56,8 @@ pub(crate) fn create_key_dir(key_dir: &Path) -> io::Result<()> {
 }
 
 /// The rustls-acme configuration for the server at `domain`: its certificate
-/// is ordered from the CA whose directory is `acme_directory_url`, cached in
-/// `certificate_dir` and ordered with the install's account, cached in
+/// is ordered from the CA at `config`'s directory, cached in its
+/// `certificate_dir` and ordered with the install's account, cached in its
 /// `acme_account_dir`.
 ///
 /// # Remarks
@@ -81,17 +68,12 @@ pub(crate) fn create_key_dir(key_dir: &Path) -> io::Result<()> {
 /// own `certificate_dir`, so deleting a server deletes its certificates and
 /// not the account. No contact is given: the CA would use it only for
 /// announcements.
-pub(crate) fn acme_config(
-    domain: &str,
-    acme_directory_url: &Url,
-    certificate_dir: &Path,
-    acme_account_dir: &Path,
-) -> AcmeConfig<io::Error> {
+fn acme_config(domain: &str, config: &DeviceCertificateConfig) -> AcmeConfig<io::Error> {
     AcmeConfig::new([domain])
-        .directory(acme_directory_url.as_str())
+        .directory(config.acme_directory_url.as_str())
         .cache_compose(
-            DirCache::new(certificate_dir.to_owned()),
-            DirCache::new(acme_account_dir.to_owned()),
+            DirCache::new(config.certificate_dir.clone()),
+            DirCache::new(config.acme_account_dir.clone()),
         )
 }
 
@@ -101,21 +83,35 @@ pub(crate) struct DeviceCertificate {
     /// Serves the deployed certificate, and the CA's validation certificate
     /// while an order's challenge is pending.
     resolver: Arc<ResolvesServerCertAcme>,
-    /// Stops the task driving the ACME state.
+    /// Stops the task ordering and renewing the certificate.
     cancel: CancellationToken,
 }
 
 impl DeviceCertificate {
-    /// Start driving the ACME state `acme_config` describes: deploy a cached
-    /// certificate, order one when it is missing or expired, and renew it.
-    /// Spawns onto the ambient tokio runtime, and runs until the
+    /// Start the certificate for `public_host` that `config` describes:
+    /// create its key folders, readable by this user only, then deploy a
+    /// cached certificate, order one when it is missing or expired, and renew
+    /// it. Spawns onto the ambient tokio runtime, and runs until the
     /// `DeviceCertificate` is dropped.
-    pub(crate) fn spawn(acme_config: AcmeConfig<io::Error>) -> Self {
-        let acme_state = acme_config.state();
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a key folder can't be created or narrowed to this
+    /// user. A failed order isn't one: rustls-acme retries it.
+    pub(crate) fn start(
+        public_host: &str,
+        config: &DeviceCertificateConfig,
+    ) -> anyhow::Result<Self> {
+        for key_dir in [&config.certificate_dir, &config.acme_account_dir] {
+            create_key_dir(key_dir).with_context(|| {
+                format!("failed to create the key folder {}", key_dir.display())
+            })?;
+        }
+        let acme_state = acme_config(public_host, config).state();
         let resolver = acme_state.resolver();
         let cancel = CancellationToken::new();
-        tokio::spawn(drive(acme_state, cancel.clone()));
-        Self { resolver, cancel }
+        tokio::spawn(order_and_renew(acme_state, cancel.clone()));
+        Ok(Self { resolver, cancel })
     }
 
     /// The resolver the tunnel listener's TLS serves certificates from.
@@ -130,10 +126,11 @@ impl Drop for DeviceCertificate {
     }
 }
 
-/// Poll `acme_state` until `cancel`, logging each event. rustls-acme retries
-/// a failed order itself, with backoff; until a certificate is deployed, the
+/// Poll `acme_state` until `cancel`, logging each event: polling is what
+/// makes rustls-acme deploy, order and renew the certificate. It retries a
+/// failed order itself, with backoff; until a certificate is deployed, the
 /// tunnel listener's handshakes fail.
-async fn drive(mut acme_state: AcmeState<io::Error>, cancel: CancellationToken) {
+async fn order_and_renew(mut acme_state: AcmeState<io::Error>, cancel: CancellationToken) {
     loop {
         let event = tokio::select! {
             event = acme_state.next() => event,
@@ -149,12 +146,13 @@ async fn drive(mut acme_state: AcmeState<io::Error>, cancel: CancellationToken) 
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use std::time::Duration;
 
     use rcgen::{CertificateParams, KeyPair};
     use rustls_acme::{CertCache, EventError, EventOk};
     use tempfile::TempDir;
+    use url::Url;
 
     use super::*;
 
@@ -163,14 +161,14 @@ pub(crate) mod tests {
 
     /// A CA directory nothing answers at, so an order fails at once instead of
     /// reaching a real CA.
-    pub(crate) fn unreachable_acme_directory_url() -> Url {
+    fn unreachable_acme_directory_url() -> Url {
         Url::parse("https://127.0.0.1:9/directory").expect("a URL")
     }
 
     /// A self-signed certificate for `domain`, valid until `not_after` (a
     /// year, month and day), in the form rustls-acme caches: the private key's
     /// PEM, then the certificate's. Returns the certificate's DER too.
-    pub(crate) fn self_signed_cache_entry(
+    fn self_signed_cache_entry(
         domain: &str,
         not_after: (i32, u8, u8),
     ) -> (Vec<u8>, rustls::pki_types::CertificateDer<'static>) {
@@ -188,7 +186,7 @@ pub(crate) mod tests {
     /// Put `cache_entry` in `certificate_dir` as the cached certificate for
     /// `domain` from the CA at `acme_directory_url`, as rustls-acme stores
     /// one.
-    pub(crate) async fn cache_certificate(
+    async fn cache_certificate(
         certificate_dir: &Path,
         domain: &str,
         acme_directory_url: &Url,
@@ -231,14 +229,29 @@ pub(crate) mod tests {
         }
     }
 
+    impl DataRoot {
+        /// The certificate config of the server whose certificates are cached
+        /// in `certificate_dir`, ordering from `acme_directory_url` with the
+        /// install's account.
+        fn config(
+            &self,
+            certificate_dir: &Path,
+            acme_directory_url: &Url,
+        ) -> DeviceCertificateConfig {
+            DeviceCertificateConfig {
+                acme_directory_url: acme_directory_url.clone(),
+                certificate_dir: certificate_dir.to_owned(),
+                acme_account_dir: self.acme_account_dir.clone(),
+            }
+        }
+    }
+
     /// The ACME state for [`DOMAIN`] over `data_root`, ordering from
     /// `acme_directory_url`.
     fn acme_state(data_root: &DataRoot, acme_directory_url: &Url) -> AcmeState<io::Error> {
         acme_config(
             DOMAIN,
-            acme_directory_url,
-            &data_root.certificate_dir,
-            &data_root.acme_account_dir,
+            &data_root.config(&data_root.certificate_dir, acme_directory_url),
         )
         .state()
     }
@@ -362,9 +375,7 @@ pub(crate) mod tests {
 
         let mut other_server = acme_config(
             "other.relay.test",
-            &acme_directory_url,
-            &data_root.other_certificate_dir,
-            &data_root.acme_account_dir,
+            &data_root.config(&data_root.other_certificate_dir, &acme_directory_url),
         )
         .state();
         assert!(matches!(
@@ -390,9 +401,11 @@ pub(crate) mod tests {
         );
     }
 
+    /// Starting creates the certificate's and the account's key folders,
+    /// and narrows an existing one, to this user.
     #[cfg(unix)]
-    #[test]
-    fn key_dirs_are_readable_by_this_user_only() {
+    #[tokio::test]
+    async fn starting_makes_the_key_dirs_readable_by_this_user_only() {
         use std::os::unix::fs::PermissionsExt;
         let data_root = data_root();
         std::fs::create_dir_all(&data_root.acme_account_dir).unwrap();
@@ -402,30 +415,25 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        for key_dir in [&data_root.acme_account_dir, &data_root.certificate_dir] {
-            create_key_dir(key_dir).expect("create the key folder");
+        let _device_certificate = DeviceCertificate::start(
+            DOMAIN,
+            &data_root.config(
+                &data_root.certificate_dir,
+                &unreachable_acme_directory_url(),
+            ),
+        )
+        .expect("create the key folders");
 
+        for key_dir in [&data_root.acme_account_dir, &data_root.certificate_dir] {
             let mode = std::fs::metadata(key_dir).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o700, "{}", key_dir.display());
         }
     }
 
-    #[test]
-    fn the_staging_flag_picks_let_s_encrypt_s_staging_directory() {
-        assert_eq!(
-            lets_encrypt_directory_url(true).as_str(),
-            "https://acme-staging-v02.api.letsencrypt.org/directory"
-        );
-        assert_eq!(
-            lets_encrypt_directory_url(false).as_str(),
-            "https://acme-v02.api.letsencrypt.org/directory"
-        );
-    }
-
-    /// Cancelling stops the task driving the state, even while it waits
+    /// Cancelling stops the task ordering and renewing, even while it waits
     /// for a renewal years away; dropping a [`DeviceCertificate`] cancels it.
     #[tokio::test]
-    async fn cancelling_stops_driving_the_state() {
+    async fn cancelling_stops_ordering_and_renewing() {
         let data_root = data_root();
         let acme_directory_url = unreachable_acme_directory_url();
         let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
@@ -437,28 +445,27 @@ pub(crate) mod tests {
         )
         .await;
         let cancel = CancellationToken::new();
-        let driving = tokio::spawn(drive(
+        let ordering_and_renewing = tokio::spawn(order_and_renew(
             acme_state(&data_root, &acme_directory_url),
             cancel.clone(),
         ));
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(
-            !driving.is_finished(),
-            "the state is driven until cancelled"
+            !ordering_and_renewing.is_finished(),
+            "the state is polled until cancelled"
         );
 
         cancel.cancel();
 
-        tokio::time::timeout(Duration::from_secs(5), driving)
+        tokio::time::timeout(Duration::from_secs(5), ordering_and_renewing)
             .await
             .expect("the task stops in time")
             .expect("the task doesn't panic");
-        let device_certificate = DeviceCertificate::spawn(acme_config(
+        let device_certificate = DeviceCertificate::start(
             DOMAIN,
-            &acme_directory_url,
-            &data_root.certificate_dir,
-            &data_root.acme_account_dir,
-        ));
+            &data_root.config(&data_root.certificate_dir, &acme_directory_url),
+        )
+        .expect("start the certificate");
         let device_certificate_cancel = device_certificate.cancel.clone();
         drop(device_certificate);
         assert!(device_certificate_cancel.is_cancelled());

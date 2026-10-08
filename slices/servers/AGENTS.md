@@ -66,18 +66,23 @@ changing how servers run or what the host notifies about them.
   `GET /rathole` returned. There's no separate display name; the registry is
   keyed by the domain, and each server runs from its own folder,
   `<data root>/servers/<domain>/` (`ServerRecord::server_dir`), which holds
-  its databases and, in `certificates/` (`ServerRecord::certificate_dir`),
-  its certificates and their keys.
+  its databases and, in `certificates/`, its certificates and their keys.
 - **New servers get staging certificates.**
   `ServerRecord::DEFAULT_STAGING_CERTIFICATES` is `true`: a new server's
   certificates come from Let's Encrypt's staging CA, because all of a relay's
   servers share its registered domain and its limit of 50 certificates in 7
   days until the limit increase (#899). Setting it to `false` is the switch to
   production. A record's `staging_certificates` picks the CA its runs order
-  from (`wildflower_server_rust::lets_encrypt_directory_url`).
+  from.
 - **One ACME account per install.** Every server orders its certificates
-  with the account whose key is in `<data root>/acme-account/`
-  (`ACME_ACCOUNT_DIR_NAME`), one key per CA, created by the first order.
+  with the account whose key is in `<data root>/acme-account/`, one key per
+  CA, created by the first order.
+- **The record is the certificate's one source.**
+  `ServerRecord::device_certificate_config` builds a run's
+  `DeviceCertificateConfig`: Let's Encrypt's staging or production directory
+  from `staging_certificates`, the server's `certificates/` folder and the
+  install's `acme-account/` folder. The host passes it through to
+  `wildflower-server-rust` unchanged.
 - **The tunnel name is one DNS label.** `ServerRecord::tunnel_name` is a
   `TunnelName` from `rathole-settings-rust`, the same check the relay applies
   to its tunnels: one lowercase DNS label, never `admin`. It is checked on

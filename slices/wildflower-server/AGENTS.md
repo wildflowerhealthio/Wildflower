@@ -40,22 +40,25 @@ port and on the tunnel. Rust-only, no `-core`.
       request as forwarded, at the public origin. `WildflowerServer` holds
       the tunnel's daemon, so it dials for exactly as long as the server
       serves.
-  - **The device certificate** (`live_bindings/device_certificate.rs`) is
+  - **The device certificate** (`adapters/acme_certificate.rs`) is
     the tunnel listener's certificate for the server's domain, from
     rustls-acme over TLS-ALPN-01, the CA reaching the device through the
-    relay and the tunnel like any visitor. `set_up` starts driving its ACME
-    state for the run, and `WildflowerServer` holds it like the tunnel
-    daemon: a valid cached certificate is deployed, a missing or expired one
+    relay and the tunnel like any visitor. `set_up` starts it for the run and
+    hands its resolver to the tunnel listener's `TunnelTlsAcceptor`, and
+    `WildflowerServer` holds it like the tunnel daemon, ordering and
+    renewing until it is dropped: a valid cached certificate is deployed, a missing or expired one
     is ordered at once, and it is renewed once a third of its lifetime is
     left. A failed order is retried by rustls-acme with backoff while the
     server keeps running; until a certificate is deployed, tunnel handshakes
-    fail. The CA is the one at `WildflowerServerConfig::acme_directory_url`,
-    which the host picks from the record's `staging_certificates`
-    (`lets_encrypt_directory_url`). The order has no contact. Keys are files:
-    the certificate and its key in `certificate_dir`, the server's own, and
-    the account key, one per CA, in `acme_account_dir`, shared by the
-    install's servers. `set_up` makes both folders readable by this user
-    only.
+    fail. Where it comes from is the host's
+    `WildflowerServerConfig::device_certificate`, a `DeviceCertificateConfig`
+    built from the server's record: the CA at its `acme_directory_url`
+    (Let's Encrypt's staging or production CA). The order has no contact.
+    Keys are files: the certificate and its key in `certificate_dir`, the
+    server's own, and the account key, one per CA, in `acme_account_dir`,
+    shared by the install's servers. Starting the certificate makes both
+    folders readable by this user only, and a folder that can't be created
+    fails `set_up`.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
     (`shared_structures_rust::health_check`): `application/health+json`,
     uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two
@@ -79,16 +82,17 @@ port and on the tunnel. Rust-only, no `-core`.
     The forwarded-request report skips `/health`, so the probes stay out of
     the request log and the request notifications.
   - Layout: `config.rs` at the crate root, the host's inputs
-    (`WildflowerServerConfig`, `HostPorts`, `ServerObservers`); `domain/`
+    (`WildflowerServerConfig` with its `DeviceCertificateConfig`, `HostPorts`,
+    `ServerObservers`); `domain/`
     `ServerHealth` and the reachability monitor with its `HealthProbe` port;
     `adapters/` ports implemented here (apps' `AppLaunchScopes` and
     `LaunchContextMinter` from gatekeeper, the monitor's `HealthProbe` over
-    reqwest); `http/` the
+    reqwest) and the device certificate over rustls-acme; `http/` the
     server's own middleware (CORS, the loopback owner trust, the
     forwarded-request report, the tunnel front), the tunnel listener with its
-    PROXY header reader and its TLS, the `/health` checks and the `404`;
-    `live_bindings/` `set_up`, `WildflowerServer`, the database catalogue and
-    the device certificate.
+    PROXY header reader and its TLS acceptor, the `/health` checks and the
+    `404`; `live_bindings/` composition only: `set_up`, `WildflowerServer`
+    and the database catalogue.
   - The `test-support` feature adds `WildflowerServer::tunnel_stream_tx`
     for `tests/serve.rs`, which hands the tunnel listener connections the way
     the tunnel does, over TLS with a self-signed certificate it puts in the
@@ -100,10 +104,11 @@ port and on the tunnel. Rust-only, no `-core`.
   non-Tauri partition of `scripts/checks/rust.sh`.
 - **The host hands in what it owns.** `WildflowerServerConfig` carries the values
   `apps/wildflower-tauri` derives at build time (`tauri-shared-config.json`),
-  from its platform paths (the server's folder, its certificate folder, the
-  install's ACME account folder, the FHIR SearchParameter bundle dir) or from
-  the server's record (the tunnel's relay settings, the public host and the
-  CA's directory). `HostPorts` carries its native adapters as trait
+  from its platform paths (the server's folder, the FHIR SearchParameter
+  bundle dir) or from the server's record (the tunnel's relay settings, the
+  public host, and the `DeviceCertificateConfig` its
+  `ServerRecord::device_certificate_config` builds: the CA's directory, the
+  server's certificate folder and the install's ACME account folder). `HostPorts` carries its native adapters as trait
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time
   configuration or platform paths itself.
@@ -121,7 +126,7 @@ port and on the tunnel. Rust-only, no `-core`.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
   listeners, not those tasks (the tunnel's supervisor, the reachability
-  monitor and the device certificate's ACME driver are the exception: they
+  monitor and the device certificate's ordering and renewal are the exception: they
   stop when `serve` returns). The host runs
   each server as a unit on the unit runner, which gives each run a dedicated
   runtime and shuts it down when the run ends, which is what ends them.

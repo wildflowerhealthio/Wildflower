@@ -438,10 +438,13 @@ mod tests {
         let lab_dir = self_hosted_record("lab").server_dir(data_root.path());
         for server in [official_record("ruth"), self_hosted_record("lab")] {
             let server_dir = server.server_dir(data_root.path());
-            std::fs::create_dir_all(server.certificate_dir(data_root.path())).unwrap();
+            let certificate_config = server.device_certificate_config(data_root.path());
+            std::fs::create_dir_all(certificate_config.certificate_dir).unwrap();
             std::fs::write(server_dir.join("wildflower.sqlite"), "data").unwrap();
         }
-        let acme_account_dir = data_root.path().join(crate::ACME_ACCOUNT_DIR_NAME);
+        let acme_account_dir = official_record("ruth")
+            .device_certificate_config(data_root.path())
+            .acme_account_dir;
         std::fs::create_dir_all(&acme_account_dir).unwrap();
 
         remove_server(
@@ -454,7 +457,8 @@ mod tests {
         assert!(!ruth_dir.exists());
         assert!(lab_dir.join("wildflower.sqlite").exists());
         assert!(self_hosted_record("lab")
-            .certificate_dir(data_root.path())
+            .device_certificate_config(data_root.path())
+            .certificate_dir
             .exists());
         assert!(acme_account_dir.exists(), "the install's account stays");
         assert_eq!(

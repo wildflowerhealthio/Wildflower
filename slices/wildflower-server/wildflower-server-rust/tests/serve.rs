@@ -46,7 +46,8 @@ use tokio_util::sync::CancellationToken;
 use tunnel_rust::TunnelStream;
 use url::Url;
 use wildflower_server_rust::{
-    set_up, HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig,
+    set_up, DeviceCertificateConfig, HostPorts, ServerHealth, ServerObservers,
+    WildflowerServerConfig,
 };
 
 /// The `Forwarded` header a front run on this machine stamps on a request it
@@ -112,11 +113,13 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             service_name: "test".to_owned(),
         },
         public_host: PUBLIC_HOST.to_owned(),
-        acme_directory_url: Url::parse(UNREACHABLE_ACME_DIRECTORY_URL)
-            .expect("the CA directory URL"),
-        // The test's one temporary folder stands in for the data root too.
-        certificate_dir: certificate_dir(&server_dir),
-        acme_account_dir: server_dir.join("acme-account"),
+        device_certificate: DeviceCertificateConfig {
+            acme_directory_url: Url::parse(UNREACHABLE_ACME_DIRECTORY_URL)
+                .expect("the CA directory URL"),
+            // The test's one temporary folder stands in for the data root too.
+            certificate_dir: certificate_dir(&server_dir),
+            acme_account_dir: server_dir.join("acme-account"),
+        },
         runtime: ServerRuntimeConfig {
             loopback_base_url,
             server_dir,

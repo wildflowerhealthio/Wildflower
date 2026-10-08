@@ -3,7 +3,7 @@ mod loopback_consent_dialog;
 mod native_webview_handle;
 
 use anyhow::Context;
-use servers_rust::{ServerDetail, ServerRecord, ACME_ACCOUNT_DIR_NAME};
+use servers_rust::{ServerDetail, ServerRecord};
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::ServerRuntimeConfig;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tauri::Manager;
 use tauri_unit_runner::{BackgroundServiceStartConfig, TauriUnitRunner};
 use url::Url;
-use wildflower_server_rust::{lets_encrypt_directory_url, HostPorts, WildflowerServerConfig};
+use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -194,9 +194,7 @@ fn server_config(
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
         public_host: server.domain(),
-        acme_directory_url: lets_encrypt_directory_url(server.staging_certificates),
-        certificate_dir: server.certificate_dir(data_root),
-        acme_account_dir: data_root.join(ACME_ACCOUNT_DIR_NAME),
+        device_certificate: server.device_certificate_config(data_root),
     })
 }
 

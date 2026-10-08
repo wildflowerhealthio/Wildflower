@@ -1,9 +1,9 @@
 //! The tunnel listener's TLS: each visitor's connection is a TLS connection
 //! to the server's domain, which the relay passes through by its SNI
 //! without terminating it. The certificate is the device's own (see
-//! `live_bindings::device_certificate`), and the CA's TLS-ALPN-01 validation
+//! `adapters::acme_certificate`), and the CA's TLS-ALPN-01 validation
 //! handshakes (ALPN `acme-tls/1`, RFC 8737) arrive the same way and are
-//! answered here.
+//! answered here, by [`TunnelTlsAcceptor`].
 
 use std::sync::Arc;
 
@@ -18,15 +18,20 @@ use tokio_rustls::TlsAcceptor;
 /// The ALPN protocol of a TLS-ALPN-01 validation handshake (RFC 8737).
 const ACME_TLS_ALPN: &[u8] = b"acme-tls/1";
 
-/// The TLS the tunnel listener accepts: the server's certificate, for its
-/// domain only.
+/// The TLS acceptor for tunnel connections: the handshake every connection
+/// the tunnel hands over completes before HTTP. It serves the device
+/// certificate only to a ClientHello naming the server's public host (see
+/// [`PublicHostOnlyResolver`]), and answers and closes the CA's TLS-ALPN-01
+/// validation handshakes, which never reach HTTP.
 #[derive(Clone)]
-pub(crate) struct TunnelTls {
+pub(crate) struct TunnelTlsAcceptor {
+    /// The rustls acceptor, configured with the public-host-only resolver and
+    /// the `http/1.1` and `acme-tls/1` ALPN protocols.
     acceptor: TlsAcceptor,
 }
 
-impl TunnelTls {
-    /// TLS for connections naming `public_host` in their SNI, with the
+impl TunnelTlsAcceptor {
+    /// An acceptor for connections naming `public_host` in their SNI, with the
     /// certificates `certificate_resolver` serves: rustls-acme's in
     /// production, which also serves the CA's validation certificate.
     ///
@@ -43,7 +48,7 @@ impl TunnelTls {
                 .with_safe_default_protocol_versions()
                 .expect("ring supports the default protocol versions")
                 .with_no_client_auth()
-                .with_cert_resolver(Arc::new(PublicHostResolver {
+                .with_cert_resolver(Arc::new(PublicHostOnlyResolver {
                     public_host: public_host.to_ascii_lowercase(),
                     certificate_resolver,
                 }));
@@ -62,8 +67,8 @@ impl TunnelTls {
     /// # Errors
     ///
     /// Returns an error if the handshake fails: the client named another host
-    /// or none (see [`PublicHostResolver`]), no certificate is deployed yet, or
-    /// the client isn't speaking TLS.
+    /// or none (see [`PublicHostOnlyResolver`]), no certificate is deployed
+    /// yet, or the client isn't speaking TLS.
     ///
     /// Nothing here bounds how long the client takes; the caller runs it under
     /// a timeout.
@@ -99,14 +104,14 @@ impl TunnelTls {
 /// tunnel front then holds the request's `Host` to the same domain, so SNI
 /// and `Host` agree.
 #[derive(Debug)]
-struct PublicHostResolver {
+struct PublicHostOnlyResolver {
     /// The server's domain, lowercase.
     public_host: String,
     /// What answers a ClientHello that names it.
     certificate_resolver: Arc<dyn ResolvesServerCert>,
 }
 
-impl ResolvesServerCert for PublicHostResolver {
+impl ResolvesServerCert for PublicHostOnlyResolver {
     fn resolve(&self, client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
         let names_public_host = client_hello
             .server_name()
@@ -157,12 +162,12 @@ pub(in crate::http) mod tests {
         )
     }
 
-    /// The tunnel listener's TLS for [`PUBLIC_HOST`] with a self-signed
-    /// certificate, and that certificate for the client to trust.
-    pub(in crate::http) fn tunnel_tls() -> (TunnelTls, CertificateDer<'static>) {
+    /// The tunnel listener's TLS acceptor for [`PUBLIC_HOST`] with a
+    /// self-signed certificate, and that certificate for the client to trust.
+    pub(in crate::http) fn tls_acceptor() -> (TunnelTlsAcceptor, CertificateDer<'static>) {
         let (certificate, certificate_resolver) = self_signed(PUBLIC_HOST);
         (
-            TunnelTls::new(PUBLIC_HOST, certificate_resolver),
+            TunnelTlsAcceptor::new(PUBLIC_HOST, certificate_resolver),
             certificate,
         )
     }
@@ -201,12 +206,12 @@ pub(in crate::http) mod tests {
 
     #[tokio::test]
     async fn a_handshake_for_the_public_host_is_accepted_for_http() {
-        let (tunnel_tls, certificate) = tunnel_tls();
+        let (tls_acceptor, certificate) = tls_acceptor();
         let (visitor, server_end) = tokio::io::duplex(64 * 1024);
 
         let (client, accepted) = tokio::join!(
             connect(visitor, &certificate, PUBLIC_HOST),
-            tunnel_tls.accept(server_end)
+            tls_acceptor.accept(server_end)
         );
 
         let mut client = client.expect("the client trusts the certificate");
@@ -221,13 +226,13 @@ pub(in crate::http) mod tests {
     /// SNI is compared without regard to case, as DNS names are.
     #[tokio::test]
     async fn the_public_host_matches_in_any_case() {
-        let (tunnel_tls, certificate) = tunnel_tls();
+        let (tls_acceptor, certificate) = tls_acceptor();
         let (visitor, server_end) = tokio::io::duplex(64 * 1024);
         let uppercase_public_host = PUBLIC_HOST.to_ascii_uppercase();
 
         let (client, accepted) = tokio::join!(
             connect(visitor, &certificate, &uppercase_public_host),
-            tunnel_tls.accept(server_end)
+            tls_acceptor.accept(server_end)
         );
 
         client.expect("the handshake completes");
@@ -239,12 +244,12 @@ pub(in crate::http) mod tests {
     #[tokio::test]
     async fn a_handshake_for_another_host_fails() {
         let (other_certificate, other_resolver) = self_signed("other.relay.test");
-        let tunnel_tls = TunnelTls::new(PUBLIC_HOST, other_resolver);
+        let tls_acceptor = TunnelTlsAcceptor::new(PUBLIC_HOST, other_resolver);
         let (visitor, server_end) = tokio::io::duplex(64 * 1024);
 
         let (client, accepted) = tokio::join!(
             connect(visitor, &other_certificate, "other.relay.test"),
-            tunnel_tls.accept(server_end)
+            tls_acceptor.accept(server_end)
         );
 
         assert!(client.is_err());
@@ -262,13 +267,13 @@ pub(in crate::http) mod tests {
                 None
             }
         }
-        let (_, certificate) = tunnel_tls();
-        let tunnel_tls = TunnelTls::new(PUBLIC_HOST, Arc::new(NoCertificate));
+        let (_, certificate) = tls_acceptor();
+        let tls_acceptor = TunnelTlsAcceptor::new(PUBLIC_HOST, Arc::new(NoCertificate));
         let (visitor, server_end) = tokio::io::duplex(64 * 1024);
 
         let (client, accepted) = tokio::join!(
             connect(visitor, &certificate, PUBLIC_HOST),
-            tunnel_tls.accept(server_end)
+            tls_acceptor.accept(server_end)
         );
 
         assert!(client.is_err());
@@ -279,7 +284,7 @@ pub(in crate::http) mod tests {
     /// closed, never handed to HTTP.
     #[tokio::test]
     async fn a_validation_handshake_is_answered_and_closed() {
-        let (tunnel_tls, certificate) = tunnel_tls();
+        let (tls_acceptor, certificate) = tls_acceptor();
         let (visitor, server_end) = tokio::io::duplex(64 * 1024);
 
         let (client, accepted) = tokio::join!(
@@ -287,7 +292,7 @@ pub(in crate::http) mod tests {
                 ServerName::try_from(PUBLIC_HOST).expect("a DNS name"),
                 visitor
             ),
-            tunnel_tls.accept(server_end)
+            tls_acceptor.accept(server_end)
         );
 
         let mut client = client.expect("the validation handshake completes");

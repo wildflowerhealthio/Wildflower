@@ -21,6 +21,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tunnel_rust::{TunnelDaemon, TunnelStream};
 
+use crate::adapters::acme_certificate::DeviceCertificate;
 use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
 use crate::adapters::launch_context_minter::GatekeeperLaunchContextMinter;
@@ -33,9 +34,8 @@ use crate::http::middleware::loopback_owner_trust::{
 };
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
 use crate::http::not_found;
-use crate::http::tunnel_listener::tls::TunnelTls;
+use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
-use crate::live_bindings::device_certificate::{acme_config, create_key_dir, DeviceCertificate};
 use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 
 // Filenames of the server's SQLite databases in its folder. These
@@ -178,9 +178,7 @@ pub async fn set_up(
         first_party_client_id,
         relay_settings,
         public_host,
-        acme_directory_url,
-        certificate_dir,
-        acme_account_dir,
+        device_certificate,
     } = config;
 
     // The server's public origin, from its domain: what HFS's links and every app
@@ -197,13 +195,6 @@ pub async fn set_up(
             runtime.server_dir.display()
         )
     })?;
-
-    // The folders the certificate's and the ACME account's keys are cached in,
-    // readable by this user only.
-    for key_dir in [&certificate_dir, &acme_account_dir] {
-        create_key_dir(key_dir)
-            .with_context(|| format!("failed to create the key folder {}", key_dir.display()))?;
-    }
 
     // Apply any deletions the Owner scheduled from the data-management screen
     // BEFORE opening the databases below: the `/databases` DELETE can't remove a
@@ -353,14 +344,10 @@ pub async fn set_up(
     // handshakes that arrive through the tunnel; renewed while the server
     // runs. A failed order is retried by rustls-acme, and the server keeps
     // running meanwhile: its tunnel handshakes fail until a certificate is
-    // deployed.
-    let device_certificate = DeviceCertificate::spawn(acme_config(
-        &public_host,
-        &acme_directory_url,
-        &certificate_dir,
-        &acme_account_dir,
-    ));
-    let tunnel_tls = TunnelTls::new(&public_host, device_certificate.resolver());
+    // deployed. Its key folders, readable by this user only, are created
+    // first; one that can't be fails the setup.
+    let device_certificate = DeviceCertificate::start(&public_host, &device_certificate)?;
+    let tunnel_tls_acceptor = TunnelTlsAcceptor::new(&public_host, device_certificate.resolver());
     #[cfg(feature = "test-support")]
     let tunnel_stream_tx = tunnel_config.tunnel_stream_tx;
     // Whether a remote app can reach the server: the monitor GETs the server's
@@ -566,7 +553,7 @@ pub async fn set_up(
     Ok(WildflowerServer {
         loopback_listener,
         loopback_router,
-        tunnel_listener: TunnelListener::new(tunnel_stream_rx, tunnel_tls),
+        tunnel_listener: TunnelListener::new(tunnel_stream_rx, tunnel_tls_acceptor),
         tunnel_router,
         #[cfg(feature = "test-support")]
         tunnel_stream_tx,

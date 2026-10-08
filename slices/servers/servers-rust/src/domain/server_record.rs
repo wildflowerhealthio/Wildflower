@@ -14,6 +14,7 @@ use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
 use serde::{Deserialize, Serialize, Serializer};
 use unit_runner::RunPolicy;
 use url::Url;
+use wildflower_server_rust::DeviceCertificateConfig;
 
 /// The folder in the data root that holds one folder per server, named by its
 /// [`domain`](ServerRecord::domain).
@@ -22,11 +23,28 @@ pub const SERVERS_DIR_NAME: &str = "servers";
 /// The folder in the data root that holds the install's ACME account keys,
 /// one per CA, which every server orders its certificates with. Removing a
 /// server leaves it.
-pub const ACME_ACCOUNT_DIR_NAME: &str = "acme-account";
+const ACME_ACCOUNT_DIR_NAME: &str = "acme-account";
 
 /// The folder in a server's folder that holds its certificates and their
 /// keys (see [`ServerRecord::certificate_dir`]).
 const CERTIFICATES_DIR_NAME: &str = "certificates";
+
+/// The directory of Let's Encrypt's staging CA when `staging_certificates`,
+/// and of its production CA otherwise: where a server's record says its
+/// certificates come from.
+///
+/// # Panics
+///
+/// Never: both directories are rustls-acme's constant URLs, which a test
+/// parses.
+fn lets_encrypt_directory_url(staging_certificates: bool) -> Url {
+    let directory_url = if staging_certificates {
+        rustls_acme::acme::LETS_ENCRYPT_STAGING_DIRECTORY
+    } else {
+        rustls_acme::acme::LETS_ENCRYPT_PRODUCTION_DIRECTORY
+    };
+    Url::parse(directory_url).expect("rustls-acme's Let's Encrypt directories are URLs")
+}
 
 /// One server: the relay it is reached through, the tunnel it holds there,
 /// and how it launches apps.
@@ -110,8 +128,25 @@ impl ServerRecord {
     /// [`server_dir`](Self::server_dir), so removing the server deletes them.
     /// Only the path: nothing is created here.
     #[must_use]
-    pub fn certificate_dir(&self, data_root: &Path) -> PathBuf {
+    fn certificate_dir(&self, data_root: &Path) -> PathBuf {
         self.server_dir(data_root).join(CERTIFICATES_DIR_NAME)
+    }
+
+    /// Where a run of the server orders and caches its certificate: from
+    /// Let's Encrypt's staging CA when
+    /// [`staging_certificates`](Self::staging_certificates) and its production
+    /// CA otherwise, cached in `certificates/` in its
+    /// [`server_dir`](Self::server_dir), so removing the server deletes them,
+    /// and ordered with the install's ACME account, cached in
+    /// `<data_root>/acme-account/`, which removing a server leaves. Only the
+    /// paths: nothing is created here.
+    #[must_use]
+    pub fn device_certificate_config(&self, data_root: &Path) -> DeviceCertificateConfig {
+        DeviceCertificateConfig {
+            acme_directory_url: lets_encrypt_directory_url(self.staging_certificates),
+            certificate_dir: self.certificate_dir(data_root),
+            acme_account_dir: data_root.join(ACME_ACCOUNT_DIR_NAME),
+        }
     }
 
     /// Whether a run of the server built from `other` could differ from one
@@ -395,16 +430,46 @@ pub(crate) mod tests {
         );
     }
 
+    /// A server's certificates come from the CA its record names, are cached
+    /// in its own folder, and are ordered with the install's one account.
     #[test]
-    fn a_server_s_certificates_are_in_its_own_folder() {
+    fn a_server_s_certificate_config_is_its_ca_its_folder_and_the_install_s_account() {
         let data_root = Path::new("/data/root");
         assert_eq!(
-            official_record("ruth").certificate_dir(data_root),
-            Path::new("/data/root/servers/ruth.relay.wildflowerhealth.io/certificates")
+            official_record("ruth").device_certificate_config(data_root),
+            DeviceCertificateConfig {
+                acme_directory_url: Url::parse("https://acme-v02.api.letsencrypt.org/directory")
+                    .unwrap(),
+                certificate_dir: PathBuf::from(
+                    "/data/root/servers/ruth.relay.wildflowerhealth.io/certificates"
+                ),
+                acme_account_dir: PathBuf::from("/data/root/acme-account"),
+            }
         );
         assert_eq!(
-            self_hosted_record("lab").certificate_dir(data_root),
-            Path::new("/data/root/servers/lab.relay.example.com/certificates")
+            self_hosted_record("lab").device_certificate_config(data_root),
+            DeviceCertificateConfig {
+                acme_directory_url: Url::parse(
+                    "https://acme-staging-v02.api.letsencrypt.org/directory"
+                )
+                .unwrap(),
+                certificate_dir: PathBuf::from(
+                    "/data/root/servers/lab.relay.example.com/certificates"
+                ),
+                acme_account_dir: PathBuf::from("/data/root/acme-account"),
+            }
+        );
+    }
+
+    #[test]
+    fn the_staging_flag_picks_let_s_encrypt_s_staging_directory() {
+        assert_eq!(
+            lets_encrypt_directory_url(true).as_str(),
+            "https://acme-staging-v02.api.letsencrypt.org/directory"
+        );
+        assert_eq!(
+            lets_encrypt_directory_url(false).as_str(),
+            "https://acme-v02.api.letsencrypt.org/directory"
         );
     }
 
