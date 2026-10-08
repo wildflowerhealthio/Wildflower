@@ -103,7 +103,7 @@ fn acme_config(
     certificate_cache: LastEntryCertCache,
 ) -> AcmeConfig<io::Error> {
     AcmeConfig::new([domain])
-        .directory(config.acme_directory_url.as_str())
+        .directory(config.certificate_authority.directory_url().as_str())
         .cache_compose(
             certificate_cache,
             DirCache::new(config.acme_account_dir.clone()),
@@ -228,7 +228,10 @@ async fn cached_certificate(
     config: &DeviceCertificateConfig,
 ) -> anyhow::Result<Option<IssuedCertificate>> {
     let Some(entry) = DirCache::new(&config.certificate_dir)
-        .load_cert(&[domain.to_owned()], config.acme_directory_url.as_str())
+        .load_cert(
+            &[domain.to_owned()],
+            config.certificate_authority.directory_url().as_str(),
+        )
         .await
         .context("reading the certificate cache failed")?
     else {
@@ -597,11 +600,9 @@ mod tests {
     /// The domain the certificates are for.
     const DOMAIN: &str = "dev1.relay.test";
 
-    /// A CA directory nothing answers at, so an order fails at once instead of
-    /// reaching a real CA.
-    fn unreachable_acme_directory_url() -> Url {
-        Url::parse("https://127.0.0.1:9/directory").expect("a URL")
-    }
+    /// The CA the tests order from: nothing answers at its directory, so an
+    /// order fails at once instead of reaching a real CA.
+    const TEST_CA: CertificateAuthority = CertificateAuthority::UnreachableForTests;
 
     /// A self-signed certificate for `domain`, valid until `not_after` (a
     /// year, month and day), in the form rustls-acme caches: the private key's
@@ -631,18 +632,17 @@ mod tests {
     }
 
     /// Put `cache_entry` in `certificate_dir` as the cached certificate for
-    /// `domain` from the CA at `acme_directory_url`, as rustls-acme stores
-    /// one.
+    /// `domain` from `certificate_authority`, as rustls-acme stores one.
     async fn cache_certificate(
         certificate_dir: &Path,
         domain: &str,
-        acme_directory_url: &Url,
+        certificate_authority: CertificateAuthority,
         cache_entry: &[u8],
     ) {
         DirCache::new(certificate_dir)
             .store_cert(
                 &[domain.to_owned()],
-                acme_directory_url.as_str(),
+                certificate_authority.directory_url().as_str(),
                 cache_entry,
             )
             .await
@@ -678,16 +678,15 @@ mod tests {
 
     impl DataRoot {
         /// The certificate config of the server whose certificates are cached
-        /// in `certificate_dir`, ordering from `acme_directory_url` with the
+        /// in `certificate_dir`, ordering from `certificate_authority` with the
         /// install's account.
         fn config(
             &self,
             certificate_dir: &Path,
-            acme_directory_url: &Url,
+            certificate_authority: CertificateAuthority,
         ) -> DeviceCertificateConfig {
             DeviceCertificateConfig {
-                certificate_authority: CertificateAuthority::LetsEncryptStaging,
-                acme_directory_url: acme_directory_url.clone(),
+                certificate_authority,
                 certificate_dir: certificate_dir.to_owned(),
                 acme_account_dir: self.acme_account_dir.clone(),
             }
@@ -695,9 +694,12 @@ mod tests {
     }
 
     /// The ACME state for [`DOMAIN`] over `data_root`, ordering from
-    /// `acme_directory_url`.
-    fn acme_state(data_root: &DataRoot, acme_directory_url: &Url) -> AcmeState<io::Error> {
-        let config = data_root.config(&data_root.certificate_dir, acme_directory_url);
+    /// `certificate_authority`.
+    fn acme_state(
+        data_root: &DataRoot,
+        certificate_authority: CertificateAuthority,
+    ) -> AcmeState<io::Error> {
+        let config = data_root.config(&data_root.certificate_dir, certificate_authority);
         acme_config(
             DOMAIN,
             &config,
@@ -738,7 +740,7 @@ mod tests {
     #[tokio::test]
     async fn with_nothing_cached_the_account_is_created_and_a_certificate_ordered() {
         let data_root = data_root();
-        let mut acme_state = acme_state(&data_root, &unreachable_acme_directory_url());
+        let mut acme_state = acme_state(&data_root, TEST_CA);
 
         assert!(matches!(
             next_event(&mut acme_state).await,
@@ -757,16 +759,16 @@ mod tests {
     #[tokio::test]
     async fn a_valid_cached_certificate_is_deployed_without_an_order() {
         let data_root = data_root();
-        let acme_directory_url = unreachable_acme_directory_url();
+        let certificate_authority = TEST_CA;
         let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             &cache_entry,
         )
         .await;
-        let mut acme_state = acme_state(&data_root, &acme_directory_url);
+        let mut acme_state = acme_state(&data_root, certificate_authority);
 
         assert!(matches!(
             next_event(&mut acme_state).await,
@@ -782,16 +784,16 @@ mod tests {
     #[tokio::test]
     async fn an_expired_cached_certificate_is_ordered_again_at_once() {
         let data_root = data_root();
-        let acme_directory_url = unreachable_acme_directory_url();
+        let certificate_authority = TEST_CA;
         let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2021, 1, 1));
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             &cache_entry,
         )
         .await;
-        let mut acme_state = acme_state(&data_root, &acme_directory_url);
+        let mut acme_state = acme_state(&data_root, certificate_authority);
 
         assert!(matches!(
             next_event(&mut acme_state).await,
@@ -813,17 +815,18 @@ mod tests {
     #[tokio::test]
     async fn the_certificate_cache_is_per_server_and_per_ca() {
         let data_root = data_root();
-        let acme_directory_url = unreachable_acme_directory_url();
+        let certificate_authority = TEST_CA;
         let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             &cache_entry,
         )
         .await;
 
-        let other_config = data_root.config(&data_root.other_certificate_dir, &acme_directory_url);
+        let other_config =
+            data_root.config(&data_root.other_certificate_dir, certificate_authority);
         let mut other_server = acme_config(
             "other.relay.test",
             &other_config,
@@ -834,14 +837,16 @@ mod tests {
             next_event(&mut other_server).await,
             Ok(EventOk::AccountCacheStore)
         ));
-        let other_ca = Url::parse("https://127.0.0.1:9/other-directory").expect("a URL");
-        let mut same_server_other_ca = acme_state(&data_root, &other_ca);
+        // Only the account's store is polled, never the order, so nothing
+        // reaches the staging CA.
+        let mut same_server_other_ca =
+            acme_state(&data_root, CertificateAuthority::LetsEncryptStaging);
         assert!(matches!(
             next_event(&mut same_server_other_ca).await,
             Ok(EventOk::AccountCacheStore)
         ));
 
-        let mut same_server = acme_state(&data_root, &acme_directory_url);
+        let mut same_server = acme_state(&data_root, certificate_authority);
         assert!(matches!(
             next_event(&mut same_server).await,
             Ok(EventOk::DeployedCachedCert)
@@ -869,10 +874,7 @@ mod tests {
 
         let _device_certificate = DeviceCertificate::start(
             DOMAIN,
-            &data_root.config(
-                &data_root.certificate_dir,
-                &unreachable_acme_directory_url(),
-            ),
+            &data_root.config(&data_root.certificate_dir, TEST_CA),
             watch::channel(None).0,
         )
         .expect("create the key folders");
@@ -888,19 +890,19 @@ mod tests {
     #[tokio::test]
     async fn cancelling_stops_ordering_and_renewal() {
         let data_root = data_root();
-        let acme_directory_url = unreachable_acme_directory_url();
+        let certificate_authority = TEST_CA;
         let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             &cache_entry,
         )
         .await;
         let cancel = CancellationToken::new();
         let (_, task) = certificate_task(
             DOMAIN,
-            &data_root.config(&data_root.certificate_dir, &acme_directory_url),
+            &data_root.config(&data_root.certificate_dir, certificate_authority),
             watch::channel(None).0,
             cancel.clone(),
         );
@@ -919,7 +921,7 @@ mod tests {
             .expect("the task doesn't panic");
         let device_certificate = DeviceCertificate::start(
             DOMAIN,
-            &data_root.config(&data_root.certificate_dir, &acme_directory_url),
+            &data_root.config(&data_root.certificate_dir, certificate_authority),
             watch::channel(None).0,
         )
         .expect("start the certificate");
@@ -967,7 +969,7 @@ mod tests {
             .into_bytes();
         let (ed25519_entry, _) =
             self_signed_cache_entry_signed_with(DOMAIN, (2099, 1, 1), &rcgen::PKCS_ED25519);
-        let acme_directory_url = unreachable_acme_directory_url();
+        let certificate_authority = TEST_CA;
         for (name, entry) in [
             ("a certificate alone", certificate_only),
             ("an Ed25519 key", ed25519_entry),
@@ -979,11 +981,11 @@ mod tests {
             cache_certificate(
                 &data_root.certificate_dir,
                 DOMAIN,
-                &acme_directory_url,
+                certificate_authority,
                 &entry,
             )
             .await;
-            let mut acme_state = acme_state(&data_root, &acme_directory_url);
+            let mut acme_state = acme_state(&data_root, certificate_authority);
             assert!(
                 matches!(
                     next_event(&mut acme_state).await,
@@ -999,17 +1001,17 @@ mod tests {
     #[tokio::test]
     async fn a_run_does_not_hold_a_cached_certificate_rustls_acme_cannot_use() {
         let data_root = data_root();
-        let acme_directory_url = unreachable_acme_directory_url();
+        let certificate_authority = TEST_CA;
         let (ed25519_entry, _) =
             self_signed_cache_entry_signed_with(DOMAIN, (2099, 1, 1), &rcgen::PKCS_ED25519);
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             &ed25519_entry,
         )
         .await;
-        let config = data_root.config(&data_root.certificate_dir, &acme_directory_url);
+        let config = data_root.config(&data_root.certificate_dir, certificate_authority);
         assert_eq!(
             cached_certificate_state(DOMAIN, &config).await.status,
             CertificateStatus::CacheUnreadable
@@ -1049,17 +1051,17 @@ mod tests {
     #[tokio::test]
     async fn the_cached_state_is_what_the_cache_says() {
         let data_root = data_root();
-        let acme_directory_url = unreachable_acme_directory_url();
-        let config = data_root.config(&data_root.certificate_dir, &acme_directory_url);
+        let certificate_authority = TEST_CA;
+        let config = data_root.config(&data_root.certificate_dir, certificate_authority);
         let state = cached_certificate_state(DOMAIN, &config).await;
         assert_eq!(state.status, CertificateStatus::NotIssued);
-        assert_eq!(state.issuer, CertificateAuthority::LetsEncryptStaging);
+        assert_eq!(state.issuer, TEST_CA);
 
         let (lapsed, der) = self_signed_cache_entry(DOMAIN, (2021, 1, 1));
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             &lapsed,
         )
         .await;
@@ -1075,7 +1077,7 @@ mod tests {
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             &valid,
         )
         .await;
@@ -1089,12 +1091,12 @@ mod tests {
     #[tokio::test]
     async fn an_unreadable_cache_entry_is_reported_not_dropped() {
         let data_root = data_root();
-        let acme_directory_url = unreachable_acme_directory_url();
-        let config = data_root.config(&data_root.certificate_dir, &acme_directory_url);
+        let certificate_authority = TEST_CA;
+        let config = data_root.config(&data_root.certificate_dir, certificate_authority);
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             b"no PEM here",
         )
         .await;
@@ -1132,7 +1134,7 @@ mod tests {
         let cache = LastEntryCertCache::new(data_root.certificate_dir.clone());
         let (cache_entry, der) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
         let domains = [DOMAIN.to_owned()];
-        let directory_url = unreachable_acme_directory_url();
+        let directory_url = TEST_CA.directory_url();
 
         cache
             .store_cert(&domains, directory_url.as_str(), &cache_entry)
@@ -1193,16 +1195,16 @@ mod tests {
     #[tokio::test]
     async fn a_run_publishes_its_cached_certificate_and_records_it_once() {
         let data_root = data_root();
-        let acme_directory_url = unreachable_acme_directory_url();
+        let certificate_authority = TEST_CA;
         let (cache_entry, der) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
         cache_certificate(
             &data_root.certificate_dir,
             DOMAIN,
-            &acme_directory_url,
+            certificate_authority,
             &cache_entry,
         )
         .await;
-        let config = data_root.config(&data_root.certificate_dir, &acme_directory_url);
+        let config = data_root.config(&data_root.certificate_dir, certificate_authority);
 
         for start in 0..2 {
             let (certificate_tx, mut certificate_rx) = watch::channel(None);
@@ -1228,7 +1230,7 @@ mod tests {
         let history = read_certificate_history(&data_root.certificate_dir).expect("the history");
         assert_eq!(history.len(), 1, "{history:?}");
         assert_eq!(history[0].fingerprint, sha256_hex(&der));
-        assert_eq!(history[0].issuer, CertificateAuthority::LetsEncryptStaging);
+        assert_eq!(history[0].issuer, TEST_CA);
     }
 
     /// A run with nothing cached is `Ordering`, then `OrderFailing` once its
@@ -1237,10 +1239,7 @@ mod tests {
     #[tokio::test]
     async fn a_run_whose_first_order_fails_publishes_order_failing_with_the_error() {
         let data_root = data_root();
-        let config = data_root.config(
-            &data_root.certificate_dir,
-            &unreachable_acme_directory_url(),
-        );
+        let config = data_root.config(&data_root.certificate_dir, TEST_CA);
         let (certificate_tx, mut certificate_rx) = watch::channel(None);
         let cancel = CancellationToken::new();
         let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
@@ -1478,7 +1477,7 @@ mod tests {
     /// `CaUnreachable`.
     #[tokio::test]
     async fn a_ca_that_can_t_be_reached_is_unreachable() {
-        let error = order_error_reading(&unreachable_acme_directory_url()).await;
+        let error = order_error_reading(&TEST_CA.directory_url()).await;
         assert!(
             matches!(error, CertificateOrderError::CaUnreachable { .. }),
             "{error:?}"

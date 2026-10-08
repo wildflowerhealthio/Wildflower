@@ -1071,10 +1071,12 @@ mod tests {
         let runner = runner();
         let (_data_root, servers, run) = running_server(&runner).await;
         let certificate_authority = servers.registry.read_all().unwrap()[0].certificate_authority;
-        let other_certificate_authority = match certificate_authority {
-            CertificateAuthority::LetsEncryptStaging => CertificateAuthority::LetsEncrypt,
-            CertificateAuthority::LetsEncrypt => CertificateAuthority::LetsEncryptStaging,
-        };
+        let other_certificate_authority =
+            if certificate_authority == CertificateAuthority::LetsEncrypt {
+                CertificateAuthority::LetsEncryptStaging
+            } else {
+                CertificateAuthority::LetsEncrypt
+            };
 
         update(
             &servers,

@@ -54,8 +54,12 @@ port and on the tunnel. Rust-only, no `-core`.
     fail. Where it comes from is the host's
     `WildflowerServerConfig::device_certificate`, a `DeviceCertificateConfig`
     built from the server's record: its `certificate_authority` (Let's
-    Encrypt's staging or production CA), ordered from at its
-    `acme_directory_url`. The order has no contact.
+    Encrypt's staging or production CA), ordered from at the directory the
+    CA names (`CertificateAuthority::directory_url`), so the issuer a state
+    or history reports is always the CA ordered from. Tests order from
+    `CertificateAuthority::UnreachableForTests`, which only the
+    `test-support` feature has: nothing answers at its directory. The order
+    has no contact.
     Keys are files: the certificate and its key in `certificate_dir`, the
     server's own, and the account key, one per CA, in `acme_account_dir`,
     shared by the install's servers. Starting the certificate makes both
@@ -137,7 +141,9 @@ notAfter}`). A run appends each certificate it deploys unless the history
   - The `test-support` feature adds `WildflowerServer::tunnel_stream_tx`
     for `tests/serve.rs`, which hands the tunnel listener connections the way
     the tunnel does, over TLS with a self-signed certificate it puts in the
-    certificate cache. Only the crate's own dev-dependency enables it.
+    certificate cache, and `CertificateAuthority::UnreachableForTests`, the
+    CA every test that runs a server orders from. Only dev-dependencies
+    enable it: the crate's own and `servers-rust`'s.
 
 ## Layering
 
@@ -148,9 +154,8 @@ notAfter}`). A run appends each certificate it deploys unless the history
   from its platform paths (the server's folder, the FHIR SearchParameter
   bundle dir) or from the server's record (the tunnel's relay settings, the
   domain, and the `DeviceCertificateConfig` its
-  `ServerRecord::device_certificate_config` builds: the CA and its
-  directory, the server's certificate folder and the install's ACME account
-  folder). `HostPorts` carries its native adapters as trait
+  `ServerRecord::device_certificate_config` builds: the CA, the server's
+  certificate folder and the install's ACME account folder). `HostPorts` carries its native adapters as trait
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time
   configuration or platform paths itself.

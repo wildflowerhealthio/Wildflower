@@ -66,10 +66,10 @@ const SERVER_ORIGIN: &str = "https://test.relay.invalid";
 /// Another server's origin.
 const OTHER_SERVER_ORIGIN: &str = "https://other.relay.invalid";
 
-/// A CA directory nothing answers at: a server with no valid cached
-/// certificate orders one from it, and the order fails and is retried in the
-/// background, which the server's lifecycle doesn't wait on.
-const UNREACHABLE_ACME_DIRECTORY_URL: &str = "https://127.0.0.1:9/directory";
+/// The CA the servers order from, which nothing answers at: a server with no
+/// valid cached certificate orders one from it, and the order fails and is
+/// retried in the background, which the server's lifecycle doesn't wait on.
+const TEST_CA: CertificateAuthority = CertificateAuthority::UnreachableForTests;
 
 /// How long one server may take to come up or wind down before the test fails
 /// rather than hangs. Startup indexes the FHIR SearchParameter bundle, which is
@@ -114,9 +114,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         },
         domain: DOMAIN.to_owned(),
         device_certificate: DeviceCertificateConfig {
-            certificate_authority: CertificateAuthority::LetsEncryptStaging,
-            acme_directory_url: Url::parse(UNREACHABLE_ACME_DIRECTORY_URL)
-                .expect("the CA directory URL"),
+            certificate_authority: TEST_CA,
             // The test's one temporary folder stands in for the data root too.
             certificate_dir: certificate_dir(&server_dir),
             acme_account_dir: server_dir.join("acme-account"),
@@ -586,7 +584,7 @@ impl TunnelClient {
 
 /// A self-signed certificate for [`DOMAIN`], cached in `certificate_dir`
 /// as rustls-acme caches the one it orders from
-/// [`UNREACHABLE_ACME_DIRECTORY_URL`]. Valid for years, so the server
+/// [`TEST_CA`]. Valid for years, so the server
 /// deploys it and orders nothing.
 async fn cache_self_signed_certificate(certificate_dir: &Path) -> CertificateDer<'static> {
     let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("key pair");
@@ -594,11 +592,10 @@ async fn cache_self_signed_certificate(certificate_dir: &Path) -> CertificateDer
     params.not_after = rcgen::date_time_ymd(2099, 1, 1);
     let certificate = params.self_signed(&key_pair).expect("self-signed");
     let cache_entry = [key_pair.serialize_pem(), certificate.pem()].concat();
-    let acme_directory_url = Url::parse(UNREACHABLE_ACME_DIRECTORY_URL).expect("a URL");
     DirCache::new(certificate_dir)
         .store_cert(
             &[DOMAIN.to_owned()],
-            acme_directory_url.as_str(),
+            TEST_CA.directory_url().as_str(),
             cache_entry.as_bytes(),
         )
         .await

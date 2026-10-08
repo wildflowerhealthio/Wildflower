@@ -74,6 +74,11 @@ workspace = true
 [dev-dependencies]
 # The registry's atomic replace only exists against a real filesystem.
 tempfile = "3"
+# `CertificateAuthority::UnreachableForTests`, the CA `tests/server_unit.rs`'s
+# server orders from, so no test reaches a real CA.
+wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust", features = [
+  "test-support",
+] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
 # The coalescer's property tests.
 proptest = "1"

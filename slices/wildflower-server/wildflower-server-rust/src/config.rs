@@ -10,7 +10,6 @@ use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
-use url::Url;
 
 use crate::{CertificateAuthority, CertificateState, ServerHealth};
 
@@ -48,17 +47,16 @@ pub struct WildflowerServerConfig {
 }
 
 /// Where the server's certificate for its domain comes from: the ACME CA
-/// it is ordered from, and the folders it and the install's ACME account are
-/// cached in. The host builds it from the server's record.
+/// it is ordered from, at the CA's own directory
+/// ([`CertificateAuthority::directory_url`]), and the folders it and the
+/// install's ACME account are cached in. The host builds it from the
+/// server's record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceCertificateConfig {
-    /// The ACME CA the server's certificate is ordered from, as the server's
-    /// record names it: the issuer its state and history report.
+    /// The ACME CA the server's certificate is ordered from, at its
+    /// directory, as the server's record names it: the issuer its state and
+    /// history report.
     pub certificate_authority: CertificateAuthority,
-    /// The directory of the ACME CA the server's certificate is ordered
-    /// from: `certificate_authority`'s, except in tests, which point it at
-    /// one nothing answers at.
-    pub acme_directory_url: Url,
     /// The folder the server's certificates and their keys are cached in,
     /// its own: deleting the server deletes them.
     pub certificate_dir: PathBuf,

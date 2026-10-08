@@ -12,10 +12,11 @@ publish.workspace = true
 # the Tauri host hands in its native adapters as trait objects — so it compiles
 # and tests without GTK.
 [features]
-# Test support for this crate's own integration tests:
-# `WildflowerServer::tunnel_stream_tx`, which hands the tunnel listener a
-# visitor's connection the way the tunnel does. Only the dev-dependency on this
-# crate below enables it.
+# Test support: `WildflowerServer::tunnel_stream_tx`, which hands the tunnel
+# listener a visitor's connection the way the tunnel does, for this crate's
+# own integration tests; and `CertificateAuthority::UnreachableForTests`, a CA
+# nothing answers at, for every test that runs a server. Only dev-dependencies
+# enable it: this crate's own below, and `servers-rust`'s.
 test-support = []
 
 [dependencies]
