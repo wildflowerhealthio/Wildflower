@@ -122,12 +122,13 @@ fn session_end_text(platform_reason: PlatformStopReason) -> (&'static str, &'sta
 /// A stop notifies when it has a [`StopCause`], with one more rule:
 /// `UnitRunner` retries a failed run every few seconds, so a failure with the
 /// same error as the one last notified for that server doesn't notify again
-/// until the server has run, or the app has set it again (a new token, say)
-/// or removed it.
+/// until the server has run, the app has set it again (a new token, say) or
+/// removed it, or another of its stops has notified in the failure's place.
 #[derive(Debug, Default)]
 pub struct StopNotificationCoalescer {
-    /// Each server's error last notified, until the server runs again or is
-    /// set again or removed.
+    /// Each server's failure its notification shows, until the server runs
+    /// again, is set again or removed, or a stop that isn't a failure replaces
+    /// that notification.
     notified_failures: BTreeMap<UnitId, String>,
 }
 
@@ -138,7 +139,7 @@ impl StopNotificationCoalescer {
         Self::default()
     }
 
-    /// Count `stopped`, returning the notification it warrants, if any:
+    /// Take in `stopped`, returning the notification it warrants, if any:
     /// `None` when it doesn't notify or repeats the failure last notified for
     /// its server.
     pub fn record(&mut self, stopped: &RunStopped) -> Option<ServerStopped> {
@@ -151,12 +152,19 @@ impl StopNotificationCoalescer {
             self.notified_failures.remove(unit_id);
         }
         let cause = StopCause::from_run_stop(stop)?;
-        if let StopCause::Failed(error) = &cause {
-            if self.notified_failures.get(unit_id) == Some(error) {
-                return None;
+        match &cause {
+            StopCause::Failed(error) => {
+                if self.notified_failures.get(unit_id) == Some(error) {
+                    return None;
+                }
+                self.notified_failures
+                    .insert(unit_id.clone(), error.clone());
             }
-            self.notified_failures
-                .insert(unit_id.clone(), error.clone());
+            // This stop's notification replaces the failure's, under the same
+            // id, so the failure notifies again if it comes back.
+            StopCause::Ended | StopCause::EndedByPlatform(_) => {
+                self.notified_failures.remove(unit_id);
+            }
         }
         Some(ServerStopped {
             domain: unit_id.as_str().to_owned(),
@@ -201,30 +209,55 @@ mod tests {
         stop(StopReason::EndedOnItsOwn, Some(error), nth)
     }
 
-    /// The notification for the run of `domain` that stopped as `stop` says,
-    /// if it has a cause.
-    fn stop_notification(domain: &str, stop: &RunStop) -> Option<LocalNotification> {
-        StopCause::from_run_stop(stop).map(|cause| {
-            ServerStopped {
-                domain: domain.to_owned(),
-                cause,
-            }
-            .notification()
-        })
+    /// What the stop of `domain`'s run for `cause` says.
+    fn notification_for(cause: StopCause) -> LocalNotification {
+        ServerStopped {
+            domain: DOMAIN.to_owned(),
+            cause,
+        }
+        .notification()
     }
 
     #[test]
-    fn the_unit_runner_s_own_stops_never_notify() {
+    fn the_unit_runner_s_own_stops_have_no_cause() {
         for reason in [
             StopReason::PolicyInactive,
             StopReason::Replaced,
             StopReason::Removed,
             StopReason::StoppedForRestart,
         ] {
+            for error in [None, Some("disk full")] {
+                assert_eq!(
+                    StopCause::from_run_stop(&stop(reason, error, 0)),
+                    None,
+                    "{reason:?} {error:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_run_that_ended_on_its_own_failed_with_its_error_or_ended() {
+        assert_eq!(
+            StopCause::from_run_stop(&failure("disk full", 0)),
+            Some(StopCause::Failed("disk full".to_owned()))
+        );
+        assert_eq!(
+            StopCause::from_run_stop(&stop(StopReason::EndedOnItsOwn, None, 0)),
+            Some(StopCause::Ended)
+        );
+    }
+
+    #[test]
+    fn a_session_end_by_the_platform_keeps_the_platform_s_reason() {
+        for platform_reason in EVERY_PLATFORM_REASON {
             assert_eq!(
-                stop_notification(DOMAIN, &stop(reason, None, 0)),
-                None,
-                "{reason:?}"
+                StopCause::from_run_stop(&stop(
+                    StopReason::SessionEndedByPlatform { platform_reason },
+                    None,
+                    0,
+                )),
+                Some(StopCause::EndedByPlatform(platform_reason))
             );
         }
     }
@@ -232,15 +265,7 @@ mod tests {
     #[test]
     fn every_session_end_by_the_platform_notifies_under_the_server_s_id() {
         for platform_reason in EVERY_PLATFORM_REASON {
-            let notification = stop_notification(
-                DOMAIN,
-                &stop(
-                    StopReason::SessionEndedByPlatform { platform_reason },
-                    None,
-                    0,
-                ),
-            )
-            .unwrap_or_else(|| panic!("{platform_reason:?} notifies"));
+            let notification = notification_for(StopCause::EndedByPlatform(platform_reason));
             assert_eq!(notification.id, "server-stopped:ruth.relay.example.com");
             assert!(
                 notification.body.starts_with("ruth.relay.example.com: "),
@@ -251,42 +276,35 @@ mod tests {
 
     #[test]
     fn a_platform_pause_says_which_platform_ended_it() {
-        let ended_by_platform = stop(
-            StopReason::SessionEndedByPlatform {
-                platform_reason: PlatformStopReason::PlatformExpiration,
-            },
-            None,
-            0,
-        );
         assert_eq!(
-            stop_notification(DOMAIN, &ended_by_platform),
-            Some(LocalNotification {
+            notification_for(StopCause::EndedByPlatform(
+                PlatformStopReason::PlatformExpiration
+            )),
+            LocalNotification {
                 id: "server-stopped:ruth.relay.example.com".to_owned(),
                 title: "Wildflower server paused".to_owned(),
                 body: "ruth.relay.example.com: iOS ended the background window.".to_owned(),
-            })
+            }
         );
     }
 
     #[test]
     fn a_failure_carries_its_error_and_a_clean_end_says_so() {
         assert_eq!(
-            stop_notification(
-                DOMAIN,
-                &failure("failed to bind to 127.0.0.1:8080: Address already in use", 0)
-            ),
-            Some(LocalNotification {
+            notification_for(StopCause::Failed(
+                "failed to bind to 127.0.0.1:8080: Address already in use".to_owned()
+            )),
+            LocalNotification {
                 id: "server-stopped:ruth.relay.example.com".to_owned(),
                 title: "Wildflower server stopped".to_owned(),
                 body:
                     "ruth.relay.example.com: failed to bind to 127.0.0.1:8080: Address already in use"
                         .to_owned(),
-            })
+            }
         );
         assert_eq!(
-            stop_notification(DOMAIN, &stop(StopReason::EndedOnItsOwn, None, 0))
-                .map(|notification| notification.body),
-            Some("ruth.relay.example.com: The server stopped.".to_owned())
+            notification_for(StopCause::Ended).body,
+            "ruth.relay.example.com: The server stopped."
         );
     }
 
@@ -338,6 +356,51 @@ mod tests {
             assert_eq!(notified(&mut coalescer, &[set_again]), 0, "{reason:?}");
             assert_eq!(notified(&mut coalescer, &[failed]), 1, "{reason:?}");
         }
+    }
+
+    #[test]
+    fn a_failure_notifies_again_after_another_stop_replaced_its_notification() {
+        let address_in_use = "failed to bind: Address already in use";
+        let paused = stop(
+            StopReason::SessionEndedByPlatform {
+                platform_reason: PlatformStopReason::PlatformExpiration,
+            },
+            None,
+            2,
+        );
+        for other_stop in [paused, stop(StopReason::EndedOnItsOwn, None, 2)] {
+            let mut coalescer = StopNotificationCoalescer::new();
+            let failed = stopped(DOMAIN, failure(address_in_use, 1), false);
+            assert_eq!(notified(&mut coalescer, std::slice::from_ref(&failed)), 1);
+            let replaced_by = stopped(DOMAIN, other_stop.clone(), false);
+            assert_eq!(notified(&mut coalescer, &[replaced_by]), 1);
+            assert_eq!(notified(&mut coalescer, &[failed]), 1, "{other_stop:?}");
+        }
+    }
+
+    #[test]
+    fn a_failure_still_coalesces_across_the_unit_runner_s_own_stops() {
+        let address_in_use = "failed to bind: Address already in use";
+        for reason in [StopReason::PolicyInactive, StopReason::StoppedForRestart] {
+            let mut coalescer = StopNotificationCoalescer::new();
+            let failed = stopped(DOMAIN, failure(address_in_use, 1), false);
+            assert_eq!(notified(&mut coalescer, std::slice::from_ref(&failed)), 1);
+            let own_stop = stopped(DOMAIN, stop(reason, None, 2), false);
+            assert_eq!(notified(&mut coalescer, &[own_stop]), 0, "{reason:?}");
+            assert_eq!(notified(&mut coalescer, &[failed]), 0, "{reason:?}");
+        }
+    }
+
+    #[test]
+    fn a_recorded_stop_names_its_server_and_cause() {
+        let mut coalescer = StopNotificationCoalescer::new();
+        assert_eq!(
+            coalescer.record(&stopped(DOMAIN, failure("disk full", 1), false)),
+            Some(ServerStopped {
+                domain: DOMAIN.to_owned(),
+                cause: StopCause::Failed("disk full".to_owned()),
+            })
+        );
     }
 
     #[test]

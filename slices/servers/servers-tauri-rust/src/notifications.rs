@@ -137,7 +137,7 @@ mod tests {
         #[test]
         fn plugin_notification_ids_are_positive_and_stable(id in ".{0,64}") {
             prop_assert!(plugin_notification_id(&id) > 0);
-            prop_assert_eq!(plugin_notification_id(&id), plugin_notification_id(&id.clone()));
+            prop_assert_eq!(plugin_notification_id(&id), plugin_notification_id(&id));
         }
     }
 }
