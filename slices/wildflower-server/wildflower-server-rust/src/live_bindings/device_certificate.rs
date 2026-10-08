@@ -50,6 +50,24 @@ pub fn lets_encrypt_directory_url(staging_certificates: bool) -> Url {
     Url::parse(directory_url).expect("rustls-acme's Let's Encrypt directories are URLs")
 }
 
+/// Create `key_dir`, a folder rustls-acme caches private keys in, readable by
+/// this user only, and narrow an existing one to this user.
+///
+/// # Errors
+///
+/// Returns an error if the folder can't be created or its permissions set.
+///
+/// # Remarks
+///
+/// rustls-acme writes its files with the default permissions, so the folder
+/// is what keeps the keys from other users on the device.
+pub(crate) fn create_key_dir(key_dir: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(key_dir)?;
+    #[cfg(unix)]
+    std::fs::set_permissions(key_dir, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
+    Ok(())
+}
+
 /// The rustls-acme configuration for the server at `domain`: its certificate
 /// is ordered from the CA whose directory is `acme_directory_url`, cached in
 /// `certificate_dir` and ordered with the install's account, cached in
@@ -370,6 +388,26 @@ pub(crate) mod tests {
             2,
             "one account per CA, in the install's account folder"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn key_dirs_are_readable_by_this_user_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let data_root = data_root();
+        std::fs::create_dir_all(&data_root.acme_account_dir).unwrap();
+        std::fs::set_permissions(
+            &data_root.acme_account_dir,
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+
+        for key_dir in [&data_root.acme_account_dir, &data_root.certificate_dir] {
+            create_key_dir(key_dir).expect("create the key folder");
+
+            let mode = std::fs::metadata(key_dir).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o700, "{}", key_dir.display());
+        }
     }
 
     #[test]

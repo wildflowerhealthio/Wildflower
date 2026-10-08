@@ -54,7 +54,8 @@ port and on the tunnel. Rust-only, no `-core`.
     (`lets_encrypt_directory_url`). The order has no contact. Keys are files:
     the certificate and its key in `certificate_dir`, the server's own, and
     the account key, one per CA, in `acme_account_dir`, shared by the
-    install's servers.
+    install's servers. `set_up` makes both folders readable by this user
+    only.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
     (`shared_structures_rust::health_check`): `application/health+json`,
     uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two

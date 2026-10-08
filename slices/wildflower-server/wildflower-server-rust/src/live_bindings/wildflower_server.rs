@@ -35,7 +35,7 @@ use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront}
 use crate::http::not_found;
 use crate::http::tunnel_listener::tls::TunnelTls;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
-use crate::live_bindings::device_certificate::{acme_config, DeviceCertificate};
+use crate::live_bindings::device_certificate::{acme_config, create_key_dir, DeviceCertificate};
 use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 
 // Filenames of the server's SQLite databases in its folder. These
@@ -152,9 +152,9 @@ impl WildflowerServer {
 /// # Errors
 ///
 /// Returns an error if the server's public host doesn't name an origin, the
-/// server's folder can't be created, a scheduled database deletion can't be
-/// applied, a database or store can't be opened, the loopback port can't be
-/// bound, or a slice's setup fails.
+/// server's folder or a certificate key folder can't be created, a scheduled
+/// database deletion can't be applied, a database or store can't be opened,
+/// the loopback port can't be bound, or a slice's setup fails.
 ///
 /// # Remarks
 ///
@@ -197,6 +197,13 @@ pub async fn set_up(
             runtime.server_dir.display()
         )
     })?;
+
+    // The folders the certificate's and the ACME account's keys are cached in,
+    // readable by this user only.
+    for key_dir in [&certificate_dir, &acme_account_dir] {
+        create_key_dir(key_dir)
+            .with_context(|| format!("failed to create the key folder {}", key_dir.display()))?;
+    }
 
     // Apply any deletions the Owner scheduled from the data-management screen
     // BEFORE opening the databases below: the `/databases` DELETE can't remove a

@@ -43,7 +43,7 @@ impl TunnelTls {
                 .with_safe_default_protocol_versions()
                 .expect("ring supports the default protocol versions")
                 .with_no_client_auth()
-                .with_cert_resolver(Arc::new(PublicHostOnly {
+                .with_cert_resolver(Arc::new(PublicHostResolver {
                     public_host: public_host.to_ascii_lowercase(),
                     certificate_resolver,
                 }));
@@ -62,7 +62,7 @@ impl TunnelTls {
     /// # Errors
     ///
     /// Returns an error if the handshake fails: the client named another host
-    /// or none (see [`PublicHostOnly`]), no certificate is deployed yet, or
+    /// or none (see [`PublicHostResolver`]), no certificate is deployed yet, or
     /// the client isn't speaking TLS.
     ///
     /// Nothing here bounds how long the client takes; the caller runs it under
@@ -99,14 +99,14 @@ impl TunnelTls {
 /// tunnel front then holds the request's `Host` to the same domain, so SNI
 /// and `Host` agree.
 #[derive(Debug)]
-struct PublicHostOnly {
+struct PublicHostResolver {
     /// The server's domain, lowercase.
     public_host: String,
     /// What answers a ClientHello that names it.
     certificate_resolver: Arc<dyn ResolvesServerCert>,
 }
 
-impl ResolvesServerCert for PublicHostOnly {
+impl ResolvesServerCert for PublicHostResolver {
     fn resolve(&self, client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
         let names_public_host = client_hello
             .server_name()
