@@ -1,8 +1,51 @@
+/*
+ * The gear sits in the header bar at its normal height, in the main text
+ * colour of the colour scheme, resting or hovered, while `ghost`'s hover
+ * background still applies. The selectors name `.button.ghost` to outrank
+ * tundra's own `.button.ghost` and `.button.ghost:hover`, which set the
+ * foreground to the accent.
+ */
+.server-list-page__settings:global(.button.ghost),
+.server-list-page__settings:global(.button.ghost):hover,
+.server-list-page__settings:global(.button.ghost):focus-visible {
+  --button-color-foreground: var(--color-neutral-1);
+}
+
+.server-list-page__settings {
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+/* One column at every width. */
 .server-list-page__servers {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-9);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.server-list-page__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+}
+
+.server-list-page__empty-title,
+.server-list-page__empty-body {
+  margin: 0;
+}
+
+.server-list-page__offline {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-3);
+  background: var(--color-warning-background);
+  color: var(--color-warning-foreground);
 }

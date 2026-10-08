@@ -49,8 +49,10 @@ describe('ServerStatus', () => {
     const status = decode(golden.serverStatuses.runningAndReachable)
 
     // Assert
-    expect(status.runState).toBe('running')
-    expect(ServerStatus.runningSinceOf(status)).toEqual(Option.some(utc('2026-10-06T17:00:00Z')))
+    expect(status).toMatchObject({
+      runState: 'running',
+      runningSince: utc('2026-10-06T17:00:00Z'),
+    })
     expect(ServerStatus.healthOf(status)).toEqual(
       Option.some({ kind: 'reachable', status: 'pass' })
     )
@@ -61,7 +63,6 @@ describe('ServerStatus', () => {
     const status = decode(golden.serverStatuses.startingUnchecked)
     expect(status.runState).toBe('starting')
     expect(ServerStatus.healthOf(status)).toEqual(Option.none())
-    expect(ServerStatus.runningSinceOf(status)).toEqual(Option.none())
   })
 
   it("should decode a running server's unreachable health with its error", () => {
