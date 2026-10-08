@@ -1,29 +1,29 @@
 //! [`CertificateState`]: what the host knows about a server's certificate for
-//! its public host, and [`CertificateRun`], the reducer a run derives it with
-//! from its certificate's events.
+//! its domain, and [`ObservedCertificate`], what a run has observed of its
+//! certificate through rustls-acme's events, which its state is derived from.
 //!
-//! A running server's state comes from its run, as rustls-acme deploys,
-//! orders and renews the certificate; a stopped server's from the certificate
-//! cached in its `certificates/` folder:
+//! A running server's state is derived from what its run observed, as
+//! rustls-acme deploys, orders and renews the certificate; any other
+//! server's is what its cache says, read from its `certificates/` folder:
 //!
 //! ```text
-//!                      issued certificate         order error since
-//!   running            none     valid  ⅓ left  expired   the last deploy
-//!     status         Ordering   Valid  RenewalDue  Ordering        no
-//!                    Failed     Valid  RenewalDue  Failed          yes
-//!   stopped          None       Valid  RenewalDue  Expired         —
+//!          held certificate                                   order error since
+//!          none          valid            ⅓ left      expired       the last deploy
+//!   run    Ordering      NoRenewalNeeded  RenewalDue  Ordering      no
+//!          OrderFailing  NoRenewalNeeded  RenewalDue  OrderFailing  yes
+//!   cache  NotIssued     NoRenewalNeeded  RenewalDue  Expired       —
 //! ```
 //!
 //! A stopped server's certificate lapses, since nothing renews it, and the
-//! next start orders a new one: `Expired` is only ever a stopped server's
-//! status, and never a failure.
+//! next start orders a new one: `Expired` is only ever the cache's status,
+//! and never a failure.
 
 use chrono::{DateTime, Utc};
 
 use crate::CertificateAuthority;
 
-/// A certificate the CA issued for the server's public host: when it is
-/// valid, and which certificate it is.
+/// A certificate the CA issued for the server's domain: when it is valid, and
+/// which certificate it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssuedCertificate {
     /// When the certificate became valid.
@@ -38,6 +38,12 @@ pub struct IssuedCertificate {
 impl IssuedCertificate {
     /// When a third of the certificate's lifetime is left: when rustls-acme
     /// orders its successor.
+    ///
+    /// # Remarks
+    ///
+    /// This mirrors the renewal timer rustls-acme 0.15's `AcmeState` sets in
+    /// `state.rs`, which waits until a third of the lifetime is left; if
+    /// rustls-acme changes that threshold, this must change with it.
     #[must_use]
     pub fn renewal_due_at(&self) -> DateTime<Utc> {
         self.not_after - (self.not_after - self.not_before) / 3
@@ -47,26 +53,26 @@ impl IssuedCertificate {
 /// Where a server's certificate stands (see the [module docs](self)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CertificateStatus {
-    /// A stopped server holds no certificate from its CA: it has never been
+    /// The cache holds no certificate from the server's CA: it has never been
     /// issued one, or the record names another CA than the one it was.
-    None,
+    NotIssued,
     /// The run is ordering a certificate: it holds none, or an expired one,
     /// and no order has failed yet.
     Ordering,
     /// The certificate is valid, with more than a third of its lifetime
-    /// left.
-    Valid,
+    /// left: nothing orders its successor yet.
+    NoRenewalNeeded,
     /// The certificate is valid, with a third or less of its lifetime left: a
-    /// run is ordering its successor, and a stopped server's run will.
+    /// run is ordering its successor, and a stopped server's next run will.
     RenewalDue,
-    /// A stopped server's certificate has expired. It renews when the server
-    /// starts; a running server's expired certificate is `Ordering` or
-    /// `Failed`.
+    /// The cache's certificate has expired. It renews when the server starts;
+    /// a running server's expired certificate is `Ordering` or
+    /// `OrderFailing`.
     Expired,
     /// The run holds no valid certificate, and its latest order failed with
     /// the state's [`last_error`](CertificateState::last_error). rustls-acme
     /// retries it, with backoff.
-    Failed,
+    OrderFailing,
 }
 
 /// Why a certificate order failed, in terms the base can phrase.
@@ -97,7 +103,7 @@ pub enum CertificateOrderError {
     },
 }
 
-/// What the host knows about a server's certificate for its public host.
+/// What the host knows about a server's certificate for its domain.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CertificateState {
     /// Where the certificate stands.
@@ -106,54 +112,54 @@ pub struct CertificateState {
     /// it.
     pub issuer: CertificateAuthority,
     /// The certificate the server holds from `issuer`, valid or expired.
-    pub issued: Option<IssuedCertificate>,
+    pub held: Option<IssuedCertificate>,
     /// Why the run's latest order failed, since it last deployed a
-    /// certificate. Always `None` for a stopped server.
+    /// certificate. Always `None` in the cache's state.
     pub last_error: Option<CertificateOrderError>,
 }
 
 impl CertificateState {
-    /// The state of a stopped server whose cache holds `cached` from
-    /// `issuer`, at `now`: `None`, `Valid`, `RenewalDue` or `Expired`, never
-    /// `Ordering` or `Failed`.
+    /// What a cache holding `cached` from `issuer` says at `now`, the state
+    /// of any server without a run's state: `NotIssued`, `NoRenewalNeeded`,
+    /// `RenewalDue` or `Expired`, never `Ordering` or `OrderFailing`.
     #[must_use]
-    pub fn of_stopped_server(
+    pub fn of_cached(
         cached: Option<IssuedCertificate>,
         issuer: CertificateAuthority,
         now: DateTime<Utc>,
     ) -> Self {
         let status = match &cached {
-            None => CertificateStatus::None,
-            Some(issued) => match Validity::of(issued, now) {
-                Validity::Valid => CertificateStatus::Valid,
-                Validity::RenewalDue => CertificateStatus::RenewalDue,
-                Validity::Expired => CertificateStatus::Expired,
+            None => CertificateStatus::NotIssued,
+            Some(held) => match LifetimePhase::at(held, now) {
+                LifetimePhase::NoRenewalNeeded => CertificateStatus::NoRenewalNeeded,
+                LifetimePhase::RenewalDue => CertificateStatus::RenewalDue,
+                LifetimePhase::Expired => CertificateStatus::Expired,
             },
         };
         Self {
             status,
             issuer,
-            issued: cached,
+            held: cached,
             last_error: None,
         }
     }
 }
 
 /// How far into its lifetime a certificate is at an instant.
-enum Validity {
-    Valid,
+enum LifetimePhase {
+    NoRenewalNeeded,
     RenewalDue,
     Expired,
 }
 
-impl Validity {
-    fn of(issued: &IssuedCertificate, now: DateTime<Utc>) -> Self {
+impl LifetimePhase {
+    fn at(issued: &IssuedCertificate, now: DateTime<Utc>) -> Self {
         if now >= issued.not_after {
             Self::Expired
         } else if now >= issued.renewal_due_at() {
             Self::RenewalDue
         } else {
-            Self::Valid
+            Self::NoRenewalNeeded
         }
     }
 }
@@ -165,39 +171,50 @@ pub(crate) enum CertificateEvent {
     /// The run deployed this certificate: the cached one at start, or a newly
     /// issued one.
     Deployed(IssuedCertificate),
-    /// An order failed, or the cache couldn't be read or written.
-    Failed(CertificateOrderError),
+    /// An order failed.
+    OrderFailed(CertificateOrderError),
+    /// The certificate or account cache couldn't be read or written.
+    CacheFailed {
+        /// The error, for the log and the base's details.
+        message: String,
+    },
 }
 
-/// What a run has seen of its certificate: the one it holds and the latest
-/// failure since it was deployed. Derives the run's [`CertificateState`] at
-/// any instant, and when that state next changes without an event.
+/// What a run has observed of its certificate: the one it holds and the
+/// latest failure since it was deployed. Derives the run's
+/// [`CertificateState`] at any instant, and when that state next changes
+/// without an event.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct CertificateRun {
-    issued: Option<IssuedCertificate>,
+pub(crate) struct ObservedCertificate {
+    held: Option<IssuedCertificate>,
     last_error: Option<CertificateOrderError>,
 }
 
-impl CertificateRun {
-    /// A run starting with `cached` in its certificate cache, before
-    /// rustls-acme has deployed it.
+impl ObservedCertificate {
+    /// What a run starting with `cached` in its certificate cache has
+    /// observed, before rustls-acme has deployed it.
     pub(crate) fn starting_with(cached: Option<IssuedCertificate>) -> Self {
         Self {
-            issued: cached,
+            held: cached,
             last_error: None,
         }
     }
 
-    /// The run after `event`. A deployed certificate clears the last error.
+    /// What the run has observed after `event`. A deployed certificate clears
+    /// the last error.
     #[must_use]
     pub(crate) fn after(self, event: CertificateEvent) -> Self {
         match event {
-            CertificateEvent::Deployed(issued) => Self {
-                issued: Some(issued),
+            CertificateEvent::Deployed(held) => Self {
+                held: Some(held),
                 last_error: None,
             },
-            CertificateEvent::Failed(error) => Self {
+            CertificateEvent::OrderFailed(error) => Self {
                 last_error: Some(error),
+                ..self
+            },
+            CertificateEvent::CacheFailed { message } => Self {
+                last_error: Some(CertificateOrderError::Other { message }),
                 ..self
             },
         }
@@ -209,23 +226,23 @@ impl CertificateRun {
         issuer: CertificateAuthority,
         now: DateTime<Utc>,
     ) -> CertificateState {
-        let ordering_or_failed = if self.last_error.is_some() {
-            CertificateStatus::Failed
+        let ordering_or_failing = if self.last_error.is_some() {
+            CertificateStatus::OrderFailing
         } else {
             CertificateStatus::Ordering
         };
-        let status = match &self.issued {
-            None => ordering_or_failed,
-            Some(issued) => match Validity::of(issued, now) {
-                Validity::Valid => CertificateStatus::Valid,
-                Validity::RenewalDue => CertificateStatus::RenewalDue,
-                Validity::Expired => ordering_or_failed,
+        let status = match &self.held {
+            None => ordering_or_failing,
+            Some(held) => match LifetimePhase::at(held, now) {
+                LifetimePhase::NoRenewalNeeded => CertificateStatus::NoRenewalNeeded,
+                LifetimePhase::RenewalDue => CertificateStatus::RenewalDue,
+                LifetimePhase::Expired => ordering_or_failing,
             },
         };
         CertificateState {
             status,
             issuer,
-            issued: self.issued.clone(),
+            held: self.held.clone(),
             last_error: self.last_error.clone(),
         }
     }
@@ -233,8 +250,8 @@ impl CertificateRun {
     /// The next instant after `now` at which the run's state changes with no
     /// event: when its certificate's renewal falls due, then when it expires.
     pub(crate) fn next_status_change(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
-        let issued = self.issued.as_ref()?;
-        [issued.renewal_due_at(), issued.not_after]
+        let held = self.held.as_ref()?;
+        [held.renewal_due_at(), held.not_after]
             .into_iter()
             .find(|instant| *instant > now)
     }
@@ -273,57 +290,63 @@ mod tests {
 
     #[test]
     fn a_run_with_nothing_cached_is_ordering_until_its_first_deploy() {
-        let run = CertificateRun::starting_with(None);
+        let observed = ObservedCertificate::starting_with(None);
         assert_eq!(
-            run.state(ISSUER, on(1, 2)).status,
+            observed.state(ISSUER, on(1, 2)).status,
             CertificateStatus::Ordering
         );
 
-        let run = run.after(CertificateEvent::Deployed(ninety_day("a")));
-        let state = run.state(ISSUER, on(1, 2));
-        assert_eq!(state.status, CertificateStatus::Valid);
-        assert_eq!(state.issued, Some(ninety_day("a")));
+        let observed = observed.after(CertificateEvent::Deployed(ninety_day("a")));
+        let state = observed.state(ISSUER, on(1, 2));
+        assert_eq!(state.status, CertificateStatus::NoRenewalNeeded);
+        assert_eq!(state.held, Some(ninety_day("a")));
         assert_eq!(state.issuer, ISSUER);
     }
 
     #[test]
-    fn a_failed_first_order_is_failed_until_a_deploy_clears_it() {
-        let run =
-            CertificateRun::starting_with(None).after(CertificateEvent::Failed(rate_limited()));
-        let state = run.state(ISSUER, on(1, 2));
-        assert_eq!(state.status, CertificateStatus::Failed);
+    fn a_failed_first_order_is_order_failing_until_a_deploy_clears_it() {
+        let observed = ObservedCertificate::starting_with(None)
+            .after(CertificateEvent::OrderFailed(rate_limited()));
+        let state = observed.state(ISSUER, on(1, 2));
+        assert_eq!(state.status, CertificateStatus::OrderFailing);
         assert_eq!(state.last_error, Some(rate_limited()));
 
-        let run = run.after(CertificateEvent::Deployed(ninety_day("a")));
-        let state = run.state(ISSUER, on(1, 2));
-        assert_eq!(state.status, CertificateStatus::Valid);
+        let observed = observed.after(CertificateEvent::Deployed(ninety_day("a")));
+        let state = observed.state(ISSUER, on(1, 2));
+        assert_eq!(state.status, CertificateStatus::NoRenewalNeeded);
         assert_eq!(state.last_error, None);
     }
 
     #[test]
     fn a_run_s_certificate_falls_due_for_renewal_then_is_reordered_once_expired() {
-        let run = CertificateRun::starting_with(Some(ninety_day("a")));
-        assert_eq!(run.state(ISSUER, on(3, 1)).status, CertificateStatus::Valid);
+        let observed = ObservedCertificate::starting_with(Some(ninety_day("a")));
         assert_eq!(
-            run.state(ISSUER, on(3, 2)).status,
+            observed.state(ISSUER, on(3, 1)).status,
+            CertificateStatus::NoRenewalNeeded
+        );
+        assert_eq!(
+            observed.state(ISSUER, on(3, 2)).status,
             CertificateStatus::RenewalDue
         );
         let expired = on(4, 1);
         assert_eq!(
-            run.state(ISSUER, expired).status,
+            observed.state(ISSUER, expired).status,
             CertificateStatus::Ordering
         );
     }
 
     #[test]
     fn a_failed_renewal_stays_renewal_due_with_its_error_until_the_certificate_expires() {
-        let run = CertificateRun::starting_with(Some(ninety_day("a")))
-            .after(CertificateEvent::Failed(rate_limited()));
-        let state = run.state(ISSUER, on(3, 2));
+        let observed = ObservedCertificate::starting_with(Some(ninety_day("a")))
+            .after(CertificateEvent::OrderFailed(rate_limited()));
+        let state = observed.state(ISSUER, on(3, 2));
         assert_eq!(state.status, CertificateStatus::RenewalDue);
         assert_eq!(state.last_error, Some(rate_limited()));
         let expired = on(4, 1);
-        assert_eq!(run.state(ISSUER, expired).status, CertificateStatus::Failed);
+        assert_eq!(
+            observed.state(ISSUER, expired).status,
+            CertificateStatus::OrderFailing
+        );
     }
 
     #[test]
@@ -333,43 +356,46 @@ mod tests {
             not_after: on(5, 31),
             fingerprint: "b".to_owned(),
         };
-        let run = CertificateRun::starting_with(Some(ninety_day("a")))
+        let observed = ObservedCertificate::starting_with(Some(ninety_day("a")))
             .after(CertificateEvent::Deployed(renewed.clone()));
-        let state = run.state(ISSUER, on(3, 2));
-        assert_eq!(state.status, CertificateStatus::Valid);
-        assert_eq!(state.issued, Some(renewed));
+        let state = observed.state(ISSUER, on(3, 2));
+        assert_eq!(state.status, CertificateStatus::NoRenewalNeeded);
+        assert_eq!(state.held, Some(renewed));
     }
 
     #[test]
     fn the_state_next_changes_at_renewal_then_at_expiry_then_never() {
-        let run = CertificateRun::starting_with(Some(ninety_day("a")));
-        assert_eq!(run.next_status_change(on(1, 2)), Some(on(3, 2)));
-        assert_eq!(run.next_status_change(on(3, 2)), Some(on(4, 1)));
+        let observed = ObservedCertificate::starting_with(Some(ninety_day("a")));
+        assert_eq!(observed.next_status_change(on(1, 2)), Some(on(3, 2)));
+        assert_eq!(observed.next_status_change(on(3, 2)), Some(on(4, 1)));
         let expired = on(4, 1);
-        assert_eq!(run.next_status_change(expired), None);
-        assert_eq!(CertificateRun::default().next_status_change(on(1, 2)), None);
+        assert_eq!(observed.next_status_change(expired), None);
+        assert_eq!(
+            ObservedCertificate::default().next_status_change(on(1, 2)),
+            None
+        );
     }
 
     #[test]
-    fn a_stopped_server_s_lapsed_certificate_is_expired_not_failed() {
+    fn a_cached_lapsed_certificate_is_expired_not_order_failing() {
         let expired = on(6, 1);
-        let state = CertificateState::of_stopped_server(Some(ninety_day("a")), ISSUER, expired);
+        let state = CertificateState::of_cached(Some(ninety_day("a")), ISSUER, expired);
         assert_eq!(state.status, CertificateStatus::Expired);
         assert_eq!(state.last_error, None);
     }
 
     #[test]
-    fn a_stopped_server_reads_none_valid_or_renewal_due() {
+    fn the_cache_reads_not_issued_no_renewal_needed_or_renewal_due() {
         assert_eq!(
-            CertificateState::of_stopped_server(None, ISSUER, on(1, 2)).status,
-            CertificateStatus::None
+            CertificateState::of_cached(None, ISSUER, on(1, 2)).status,
+            CertificateStatus::NotIssued
         );
         assert_eq!(
-            CertificateState::of_stopped_server(Some(ninety_day("a")), ISSUER, on(1, 2)).status,
-            CertificateStatus::Valid
+            CertificateState::of_cached(Some(ninety_day("a")), ISSUER, on(1, 2)).status,
+            CertificateStatus::NoRenewalNeeded
         );
         assert_eq!(
-            CertificateState::of_stopped_server(Some(ninety_day("a")), ISSUER, on(3, 2)).status,
+            CertificateState::of_cached(Some(ninety_day("a")), ISSUER, on(3, 2)).status,
             CertificateStatus::RenewalDue
         );
     }

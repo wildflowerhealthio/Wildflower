@@ -37,17 +37,17 @@ pub struct WildflowerServerConfig {
     /// The relay connection the server's tunnel dials, from the server's
     /// record.
     pub relay_settings: tunnel_rust::RelaySettings,
-    /// The bare public host the relay serves the server at: the server's
-    /// domain, from its record. The server's public origin, which HFS's links,
-    /// app launches and the reachability monitor's `/health` use, and the
-    /// one name on its certificate.
-    pub public_host: String,
+    /// The server's domain, from its record: the bare host the relay serves
+    /// the server at. The server's public origin, which HFS's links, app
+    /// launches and the reachability monitor's `/health` use, and the one
+    /// name on its certificate.
+    pub domain: String,
     /// Where the server's certificate is ordered from and cached, from its
     /// record.
     pub device_certificate: DeviceCertificateConfig,
 }
 
-/// Where the server's certificate for its public host comes from: the ACME CA
+/// Where the server's certificate for its domain comes from: the ACME CA
 /// it is ordered from, and the folders it and the install's ACME account are
 /// cached in. The host builds it from the server's record.
 #[derive(Debug, Clone, PartialEq, Eq)]

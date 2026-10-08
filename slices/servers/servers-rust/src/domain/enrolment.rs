@@ -420,12 +420,13 @@ fn check_tunnel_host(
     tunnel_name: &TunnelName,
     domain: &str,
 ) -> Result<(), EnrolmentError> {
-    let expected_public_host = format!("{tunnel_name}.{domain}");
-    if tunnel_host.tunnel_name != *tunnel_name || tunnel_host.public_host != expected_public_host {
+    let expected_server_domain = format!("{tunnel_name}.{domain}");
+    if tunnel_host.tunnel_name != *tunnel_name || tunnel_host.public_host != expected_server_domain
+    {
         return Err(EnrolmentError::BadRelayResponse {
             path: "/me",
             reason: format!(
-                "it names {:?} at {:?}, not {:?} at {expected_public_host:?}",
+                "it names {:?} at {:?}, not {:?} at {expected_server_domain:?}",
                 tunnel_host.tunnel_name.as_str(),
                 tunnel_host.public_host,
                 tunnel_name.as_str()

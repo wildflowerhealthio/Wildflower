@@ -13,7 +13,7 @@
 //!
 //! The tunnel listener serves the same API as a remote origin, over TLS with
 //! the certificate cached for the server's domain: its connections are held to
-//! the server's public host by their SNI and their requests by their `Host`,
+//! the server's domain by their SNI and their requests by their `Host`,
 //! never get the owner token, are served as the public origin whatever
 //! `Forwarded` they carry, and name the visitor from a PROXY protocol v2
 //! header.
@@ -57,9 +57,9 @@ const FORWARDED: &str = "for=192.0.2.1;host=demo.example.com;proto=https";
 
 /// The server's domain: the host every tunnel request must name. No relay
 /// serves it, so the reachability monitor never reaches the server.
-const PUBLIC_HOST: &str = "test.relay.invalid";
+const DOMAIN: &str = "test.relay.invalid";
 
-/// The server's origin, from [`PUBLIC_HOST`]: the `iss` and `aud` of every
+/// The server's origin, from [`DOMAIN`]: the `iss` and `aud` of every
 /// token the server accepts, whichever origin a request was served on.
 const SERVER_ORIGIN: &str = "https://test.relay.invalid";
 
@@ -105,14 +105,14 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         first_party_client_id: gatekeeper_rust::FIRST_PARTY_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
-        // public host below never answers.
+        // domain below never answers.
         relay_settings: tunnel_rust::RelaySettings {
             remote_addr: "127.0.0.1:9".to_owned(),
             token: "test-tunnel-token".to_owned(),
             public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
             service_name: "test".to_owned(),
         },
-        public_host: PUBLIC_HOST.to_owned(),
+        domain: DOMAIN.to_owned(),
         device_certificate: DeviceCertificateConfig {
             certificate_authority: CertificateAuthority::LetsEncryptStaging,
             acme_directory_url: Url::parse(UNREACHABLE_ACME_DIRECTORY_URL)
@@ -575,7 +575,7 @@ impl TunnelClient {
     /// the background once the server is set up.
     async fn wait_for_certificate(&self) {
         tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
-            while self.connect(None, PUBLIC_HOST).await.is_err() {
+            while self.connect(None, DOMAIN).await.is_err() {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
         })
@@ -584,20 +584,20 @@ impl TunnelClient {
     }
 }
 
-/// A self-signed certificate for [`PUBLIC_HOST`], cached in `certificate_dir`
+/// A self-signed certificate for [`DOMAIN`], cached in `certificate_dir`
 /// as rustls-acme caches the one it orders from
 /// [`UNREACHABLE_ACME_DIRECTORY_URL`]. Valid for years, so the server
 /// deploys it and orders nothing.
 async fn cache_self_signed_certificate(certificate_dir: &Path) -> CertificateDer<'static> {
     let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("key pair");
-    let mut params = rcgen::CertificateParams::new(vec![PUBLIC_HOST.to_owned()]).expect("params");
+    let mut params = rcgen::CertificateParams::new(vec![DOMAIN.to_owned()]).expect("params");
     params.not_after = rcgen::date_time_ymd(2099, 1, 1);
     let certificate = params.self_signed(&key_pair).expect("self-signed");
     let cache_entry = [key_pair.serialize_pem(), certificate.pem()].concat();
     let acme_directory_url = Url::parse(UNREACHABLE_ACME_DIRECTORY_URL).expect("a URL");
     DirCache::new(certificate_dir)
         .store_cert(
-            &[PUBLIC_HOST.to_owned()],
+            &[DOMAIN.to_owned()],
             acme_directory_url.as_str(),
             cache_entry.as_bytes(),
         )
@@ -628,7 +628,7 @@ async fn raw_tunnel_exchange(
     proxy_header: Option<&[u8]>,
     request: &str,
 ) -> String {
-    let Ok(mut tls_stream) = tunnel.connect(proxy_header, PUBLIC_HOST).await else {
+    let Ok(mut tls_stream) = tunnel.connect(proxy_header, DOMAIN).await else {
         return String::new();
     };
     // A server that already closed the connection fails the write; the read
@@ -720,15 +720,15 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
 
     // The same request through the tunnel, from a loopback-looking connection
     // with no `Forwarded`, gets no owner token. It is reported as served at
-    // the public host, with no visitor address (no PROXY header).
-    let (status, _) = tunnel_exchange(&tunnel, None, &tunnel_get("/apps", PUBLIC_HOST, ""))
+    // the domain, with no visitor address (no PROXY header).
+    let (status, _) = tunnel_exchange(&tunnel, None, &tunnel_get("/apps", DOMAIN, ""))
         .await
         .expect("the tunnel listener answers");
     assert_eq!(status, 401);
     assert_eq!(
         next_report(&mut forwarded_request_rx),
-        (Some(PUBLIC_HOST.to_owned()), None, 401),
-        "a tunnel request is forwarded, for the public host"
+        (Some(DOMAIN.to_owned()), None, 401),
+        "a tunnel request is forwarded, for the domain"
     );
 
     // Discovery renders the public origin, even when the visitor sends a
@@ -738,7 +738,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         None,
         &tunnel_get(
             "/fhir-r4/.well-known/smart-configuration",
-            PUBLIC_HOST,
+            DOMAIN,
             "Forwarded: for=203.0.113.9;host=evil.example.com;proto=http\r\n",
         ),
     )
@@ -749,11 +749,11 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         serde_json::from_str(&smart_configuration).expect("a JSON discovery document");
     assert_eq!(
         smart_configuration["token_endpoint"],
-        format!("https://{PUBLIC_HOST}/oauth/token")
+        format!("https://{DOMAIN}/oauth/token")
     );
     assert_eq!(
         next_report(&mut forwarded_request_rx),
-        (Some(PUBLIC_HOST.to_owned()), None, 200),
+        (Some(DOMAIN.to_owned()), None, 200),
         "the visitor's `Forwarded` is replaced"
     );
 
@@ -763,8 +763,8 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         "no certificate for another host"
     );
 
-    // A request naming a host other than the public host, over TLS for the
-    // public host, is misdirected, and not reported.
+    // A request naming a host other than the domain, over TLS for the
+    // domain, is misdirected, and not reported.
     let (status, _) = tunnel_exchange(
         &tunnel,
         None,
@@ -805,7 +805,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
             None,
             &tunnel_get(
                 "/requests",
-                PUBLIC_HOST,
+                DOMAIN,
                 &format!("Authorization: Bearer {request_log_reader}\r\n"),
             ),
         )
@@ -817,7 +817,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         );
         assert_eq!(
             next_report(&mut forwarded_request_rx),
-            (Some(PUBLIC_HOST.to_owned()), None, expected_status)
+            (Some(DOMAIN.to_owned()), None, expected_status)
         );
     }
 
@@ -830,7 +830,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         let (status, _) = tunnel_exchange(
             &tunnel,
             Some(&proxy_header(source)),
-            &tunnel_get("/fhir-r4/metadata", PUBLIC_HOST, ""),
+            &tunnel_get("/fhir-r4/metadata", DOMAIN, ""),
         )
         .await
         .expect("the tunnel listener answers after a PROXY header");
@@ -838,7 +838,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         assert_eq!(
             next_report(&mut forwarded_request_rx),
             (
-                Some(PUBLIC_HOST.to_owned()),
+                Some(DOMAIN.to_owned()),
                 Some(client_address.to_owned()),
                 200
             )
@@ -853,19 +853,15 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         tunnel_exchange(
             &tunnel,
             Some(&malformed),
-            &tunnel_get("/fhir-r4/metadata", PUBLIC_HOST, "")
+            &tunnel_get("/fhir-r4/metadata", DOMAIN, "")
         )
         .await,
         None
     );
     assert!(forwarded_request_rx.try_recv().is_err());
-    let (status, _) = tunnel_exchange(
-        &tunnel,
-        None,
-        &tunnel_get("/fhir-r4/metadata", PUBLIC_HOST, ""),
-    )
-    .await
-    .expect("the tunnel listener still answers");
+    let (status, _) = tunnel_exchange(&tunnel, None, &tunnel_get("/fhir-r4/metadata", DOMAIN, ""))
+        .await
+        .expect("the tunnel listener still answers");
     assert_eq!(status, 200);
 
     shutdown.cancel();

@@ -70,7 +70,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
             service_name: "test".to_owned(),
         },
-        public_host: DOMAIN.to_owned(),
+        domain: DOMAIN.to_owned(),
         device_certificate: DeviceCertificateConfig {
             certificate_authority: CertificateAuthority::LetsEncryptStaging,
             // A CA nothing answers at: the order fails and is retried in the
@@ -204,7 +204,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         health_status(loopback_base_url).await,
         reqwest::StatusCode::OK
     );
-    // No relay serves the public host, so the monitor finds it unreachable,
+    // No relay serves the domain, so the monitor finds it unreachable,
     // and the run reports that as its detail.
     wait_for(unit_runner, "reporting its health", |status| {
         status

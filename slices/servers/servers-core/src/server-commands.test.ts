@@ -315,16 +315,16 @@ describe('CertificateState', () => {
   const certificateOf = (status: unknown): Option.Option<CertificateState.Type> =>
     ServerStatus.certificateOf(Schema.decodeUnknownSync(ServerStatus.Schema)(status))
 
-  it("should decode a run's valid certificate with its validity and fingerprint", () => {
+  it("should decode a run's certificate that needs no renewal with its validity and fingerprint", () => {
     // Act
     const certificate = certificateOf(golden.serverStatuses.runningAndReachable)
 
     // Assert
     expect(certificate).toEqual(
       Option.some({
-        status: 'valid',
+        status: 'noRenewalNeeded',
         issuer: 'letsEncrypt',
-        issued: Option.some({
+        held: Option.some({
           notBefore: utc('2026-10-01T00:00:00Z'),
           notAfter: utc('2026-12-30T00:00:00Z'),
           fingerprint: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
@@ -343,7 +343,9 @@ describe('CertificateState', () => {
     expect(rateLimited.pipe(Option.flatMap((state) => state.lastError))).toEqual(
       Option.some({ kind: 'rateLimited', retryAfter: Option.some(utc('2026-10-06T17:59:00Z')) })
     )
-    expect(rateLimited.pipe(Option.map((state) => state.status))).toEqual(Option.some('failed'))
+    expect(rateLimited.pipe(Option.map((state) => state.status))).toEqual(
+      Option.some('orderFailing')
+    )
     expect(challengeFailed.pipe(Option.flatMap((state) => state.lastError))).toEqual(
       Option.some({ kind: 'challengeFailed', detail: Option.some('Connection refused') })
     )
@@ -360,7 +362,7 @@ describe('CertificateState', () => {
         message: 'http request error: io error: Connection refused',
       })
     )
-    expect(certificate.pipe(Option.flatMap((state) => state.issued))).toEqual(Option.none())
+    expect(certificate.pipe(Option.flatMap((state) => state.held))).toEqual(Option.none())
   })
 
   it('should have no certificate state for a stopped status', () => {

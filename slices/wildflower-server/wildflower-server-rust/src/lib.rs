@@ -7,7 +7,7 @@
 //! in the loopback owner trust, the loopback-peer gate, the CORS policy and the
 //! forwarded-request report; for the **tunnel listener** in the CORS policy,
 //! the forwarded-request report and the tunnel front, which holds each request
-//! to the server's public host and writes its `Forwarded` header. It starts the
+//! to the server's domain and writes its `Forwarded` header. It starts the
 //! tunnel, which hands each visitor's stream to the tunnel listener in
 //! process, the device certificate, which the tunnel listener's TLS serves,
 //! and the reachability monitor, and binds the loopback port.
@@ -25,9 +25,10 @@
 //! [`ServerObservers`], among them the [`ServerHealth`] the reachability
 //! monitor reads from the server's own `/health` through its public origin,
 //! and the [`CertificateState`] the run publishes as its certificate is
-//! deployed, ordered and renewed. A stopped server's certificate state is read
-//! from its cache by [`stopped_certificate_state`], and the certificates its
-//! runs deployed by [`read_certificate_history`].
+//! deployed, ordered and renewed. What a server's certificate cache says, the
+//! state of any server without a run's state, is read by
+//! [`cached_certificate_state`], and the certificates its runs deployed by
+//! [`read_certificate_history`].
 //!
 //! Layered like the other Rust slices:
 //!
@@ -35,8 +36,8 @@
 //!    `gatekeeper-rust`'s `config`.
 //!  - `domain` — [`ServerHealth`] and the reachability monitor that publishes
 //!    it, through its `HealthProbe` port; [`CertificateAuthority`],
-//!    [`CertificateState`] with the reducer a run derives it with, and
-//!    [`CertificateHistoryEntry`].
+//!    [`CertificateState`] with what a run observed that it is derived from,
+//!    and [`CertificateHistoryEntry`].
 //!  - `adapters` — ports implemented here, where both sides are in reach:
 //!    apps' `AppLaunchScopes` from gatekeeper's OAuth clients, and the
 //!    monitor's `HealthProbe` over `reqwest`; and the device certificate,
@@ -55,7 +56,7 @@ mod domain;
 mod http;
 mod live_bindings;
 
-pub use adapters::acme_certificate::stopped_certificate_state;
+pub use adapters::acme_certificate::cached_certificate_state;
 pub use adapters::certificate_history::read_certificate_history;
 pub use config::{DeviceCertificateConfig, HostPorts, ServerObservers, WildflowerServerConfig};
 pub use domain::certificate_authority::CertificateAuthority;

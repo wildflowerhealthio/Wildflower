@@ -6,24 +6,24 @@ import * as CertificateAuthority from './certificate-authority.ts'
  * Where a server's certificate stands.
  *
  * @remarks
- * `ordering` and `failed` come only from a run; `none` and `expired` only from
- * a stopped server's cache. A stopped server's certificate lapses because
- * nothing renews it, and renews when the server starts: `expired` is not a
- * failure.
+ * `ordering` and `orderFailing` come only from a run; `notIssued` and
+ * `expired` only from what a cache says, for a server without a run's state. A
+ * stopped server's certificate lapses because nothing renews it, and renews
+ * when the server starts: `expired` is not a failure.
  */
 const StatusSchema = Schema.Literal(
-  /** A stopped server holds no certificate from its CA. */
-  'none',
+  /** The cache holds no certificate from the server's CA. */
+  'notIssued',
   /** The run is ordering a certificate: it holds none, or an expired one. */
   'ordering',
   /** The certificate is valid, with more than a third of its lifetime left. */
-  'valid',
+  'noRenewalNeeded',
   /** The certificate is valid, with a third or less of its lifetime left; a run renews it. */
   'renewalDue',
-  /** A stopped server's certificate has expired; it renews when the server starts. */
+  /** The cache's certificate has expired; it renews when the server starts. */
   'expired',
   /** The run holds no valid certificate, and its latest order failed with `lastError`. */
-  'failed'
+  'orderFailing'
 )
 
 /** A decoded {@link StatusSchema}. */
@@ -64,14 +64,14 @@ const OrderErrorSchema = Schema.Union(
 type OrderError = typeof OrderErrorSchema.Type
 
 /**
- * What the host knows about a server's certificate for its public host: its
+ * What the host knows about a server's certificate for its domain: its
  * status, the CA it is ordered from, the certificate held, and why the run's
  * latest order failed since it last deployed one.
  */
 const CertificateStateSchema = Schema.Struct({
   status: StatusSchema,
   issuer: CertificateAuthority.Schema,
-  issued: Schema.optionalWith(IssuedSchema, { as: 'Option', exact: true }),
+  held: Schema.optionalWith(IssuedSchema, { as: 'Option', exact: true }),
   lastError: Schema.optionalWith(OrderErrorSchema, { as: 'Option', exact: true }),
 })
 

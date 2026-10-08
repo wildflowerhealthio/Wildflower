@@ -289,9 +289,9 @@ pub(crate) mod tests {
             detail: Some(ServerDetail {
                 health: Some(ServerHealth::Reachable(HealthReport::pass())),
                 certificate: Some(CertificateState {
-                    status: CertificateStatus::Valid,
+                    status: CertificateStatus::NoRenewalNeeded,
                     issuer: CertificateAuthority::LetsEncrypt,
-                    issued: Some(issued_certificate()),
+                    held: Some(issued_certificate()),
                     last_error: None,
                 }),
                 pending_consent: None,
@@ -339,9 +339,9 @@ pub(crate) mod tests {
                     detail: Some(ServerDetail {
                         health: None,
                         certificate: Some(CertificateState {
-                            status: CertificateStatus::Failed,
+                            status: CertificateStatus::OrderFailing,
                             issuer: CertificateAuthority::LetsEncrypt,
-                            issued: None,
+                            held: None,
                             last_error: Some(CertificateOrderError::CaUnreachable {
                                 message: "http request error: io error: Connection refused"
                                     .to_owned(),
@@ -362,9 +362,9 @@ pub(crate) mod tests {
                             error: "the relay answered 502".to_owned(),
                         }),
                         certificate: Some(CertificateState {
-                            status: CertificateStatus::Failed,
+                            status: CertificateStatus::OrderFailing,
                             issuer: CertificateAuthority::LetsEncrypt,
-                            issued: None,
+                            held: None,
                             last_error: Some(CertificateOrderError::RateLimited {
                                 retry_after: Some(at(59)),
                             }),
@@ -384,7 +384,7 @@ pub(crate) mod tests {
                         certificate: Some(CertificateState {
                             status: CertificateStatus::RenewalDue,
                             issuer: CertificateAuthority::LetsEncryptStaging,
-                            issued: Some(issued_certificate()),
+                            held: Some(issued_certificate()),
                             last_error: Some(CertificateOrderError::ChallengeFailed {
                                 detail: Some("Connection refused".to_owned()),
                             }),

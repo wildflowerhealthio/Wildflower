@@ -294,14 +294,15 @@ stoppedAt}, runningSince?, health?, certificate?}`. A removed server gets no eve
   keys, the details, the approvals, the outcomes and the errors.
 - **A certificate's state is its run's, or its cache's.** While a run has
   reported one, a server's `CertificateState` is the run's, in its
-  `ServerDetail` and the `server-status` event: `ordering`, `valid`,
-  `renewalDue` or `failed`, with the last order error. With none,
-  `servers_list` reads it from the certificate cached in the server's
-  `certificates/` folder (`wildflower_server_rust::stopped_certificate_state`):
-  `none`, `valid`, `renewalDue` or `expired`, never `ordering` or `failed`. A
-  stopped server's certificate lapses and renews when the server starts, so
-  `expired` is not a failure. The certificate state's wire shape is
-  `{status, issuer, issued?: {notBefore, notAfter, fingerprint},
+  `ServerDetail` and the `server-status` event: `ordering`,
+  `noRenewalNeeded`, `renewalDue` or `orderFailing`, with the last order
+  error. With none, `servers_list` reads what the certificate cached in the
+  server's `certificates/` folder says
+  (`wildflower_server_rust::cached_certificate_state`): `notIssued`,
+  `noRenewalNeeded`, `renewalDue` or `expired`, never `ordering` or
+  `orderFailing`. A stopped server's certificate lapses and renews when the
+  server starts, so `expired` is not a failure. The certificate state's wire
+  shape is `{status, issuer, held?: {notBefore, notAfter, fingerprint},
 lastError?: {kind, …}}`.
 - **Each new certificate is recorded once.** A run appends each certificate
   it deploys that the history doesn't record already to `certificates/history.json`

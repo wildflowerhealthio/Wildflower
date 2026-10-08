@@ -26,9 +26,8 @@ pub struct ListedServer {
     pub record: ServerRecord,
     /// What `UnitRunner` reports for the server.
     pub unit_status: UnitStatus<ServerDetail>,
-    /// The state of the certificate the server's cache holds, as a stopped
-    /// server's (see
-    /// [`CertificateState::of_stopped_server`]).
+    /// What the server's certificate cache says (see
+    /// [`CertificateState::of_cached`]).
     pub cached_certificate: CertificateState,
 }
 
@@ -122,7 +121,7 @@ mod tests {
         records
             .into_iter()
             .map(|record| {
-                let cached = CertificateState::of_stopped_server(
+                let cached = CertificateState::of_cached(
                     Some(issued_certificate()),
                     record.certificate_authority,
                     Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap(),
@@ -209,7 +208,10 @@ mod tests {
             .into_iter()
             .collect();
         let listed = ListedServer::list(with_cached_certificates(golden_records()), &statuses);
-        assert_eq!(listed[0].certificate().status, CertificateStatus::Valid);
+        assert_eq!(
+            listed[0].certificate().status,
+            CertificateStatus::NoRenewalNeeded
+        );
         assert_eq!(listed[1].certificate().status, CertificateStatus::Expired);
     }
 

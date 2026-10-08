@@ -184,7 +184,7 @@ async fn list(servers: &ServersState) -> Result<Vec<ListedServer>, RegistryError
         .inspect_err(|error| log::error!("[servers] listing the servers failed: {error}"))?;
     let mut with_cached_certificates = Vec::with_capacity(records.len());
     for record in records {
-        let cached_certificate = wildflower_server_rust::stopped_certificate_state(
+        let cached_certificate = wildflower_server_rust::cached_certificate_state(
             &record.domain(),
             &record.device_certificate_config(&servers.data_root),
         )
@@ -1186,7 +1186,7 @@ mod tests {
             serde_json::json!({"kind": "whileOpen"})
         );
         assert_eq!(
-            listed[0]["certificate"]["status"], "none",
+            listed[0]["certificate"]["status"], "notIssued",
             "nothing is cached, and the test's unit reports no certificate"
         );
     }

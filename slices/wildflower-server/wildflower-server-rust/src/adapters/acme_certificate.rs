@@ -1,4 +1,4 @@
-//! The server's device-held certificate for its public host, from an ACME CA
+//! The server's device-held certificate for its domain, from an ACME CA
 //! over TLS-ALPN-01, cached in the folders its [`DeviceCertificateConfig`]
 //! names.
 //!
@@ -26,15 +26,16 @@
 //! certificate: it lapses, and the next start orders again.
 //!
 //! The run reports its certificate as it goes: [`order_and_renew`] reads each
-//! of rustls-acme's events as a [`CertificateEvent`], folds it into the run's
-//! [`CertificateRun`], and publishes the [`CertificateState`] that results on
-//! the host's channel, and again whenever the certificate's renewal falls due
-//! or it expires. rustls-acme's events don't carry the certificate, so the
-//! run reads it from the cache entry rustls-acme last loaded or stored
-//! ([`ObservedCertCache`]). Each newly deployed certificate is recorded in
-//! the server's [certificate history](crate::adapters::certificate_history).
-//! [`stopped_certificate_state`] reads a stopped server's state from its
-//! cache instead.
+//! of rustls-acme's events as a [`CertificateEvent`], adds it to what the run
+//! has observed of its certificate ([`ObservedCertificate`]), and publishes
+//! the [`CertificateState`] derived from that on the host's channel, and
+//! again whenever the certificate's renewal falls due or it expires.
+//! rustls-acme's events don't carry the certificate, so the run reads it from
+//! the cache entry rustls-acme last loaded or stored ([`LastEntryCertCache`]).
+//! Each newly deployed certificate is recorded in the server's
+//! [certificate history](crate::adapters::certificate_history).
+//! [`cached_certificate_state`] reads what the cache says instead, for any
+//! server without a run's state.
 
 use std::fmt::Write as _;
 use std::io;
@@ -57,7 +58,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::adapters::certificate_history::record_in_certificate_history;
-use crate::domain::certificate_state::{CertificateEvent, CertificateRun};
+use crate::domain::certificate_state::{CertificateEvent, ObservedCertificate};
 use crate::{
     CertificateAuthority, CertificateHistoryEntry, CertificateOrderError, CertificateState,
     DeviceCertificateConfig, IssuedCertificate,
@@ -97,7 +98,7 @@ fn create_owner_only_dir(dir: &Path) -> io::Result<()> {
 fn acme_config(
     domain: &str,
     config: &DeviceCertificateConfig,
-    certificate_cache: ObservedCertCache,
+    certificate_cache: LastEntryCertCache,
 ) -> AcmeConfig<io::Error> {
     AcmeConfig::new([domain])
         .directory(config.acme_directory_url.as_str())
@@ -110,14 +111,14 @@ fn acme_config(
 /// The server's certificate cache, a [`DirCache`] over its
 /// `certificate_dir`, keeping the entry rustls-acme last loaded or stored so
 /// the run can read the certificate an event is about.
-struct ObservedCertCache {
+struct LastEntryCertCache {
     dir_cache: DirCache<PathBuf>,
     /// The cache entry rustls-acme last loaded or stored: the key's PEM, then
     /// the certificate chain's.
     last_entry: Arc<Mutex<Option<Vec<u8>>>>,
 }
 
-impl ObservedCertCache {
+impl LastEntryCertCache {
     fn new(certificate_dir: PathBuf) -> Self {
         Self {
             dir_cache: DirCache::new(certificate_dir),
@@ -134,7 +135,7 @@ impl ObservedCertCache {
 }
 
 #[async_trait]
-impl CertCache for ObservedCertCache {
+impl CertCache for LastEntryCertCache {
     type EC = io::Error;
 
     async fn load_cert(
@@ -168,7 +169,7 @@ impl CertCache for ObservedCertCache {
 ///
 /// Returns an error if the entry holds no certificate, or its leaf isn't
 /// X.509.
-fn issued_certificate(cache_entry: &[u8]) -> anyhow::Result<IssuedCertificate> {
+fn parse_cache_entry(cache_entry: &[u8]) -> anyhow::Result<IssuedCertificate> {
     let leaf = CertificateDer::from_pem_slice(cache_entry)
         .context("the cache entry holds no certificate")?;
     let (_, certificate) =
@@ -192,34 +193,34 @@ fn issued_certificate(cache_entry: &[u8]) -> anyhow::Result<IssuedCertificate> {
 }
 
 /// The certificate the cache in `config`'s `certificate_dir` holds for
-/// `public_host` from `config`'s CA; `None` when it holds none, or one it
+/// `domain` from `config`'s CA; `None` when it holds none, or one it
 /// can't read, which a run orders afresh.
 async fn cached_certificate(
-    public_host: &str,
+    domain: &str,
     config: &DeviceCertificateConfig,
 ) -> Option<IssuedCertificate> {
     let entry = DirCache::new(&config.certificate_dir)
         .load_cert(
-            &[public_host.to_owned()],
+            &[domain.to_owned()],
             config.acme_directory_url.as_str(),
         )
         .await
         .inspect_err(|error| tracing::warn!("certificate: reading the cache failed: {error}"))
         .ok()??;
-    issued_certificate(&entry)
+    parse_cache_entry(&entry)
         .inspect_err(|error| tracing::warn!("certificate: the cached one is unreadable: {error:#}"))
         .ok()
 }
 
-/// The certificate state of the stopped server at `public_host` that `config`
-/// describes, from its cache, now (see
-/// [`CertificateState::of_stopped_server`]).
-pub async fn stopped_certificate_state(
-    public_host: &str,
+/// What the cache of the server at `domain` that `config` describes says of
+/// its certificate now (see [`CertificateState::of_cached`]): the state of
+/// any server without a run's state.
+pub async fn cached_certificate_state(
+    domain: &str,
     config: &DeviceCertificateConfig,
 ) -> CertificateState {
-    CertificateState::of_stopped_server(
-        cached_certificate(public_host, config).await,
+    CertificateState::of_cached(
+        cached_certificate(domain, config).await,
         config.certificate_authority,
         Utc::now(),
     )
@@ -236,7 +237,7 @@ pub(crate) struct DeviceCertificate {
 }
 
 impl DeviceCertificate {
-    /// Start the certificate for `public_host` that `config` describes:
+    /// Start the certificate for `domain` that `config` describes:
     /// create its key folders, readable by this user only, then deploy a
     /// cached certificate, order one when it is missing or expired, and renew
     /// it, publishing its state on `certificate_tx`. Spawns onto the ambient
@@ -247,7 +248,7 @@ impl DeviceCertificate {
     /// Returns an error if a key folder can't be created or narrowed to this
     /// user. A failed order isn't one: rustls-acme retries it.
     pub(crate) fn start(
-        public_host: &str,
+        domain: &str,
         config: &DeviceCertificateConfig,
         certificate_tx: watch::Sender<Option<CertificateState>>,
     ) -> anyhow::Result<Self> {
@@ -258,7 +259,7 @@ impl DeviceCertificate {
         }
         let cancel = CancellationToken::new();
         let (resolver, task) =
-            certificate_task(public_host, config, certificate_tx, cancel.clone());
+            certificate_task(domain, config, certificate_tx, cancel.clone());
         tokio::spawn(task);
         Ok(Self { resolver, cancel })
     }
@@ -275,12 +276,12 @@ impl Drop for DeviceCertificate {
     }
 }
 
-/// The resolver serving the certificate for `public_host` that `config`
+/// The resolver serving the certificate for `domain` that `config`
 /// describes, and the task that deploys, orders and renews it until `cancel`,
 /// publishing its state on `certificate_tx`: it reads the cached certificate
 /// first, then polls rustls-acme ([`order_and_renew`]).
 fn certificate_task(
-    public_host: &str,
+    domain: &str,
     config: &DeviceCertificateConfig,
     certificate_tx: watch::Sender<Option<CertificateState>>,
     cancel: CancellationToken,
@@ -288,19 +289,19 @@ fn certificate_task(
     Arc<ResolvesServerCertAcme>,
     impl std::future::Future<Output = ()> + Send + 'static,
 ) {
-    let certificate_cache = ObservedCertCache::new(config.certificate_dir.clone());
+    let certificate_cache = LastEntryCertCache::new(config.certificate_dir.clone());
     let reporter = CertificateReporter {
         issuer: config.certificate_authority,
         certificate_dir: config.certificate_dir.clone(),
         last_cache_entry: Arc::clone(&certificate_cache.last_entry),
         certificate_tx,
     };
-    let acme_state = acme_config(public_host, config, certificate_cache).state();
+    let acme_state = acme_config(domain, config, certificate_cache).state();
     let resolver = acme_state.resolver();
-    let public_host = public_host.to_owned();
+    let domain = domain.to_owned();
     let config = config.clone();
     let task = async move {
-        let cached = cached_certificate(&public_host, &config).await;
+        let cached = cached_certificate(&domain, &config).await;
         order_and_renew(acme_state, reporter, cached, cancel).await;
     };
     (resolver, task)
@@ -313,16 +314,17 @@ struct CertificateReporter {
     issuer: CertificateAuthority,
     /// The server's `certificates/` folder, which holds its history.
     certificate_dir: PathBuf,
-    /// The entry the run's [`ObservedCertCache`] last loaded or stored.
+    /// The entry the run's [`LastEntryCertCache`] last loaded or stored.
     last_cache_entry: Arc<Mutex<Option<Vec<u8>>>>,
     /// The host's channel for the run's [`CertificateState`].
     certificate_tx: watch::Sender<Option<CertificateState>>,
 }
 
 impl CertificateReporter {
-    /// Publish `run`'s state now, unless it is the one published last.
-    fn publish(&self, run: &CertificateRun) {
-        let state = run.state(self.issuer, Utc::now());
+    /// Publish the state `observed` derives now, unless it is the one
+    /// published last.
+    fn publish(&self, observed: &ObservedCertificate) {
+        let state = observed.state(self.issuer, Utc::now());
         self.certificate_tx.send_if_modified(|published| {
             let changed = published.as_ref() != Some(&state);
             *published = Some(state);
@@ -338,7 +340,7 @@ impl CertificateReporter {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()?;
-        issued_certificate(&entry)
+        parse_cache_entry(&entry)
             .inspect_err(|error| tracing::warn!("certificate: unreadable cache entry: {error:#}"))
             .ok()
     }
@@ -372,14 +374,14 @@ async fn order_and_renew(
     cached: Option<IssuedCertificate>,
     cancel: CancellationToken,
 ) {
-    let mut run = CertificateRun::starting_with(cached);
-    reporter.publish(&run);
+    let mut observed = ObservedCertificate::starting_with(cached);
+    reporter.publish(&observed);
     loop {
-        let next_status_change = run.next_status_change(Utc::now());
+        let next_status_change = observed.next_status_change(Utc::now());
         let event = tokio::select! {
             event = acme_state.next() => event,
             () = sleep_until(next_status_change) => {
-                reporter.publish(&run);
+                reporter.publish(&observed);
                 continue;
             }
             () = cancel.cancelled() => return,
@@ -396,9 +398,9 @@ async fn order_and_renew(
             if let CertificateEvent::Deployed(issued) = &certificate_event {
                 reporter.record(issued).await;
             }
-            run = run.after(certificate_event);
+            observed = observed.after(certificate_event);
         }
-        reporter.publish(&run);
+        reporter.publish(&observed);
     }
 }
 
@@ -428,11 +430,18 @@ fn certificate_events(
         Ok(EventOk::DeployedNewCert | EventOk::AccountCacheStore) => Vec::new(),
         Err(error @ EventError::CertCacheStore(_)) => deployed()
             .into_iter()
-            .chain([CertificateEvent::Failed(CertificateOrderError::Other {
+            .chain([CertificateEvent::CacheFailed {
                 message: error.to_string(),
-            })])
+            }])
             .collect(),
-        Err(error) => vec![CertificateEvent::Failed(order_error(error))],
+        Err(
+            error @ (EventError::CertCacheLoad(_)
+            | EventError::AccountCacheLoad(_)
+            | EventError::AccountCacheStore(_)),
+        ) => vec![CertificateEvent::CacheFailed {
+            message: error.to_string(),
+        }],
+        Err(error) => vec![CertificateEvent::OrderFailed(order_error(error))],
     }
 }
 
@@ -616,7 +625,7 @@ mod tests {
         acme_config(
             DOMAIN,
             &config,
-            ObservedCertCache::new(config.certificate_dir.clone()),
+            LastEntryCertCache::new(config.certificate_dir.clone()),
         )
         .state()
     }
@@ -742,7 +751,7 @@ mod tests {
         let mut other_server = acme_config(
             "other.relay.test",
             &other_config,
-            ObservedCertCache::new(other_config.certificate_dir.clone()),
+            LastEntryCertCache::new(other_config.certificate_dir.clone()),
         )
         .state();
         assert!(matches!(
@@ -857,26 +866,25 @@ mod tests {
     fn a_cache_entry_reads_as_its_leaf_s_validity_and_fingerprint() {
         let (cache_entry, der) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
         assert_eq!(
-            issued_certificate(&cache_entry).expect("a certificate"),
+            parse_cache_entry(&cache_entry).expect("a certificate"),
             IssuedCertificate {
                 not_before: Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap(),
                 not_after: Utc.with_ymd_and_hms(2099, 1, 1, 0, 0, 0).unwrap(),
                 fingerprint: sha256_hex(&der),
             }
         );
-        assert!(issued_certificate(b"no PEM here").is_err());
+        assert!(parse_cache_entry(b"no PEM here").is_err());
     }
 
-    /// A stopped server's lapsed certificate reads as `Expired`, never
-    /// `Failed`; one with nothing cached as `None`, and a valid one as
-    /// `Valid`.
+    /// A lapsed cached certificate reads as `Expired`, never `OrderFailing`;
+    /// nothing cached as `NotIssued`, and a valid one as `NoRenewalNeeded`.
     #[tokio::test]
-    async fn a_stopped_server_reads_its_state_from_its_cache() {
+    async fn the_cached_state_is_what_the_cache_says() {
         let data_root = data_root();
         let acme_directory_url = unreachable_acme_directory_url();
         let config = data_root.config(&data_root.certificate_dir, &acme_directory_url);
-        let state = stopped_certificate_state(DOMAIN, &config).await;
-        assert_eq!(state.status, CertificateStatus::None);
+        let state = cached_certificate_state(DOMAIN, &config).await;
+        assert_eq!(state.status, CertificateStatus::NotIssued);
         assert_eq!(state.issuer, CertificateAuthority::LetsEncryptStaging);
 
         let (lapsed, der) = self_signed_cache_entry(DOMAIN, (2021, 1, 1));
@@ -887,11 +895,11 @@ mod tests {
             &lapsed,
         )
         .await;
-        let state = stopped_certificate_state(DOMAIN, &config).await;
+        let state = cached_certificate_state(DOMAIN, &config).await;
         assert_eq!(state.status, CertificateStatus::Expired);
         assert_eq!(state.last_error, None);
         assert_eq!(
-            state.issued.map(|issued| issued.fingerprint),
+            state.held.map(|issued| issued.fingerprint),
             Some(sha256_hex(&der))
         );
 
@@ -903,8 +911,8 @@ mod tests {
             &valid,
         )
         .await;
-        let state = stopped_certificate_state(DOMAIN, &config).await;
-        assert_eq!(state.status, CertificateStatus::Valid);
+        let state = cached_certificate_state(DOMAIN, &config).await;
+        assert_eq!(state.status, CertificateStatus::NoRenewalNeeded);
     }
 
     /// Wait until the published state satisfies `predicate`.
@@ -922,8 +930,8 @@ mod tests {
         state.clone().expect("a state")
     }
 
-    /// A run publishes its cached certificate as `Valid`, and records it in
-    /// the history once, however often the server starts.
+    /// A run publishes its cached certificate as `NoRenewalNeeded`, and
+    /// records it in the history once, however often the server starts.
     #[tokio::test]
     async fn a_run_publishes_its_cached_certificate_and_records_it_once() {
         let data_root = data_root();
@@ -944,11 +952,11 @@ mod tests {
             let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
             let task = tokio::spawn(task);
             let state = published(&mut certificate_rx, |state| {
-                state.status == CertificateStatus::Valid
+                state.status == CertificateStatus::NoRenewalNeeded
             })
             .await;
             assert_eq!(
-                state.issued.map(|issued| issued.fingerprint),
+                state.held.map(|issued| issued.fingerprint),
                 Some(sha256_hex(&der))
             );
             // The deploy event, which records it, follows the cache read.
@@ -963,10 +971,11 @@ mod tests {
         assert_eq!(history[0].issuer, CertificateAuthority::LetsEncryptStaging);
     }
 
-    /// A run with nothing cached is `Ordering`, then `Failed` once its order
-    /// fails, here because the CA can't be reached; nothing is recorded.
+    /// A run with nothing cached is `Ordering`, then `OrderFailing` once its
+    /// order fails, here because the CA can't be reached; nothing is
+    /// recorded.
     #[tokio::test]
-    async fn a_run_whose_first_order_fails_publishes_failed_with_the_error() {
+    async fn a_run_whose_first_order_fails_publishes_order_failing_with_the_error() {
         let data_root = data_root();
         let config = data_root.config(
             &data_root.certificate_dir,
@@ -978,7 +987,7 @@ mod tests {
         let _task = tokio::spawn(task);
 
         let state = published(&mut certificate_rx, |state| {
-            state.status == CertificateStatus::Failed
+            state.status == CertificateStatus::OrderFailing
         })
         .await;
         assert!(
@@ -988,7 +997,7 @@ mod tests {
             ),
             "{state:?}"
         );
-        assert_eq!(state.issued, None);
+        assert_eq!(state.held, None);
         cancel.cancel();
         assert!(read_certificate_history(&data_root.certificate_dir)
             .unwrap()
@@ -1000,7 +1009,7 @@ mod tests {
     #[test]
     fn a_new_certificate_is_read_once_its_store_is_done() {
         let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
-        let issued = issued_certificate(&cache_entry).unwrap();
+        let issued = parse_cache_entry(&cache_entry).unwrap();
         let last_cached = || Some(issued.clone());
 
         assert_eq!(
@@ -1018,8 +1027,7 @@ mod tests {
         assert_eq!(failed_store[0], CertificateEvent::Deployed(issued.clone()));
         assert!(matches!(
             &failed_store[1],
-            CertificateEvent::Failed(CertificateOrderError::Other { message })
-                if message.contains("disk full")
+            CertificateEvent::CacheFailed { message } if message.contains("disk full")
         ));
     }
 

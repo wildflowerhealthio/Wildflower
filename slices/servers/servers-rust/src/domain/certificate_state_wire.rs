@@ -6,9 +6,10 @@
 //!
 //! ```json
 //! {
-//!   "status": "none" | "ordering" | "valid" | "renewalDue" | "expired" | "failed",
+//!   "status": "notIssued" | "ordering" | "noRenewalNeeded" | "renewalDue" | "expired"
+//!           | "orderFailing",
 //!   "issuer": "letsEncryptStaging" | "letsEncrypt",
-//!   "issued": {
+//!   "held": {
 //!     "notBefore": "<RFC 3339>",
 //!     "notAfter": "<RFC 3339>",
 //!     "fingerprint": "<SHA-256 of the leaf's DER, lowercase hex>"
@@ -36,7 +37,7 @@ pub(crate) struct CertificateStateWire<'a> {
     status: CertificateStatusWire,
     issuer: CertificateAuthority,
     #[serde(skip_serializing_if = "Option::is_none")]
-    issued: Option<IssuedCertificateWire<'a>>,
+    held: Option<IssuedCertificateWire<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_error: Option<CertificateOrderErrorWire<'a>>,
 }
@@ -46,7 +47,7 @@ impl<'a> CertificateStateWire<'a> {
         Self {
             status: CertificateStatusWire::of(state.status),
             issuer: state.issuer,
-            issued: state.issued.as_ref().map(IssuedCertificateWire::of),
+            held: state.held.as_ref().map(IssuedCertificateWire::of),
             last_error: state.last_error.as_ref().map(CertificateOrderErrorWire::of),
         }
     }
@@ -56,23 +57,23 @@ impl<'a> CertificateStateWire<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 enum CertificateStatusWire {
-    None,
+    NotIssued,
     Ordering,
-    Valid,
+    NoRenewalNeeded,
     RenewalDue,
     Expired,
-    Failed,
+    OrderFailing,
 }
 
 impl CertificateStatusWire {
     fn of(status: CertificateStatus) -> Self {
         match status {
-            CertificateStatus::None => Self::None,
+            CertificateStatus::NotIssued => Self::NotIssued,
             CertificateStatus::Ordering => Self::Ordering,
-            CertificateStatus::Valid => Self::Valid,
+            CertificateStatus::NoRenewalNeeded => Self::NoRenewalNeeded,
             CertificateStatus::RenewalDue => Self::RenewalDue,
             CertificateStatus::Expired => Self::Expired,
-            CertificateStatus::Failed => Self::Failed,
+            CertificateStatus::OrderFailing => Self::OrderFailing,
         }
     }
 }

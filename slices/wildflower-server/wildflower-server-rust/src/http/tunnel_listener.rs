@@ -164,7 +164,7 @@ async fn handshake_tunnel_connection(
 #[cfg(test)]
 mod tests {
     use super::proxy_header::tests::proxy_header;
-    use super::tls::tests::{connect, tls_acceptor, PUBLIC_HOST};
+    use super::tls::tests::{connect, tls_acceptor, DOMAIN};
     use super::*;
     use axum::serve::Listener;
     use rustls::pki_types::CertificateDer;
@@ -174,7 +174,7 @@ mod tests {
     const REQUEST_START: &[u8] = b"GET";
 
     /// A listener over a channel of `backlog` streams, with TLS for
-    /// [`PUBLIC_HOST`], and the certificate a visitor trusts.
+    /// [`DOMAIN`], and the certificate a visitor trusts.
     fn listener(
         backlog: usize,
     ) -> (
@@ -215,10 +215,8 @@ mod tests {
         visitor: DuplexStream,
         certificate: &CertificateDer<'static>,
     ) -> (Vec<u8>, TunnelVisitor) {
-        let (client, (mut stream, tunnel_visitor)) = tokio::join!(
-            connect(visitor, certificate, PUBLIC_HOST),
-            listener.accept()
-        );
+        let (client, (mut stream, tunnel_visitor)) =
+            tokio::join!(connect(visitor, certificate, DOMAIN), listener.accept());
         let mut client = client.expect("the visitor's handshake completes");
         client.write_all(REQUEST_START).await.expect("write");
         let mut request_start = vec![0; REQUEST_START.len()];
