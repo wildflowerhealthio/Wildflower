@@ -1,4 +1,5 @@
-//! Restarts: a run that ends on its own restarts after the delay;
+//! Restarts: a run that ends on its own restarts, at once the first time in a
+//! row and after the delay from then on;
 //! `UnitRunner`'s own stops don't; `set_unit_policy` cuts a pending restart
 //! short.
 
@@ -12,8 +13,17 @@ use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
 use crate::status::{RunState, StopReason};
 
+/// Wait until the unit's first run has failed, restarted at once, and failed
+/// again, so its restart now waits out the delay.
+async fn wait_until_second_failure_awaits_restart(harness: &Harness, probe: &Probe) {
+    eventually("the second failure's restart is pending", || {
+        probe.starts() == 2 && harness.phase("unit") == Some(UnitPhase::AwaitingRestart)
+    })
+    .await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
-async fn a_failed_run_restarts_after_the_delay() {
+async fn a_failed_run_restarts() {
     let harness = Harness::with_restart_delay(Duration::from_millis(200));
     let probe = Probe::default();
     harness.set_unit(
@@ -44,7 +54,7 @@ async fn a_run_that_returns_unasked_restarts_too() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_restart_waits_out_the_delay() {
+async fn a_second_restart_in_a_row_waits_out_the_delay() {
     let harness = Harness::with_restart_delay(Duration::from_secs(3600));
     let probe = Probe::default();
     harness.set_unit(
@@ -56,14 +66,12 @@ async fn a_restart_waits_out_the_delay() {
         },
         &probe,
     );
-    harness
-        .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)
-        .await;
+    wait_until_second_failure_awaits_restart(&harness, &probe).await;
     // Starting and stopping runs per policy leaves a pending restart to its
     // delay.
     harness.unit_runner.start_and_stop_runs_per_policy();
     assert_eq!(harness.phase("unit"), Some(UnitPhase::AwaitingRestart));
-    assert_eq!(probe.starts(), 1);
+    assert_eq!(probe.starts(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -79,12 +87,12 @@ async fn set_unit_policy_cancels_a_pending_restart_and_starts_at_once() {
         },
         &probe,
     );
-    harness
-        .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)
-        .await;
+    wait_until_second_failure_awaits_restart(&harness, &probe).await;
     // The unchanged policy still counts.
     harness.set_unit_policy("unit", RunPolicy::Always);
-    eventually("the unit starts at once", || probe.starts() == 2).await;
+    // Its failures in a row start over too, so it may already have failed and
+    // restarted at once again.
+    eventually("the unit starts at once", || probe.starts() >= 3).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -101,9 +109,7 @@ async fn a_pending_restart_is_dropped_when_the_unit_shouldn_t_run() {
         },
         &probe,
     );
-    harness
-        .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)
-        .await;
+    wait_until_second_failure_awaits_restart(&harness, &probe).await;
     harness.set_unit_policy("unit", RunPolicy::Off);
     assert_eq!(harness.phase("unit"), Some(UnitPhase::Idle));
 
@@ -111,7 +117,7 @@ async fn a_pending_restart_is_dropped_when_the_unit_shouldn_t_run() {
     // nothing. Nothing marks it firing, so watch past it.
     tokio::time::sleep(RESTART_DELAY + QUIET_PERIOD).await;
     assert_eq!(harness.phase("unit"), Some(UnitPhase::Idle));
-    assert_eq!(probe.starts(), 1);
+    assert_eq!(probe.starts(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]

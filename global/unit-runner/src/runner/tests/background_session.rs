@@ -69,6 +69,7 @@ async fn a_session_runs_exactly_while_some_unit_should_run() {
 async fn a_unit_waiting_to_restart_still_wants_a_session() {
     let (harness, session) =
         harness_with_background_session_and_restart_delay(Duration::from_secs(3600));
+    let probe = Probe::default();
     harness.set_unit(
         "unit",
         RunPolicy::Always,
@@ -76,14 +77,13 @@ async fn a_unit_waiting_to_restart_still_wants_a_session() {
             detail: None,
             error: "lost the connection",
         },
-        &Probe::default(),
+        &probe,
     );
-    harness
-        .wait_until_stopped_for("unit", StopReason::EndedOnItsOwn)
-        .await;
-    // `UnitRunner` recorded the end, and published its demand, before the
-    // status said `Stopped`.
-    assert_eq!(harness.phase("unit"), Some(UnitPhase::AwaitingRestart));
+    // The first restart is at once; the second failure's restart waits.
+    eventually("the second failure's restart is pending", || {
+        probe.starts() == 2 && harness.phase("unit") == Some(UnitPhase::AwaitingRestart)
+    })
+    .await;
     assert!(harness.session_demand().some_unit_should_run);
     eventually("a session runs", || session.session_running()).await;
     assert_eq!(session.session_end_requests(), 0);

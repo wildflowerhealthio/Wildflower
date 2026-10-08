@@ -29,6 +29,8 @@ tokio-util = "0.7"
 proptest = "1"
 # `RunPolicy`'s serde tests.
 serde_json.workspace = true
+# `test-util` runs the restart backoff tests on the paused clock.
+tokio = { workspace = true, features = ["test-util"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]

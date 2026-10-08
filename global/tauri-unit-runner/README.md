@@ -8,6 +8,14 @@ reports each unit's status. It knows nothing about what a unit does: the app
 supplies the units, stores their policies, and owns its own wire and
 notifications.
 
+A unit whose runs keep failing restarts at once the first time, then after
+`FIRST_UNIT_RESTART_BACKOFF` (5 s), then twice as long each time in a row, up to
+`MAX_UNIT_RESTART_BACKOFF` (5 minutes). The backoff starts over after a run that
+stayed running for `STABLE_UNIT_UPTIME` (2 minutes), while the unit shouldn't
+run, and on `set_unit`, `set_unit_policy` and the app becoming present or
+returning to the foreground; those last also start a unit waiting out its delay
+at once.
+
 This crate is the Tauri bindings of [`unit-runner`](../unit-runner/README.md),
 which holds the units, policies, statuses, and starting and stopping runs per
 policy, free of Tauri. It
@@ -32,7 +40,7 @@ Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 | `UnitStatus<D>`, `RunState`, `RunStop`       | What `TauriUnitRunner` reports for a unit.                                                                               |
 | `StopReason`, `PlatformStopReason`           | Why a run stopped, and why the platform ended the background session.                                                    |
 | `BackgroundServiceStartConfig`               | The plugin's start config (Android notification label and service type), re-exported.                                    |
-| `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc.    | The fixed timings.                                                                                                       |
+| `WHILE_OPEN_GRACE`, etc.                     | The fixed timings.                                                                                                       |
 | `unit-runner`'s other exports                | `UnitRunner`, `BackgroundSessionPlatform`, `WallClock` and the rest, re-exported.                                        |
 
 ## Use

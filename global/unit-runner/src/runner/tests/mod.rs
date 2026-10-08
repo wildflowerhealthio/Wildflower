@@ -4,6 +4,7 @@
 mod background_session;
 mod fakes;
 mod policies;
+mod restart_backoff;
 mod restarts;
 mod runs;
 mod stops;

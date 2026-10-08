@@ -7,6 +7,13 @@ while any of them should run, and reports each unit's status. It knows nothing
 about what a unit does: the app supplies the units, stores their policies, and
 owns its own wire and notifications.
 
+A unit whose runs keep failing restarts at once the first time, then after
+`FIRST_UNIT_RESTART_BACKOFF` (5 s), then twice as long each time in a row, up to
+`MAX_UNIT_RESTART_BACKOFF` (5 minutes). The backoff starts over after a run that
+stayed running for `STABLE_UNIT_UPTIME` (2 minutes), while the unit shouldn't
+run, and on `set_unit`, `set_unit_policy`, `restart_running_units` and the app
+becoming present; those last also start a unit waiting out its delay at once.
+
 This crate has no Tauri dependency, so an app's domain crates can define units
 and store run policies without depending on Tauri.
 [`tauri-unit-runner`](../tauri-unit-runner/README.md) binds it to a Tauri app
@@ -29,7 +36,7 @@ The design and its vocabulary are in the
 | `BackgroundSessionPlatform`               | The port a host implements to request the background session's start and end.                         |
 | `WallClock`, `SystemClock`                | The wall clock policies are judged on, and the system's.                                              |
 | `SessionId`                               | One background session, as the host reports its start and end.                                        |
-| `RESTART_DELAY`, `WHILE_OPEN_GRACE`, etc. | The fixed timings.                                                                                    |
+| `WHILE_OPEN_GRACE`, etc.                  | The fixed timings.                                                                                    |
 
 ## Use
 

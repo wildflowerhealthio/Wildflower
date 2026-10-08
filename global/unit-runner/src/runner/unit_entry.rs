@@ -1,5 +1,6 @@
 //! [`UnitEntry`], `UnitRunner`'s record of one unit: its policy, its factory,
-//! its run gate, its current run and its pending restart.
+//! its run gate, its current run, its pending restart and how many times in a
+//! row it has restarted.
 
 use chrono::{DateTime, Utc};
 use tokio::sync::watch;
@@ -22,6 +23,14 @@ pub(crate) struct UnitEntry<D> {
     /// The latest run, until it has ended.
     pub(crate) current_run: Option<UnitRun>,
     pub(crate) pending_restart: Option<PendingRestart>,
+    /// How many times in a row the unit has restarted after a run that ended
+    /// on its own; the first is at once, and each after it waits twice as long
+    /// as the one before. Back
+    /// to zero after a run that stayed running for
+    /// [`STABLE_UNIT_UPTIME`](crate::STABLE_UNIT_UPTIME), while the unit
+    /// shouldn't run, and when its restarts start over
+    /// ([`start_restarts_over`](Self::start_restarts_over)).
+    pub(crate) restarts_in_a_row: u32,
     /// `remove_unit` is waiting for the unit's run to end before forgetting
     /// it.
     pub(crate) awaiting_removal: bool,
@@ -35,6 +44,7 @@ impl<D> UnitEntry<D> {
             gate: UnitRunGate::default(),
             current_run: None,
             pending_restart: None,
+            restarts_in_a_row: 0,
             awaiting_removal: false,
         }
     }
@@ -62,6 +72,14 @@ impl<D> UnitEntry<D> {
             (None, Some(_)) => UnitPhase::AwaitingRestart,
             (None, None) => UnitPhase::Idle,
         }
+    }
+
+    /// Start the unit's restarts over, on a fresh instruction for it: its
+    /// pending restart is dropped, so it starts at once if it should run, and
+    /// its next restart is at once too.
+    pub(crate) fn start_restarts_over(&mut self) {
+        self.pending_restart = None;
+        self.restarts_in_a_row = 0;
     }
 
     /// Ask the unit's run, if it has one, to stop for `reason`.
