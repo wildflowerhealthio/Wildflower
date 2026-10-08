@@ -28,7 +28,7 @@ pub(crate) struct TunnelFront {
     public_origin: Url,
     /// `host="<public host>";proto=https`, which every written `Forwarded`
     /// ends with.
-    host_and_proto: HeaderValue,
+    forwarded_host_and_proto: HeaderValue,
 }
 
 impl TunnelFront {
@@ -38,27 +38,27 @@ impl TunnelFront {
     ///
     /// Returns an error if the public host can't be written into a header.
     pub(crate) fn new(public_origin: Url) -> anyhow::Result<Self> {
-        let host_and_proto = HeaderValue::from_str(&format!(
+        let forwarded_host_and_proto = HeaderValue::from_str(&format!(
             "host=\"{}\";proto=https",
             public_origin.authority()
         ))
         .context("the public host can't be written into a Forwarded header")?;
         Ok(Self {
             public_origin,
-            host_and_proto,
+            forwarded_host_and_proto,
         })
     }
 
-    /// The `Forwarded` header for a tunnel request, from the visitor at
-    /// `client_ip` when the PROXY header named one.
-    fn forwarded(&self, client_ip: Option<IpAddr>) -> HeaderValue {
-        let mut forwarded = match client_ip {
-            Some(IpAddr::V4(client_ip)) => format!("for={client_ip};"),
-            Some(IpAddr::V6(client_ip)) => format!("for=\"[{client_ip}]\";"),
-            None => return self.host_and_proto.clone(),
+    /// The `Forwarded` header for a tunnel request from the visitor at
+    /// `visitor_ip`, when the PROXY header named one.
+    fn forwarded_header_for(&self, visitor_ip: Option<IpAddr>) -> HeaderValue {
+        let mut forwarded = match visitor_ip {
+            Some(IpAddr::V4(visitor_ip)) => format!("for={visitor_ip};"),
+            Some(IpAddr::V6(visitor_ip)) => format!("for=\"[{visitor_ip}]\";"),
+            None => return self.forwarded_host_and_proto.clone(),
         }
         .into_bytes();
-        forwarded.extend_from_slice(self.host_and_proto.as_bytes());
+        forwarded.extend_from_slice(self.forwarded_host_and_proto.as_bytes());
         HeaderValue::from_bytes(&forwarded)
             .expect("an IP address ahead of a valid header value is a valid header value")
     }
@@ -97,7 +97,7 @@ pub(crate) async fn stamp_tunnel_forwarded(
     if !names_only_public_origin(&request, &tunnel_front.public_origin) {
         return (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY).into_response();
     }
-    let forwarded = tunnel_front.forwarded(
+    let forwarded = tunnel_front.forwarded_header_for(
         tunnel_visitor
             .client_address
             .map(|client_address| client_address.ip()),
