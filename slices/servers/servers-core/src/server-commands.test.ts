@@ -365,6 +365,17 @@ describe('CertificateState', () => {
     expect(certificate.pipe(Option.flatMap((state) => state.held))).toEqual(Option.none())
   })
 
+  it("should decode a cache fault as the cache's, while the run is still ordering", () => {
+    // Act
+    const certificate = certificateOf(golden.serverStatuses.runningCacheFailed)
+
+    // Assert
+    expect(certificate.pipe(Option.map((state) => state.status))).toEqual(Option.some('ordering'))
+    expect(certificate.pipe(Option.flatMap((state) => state.lastError))).toEqual(
+      Option.some({ kind: 'cache', message: 'account cache store: disk full' })
+    )
+  })
+
   it('should have no certificate state for a stopped status', () => {
     expect(certificateOf(golden.serverStatuses.stoppedWithAnError)).toEqual(Option.none())
   })

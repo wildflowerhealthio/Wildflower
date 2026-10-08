@@ -200,10 +200,7 @@ async fn cached_certificate(
     config: &DeviceCertificateConfig,
 ) -> Option<IssuedCertificate> {
     let entry = DirCache::new(&config.certificate_dir)
-        .load_cert(
-            &[domain.to_owned()],
-            config.acme_directory_url.as_str(),
-        )
+        .load_cert(&[domain.to_owned()], config.acme_directory_url.as_str())
         .await
         .inspect_err(|error| tracing::warn!("certificate: reading the cache failed: {error}"))
         .ok()??;
@@ -258,8 +255,7 @@ impl DeviceCertificate {
             })?;
         }
         let cancel = CancellationToken::new();
-        let (resolver, task) =
-            certificate_task(domain, config, certificate_tx, cancel.clone());
+        let (resolver, task) = certificate_task(domain, config, certificate_tx, cancel.clone());
         tokio::spawn(task);
         Ok(Self { resolver, cancel })
     }
@@ -1029,6 +1025,24 @@ mod tests {
             &failed_store[1],
             CertificateEvent::CacheFailed { message } if message.contains("disk full")
         ));
+    }
+
+    /// A fault in the account or certificate cache is a cache failure, not an
+    /// order's.
+    #[test]
+    fn a_cache_fault_is_not_an_order_failure() {
+        let no_certificate = || None;
+        for fault in [
+            EventError::CertCacheLoad(io::Error::other("unreadable")),
+            EventError::AccountCacheLoad(io::Error::other("unreadable")),
+            EventError::AccountCacheStore(io::Error::other("disk full")),
+        ] {
+            let events = certificate_events(&Err(fault), no_certificate);
+            assert!(
+                matches!(&events[..], [CertificateEvent::CacheFailed { .. }]),
+                "{events:?}"
+            );
+        }
     }
 
     /// A challenge the CA couldn't complete is `ChallengeFailed`, with the

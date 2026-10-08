@@ -14,7 +14,7 @@ import * as CertificateAuthority from './certificate-authority.ts'
 const StatusSchema = Schema.Literal(
   /** The cache holds no certificate from the server's CA. */
   'notIssued',
-  /** The run is ordering a certificate: it holds none, or an expired one. */
+  /** The run is ordering a certificate: it holds none, or an expired one, and no order is failing. */
   'ordering',
   /** The certificate is valid, with more than a third of its lifetime left. */
   'noRenewalNeeded',
@@ -22,7 +22,7 @@ const StatusSchema = Schema.Literal(
   'renewalDue',
   /** The cache's certificate has expired; it renews when the server starts. */
   'expired',
-  /** The run holds no valid certificate, and its latest order failed with `lastError`. */
+  /** The run holds no valid certificate, and its latest error, `lastError`, is an order's failure. */
   'orderFailing'
 )
 
@@ -43,9 +43,11 @@ const IssuedSchema = Schema.Struct({
 type Issued = typeof IssuedSchema.Type
 
 /**
- * Why a run's latest certificate order failed: a CA rate limit, with when the
- * CA said to retry; a validation handshake that didn't reach this device, with
- * the CA's detail; a CA that couldn't be reached; or any other failure.
+ * A run's latest certificate error: an order's failure (a CA rate limit, with
+ * when the CA said to retry; a validation handshake that didn't reach this
+ * device, with the CA's detail; a CA that couldn't be reached; or any other
+ * order failure), or `cache`, a certificate or account cache on this device
+ * that couldn't be read or written, which never makes the run `orderFailing`.
  */
 const OrderErrorSchema = Schema.Union(
   Schema.Struct({
@@ -57,7 +59,8 @@ const OrderErrorSchema = Schema.Union(
     detail: Schema.optionalWith(Schema.String, { as: 'Option', exact: true }),
   }),
   Schema.Struct({ kind: Schema.Literal('caUnreachable'), message: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal('other'), message: Schema.String })
+  Schema.Struct({ kind: Schema.Literal('other'), message: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal('cache'), message: Schema.String })
 )
 
 /** A decoded {@link OrderErrorSchema}. */
@@ -65,8 +68,8 @@ type OrderError = typeof OrderErrorSchema.Type
 
 /**
  * What the host knows about a server's certificate for its domain: its
- * status, the CA it is ordered from, the certificate held, and why the run's
- * latest order failed since it last deployed one.
+ * status, the CA it is ordered from, the certificate held, and the run's
+ * latest error since it last deployed one.
  */
 const CertificateStateSchema = Schema.Struct({
   status: StatusSchema,

@@ -394,6 +394,26 @@ pub(crate) mod tests {
                     }),
                 }),
             ),
+            (
+                "runningCacheFailed",
+                status(UnitStatus {
+                    run_state: RunState::Running,
+                    running_since: Some(at(0)),
+                    detail: Some(ServerDetail {
+                        health: None,
+                        certificate: Some(CertificateState {
+                            status: CertificateStatus::Ordering,
+                            issuer: CertificateAuthority::LetsEncrypt,
+                            held: None,
+                            last_error: Some(CertificateOrderError::Cache {
+                                message: "account cache store: disk full".to_owned(),
+                            }),
+                        }),
+                        pending_consent: None,
+                        consent_decider: None,
+                    }),
+                }),
+            ),
             ("neverRun", status(UnitStatus::never_run())),
             ("stoppedWithAnError", status(stopped_with_an_error())),
             (

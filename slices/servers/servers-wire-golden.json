@@ -117,6 +117,16 @@
         "lastError": { "kind": "challengeFailed", "detail": "Connection refused" }
       }
     },
+    "runningCacheFailed": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "certificate": {
+        "status": "ordering",
+        "issuer": "letsEncrypt",
+        "lastError": { "kind": "cache", "message": "account cache store: disk full" }
+      }
+    },
     "neverRun": {
       "domain": "ruth.relay.example.com",
       "runState": "stopped"

@@ -18,6 +18,7 @@
 //!              | {"kind": "challengeFailed", "detail": "…"}
 //!              | {"kind": "caUnreachable", "message": "…"}
 //!              | {"kind": "other", "message": "…"}
+//!              | {"kind": "cache", "message": "…"}
 //! }
 //! ```
 //!
@@ -119,6 +120,9 @@ enum CertificateOrderErrorWire<'a> {
     Other {
         message: &'a str,
     },
+    Cache {
+        message: &'a str,
+    },
 }
 
 impl<'a> CertificateOrderErrorWire<'a> {
@@ -132,6 +136,7 @@ impl<'a> CertificateOrderErrorWire<'a> {
             },
             CertificateOrderError::CaUnreachable { message } => Self::CaUnreachable { message },
             CertificateOrderError::Other { message } => Self::Other { message },
+            CertificateOrderError::Cache { message } => Self::Cache { message },
         }
     }
 }

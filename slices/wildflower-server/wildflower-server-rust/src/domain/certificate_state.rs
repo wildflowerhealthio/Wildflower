@@ -7,12 +7,15 @@
 //! server's is what its cache says, read from its `certificates/` folder:
 //!
 //! ```text
-//!          held certificate                                   order error since
+//!          held certificate                                   latest error since
 //!          none          valid            ⅓ left      expired       the last deploy
-//!   run    Ordering      NoRenewalNeeded  RenewalDue  Ordering      no
-//!          OrderFailing  NoRenewalNeeded  RenewalDue  OrderFailing  yes
+//!   run    Ordering      NoRenewalNeeded  RenewalDue  Ordering      none, or the cache's
+//!          OrderFailing  NoRenewalNeeded  RenewalDue  OrderFailing  an order's
 //!   cache  NotIssued     NoRenewalNeeded  RenewalDue  Expired       —
 //! ```
+//!
+//! A cache fault is recorded as the last error but never makes a run
+//! `OrderFailing`: rustls-acme keeps ordering, and that order may succeed.
 //!
 //! A stopped server's certificate lapses, since nothing renews it, and the
 //! next start orders a new one: `Expired` is only ever the cache's status,
@@ -57,7 +60,7 @@ pub enum CertificateStatus {
     /// issued one, or the record names another CA than the one it was.
     NotIssued,
     /// The run is ordering a certificate: it holds none, or an expired one,
-    /// and no order has failed yet.
+    /// and its latest error, if any, is the cache's rather than an order's.
     Ordering,
     /// The certificate is valid, with more than a third of its lifetime
     /// left: nothing orders its successor yet.
@@ -69,13 +72,14 @@ pub enum CertificateStatus {
     /// a running server's expired certificate is `Ordering` or
     /// `OrderFailing`.
     Expired,
-    /// The run holds no valid certificate, and its latest order failed with
-    /// the state's [`last_error`](CertificateState::last_error). rustls-acme
-    /// retries it, with backoff.
+    /// The run holds no valid certificate, and its latest error is an order's
+    /// failure, the state's [`last_error`](CertificateState::last_error).
+    /// rustls-acme retries it, with backoff.
     OrderFailing,
 }
 
-/// Why a certificate order failed, in terms the base can phrase.
+/// Why a certificate order failed, or the certificate's cache did, in terms
+/// the base can phrase.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CertificateOrderError {
     /// The CA refused the order under one of its rate limits.
@@ -95,12 +99,25 @@ pub enum CertificateOrderError {
         /// The error, for the log and the base's details.
         message: String,
     },
-    /// Any other failure: an ACME problem the base has no phrasing for, or a
-    /// fault on this device, such as a certificate cache it can't write.
+    /// Any other order failure: an ACME problem the base has no phrasing
+    /// for, or a certificate the CA issued that can't be used.
     Other {
         /// The error, for the log and the base's details.
         message: String,
     },
+    /// Not an order's failure: the certificate or account cache on this
+    /// device couldn't be read or written.
+    Cache {
+        /// The error, for the log and the base's details.
+        message: String,
+    },
+}
+
+impl CertificateOrderError {
+    /// Whether an order failed, rather than the cache.
+    fn is_order_failure(&self) -> bool {
+        !matches!(self, Self::Cache { .. })
+    }
 }
 
 /// What the host knows about a server's certificate for its domain.
@@ -113,8 +130,8 @@ pub struct CertificateState {
     pub issuer: CertificateAuthority,
     /// The certificate the server holds from `issuer`, valid or expired.
     pub held: Option<IssuedCertificate>,
-    /// Why the run's latest order failed, since it last deployed a
-    /// certificate. Always `None` in the cache's state.
+    /// The run's latest error since it last deployed a certificate: an
+    /// order's, or the cache's. Always `None` in the cache's state.
     pub last_error: Option<CertificateOrderError>,
 }
 
@@ -173,7 +190,8 @@ pub(crate) enum CertificateEvent {
     Deployed(IssuedCertificate),
     /// An order failed.
     OrderFailed(CertificateOrderError),
-    /// The certificate or account cache couldn't be read or written.
+    /// The certificate or account cache couldn't be read or written. Not an
+    /// order's failure: rustls-acme keeps ordering.
     CacheFailed {
         /// The error, for the log and the base's details.
         message: String,
@@ -214,7 +232,7 @@ impl ObservedCertificate {
                 ..self
             },
             CertificateEvent::CacheFailed { message } => Self {
-                last_error: Some(CertificateOrderError::Other { message }),
+                last_error: Some(CertificateOrderError::Cache { message }),
                 ..self
             },
         }
@@ -226,7 +244,11 @@ impl ObservedCertificate {
         issuer: CertificateAuthority,
         now: DateTime<Utc>,
     ) -> CertificateState {
-        let ordering_or_failing = if self.last_error.is_some() {
+        let order_failing = self
+            .last_error
+            .as_ref()
+            .is_some_and(CertificateOrderError::is_order_failure);
+        let ordering_or_failing = if order_failing {
             CertificateStatus::OrderFailing
         } else {
             CertificateStatus::Ordering
@@ -315,6 +337,34 @@ mod tests {
         let state = observed.state(ISSUER, on(1, 2));
         assert_eq!(state.status, CertificateStatus::NoRenewalNeeded);
         assert_eq!(state.last_error, None);
+    }
+
+    #[test]
+    fn a_cache_fault_is_the_last_error_but_the_run_stays_ordering() {
+        let cache_fault = || CertificateEvent::CacheFailed {
+            message: "account cache store: disk full".to_owned(),
+        };
+        let observed = ObservedCertificate::starting_with(None).after(cache_fault());
+        let state = observed.state(ISSUER, on(1, 2));
+        assert_eq!(state.status, CertificateStatus::Ordering);
+        assert_eq!(
+            state.last_error,
+            Some(CertificateOrderError::Cache {
+                message: "account cache store: disk full".to_owned()
+            })
+        );
+
+        let observed = observed.after(CertificateEvent::OrderFailed(rate_limited()));
+        assert_eq!(
+            observed.state(ISSUER, on(1, 2)).status,
+            CertificateStatus::OrderFailing
+        );
+        let observed = observed.after(cache_fault());
+        assert_eq!(
+            observed.state(ISSUER, on(1, 2)).status,
+            CertificateStatus::Ordering,
+            "the latest error is the cache's"
+        );
     }
 
     #[test]

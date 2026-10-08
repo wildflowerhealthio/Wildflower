@@ -65,9 +65,12 @@ port and on the tunnel. Rust-only, no `-core`.
     `CertificateState`: its status (`NotIssued`, `Ordering`,
     `NoRenewalNeeded`, `RenewalDue`, `Expired`, `OrderFailing`), its issuer,
     the certificate `held` (`IssuedCertificate`: validity and the SHA-256
-    fingerprint of its leaf) and the last order error
-    (`CertificateOrderError`: rate limited, with when to retry; a challenge
-    that didn't reach the device; the CA unreachable; or other). A run keeps
+    fingerprint of its leaf) and the last error (`CertificateOrderError`: an
+    order's, rate limited, with when to retry, a challenge that didn't reach
+    the device, the CA unreachable, or other; or `Cache`, the certificate or
+    account cache unreadable or unwritable). Only an order's error with no
+    valid certificate held makes a run `OrderFailing`: rustls-acme keeps
+    ordering through a cache fault. A run keeps
     what it has observed of its certificate as an `ObservedCertificate`,
     built from rustls-acme's events and the certificate read from the cache
     entry rustls-acme last loaded or stored (`LastEntryCertCache`), derives
