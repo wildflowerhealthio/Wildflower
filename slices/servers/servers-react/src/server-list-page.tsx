@@ -6,8 +6,26 @@ import type { HostCommandError, ListedServer } from 'servers-core'
 
 import { serversQueryOptions, useServerStatusEvents } from './queries.ts'
 import type { RouterContext, RunHostCommand } from './router-context.ts'
-import { ServerRow } from './server-row.tsx'
+import { ServerCard } from './server-card.tsx'
+import { useOnline } from './use-online.ts'
 import styles from './server-list-page.module.css'
+
+/** Why the Add server button is disabled. */
+const ADD_SERVER_UNAVAILABLE = "Adding a server isn't available yet."
+
+/** The body of a list with no servers: what a server is, and Add server. */
+const NoServers = (): JSX.Element => (
+  <div className={styles['server-list-page__empty']}>
+    <p className={`text-heading-4 ${styles['server-list-page__empty-title']}`}>No servers yet</p>
+    <p className={`text-body-2 ${styles['server-list-page__empty-body']}`}>
+      A server keeps your health records on this device, and the apps you open from the web reach
+      them at its own address, through a relay.
+    </p>
+    <button type="button" className="button-2 filled" disabled title={ADD_SERVER_UNAVAILABLE}>
+      Add server
+    </button>
+  </div>
+)
 
 /** The page's body for the `servers_list` answer, or its failure. */
 const ServerListBody = ({
@@ -29,32 +47,25 @@ const ServerListBody = ({
       />
     )
   }
-  if (servers.data.length === 0) {
-    return (
-      <GateCard
-        showSpinner={false}
-        title="No servers yet"
-        body="The Wildflower servers on this device will be listed here."
-      />
-    )
-  }
+  if (servers.data.length === 0) return <NoServers />
   return (
     <ul className={styles['server-list-page__servers']}>
       {servers.data.map((server) => (
-        <ServerRow key={server.domain} server={server} runHostCommand={runHostCommand} />
+        <ServerCard key={server.domain} server={server} runHostCommand={runHostCommand} />
       ))}
     </ul>
   )
 }
 
 /**
- * The base's home, `/`: the servers on this device, each with its run state,
- * health and run policy, kept current by the host's `server-status` events;
- * and the way to the base's Host Settings.
+ * The base's home, `/`: a card for each server on this device, kept current
+ * by the host's `server-status` events, or what a server is when there are
+ * none; and the way to the base's Host Settings.
  *
  * @remarks
  * When the host can't read `servers.json`, the page shows the host's error,
- * with a retry.
+ * with a retry. While the webview is offline, a notice says that launching
+ * needs a connection.
  */
 const ServerListPage = (): JSX.Element => {
   const runHostCommand = useRouteContext({
@@ -67,6 +78,7 @@ const ServerListPage = (): JSX.Element => {
   })
   useServerStatusEvents(listenToHostEvent)
   const servers = useQuery(serversQueryOptions(runHostCommand))
+  const online = useOnline()
   return (
     <>
       <PageHeader
@@ -77,6 +89,11 @@ const ServerListPage = (): JSX.Element => {
           </Link>
         }
       />
+      {online ? null : (
+        <p className={`text-body-2 ${styles['server-list-page__offline']}`} role="status">
+          You're offline. Apps open from the web, so launching needs a connection.
+        </p>
+      )}
       <ServerListBody servers={servers} runHostCommand={runHostCommand} />
     </>
   )

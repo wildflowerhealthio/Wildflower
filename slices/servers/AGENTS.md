@@ -56,8 +56,15 @@ changing how servers run or what the host notifies about them.
   consent gate, then the background session's recovery and its router over
   `routes/`, `/` the server list and `/settings` Host Settings, for the app on
   this device rather than any one server (Notifications, Telemetry, About). The
-  server list shows each server's run state and health, sets its run policy, and
-  removes it behind a confirm, kept current by the `server-status` event.
+  server list is a card per server, kept current by the `server-status` event:
+  its domain, a status line of one badge merged from its run state and health
+  and of when its run policy runs it, why its latest run stopped, its
+  run-policy control, Launch, and its removal behind a confirm. With no
+  servers it says what a server is, beside Add server. Launch and Add server
+  are disabled until the base launches apps and adds servers. While the
+  webview is offline (`navigator.onLine`), the list says that launching needs
+  a connection; the host commands themselves need none, so the base's query
+  client runs them offline too (`networkMode: 'always'`).
 
 ## Rules
 

@@ -1,5 +1,13 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { cleanup, render, type RenderResult, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  render,
+  type RenderResult,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
 import type { Context } from 'effect'
@@ -323,15 +331,80 @@ describe('the server list', () => {
     return host
   }
 
-  it('should show a running server with its health', async () => {
+  it('should say what a server is, and offer Add server, when there are none', async () => {
+    // Act
+    renderListed([])
+
+    // Assert
+    expect(await screen.findByText('No servers yet')).toBeDefined()
+    expect(screen.getByText(/^A server keeps your health records on this device/)).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Add server' })).toHaveProperty('disabled', true)
+    expect(screen.queryByRole('listitem')).toBeNull()
+  })
+
+  it.each([
+    ['one server', [golden.listedServers[0]]],
+    ['several servers', golden.listedServers],
+  ] as const)('should show a card for each of %s', async (_, servers) => {
+    // Act
+    renderListed(servers)
+
+    // Assert
+    await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+    expect(screen.getAllByRole('listitem').map((card) => card.getAttribute('aria-label'))).toEqual(
+      servers.map((server) => server.domain)
+    )
+    for (const card of screen.getAllByRole('listitem')) {
+      expect(within(card).getByRole('button', { name: 'Launch' })).toHaveProperty('disabled', true)
+    }
+  })
+
+  it.each([
+    ['runningAndReachable', 'Success: Running'],
+    ['startingUnchecked', 'Starting'],
+    ['runningUnreachable', 'Warning: Running, not reachable yet'],
+    ['neverRun', 'Stopped'],
+    ['stoppedWithAnError', 'Error: Stopped'],
+  ] as const)('should merge a %s status into the badge "%s"', async (statusName, badge) => {
+    // Act
+    renderListed([
+      { ...golden.listedServers[0], status: golden.serverStatuses[statusName] },
+      golden.listedServers[1],
+    ])
+
+    // Assert
+    const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+    expect(
+      within(ruth)
+        .getAllByRole('status')
+        .map((status) => status.textContent)
+    ).toContain(badge)
+  })
+
+  it.each([
+    [{ kind: 'off' }, /^Off$/],
+    [{ kind: 'whileOpen' }, /^On while Wildflower is open$/],
+    [{ kind: 'until', at: '2999-01-01T00:00:00Z' }, /^On until \S/],
+    [{ kind: 'until', at: '2026-10-06T17:42:00Z' }, /^Ended at \S/],
+    [{ kind: 'always' }, /^Always on$/],
+  ] as const)('should say when a server runs for the policy %j', async (runPolicy, expected) => {
+    // Act
+    renderListed(listedWithRuthPolicy(runPolicy))
+
+    // Assert
+    await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+    expect(
+      within(serverRow('ruth.relay.example.com')).getByText(expected, { selector: 'span' })
+    ).toBeDefined()
+  })
+
+  it('should show a running server as running', async () => {
     // Act
     renderListed(golden.listedServers)
 
     // Assert
     const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
     expect(within(ruth).getByText('Running')).toBeDefined()
-    expect(within(ruth).getByText('Reachable')).toBeDefined()
-    expect(within(ruth).getByText(/^Running since/)).toBeDefined()
   })
 
   it("should show a stopped server's error", async () => {
@@ -453,6 +526,94 @@ describe('the server list', () => {
       expect(host.seen.filter(({ command }) => command === 'servers_list')).toHaveLength(3)
     })
     expect(within(ruth).queryByText('Running')).toBeNull()
+  })
+
+  it('should offer the run-policy presets', async () => {
+    // Act
+    renderListed(golden.listedServers)
+
+    // Assert
+    await screen.findByRole('listitem', { name: 'lab.rathole.example.com' })
+    expect(
+      Array.from(runPolicyOf('lab.rathole.example.com').control.options, (option) => option.text)
+    ).toEqual(['Off', 'While open', 'For 15 minutes', 'For 1 hour', 'For 8 hours', 'Always'])
+  })
+
+  it.each([
+    ['Off', { kind: 'off' }],
+    ['While open', { kind: 'whileOpen' }],
+    ['For 15 minutes', { kind: 'for', seconds: 15 * 60 }],
+    ['For 1 hour', { kind: 'for', seconds: 60 * 60 }],
+    ['For 8 hours', { kind: 'for', seconds: 8 * 60 * 60 }],
+    ['Always', { kind: 'always' }],
+  ] as const)('should send the choice of "%s" as %j', async (label, choice) => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = hostWith({
+      servers: () => Promise.resolve(golden.listedServers),
+      answers: { server_set_run_policy: () => Promise.resolve({ kind: 'always' }) },
+    })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+    })
+    await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+
+    // Act
+    await user.selectOptions(runPolicyOf('ruth.relay.example.com').control, label)
+
+    // Assert
+    expect(host.seen).toContainEqual({
+      command: 'server_set_run_policy',
+      args: { domain: 'ruth.relay.example.com', choice },
+    })
+  })
+
+  it('should say that launching needs a connection while the webview is offline, and still reach the host', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    const offlineNotice = "You're offline. Apps open from the web, so launching needs a connection."
+    try {
+      // Act
+      const host = renderListed(golden.listedServers)
+
+      // Assert
+      expect(await screen.findByText(offlineNotice)).toBeDefined()
+      expect(await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })).toBeDefined()
+
+      // Act
+      onLine.mockReturnValue(true)
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+
+      // Assert
+      expect(screen.queryByText(offlineNotice)).toBeNull()
+
+      // Act
+      onLine.mockReturnValue(false)
+      act(() => {
+        window.dispatchEvent(new Event('offline'))
+      })
+
+      // Assert
+      expect(screen.getByText(offlineNotice)).toBeDefined()
+
+      // Act
+      await user.selectOptions(runPolicyOf('lab.rathole.example.com').control, 'Always')
+
+      // Assert
+      await waitFor(() => {
+        expect(host.seen.map(({ command }) => command)).toContain('server_set_run_policy')
+      })
+    } finally {
+      onLine.mockRestore()
+      // TanStack Query's online manager heard the events too.
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+    }
   })
 
   it('should set the run policy the user picks, and show the one the host stored', async () => {

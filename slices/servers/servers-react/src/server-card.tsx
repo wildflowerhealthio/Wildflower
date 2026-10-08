@@ -12,7 +12,7 @@ import {
 
 import { useRemoveServer, useSetServerRunPolicy } from './queries.ts'
 import type { RunHostCommand } from './router-context.ts'
-import styles from './server-row.module.css'
+import styles from './server-card.module.css'
 
 /** An instant as the base shows it, in the device's locale and time zone. */
 const formatInstant = (instant: DateTime.Utc): string =>
@@ -57,28 +57,55 @@ interface Badge {
   readonly label: string
 }
 
-/** The run-state badge: a stopped server whose latest run failed is in danger. */
-const runStateBadge = (status: ServerStatus.Type): Badge => {
+/** The badge of a running server that answered `/health`, by the status it answered with. */
+const REACHABLE_BADGE: Readonly<Record<'pass' | 'warn' | 'fail', Badge>> = {
+  pass: { tone: 'success', label: 'Running' },
+  warn: { tone: 'warning', label: 'Running, degraded' },
+  fail: { tone: 'danger', label: 'Running, failing its health checks' },
+}
+
+/** The badge of a running server, by its health. */
+const runningBadge = (health: ServerStatus.Health): Badge =>
+  health.kind === 'reachable'
+    ? REACHABLE_BADGE[health.status]
+    : { tone: 'warning', label: 'Running, not reachable yet' }
+
+/**
+ * The status badge, merged from the run state and the health: a running
+ * server is a success only once it answers `/health`, and a stopped server
+ * whose latest run failed is in danger.
+ */
+const statusBadge = (status: ServerStatus.Type): Badge => {
   if (status.runState === 'starting') return { tone: 'info', label: 'Starting' }
-  if (status.runState === 'running') return { tone: 'success', label: 'Running' }
+  if (status.runState === 'running') {
+    return ServerStatus.healthOf(status).pipe(
+      Option.map(runningBadge),
+      Option.getOrElse((): Badge => ({
+        tone: 'info',
+        label: 'Running, checking it can be reached',
+      }))
+    )
+  }
   const failed = ServerStatus.lastStopOf(status).pipe(
     Option.exists((stop) => Option.isSome(stop.error))
   )
   return { tone: failed ? 'danger' : 'neutral', label: 'Stopped' }
 }
 
-/** The health badge of a server that answered `/health`, by the status it answered with. */
-const REACHABLE_BADGE: Readonly<Record<'pass' | 'warn' | 'fail', Badge>> = {
-  pass: { tone: 'success', label: 'Reachable' },
-  warn: { tone: 'warning', label: 'Reachable, degraded' },
-  fail: { tone: 'danger', label: 'Reachable, failing its health checks' },
+/** What the status line says of when the server runs, for every policy but `until`. */
+const RUN_POLICY_TEXT: Readonly<Record<Exclude<RunPolicy.Kind, 'until'>, string>> = {
+  off: 'Off',
+  whileOpen: 'On while Wildflower is open',
+  always: 'Always on',
 }
 
-/** The health badge. */
-const healthBadge = (health: ServerStatus.Health): Badge =>
-  health.kind === 'reachable'
-    ? REACHABLE_BADGE[health.status]
-    : { tone: 'warning', label: 'Not reachable yet' }
+/** What the status line says of when the server runs. */
+const runPolicyText = (policy: RunPolicy.Type, now: DateTime.Utc): string => {
+  if (policy.kind !== 'until') return RUN_POLICY_TEXT[policy.kind]
+  return RunPolicy.hasEndedAt(policy, now)
+    ? `Ended at ${formatInstant(policy.at)}`
+    : `On until ${formatInstant(policy.at)}`
+}
 
 /** Why a run stopped, as a sentence, for every reason but a failure. */
 const STOP_REASON_TEXT: Readonly<
@@ -109,11 +136,19 @@ const failureText = (error: HostCommandError): string =>
       )
     : error.message
 
+/** Why the Launch button is disabled. */
+const LAUNCH_UNAVAILABLE = "Launching apps from a server isn't available yet."
+
 /**
- * One server in the base's list: its domain, its run state and health, why
- * its latest run stopped, when it runs, and its removal, behind a confirm.
+ * One server's card in the base's list: its domain; a status line of its
+ * status, merged from its run state and health, and when it runs; why its
+ * latest run stopped; its run-policy control; Launch; and its removal,
+ * behind a confirm.
+ *
+ * @remarks
+ * Launch is disabled: launching an app from the base isn't built yet.
  */
-const ServerRow = ({
+const ServerCard = ({
   server,
   runHostCommand,
 }: {
@@ -123,7 +158,7 @@ const ServerRow = ({
   const setRunPolicy = useSetServerRunPolicy(runHostCommand)
   const removeServer = useRemoveServer(runHostCommand)
   const [confirmingRemoval, setConfirmingRemoval] = useState(false)
-  const runState = runStateBadge(server.status)
+  const status = statusBadge(server.status)
   const now = DateTime.unsafeNow()
   const failure = pipe(
     Option.fromNullable(setRunPolicy.error),
@@ -135,28 +170,12 @@ const ServerRow = ({
     setRunPolicy.mutate({ domain: server.domain, choice: picked.choice })
   }
   return (
-    <li className={styles['server-row']} aria-label={server.domain}>
-      <div className={styles['server-row__heading']}>
-        <span className={`text-heading-4 ${styles['server-row__domain']}`}>{server.domain}</span>
-        <StatusBadge tone={runState.tone}>{runState.label}</StatusBadge>
-        {ServerStatus.healthOf(server.status).pipe(
-          Option.map(healthBadge),
-          Option.map((health) => (
-            <StatusBadge key="health" tone={health.tone}>
-              {health.label}
-            </StatusBadge>
-          )),
-          Option.getOrNull
-        )}
-      </div>
-      {ServerStatus.runningSinceOf(server.status).pipe(
-        Option.map((since) => (
-          <p key="running-since" className="text-body-2">
-            Running since {formatInstant(since)}
-          </p>
-        )),
-        Option.getOrNull
-      )}
+    <li className={styles['server-card']} aria-label={server.domain}>
+      <span className={`text-heading-4 ${styles['server-card__domain']}`}>{server.domain}</span>
+      <p className={styles['server-card__status']}>
+        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+        <span className="text-body-2">{runPolicyText(server.runPolicy, now)}</span>
+      </p>
       {ServerStatus.lastStopOf(server.status).pipe(
         Option.map((stop) => (
           <p key="last-stop" className="text-body-2">
@@ -165,8 +184,8 @@ const ServerRow = ({
         )),
         Option.getOrNull
       )}
-      <div className={styles['server-row__controls']}>
-        <label className={styles['server-row__run-policy']}>
+      <div className={styles['server-card__controls']}>
+        <label className={styles['server-card__run-policy']}>
           <span className="text-body-2">Runs</span>
           <select
             value={runPolicyValue(server.runPolicy)}
@@ -188,6 +207,9 @@ const ServerRow = ({
             ))}
           </select>
         </label>
+        <button type="button" className="button-2 filled" disabled title={LAUNCH_UNAVAILABLE}>
+          Launch
+        </button>
         <button
           type="button"
           className="button-2 outline accent-red"
@@ -229,4 +251,4 @@ const ServerRow = ({
   )
 }
 
-export { ServerRow }
+export { ServerCard }
