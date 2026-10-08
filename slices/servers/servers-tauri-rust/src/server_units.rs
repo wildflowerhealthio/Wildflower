@@ -26,25 +26,25 @@ pub struct ServerUnits {
     runner: TauriUnitRunner<ServerDetail>,
     server_config: ServerConfigBuilder,
     host_ports: HostPorts,
-    forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
+    forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
 }
 
 impl ServerUnits {
     /// Server units on `runner`, whose runs read the config `server_config`
     /// builds, use the host's `host_ports`, and report each request their
-    /// tunnels relay on `forwarded_request_sender`.
+    /// tunnels relay on `forwarded_request_tx`.
     #[must_use]
     pub fn new(
         runner: TauriUnitRunner<ServerDetail>,
         server_config: ServerConfigBuilder,
         host_ports: HostPorts,
-        forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
+        forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
     ) -> Self {
         Self {
             runner,
             server_config,
             host_ports,
-            forwarded_request_sender,
+            forwarded_request_tx,
         }
     }
 
@@ -59,12 +59,12 @@ impl ServerUnits {
         let run_policy = record.run_policy;
         let server_config = Arc::clone(&self.server_config);
         let host_ports = self.host_ports.clone();
-        let forwarded_request_sender = self.forwarded_request_sender.clone();
+        let forwarded_request_tx = self.forwarded_request_tx.clone();
         self.runner.set_unit(unit_id, run_policy, move || {
             Ok(ServerUnit::new(
                 server_config(&record)?,
                 host_ports.clone(),
-                forwarded_request_sender.clone(),
+                forwarded_request_tx.clone(),
             ))
         });
     }

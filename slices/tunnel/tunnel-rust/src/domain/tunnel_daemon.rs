@@ -50,44 +50,39 @@ pub struct TunnelDaemon {
     cancel: CancellationToken,
     /// The tunnel's [`HealthStatus`]; `Pass` from the start, and nothing
     /// marks it `Warn` or `Fail` yet.
-    connectivity_sender: watch::Sender<HealthStatus>,
+    connectivity_tx: watch::Sender<HealthStatus>,
 }
 
 impl TunnelDaemon {
     /// Start the supervisor that dials the relay `relay_settings` names and
-    /// sends each visitor's stream to `tunnel_stream_sender`. Spawns onto the
+    /// sends each visitor's stream to `tunnel_stream_tx`. Spawns onto the
     /// ambient tokio runtime, and dials until the daemon is dropped.
     pub fn spawn(
         client: Arc<dyn RelayClient>,
-        tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+        tunnel_stream_tx: mpsc::Sender<TunnelStream>,
         relay_settings: RelaySettings,
     ) -> Self {
-        Self::spawn_with_backoff(
-            client,
-            tunnel_stream_sender,
-            relay_settings,
-            Backoff::default(),
-        )
+        Self::spawn_with_backoff(client, tunnel_stream_tx, relay_settings, Backoff::default())
     }
 
     fn spawn_with_backoff(
         client: Arc<dyn RelayClient>,
-        tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+        tunnel_stream_tx: mpsc::Sender<TunnelStream>,
         relay_settings: RelaySettings,
         backoff: Backoff,
     ) -> Self {
         let cancel = CancellationToken::new();
         tokio::spawn(supervise(
             client,
-            tunnel_stream_sender,
+            tunnel_stream_tx,
             relay_settings,
             cancel.clone(),
             backoff,
         ));
-        let (connectivity_sender, _) = watch::channel(HealthStatus::Pass);
+        let (connectivity_tx, _) = watch::channel(HealthStatus::Pass);
         Self {
             cancel,
-            connectivity_sender,
+            connectivity_tx,
         }
     }
 
@@ -95,7 +90,7 @@ impl TunnelDaemon {
     /// the last value once the daemon is dropped.
     #[must_use]
     pub fn connectivity(&self) -> watch::Receiver<HealthStatus> {
-        self.connectivity_sender.subscribe()
+        self.connectivity_tx.subscribe()
     }
 }
 
@@ -109,7 +104,7 @@ impl Drop for TunnelDaemon {
 /// until cancelled.
 async fn supervise(
     client: Arc<dyn RelayClient>,
-    tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+    tunnel_stream_tx: mpsc::Sender<TunnelStream>,
     relay_settings: RelaySettings,
     cancel: CancellationToken,
     backoff: Backoff,
@@ -131,7 +126,7 @@ async fn supervise(
         let dial_result = client
             .run_once(
                 &relay_settings,
-                tunnel_stream_sender.clone(),
+                tunnel_stream_tx.clone(),
                 cancel.child_token(),
             )
             .await;
@@ -176,12 +171,12 @@ impl TunnelDaemon {
     /// runtime.
     pub(crate) fn spawn_test(
         client: Arc<dyn RelayClient>,
-        tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+        tunnel_stream_tx: mpsc::Sender<TunnelStream>,
         relay_settings: RelaySettings,
     ) -> Self {
         Self::spawn_with_backoff(
             client,
-            tunnel_stream_sender,
+            tunnel_stream_tx,
             relay_settings,
             Backoff {
                 initial: Duration::from_millis(1),
@@ -222,7 +217,7 @@ mod tests {
         async fn run_once(
             &self,
             _relay: &RelaySettings,
-            _tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+            _tunnel_stream_tx: mpsc::Sender<TunnelStream>,
             _cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             let _ = self.0.send(());
@@ -231,7 +226,7 @@ mod tests {
     }
 
     /// A sender for a test that never looks at the streams handed over.
-    fn unread_tunnel_stream_sender() -> mpsc::Sender<TunnelStream> {
+    fn unread_tunnel_stream_tx() -> mpsc::Sender<TunnelStream> {
         mpsc::channel(1).0
     }
 
@@ -253,13 +248,13 @@ mod tests {
             async fn run_once(
                 &self,
                 relay: &RelaySettings,
-                tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+                tunnel_stream_tx: mpsc::Sender<TunnelStream>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 self.dials.lock().push(relay.clone());
                 let (mut visitor, tunnel_stream) = tokio::io::duplex(64);
                 visitor.write_all(VISITOR_BYTES).await?;
-                tunnel_stream_sender.send(Box::new(tunnel_stream)).await?;
+                tunnel_stream_tx.send(Box::new(tunnel_stream)).await?;
                 cancel.cancelled().await;
                 Ok(())
             }
@@ -274,13 +269,13 @@ mod tests {
             public_key: "given-key".into(),
             service_name: "given".into(),
         };
-        let (tunnel_stream_sender, mut tunnel_streams) = mpsc::channel(1);
+        let (tunnel_stream_tx, mut tunnel_stream_rx) = mpsc::channel(1);
         let _daemon = TunnelDaemon::spawn_test(
             Arc::clone(&client) as Arc<dyn RelayClient>,
-            tunnel_stream_sender,
+            tunnel_stream_tx,
             given.clone(),
         );
-        let mut tunnel_stream = tunnel_streams.recv().await.expect("a stream handed over");
+        let mut tunnel_stream = tunnel_stream_rx.recv().await.expect("a stream handed over");
         let mut received = vec![0; VISITOR_BYTES.len()];
         tunnel_stream
             .read_exact(&mut received)
@@ -302,7 +297,7 @@ mod tests {
         let (dialed, mut dials) = mpsc::unbounded_channel();
         let _daemon = TunnelDaemon::spawn_test(
             Arc::new(FailImmediatelyRelayClient(dialed)),
-            unread_tunnel_stream_sender(),
+            unread_tunnel_stream_tx(),
             relay(),
         );
         dials.recv().await.expect("dial 1");
@@ -316,7 +311,7 @@ mod tests {
         let (dialed, mut dials) = mpsc::unbounded_channel();
         let daemon = TunnelDaemon::spawn_test(
             Arc::new(FailImmediatelyRelayClient(dialed)),
-            unread_tunnel_stream_sender(),
+            unread_tunnel_stream_tx(),
             relay(),
         );
         let connectivity = daemon.connectivity();
@@ -344,7 +339,7 @@ mod tests {
             async fn run_once(
                 &self,
                 _relay: &RelaySettings,
-                _tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+                _tunnel_stream_tx: mpsc::Sender<TunnelStream>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 let _ = self.dialed.send(());
@@ -362,7 +357,7 @@ mod tests {
                 ended_once: AtomicBool::new(false),
                 dialed,
             }),
-            unread_tunnel_stream_sender(),
+            unread_tunnel_stream_tx(),
             relay(),
         );
         dials.recv().await.expect("first session");
@@ -382,7 +377,7 @@ mod tests {
             async fn run_once(
                 &self,
                 _relay: &RelaySettings,
-                _tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+                _tunnel_stream_tx: mpsc::Sender<TunnelStream>,
                 cancel: CancellationToken,
             ) -> anyhow::Result<()> {
                 let _ = self.dialed.send(());
@@ -398,7 +393,7 @@ mod tests {
                 _alive: client_alive,
                 dialed,
             }),
-            unread_tunnel_stream_sender(),
+            unread_tunnel_stream_tx(),
             relay(),
         );
         dials.recv().await.expect("dialed");

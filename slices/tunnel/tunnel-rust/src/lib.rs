@@ -37,7 +37,7 @@ pub use shared_structures_rust::health_check::HealthStatus;
 pub fn setup_tunnel(config: &TunnelConfig) -> TunnelDaemon {
     TunnelDaemon::spawn(
         Arc::new(RatholeRelayClient::new()),
-        config.tunnel_stream_sender.clone(),
+        config.tunnel_stream_tx.clone(),
         config.relay_settings.clone(),
     )
 }

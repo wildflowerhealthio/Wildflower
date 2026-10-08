@@ -40,7 +40,7 @@ impl RelayClient for RatholeRelayClient {
     async fn run_once(
         &self,
         relay: &RelaySettings,
-        tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+        tunnel_stream_tx: mpsc::Sender<TunnelStream>,
         cancel: CancellationToken,
     ) -> anyhow::Result<()> {
         let config: rathole::Config = render_client_toml(relay)?
@@ -70,7 +70,7 @@ impl RelayClient for RatholeRelayClient {
         let run = async {
             let (result, ()) = tokio::join!(
                 client,
-                hand_over_tunnel_streams(service_event_rx, tunnel_stream_sender)
+                hand_over_tunnel_streams(service_event_rx, tunnel_stream_tx)
             );
             result
         };
@@ -95,28 +95,28 @@ impl RelayClient for RatholeRelayClient {
 }
 
 /// Send each visitor stream of each TCP service the client starts to
-/// `tunnel_stream_sender`, until the client stops reporting services.
+/// `tunnel_stream_tx`, until the client stops reporting services.
 ///
 /// Each service's streams are sent from a task of their own, since a service's
 /// queue ends only after its in-flight data channels, which the client's
 /// return need not wait for. The tasks end with this call, which `run_once`
 /// awaits, so a dial's streams are never handed over once it is done.
 async fn hand_over_tunnel_streams(
-    mut service_events: mpsc::UnboundedReceiver<ClientServiceEvent>,
-    tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+    mut service_event_rx: mpsc::UnboundedReceiver<ClientServiceEvent>,
+    tunnel_stream_tx: mpsc::Sender<TunnelStream>,
 ) {
     let mut services = JoinSet::new();
     loop {
         tokio::select! {
-            service_event = service_events.recv() => match service_event {
+            service_event = service_event_rx.recv() => match service_event {
                 Some(ClientServiceEvent::TcpStarted {
                     mut visitor_stream_rx,
                     ..
                 }) => {
-                    let tunnel_stream_sender = tunnel_stream_sender.clone();
+                    let tunnel_stream_tx = tunnel_stream_tx.clone();
                     services.spawn(async move {
                         while let Some(tunnel_stream) = visitor_stream_rx.recv().await {
-                            if tunnel_stream_sender.send(tunnel_stream).await.is_err() {
+                            if tunnel_stream_tx.send(tunnel_stream).await.is_err() {
                                 // The server stopped taking tunnel connections.
                                 return;
                             }
@@ -303,17 +303,14 @@ mod tests {
 
         let (service_event_tx, service_event_rx) = mpsc::unbounded_channel();
         let (visitor_stream_tx, visitor_stream_rx) = mpsc::channel(2);
-        let (tunnel_stream_sender, mut tunnel_streams) = mpsc::channel(2);
+        let (tunnel_stream_tx, mut tunnel_stream_rx) = mpsc::channel(2);
         service_event_tx
             .send(ClientServiceEvent::TcpStarted {
                 config: rathole::ClientServiceConfig::with_name("dev1"),
                 visitor_stream_rx,
             })
             .expect("the hand-over takes events");
-        let hand_over = tokio::spawn(hand_over_tunnel_streams(
-            service_event_rx,
-            tunnel_stream_sender,
-        ));
+        let hand_over = tokio::spawn(hand_over_tunnel_streams(service_event_rx, tunnel_stream_tx));
 
         for visitor_bytes in [b"first", b"other"] {
             let (mut visitor, visitor_stream) = tokio::io::duplex(64);
@@ -322,7 +319,7 @@ mod tests {
                 .send(Box::new(visitor_stream))
                 .await
                 .expect("the hand-over takes visitor streams");
-            let mut tunnel_stream = tunnel_streams.recv().await.expect("handed over");
+            let mut tunnel_stream = tunnel_stream_rx.recv().await.expect("handed over");
             let mut received = [0; 5];
             tunnel_stream.read_exact(&mut received).await.expect("read");
             assert_eq!(&received, visitor_bytes);
@@ -331,7 +328,7 @@ mod tests {
         // and with it the service's, though its queue is still open.
         drop(service_event_tx);
         hand_over.await.expect("the hand-over doesn't panic");
-        assert!(tunnel_streams.recv().await.is_none());
+        assert!(tunnel_stream_rx.recv().await.is_none());
         drop(visitor_stream_tx);
     }
 }

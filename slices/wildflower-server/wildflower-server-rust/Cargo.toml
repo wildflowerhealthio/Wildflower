@@ -13,7 +13,7 @@ publish.workspace = true
 # and tests without GTK.
 [features]
 # Test support for this crate's own integration tests:
-# `WildflowerServer::tunnel_stream_sender`, which hands the tunnel listener a
+# `WildflowerServer::tunnel_stream_tx`, which hands the tunnel listener a
 # visitor's connection the way the tunnel does. Only the dev-dependency on this
 # crate below enables it.
 test-support = []

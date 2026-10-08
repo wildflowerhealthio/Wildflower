@@ -64,16 +64,16 @@ impl Connected<IncomingStream<'_, TunnelListener>> for TunnelVisitor {
 /// preparations still running.
 pub(crate) struct TunnelListener {
     /// The visitor streams the tunnel hands over.
-    tunnel_streams: mpsc::Receiver<TunnelStream>,
+    tunnel_stream_rx: mpsc::Receiver<TunnelStream>,
     /// The handed-over streams being prepared.
     preparing: JoinSet<anyhow::Result<(PreparedTunnelStream, TunnelVisitor)>>,
 }
 
 impl TunnelListener {
-    /// A listener over the streams arriving on `tunnel_streams`.
-    pub(crate) fn new(tunnel_streams: mpsc::Receiver<TunnelStream>) -> Self {
+    /// A listener over the streams arriving on `tunnel_stream_rx`.
+    pub(crate) fn new(tunnel_stream_rx: mpsc::Receiver<TunnelStream>) -> Self {
         Self {
-            tunnel_streams,
+            tunnel_stream_rx,
             preparing: JoinSet::new(),
         }
     }
@@ -85,12 +85,12 @@ impl axum::serve::Listener for TunnelListener {
 
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         loop {
-            // A closed `tunnel_streams` (the tunnel hands over no more) or an
+            // A closed `tunnel_stream_rx` (the tunnel hands over no more) or an
             // empty `preparing` disables its branch; with both, there is no
             // connection to come. A full `preparing` leaves the streams
-            // waiting in `tunnel_streams`.
+            // waiting in `tunnel_stream_rx`.
             tokio::select! {
-                Some(tunnel_stream) = self.tunnel_streams.recv(),
+                Some(tunnel_stream) = self.tunnel_stream_rx.recv(),
                     if self.preparing.len() < MAX_PREPARING =>
                 {
                     self.preparing.spawn(prepare_tunnel_connection(tunnel_stream));
@@ -149,15 +149,15 @@ mod tests {
     /// The bytes an HTTP request starts with, after any PROXY header.
     const REQUEST_START: &[u8] = b"GET";
 
-    /// Hand `tunnel_stream_sender` a stream whose visitor sends `bytes`, and
+    /// Hand `tunnel_stream_tx` a stream whose visitor sends `bytes`, and
     /// return the visitor's end.
     async fn hand_over(
-        tunnel_stream_sender: &mpsc::Sender<TunnelStream>,
+        tunnel_stream_tx: &mpsc::Sender<TunnelStream>,
         bytes: &[u8],
     ) -> DuplexStream {
         let (mut visitor, tunnel_stream) = tokio::io::duplex(1024);
         visitor.write_all(bytes).await.expect("write");
-        tunnel_stream_sender
+        tunnel_stream_tx
             .send(Box::new(tunnel_stream))
             .await
             .expect("the listener takes streams");
@@ -176,12 +176,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_connection_is_accepted_with_its_visitor_address() {
-        let (tunnel_stream_sender, tunnel_streams) = mpsc::channel(1);
-        let mut listener = TunnelListener::new(tunnel_streams);
+        let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel(1);
+        let mut listener = TunnelListener::new(tunnel_stream_rx);
         for source in ["192.0.2.1:4711", "[2001:db8::1]:4711"] {
             let mut bytes = proxy_header(source);
             bytes.extend_from_slice(REQUEST_START);
-            let _visitor = hand_over(&tunnel_stream_sender, &bytes).await;
+            let _visitor = hand_over(&tunnel_stream_tx, &bytes).await;
 
             let (mut stream, tunnel_visitor) = listener.accept().await;
 
@@ -192,9 +192,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_connection_without_a_header_is_accepted_with_no_visitor_address() {
-        let (tunnel_stream_sender, tunnel_streams) = mpsc::channel(1);
-        let mut listener = TunnelListener::new(tunnel_streams);
-        let _visitor = hand_over(&tunnel_stream_sender, REQUEST_START).await;
+        let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel(1);
+        let mut listener = TunnelListener::new(tunnel_stream_rx);
+        let _visitor = hand_over(&tunnel_stream_tx, REQUEST_START).await;
 
         let (mut stream, tunnel_visitor) = listener.accept().await;
 
@@ -206,12 +206,12 @@ mod tests {
     /// the end of the stream, and the next connection is accepted.
     #[tokio::test]
     async fn a_malformed_header_closes_the_connection_and_the_next_is_accepted() {
-        let (tunnel_stream_sender, tunnel_streams) = mpsc::channel(2);
-        let mut listener = TunnelListener::new(tunnel_streams);
+        let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel(2);
+        let mut listener = TunnelListener::new(tunnel_stream_rx);
         let mut malformed = proxy_header("192.0.2.1:4711");
         malformed[ppp::v2::PROTOCOL_PREFIX.len()] = 0x11;
-        let mut malformed_visitor = hand_over(&tunnel_stream_sender, &malformed).await;
-        let _visitor = hand_over(&tunnel_stream_sender, REQUEST_START).await;
+        let mut malformed_visitor = hand_over(&tunnel_stream_tx, &malformed).await;
+        let _visitor = hand_over(&tunnel_stream_tx, REQUEST_START).await;
 
         let (mut stream, _) = listener.accept().await;
 
@@ -231,10 +231,10 @@ mod tests {
     /// and is closed once its time is up.
     #[tokio::test(start_paused = true)]
     async fn a_stalled_connection_does_not_hold_up_the_next() {
-        let (tunnel_stream_sender, tunnel_streams) = mpsc::channel(2);
-        let mut listener = TunnelListener::new(tunnel_streams);
-        let mut stalled_visitor = hand_over(&tunnel_stream_sender, &[]).await;
-        let _visitor = hand_over(&tunnel_stream_sender, REQUEST_START).await;
+        let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel(2);
+        let mut listener = TunnelListener::new(tunnel_stream_rx);
+        let mut stalled_visitor = hand_over(&tunnel_stream_tx, &[]).await;
+        let _visitor = hand_over(&tunnel_stream_tx, REQUEST_START).await;
 
         let (mut stream, _) = listener.accept().await;
         assert_eq!(request_start(&mut stream).await, REQUEST_START);
@@ -257,19 +257,19 @@ mod tests {
     /// in the tunnel's backlog until one of them is done.
     #[tokio::test(start_paused = true)]
     async fn connections_past_the_cap_wait_in_the_backlog() {
-        let (tunnel_stream_sender, tunnel_streams) = mpsc::channel(MAX_PREPARING + 1);
-        let mut listener = TunnelListener::new(tunnel_streams);
+        let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel(MAX_PREPARING + 1);
+        let mut listener = TunnelListener::new(tunnel_stream_rx);
         let mut stalled_visitors = Vec::new();
         for _ in 0..MAX_PREPARING {
-            stalled_visitors.push(hand_over(&tunnel_stream_sender, &[]).await);
+            stalled_visitors.push(hand_over(&tunnel_stream_tx, &[]).await);
         }
-        let _visitor = hand_over(&tunnel_stream_sender, REQUEST_START).await;
+        let _visitor = hand_over(&tunnel_stream_tx, REQUEST_START).await;
 
         let accepted = tokio::time::timeout(PROXY_HEADER_TIMEOUT / 2, listener.accept()).await;
 
         assert!(accepted.is_err(), "the stalled connections fill the cap");
         assert_eq!(listener.preparing.len(), MAX_PREPARING);
-        assert_eq!(listener.tunnel_streams.len(), 1, "the last waits");
+        assert_eq!(listener.tunnel_stream_rx.len(), 1, "the last waits");
 
         // Once the stalled connections time out, the waiting one is taken.
         let (mut stream, _) = listener.accept().await;
@@ -280,9 +280,9 @@ mod tests {
     /// `accept` waits rather than spinning or returning.
     #[tokio::test(start_paused = true)]
     async fn accept_waits_once_the_tunnel_is_gone() {
-        let (tunnel_stream_sender, tunnel_streams) = mpsc::channel(1);
-        let mut listener = TunnelListener::new(tunnel_streams);
-        drop(tunnel_stream_sender);
+        let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel(1);
+        let mut listener = TunnelListener::new(tunnel_stream_rx);
+        drop(tunnel_stream_tx);
 
         let accepted = tokio::time::timeout(Duration::from_secs(60), listener.accept()).await;
 

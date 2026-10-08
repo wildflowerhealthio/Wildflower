@@ -12,7 +12,7 @@ use crate::domain::{RelaySettings, TunnelStream};
 pub struct TunnelConfig {
     /// Where the tunnel hands each visitor's stream: the server's tunnel
     /// listener.
-    pub tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+    pub tunnel_stream_tx: mpsc::Sender<TunnelStream>,
     /// The relay connection the tunnel dials.
     pub relay_settings: RelaySettings,
 }

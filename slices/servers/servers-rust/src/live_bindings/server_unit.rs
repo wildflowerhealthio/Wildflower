@@ -20,22 +20,22 @@ use crate::domain::ServerDetail;
 pub struct ServerUnit {
     config: WildflowerServerConfig,
     host_ports: HostPorts,
-    forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
+    forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
 }
 
 impl ServerUnit {
     /// A run of the server `config` describes, over the host's `host_ports`,
-    /// reporting each request its tunnel relays on `forwarded_request_sender`.
+    /// reporting each request its tunnel relays on `forwarded_request_tx`.
     #[must_use]
     pub fn new(
         config: WildflowerServerConfig,
         host_ports: HostPorts,
-        forwarded_request_sender: mpsc::Sender<ForwardedRequest>,
+        forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
     ) -> Self {
         Self {
             config,
             host_ports,
-            forwarded_request_sender,
+            forwarded_request_tx,
         }
     }
 }
@@ -47,14 +47,14 @@ impl Unit for ServerUnit {
     /// until `UnitRunner` stops the run. Its health goes out as the run's
     /// [`ServerDetail`].
     async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
-        let (server_health_sender, server_health) = watch::channel(None);
-        tokio::spawn(report_health_as_detail(server_health, ctx.clone()));
+        let (server_health_tx, server_health_rx) = watch::channel(None);
+        tokio::spawn(report_health_as_detail(server_health_rx, ctx.clone()));
         let server = wildflower_server_rust::set_up(
             self.config,
             self.host_ports,
             ServerObservers {
-                server_health_sender,
-                forwarded_request_sender: self.forwarded_request_sender,
+                server_health_tx,
+                forwarded_request_tx: self.forwarded_request_tx,
             },
         )
         .await?;
@@ -67,11 +67,11 @@ impl Unit for ServerUnit {
 /// detail, until the server drops its sender. The task dies with the run's
 /// runtime, and `UnitRunner` clears the detail when the run ends.
 async fn report_health_as_detail(
-    mut server_health: watch::Receiver<Option<ServerHealth>>,
+    mut server_health_rx: watch::Receiver<Option<ServerHealth>>,
     ctx: RunContext<ServerDetail>,
 ) {
-    while server_health.changed().await.is_ok() {
-        let health = server_health.borrow_and_update().clone();
+    while server_health_rx.changed().await.is_ok() {
+        let health = server_health_rx.borrow_and_update().clone();
         ctx.set_detail(ServerDetail { health });
     }
 }

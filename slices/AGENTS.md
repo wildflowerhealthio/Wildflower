@@ -60,8 +60,9 @@ the store that keeps the admin key as a non-extractable `CryptoKey`; its
 `request-log` keeps each forwarded request the server served: through the
 tunnel, or relayed by a front run on this machine. Its `request-log-rust` owns the `logged_requests` table in `wildflower.sqlite`:
 the server's forwarded-request layer reports each request on
-`RequestLog::sender`, a writer task records them in batches, trimmed to a row
-cap per caller class, and a sweep drops rows past 30 days. It serves the log at
+`RequestLog::forwarded_request_tx`, a writer task records them in batches,
+trimmed to a row cap per caller class, and a sweep drops rows past 30
+days. It serves the log at
 `GET /requests` and `GET /requests/callers`, gated by `wildflower/RequestLog.r`.
 `request-log-core` is that API as an `HttpApi` and its client;
 `request-log-react` is the `/settings/requests` page: the recent-activity card,

@@ -144,12 +144,12 @@ pub fn host_servers(
         + 'static,
 ) {
     let registry = Arc::new(JsonServerRegistry::in_data_root(data_root));
-    let (forwarded_request_sender, forwarded_requests) = mpsc::channel(FORWARDED_REQUEST_CAPACITY);
+    let (forwarded_request_tx, forwarded_request_rx) = mpsc::channel(FORWARDED_REQUEST_CAPACITY);
     let server_units = ServerUnits::new(
         runner.clone(),
         Arc::new(server_config),
         host_ports,
-        forwarded_request_sender,
+        forwarded_request_tx,
     );
     match registry.read_all() {
         Ok(records) => {
@@ -176,7 +176,7 @@ pub fn host_servers(
     ));
     tauri::async_runtime::spawn(notifications::post_request_notifications(
         app.clone(),
-        forwarded_requests,
+        forwarded_request_rx,
     ));
     app.manage(ServersState::new(
         registry,

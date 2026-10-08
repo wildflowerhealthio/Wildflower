@@ -1,6 +1,6 @@
 //! `request-log-rust` — the host-side request-log slice: each forwarded request
 //! the server served (through the tunnel, or relayed by a front run on its
-//! machine), as the server's forwarded-request layer reports it on [`RequestLog::sender`], kept in the shared database and served
+//! machine), as the server's forwarded-request layer reports it on [`RequestLog::forwarded_request_tx`], kept in the shared database and served
 //! back on the `/requests` HTTP surface.
 //!
 //! A writer task inserts the reports in batches off the request path, trimming
@@ -67,7 +67,7 @@ pub struct RequestLog {
     pub router: Router,
     /// A full channel drops the report rather than delay a response; the writer
     /// stops once every sender is dropped.
-    pub sender: mpsc::Sender<ForwardedRequest>,
+    pub forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
 }
 
 /// Build the request log over the host-owned connection `pool`, mirroring
@@ -89,17 +89,17 @@ pub struct RequestLog {
 pub fn setup_request_log(pool: DieselPool) -> anyhow::Result<RequestLog> {
     let store = SqliteRequestLogStore::new(pool).context("failed to open request-log store")?;
 
-    let (sender, forwarded_requests) = mpsc::channel(REQUEST_LOG_CAPACITY);
-    tokio::spawn(write_request_log(store.clone(), forwarded_requests));
+    let (forwarded_request_tx, forwarded_request_rx) = mpsc::channel(REQUEST_LOG_CAPACITY);
+    tokio::spawn(write_request_log(store.clone(), forwarded_request_rx));
     spawn_request_log_retention_sweep(store.clone());
 
     Ok(RequestLog {
         router: http::router(Arc::new(RequestLogState::new(store))),
-        sender,
+        forwarded_request_tx,
     })
 }
 
-/// The writer: it owns `forwarded_requests`, takes whatever has queued (up to
+/// The writer: it owns `forwarded_request_rx`, takes whatever has queued (up to
 /// [`REQUEST_LOG_BATCH_LIMIT`]) each time it wakes, and records it as one batch
 /// ([`domain::request_log::record_requests`]). Returns once every sender is
 /// dropped and the queue is drained.
@@ -109,10 +109,10 @@ pub fn setup_request_log(pool: DieselPool) -> anyhow::Result<RequestLog> {
 /// dropped; the log is an observation, and the next batch is unaffected.
 async fn write_request_log(
     store: SqliteRequestLogStore,
-    mut forwarded_requests: mpsc::Receiver<ForwardedRequest>,
+    mut forwarded_request_rx: mpsc::Receiver<ForwardedRequest>,
 ) {
     let mut batch = Vec::with_capacity(REQUEST_LOG_BATCH_LIMIT);
-    while forwarded_requests
+    while forwarded_request_rx
         .recv_many(&mut batch, REQUEST_LOG_BATCH_LIMIT)
         .await
         > 0
@@ -176,16 +176,16 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn the_writer_records_each_report_and_stops_with_its_senders() {
         let store = SqliteRequestLogStore::open_in_memory().expect("store");
-        let (sender, forwarded_requests) = mpsc::channel(REQUEST_LOG_CAPACITY);
+        let (forwarded_request_tx, forwarded_request_rx) = mpsc::channel(REQUEST_LOG_CAPACITY);
         let now = SystemTime::now();
         for client_id in [Some("lifting"), None, Some("viewer")] {
-            sender
+            forwarded_request_tx
                 .try_send(forwarded_request(client_id, now))
                 .expect("room in the channel");
         }
-        drop(sender);
+        drop(forwarded_request_tx);
 
-        write_request_log(store.clone(), forwarded_requests).await;
+        write_request_log(store.clone(), forwarded_request_rx).await;
 
         assert_eq!(
             logged_client_ids(&store),

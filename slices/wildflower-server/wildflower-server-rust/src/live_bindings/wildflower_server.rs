@@ -60,9 +60,9 @@ pub struct WildflowerServer {
     /// with no loopback trust.
     tunnel_router: Router,
     /// A sender onto the tunnel listener, for
-    /// [`tunnel_stream_sender`](Self::tunnel_stream_sender).
+    /// [`tunnel_stream_tx`](Self::tunnel_stream_tx).
     #[cfg(feature = "test-support")]
-    tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+    tunnel_stream_tx: mpsc::Sender<TunnelStream>,
     /// The tunnel's supervisor, which dials the relay until it's dropped. The
     /// server holds it so the tunnel runs for exactly as long as the server
     /// does.
@@ -78,8 +78,8 @@ impl WildflowerServer {
     /// support only (the `test-support` feature).
     #[cfg(feature = "test-support")]
     #[must_use]
-    pub fn tunnel_stream_sender(&self) -> mpsc::Sender<TunnelStream> {
-        self.tunnel_stream_sender.clone()
+    pub fn tunnel_stream_tx(&self) -> mpsc::Sender<TunnelStream> {
+        self.tunnel_stream_tx.clone()
     }
 
     /// Serve the composed API on the bound loopback port and the tunnel
@@ -99,7 +99,7 @@ impl WildflowerServer {
             tunnel_router,
             tunnel_daemon,
             reachability_monitor,
-            // The `test-support` feature's `tunnel_stream_sender`.
+            // The `test-support` feature's `tunnel_stream_tx`.
             ..
         } = self;
         let loopback = axum::serve(
@@ -277,8 +277,8 @@ pub async fn set_up(
         diesel_pool.clone(),
         revocation_store,
         &gatekeeper_config,
-        &host.host_owner_token_sender,
-        host.active_pending_consent_sender,
+        &host.host_owner_token_tx,
+        host.active_pending_consent_tx,
         host.loopback_consent_prompt,
     )
     .context("failed to set up gatekeeper")?;
@@ -309,15 +309,14 @@ pub async fn set_up(
     // The tunnel dials the relay from the server's record for as long as the
     // server runs, handing each visitor's stream, in process, to the tunnel
     // listener; it has no HTTP surface.
-    let (tunnel_stream_sender, tunnel_streams) =
-        mpsc::channel::<TunnelStream>(TUNNEL_STREAM_BACKLOG);
+    let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel::<TunnelStream>(TUNNEL_STREAM_BACKLOG);
     let tunnel_config = tunnel_rust::TunnelConfig {
-        tunnel_stream_sender,
+        tunnel_stream_tx,
         relay_settings,
     };
     let tunnel_daemon = tunnel_rust::setup_tunnel(&tunnel_config);
     #[cfg(feature = "test-support")]
-    let tunnel_stream_sender = tunnel_config.tunnel_stream_sender;
+    let tunnel_stream_tx = tunnel_config.tunnel_stream_tx;
     // Whether a remote app can reach the server: the monitor GETs the server's
     // own `/health` (mounted below) through the public origin, so the request
     // goes out to the relay and back down the tunnel, and publishes the answer
@@ -327,7 +326,7 @@ pub async fn set_up(
         public_origin
             .join("health")
             .context("the server's public origin has no /health")?,
-        observers.server_health_sender,
+        observers.server_health_tx,
     );
 
     // The `/requests` surface: the request log the forwarded-request report
@@ -445,8 +444,8 @@ pub async fn set_up(
     // reachability monitor's probes).
     let forwarded_request_report = axum::middleware::from_fn_with_state(
         ForwardedRequestSenders {
-            host_sender: observers.forwarded_request_sender,
-            request_log_sender: request_log.sender,
+            host_tx: observers.forwarded_request_tx,
+            request_log_tx: request_log.forwarded_request_tx,
         },
         forwarded_request_layer::report_forwarded_request,
     );
@@ -462,7 +461,7 @@ pub async fn set_up(
         // preflight first) and of the loopback-peer gate.
         .layer(axum::middleware::from_fn_with_state(
             LoopbackOwnerTrust {
-                token_rx: host.host_owner_token_sender.subscribe(),
+                token_rx: host.host_owner_token_tx.subscribe(),
             },
             inject_loopback_owner_token,
         ))
@@ -513,10 +512,10 @@ pub async fn set_up(
     Ok(WildflowerServer {
         loopback_listener,
         loopback_router,
-        tunnel_listener: TunnelListener::new(tunnel_streams),
+        tunnel_listener: TunnelListener::new(tunnel_stream_rx),
         tunnel_router,
         #[cfg(feature = "test-support")]
-        tunnel_stream_sender,
+        tunnel_stream_tx,
         tunnel_daemon,
         reachability_monitor,
     })

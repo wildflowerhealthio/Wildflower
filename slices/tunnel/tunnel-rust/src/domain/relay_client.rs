@@ -63,14 +63,14 @@ impl std::fmt::Debug for RelaySettings {
 #[async_trait::async_trait]
 pub trait RelayClient: Send + Sync {
     /// Bring up the tunnel per `relay`, sending each visitor's stream to
-    /// `tunnel_stream_sender`, and run until the client exits. Resolves `Ok` on
+    /// `tunnel_stream_tx`, and run until the client exits. Resolves `Ok` on
     /// a clean stop — `cancel` fired, or the relay closed the session without
     /// error — and `Err` on a failure the supervisor should back off and retry
     /// (relay unreachable, handshake rejected).
     async fn run_once(
         &self,
         relay: &RelaySettings,
-        tunnel_stream_sender: mpsc::Sender<TunnelStream>,
+        tunnel_stream_tx: mpsc::Sender<TunnelStream>,
         cancel: CancellationToken,
     ) -> anyhow::Result<()>;
 }

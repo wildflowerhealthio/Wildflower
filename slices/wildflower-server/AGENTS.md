@@ -52,7 +52,7 @@ port and on the tunnel. Rust-only, no `-core`.
     tunnel, 400 ms after start and every 400 ms until it answers, each bounded
     at 3 s, and publishes `ServerHealth` (`Unreachable { error }` while it
     doesn't, when the reason changes, then `Reachable(HealthReport)`) on the
-    host's `ServerObservers::server_health_sender`. The first answer ends the
+    host's `ServerObservers::server_health_tx`. The first answer ends the
     probing: every app already reaches the server through the same relay, and
     the next run confirms reach again. `WildflowerServer` holds the monitor
     like the tunnel daemon, so it also stops when the server stops serving.
@@ -67,7 +67,7 @@ port and on the tunnel. Rust-only, no `-core`.
     forwarded-request report, the tunnel front), the tunnel listener and its
     PROXY header reader, the `/health` checks and the `404`;
     `live_bindings/` `set_up`, `WildflowerServer` and the database catalogue.
-  - The `test-support` feature adds `WildflowerServer::tunnel_stream_sender`
+  - The `test-support` feature adds `WildflowerServer::tunnel_stream_tx`
     for `tests/serve.rs`, which hands the tunnel listener connections the way
     the tunnel does. Only the crate's own dev-dependency enables it.
 

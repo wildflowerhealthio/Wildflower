@@ -58,20 +58,15 @@ pub(crate) struct ReachabilityMonitor {
 
 impl ReachabilityMonitor {
     /// Start probing `health_url` with `probe`, publishing each answer on
-    /// `server_health_sender`. Spawns onto the ambient tokio runtime, and
+    /// `server_health_tx`. Spawns onto the ambient tokio runtime, and
     /// probes until `/health` answers or the monitor is dropped.
     pub(crate) fn spawn(
         probe: Arc<dyn HealthProbe>,
         health_url: Url,
-        server_health_sender: watch::Sender<Option<ServerHealth>>,
+        server_health_tx: watch::Sender<Option<ServerHealth>>,
     ) -> Self {
         let cancel = CancellationToken::new();
-        tokio::spawn(monitor(
-            probe,
-            health_url,
-            server_health_sender,
-            cancel.clone(),
-        ));
+        tokio::spawn(monitor(probe, health_url, server_health_tx, cancel.clone()));
         Self { cancel }
     }
 }
@@ -88,7 +83,7 @@ impl Drop for ReachabilityMonitor {
 async fn monitor(
     probe: Arc<dyn HealthProbe>,
     health_url: Url,
-    server_health_sender: watch::Sender<Option<ServerHealth>>,
+    server_health_tx: watch::Sender<Option<ServerHealth>>,
     cancel: CancellationToken,
 ) {
     loop {
@@ -101,7 +96,7 @@ async fn monitor(
             () = cancel.cancelled() => return,
         };
         let reached = matches!(server_health, ServerHealth::Reachable(_));
-        server_health_sender.send_if_modified(|published| {
+        server_health_tx.send_if_modified(|published| {
             if published.as_ref() == Some(&server_health) {
                 return false;
             }
@@ -217,17 +212,17 @@ mod tests {
     fn spawn(
         probe: Arc<ScriptedProbe>,
     ) -> (ReachabilityMonitor, watch::Receiver<Option<ServerHealth>>) {
-        let (server_health_sender, server_health) = watch::channel(None);
-        let monitor = ReachabilityMonitor::spawn(probe, health_url(), server_health_sender);
-        (monitor, server_health)
+        let (server_health_tx, server_health_rx) = watch::channel(None);
+        let monitor = ReachabilityMonitor::spawn(probe, health_url(), server_health_tx);
+        (monitor, server_health_rx)
     }
 
     #[tokio::test(start_paused = true)]
     async fn nothing_is_published_before_the_first_probe() {
         let probe = ScriptedProbe::new([Answer::Report(HealthReport::pass())]);
-        let (_monitor, server_health) = spawn(Arc::clone(&probe));
+        let (_monitor, server_health_rx) = spawn(Arc::clone(&probe));
         tokio::time::sleep(Duration::from_millis(399)).await;
-        assert_eq!(*server_health.borrow(), None);
+        assert_eq!(*server_health_rx.borrow(), None);
         assert!(probe.probe_times().is_empty());
     }
 
@@ -241,9 +236,9 @@ mod tests {
             Answer::Refused,
             Answer::Report(HealthReport::pass()),
         ]);
-        let (_monitor, mut server_health) = spawn(Arc::clone(&probe));
+        let (_monitor, mut server_health_rx) = spawn(Arc::clone(&probe));
 
-        let unreachable = server_health
+        let unreachable = server_health_rx
             .wait_for(Option::is_some)
             .await
             .expect("published")
@@ -254,7 +249,7 @@ mod tests {
                 error: "connection refused".to_owned()
             })
         );
-        server_health
+        server_health_rx
             .wait_for(|health| health == &Some(ServerHealth::Reachable(HealthReport::pass())))
             .await
             .expect("reachable");
@@ -289,8 +284,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_failing_report_is_still_reachable() {
         let probe = ScriptedProbe::new([Answer::Report(failing_report())]);
-        let (_monitor, mut server_health) = spawn(Arc::clone(&probe));
-        let reached = server_health
+        let (_monitor, mut server_health_rx) = spawn(Arc::clone(&probe));
+        let reached = server_health_rx
             .wait_for(Option::is_some)
             .await
             .expect("published")
@@ -305,24 +300,24 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn only_a_changed_unreachable_reason_is_republished() {
         let probe = ScriptedProbe::new([Answer::Refused, Answer::Refused, Answer::Hang]);
-        let (_monitor, mut server_health) = spawn(Arc::clone(&probe));
-        server_health
+        let (_monitor, mut server_health_rx) = spawn(Arc::clone(&probe));
+        server_health_rx
             .wait_for(Option::is_some)
             .await
             .expect("published");
-        server_health.borrow_and_update();
+        server_health_rx.borrow_and_update();
 
         // Past the second probe (at 800 ms), short of the third (at 1200 ms).
         tokio::time::sleep(Duration::from_millis(500)).await;
         assert_eq!(probe.probe_times().len(), 2);
         assert!(
-            !server_health
+            !server_health_rx
                 .has_changed()
                 .expect("the monitor holds the sender"),
             "the same reason again is not a change"
         );
 
-        let timed_out = server_health
+        let timed_out = server_health_rx
             .wait_for(|health| {
                 health.as_ref()
                     != Some(&ServerHealth::Unreachable {
@@ -344,8 +339,8 @@ mod tests {
     async fn a_probe_that_never_answers_is_unreachable_after_the_timeout() {
         let started = Instant::now();
         let probe = ScriptedProbe::new([Answer::Hang]);
-        let (_monitor, mut server_health) = spawn(probe);
-        let unreachable = server_health
+        let (_monitor, mut server_health_rx) = spawn(probe);
+        let unreachable = server_health_rx
             .wait_for(Option::is_some)
             .await
             .expect("published")
@@ -362,8 +357,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn dropping_the_monitor_stops_probing() {
         let probe = ScriptedProbe::new([Answer::Refused]);
-        let (monitor, mut server_health) = spawn(Arc::clone(&probe));
-        server_health
+        let (monitor, mut server_health_rx) = spawn(Arc::clone(&probe));
+        server_health_rx
             .wait_for(Option::is_some)
             .await
             .expect("published");

@@ -288,7 +288,7 @@ pub fn setup_gatekeeper(
         server_origin: server_origin.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
         owner_ui_base: config.owner_ui_base.clone(),
-        active_pending_consent_sender: active_pending_consent_tx,
+        active_pending_consent_tx,
         loopback_consent_prompt,
         host_owner_grant: Grant::parse(config.host_owner_scopes.iter().map(String::as_str)),
     });

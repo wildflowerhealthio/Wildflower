@@ -30,10 +30,11 @@ use reduced_path::reduced_path;
 /// turns them into notifications, and the request-log slice's writer.
 #[derive(Clone)]
 pub(crate) struct ForwardedRequestSenders {
-    /// The host's channel (`ServerObservers::forwarded_request_sender`).
-    pub(crate) host_sender: mpsc::Sender<ForwardedRequest>,
-    /// The request-log writer's channel (`request_log_rust::RequestLog::sender`).
-    pub(crate) request_log_sender: mpsc::Sender<ForwardedRequest>,
+    /// The host's channel (`ServerObservers::forwarded_request_tx`).
+    pub(crate) host_tx: mpsc::Sender<ForwardedRequest>,
+    /// The request-log writer's channel
+    /// (`request_log_rust::RequestLog::forwarded_request_tx`).
+    pub(crate) request_log_tx: mpsc::Sender<ForwardedRequest>,
 }
 
 /// Report a [`ForwardedRequest`] on both of `forwarded_request_senders` once
@@ -90,14 +91,14 @@ pub(crate) async fn report_forwarded_request(
     };
     if !is_health_check {
         if let Err(error) = forwarded_request_senders
-            .host_sender
+            .host_tx
             .try_send(forwarded_request.clone())
         {
             tracing::debug!("forwarded-request report to the host dropped: {error}");
         }
     }
     if let Err(error) = forwarded_request_senders
-        .request_log_sender
+        .request_log_tx
         .try_send(forwarded_request)
     {
         tracing::debug!("forwarded-request report to the request log dropped: {error}");
@@ -209,15 +210,15 @@ mod tests {
         mpsc::Receiver<ForwardedRequest>,
         mpsc::Receiver<ForwardedRequest>,
     ) {
-        let (host_sender, host_receiver) = mpsc::channel(capacity);
-        let (request_log_sender, request_log_receiver) = mpsc::channel(capacity);
+        let (host_tx, host_rx) = mpsc::channel(capacity);
+        let (request_log_tx, request_log_rx) = mpsc::channel(capacity);
         (
             ForwardedRequestSenders {
-                host_sender,
-                request_log_sender,
+                host_tx,
+                request_log_tx,
             },
-            host_receiver,
-            request_log_receiver,
+            host_rx,
+            request_log_rx,
         )
     }
 
@@ -236,13 +237,13 @@ mod tests {
     /// Send `request` through the layer and return the one record it reported,
     /// which the host and the request log both got.
     async fn reported(request: Request) -> ForwardedRequest {
-        let (senders, mut host_receiver, mut request_log_receiver) = senders(4);
+        let (senders, mut host_rx, mut request_log_rx) = senders(4);
         reporting_router(senders)
             .oneshot(request)
             .await
             .expect("oneshot");
-        let forwarded_request = only_record(&mut host_receiver);
-        assert_eq!(only_record(&mut request_log_receiver), forwarded_request);
+        let forwarded_request = only_record(&mut host_rx);
+        assert_eq!(only_record(&mut request_log_rx), forwarded_request);
         forwarded_request
     }
 
@@ -319,7 +320,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_loopback_request_is_not_reported() {
-        let (senders, mut host_receiver, mut request_log_receiver) = senders(4);
+        let (senders, mut host_rx, mut request_log_rx) = senders(4);
         let request = Request::get("/fhir-r4/Patient/123")
             .body(Body::empty())
             .expect("request");
@@ -328,7 +329,7 @@ mod tests {
         let router = reporting_router(senders);
         router.clone().oneshot(request).await.expect("oneshot");
 
-        for receiver in [&mut host_receiver, &mut request_log_receiver] {
+        for receiver in [&mut host_rx, &mut request_log_rx] {
             assert_eq!(
                 receiver.try_recv(),
                 Err(mpsc::error::TryRecvError::Empty),
@@ -341,7 +342,7 @@ mod tests {
     /// notifications, and is still answered.
     #[tokio::test]
     async fn a_forwarded_health_check_is_logged_but_not_notified() {
-        let (senders, mut host_receiver, mut request_log_receiver) = senders(4);
+        let (senders, mut host_rx, mut request_log_rx) = senders(4);
         let router = reporting_router(senders);
         let response = router
             .clone()
@@ -351,11 +352,11 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         assert_eq!(
-            host_receiver.try_recv(),
+            host_rx.try_recv(),
             Err(mpsc::error::TryRecvError::Empty),
             "a forwarded /health must not notify the host"
         );
-        let logged = request_log_receiver.try_recv().expect("logged");
+        let logged = request_log_rx.try_recv().expect("logged");
         assert_eq!(logged.reduced_path, HEALTH_PATH);
     }
 
@@ -363,7 +364,7 @@ mod tests {
     /// channels full the request is still answered, and the report is dropped.
     #[tokio::test]
     async fn a_full_channel_drops_the_report_and_still_answers() {
-        let (senders, mut receiver, _request_log_receiver) = senders(1);
+        let (senders, mut receiver, _request_log_rx) = senders(1);
         let router = reporting_router(senders);
         for _ in 0..2 {
             let response = router
