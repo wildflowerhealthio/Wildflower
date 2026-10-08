@@ -25,7 +25,7 @@ changing how servers run or what the host notifies about them.
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`, and
     `notifications/` (`LocalNotification`, `RequestNotificationCoalescer`,
-    `stop_notification` and `StopNotificationTracker`); `ports/` the
+    `stop_notification` and `StopNotificationCoalescer`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
@@ -213,7 +213,8 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   sides with it.
 - **Status comes from `UnitRunner`.** Whether a server is running, why it
   last stopped and its health are `UnitRunner`'s `UnitStatus<ServerDetail>`,
-  from `statuses()` / `subscribe()`; nothing in the slice tracks runs itself.
+  from `statuses()` / `subscribe()`, and each run's stop is
+  `subscribe_stops()`'s; nothing in the slice tracks runs itself.
   A run's health goes out through `ctx.set_detail`, and `UnitRunner` clears
   it.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
@@ -257,6 +258,9 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   `<data root>/servers/<domain>/` and then the record, so a folder that can't
   be deleted (`ServerChangeError::DeletingFolder`) leaves the server
   registered and the removal can be retried; a folder already gone is fine.
+  A deletion that fails partway leaves the server registered with part of its
+  folder, some databases or certificates possibly gone; retrying deletes the
+  rest.
 - **A launcher URL is checked when entered.** `update_server` takes an
   absolute `http` or `https` URL with a host and no credentials, or refuses it
   as `ServerChangeError::InvalidLauncherUrl`.
