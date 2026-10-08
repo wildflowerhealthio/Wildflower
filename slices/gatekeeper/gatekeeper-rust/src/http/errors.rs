@@ -139,6 +139,14 @@ pub(crate) struct RegistrationNotAcknowledgedBody {
     pub(crate) id: String,
 }
 
+/// Wire shape for `LaunchPatientMismatch` (409) — the approval named a patient
+/// other than the one the request's SMART launch binds.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct LaunchPatientMismatchBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
+}
+
 /// Wire shape for `DeviceConsentNotFound` (404) — no pending device-code consent
 /// has this user code. Keyed by `userCode`, unlike the id-keyed siblings.
 #[derive(Debug, Serialize, ToSchema)]
@@ -222,6 +230,14 @@ impl IntoResponse for GatekeeperError {
                 }),
             )
                 .into_response(),
+            GatekeeperError::LaunchPatientMismatch { id } => (
+                StatusCode::CONFLICT,
+                Json(LaunchPatientMismatchBody {
+                    error: "LaunchPatientMismatch",
+                    id,
+                }),
+            )
+                .into_response(),
             GatekeeperError::InsufficientScope { missing_scopes } => {
                 insufficient_scope(missing_scopes)
             }
@@ -270,6 +286,14 @@ fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
         OAuthErrorKind::InvalidCodeChallenge => (
             "Invalid PKCE code challenge",
             "The supplied code_challenge is not a well-formed S256 challenge.",
+        ),
+        OAuthErrorKind::InvalidLaunch => (
+            "Invalid launch",
+            "The supplied launch is unknown, already used, expired, or for another app.",
+        ),
+        OAuthErrorKind::InvalidAudience => (
+            "Invalid audience",
+            "The supplied aud names neither this server nor its FHIR base URL.",
         ),
     }
 }
@@ -357,5 +381,24 @@ mod tests {
         let err = VerifyError::RevocationStoreUnavailable("query returned no rows".to_owned());
         let response = verify_error_response("test", err);
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    /// A launch-bound patient mismatch is a `409` carrying the
+    /// `LaunchPatientMismatch` tag and the consent id — the shape
+    /// `gatekeeper-core`'s `LaunchPatientMismatchSchema` decodes.
+    #[tokio::test]
+    async fn launch_patient_mismatch_maps_to_a_tagged_409() {
+        let response = GatekeeperError::LaunchPatientMismatch {
+            id: "consent-1".to_owned(),
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).expect("json"),
+            serde_json::json!({ "error": "LaunchPatientMismatch", "id": "consent-1" }),
+        );
     }
 }

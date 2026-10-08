@@ -21,6 +21,7 @@ use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant};
+use crate::domain::launch_context::LaunchContext;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::GatekeeperStore;
@@ -46,6 +47,7 @@ pub(crate) struct FakeGatekeeperStore {
     tokens: RefCell<HashMap<String, RefreshToken>>,
     code_grants: RefCell<HashMap<String, AuthorizationCodeGrant>>,
     device_grants: RefCell<HashMap<String, DeviceGrant>>,
+    launch_contexts: RefCell<HashMap<String, LaunchContext>>,
 }
 
 /// A clone of every map, taken before a transaction runs so it can be restored
@@ -59,6 +61,7 @@ struct Snapshot {
     tokens: HashMap<String, RefreshToken>,
     code_grants: HashMap<String, AuthorizationCodeGrant>,
     device_grants: HashMap<String, DeviceGrant>,
+    launch_contexts: HashMap<String, LaunchContext>,
 }
 
 impl FakeGatekeeperStore {
@@ -72,6 +75,7 @@ impl FakeGatekeeperStore {
             tokens: self.tokens.borrow().clone(),
             code_grants: self.code_grants.borrow().clone(),
             device_grants: self.device_grants.borrow().clone(),
+            launch_contexts: self.launch_contexts.borrow().clone(),
         }
     }
 
@@ -84,6 +88,7 @@ impl FakeGatekeeperStore {
         *self.tokens.borrow_mut() = snapshot.tokens;
         *self.code_grants.borrow_mut() = snapshot.code_grants;
         *self.device_grants.borrow_mut() = snapshot.device_grants;
+        *self.launch_contexts.borrow_mut() = snapshot.launch_contexts;
     }
 }
 

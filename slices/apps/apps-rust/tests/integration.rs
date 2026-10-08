@@ -6,7 +6,9 @@
 
 use std::sync::Arc;
 
-use apps_rust::{ports::NoAppLaunchScopes, setup_apps, Apps, AppsConfig};
+use apps_rust::domain::AppsError;
+use apps_rust::ports::{LaunchContextMinter, NoAppLaunchScopes};
+use apps_rust::{setup_apps, Apps, AppsConfig};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
@@ -29,18 +31,35 @@ fn with_owner_claims(mut req: Request<Body>) -> Request<Body> {
     req
 }
 
+/// A [`LaunchContextMinter`] answering `launch-for-{client_id}`, standing in
+/// for the host's gatekeeper-backed one.
+struct NamedLaunchContextMinter;
+
+impl LaunchContextMinter for NamedLaunchContextMinter {
+    fn mint_launch_context(&self, client_id: &str) -> Result<String, AppsError> {
+        Ok(format!("launch-for-{client_id}"))
+    }
+}
+
 /// Spin up the slice plus the recording on-device webview handle, so a launch
 /// test can assert the URL a loopback launch routes to it.
 ///
-/// No per-app SMART launch scopes ([`NoAppLaunchScopes`]).
+/// No per-app SMART launch scopes ([`NoAppLaunchScopes`]); launches are minted
+/// by [`NamedLaunchContextMinter`].
 fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     let pool = persistence_rust::open_in_memory_pool().expect("open in-memory diesel pool");
     let config = AppsConfig {
         public_origin: Url::parse("https://dev1.example.com").expect("valid public origin"),
     };
     let handle = Arc::new(RecordingStubWebviewHandle::default());
-    let apps =
-        setup_apps(pool, &config, handle.clone(), Arc::new(NoAppLaunchScopes)).expect("setup_apps");
+    let apps = setup_apps(
+        pool,
+        &config,
+        handle.clone(),
+        Arc::new(NoAppLaunchScopes),
+        Arc::new(NamedLaunchContextMinter),
+    )
+    .expect("setup_apps");
     (apps, handle)
 }
 
@@ -123,6 +142,28 @@ async fn fresh_install_lists_the_default_set() {
             "ohif-viewer",
             "lifting-app",
             "health-viewer-app",
+        ],
+    );
+}
+
+/// A loopback launch of a seeded SMART app hands the on-device webview its
+/// template with the public origin and a launch minted for its OAuth client.
+#[tokio::test]
+async fn a_smart_app_launch_carries_a_launch_minted_for_its_client() {
+    let (apps, handle) = spin_up_with_handle();
+    let launch_res = apps
+        .router
+        .clone()
+        .oneshot(launch("/apps/growth-chart"))
+        .await
+        .expect("oneshot");
+    assert_eq!(launch_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        handle.0.lock().expect("handle mutex").clone(),
+        vec![
+            "https://examples.smarthealthit.org/growth-chart-app/launch.html\
+             ?iss=https://dev1.example.com/fhir-r4&launch=launch-for-growth_chart"
+                .to_string()
         ],
     );
 }

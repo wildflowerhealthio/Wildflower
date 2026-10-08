@@ -47,6 +47,8 @@ pub(crate) fn device_request(
         granted_scopes: None,
         patient: None,
         device_name: None,
+        launch: None,
+        launch_bound_patient: None,
     }
 }
 
@@ -75,6 +77,8 @@ pub(crate) fn code_request(
         granted_scopes: None,
         patient: None,
         device_name: None,
+        launch: None,
+        launch_bound_patient: None,
     }
 }
 

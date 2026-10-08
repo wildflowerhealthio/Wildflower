@@ -15,6 +15,9 @@
 //! are held to the server's public host, never get the owner token, are served
 //! as the public origin whatever `Forwarded` they carry, and name the visitor
 //! from a PROXY protocol v2 header.
+//!
+//! A SMART app's launch carries a `launch` the apps slice mints through
+//! gatekeeper, which the app's `/oauth/authorize` consumes once.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -749,6 +752,147 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     .await
     .expect("the tunnel listener still answers");
     assert_eq!(status, 200);
+
+    shutdown.cancel();
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, serving)
+        .await
+        .expect("serve returns in time once cancelled")
+        .expect("the serve task doesn't panic")
+        .expect("a cancelled serve returns Ok");
+}
+
+/// `GET /oauth/authorize` for the seeded Health Viewer client with `launch`,
+/// relayed to the loopback listener by a front run on this machine, as the
+/// app's browser would reach it; the `Location` it redirects to.
+async fn authorize_health_viewer_launch(
+    loopback_base_url: &Url,
+    launch: &str,
+    aud: &str,
+) -> String {
+    let mut authorize_url = loopback_base_url
+        .join("oauth/authorize")
+        .expect("authorize URL");
+    authorize_url
+        .query_pairs_mut()
+        .append_pair("response_type", "code")
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("client_id", "health-viewer-app")
+        .append_pair("scope", "openid system/Observation.rs")
+        .append_pair(
+            "code_challenge",
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        )
+        .append_pair(
+            "redirect_uri",
+            "https://wildflowerhealth.io/health-viewer-app/",
+        )
+        .append_pair("state", "xyz")
+        .append_pair("launch", launch)
+        .append_pair("aud", aud);
+    let response = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("an HTTP client")
+        .get(authorize_url)
+        .header("forwarded", FORWARDED)
+        .send()
+        .await
+        .expect("GET /oauth/authorize reaches the server");
+    assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+    response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|location| location.to_str().ok())
+        .expect("a Location")
+        .to_owned()
+}
+
+/// The composition root's launch wiring: `POST /apps/{id}` for a SMART app
+/// answers its launch URL with the FHIR base as `iss` and a `launch` gatekeeper
+/// minted for the app's client, and that `launch` parks one authorization
+/// request at `/oauth/authorize`, then is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
+    let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
+    let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
+        .expect("loopback base URL");
+    // The receivers stand in for the host bridge's, held for the whole run.
+    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
+    let (active_pending_consent_tx, _active_pending_consent_rx) =
+        watch::channel::<Option<PendingConsentHead>>(None);
+    let host_ports = HostPorts {
+        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
+        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
+        host_owner_token_tx,
+        active_pending_consent_tx,
+    };
+    let (server_health_tx, _server_health_rx) = watch::channel(None);
+    let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
+    let observers = ServerObservers {
+        server_health_tx,
+        forwarded_request_tx,
+    };
+    let shutdown = CancellationToken::new();
+    let serving = tokio::time::timeout(
+        LIFECYCLE_TIMEOUT,
+        start_serving(
+            server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
+            host_ports,
+            observers,
+            shutdown.clone(),
+        ),
+    )
+    .await
+    .expect("the server binds in time");
+    let launcher = client_token(
+        app_data_dir.path(),
+        SERVER_ORIGIN,
+        &[
+            "system/*.cruds".to_owned(),
+            "wildflower/*.cruds".to_owned(),
+            "wildflower/launch".to_owned(),
+        ],
+    );
+
+    let launched = reqwest::Client::new()
+        .post(
+            loopback_base_url
+                .join("apps/health-viewer-app")
+                .expect("launch URL"),
+        )
+        .header("forwarded", FORWARDED)
+        .bearer_auth(&launcher)
+        .send()
+        .await
+        .expect("POST /apps/health-viewer-app reaches the server");
+    assert_eq!(launched.status(), reqwest::StatusCode::OK);
+    let launch_url = Url::parse(
+        launched.json::<Value>().await.expect("a launch body")["url"]
+            .as_str()
+            .expect("a launch URL"),
+    )
+    .expect("the launch URL parses");
+    let launch_param = |name: &str| {
+        launch_url
+            .query_pairs()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.into_owned())
+            .unwrap_or_else(|| panic!("{launch_url} carries {name}"))
+    };
+    let (launch, iss) = (launch_param("launch"), launch_param("iss"));
+    assert_eq!(iss, format!("{SERVER_ORIGIN}/fhir-r4"));
+    assert!(!launch.is_empty());
+
+    let parked = authorize_health_viewer_launch(&loopback_base_url, &launch, &iss).await;
+    assert!(
+        parked.ends_with("/wait"),
+        "the launch parks a request for the Owner, got {parked}"
+    );
+    assert_eq!(
+        authorize_health_viewer_launch(&loopback_base_url, &launch, &iss).await,
+        "https://wildflowerhealth.io/health-viewer-app/?error=invalid_request&state=xyz",
+        "the launch works once"
+    );
 
     shutdown.cancel();
     tokio::time::timeout(LIFECYCLE_TIMEOUT, serving)

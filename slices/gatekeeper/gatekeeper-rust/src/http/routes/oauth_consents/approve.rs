@@ -26,7 +26,8 @@ use crate::live_bindings::LiveConsentDecider;
 pub(crate) struct ApproveOAuthConsentBody {
     /// The scopes the Owner ticked.
     pub(crate) approved_scopes: Vec<String>,
-    /// Optional SMART-on-FHIR patient context to bind to the grant.
+    /// Optional SMART-on-FHIR patient context to bind to the grant. When the
+    /// request's SMART launch bound a patient, it must be that patient.
     pub(crate) patient: Option<String>,
     /// The Owner's acknowledgement that they recognise this app and its
     /// redirect address. Required (not defaulted) so a client that has not been
@@ -43,8 +44,9 @@ pub(crate) struct ApproveOAuthConsentBody {
 /// with a `403`. Approving a prompt whose client, redirect, or scopes are
 /// outside the current registration without
 /// [`acknowledged_registration`](ApproveOAuthConsentBody::acknowledged_registration)
-/// is rejected with a `409` and writes nothing. The transaction lives in the
-/// consent capability's `approve_oauth`.
+/// is rejected with a `409` and writes nothing, as is an approval naming a
+/// patient other than the one the request's SMART launch binds. The transaction
+/// lives in the consent capability's `approve_oauth`.
 pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     post(handle_approve_oauth_consent)
 }

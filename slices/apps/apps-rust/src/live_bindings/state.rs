@@ -1,7 +1,8 @@
 //! The shared apps runtime state — the router state every handler is built over,
 //! and the composition point that names the concrete [`SqliteAppsStore`] adapter.
 //! It also holds the public origin every launch's `{origin}` resolves to, the
-//! on-device webview seam, and the host-seam port (per-app launch scopes).
+//! on-device webview seam, and the host-seam ports (per-app launch scopes, launch
+//! contexts).
 //!
 //! It lives at the crate root (not under [`crate::http`]) deliberately: the
 //! scope-gated [`capabilities`](crate::domain::capabilities) in `domain/` are
@@ -15,7 +16,7 @@ use std::sync::Arc;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
-use crate::ports::AppLaunchScopes;
+use crate::ports::{AppLaunchScopes, LaunchContextMinter};
 use crate::OnDeviceWebviewHandle;
 
 /// Shared state threaded through the apps handlers. Holds the **concrete**
@@ -39,6 +40,10 @@ pub struct AppsState {
     /// allowed scopes) for the per-app launch check (see [`AppLaunchScopes`]). The
     /// host wires a gatekeeper-backed adapter; tests use a fake / no-op.
     pub(crate) launch_scopes: Arc<dyn AppLaunchScopes>,
+    /// Mints the SMART `launch` value a SMART app's launch URL carries (see
+    /// [`LaunchContextMinter`]). The host wires a gatekeeper-backed adapter;
+    /// tests use a fake.
+    pub(crate) launch_context_minter: Arc<dyn LaunchContextMinter>,
 }
 
 impl AppsState {
@@ -48,12 +53,14 @@ impl AppsState {
         public_origin: Url,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
         launch_scopes: Arc<dyn AppLaunchScopes>,
+        launch_context_minter: Arc<dyn LaunchContextMinter>,
     ) -> Self {
         Self {
             store,
             public_origin,
             on_device_webview_handle: webview_handle,
             launch_scopes,
+            launch_context_minter,
         }
     }
 

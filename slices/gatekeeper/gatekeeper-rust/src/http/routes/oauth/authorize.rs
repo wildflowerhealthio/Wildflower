@@ -121,19 +121,19 @@ pub struct AuthorizeParams {
     pub code_challenge: String,
     pub redirect_uri: String,
     pub state: String,
-    /// SMART App Launch nonce, set by the EHR (apps-rust generates it,
-    /// the SMART app forwards it). Not currently looked up against a
-    /// launch-context table — we trust whatever value the SMART app
-    /// echoes back and bind patient context at consent instead. Binding it
-    /// (single-use, patient-bound) is tracked in
-    /// <https://github.com/Assessment-is/Wildflower/issues/257>.
+    /// SMART App Launch `launch` value, handed to the app in its launch URL
+    /// and forwarded here. It must name a launch this server minted for this
+    /// `client_id` that is unused and unexpired (five minutes); it is consumed,
+    /// so it works once, and the request carries the launch's context
+    /// (including any patient it binds) to the consent. Any other value is
+    /// `invalid_request`. Absent, the request is plain OAuth.
     #[serde(default)]
     pub launch: Option<String>,
-    /// SMART App Launch audience hint: the FHIR base URL the SMART app
-    /// expects to call with the resulting token. Not currently validated
-    /// against this server's FHIR base — every minted token's `aud` is the
-    /// server's origin regardless. Validating it is tracked in
-    /// <https://github.com/Assessment-is/Wildflower/issues/257>.
+    /// SMART App Launch audience: the FHIR server the app expects to call with
+    /// the token. When present it must be this server's origin
+    /// (`https://<domain>`) or FHIR base (`https://<domain>/fhir-r4`), else
+    /// `invalid_request`. The minted token's `aud` is the server's origin
+    /// either way.
     #[serde(default)]
     pub aud: Option<String>,
 }
@@ -150,7 +150,8 @@ pub struct AuthorizeParams {
 /// flow:
 ///
 /// 1. Browser lands here; the request is parked as an `AuthorizationRequest`
-///    (5-minute TTL).
+///    (5-minute TTL). A SMART App Launch's `aud` and `launch` are checked
+///    first (see their fields), and the launch is consumed onto the request.
 /// 2. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue (raising the host webview's popup) and the browser is 302'd to the
@@ -191,17 +192,6 @@ pub(super) async fn handle_authorize_request(
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
-    // Log the SMART App Launch params (see the `launch` / `aud` field docs) so
-    // an operator can correlate a SMART app's request back to the click that
-    // triggered it.
-    if params.launch.is_some() || params.aud.is_some() {
-        tracing::info!(
-            client_id = %params.client_id,
-            launch = ?params.launch,
-            aud = ?params.aud,
-            "SMART App Launch parameters received at /oauth/authorize",
-        );
-    }
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
@@ -211,6 +201,8 @@ pub(super) async fn handle_authorize_request(
             code_challenge: &params.code_challenge,
             redirect_uri: &params.redirect_uri,
             client_state: &params.state,
+            launch: params.launch.as_deref(),
+            aud: params.aud.as_deref(),
         },
         FreshIds {
             request_id: Uuid::new_v4().to_string(),

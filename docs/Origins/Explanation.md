@@ -123,6 +123,12 @@ The SMART discovery document reports the server's origin as its `issuer`, while
 its endpoint URLs are rendered from the served origin so the SMART app can
 reach them from where it is.
 
+A SMART app may also declare, as `aud` on `/oauth/authorize`, the FHIR server
+it means to call. Gatekeeper checks that against the same configured origin:
+it accepts `https://<domain>` or the FHIR base `https://<domain>/fhir-r4` (the
+`iss` every launch hands the app), and refuses anything else with
+`invalid_request`. The token's `aud` claim is the server's origin either way.
+
 ### HFS's `base_url` is the server's public host
 
 HFS is the one component that can't render URLs per request. Its `base_url`

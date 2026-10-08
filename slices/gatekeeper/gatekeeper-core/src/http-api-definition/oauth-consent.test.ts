@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   ApproveOAuthConsentBody,
+  LaunchPatientMismatchSchema,
   OAuthConsentRegistrationSchema,
   OAuthConsentSchema,
   RegistrationNotAcknowledgedSchema,
@@ -159,5 +160,18 @@ describe('RegistrationNotAcknowledgedSchema', () => {
 
     // Assert
     expect(decoded).toEqual({ error: 'RegistrationNotAcknowledged', id: 'consent-1' })
+  })
+})
+
+describe('LaunchPatientMismatchSchema', () => {
+  it('decodes the tagged error shape', () => {
+    // Arrange
+    const wire = { error: 'LaunchPatientMismatch', id: 'consent-1' }
+
+    // Act
+    const decoded = Schema.decodeUnknownSync(LaunchPatientMismatchSchema)(wire)
+
+    // Assert
+    expect(decoded).toEqual({ error: 'LaunchPatientMismatch', id: 'consent-1' })
   })
 })

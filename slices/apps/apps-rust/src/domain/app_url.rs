@@ -29,7 +29,8 @@ pub struct LaunchParams<'a> {
     /// The origin substituted for `{origin}` — the server's public origin, e.g.
     /// `https://ruth.relay.wildflowerhealth.io`.
     pub origin: &'a str,
-    /// Per-launch nonce substituted for `{launch}`.
+    /// The SMART `launch` value substituted for `{launch}` — a fresh launch
+    /// context for a SMART app, empty for a non-SMART one.
     pub launch: &'a str,
 }
 

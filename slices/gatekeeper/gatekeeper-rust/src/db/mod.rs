@@ -21,6 +21,7 @@ mod authorization_requests;
 pub(crate) mod clients;
 mod gatekeeper_store;
 pub(crate) mod grants;
+pub(crate) mod launch_contexts;
 pub(crate) mod refresh_tokens;
 pub(crate) mod shared;
 pub(crate) mod signing_keys;

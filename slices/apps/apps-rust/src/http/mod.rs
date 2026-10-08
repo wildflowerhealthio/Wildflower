@@ -12,9 +12,10 @@
 //!    table lives in [`routes`]; the route files stay pure.
 //!  - [`errors`] — the wire bodies + `impl IntoResponse` for
 //!    [`AppsError`](crate::domain::AppsError).
-//!  - [`ports`](crate::ports) — the host-seam dependency-inversion trait
-//!    ([`AppLaunchScopes`](crate::ports::AppLaunchScopes)) the host wires into
-//!    [`AppsState`].
+//!  - [`ports`](crate::ports) — the host-seam dependency-inversion traits
+//!    ([`AppLaunchScopes`](crate::ports::AppLaunchScopes),
+//!    [`LaunchContextMinter`](crate::ports::LaunchContextMinter)) the host wires
+//!    into [`AppsState`].
 //!
 //! The shared [`AppsState`] itself lives at the crate root
 //! ([`crate::live_bindings::state`]) so the scope-gated capability bindings sit

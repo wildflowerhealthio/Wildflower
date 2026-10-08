@@ -288,6 +288,8 @@ pub fn plant_authorization_code(
             granted_scopes: Some(scope_vec.clone()),
             patient: None,
             device_name: None,
+            launch: None,
+            launch_bound_patient: None,
         })
         .expect("insert request");
     store
@@ -337,6 +339,8 @@ pub fn plant_device_request(
             granted_scopes: granted,
             patient: None,
             device_name: None,
+            launch: None,
+            launch_bound_patient: None,
         })
         .expect("insert device request");
 }

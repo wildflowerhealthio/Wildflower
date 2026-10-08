@@ -48,6 +48,8 @@ pub(crate) mod client_registration;
 // semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod gatekeeper_error;
 pub mod grant;
+// The SMART App Launch contexts a launch mints and `/oauth/authorize` consumes.
+pub mod launch_context;
 // The closed set of OAuth error codes (RFC 6749 §5.2 + the redirect/device
 // codes) — a pure domain vocabulary lifted out of the OAuth route tree so the
 // error model can name it without reaching into `http`.

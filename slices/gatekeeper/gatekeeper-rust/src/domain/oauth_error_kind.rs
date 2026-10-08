@@ -23,4 +23,8 @@ pub enum OAuthErrorKind {
     UnsupportedCodeChallengeMethod,
     /// `code_challenge` is not a well-formed S256 challenge.
     InvalidCodeChallenge,
+    /// `launch` names no unused, unexpired launch minted for this client.
+    InvalidLaunch,
+    /// `aud` names neither this server's origin nor its FHIR base.
+    InvalidAudience,
 }

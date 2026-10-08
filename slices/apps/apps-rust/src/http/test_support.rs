@@ -2,7 +2,7 @@
 //! state the same way, so it lives here rather than being copied into each. Request-builder helpers (`post`/`get`/…) stay per-test
 //! module.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use scopes_rust::Scope;
 use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
@@ -11,7 +11,7 @@ use url::Url;
 use crate::db::SqliteAppsStore;
 use crate::domain::{AppRegistration, AppsError};
 use crate::live_bindings::state::AppsState;
-use crate::ports::{AppLaunchScopes, NoAppLaunchScopes};
+use crate::ports::{AppLaunchScopes, LaunchContextMinter, NoAppLaunchScopes};
 use crate::OnDeviceWebviewHandle;
 
 /// The server's public origin, which every launch's `{origin}` resolves to.
@@ -39,12 +39,53 @@ impl AppLaunchScopes for FixedLaunchScopes {
     }
 }
 
+/// A [`LaunchContextMinter`] fake that records the client each launch was
+/// minted for and answers `launch-for-{client_id}`, or fails every mint when
+/// built [`failing`](Self::failing).
+#[derive(Default)]
+pub(crate) struct RecordingLaunchContextMinter {
+    pub(crate) minted_for: Mutex<Vec<String>>,
+    fails: bool,
+}
+
+impl RecordingLaunchContextMinter {
+    /// A minter whose every mint fails as a store failure would.
+    pub(crate) fn failing() -> Self {
+        RecordingLaunchContextMinter {
+            fails: true,
+            ..Self::default()
+        }
+    }
+
+    /// The clients minted for so far, in order.
+    pub(crate) fn minted_for(&self) -> Vec<String> {
+        self.minted_for.lock().expect("minter mutex").clone()
+    }
+}
+
+impl LaunchContextMinter for RecordingLaunchContextMinter {
+    fn mint_launch_context(&self, client_id: &str) -> Result<String, AppsError> {
+        if self.fails {
+            return Err(AppsError::infrastructure(
+                "mint_launch_context",
+                "the store is down",
+            ));
+        }
+        self.minted_for
+            .lock()
+            .expect("minter mutex")
+            .push(client_id.to_owned());
+        Ok(format!("launch-for-{client_id}"))
+    }
+}
+
 /// Build apps state over a fresh in-memory store with a specific on-device
-/// webview handle and launch-scope seam, using the shared public origin. The
-/// most general fixture; the others below pin one of the knobs.
+/// webview handle, launch-scope seam, and launch-context seam, using the shared
+/// public origin. The most general fixture; the others below pin the knobs.
 pub(crate) fn state_full(
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
+    launch_context_minter: Arc<dyn LaunchContextMinter>,
 ) -> Arc<AppsState> {
     let store = SqliteAppsStore::open_in_memory().expect("store");
     Arc::new(AppsState::new(
@@ -52,6 +93,7 @@ pub(crate) fn state_full(
         Url::parse(PUBLIC_ORIGIN).expect("public origin is a hardcoded valid URL"),
         webview_handle,
         launch_scopes,
+        launch_context_minter,
     ))
 }
 
@@ -64,7 +106,11 @@ pub(crate) fn state() -> Arc<AppsState> {
 /// Apps state with a caller-provided handle — so a loopback launch's resolved
 /// URL can be read back off the handle.
 pub(crate) fn state_with_sink(webview_handle: Arc<dyn OnDeviceWebviewHandle>) -> Arc<AppsState> {
-    state_full(webview_handle, Arc::new(NoAppLaunchScopes))
+    state_full(
+        webview_handle,
+        Arc::new(NoAppLaunchScopes),
+        Arc::new(RecordingLaunchContextMinter::default()),
+    )
 }
 
 /// Apps state with a caller-provided handle and a specific [`AppLaunchScopes`]
@@ -73,5 +119,9 @@ pub(crate) fn state_with_launch_scopes(
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> Arc<AppsState> {
-    state_full(webview_handle, launch_scopes)
+    state_full(
+        webview_handle,
+        launch_scopes,
+        Arc::new(RecordingLaunchContextMinter::default()),
+    )
 }

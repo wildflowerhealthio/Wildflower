@@ -35,6 +35,8 @@ diesel::table! {
         granted_scopes -> Nullable<Text>,
         patient -> Nullable<Text>,
         device_name -> Nullable<Text>,
+        launch -> Nullable<Text>,
+        launch_bound_patient -> Nullable<Text>,
     }
 }
 
@@ -66,6 +68,8 @@ struct Row {
     granted_scopes: Option<JsonStrings>,
     patient: Option<String>,
     device_name: Option<String>,
+    launch: Option<String>,
+    launch_bound_patient: Option<String>,
 }
 
 impl From<Row> for AuthorizationRequest {
@@ -88,6 +92,8 @@ impl From<Row> for AuthorizationRequest {
             granted_scopes: row.granted_scopes.map(|s| s.0),
             patient: row.patient,
             device_name: row.device_name,
+            launch: row.launch,
+            launch_bound_patient: row.launch_bound_patient,
         }
     }
 }
@@ -112,6 +118,8 @@ impl From<&AuthorizationRequest> for Row {
             granted_scopes: request.granted_scopes.clone().map(JsonStrings),
             patient: request.patient.clone(),
             device_name: request.device_name.clone(),
+            launch: request.launch.clone(),
+            launch_bound_patient: request.launch_bound_patient.clone(),
         }
     }
 }
@@ -414,6 +422,8 @@ mod tests {
             granted_scopes in prop::option::of(arb_scopes()),
             patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
             device_name in prop::option::of("[ -~]{1,40}"),
+            launch in prop::option::of("[A-Za-z0-9_-]{43}"),
+            launch_bound_patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
         ) -> AuthorizationRequest {
             AuthorizationRequest {
                 id,
@@ -433,6 +443,8 @@ mod tests {
                 granted_scopes,
                 patient,
                 device_name,
+                launch,
+                launch_bound_patient,
             }
         }
     }
@@ -476,6 +488,8 @@ mod tests {
             granted_scopes: Some(vec!["openid".to_string()]),
             patient: None,
             device_name: None,
+            launch: None,
+            launch_bound_patient: None,
         }
     }
 
@@ -696,6 +710,8 @@ mod tests {
             granted_scopes: None,
             patient: None,
             device_name: None,
+            launch: None,
+            launch_bound_patient: None,
         }
     }
 

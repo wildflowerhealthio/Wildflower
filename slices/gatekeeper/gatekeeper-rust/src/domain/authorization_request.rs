@@ -4,6 +4,8 @@ use diesel::expression::AsExpression;
 use strum::{AsRefStr, Display, EnumString};
 use url::Url;
 
+use crate::domain::launch_context::LaunchContext;
+
 /// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5) —
 /// advertised as `interval` in the device-authorization response and enforced
 /// against `last_polled_at` with `slow_down` at `/token`.
@@ -93,6 +95,12 @@ pub struct AuthorizationRequest {
     /// surfaced to the approver. `None` for auth-code requests and for devices that didn't name
     /// themselves. The settings approver may adjust it at approval time.
     pub device_name: Option<String>,
+    /// The SMART App Launch `launch` value this request consumed at
+    /// `/authorize` (auth-code flow only). `None` for a plain OAuth request.
+    pub launch: Option<String>,
+    /// The patient the consumed launch context binds, if any. When set, an
+    /// approval must name this patient (see [`Self::admits_patient`]).
+    pub launch_bound_patient: Option<String>,
 }
 
 /// Inputs to start an authorization-code flow request.
@@ -114,6 +122,9 @@ pub struct StartCodeAuthorizationArgs {
     pub pre_approved_scopes: Vec<String>,
     /// How long the new request stays pending before expiring.
     pub ttl: Duration,
+    /// The launch context `/authorize` consumed for this request, or `None` for
+    /// a plain OAuth request.
+    pub launch_context: Option<LaunchContext>,
 }
 
 /// Inputs to start a device-code flow request.
@@ -144,9 +155,22 @@ pub(crate) fn device_grant_name<'a>(
 }
 
 impl AuthorizationRequest {
+    /// Whether an approval may bind `patient` to this request: any patient (or
+    /// none) when its launch bound no patient, otherwise exactly the launch's.
+    #[must_use]
+    pub fn admits_patient(&self, patient: Option<&str>) -> bool {
+        match self.launch_bound_patient.as_deref() {
+            None => true,
+            Some(launch_bound_patient) => patient == Some(launch_bound_patient),
+        }
+    }
+
     #[must_use]
     pub fn new_code_authorization(input: StartCodeAuthorizationArgs) -> Self {
         let now = Utc::now();
+        let (launch, launch_bound_patient) = input.launch_context.map_or((None, None), |context| {
+            (Some(context.nonce), context.patient)
+        });
         AuthorizationRequest {
             id: input.id,
             grant_type: GrantType::AuthorizationCode,
@@ -165,6 +189,8 @@ impl AuthorizationRequest {
             granted_scopes: None,
             patient: None,
             device_name: None,
+            launch,
+            launch_bound_patient,
         }
     }
 
@@ -189,6 +215,8 @@ impl AuthorizationRequest {
             granted_scopes: None,
             patient: None,
             device_name: input.device_name,
+            launch: None,
+            launch_bound_patient: None,
         }
     }
 }
