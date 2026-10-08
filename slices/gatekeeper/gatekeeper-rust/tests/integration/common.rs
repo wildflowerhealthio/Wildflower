@@ -289,7 +289,7 @@ pub fn plant_authorization_code(
             patient: None,
             device_name: None,
             launch: None,
-            launch_patient: None,
+            launch_bound_patient: None,
         })
         .expect("insert request");
     store
@@ -340,7 +340,7 @@ pub fn plant_device_request(
             patient: None,
             device_name: None,
             launch: None,
-            launch_patient: None,
+            launch_bound_patient: None,
         })
         .expect("insert device request");
 }

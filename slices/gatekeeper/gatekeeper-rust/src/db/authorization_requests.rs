@@ -36,7 +36,7 @@ diesel::table! {
         patient -> Nullable<Text>,
         device_name -> Nullable<Text>,
         launch -> Nullable<Text>,
-        launch_patient -> Nullable<Text>,
+        launch_bound_patient -> Nullable<Text>,
     }
 }
 
@@ -69,7 +69,7 @@ struct Row {
     patient: Option<String>,
     device_name: Option<String>,
     launch: Option<String>,
-    launch_patient: Option<String>,
+    launch_bound_patient: Option<String>,
 }
 
 impl From<Row> for AuthorizationRequest {
@@ -93,7 +93,7 @@ impl From<Row> for AuthorizationRequest {
             patient: row.patient,
             device_name: row.device_name,
             launch: row.launch,
-            launch_patient: row.launch_patient,
+            launch_bound_patient: row.launch_bound_patient,
         }
     }
 }
@@ -119,7 +119,7 @@ impl From<&AuthorizationRequest> for Row {
             patient: request.patient.clone(),
             device_name: request.device_name.clone(),
             launch: request.launch.clone(),
-            launch_patient: request.launch_patient.clone(),
+            launch_bound_patient: request.launch_bound_patient.clone(),
         }
     }
 }
@@ -423,7 +423,7 @@ mod tests {
             patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
             device_name in prop::option::of("[ -~]{1,40}"),
             launch in prop::option::of("[A-Za-z0-9_-]{43}"),
-            launch_patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
+            launch_bound_patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
         ) -> AuthorizationRequest {
             AuthorizationRequest {
                 id,
@@ -444,7 +444,7 @@ mod tests {
                 patient,
                 device_name,
                 launch,
-                launch_patient,
+                launch_bound_patient,
             }
         }
     }
@@ -489,7 +489,7 @@ mod tests {
             patient: None,
             device_name: None,
             launch: None,
-            launch_patient: None,
+            launch_bound_patient: None,
         }
     }
 
@@ -711,7 +711,7 @@ mod tests {
             patient: None,
             device_name: None,
             launch: None,
-            launch_patient: None,
+            launch_bound_patient: None,
         }
     }
 

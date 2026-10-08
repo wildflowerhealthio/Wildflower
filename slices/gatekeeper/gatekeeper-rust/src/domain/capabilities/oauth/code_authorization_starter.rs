@@ -759,7 +759,7 @@ mod tests {
             .unwrap()
             .expect("parked");
         assert_eq!(parked_request.launch.as_deref(), Some("launch-1"));
-        assert_eq!(parked_request.launch_patient, None);
+        assert_eq!(parked_request.launch_bound_patient, None);
 
         let replay = FreshIds {
             request_id: "req-2".to_owned(),
@@ -899,6 +899,9 @@ mod tests {
             .unwrap()
             .expect("parked");
         assert_eq!(parked_request.status, RequestStatus::Pending);
-        assert_eq!(parked_request.launch_patient.as_deref(), Some("pat-2"));
+        assert_eq!(
+            parked_request.launch_bound_patient.as_deref(),
+            Some("pat-2")
+        );
     }
 }

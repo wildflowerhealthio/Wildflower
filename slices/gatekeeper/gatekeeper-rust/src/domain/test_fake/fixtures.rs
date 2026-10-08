@@ -48,7 +48,7 @@ pub(crate) fn device_request(
         patient: None,
         device_name: None,
         launch: None,
-        launch_patient: None,
+        launch_bound_patient: None,
     }
 }
 
@@ -78,7 +78,7 @@ pub(crate) fn code_request(
         patient: None,
         device_name: None,
         launch: None,
-        launch_patient: None,
+        launch_bound_patient: None,
     }
 }
 

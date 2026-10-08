@@ -135,7 +135,7 @@ mod tests {
             patient: None,
             device_name: None,
             launch: None,
-            launch_patient: None,
+            launch_bound_patient: None,
         }
     }
 

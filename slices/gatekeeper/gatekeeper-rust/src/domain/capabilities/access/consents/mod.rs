@@ -410,7 +410,7 @@ mod tests {
         store
             .insert_authorization_request(&AuthorizationRequest {
                 launch: Some("launch-1".to_owned()),
-                launch_patient: Some("pat-1".to_owned()),
+                launch_bound_patient: Some("pat-1".to_owned()),
                 ..code_request(
                     "req-1",
                     RequestStatus::Pending,

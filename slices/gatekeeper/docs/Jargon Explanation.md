@@ -184,7 +184,7 @@ resolved.
 Code-flow rows carry the OAuth client's PKCE `code_challenge`,
 `redirect_uri`, requested `scope`, and the `state` parameter. A code-flow row
 started by a SMART App Launch also carries the consumed `launch` and the
-patient its [LaunchContext](#launchcontext) binds (`launch_patient`).
+patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
 Device-flow rows leave those columns null.
 
 ### LaunchContext

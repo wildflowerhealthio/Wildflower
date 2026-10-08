@@ -26,4 +26,4 @@ CREATE TABLE launch_contexts (
 -- copied rather than joined, so the request keeps its binding after the
 -- context row is pruned.
 ALTER TABLE authorization_requests ADD COLUMN launch TEXT;
-ALTER TABLE authorization_requests ADD COLUMN launch_patient TEXT;
+ALTER TABLE authorization_requests ADD COLUMN launch_bound_patient TEXT;

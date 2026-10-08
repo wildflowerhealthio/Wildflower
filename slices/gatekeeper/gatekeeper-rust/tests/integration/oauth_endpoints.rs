@@ -429,7 +429,7 @@ async fn authorize_consumes_a_smart_launch_once() {
         .expect("query")
         .expect("parked");
     assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
-    assert_eq!(parked.launch_patient, None);
+    assert_eq!(parked.launch_bound_patient, None);
     let res = approve_oauth_consent(
         &g,
         &host_owner_token,

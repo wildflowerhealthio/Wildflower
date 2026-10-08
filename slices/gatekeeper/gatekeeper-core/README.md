@@ -30,8 +30,8 @@ because the wire schemas in this package mirror their rows.
   (for `slow_down`).
 - `authorizationCodes` — single-use codes issued when a code-flow
   request is approved; consumed at `/oauth/token`.
-- `launch_contexts` — the SMART App Launch `launch` values an in-process
-  launch minted, each bound to a `client_id` (and a nullable `patient`),
+- `launchContexts` — the SMART App Launch `launch` values an in-process
+  launch minted, each bound to a `clientId` (and a nullable `patient`),
   consumed single-use within five minutes by that client's `/oauth/authorize`.
   Expired rows are pruned when the next is minted. See the
   [Jargon Explanation](../docs/Jargon%20Explanation.md#launchcontext).

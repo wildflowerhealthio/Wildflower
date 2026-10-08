@@ -100,7 +100,7 @@ pub struct AuthorizationRequest {
     pub launch: Option<String>,
     /// The patient the consumed launch context binds, if any. When set, an
     /// approval must name this patient (see [`Self::admits_patient`]).
-    pub launch_patient: Option<String>,
+    pub launch_bound_patient: Option<String>,
 }
 
 /// Inputs to start an authorization-code flow request.
@@ -159,16 +159,16 @@ impl AuthorizationRequest {
     /// none) when its launch bound no patient, otherwise exactly the launch's.
     #[must_use]
     pub fn admits_patient(&self, patient: Option<&str>) -> bool {
-        match self.launch_patient.as_deref() {
+        match self.launch_bound_patient.as_deref() {
             None => true,
-            Some(launch_patient) => patient == Some(launch_patient),
+            Some(launch_bound_patient) => patient == Some(launch_bound_patient),
         }
     }
 
     #[must_use]
     pub fn new_code_authorization(input: StartCodeAuthorizationArgs) -> Self {
         let now = Utc::now();
-        let (launch, launch_patient) = input.launch_context.map_or((None, None), |context| {
+        let (launch, launch_bound_patient) = input.launch_context.map_or((None, None), |context| {
             (Some(context.nonce), context.patient)
         });
         AuthorizationRequest {
@@ -190,7 +190,7 @@ impl AuthorizationRequest {
             patient: None,
             device_name: None,
             launch,
-            launch_patient,
+            launch_bound_patient,
         }
     }
 
@@ -216,7 +216,7 @@ impl AuthorizationRequest {
             patient: None,
             device_name: input.device_name,
             launch: None,
-            launch_patient: None,
+            launch_bound_patient: None,
         }
     }
 }

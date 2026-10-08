@@ -293,7 +293,7 @@ fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
         ),
         OAuthErrorKind::InvalidAudience => (
             "Invalid audience",
-            "The supplied aud is not this server's FHIR base URL.",
+            "The supplied aud names neither this server nor its FHIR base URL.",
         ),
     }
 }
