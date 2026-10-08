@@ -13,8 +13,8 @@
 //! - [`LaunchContextMinter`] is the mint-only face of the launch-context
 //!   capability, handed out by [`crate::setup_gatekeeper`] to the in-process
 //!   launchers outside the gatekeeper.
-//! - [`HostOwnerConsents`] is the consent capabilities bound to the host
-//!   Owner's grant, for the host to call in-process.
+//! - [`HostConsentDecider`] is the consent capabilities bound to the host
+//!   Owner's grant, for the host to decide consents in-process.
 //! - The remaining modules hold one binding each (the `/access` ones implement
 //!   `FixedScopeCapability`/`Capability`, the session ones
 //!   `AuthenticatedCapability`); each lifts the store + port handles out of the
@@ -29,7 +29,7 @@ mod consents_decider;
 mod consents_reader;
 mod grants_reader;
 mod grants_revoker;
-mod host_owner_consents;
+mod host_consent_decider;
 mod launch_context_minter;
 mod oauth_front_door;
 mod session;
@@ -45,7 +45,7 @@ pub(crate) use consents_decider::LiveConsentDecider;
 pub(crate) use consents_reader::LiveConsentReader;
 pub(crate) use grants_reader::LiveGrantsReader;
 pub(crate) use grants_revoker::LiveGrantsRevoker;
-pub use host_owner_consents::HostOwnerConsents;
+pub use host_consent_decider::HostConsentDecider;
 pub use launch_context_minter::LaunchContextMinter;
 pub(crate) use oauth_front_door::{
     LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,

@@ -146,7 +146,7 @@ mod tests {
         AuthorizationRequest, GrantType, RequestStatus,
     };
     use gatekeeper_rust::{
-        setup_gatekeeper, GatekeeperConfig, GatekeeperStore, HostOwnerConsents,
+        setup_gatekeeper, GatekeeperConfig, GatekeeperStore, HostConsentDecider,
         NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
     };
     use shared_structures_rust::owner_ui::OwnerUiBase;
@@ -161,7 +161,7 @@ mod tests {
     /// A gatekeeper over a temporary database, the way a server's run sets
     /// one up, with what the test reads it through.
     struct TestGatekeeper {
-        consents: HostOwnerConsents,
+        consent_decider: HostConsentDecider,
         store: SqliteGatekeeperStore,
         _pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
         _owner_token_rx: watch::Receiver<Option<String>>,
@@ -194,7 +194,7 @@ mod tests {
         )
         .unwrap();
         TestGatekeeper {
-            consents: HostOwnerConsents::new(gatekeeper.state),
+            consent_decider: HostConsentDecider::new(gatekeeper.state),
             store: SqliteGatekeeperStore::new(pool).unwrap(),
             _pending_consent_rx: pending_consent_rx,
             _owner_token_rx: owner_token_rx,
@@ -238,7 +238,9 @@ mod tests {
         let detail = ServerDetail {
             health: None,
             pending_consent: None,
-            consent_decider: Some(ServerConsentDecider::new(gatekeeper.consents.clone())),
+            consent_decider: Some(ServerConsentDecider::new(
+                gatekeeper.consent_decider.clone(),
+            )),
         };
         let status = UnitStatus {
             run_state: RunState::Running,

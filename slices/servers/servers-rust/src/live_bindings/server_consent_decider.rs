@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use gatekeeper_rust::{
-    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, HostOwnerConsents,
+    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, HostConsentDecider,
 };
 use unit_runner::{UnitId, UnitStatuses};
 
@@ -26,13 +26,13 @@ use crate::domain::{
 /// synchronous gatekeeper transaction: run them on a blocking thread. One that
 /// started before the run ended finishes on that run's gatekeeper.
 #[derive(Clone)]
-pub struct ServerConsentDecider(Arc<HostOwnerConsents>);
+pub struct ServerConsentDecider(Arc<HostConsentDecider>);
 
 impl ServerConsentDecider {
-    /// The decider over a run's gatekeeper `consents`.
+    /// The decider over a run's gatekeeper, through its `decider`.
     #[must_use]
-    pub fn new(consents: HostOwnerConsents) -> Self {
-        Self(Arc::new(consents))
+    pub fn new(decider: HostConsentDecider) -> Self {
+        Self(Arc::new(decider))
     }
 
     /// The decider of the server `domain`'s run, from the servers' `statuses`.

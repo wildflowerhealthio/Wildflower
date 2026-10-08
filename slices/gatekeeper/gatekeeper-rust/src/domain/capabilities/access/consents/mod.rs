@@ -55,7 +55,7 @@ pub(crate) fn consent_decider_scopes() -> Vec<Scope> {
 
 // ---------------------------------------------------------------------------
 // Read models the Owner UI renders — the shapes the `GET` consent handlers
-// return, and `HostOwnerConsents` hands the host. Pure domain data (no axum),
+// return, and `HostConsentDecider` hands the host. Pure domain data (no axum),
 // produced by `ConsentReader`.
 // ---------------------------------------------------------------------------
 

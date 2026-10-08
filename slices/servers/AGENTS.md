@@ -35,7 +35,7 @@ changing how servers run or what the host notifies about them.
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`, and
-    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostOwnerConsents`.
+    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`.
     `tests/server_unit.rs` runs the real
     server through `UnitRunner`, its consents included.
 - **`servers-tauri-rust`** — the host side. `host_servers`, called from the
@@ -269,7 +269,7 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   A run's health goes out through `ctx.set_detail`, and `UnitRunner` clears
   it.
 - **Consents are decided in-process.** A run puts a `ServerConsentDecider`
-  over its gatekeeper's `HostOwnerConsents` in every `ServerDetail` it sets,
+  over its gatekeeper's `HostConsentDecider` in every `ServerDetail` it sets,
   and `UnitRunner` clears the detail when the run ends, so the consent
   commands, which look the decider up in `statuses()`, reach only a running
   server and answer `serverNotRunning` otherwise. They call the capabilities behind `/access/devices/{userCode}`

@@ -71,7 +71,9 @@ impl Unit for ServerUnit {
         .await?;
         tokio::spawn(report_detail(
             DetailSources {
-                consent_decider: ServerConsentDecider::new(server.host_owner_consents().clone()),
+                consent_decider: ServerConsentDecider::new(
+                    server.consent_decider_for_host().clone(),
+                ),
                 server_health_rx,
                 pending_consent_rx,
                 host_pending_consent_tx,

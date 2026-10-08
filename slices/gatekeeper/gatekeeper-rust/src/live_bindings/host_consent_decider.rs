@@ -1,5 +1,5 @@
-//! [`HostOwnerConsents`] — the pending consents as the host's Owner reads and
-//! decides them in-process, with no token.
+//! [`HostConsentDecider`] — the host reads and decides a server's pending
+//! consents as its Owner, in-process, with no token.
 //!
 //! The same [`ConsentReader`] and [`ConsentDecider`] the `/access/devices/*`
 //! and `/access/oauth-consents/*` routes acquire through `Scoped<…>`, built
@@ -21,8 +21,9 @@ use crate::domain::capabilities::{
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::ports::PendingConsentPublisher;
 
-/// Read, approve and deny a server's pending consents as the host's Owner,
-/// in-process.
+/// Lets the host read and approve or deny this server's waiting consents as
+/// its Owner, in-process, without HTTP or a token: the in-process twin of the
+/// Owner UI's `/access/devices/*` and `/access/oauth-consents/*` routes.
 ///
 /// Whoever holds one decides with the host Owner's authority and no token,
 /// so only the host gets one: it is built from the [`GatekeeperState`]
@@ -30,12 +31,12 @@ use crate::ports::PendingConsentPublisher;
 /// HTTP surface reaches it. Each call is a synchronous store transaction, so
 /// a caller on an async runtime runs it on a blocking thread.
 #[derive(Clone)]
-pub struct HostOwnerConsents {
+pub struct HostConsentDecider {
     state: Arc<GatekeeperState>,
 }
 
-impl HostOwnerConsents {
-    /// The pending consents of the gatekeeper `state` belongs to.
+impl HostConsentDecider {
+    /// The decider over the consents of the gatekeeper `state` belongs to.
     #[must_use]
     pub fn new(state: Arc<GatekeeperState>) -> Self {
         Self { state }

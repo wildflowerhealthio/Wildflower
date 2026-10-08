@@ -69,7 +69,7 @@ wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rus
 # notifications count, and `HealthStatus`, which a server's status carries.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["health-check"] }
 # The head of a run's pending-consent queue, which its detail carries, and
-# `HostOwnerConsents`, through which the base's commands read, approve and
+# `HostConsentDecider`, through which the base's commands read, approve and
 # deny a running server's consents in-process. Tauri-free.
 gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 

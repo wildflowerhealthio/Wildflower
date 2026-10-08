@@ -377,7 +377,7 @@ publishes it on a `watch` channel. The Tauri host emits each server's head to
 its base as the `pending-consent` event, raises the window when a server with
 nothing waiting gets a request (not when its queue advances), and gives the base
 commands that read and decide a request in-process through
-`HostOwnerConsents`, the same consent capabilities with the host Owner's grant
+`HostConsentDecider`, the same consent capabilities with the host Owner's grant
 (see the servers slice's
 [Server Runs Explanation](../../servers/docs/Server%20Runs%20Explanation.md)).
 The host also forwards each change as `bridge:PendingConsentRequested`, on

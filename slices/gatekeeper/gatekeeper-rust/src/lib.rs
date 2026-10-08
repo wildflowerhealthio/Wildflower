@@ -53,14 +53,14 @@ pub use domain::pending_consent::PendingConsentHead;
 pub use domain::{GatekeeperStore, GatekeeperTx};
 
 // The pending consents as the host's Owner reads and decides them in-process
-// (`HostOwnerConsents`, built from `Gatekeeper::state`), and the shapes it
+// (`HostConsentDecider`, built from `Gatekeeper::state`), and the shapes it
 // reads and decides them in.
 pub use domain::capabilities::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
     OAuthConsentView,
 };
 pub use domain::client_registration::ClientRegistrationVerdict;
-pub use live_bindings::HostOwnerConsents;
+pub use live_bindings::HostConsentDecider;
 
 // Re-exported so the host can name the pool type at the `setup_gatekeeper`
 // call site without a direct diesel dependency; the canonical home is

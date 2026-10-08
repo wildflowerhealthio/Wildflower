@@ -1,11 +1,11 @@
-//! `HostOwnerConsents`: the host reads and decides a server's pending consents
+//! `HostConsentDecider`: the host reads and decides a server's pending consents
 //! in-process, with no token, through the capabilities behind
 //! `/access/oauth-consents/*` and `/access/devices/*`. A decision moves the
 //! consent head as one made over HTTP does.
 
 use gatekeeper_rust::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ClientRegistrationVerdict, ConsentOutcome,
-    HostOwnerConsents,
+    HostConsentDecider,
 };
 
 use crate::common::*;
@@ -16,9 +16,9 @@ async fn the_host_reads_and_approves_a_parked_authorize_request() {
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let request_id =
         parked_request_id(&get_authorize(&g.router, &authorize_query("test-app", "read")).await);
-    let consents = HostOwnerConsents::new(g.state.clone());
+    let decider = HostConsentDecider::new(g.state.clone());
 
-    let consent = consents
+    let consent = decider
         .oauth_consent(&request_id)
         .expect("the parked request");
     assert_eq!(consent.request.client_id, "test-app");
@@ -33,7 +33,7 @@ async fn the_host_reads_and_approves_a_parked_authorize_request() {
         ClientRegistrationVerdict::Registered
     );
 
-    let outcome = consents
+    let outcome = decider
         .approve_oauth(
             &request_id,
             ApproveOAuthConsentInput {
@@ -78,17 +78,15 @@ async fn the_host_reads_approves_and_denies_device_requests() {
         let body = body_json(res.into_body()).await;
         user_codes.push(body["user_code"].as_str().expect("user_code").to_owned());
     }
-    let consents = HostOwnerConsents::new(g.state.clone());
+    let decider = HostConsentDecider::new(g.state.clone());
 
-    let consent = consents
-        .device_consent(&user_codes[0])
-        .expect("the request");
+    let consent = decider.device_consent(&user_codes[0]).expect("the request");
     assert_eq!(consent.request.client_id, "wildflower-host");
     assert_eq!(
         consent.request.requested_scopes,
         vec!["system/*.cruds".to_owned()]
     );
-    let outcome = consents
+    let outcome = decider
         .approve_device(
             &user_codes[0],
             ApproveDeviceConsentInput {
@@ -108,10 +106,10 @@ async fn the_host_reads_approves_and_denies_device_requests() {
         "the next request is the head once the first is decided",
     );
 
-    consents.deny_device(&user_codes[1]).expect("deny");
+    decider.deny_device(&user_codes[1]).expect("deny");
     assert_eq!(pending_consent_head(&db), None);
     assert_eq!(
-        consents.deny_device(&user_codes[1]),
+        decider.deny_device(&user_codes[1]),
         Err(
             gatekeeper_rust::domain::gatekeeper_error::GatekeeperError::DeviceConsentNotFound {
                 user_code: user_codes[1].clone()
