@@ -317,6 +317,34 @@ describe('ConsentSheet', () => {
     expect(within(next).getByText('1 of 1')).toBeDefined()
   })
 
+  it('should say an approval granted nothing even when the host confirms it was taken off the queue first', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    let answerApproval: (outcome: unknown) => void = () => undefined
+    const host = fakeHost({
+      waiting: [golden.pendingConsents[0]],
+      details: { 'ABCD-EFGH': golden.consentDetails.device },
+      approval: new Promise((resolve) => {
+        answerApproval = resolve
+      }),
+    })
+    const events = renderSheet(host)
+    const dialog = await sheet()
+    await within(dialog).findByRole('heading', { name: 'Pebble sync' })
+    await user.click(within(dialog).getByRole('button', { name: 'Allow' }))
+
+    // Act: the event that Ruth's server has nothing waiting beats the approval's answer
+    events.emit('pending-consent', golden.pendingConsents[2])
+    await waitFor(() => {
+      expect(document.querySelector('dialog[open]')).toBeNull()
+    })
+    answerApproval({ status: 'denied' })
+
+    // Assert
+    const notice = await sheet()
+    expect(await within(notice).findByText(/nothing you allowed could be granted/)).toBeDefined()
+  })
+
   it('should keep saying an approval granted nothing when nothing else waits, until closed', async () => {
     // Arrange
     const user = userEvent.setup()

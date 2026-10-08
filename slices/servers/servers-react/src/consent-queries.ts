@@ -113,12 +113,20 @@ type ConsentDecision =
 /**
  * Approves or denies a consent waiting on the server `domain`, answering with
  * what an approval came to; a denial answers `denied`.
+ *
+ * @remarks
+ * `onDecided` hears each outcome even once the caller has unmounted, as it
+ * does when the host's `pending-consent` event takes the consent off the
+ * queue before the approval answers: React Query skips a callback passed to
+ * `mutate` after its component unmounts, but not one passed here.
  */
 const useDecideConsent = (
   runHostCommand: RunHostCommand,
-  domain: string
+  domain: string,
+  onDecided: (outcome: ApprovalOutcome.Type, decision: ConsentDecision) => void
 ): UseMutationResult<ApprovalOutcome.Type, HostCommandError, ConsentDecision> =>
   useMutation({
+    onSuccess: onDecided,
     mutationFn: (decision) =>
       decision.kind === 'approve'
         ? runHostCommand(approveConsent({ domain, approval: decision.approval }))

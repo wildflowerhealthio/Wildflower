@@ -47,7 +47,9 @@ function WaitingConsent({
   readonly onDecided: (grantedNothing: boolean) => void
 }): JSX.Element {
   const consent = useQuery(consentQueryOptions(runHostCommand, waiting))
-  const decide = useDecideConsent(runHostCommand, waiting.domain)
+  const decide = useDecideConsent(runHostCommand, waiting.domain, (outcome, decision) => {
+    onDecided(decision.kind === 'approve' && !ApprovalOutcome.isApproved(outcome))
+  })
   if (consent.isPending) return <PageLoading message="Loading the request…" />
   if (consent.isError) return <ErrorBanner error={consent.error} />
   const formProps = {
@@ -55,11 +57,7 @@ function WaitingConsent({
     deciding: decide.isPending,
     decisionError: decide.error,
     onDecide: (decision: ConsentDecision): void => {
-      decide.mutate(decision, {
-        onSuccess: (outcome) => {
-          onDecided(decision.kind === 'approve' && !ApprovalOutcome.isApproved(outcome))
-        },
-      })
+      decide.mutate(decision)
     },
   }
   return Match.value(consent.data).pipe(
