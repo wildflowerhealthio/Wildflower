@@ -25,12 +25,18 @@ pub use dedicated_runtime::RUN_RUNTIME_SHUTDOWN_TIMEOUT;
 
 /// How long `UnitRunner` waits before restarting a run that ended on its own
 /// while its unit should still run, the first time in a row. Each restart in a
-/// row waits twice as long as the one before, up to [`MAX_RESTART_DELAY`].
+/// row waits twice as long as the one before, up to [`MAX_RESTART_DELAY`],
+/// until a run stays running for [`STABLE_RUN_DURATION`].
 pub const RESTART_DELAY: Duration = Duration::from_secs(5);
 
 /// The longest `UnitRunner` waits before restarting a run, however many times
 /// in a row its unit has restarted.
 pub const MAX_RESTART_DELAY: Duration = Duration::from_secs(5 * 60);
+
+/// How long a run must have been running when it ends for its unit's restarts
+/// in a row to start over, so its restart waits [`RESTART_DELAY`] again. A run
+/// that comes up and fails sooner counts as one more restart in a row.
+pub const STABLE_RUN_DURATION: Duration = Duration::from_secs(2 * 60);
 
 /// The longest `UnitRunner` goes without starting and stopping runs per policy
 /// on the wall clock.
@@ -50,6 +56,7 @@ pub const RUN_STOPS_CAPACITY: usize = 64;
 pub(crate) struct RunnerTimings {
     pub(crate) restart_delay: Duration,
     pub(crate) max_restart_delay: Duration,
+    pub(crate) stable_run_duration: Duration,
     pub(crate) run_runtime_shutdown_timeout: Duration,
     pub(crate) start_and_stop_runs_per_policy_interval: Duration,
 }
@@ -59,6 +66,7 @@ impl Default for RunnerTimings {
         Self {
             restart_delay: RESTART_DELAY,
             max_restart_delay: MAX_RESTART_DELAY,
+            stable_run_duration: STABLE_RUN_DURATION,
             run_runtime_shutdown_timeout: RUN_RUNTIME_SHUTDOWN_TIMEOUT,
             start_and_stop_runs_per_policy_interval: START_AND_STOP_RUNS_PER_POLICY_INTERVAL,
         }

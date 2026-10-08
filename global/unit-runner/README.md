@@ -8,11 +8,11 @@ about what a unit does: the app supplies the units, stores their policies, and
 owns its own wire and notifications.
 
 A unit whose runs keep failing restarts after `RESTART_DELAY` (5 s), then
-twice as long each time in a row, up to `MAX_RESTART_DELAY` (5 minutes). A run
-that announces running, `set_unit`, `set_unit_policy`, and
-`restart_running_units` while the unit's run is in progress start the delay
-over. A unit already waiting out its delay keeps waiting through
-`restart_running_units`.
+twice as long each time in a row, up to `MAX_RESTART_DELAY` (5 minutes). The
+delay starts over after a run that stayed running for `STABLE_RUN_DURATION`
+(2 minutes), while the unit shouldn't run, and on `set_unit`,
+`set_unit_policy`, `restart_running_units` and the app becoming present; those
+last also start a unit waiting out its delay at once.
 
 This crate has no Tauri dependency, so an app's domain crates can define units
 and store run policies without depending on Tauri.

@@ -16,7 +16,7 @@ use crate::domain::unit_plan::UnitPhase;
 use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
-use crate::runner::{RunnerTimings, UnitRunner, MAX_RESTART_DELAY};
+use crate::runner::{RunnerTimings, UnitRunner, MAX_RESTART_DELAY, STABLE_RUN_DURATION};
 use crate::status::{PlatformStopReason, RunState, RunStop, StopReason, UnitStatus};
 use crate::unit::{Unit, UnitId};
 
@@ -56,7 +56,8 @@ pub(super) struct Harness {
 
 impl Harness {
     /// A `UnitRunner` that first restarts after `restart_delay`, backing off
-    /// to [`MAX_RESTART_DELAY`].
+    /// to [`MAX_RESTART_DELAY`] until a run stays running for
+    /// [`STABLE_RUN_DURATION`].
     pub(super) fn with_restart_delay(restart_delay: Duration) -> Self {
         let clock = Arc::new(ManualClock(Mutex::new(
             DateTime::from_timestamp(1_800_000_000, 0).expect("a valid instant"),
@@ -67,6 +68,7 @@ impl Harness {
             RunnerTimings {
                 restart_delay,
                 max_restart_delay: MAX_RESTART_DELAY,
+                stable_run_duration: STABLE_RUN_DURATION,
                 run_runtime_shutdown_timeout: Duration::from_secs(1),
                 start_and_stop_runs_per_policy_interval: Duration::from_secs(10),
             },

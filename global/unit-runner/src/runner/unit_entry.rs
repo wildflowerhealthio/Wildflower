@@ -25,9 +25,10 @@ pub(crate) struct UnitEntry<D> {
     pub(crate) pending_restart: Option<PendingRestart>,
     /// How many times in a row the unit has restarted after a run that ended
     /// on its own; each restart waits twice as long as the one before. Back
-    /// to zero once a run announces running, and on every fresh instruction
-    /// for the unit: `set_unit`, `set_unit_policy`, and
-    /// `restart_running_units` while its run is in progress.
+    /// to zero after a run that stayed running for
+    /// [`STABLE_RUN_DURATION`](crate::STABLE_RUN_DURATION), while the unit
+    /// shouldn't run, and when its restarts start over
+    /// ([`start_restarts_over`](Self::start_restarts_over)).
     pub(crate) restarts_in_a_row: u32,
     /// `remove_unit` is waiting for the unit's run to end before forgetting
     /// it.
@@ -70,6 +71,14 @@ impl<D> UnitEntry<D> {
             (None, Some(_)) => UnitPhase::AwaitingRestart,
             (None, None) => UnitPhase::Idle,
         }
+    }
+
+    /// Start the unit's restarts over, on a fresh instruction for it: its
+    /// pending restart is dropped, so it starts at once if it should run, and
+    /// its next restart waits [`RESTART_DELAY`](crate::RESTART_DELAY).
+    pub(crate) fn start_restarts_over(&mut self) {
+        self.pending_restart = None;
+        self.restarts_in_a_row = 0;
     }
 
     /// Ask the unit's run, if it has one, to stop for `reason`.

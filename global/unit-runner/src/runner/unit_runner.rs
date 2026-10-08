@@ -204,8 +204,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
                 entry.policy = policy;
                 entry.factory = factory;
                 entry.awaiting_removal = false;
-                entry.pending_restart = None;
-                entry.restarts_in_a_row = 0;
+                entry.start_restarts_over();
                 entry.stop_run(StopReason::Replaced);
             }
             None => {
@@ -218,9 +217,10 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// Replace the policy of the unit `unit_id`, even with the policy it
     /// already has. A unit never set is logged and ignored. Setting a policy:
     ///
-    ///  - drops a pending restart, so a fresh instruction acts now rather than
-    ///    after the delay left over from the last run, and starts the restart
-    ///    delay over from [`RESTART_DELAY`](crate::RESTART_DELAY);
+    ///  - starts the unit's restarts over: drops a pending restart, so a fresh
+    ///    instruction acts now rather than after the delay left over from the
+    ///    last run, and starts the restart delay over from
+    ///    [`RESTART_DELAY`](crate::RESTART_DELAY);
     ///  - clears an end of the background session by the platform, so the
     ///    app's instruction counts for more than the platform's earlier end;
     ///  - starts and stops runs per policy, so the unit starts at once if it
@@ -232,8 +232,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             return;
         };
         entry.policy = policy;
-        entry.pending_restart = None;
-        entry.restarts_in_a_row = 0;
+        entry.start_restarts_over();
         state.session_ledger.clear_ended_by_platform();
         self.start_and_stop_runs_per_policy_locked(&mut state);
     }
@@ -277,28 +276,34 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     }
 
     /// The app is present now, or absent. Becoming present clears an end of
-    /// the background session by the platform.
+    /// the background session by the platform, and starts every unit's
+    /// restarts over, so a unit waiting out its restart delay starts at once.
     pub fn set_app_present(self: &Arc<Self>, present: bool) {
         let mut state = self.lock_state();
         let now = self.clock.now();
         match state.app_presence.update(present, now) {
-            PresenceChange::BecamePresent => state.session_ledger.clear_ended_by_platform(),
+            PresenceChange::BecamePresent => {
+                state.session_ledger.clear_ended_by_platform();
+                for entry in state.units.values_mut() {
+                    entry.start_restarts_over();
+                }
+            }
             PresenceChange::BecameAbsent | PresenceChange::Unchanged => {}
         }
         self.start_and_stop_runs_per_policy_locked(&mut state);
     }
 
-    /// Restart every unit whose run is in progress: each run stops, and the
-    /// unit starts again once it has ended, its restart delay starting over
-    /// from [`RESTART_DELAY`](crate::RESTART_DELAY).
+    /// Restart every unit that should be running: each run in progress
+    /// stops, and its unit starts again once it has ended; a unit waiting out
+    /// its restart delay starts at once. Every unit's restarts start over, so
+    /// its next restart waits [`RESTART_DELAY`](crate::RESTART_DELAY).
     pub fn restart_running_units(self: &Arc<Self>) {
         let mut state = self.lock_state();
         for entry in state.units.values_mut() {
-            if entry.current_run.is_some() {
-                entry.restarts_in_a_row = 0;
-                entry.stop_run(StopReason::StoppedForRestart);
-            }
+            entry.start_restarts_over();
+            entry.stop_run(StopReason::StoppedForRestart);
         }
+        self.start_and_stop_runs_per_policy_locked(&mut state);
     }
 
     /// A background session started, whoever started it. It clears an end of
@@ -406,8 +411,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// publishes `Stopped`, so whatever the app does on seeing `Stopped`, a
     /// `set_unit_policy` included, acts on a run that has ended.
     ///
-    /// The run's reports stop first, so whether it announced running can't
-    /// change between recording the end and publishing it.
+    /// The run's status is frozen first, so how long it had been running
+    /// can't change between recording the end and publishing it.
     pub(super) fn run_finished(
         self: &Arc<Self>,
         unit_id: &UnitId,
@@ -416,11 +421,12 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         reason: StopReason,
         error: Option<String>,
     ) {
-        self.status_publisher.stop_run_reports(run_liveness);
-        let announced_running = self.status_publisher.announced_running(unit_id);
-        self.record_run_end(unit_id, generation, reason, announced_running);
+        let running_since = self
+            .status_publisher
+            .freeze_run_status(unit_id, run_liveness);
+        self.record_run_end(unit_id, generation, reason, running_since);
         self.status_publisher
-            .publish_stopped(unit_id, run_liveness, reason, error);
+            .publish_stopped(unit_id, reason, error, running_since.is_some());
     }
 
     /// The run of `unit_id` with `generation` was stopped for `reason` while
@@ -432,21 +438,22 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         generation: RunGeneration,
         reason: StopReason,
     ) {
-        self.record_run_end(unit_id, generation, reason, false);
+        self.record_run_end(unit_id, generation, reason, None);
     }
 
-    /// The run of `unit_id` with `generation` ended for `reason`, having
-    /// announced running or not. Restarts it after the restart delay when it
-    /// ended on its own while its unit should still run. The delay doubles
-    /// with each restart in a row, and starts over from
-    /// [`RESTART_DELAY`](crate::RESTART_DELAY) after a run that announced
-    /// running.
+    /// The run of `unit_id` with `generation` ended for `reason`, having been
+    /// running since `running_since`, or never having announced running.
+    /// Restarts it after the restart delay when it ended on its own while its
+    /// unit should still run. The delay doubles with each restart in a row,
+    /// and starts over from [`RESTART_DELAY`](crate::RESTART_DELAY) after a
+    /// run that had been running for
+    /// [`STABLE_RUN_DURATION`](crate::STABLE_RUN_DURATION).
     fn record_run_end(
         self: &Arc<Self>,
         unit_id: &UnitId,
         generation: RunGeneration,
         reason: StopReason,
-        announced_running: bool,
+        running_since: Option<DateTime<Utc>>,
     ) {
         let mut state = self.lock_state();
         let now = self.clock.now();
@@ -459,7 +466,12 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             return;
         }
         entry.current_run = None;
-        if announced_running {
+        let ran_stably = running_since.is_some_and(|running_since| {
+            (now - running_since)
+                .to_std()
+                .is_ok_and(|running_for| running_for >= self.timings.stable_run_duration)
+        });
+        if ran_stably {
             entry.restarts_in_a_row = 0;
         }
         let should_run =
@@ -527,6 +539,11 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             let should_run =
                 entry.should_run(now, app_present_or_in_grace, runs_discouraged_by_platform);
             some_unit_should_run |= should_run;
+            if !should_run {
+                // A unit that shouldn't run has no restarts in a row to carry
+                // into the next time it should.
+                entry.restarts_in_a_row = 0;
+            }
             match plan_unit(should_run, entry.phase()) {
                 UnitAction::Start => starts.push(unit_id.clone()),
                 // A unit being removed, or stopped by the platform ending the

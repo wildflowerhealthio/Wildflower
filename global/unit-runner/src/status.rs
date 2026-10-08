@@ -103,7 +103,8 @@ pub enum StopReason {
     /// error), its factory failed, or it panicked. Restarted after the restart
     /// delay while the unit should still run:
     /// [`RESTART_DELAY`](crate::RESTART_DELAY), doubled for each restart in a
-    /// row, up to [`MAX_RESTART_DELAY`](crate::MAX_RESTART_DELAY).
+    /// row, up to [`MAX_RESTART_DELAY`](crate::MAX_RESTART_DELAY), until a run
+    /// stays running for [`STABLE_RUN_DURATION`](crate::STABLE_RUN_DURATION).
     EndedOnItsOwn,
     /// The platform ended the background session, for `platform_reason`. Not
     /// restarted until the app becomes present again, the app sets a policy, or

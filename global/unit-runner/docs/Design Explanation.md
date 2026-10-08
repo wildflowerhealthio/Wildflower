@@ -272,13 +272,19 @@ a unit that can never come up, such as a server whose configuration can't be
 built, settles at one attempt every 5 minutes. The count of restarts in a row
 starts over:
 
-- when a run announces running, so a unit that came up and later failed
-  restarts after `RESTART_DELAY` again;
-- on every fresh instruction for the unit: `set_unit`, `set_unit_policy`, and
-  `restart_running_units` for a unit whose run is in progress.
+- when a run that had been running for `STABLE_RUN_DURATION` (2 minutes)
+  ends, so a unit that stayed up and later failed restarts after
+  `RESTART_DELAY` again, while one that comes up and fails at once keeps
+  backing off;
+- while the unit shouldn't run (its policy is inactive, the platform ended the
+  background session, or it is being removed), so failures don't carry over
+  into the next time it should run;
+- on every fresh instruction: `set_unit` and `set_unit_policy` for the unit,
+  and `restart_running_units` and the app becoming present for every unit.
 
-Calling `set_unit_policy` (even with the unchanged policy) also cancels a
-pending restart and starts the unit at once if it should run. A unit waiting
+A fresh instruction (`set_unit_policy` even with the unchanged policy
+included) also cancels a pending restart, so the unit starts at once if it
+should run. A unit waiting
 out its delay still should run, so it keeps a background session wanted. The
 delay runs on `tokio::time` from the run's end, so time a laptop spends asleep
 doesn't count toward it.
