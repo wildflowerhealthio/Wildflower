@@ -135,7 +135,7 @@ describe('ConsentDetails', () => {
     )
   })
 
-  it("should decode an app's request, with its redirect and the patient its grant names", () => {
+  it("should decode an app's request, with its redirect and the patient its launch binds", () => {
     // Act
     const details = decodeDetails(golden.consentDetails.oauthRegistered)
 
@@ -143,7 +143,9 @@ describe('ConsentDetails', () => {
     expect(details.kind === 'oauth' ? details.redirectUri.origin : undefined).toBe(
       'https://lifting.example.com'
     )
-    expect(details.kind === 'oauth' ? details.patient : Option.none()).toEqual(Option.some('pat-1'))
+    expect(details.kind === 'oauth' ? details.launchPatient : Option.none()).toEqual(
+      Option.some('pat-1')
+    )
   })
 
   it('should decode each registration, and an app named only by its id', () => {

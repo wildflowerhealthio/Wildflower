@@ -58,29 +58,30 @@ function RegistrationAcknowledgement({
 }
 
 /**
- * The patient the app gets: the one its standing grant names, or none when
- * the access allows it. Picking among the server's patients isn't offered.
+ * The patient the app gets: the one its launch binds, which the approval must
+ * name, or none when the app wasn't launched for one and the access allows it.
+ * Picking among the server's patients isn't offered.
  */
 function PatientChoice({
-  patient,
+  launchPatient,
   needsPatient,
   value,
   onChange,
 }: {
-  readonly patient: Option.Option<string>
+  readonly launchPatient: Option.Option<string>
   readonly needsPatient: boolean
   readonly value: string | null
   readonly onChange: (patient: string | null) => void
 }): JSX.Element {
-  const patients = patient.pipe(
+  const patients = launchPatient.pipe(
     Option.map((id) => [{ id, displayName: id }]),
     Option.getOrElse(() => [])
   )
   if (needsPatient && patients.length === 0) {
     return (
       <p className={styles['oauth-consent-form__note']}>
-        This app asks for one patient&apos;s records, and no patient is chosen for it. Turn off that
-        access below to allow the rest.
+        This app asks for one patient&apos;s records, and wasn&apos;t launched for a patient. Turn
+        off that access below to allow the rest.
       </p>
     )
   }
@@ -90,7 +91,7 @@ function PatientChoice({
       value={value}
       onChange={onChange}
       onChooseNoPatient={
-        needsPatient
+        needsPatient || Option.isSome(launchPatient)
           ? undefined
           : () => {
               onChange(null)
@@ -113,11 +114,13 @@ function OAuthConsentForm(props: ConsentFormProps<ConsentDetails.OAuth>): JSX.El
     [details]
   )
   const [draft, setDraft] = useState(() =>
-    GrantDraft.fromScopes(details.requestedScopes, Option.getOrNull(details.patient))
+    GrantDraft.fromScopes(details.requestedScopes, Option.getOrNull(details.launchPatient))
   )
   const [acknowledged, setAcknowledged] = useState(false)
   const needsPatient = grantsPatientRecords(draft)
-  const offersPatient = asksForPatient(draft)
+  // An approval of a request whose launch bound a patient must name that
+  // patient, whatever access the Owner leaves on.
+  const offersPatient = Option.isSome(details.launchPatient) || asksForPatient(draft)
   const needsAcknowledgement = details.registration.status !== 'registered'
   const canAllow =
     GrantDraft.hasScopes(draft) &&
@@ -150,7 +153,7 @@ function OAuthConsentForm(props: ConsentFormProps<ConsentDetails.OAuth>): JSX.El
         <div className={styles['oauth-consent-form__patient']}>
           <p className={styles['oauth-consent-form__eyebrow']}>Patient</p>
           <PatientChoice
-            patient={details.patient}
+            launchPatient={details.launchPatient}
             needsPatient={needsPatient}
             value={draft.patient}
             onChange={(patient) => {

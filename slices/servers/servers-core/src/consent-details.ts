@@ -24,8 +24,8 @@ type Registration = typeof RegistrationSchema.Type
  * A waiting consent as `server_consent_get` answers it. A device pairing may
  * be granted any of `registeredScopes`, the scopes its client is registered for;
  * an app's `/authorize` is granted at most its `requestedScopes`, and gets
- * its answer at `redirectUri`. `patient` is the patient a standing grant
- * already names for the app.
+ * its answer at `redirectUri`. `launchPatient` is the patient the app's
+ * launch binds, which an approval must name.
  */
 const ConsentDetailsSchema = Schema.Union(
   Schema.Struct({
@@ -44,7 +44,7 @@ const ConsentDetailsSchema = Schema.Union(
     clientName: Schema.String,
     requestedScopes: Schema.Array(Schema.String),
     redirectUri: Schema.URL,
-    patient: Schema.optionalWith(Schema.String, { as: 'Option', exact: true }),
+    launchPatient: Schema.optionalWith(Schema.String, { as: 'Option', exact: true }),
     registration: RegistrationSchema,
   })
 )

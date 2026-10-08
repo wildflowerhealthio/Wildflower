@@ -267,7 +267,7 @@ describe('ConsentSheet', () => {
     ])
   })
 
-  it("should send an app's request the patient its grant names", async () => {
+  it("should send an app's request the patient its launch binds", async () => {
     // Arrange
     const user = userEvent.setup()
     const host = fakeHost({
@@ -291,6 +291,44 @@ describe('ConsentSheet', () => {
             kind: 'oauth',
             id: 'req-1',
             approvedScopes: ['patient/Observation.rs', 'launch/patient'],
+            patient: 'pat-1',
+            acknowledgedRegistration: false,
+          },
+        },
+      },
+    ])
+  })
+
+  it("should send the patient a launch binds even when the access isn't for a patient", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = fakeHost({
+      waiting: [{ domain: LAB, head: { kind: 'oauth', id: 'req-4' } }],
+      details: {
+        'req-4': {
+          ...golden.consentDetails.oauthRegistered,
+          id: 'req-4',
+          requestedScopes: ['openid'],
+        },
+      },
+    })
+    renderSheet(host)
+    const dialog = await sheet()
+    await within(dialog).findByText('Patient')
+
+    // Act
+    await user.click(within(dialog).getByRole('button', { name: 'Allow' }))
+
+    // Assert
+    expect(commandsSeen(host.seen, 'server_consent_approve')).toEqual([
+      {
+        command: 'server_consent_approve',
+        args: {
+          domain: LAB,
+          approval: {
+            kind: 'oauth',
+            id: 'req-4',
+            approvedScopes: ['openid'],
             patient: 'pat-1',
             acknowledgedRegistration: false,
           },

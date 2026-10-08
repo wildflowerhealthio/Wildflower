@@ -132,7 +132,7 @@
       "clientName": "Lifting",
       "requestedScopes": ["launch/patient", "patient/Observation.rs"],
       "redirectUri": "https://lifting.example.com/callback",
-      "patient": "pat-1",
+      "launchPatient": "pat-1",
       "registration": { "status": "registered" }
     },
     "oauthNew": {

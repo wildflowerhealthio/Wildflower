@@ -35,9 +35,9 @@ pub enum ConsentDetails {
         requested_scopes: Vec<String>,
         /// Where the app gets its answer: whose origin it is asking from.
         redirect_uri: Url,
-        /// The patient a standing grant already names for the app.
+        /// The patient the app's launch binds, which an approval must name.
         #[serde(skip_serializing_if = "Option::is_none")]
-        patient: Option<String>,
+        launch_patient: Option<String>,
         /// How the request compares with the app's registration.
         registration: Registration,
     },
@@ -75,7 +75,7 @@ impl ConsentDetails {
             client_name,
             requested_scopes: request.requested_scopes,
             redirect_uri: requested_redirect_uri,
-            patient: request.patient,
+            launch_patient: request.launch_bound_patient,
             registration: registration_verdict.into(),
         }
     }
@@ -155,12 +155,12 @@ mod tests {
         client: (&str, &str),
         requested_scopes: &[&str],
         redirect_uri: &str,
-        patient: Option<&str>,
+        launch_patient: Option<&str>,
         registration_verdict: ClientRegistrationVerdict,
     ) -> ConsentDetails {
         let mut request = request(id, GrantType::AuthorizationCode, requested_scopes);
         request.client_id = client.0.to_owned();
-        request.patient = patient.map(ToOwned::to_owned);
+        request.launch_bound_patient = launch_patient.map(ToOwned::to_owned);
         ConsentDetails::of_oauth(OAuthConsentView {
             request,
             requested_redirect_uri: Url::parse(redirect_uri).unwrap(),
