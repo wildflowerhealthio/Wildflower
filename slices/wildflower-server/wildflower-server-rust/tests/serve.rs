@@ -7,8 +7,9 @@
 //! forwarded request, and the request log records
 //! each forwarded request and serves it back on `/requests` to a token holding
 //! the request log's read scope — a token naming the server's origin as `iss`
-//! and `aud`, accepted over loopback and through the tunnel, while one another
-//! server minted is refused.
+//! and `aud`, accepted from a direct loopback caller, from a front run on this
+//! machine and through the tunnel listener, while one another server minted is
+//! refused.
 //!
 //! The tunnel listener serves the same API as a remote origin: its requests
 //! are held to the server's public host, never get the owner token, are served
@@ -39,8 +40,9 @@ use wildflower_server_rust::{
     set_up, HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig,
 };
 
-/// The `Forwarded` header the trusted front stamps on a request it relayed
-/// through the tunnel, from client `192.0.2.1` to `demo.example.com`.
+/// The `Forwarded` header a front run on this machine stamps on a request it
+/// relayed to the loopback listener, from client `192.0.2.1` to
+/// `demo.example.com`.
 const FORWARDED: &str = "for=192.0.2.1;host=demo.example.com;proto=https";
 
 /// The server's domain: the host every tunnel request must name. No relay
@@ -332,7 +334,8 @@ async fn loopback_request_log_status(
         .status()
 }
 
-/// `GET /requests` relayed through the tunnel, with `bearer_token` when given.
+/// `GET /requests` relayed to the loopback listener by a front run on this
+/// machine, with `bearer_token` when given.
 async fn forwarded_request_log_read(
     loopback_base_url: &Url,
     bearer_token: Option<&str>,
@@ -458,7 +461,8 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
         reqwest::StatusCode::UNAUTHORIZED
     );
     // The token names the server's origin, not the origin a request was served
-    // on, so it is accepted over loopback as well as through the tunnel.
+    // on, so it is accepted from a direct loopback caller as well as through
+    // the front.
     assert_eq!(
         loopback_request_log_status(&loopback_base_url, &request_log_reader).await,
         reqwest::StatusCode::OK
@@ -651,6 +655,36 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     .expect("the tunnel listener answers");
     assert_eq!(status, 421);
     assert!(forwarded_requests.try_recv().is_err());
+
+    // A token for this server is accepted through the tunnel listener too, and
+    // one another server minted is refused there as well.
+    let request_log_scopes = request_log_rust::grantable_request_log_scopes()
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    for (server_origin, expected_status) in [(SERVER_ORIGIN, 200), (OTHER_SERVER_ORIGIN, 401)] {
+        let request_log_reader =
+            client_token(server_dir.path(), server_origin, &request_log_scopes);
+        let (status, _) = tunnel_exchange(
+            &tunnel_stream_sender,
+            None,
+            &tunnel_get(
+                "/requests",
+                PUBLIC_HOST,
+                &format!("Authorization: Bearer {request_log_reader}\r\n"),
+            ),
+        )
+        .await
+        .expect("the tunnel listener answers");
+        assert_eq!(
+            status, expected_status,
+            "a token minted for {server_origin}"
+        );
+        assert_eq!(
+            next_report(&mut forwarded_requests),
+            (Some(PUBLIC_HOST.to_owned()), None, expected_status)
+        );
+    }
 
     // A PROXY header names the visitor to the request log, and is stripped
     // before HTTP.
