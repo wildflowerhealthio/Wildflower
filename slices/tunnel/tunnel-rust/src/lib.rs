@@ -12,10 +12,10 @@
 //! [`TunnelConfig`]. The tunnel dials whenever the server runs; nothing in this
 //! slice turns it off or edits it. It forwards no port: each visitor's
 //! connection arrives as a [`TunnelStream`] on the sender in [`TunnelConfig`],
-//! which the server's tunnel listener serves. The tunnel has no HTTP surface and keeps no
-//! rows: each dial and its outcome go to the tracing log, and its only state is
-//! its [`HealthStatus`], which the server's `/health` reports as its
-//! `connectivity` check. Whether the server is reachable through the relay is
+//! which the server's tunnel listener serves. The tunnel has no HTTP surface
+//! and keeps no rows: each dial and its outcome go to the tracing log, and its
+//! only state is its [`HealthStatus`], which the server's `/health` reports as
+//! its `connectivity` check. Whether the server is reachable through the relay is
 //! the server's own `/health`, which `wildflower-server-rust`'s reachability
 //! monitor reads through the public origin.
 
