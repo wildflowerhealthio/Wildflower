@@ -23,20 +23,21 @@ use std::time::Duration;
 pub use self::unit_runner::UnitRunner;
 pub use dedicated_runtime::RUN_RUNTIME_SHUTDOWN_TIMEOUT;
 
-/// How long `UnitRunner` waits before restarting a run that ended on its own
-/// while its unit should still run, the first time in a row. Each restart in a
-/// row waits twice as long as the one before, up to [`MAX_RESTART_DELAY`],
-/// until a run stays running for [`STABLE_RUN_DURATION`].
-pub const RESTART_DELAY: Duration = Duration::from_secs(5);
+/// How long `UnitRunner` waits before the second restart in a row of a unit
+/// whose runs end on their own while it should still run. The first restart in
+/// a row is at once; each after this one waits twice as long as the one
+/// before, up to [`MAX_UNIT_RESTART_BACKOFF`], until a run stays running for
+/// [`STABLE_UNIT_UPTIME`].
+pub const FIRST_UNIT_RESTART_BACKOFF: Duration = Duration::from_secs(5);
 
-/// The longest `UnitRunner` waits before restarting a run, however many times
-/// in a row its unit has restarted.
-pub const MAX_RESTART_DELAY: Duration = Duration::from_secs(5 * 60);
+/// The longest `UnitRunner` waits before restarting a unit, however many times
+/// in a row it has restarted.
+pub const MAX_UNIT_RESTART_BACKOFF: Duration = Duration::from_secs(5 * 60);
 
 /// How long a run must have been running when it ends for its unit's restarts
-/// in a row to start over, so its restart waits [`RESTART_DELAY`] again. A run
-/// that comes up and fails sooner counts as one more restart in a row.
-pub const STABLE_RUN_DURATION: Duration = Duration::from_secs(2 * 60);
+/// in a row to start over, so it restarts at once again. A run that comes up
+/// and fails sooner counts as one more restart in a row.
+pub const STABLE_UNIT_UPTIME: Duration = Duration::from_secs(2 * 60);
 
 /// The longest `UnitRunner` goes without starting and stopping runs per policy
 /// on the wall clock.
@@ -47,16 +48,17 @@ pub const START_AND_STOP_RUNS_PER_POLICY_INTERVAL: Duration = Duration::from_sec
 
 /// How many stops a subscriber of
 /// [`UnitRunner::subscribe_stops`](UnitRunner::subscribe_stops) can fall behind
-/// before it misses the oldest. A run stops at most once per
-/// [`RESTART_DELAY`] per unit, so a reader that keeps up never gets near it.
+/// before it misses the oldest. Past its immediate first restart, a failing
+/// unit stops at most once per [`FIRST_UNIT_RESTART_BACKOFF`], so a reader that
+/// keeps up never gets near it.
 pub const RUN_STOPS_CAPACITY: usize = 64;
 
 /// `UnitRunner`'s timings: the public constants in an app, shorter in tests.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RunnerTimings {
-    pub(crate) restart_delay: Duration,
-    pub(crate) max_restart_delay: Duration,
-    pub(crate) stable_run_duration: Duration,
+    pub(crate) first_unit_restart_backoff: Duration,
+    pub(crate) max_unit_restart_backoff: Duration,
+    pub(crate) stable_unit_uptime: Duration,
     pub(crate) run_runtime_shutdown_timeout: Duration,
     pub(crate) start_and_stop_runs_per_policy_interval: Duration,
 }
@@ -64,9 +66,9 @@ pub(crate) struct RunnerTimings {
 impl Default for RunnerTimings {
     fn default() -> Self {
         Self {
-            restart_delay: RESTART_DELAY,
-            max_restart_delay: MAX_RESTART_DELAY,
-            stable_run_duration: STABLE_RUN_DURATION,
+            first_unit_restart_backoff: FIRST_UNIT_RESTART_BACKOFF,
+            max_unit_restart_backoff: MAX_UNIT_RESTART_BACKOFF,
+            stable_unit_uptime: STABLE_UNIT_UPTIME,
             run_runtime_shutdown_timeout: RUN_RUNTIME_SHUTDOWN_TIMEOUT,
             start_and_stop_runs_per_policy_interval: START_AND_STOP_RUNS_PER_POLICY_INTERVAL,
         }

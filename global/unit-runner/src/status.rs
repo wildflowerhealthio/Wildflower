@@ -100,11 +100,12 @@ pub enum StopReason {
     /// if it should still run.
     StoppedForRestart,
     /// The run ended without being asked to: its unit returned (`Ok` or an
-    /// error), its factory failed, or it panicked. Restarted after the restart
-    /// delay while the unit should still run:
-    /// [`RESTART_DELAY`](crate::RESTART_DELAY), doubled for each restart in a
-    /// row, up to [`MAX_RESTART_DELAY`](crate::MAX_RESTART_DELAY), until a run
-    /// stays running for [`STABLE_RUN_DURATION`](crate::STABLE_RUN_DURATION).
+    /// error), its factory failed, or it panicked. Restarted while the unit
+    /// should still run: at once the first time in a row, then after
+    /// [`FIRST_UNIT_RESTART_BACKOFF`](crate::FIRST_UNIT_RESTART_BACKOFF),
+    /// doubled for each restart in a row, up to
+    /// [`MAX_UNIT_RESTART_BACKOFF`](crate::MAX_UNIT_RESTART_BACKOFF), until a
+    /// run stays running for [`STABLE_UNIT_UPTIME`](crate::STABLE_UNIT_UPTIME).
     EndedOnItsOwn,
     /// The platform ended the background session, for `platform_reason`. Not
     /// restarted until the app becomes present again, the app sets a policy, or

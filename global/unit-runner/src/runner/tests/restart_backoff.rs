@@ -1,5 +1,6 @@
-//! Restart backoff, on the paused clock: each restart in a row waits twice as
-//! long as the one before, up to the cap; a run that stays running long enough,
+//! Restart backoff, on the paused clock: the first restart in a row is at
+//! once, and each after it waits twice as long as the one before, up to the
+//! cap; a run that stays running long enough,
 //! a fresh instruction, and a stretch where the unit shouldn't run start the
 //! delay over; a removed unit's pending restart never fires.
 
@@ -12,7 +13,7 @@ use tokio::sync::Semaphore;
 use super::fakes::{eventually_on_the_paused_clock, Harness, Probe, Script};
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
-use crate::runner::{MAX_RESTART_DELAY, RESTART_DELAY, STABLE_RUN_DURATION};
+use crate::runner::{FIRST_UNIT_RESTART_BACKOFF, MAX_UNIT_RESTART_BACKOFF, STABLE_UNIT_UPTIME};
 use crate::status::{PlatformStopReason, RunState};
 use crate::unit::UnitId;
 
@@ -102,6 +103,17 @@ impl FailingUnit {
         .await;
     }
 
+    /// Let the run in progress fail, and wait until its restart, which waits
+    /// for nothing, begins a run. The paused clock doesn't move meanwhile.
+    async fn fail_and_restart_at_once(&self) {
+        let starts_before = self.probe.starts();
+        self.allow_failure.add_permits(1);
+        eventually_on_the_paused_clock("the restart begins a run at once", || {
+            self.probe.starts() == starts_before + 1
+        })
+        .await;
+    }
+
     /// Let the run in progress fail, and check that its restart waits exactly
     /// `restart_delay`.
     async fn fail_and_wait_out_restart(&self, harness: &Harness, restart_delay: Duration) {
@@ -111,9 +123,10 @@ impl FailingUnit {
 }
 
 #[tokio::test(start_paused = true)]
-async fn each_restart_in_a_row_waits_twice_as_long_up_to_the_cap() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+async fn the_first_restart_is_at_once_and_each_after_it_waits_twice_as_long_up_to_the_cap() {
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
+    failing_unit.fail_and_restart_at_once().await;
     for restart_delay_secs in [5, 10, 20, 40, 80, 160, 300, 300] {
         failing_unit
             .fail_and_wait_out_restart(&harness, Duration::from_secs(restart_delay_secs))
@@ -123,60 +136,51 @@ async fn each_restart_in_a_row_waits_twice_as_long_up_to_the_cap() {
 
 #[tokio::test(start_paused = true)]
 async fn a_run_that_stays_running_long_enough_starts_the_delay_over() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit.fail(&harness).await;
     failing_unit.set_announces_running(true);
     failing_unit
-        .wait_out_restart(&harness, Duration::from_secs(10))
-        .await;
-    failing_unit.wait_until_running(&harness).await;
-    harness.clock.advance(STABLE_RUN_DURATION);
-
-    // This run stayed running for `STABLE_RUN_DURATION` before it failed, so
-    // its restart waits the first delay, and the next failure in a row the
-    // second.
-    failing_unit.fail(&harness).await;
-    failing_unit.set_announces_running(false);
-    failing_unit
         .wait_out_restart(&harness, Duration::from_secs(5))
         .await;
+    failing_unit.wait_until_running(&harness).await;
+    harness.clock.advance(STABLE_UNIT_UPTIME);
+
+    // This run stayed running for `STABLE_UNIT_UPTIME` before it failed, so
+    // its restart is at once, and the next failure in a row waits the first
+    // backoff.
+    failing_unit.set_announces_running(false);
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(10))
+        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
         .await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_run_that_fails_soon_after_announcing_running_keeps_backing_off() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
     failing_unit.set_announces_running(true);
+    failing_unit.fail_and_restart_at_once().await;
+    failing_unit.wait_until_running(&harness).await;
+    harness
+        .clock
+        .advance(STABLE_UNIT_UPTIME - Duration::from_secs(1));
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
         .await;
     failing_unit.wait_until_running(&harness).await;
-    harness
-        .clock
-        .advance(STABLE_RUN_DURATION - Duration::from_secs(1));
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(10))
-        .await;
-    failing_unit.wait_until_running(&harness).await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(20))
         .await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn set_unit_policy_after_failures_starts_at_once_and_starts_the_delay_over() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit.fail(&harness).await;
 
     harness.set_unit_policy("unit", RunPolicy::Always);
@@ -184,6 +188,7 @@ async fn set_unit_policy_after_failures_starts_at_once_and_starts_the_delay_over
         failing_unit.probe.starts() == 3
     })
     .await;
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
         .await;
@@ -191,13 +196,11 @@ async fn set_unit_policy_after_failures_starts_at_once_and_starts_the_delay_over
 
 #[tokio::test(start_paused = true)]
 async fn a_restart_of_running_units_starts_the_delay_over() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(10))
         .await;
 
     // The third run is in progress, not yet up.
@@ -206,20 +209,16 @@ async fn a_restart_of_running_units_starts_the_delay_over() {
         failing_unit.probe.starts() == 4
     })
     .await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
+    failing_unit.fail_and_restart_at_once().await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_restart_of_running_units_starts_a_unit_waiting_out_its_delay_at_once() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(10))
         .await;
     failing_unit.fail(&harness).await;
 
@@ -228,20 +227,16 @@ async fn a_restart_of_running_units_starts_a_unit_waiting_out_its_delay_at_once(
         failing_unit.probe.starts() == 4
     })
     .await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
+    failing_unit.fail_and_restart_at_once().await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn the_app_becoming_present_starts_a_unit_waiting_out_its_delay_at_once() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(10))
         .await;
     failing_unit.fail(&harness).await;
 
@@ -250,21 +245,17 @@ async fn the_app_becoming_present_starts_a_unit_waiting_out_its_delay_at_once() 
         failing_unit.probe.starts() == 4
     })
     .await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
+    failing_unit.fail_and_restart_at_once().await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn failures_before_the_platform_ended_the_session_don_t_carry_over() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let session = harness.unit_runner.session_started();
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit
         .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(10))
         .await;
     failing_unit.fail(&harness).await;
 
@@ -274,34 +265,28 @@ async fn failures_before_the_platform_ended_the_session_don_t_carry_over() {
     assert_eq!(harness.phase("unit"), Some(UnitPhase::Idle));
 
     // The platform starts a session again: the unit starts at once, and its
-    // next restart waits the first delay.
+    // next failure restarts at once too.
     harness.unit_runner.session_started();
     eventually_on_the_paused_clock("the unit starts again", || failing_unit.probe.starts() == 4)
         .await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
+    failing_unit.fail_and_restart_at_once().await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_removed_unit_s_pending_restart_never_fires() {
-    let harness = Harness::with_restart_delay(RESTART_DELAY);
+    let harness = Harness::with_restart_delay(FIRST_UNIT_RESTART_BACKOFF);
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
+    failing_unit.fail_and_restart_at_once().await;
     failing_unit.fail(&harness).await;
 
     harness.unit_runner.remove_unit(&UnitId::from("unit")).await;
     assert_eq!(harness.phase("unit"), None);
-    advance_paused_clock(MAX_RESTART_DELAY).await;
+    advance_paused_clock(MAX_UNIT_RESTART_BACKOFF).await;
     assert_eq!(harness.phase("unit"), None);
     assert_eq!(harness.status("unit"), None);
     assert_eq!(failing_unit.probe.starts(), 2);
 
-    // Set again, the unit starts over from the first delay.
+    // Set again, the unit starts over: its first restart is at once.
     let failing_unit = FailingUnit::set(&harness, RunPolicy::Always).await;
-    failing_unit
-        .fail_and_wait_out_restart(&harness, Duration::from_secs(5))
-        .await;
+    failing_unit.fail_and_restart_at_once().await;
 }

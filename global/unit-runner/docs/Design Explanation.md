@@ -265,17 +265,17 @@ without being asked to stop. Runs `UnitRunner` stopped itself, and runs stopped
 by the platform's end of the background session, never wait out that delay. A
 run stopped for a restart starts again as soon as it has ended.
 
-The restart delay backs off per unit. The first restart in a row waits
-`RESTART_DELAY` (5 s), and each restart after it twice as long as the one
-before, up to `MAX_RESTART_DELAY` (5 minutes): 5 s, 10 s, 20 s, and so on. So
-a unit that can never come up, such as a server whose configuration can't be
-built, settles at one attempt every 5 minutes. The count of restarts in a row
-starts over:
+The restart delay backs off per unit. The first restart in a row is at once,
+so a one-off fault recovers without waiting. The second waits
+`FIRST_UNIT_RESTART_BACKOFF` (5 s), and each after it twice as long as the one
+before, up to `MAX_UNIT_RESTART_BACKOFF` (5 minutes): 0 s, 5 s, 10 s, 20 s, and
+so on. So a unit that can never come up, such as a server whose configuration
+can't be built, settles at one attempt every 5 minutes. The count of restarts
+in a row starts over:
 
-- when a run that had been running for `STABLE_RUN_DURATION` (2 minutes)
-  ends, so a unit that stayed up and later failed restarts after
-  `RESTART_DELAY` again, while one that comes up and fails at once keeps
-  backing off;
+- when a run that had been running for `STABLE_UNIT_UPTIME` (2 minutes) ends,
+  so a unit that stayed up and later failed restarts at once again, while one
+  that comes up and fails soon after keeps backing off;
 - while the unit shouldn't run (its policy is inactive, the platform ended the
   background session, or it is being removed), so failures don't carry over
   into the next time it should run;
@@ -284,9 +284,8 @@ starts over:
 
 A fresh instruction (`set_unit_policy` even with the unchanged policy
 included) also cancels a pending restart, so the unit starts at once if it
-should run. A unit waiting
-out its delay still should run, so it keeps a background session wanted. The
-delay runs on `tokio::time` from the run's end, so time a laptop spends asleep
+should run. A unit waiting out its delay still should run, so it keeps a
+background session wanted. The delay runs on `tokio::time` from the run's end, so time a laptop spends asleep
 doesn't count toward it.
 
 ## The background session: one platform task for every unit
@@ -346,7 +345,7 @@ one is stale, and changes nothing.
 
 - A cap on how many units run at once.
 - Restart limits or other restart strategies: a unit whose runs keep failing
-  keeps restarting, every `MAX_RESTART_DELAY` at most, while it should run.
+  keeps restarting, every `MAX_UNIT_RESTART_BACKOFF` at most, while it should run.
 - Dependencies between units, or an order for starting them.
 - Notification text, and any wire format.
 - Any platform: a host binds one.

@@ -219,8 +219,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     ///
     ///  - starts the unit's restarts over: drops a pending restart, so a fresh
     ///    instruction acts now rather than after the delay left over from the
-    ///    last run, and starts the restart delay over from
-    ///    [`RESTART_DELAY`](crate::RESTART_DELAY);
+    ///    last run, and starts the restart delay over, so the unit's next
+    ///    restart is at once;
     ///  - clears an end of the background session by the platform, so the
     ///    app's instruction counts for more than the platform's earlier end;
     ///  - starts and stops runs per policy, so the unit starts at once if it
@@ -296,7 +296,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// Restart every unit that should be running: each run in progress
     /// stops, and its unit starts again once it has ended; a unit waiting out
     /// its restart delay starts at once. Every unit's restarts start over, so
-    /// its next restart waits [`RESTART_DELAY`](crate::RESTART_DELAY).
+    /// its next restart is at once too.
     pub fn restart_running_units(self: &Arc<Self>) {
         let mut state = self.lock_state();
         for entry in state.units.values_mut() {
@@ -444,10 +444,11 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// The run of `unit_id` with `generation` ended for `reason`, having been
     /// running since `running_since`, or never having announced running.
     /// Restarts it after the restart delay when it ended on its own while its
-    /// unit should still run. The delay doubles with each restart in a row,
-    /// and starts over from [`RESTART_DELAY`](crate::RESTART_DELAY) after a
-    /// run that had been running for
-    /// [`STABLE_RUN_DURATION`](crate::STABLE_RUN_DURATION).
+    /// unit should still run. The first restart in a row is at once; the
+    /// delay then starts at
+    /// [`FIRST_UNIT_RESTART_BACKOFF`](crate::FIRST_UNIT_RESTART_BACKOFF) and
+    /// doubles with each restart in a row. It starts over after a run that had
+    /// been running for [`STABLE_UNIT_UPTIME`](crate::STABLE_UNIT_UPTIME).
     fn record_run_end(
         self: &Arc<Self>,
         unit_id: &UnitId,
@@ -469,7 +470,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         let ran_stably = running_since.is_some_and(|running_since| {
             (now - running_since)
                 .to_std()
-                .is_ok_and(|running_for| running_for >= self.timings.stable_run_duration)
+                .is_ok_and(|running_for| running_for >= self.timings.stable_unit_uptime)
         });
         if ran_stably {
             entry.restarts_in_a_row = 0;
@@ -481,8 +482,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             entry.pending_restart = Some(pending_restart);
             let restart_delay = backed_off_restart_delay(
                 entry.restarts_in_a_row,
-                self.timings.restart_delay,
-                self.timings.max_restart_delay,
+                self.timings.first_unit_restart_backoff,
+                self.timings.max_unit_restart_backoff,
             );
             entry.restarts_in_a_row = entry.restarts_in_a_row.saturating_add(1);
             log::info!("[unit-runner] {unit_id} restarts in {restart_delay:?}");
