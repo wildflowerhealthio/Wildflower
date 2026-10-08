@@ -30,7 +30,8 @@ port and on the tunnel. Rust-only, no `-core`.
       connection. The tunnel router adds CORS, the forwarded-request report and,
       outermost, the tunnel front, and never the owner trust or the
       loopback-peer gate. The front drops any inbound `Forwarded`, answers
-      `421` (unreported) when `Host` isn't the server's public host, and writes
+      `421` (unreported) unless every host the request names (each `Host`, and
+      the request target's authority) is the server's public host, and writes
       `Forwarded: for=<visitor>;host="<public host>";proto=https` (no `for`
       without a PROXY address), so every served-origin reader treats the
       request as forwarded, at the public origin. `WildflowerServer` holds

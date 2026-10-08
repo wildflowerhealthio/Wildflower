@@ -16,6 +16,9 @@ use url::Url;
 
 use crate::http::tunnel_listener::TunnelVisitor;
 
+/// The body of the `421` a request naming another host gets.
+const MISDIRECTED_BODY: &str = "request host is not this server's public host";
+
 /// Write the `Forwarded` header of a request on the tunnel listener, replacing
 /// any it carried: `for=<visitor>;host="<public host>";proto=https`. A request
 /// whose host isn't the server's public host is answered `421 Misdirected
@@ -30,8 +33,11 @@ use crate::http::tunnel_listener::TunnelVisitor;
 /// inbound `Forwarded` is the visitor's own claim and is discarded. The host is
 /// trusted only once it names the public host, compared as `https` origins so
 /// case and a spelled-out `:443` don't matter, and a public host with a port
-/// needs that port. A request with no host names no origin this server answers
-/// as, and is refused the same way. The written `host` is the public origin's,
+/// needs that port. Every host the request names must: each `Host` header, and
+/// the request target's authority when it has one (an absolute-form HTTP/1.1
+/// target, or HTTP/2's `:authority`), so no reader of either sees another
+/// host. A request with no host names no origin this server answers as, and is
+/// refused the same way. The written `host` is the public origin's,
 /// normalized, and `proto` is always `https`.
 ///
 /// `for` is the visitor's address from the PROXY header, without its port, and
@@ -45,15 +51,8 @@ pub(crate) async fn stamp_tunnel_forwarded(
     mut request: Request,
     next: Next,
 ) -> Response {
-    let names_public_origin = request_host(&request)
-        .and_then(|request_host| public_origin_url(request_host).ok())
-        .is_some_and(|request_origin| request_origin.origin() == public_origin.origin());
-    if !names_public_origin {
-        return (
-            StatusCode::MISDIRECTED_REQUEST,
-            "request host is not this server's public host",
-        )
-            .into_response();
+    if !names_only_public_origin(&request, &public_origin) {
+        return (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY).into_response();
     }
     let forwarded = match tunnel_forwarded(tunnel_visitor.client_address, &public_origin) {
         Ok(forwarded) => forwarded,
@@ -67,18 +66,25 @@ pub(crate) async fn stamp_tunnel_forwarded(
     next.run(request).await
 }
 
-/// The host a request addressed: its `Host` header, or for HTTP/2, which
-/// carries no `Host`, the request URI's authority.
-fn request_host(request: &Request) -> Option<&str> {
-    request
+/// Whether `request` names a host, and every host it names is
+/// `public_origin`'s: each `Host` header value, and the request target's
+/// authority (HTTP/2 carries its host there and may send no `Host`).
+fn names_only_public_origin(request: &Request, public_origin: &Url) -> bool {
+    let host_headers = request
         .headers()
-        .get(HOST)
-        .and_then(|host| host.to_str().ok())
-        .or_else(|| {
-            request
-                .uri()
-                .authority()
-                .map(|authority| authority.as_str())
+        .get_all(HOST)
+        .iter()
+        .map(|host| host.to_str().ok());
+    let target_authority = request
+        .uri()
+        .authority()
+        .map(|authority| Some(authority.as_str()));
+    let mut request_hosts = host_headers.chain(target_authority).peekable();
+    request_hosts.peek().is_some()
+        && request_hosts.all(|request_host| {
+            request_host
+                .and_then(|request_host| public_origin_url(request_host).ok())
+                .is_some_and(|request_origin| request_origin.origin() == public_origin.origin())
         })
 }
 
@@ -133,7 +139,17 @@ mod tests {
 
     /// A tunnel request from the visitor at `client_address`, with `headers`.
     fn tunnel_request(client_address: Option<&str>, headers: &[(&str, &str)]) -> Request {
-        let mut builder = Request::get("/");
+        tunnel_request_for("/", client_address, headers)
+    }
+
+    /// A tunnel request for the request target `uri`, from the visitor at
+    /// `client_address`, with `headers`.
+    fn tunnel_request_for(
+        uri: &str,
+        client_address: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> Request {
+        let mut builder = Request::get(uri);
         for (name, value) in headers {
             builder = builder.header(*name, *value);
         }
@@ -279,13 +295,60 @@ mod tests {
                 .map(|host| ("host", host))
                 .into_iter()
                 .collect();
-            let (status, seen) = send(public_host, tunnel_request(None, &headers)).await;
+            let (status, body) = send(public_host, tunnel_request(None, &headers)).await;
             assert_eq!(
-                status,
-                StatusCode::MISDIRECTED_REQUEST,
+                (status, body.as_str()),
+                (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY),
                 "{public_host} / {request_host:?}"
             );
-            assert_ne!(seen, "-", "the handler never ran");
+        }
+    }
+
+    /// The request target's authority counts as a host the request names:
+    /// alone (HTTP/2, no `Host`) it must be the public host, and next to a
+    /// `Host` both must be.
+    #[tokio::test]
+    async fn the_target_authority_must_name_the_public_host_too() {
+        let (status, seen) = send(
+            PUBLIC_HOST,
+            tunnel_request_for("https://dev1.example.com/", None, &[]),
+        )
+        .await;
+        assert_eq!(
+            (status, seen.as_str()),
+            (StatusCode::OK, "host=\"dev1.example.com\";proto=https")
+        );
+        for (uri, headers) in [
+            ("https://dev2.example.com/", &[][..]),
+            ("https://dev2.example.com/", &[("host", PUBLIC_HOST)][..]),
+            (
+                "https://dev1.example.com/",
+                &[("host", "dev2.example.com")][..],
+            ),
+        ] {
+            let (status, body) = send(PUBLIC_HOST, tunnel_request_for(uri, None, headers)).await;
+            assert_eq!(
+                (status, body.as_str()),
+                (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY),
+                "{uri} / {headers:?}"
+            );
+        }
+    }
+
+    /// A second `Host` naming another host is misdirected, whichever comes
+    /// first.
+    #[tokio::test]
+    async fn every_host_header_must_name_the_public_host() {
+        for headers in [
+            [("host", PUBLIC_HOST), ("host", "dev2.example.com")],
+            [("host", "dev2.example.com"), ("host", PUBLIC_HOST)],
+        ] {
+            let (status, body) = send(PUBLIC_HOST, tunnel_request(None, &headers)).await;
+            assert_eq!(
+                (status, body.as_str()),
+                (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY),
+                "{headers:?}"
+            );
         }
     }
 }

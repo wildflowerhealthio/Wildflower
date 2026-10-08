@@ -79,10 +79,11 @@ front, the outermost layer of the tunnel listener's router, writes the header
 itself:
 
 - It drops any `Forwarded` the visitor sent.
-- It compares the request's `Host` with the server's public host, its domain,
-  as `https` origins (so case and a spelled-out `:443` don't matter). A
-  mismatched or missing `Host` is answered `421 Misdirected Request`, before
-  the request log sees it.
+- It compares every host the request names (each `Host` header, and the
+  request target's authority, which HTTP/2 carries) with the server's public
+  host, its domain, as `https` origins (so case and a spelled-out `:443` don't
+  matter). A request naming another host, or none, is answered
+  `421 Misdirected Request`, before the request log sees it.
 - It writes `Forwarded: for=<visitor>;host="<public host>";proto=https`. The
   `for` is the visitor's address from the PROXY header, and is left out when
   the connection had none; the `host` is the public host, normalized.
