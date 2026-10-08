@@ -254,6 +254,12 @@ pub fn run() {
             // only (`allow-server-enrolment`, see capabilities/default.json).
             servers_tauri_rust::server_add,
             servers_tauri_rust::server_set_credentials,
+            // The base's server management commands, granted to the `main`
+            // webview only (`allow-server-management`).
+            servers_tauri_rust::servers_list,
+            servers_tauri_rust::server_set_run_policy,
+            servers_tauri_rust::server_update,
+            servers_tauri_rust::server_remove,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

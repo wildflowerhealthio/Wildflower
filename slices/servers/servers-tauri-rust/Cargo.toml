@@ -30,10 +30,11 @@ rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
 url = "2"
 # The instant enrolment chooses a new server's run policy at.
 chrono = { workspace = true, features = ["clock"] }
-# `sync` for the lock ordering registry writes with their pushes and the
-# forwarded-request channel; `time` for the request-notification timer;
-# `macros` for `select!`.
-tokio = { workspace = true, features = ["macros", "sync", "time"] }
+# `sync` for the lock ordering registry writes with their pushes, the
+# forwarded-request channel and `TauriUnitRunner`'s statuses; `time` for the
+# request-notification timer; `macros` for `select!`; `rt` for the commands'
+# registry reads and writes on a blocking thread.
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
@@ -46,4 +47,7 @@ gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
+# The shutdown token the tests' units keep, to see whether a command stopped
+# their run.
+tokio-util = "0.7"

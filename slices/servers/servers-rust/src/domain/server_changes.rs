@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use unit_runner::RunPolicy;
 use url::Url;
 
-use crate::domain::{RegistryError, RunPolicyChoice, ServerChangeError};
+use crate::domain::{RegistryError, RunPolicyChoice, ServerChangeError, ServerRecord};
 use crate::ports::ServerRegistry;
 
 /// Set the run policy of the server with `domain` to `choice`, applied at
@@ -42,9 +42,21 @@ pub fn set_run_policy(
     Ok(run_policy)
 }
 
+/// What [`update_server`] wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerUpdate {
+    /// The server's record as written.
+    pub record: ServerRecord,
+    /// Whether a field a run reads changed (see
+    /// [`ServerRecord::run_inputs_differ`]), so a run built from the record
+    /// before could differ from one built from `record`.
+    pub run_inputs_changed: bool,
+}
+
 /// Set the launcher the server with `domain` opens apps from, and whether
-/// its certificates come from the ACME staging directory. Its other fields
-/// are kept as they are when the change is made.
+/// its certificates come from the ACME staging directory, and return what
+/// was written. Its other fields are kept as they are when the change is
+/// made.
 ///
 /// # Errors
 ///
@@ -57,29 +69,37 @@ pub fn update_server(
     domain: &str,
     launcher_url: &str,
     staging_certificates: bool,
-) -> Result<(), ServerChangeError> {
+) -> Result<ServerUpdate, ServerChangeError> {
     let launcher_url = parse_launcher_url(launcher_url)?;
+    let mut update = None;
     registry.modify(Box::new(|servers| {
         let server = servers
             .iter_mut()
             .find(|server| server.domain() == domain)
             .ok_or_else(|| not_registered(domain))?;
+        let before = server.clone();
         server.launcher_url = launcher_url;
         server.staging_certificates = staging_certificates;
+        update = Some(ServerUpdate {
+            run_inputs_changed: before.run_inputs_differ(server),
+            record: server.clone(),
+        });
         Ok(())
     }))?;
-    Ok(())
+    Ok(update.expect("a change that succeeds has updated the record"))
 }
 
-/// Delete the server with `domain`: its folder under `data_root`, which holds
-/// its databases and certificates, then its record. The server must not be
-/// running.
+/// Delete the server with `domain`: its run policy is set to
+/// [`RunPolicy::Off`], then its folder under `data_root`, which holds its
+/// databases and certificates, is deleted, then its record. The server must
+/// not be running.
 ///
-/// The folder goes first, so a folder that can't be deleted leaves the server
-/// registered and the removal can be retried; a folder already gone is fine.
-/// A deletion that fails partway leaves the server registered with only part
-/// of its folder, so some of its databases or certificates may already be
-/// gone; retrying deletes the rest.
+/// The folder goes before the record, so a folder that can't be deleted
+/// leaves the server registered and the removal can be retried; a folder
+/// already gone is fine. A deletion that fails partway leaves the server
+/// registered with only part of its folder, so some of its databases or
+/// certificates may already be gone; retrying deletes the rest. Its policy is
+/// already `Off` by then, so it doesn't run on what's left.
 ///
 /// # Errors
 ///
@@ -91,12 +111,18 @@ pub fn remove_server(
     data_root: &Path,
     domain: &str,
 ) -> Result<(), ServerChangeError> {
-    let server = registry
-        .read_all()?
-        .into_iter()
-        .find(|server| server.domain() == domain)
-        .ok_or_else(|| not_registered(domain))?;
-    match std::fs::remove_dir_all(server.server_dir(data_root)) {
+    let mut server_dir = None;
+    registry.modify(Box::new(|servers| {
+        let server = servers
+            .iter_mut()
+            .find(|server| server.domain() == domain)
+            .ok_or_else(|| not_registered(domain))?;
+        server.run_policy = RunPolicy::Off;
+        server_dir = Some(server.server_dir(data_root));
+        Ok(())
+    }))?;
+    let server_dir = server_dir.expect("a change that succeeds has found the record");
+    match std::fs::remove_dir_all(server_dir) {
         Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(source) => {
@@ -142,7 +168,6 @@ mod tests {
 
     use super::*;
     use crate::domain::fixtures::{official_record, self_hosted_record};
-    use crate::domain::ServerRecord;
     use crate::JsonServerRegistry;
 
     fn now() -> DateTime<Utc> {
@@ -308,7 +333,7 @@ mod tests {
         let ruth = with_policy(official_record("ruth"), RunPolicy::Always);
         let (_data_root, registry) = registry_holding(&[ruth.clone(), self_hosted_record("lab")]);
 
-        update_server(
+        let update = update_server(
             registry.as_ref(),
             "ruth.relay.wildflowerhealth.io",
             "http://localhost:5200/app",
@@ -316,16 +341,49 @@ mod tests {
         )
         .unwrap();
 
+        let updated = ServerRecord {
+            launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
+            staging_certificates: true,
+            ..ruth
+        };
+        assert_eq!(
+            update,
+            ServerUpdate {
+                record: updated.clone(),
+                run_inputs_changed: true,
+            }
+        );
         assert_eq!(
             registry.read_all().unwrap(),
-            vec![
-                ServerRecord {
-                    launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
-                    staging_certificates: true,
-                    ..ruth
-                },
-                self_hosted_record("lab"),
-            ]
+            vec![updated, self_hosted_record("lab")]
+        );
+    }
+
+    #[test]
+    fn update_says_whether_a_field_a_run_reads_changed() {
+        let (_data_root, registry) = registry_holding(&[official_record("ruth")]);
+        let update = |launcher_url, staging_certificates| {
+            update_server(
+                registry.as_ref(),
+                "ruth.relay.wildflowerhealth.io",
+                launcher_url,
+                staging_certificates,
+            )
+            .unwrap()
+            .run_inputs_changed
+        };
+
+        assert!(
+            !update("http://localhost:5200/app", false),
+            "only the base reads the launcher"
+        );
+        assert!(
+            !update("http://localhost:5200/app", false),
+            "nothing changed"
+        );
+        assert!(
+            update("http://localhost:5200/app", true),
+            "the certificate source"
         );
     }
 
@@ -432,11 +490,16 @@ mod tests {
     }
 
     /// A folder that can't be deleted keeps the server registered, so the
-    /// removal can be tried again.
+    /// removal can be tried again, with its run policy `Off`, so it doesn't run
+    /// on what's left of its folder.
     #[cfg(unix)]
     #[test]
-    fn a_folder_that_cannot_be_deleted_keeps_the_server() {
-        let (data_root, registry) = registry_holding(&[official_record("ruth")]);
+    fn a_folder_that_cannot_be_deleted_keeps_the_server_off() {
+        let always = ServerRecord {
+            run_policy: RunPolicy::Always,
+            ..official_record("ruth")
+        };
+        let (data_root, registry) = registry_holding(&[always]);
         let ruth_dir = official_record("ruth").server_dir(data_root.path());
         std::fs::create_dir_all(ruth_dir.parent().unwrap()).unwrap();
         // A file where the folder should be fails `remove_dir_all` for any
@@ -453,6 +516,12 @@ mod tests {
             matches!(result, Err(ServerChangeError::DeletingFolder { ref domain, .. }) if domain == "ruth.relay.wildflowerhealth.io"),
             "{result:?}"
         );
-        assert_eq!(registry.read_all().unwrap(), vec![official_record("ruth")]);
+        assert_eq!(
+            registry.read_all().unwrap(),
+            vec![ServerRecord {
+                run_policy: RunPolicy::Off,
+                ..official_record("ruth")
+            }]
+        );
     }
 }
