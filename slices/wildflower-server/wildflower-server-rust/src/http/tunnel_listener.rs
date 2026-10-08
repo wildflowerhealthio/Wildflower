@@ -14,7 +14,6 @@ use std::time::Duration;
 use anyhow::Context;
 use axum::extract::connect_info::Connected;
 use axum::serve::IncomingStream;
-use tokio::io::BufReader;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tunnel_rust::TunnelStream;
@@ -26,9 +25,15 @@ use tunnel_rust::TunnelStream;
 /// long.
 const PROXY_HEADER_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// A tunnel connection ready for HTTP: the bytes peeked for a PROXY header
-/// and not part of one are read again from its buffer.
-pub(crate) type PreparedTunnelStream = BufReader<TunnelStream>;
+/// How many tunnel connections may be prepared at once. Past this, the
+/// listener takes no more streams from the tunnel until one is ready or
+/// closed, so the tunnel's backlog, and then rathole's, push back on the
+/// relay.
+const MAX_PREPARING: usize = 64;
+
+/// A tunnel connection ready for HTTP: the bytes read for a PROXY header and
+/// not part of one are read again first.
+pub(crate) type PreparedTunnelStream = proxy_header::Rewound<TunnelStream>;
 
 /// The visitor behind a tunnel connection: the tunnel listener's connect info.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +57,9 @@ impl Connected<IncomingStream<'_, TunnelListener>> for TunnelVisitor {
 /// [`accept`](axum::serve::Listener::accept) would let one slow sender stall
 /// every connection behind it. Instead each handed-over stream is prepared on
 /// a task of its own, and `accept` returns whichever is ready first. A
-/// connection that can't be prepared is closed alone. Dropping the listener,
+/// connection that can't be prepared is closed alone. At most
+/// [`MAX_PREPARING`] are prepared at once; the rest wait in the tunnel's
+/// backlog. Dropping the listener,
 /// which `axum::serve` does once its graceful shutdown begins, aborts the
 /// preparations still running.
 pub(crate) struct TunnelListener {
@@ -80,9 +87,12 @@ impl axum::serve::Listener for TunnelListener {
         loop {
             // A closed `tunnel_streams` (the tunnel hands over no more) or an
             // empty `preparing` disables its branch; with both, there is no
-            // connection to come.
+            // connection to come. A full `preparing` leaves the streams
+            // waiting in `tunnel_streams`.
             tokio::select! {
-                Some(tunnel_stream) = self.tunnel_streams.recv() => {
+                Some(tunnel_stream) = self.tunnel_streams.recv(),
+                    if self.preparing.len() < MAX_PREPARING =>
+                {
                     self.preparing.spawn(prepare_tunnel_connection(tunnel_stream));
                 }
                 Some(prepared) = self.preparing.join_next() => match prepared {
@@ -120,10 +130,9 @@ impl axum::serve::Listener for TunnelListener {
 async fn prepare_tunnel_connection(
     tunnel_stream: TunnelStream,
 ) -> anyhow::Result<(PreparedTunnelStream, TunnelVisitor)> {
-    let mut stream = proxy_header::peekable(tunnel_stream);
-    let client_address = tokio::time::timeout(
+    let (stream, client_address) = tokio::time::timeout(
         PROXY_HEADER_TIMEOUT,
-        proxy_header::read_client_address(&mut stream),
+        proxy_header::read_client_address(tunnel_stream),
     )
     .await
     .context("no PROXY header or request in time")??;
@@ -242,6 +251,29 @@ mod tests {
             0,
             "the stalled connection is closed"
         );
+    }
+
+    /// Past [`MAX_PREPARING`] connections being prepared, the rest are left
+    /// in the tunnel's backlog until one of them is done.
+    #[tokio::test(start_paused = true)]
+    async fn connections_past_the_cap_wait_in_the_backlog() {
+        let (tunnel_stream_sender, tunnel_streams) = mpsc::channel(MAX_PREPARING + 1);
+        let mut listener = TunnelListener::new(tunnel_streams);
+        let mut stalled_visitors = Vec::new();
+        for _ in 0..MAX_PREPARING {
+            stalled_visitors.push(hand_over(&tunnel_stream_sender, &[]).await);
+        }
+        let _visitor = hand_over(&tunnel_stream_sender, REQUEST_START).await;
+
+        let accepted = tokio::time::timeout(PROXY_HEADER_TIMEOUT / 2, listener.accept()).await;
+
+        assert!(accepted.is_err(), "the stalled connections fill the cap");
+        assert_eq!(listener.preparing.len(), MAX_PREPARING);
+        assert_eq!(listener.tunnel_streams.len(), 1, "the last waits");
+
+        // Once the stalled connections time out, the waiting one is taken.
+        let (mut stream, _) = listener.accept().await;
+        assert_eq!(request_start(&mut stream).await, REQUEST_START);
     }
 
     /// Once the tunnel hands over no more streams and none is being prepared,

@@ -3,65 +3,139 @@
 //! connection over with no address of its own. See
 //! <https://www.haproxy.org/download/2.9/doc/proxy-protocol.txt>, section 2.2.
 
+use std::io;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use anyhow::ensure;
 use ppp::v2::{Addresses, Command, Header, PROTOCOL_PREFIX};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
 
 /// The bytes of a v2 header ahead of its addresses: the 12-byte signature, the
 /// version and command, the address family and protocol, and the big-endian
 /// length of everything after these 16 bytes.
 const FIXED_LENGTH: usize = 16;
 
-/// Buffer `stream` so that [`read_client_address`] can peek at its first
-/// bytes. The buffer holds no more than the signature; larger reads bypass it
-/// once it is drained.
-pub(super) fn peekable<S: AsyncRead>(stream: S) -> BufReader<S> {
-    BufReader::with_capacity(PROTOCOL_PREFIX.len(), stream)
-}
-
-/// Read the PROXY protocol v2 header off the front of a [`peekable`] `stream`
-/// when it starts with one, and return the visitor's address the header names.
-/// A stream that doesn't start with the header is left with every byte unread.
+/// Read the PROXY protocol v2 header off the front of `stream` when it starts
+/// with one, and return the stream with the visitor's address the header
+/// names. A stream that doesn't start with the header is returned with every
+/// byte it sent still to be read.
 ///
 /// # Errors
 ///
 /// Returns an error if the connection closes before sending anything, if
-/// reading fails, or if the stream starts with the v2 signature (or as much of
-/// it as has arrived) but not a well-formed header.
+/// reading fails, or if the stream starts with the whole v2 signature but not a
+/// well-formed header.
 ///
 /// # Remarks
 ///
-/// The first bytes are peeked into `stream`'s buffer, not consumed, so a
-/// stream with no header (a stock rathole server sends none) reaches HTTP
-/// intact. Bytes that begin the signature commit the stream to a header; no
-/// HTTP request starts with them, since a client must not preface a request
-/// with an empty line (RFC 9112 §2.2). The header is then read whole and parsed
-/// by `ppp`.
+/// Only the whole 12-byte signature commits the stream to a header: bytes are
+/// read until they either leave the signature or complete it, however they
+/// are split across reads. A stream that leaves it, or closes partway through,
+/// has those bytes put back for HTTP (see [`Rewound`]). So a request after a
+/// stray empty line, which a server should ignore (RFC 9112 §2.2), is served,
+/// and no request is mistaken for a header: the signature holds a NUL, which
+/// no request line does. The header is then read whole and parsed by `ppp`.
 ///
 /// Nothing here bounds how long the sender takes; the caller runs it under a
 /// timeout.
 pub(super) async fn read_client_address<S: AsyncRead + Unpin>(
-    stream: &mut BufReader<S>,
-) -> anyhow::Result<Option<SocketAddr>> {
-    let peeked = stream.fill_buf().await?;
-    ensure!(
-        !peeked.is_empty(),
-        "the connection closed before sending anything"
-    );
-    let signature = &peeked[..peeked.len().min(PROTOCOL_PREFIX.len())];
-    if !PROTOCOL_PREFIX.starts_with(signature) {
-        return Ok(None);
+    mut stream: S,
+) -> anyhow::Result<(Rewound<S>, Option<SocketAddr>)> {
+    let mut first_bytes = [0; PROTOCOL_PREFIX.len()];
+    let mut read = 0;
+    while read < first_bytes.len() && PROTOCOL_PREFIX.starts_with(&first_bytes[..read]) {
+        let just_read = stream.read(&mut first_bytes[read..]).await?;
+        if just_read == 0 {
+            break;
+        }
+        read += just_read;
+    }
+    ensure!(read > 0, "the connection closed before sending anything");
+    if first_bytes[..read] != *PROTOCOL_PREFIX {
+        return Ok((Rewound::new(first_bytes[..read].to_vec(), stream), None));
     }
 
-    let mut header = vec![0; FIXED_LENGTH];
-    stream.read_exact(&mut header).await?;
+    let mut header = first_bytes.to_vec();
+    header.resize(FIXED_LENGTH, 0);
+    stream
+        .read_exact(&mut header[PROTOCOL_PREFIX.len()..])
+        .await?;
     let address_length = u16::from_be_bytes([header[FIXED_LENGTH - 2], header[FIXED_LENGTH - 1]]);
     header.resize(FIXED_LENGTH + usize::from(address_length), 0);
     stream.read_exact(&mut header[FIXED_LENGTH..]).await?;
     let header = Header::try_from(header.as_slice())?;
-    Ok(client_address(&header))
+    Ok((Rewound::new(Vec::new(), stream), client_address(&header)))
+}
+
+/// A stream with the bytes [`read_client_address`] read off its front and
+/// found no header in put back: they are read again before the rest of the
+/// stream. Writes go straight to the stream.
+pub(crate) struct Rewound<S> {
+    /// The bytes put back, read again from `position` on.
+    put_back: Vec<u8>,
+    /// How many of `put_back` have been read again.
+    position: usize,
+    stream: S,
+}
+
+impl<S> Rewound<S> {
+    fn new(put_back: Vec<u8>, stream: S) -> Self {
+        Self {
+            put_back,
+            position: 0,
+            stream,
+        }
+    }
+}
+
+impl<S: AsyncRead + Unpin> AsyncRead for Rewound<S> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        let put_back = &this.put_back[this.position..];
+        if put_back.is_empty() {
+            return Pin::new(&mut this.stream).poll_read(cx, buf);
+        }
+        let length = put_back.len().min(buf.remaining());
+        buf.put_slice(&put_back[..length]);
+        this.position += length;
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl<S: AsyncWrite + Unpin> AsyncWrite for Rewound<S> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.get_mut().stream).poll_write(cx, buf)
+    }
+
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.get_mut().stream).poll_write_vectored(cx, bufs)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.stream.is_write_vectored()
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().stream).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
+    }
 }
 
 /// The source address a parsed `header` names. A `LOCAL` header (the relay's
@@ -85,22 +159,13 @@ pub(in crate::http) mod tests {
     use proptest::prelude::*;
     use tokio::io::AsyncWriteExt;
 
-    /// A v2 `PROXY` header from the visitor at `source` to a relay address of
-    /// its family (`ppp` writes no addresses for a pair of mixed families).
+    /// A v2 `PROXY` header from the visitor at `source`, as the relay writes
+    /// it.
     pub(in crate::http) fn proxy_header(source: &str) -> Vec<u8> {
-        let source: SocketAddr = source.parse().expect("source address");
-        let relay: SocketAddr = match source {
-            SocketAddr::V4(_) => "198.51.100.1:443",
-            SocketAddr::V6(_) => "[2001:db8::443]:443",
-        }
-        .parse()
-        .expect("relay address");
-        Builder::with_addresses(
-            Version::Two | Command::Proxy,
-            Protocol::Stream,
-            (source, relay),
+        rathole_settings_rust::proxy_header::proxy_header(
+            source.parse().expect("source address"),
+            "198.51.100.1:443".parse().expect("relay address"),
         )
-        .build()
         .expect("header")
     }
 
@@ -108,18 +173,27 @@ pub(in crate::http) mod tests {
     /// server end. Returns what the reader made of it and the bytes it left.
     async fn read_after_sending(bytes: &[u8]) -> (anyhow::Result<Option<SocketAddr>>, Vec<u8>) {
         let (mut visitor, server_end) = tokio::io::duplex(1024);
-        let mut server_end = peekable(server_end);
         visitor.write_all(bytes).await.expect("write");
         visitor.shutdown().await.expect("shutdown");
-        let client_address = read_client_address(&mut server_end).await;
-        let mut unread = Vec::new();
-        if client_address.is_ok() {
-            server_end
-                .read_to_end(&mut unread)
-                .await
-                .expect("read the rest");
+        read_off(server_end).await
+    }
+
+    /// Read the header off `server_end`. Returns what the reader made of it
+    /// and the bytes it left.
+    async fn read_off(
+        server_end: tokio::io::DuplexStream,
+    ) -> (anyhow::Result<Option<SocketAddr>>, Vec<u8>) {
+        match read_client_address(server_end).await {
+            Ok((mut stream, client_address)) => {
+                let mut unread = Vec::new();
+                stream
+                    .read_to_end(&mut unread)
+                    .await
+                    .expect("read the rest");
+                (Ok(client_address), unread)
+            }
+            Err(error) => (Err(error), Vec::new()),
         }
-        (client_address, unread)
     }
 
     /// A blocking runtime for a property test case.
@@ -154,6 +228,51 @@ pub(in crate::http) mod tests {
         assert_eq!(unread, b"GET / HTTP/1.1\r\n\r\n");
     }
 
+    /// A request after a stray empty line, or a stream that closes partway
+    /// through the signature, is passed through: only the whole signature
+    /// makes a header.
+    #[tokio::test]
+    async fn a_stream_leaving_the_signature_partway_is_left_intact() {
+        let header = proxy_header("192.0.2.1:4711");
+        for bytes in [
+            &b"\r\nGET / HTTP/1.1\r\n\r\n"[..],
+            &b"\r\n\r\nGET / HTTP/1.1\r\n\r\n"[..],
+            &header[..5],
+        ] {
+            let (client_address, unread) = read_after_sending(bytes).await;
+
+            assert_eq!(
+                client_address.expect("no header is not an error"),
+                None,
+                "{bytes:?}"
+            );
+            assert_eq!(unread, bytes);
+        }
+    }
+
+    /// A signature split across reads, down to its first byte alone, is
+    /// still read as one.
+    #[tokio::test]
+    async fn a_signature_split_across_reads_is_read() {
+        let mut bytes = proxy_header("192.0.2.1:4711");
+        bytes.extend_from_slice(b"GET / HTTP/1.1\r\n\r\n");
+        let (mut visitor, server_end) = tokio::io::duplex(1024);
+        let reading = tokio::spawn(read_off(server_end));
+        for fragment in [&bytes[..1], &bytes[1..2], &bytes[2..7], &bytes[7..]] {
+            visitor.write_all(fragment).await.expect("write");
+            tokio::task::yield_now().await;
+        }
+        visitor.shutdown().await.expect("shutdown");
+
+        let (client_address, unread) = reading.await.expect("the reader doesn't panic");
+
+        assert_eq!(
+            client_address.expect("a well-formed header"),
+            Some("192.0.2.1:4711".parse().unwrap())
+        );
+        assert_eq!(unread, b"GET / HTTP/1.1\r\n\r\n");
+    }
+
     #[tokio::test]
     async fn a_local_header_names_no_visitor() {
         let header = Builder::with_addresses(
@@ -176,7 +295,7 @@ pub(in crate::http) mod tests {
         let mut wrong_version = header.clone();
         wrong_version[PROTOCOL_PREFIX.len()] = 0x11;
         for bytes in [
-            &header[..5],
+            &header[..PROTOCOL_PREFIX.len()],
             &header[..FIXED_LENGTH],
             &header[..header.len() - 1],
             &wrong_version[..],
@@ -193,8 +312,8 @@ pub(in crate::http) mod tests {
         /// without panicking. A stream opening with the whole signature is a
         /// header: one that parses names the address `ppp` reads from it,
         /// and anything else is an error the caller closes the connection on.
-        /// A stream that leaves the signature before its end is passed
-        /// through.
+        /// A stream that leaves the signature, or closes, before its end is
+        /// passed through.
         #[test]
         fn any_bytes_after_a_signature_prefix_are_read_without_panicking(
             signature_length in 1..=PROTOCOL_PREFIX.len(),
