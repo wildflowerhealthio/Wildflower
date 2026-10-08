@@ -1,6 +1,7 @@
 //! The composition layer: [`set_up`] binds every server slice, the
 //! [`crate::adapters`] that join them and the [`crate::http`] layers into the
-//! routers the loopback and tunnel listeners serve.
+//! routers the loopback and tunnel listeners serve, and starts the device
+//! certificate the tunnel listener's TLS serves.
 
 mod wildflower_server;
 

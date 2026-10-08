@@ -213,7 +213,7 @@ describe('the server commands', () => {
         updateServer({
           domain: 'ruth.relay.example.com',
           launcherUrl: 'http://localhost:5200/app',
-          stagingCertificates: true,
+          certificateAuthority: 'letsEncryptStaging',
         }),
         () => Promise.resolve(null)
       ),
@@ -243,7 +243,7 @@ describe('the server commands', () => {
           args: {
             domain: 'ruth.relay.example.com',
             launcherUrl: 'http://localhost:5200/app',
-            stagingCertificates: true,
+            certificateAuthority: 'letsEncryptStaging',
           },
         },
       ],

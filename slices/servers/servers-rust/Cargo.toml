@@ -22,6 +22,13 @@ serde_json.workspace = true
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust" }
 # `launcher_url` and a self-hosted relay's `base_url`, stored as URLs in the file.
 url = { version = "2", features = ["serde"] }
+# Let's Encrypt's staging and production directory URLs, which a record's
+# `staging_certificates` picks between. The same features as
+# `wildflower-server-rust`'s, which already builds it, so this adds nothing.
+rustls-acme = { version = "0.15", default-features = false, features = [
+  "ring",
+  "webpki-roots",
+] }
 # Serialises read-modify-write cycles on `servers.json` within the process.
 parking_lot = "0.12"
 # `RegistryError`'s and `EnrolmentError`'s `Display`/`source` wiring.

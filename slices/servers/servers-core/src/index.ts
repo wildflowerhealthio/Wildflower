@@ -11,6 +11,7 @@ export {
   enableBackgroundSessionRecovery,
   type BackgroundServiceStartConfig,
 } from './background-session-recovery.ts'
+export * as CertificateAuthority from './certificate-authority.ts'
 export * as ListedServer from './listed-server.ts'
 export {
   NotificationPermission,

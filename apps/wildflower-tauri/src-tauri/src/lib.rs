@@ -100,8 +100,10 @@ fn host_owner_scopes() -> Vec<String> {
 /// config builder `servers-tauri-rust` calls at the start of each run of a
 /// server, so a failure here is a failed run.
 ///
-/// The server runs from its own folder under `data_root`, and listens on the
-/// one loopback port this build names, whichever server it is.
+/// The server runs from its own folder under `data_root`, which also holds its
+/// certificates, orders them with the install's ACME account in `data_root`,
+/// from the CA its record names, and listens on the one loopback port this
+/// build names, whichever server it is.
 ///
 /// Only the desktop/iOS release build asks `app_handle` for Tauri's
 /// bundled-resource dir, where it reads the FHIR SearchParameter bundle; the dev
@@ -192,6 +194,7 @@ fn server_config(
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
         public_host: server.domain(),
+        device_certificate: server.device_certificate_config(data_root),
     })
 }
 
@@ -383,7 +386,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
-    use servers_rust::{RelayKind, RunPolicy, ServerRecord, TunnelToken};
+    use servers_rust::{CertificateAuthority, RelayKind, RunPolicy, ServerRecord, TunnelToken};
 
     /// A server on the official relay.
     fn server() -> ServerRecord {
@@ -399,7 +402,7 @@ mod tests {
                 domain: "relay.wildflowerhealth.io".to_owned(),
             },
             launcher_url: ServerRecord::default_launcher_url(),
-            staging_certificates: false,
+            certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::WhileOpen,
         }
     }

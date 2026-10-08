@@ -10,6 +10,7 @@ use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
+use url::Url;
 
 use crate::ServerHealth;
 
@@ -38,8 +39,29 @@ pub struct WildflowerServerConfig {
     pub relay_settings: tunnel_rust::RelaySettings,
     /// The bare public host the relay serves the server at: the server's
     /// domain, from its record. The server's public origin, which HFS's links,
-    /// app launches and the reachability monitor's `/health` use.
+    /// app launches and the reachability monitor's `/health` use, and the
+    /// one name on its certificate.
     pub public_host: String,
+    /// Where the server's certificate is ordered from and cached, from its
+    /// record.
+    pub device_certificate: DeviceCertificateConfig,
+}
+
+/// Where the server's certificate for its public host comes from: the ACME CA
+/// it is ordered from, and the folders it and the install's ACME account are
+/// cached in. The host builds it from the server's record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceCertificateConfig {
+    /// The directory of the ACME CA the server's certificate is ordered
+    /// from: Let's Encrypt's staging or production CA, as the server's record
+    /// says.
+    pub acme_directory_url: Url,
+    /// The folder the server's certificates and their keys are cached in,
+    /// its own: deleting the server deletes them.
+    pub certificate_dir: PathBuf,
+    /// The folder the install's ACME account keys are cached in, one per CA,
+    /// shared by every server.
+    pub acme_account_dir: PathBuf,
 }
 
 /// The host's side of [`set_up`](crate::set_up): its native adapters and the

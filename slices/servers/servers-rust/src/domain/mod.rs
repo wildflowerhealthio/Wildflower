@@ -1,5 +1,6 @@
 //! The servers domain: [`ServerRecord`] and its parts, its
-//! [`RunPolicy`](unit_runner::RunPolicy) included, [`RegistryError`], the
+//! [`CertificateAuthority`] and [`RunPolicy`](unit_runner::RunPolicy)
+//! included, [`RegistryError`], the
 //! failure vocabulary of the
 //! [`ServerRegistry`](crate::ServerRegistry) port; enrolment: [`add_server`]
 //! and [`set_server_credentials`], which check a tunnel's credentials with its
@@ -14,6 +15,7 @@
 //! servers. Nothing here touches the network, and only [`remove_server`] the
 //! filesystem, to delete the server's folder.
 
+mod certificate_authority;
 mod enrolment;
 mod enrolment_error;
 mod listed_server;
@@ -27,6 +29,7 @@ mod server_status;
 
 pub mod notifications;
 
+pub use certificate_authority::CertificateAuthority;
 pub use enrolment::{add_server, set_server_credentials, EnteredRelay, RelayIdentity};
 pub use enrolment_error::EnrolmentError;
 pub use listed_server::ListedServer;

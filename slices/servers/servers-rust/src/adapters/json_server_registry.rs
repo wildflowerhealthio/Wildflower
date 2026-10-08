@@ -1,9 +1,10 @@
 //! [`JsonServerRegistry`]: the [`ServerRegistry`] kept in
 //! `<data root>/servers.json`.
 //!
-//! The file is `{"version": 1, "servers": [...]}`, each server's fields in
-//! camelCase. Its version is read before
-//! anything else, and a version other than [`FORMAT_VERSION`] is
+//! The file is `{"version": 2, "servers": [...]}`, each server's fields in
+//! camelCase. Its version is read before anything else. A version 1 file is
+//! migrated as it is read (see [`migrate_version_1`]) and written as version
+//! 2 by the next change; any other version but [`FORMAT_VERSION`] is
 //! [`RegistryError::UnsupportedVersion`]: the registry neither reads nor
 //! overwrites a file it doesn't understand. A missing file is an empty
 //! registry.
@@ -25,14 +26,15 @@ use serde::{Deserialize, Serialize};
 use unit_runner::RunPolicy;
 use url::Url;
 
-use crate::domain::{RegistryError, RelayKind, ServerRecord, TunnelToken};
+use crate::domain::{CertificateAuthority, RegistryError, RelayKind, ServerRecord, TunnelToken};
 use crate::ports::{NewRecord, RegistryChange, ServerRegistry};
 
 /// The registry's file name in the data root.
 pub const SERVERS_FILE_NAME: &str = "servers.json";
 
-/// The `servers.json` format version this build reads and writes.
-const FORMAT_VERSION: u64 = 1;
+/// The `servers.json` format version this build writes. It reads this and
+/// version 1.
+const FORMAT_VERSION: u64 = 2;
 
 /// The [`ServerRegistry`] over `<data root>/servers.json`.
 pub struct JsonServerRegistry {
@@ -65,11 +67,15 @@ impl JsonServerRegistry {
         };
         let VersionProbe { version } = serde_json::from_slice(&bytes)
             .map_err(|error| RegistryError::storage("reading servers.json's version", error))?;
-        if version != FORMAT_VERSION {
-            return Err(RegistryError::UnsupportedVersion { version });
+        let parse_error = |error| RegistryError::storage("parsing servers.json", error);
+        match version {
+            FORMAT_VERSION => serde_json::from_slice(&bytes).map_err(parse_error),
+            1 => {
+                let version_1 = serde_json::from_slice(&bytes).map_err(parse_error)?;
+                serde_json::from_value(migrate_version_1(version_1)?).map_err(parse_error)
+            }
+            version => Err(RegistryError::UnsupportedVersion { version }),
         }
-        serde_json::from_slice(&bytes)
-            .map_err(|error| RegistryError::storage("parsing servers.json", error))
     }
 
     /// Read the registry, apply `change` to its servers, and replace the file
@@ -197,6 +203,43 @@ struct VersionProbe {
     version: u64,
 }
 
+/// A version 1 `servers.json` `document` as version 2. Version 1 stored
+/// whether a server's certificates came from Let's Encrypt's staging CA as
+/// `stagingCertificates`; each becomes the server's `certificateAuthority`,
+/// `true` [`CertificateAuthority::LetsEncryptStaging`] and `false`
+/// [`CertificateAuthority::LetsEncrypt`], so every server keeps its CA.
+/// Nothing else changed.
+///
+/// # Errors
+///
+/// [`RegistryError::Storage`] if the document has no list of servers, or a
+/// server has no boolean `stagingCertificates`.
+fn migrate_version_1(mut document: serde_json::Value) -> Result<serde_json::Value, RegistryError> {
+    const CONTEXT: &str = "migrating servers.json from version 1";
+    let servers = document
+        .get_mut("servers")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| RegistryError::storage(CONTEXT, "it has no list of servers"))?;
+    for server in servers {
+        let staging_certificates = server
+            .as_object_mut()
+            .and_then(|server| server.remove("stagingCertificates"))
+            .and_then(|staging_certificates| staging_certificates.as_bool())
+            .ok_or_else(|| {
+                RegistryError::storage(CONTEXT, "a server has no boolean stagingCertificates")
+            })?;
+        let certificate_authority = if staging_certificates {
+            CertificateAuthority::LetsEncryptStaging
+        } else {
+            CertificateAuthority::LetsEncrypt
+        };
+        server["certificateAuthority"] = serde_json::to_value(certificate_authority)
+            .map_err(|error| RegistryError::storage(CONTEXT, error))?;
+    }
+    document["version"] = FORMAT_VERSION.into();
+    Ok(document)
+}
+
 /// `servers.json` as stored.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -245,7 +288,7 @@ struct StoredServerFields {
     #[serde(with = "StoredPublicSettings")]
     public_settings: PublicRatholeSettings,
     launcher_url: Url,
-    staging_certificates: bool,
+    certificate_authority: CertificateAuthority,
     run_policy: RunPolicy,
 }
 
@@ -376,12 +419,12 @@ mod tests {
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
     }
 
-    /// A version 1 `servers.json` holding `official_record(tunnel_name)`,
+    /// A version 2 `servers.json` holding `official_record(tunnel_name)`,
     /// written by hand rather than by the adapter.
-    fn version_1_file(tunnel_name: &str) -> String {
+    fn version_2_file(tunnel_name: &str) -> String {
         format!(
             r#"{{
-              "version": 1,
+              "version": 2,
               "servers": [{{
                 "relay": {{"kind": "wildflowerOfficial"}},
                 "tunnelName": "{tunnel_name}",
@@ -394,7 +437,32 @@ mod tests {
                   "domain": "relay.wildflowerhealth.io"
                 }},
                 "launcherUrl": "https://wildflowerhealth.io/app",
-                "stagingCertificates": false,
+                "certificateAuthority": "letsEncrypt",
+                "runPolicy": {{"kind": "off"}}
+              }}]
+            }}"#
+        )
+    }
+
+    /// A version 1 `servers.json` holding `official_record("ruth")`, its CA
+    /// stored as version 1 stores it, as `stagingCertificates`.
+    fn version_1_file(staging_certificates: bool) -> String {
+        format!(
+            r#"{{
+              "version": 1,
+              "servers": [{{
+                "relay": {{"kind": "wildflowerOfficial"}},
+                "tunnelName": "ruth",
+                "token": "{TOKEN}",
+                "publicSettings": {{
+                  "remoteAddr": "relay.wildflowerhealth.io:2333",
+                  "transport": "noise",
+                  "noisePattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
+                  "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
+                  "domain": "relay.wildflowerhealth.io"
+                }},
+                "launcherUrl": "https://wildflowerhealth.io/app",
+                "stagingCertificates": {staging_certificates},
                 "runPolicy": {{"kind": "off"}}
               }}]
             }}"#
@@ -402,31 +470,87 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_version_1_format() {
+    fn reads_the_version_2_format() {
         let (data_root, registry) = registry();
         fs::write(
             data_root.path().join(SERVERS_FILE_NAME),
-            version_1_file("ruth"),
+            version_2_file("ruth"),
         )
         .unwrap();
         assert_eq!(registry.read_all().unwrap(), vec![official_record("ruth")]);
     }
 
     #[test]
-    fn writes_the_version_1_format() {
+    fn writes_the_version_2_format() {
         let (data_root, registry) = registry();
         registry
             .insert(Box::new(|_| official_record("ruth")))
             .unwrap();
         let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
-        let by_hand: serde_json::Value = serde_json::from_str(&version_1_file("ruth")).unwrap();
+        let by_hand: serde_json::Value = serde_json::from_str(&version_2_file("ruth")).unwrap();
         assert_eq!(written, by_hand);
+    }
+
+    /// Each server in a version 1 file keeps the CA its `stagingCertificates`
+    /// named; reading leaves the file as it was.
+    #[test]
+    fn a_version_1_file_is_read_with_each_server_s_certificate_authority() {
+        let (data_root, registry) = registry();
+        for (staging_certificates, certificate_authority) in [
+            (true, CertificateAuthority::LetsEncryptStaging),
+            (false, CertificateAuthority::LetsEncrypt),
+        ] {
+            let version_1 = version_1_file(staging_certificates);
+            fs::write(data_root.path().join(SERVERS_FILE_NAME), &version_1).unwrap();
+
+            assert_eq!(
+                registry.read_all().unwrap(),
+                vec![ServerRecord {
+                    certificate_authority,
+                    ..official_record("ruth")
+                }],
+                "stagingCertificates: {staging_certificates}"
+            );
+            assert_eq!(file_text(&data_root), version_1);
+        }
+    }
+
+    /// The next change to a version 1 file writes it as version 2.
+    #[test]
+    fn a_version_1_file_is_written_as_version_2_by_the_next_change() {
+        let (data_root, registry) = registry();
+        fs::write(
+            data_root.path().join(SERVERS_FILE_NAME),
+            version_1_file(false),
+        )
+        .unwrap();
+
+        registry.modify(Box::new(|_| Ok(()))).unwrap();
+
+        let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
+        let version_2: serde_json::Value = serde_json::from_str(&version_2_file("ruth")).unwrap();
+        assert_eq!(written, version_2);
+    }
+
+    #[test]
+    fn a_version_1_server_with_no_staging_flag_is_refused() {
+        let (data_root, registry) = registry();
+        for staging_certificates in [r#""stagingCertificates": "yes","#, ""] {
+            let file = version_1_file(false)
+                .replace(r#""stagingCertificates": false,"#, staging_certificates);
+            assert_ne!(file, version_1_file(false));
+            fs::write(data_root.path().join(SERVERS_FILE_NAME), file).unwrap();
+            assert!(
+                matches!(registry.read_all(), Err(RegistryError::Storage { .. })),
+                "{staging_certificates:?}"
+            );
+        }
     }
 
     #[test]
     fn a_snake_case_file_is_refused() {
         let (data_root, registry) = registry();
-        let snake_case = version_1_file("ruth")
+        let snake_case = version_2_file("ruth")
             .replace("tunnelName", "tunnel_name")
             .replace("publicSettings", "public_settings");
         fs::write(data_root.path().join(SERVERS_FILE_NAME), snake_case).unwrap();
@@ -527,7 +651,7 @@ mod tests {
         for tunnel_name in ["Ruth", "ru.th", "..", "admin"] {
             fs::write(
                 data_root.path().join(SERVERS_FILE_NAME),
-                version_1_file(tunnel_name),
+                version_2_file(tunnel_name),
             )
             .unwrap();
             assert!(
@@ -543,11 +667,11 @@ mod tests {
     fn a_stored_domain_that_is_not_a_dns_name_is_refused() {
         let (data_root, registry) = registry();
         for domain in ["x/../../..", "..", "Relay.example.com", ""] {
-            let file = version_1_file("ruth").replace(
+            let file = version_2_file("ruth").replace(
                 r#""domain": "relay.wildflowerhealth.io""#,
                 &format!(r#""domain": "{domain}""#),
             );
-            assert_ne!(file, version_1_file("ruth"));
+            assert_ne!(file, version_2_file("ruth"));
             fs::write(data_root.path().join(SERVERS_FILE_NAME), file).unwrap();
             assert!(
                 matches!(registry.read_all(), Err(RegistryError::Storage { .. })),
@@ -590,16 +714,16 @@ mod tests {
     #[test]
     fn an_unknown_version_is_rejected_and_left_in_place() {
         let (data_root, registry) = registry();
-        let future = r#"{"version": 2, "servers": [], "profiles": []}"#;
+        let future = r#"{"version": 3, "servers": [], "profiles": []}"#;
         fs::write(data_root.path().join(SERVERS_FILE_NAME), future).unwrap();
 
         assert!(matches!(
             registry.read_all(),
-            Err(RegistryError::UnsupportedVersion { version: 2 })
+            Err(RegistryError::UnsupportedVersion { version: 3 })
         ));
         assert!(matches!(
             registry.insert(Box::new(|_| official_record("ruth"))),
-            Err(RegistryError::UnsupportedVersion { version: 2 })
+            Err(RegistryError::UnsupportedVersion { version: 3 })
         ));
         assert_eq!(file_text(&data_root), future);
     }
@@ -664,7 +788,7 @@ mod tests {
             .insert(Box::new(|_| official_record("ruth")))
             .unwrap();
         let mut same_domain = official_record("ruth");
-        same_domain.staging_certificates = true;
+        same_domain.certificate_authority = CertificateAuthority::LetsEncryptStaging;
 
         assert!(matches!(
             registry.insert(Box::new(|_| same_domain)),
@@ -683,12 +807,12 @@ mod tests {
             .insert(Box::new(|_| self_hosted_record("lab")))
             .unwrap();
         let mut updated = official_record("ruth");
-        updated.staging_certificates = true;
+        updated.certificate_authority = CertificateAuthority::LetsEncryptStaging;
         updated.launcher_url = Url::parse("http://localhost:5200/").unwrap();
 
         registry
             .modify(Box::new(|servers| {
-                servers[0].staging_certificates = true;
+                servers[0].certificate_authority = CertificateAuthority::LetsEncryptStaging;
                 servers[0].launcher_url = Url::parse("http://localhost:5200/").unwrap();
                 Ok(())
             }))
@@ -709,7 +833,7 @@ mod tests {
         let before = file_text(&data_root);
 
         let refused = registry.modify(Box::new(|servers| {
-            servers[0].staging_certificates = true;
+            servers[0].certificate_authority = CertificateAuthority::LetsEncryptStaging;
             Err(RegistryError::NotRegistered {
                 domain: "lab.relay.example.com".to_owned(),
             })

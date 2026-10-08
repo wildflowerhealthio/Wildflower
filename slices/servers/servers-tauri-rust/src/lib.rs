@@ -40,8 +40,8 @@
 //!   [`RunPolicyChoice`](servers_rust::RunPolicyChoice) as a run policy and
 //!   gives `TauriUnitRunner` that policy, answering with it.
 //! - [`server_update`], invoked as
-//!   `invoke('server_update', { domain, launcherUrl, stagingCertificates })`,
-//!   sets the launcher and the certificate source, and pushes the server
+//!   `invoke('server_update', { domain, launcherUrl, certificateAuthority })`,
+//!   sets the launcher and the certificate authority, and pushes the server
 //!   again only when a field its runs read changed.
 //! - [`server_remove`], invoked as `invoke('server_remove', { domain })`,
 //!   takes the server off `TauriUnitRunner`, waiting for its run to end, then

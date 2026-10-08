@@ -399,7 +399,7 @@ pub(crate) mod tests {
         );
         let errors = [
             ServerChangeError::NonPositiveDuration { seconds: 0 },
-            ServerChangeError::Registry(RegistryError::UnsupportedVersion { version: 2 }),
+            ServerChangeError::Registry(RegistryError::UnsupportedVersion { version: 3 }),
             ServerChangeError::Registry(RegistryError::NotRegistered {
                 domain: "lab.relay.example.com".to_owned(),
             }),

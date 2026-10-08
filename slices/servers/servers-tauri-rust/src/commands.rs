@@ -26,8 +26,8 @@ use std::sync::Arc;
 use chrono::Utc;
 use rathole_settings_rust::TunnelName;
 use servers_rust::{
-    EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayClient, ReqwestRelayClient,
-    RunPolicy, RunPolicyChoice, ServerChangeError, ServerRegistry, TunnelToken,
+    CertificateAuthority, EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayClient,
+    ReqwestRelayClient, RunPolicy, RunPolicyChoice, ServerChangeError, ServerRegistry, TunnelToken,
 };
 use tauri_plugin_log::log;
 use url::Url;
@@ -104,9 +104,9 @@ pub async fn server_set_run_policy(
     set_run_policy(&servers, domain, choice).await
 }
 
-/// Set the launcher a server opens apps from, and whether its certificates come
-/// from the ACME staging directory; answers with nothing. Invoked as
-/// `invoke('server_update', { domain, launcherUrl, stagingCertificates })`.
+/// Set the launcher a server opens apps from, and the ACME CA its certificates
+/// are ordered from; answers with nothing. Invoked as
+/// `invoke('server_update', { domain, launcherUrl, certificateAuthority })`.
 /// When a field a run reads changed, the server is pushed to `TauriUnitRunner`
 /// again, which replaces a run of the old record.
 ///
@@ -119,9 +119,9 @@ pub async fn server_update(
     servers: tauri::State<'_, ServersState>,
     domain: String,
     launcher_url: String,
-    staging_certificates: bool,
+    certificate_authority: CertificateAuthority,
 ) -> Result<(), ServerChangeError> {
-    update(&servers, domain, launcher_url, staging_certificates).await
+    update(&servers, domain, launcher_url, certificate_authority).await
 }
 
 /// Stop a server and delete it: once its run has ended and it is off the
@@ -284,7 +284,7 @@ async fn update(
     servers: &ServersState,
     domain: String,
     launcher_url: String,
-    staging_certificates: bool,
+    certificate_authority: CertificateAuthority,
 ) -> Result<(), ServerChangeError> {
     let _registry_write = servers.registry_writes.lock().await;
     let changed_domain = domain.clone();
@@ -293,7 +293,7 @@ async fn update(
             registry,
             &changed_domain,
             &launcher_url,
-            staging_certificates,
+            certificate_authority,
         )
     })
     .await;
@@ -1047,7 +1047,7 @@ mod tests {
             &servers,
             RATHOLE_DOMAIN.to_owned(),
             record.launcher_url.to_string(),
-            record.staging_certificates,
+            record.certificate_authority,
         )
         .await
         .unwrap();
@@ -1059,12 +1059,17 @@ mod tests {
     async fn an_update_pushes_the_server_again_only_when_its_runs_read_the_change() {
         let runner = runner();
         let (_data_root, servers, run) = running_server(&runner).await;
+        let certificate_authority = servers.registry.read_all().unwrap()[0].certificate_authority;
+        let other_certificate_authority = match certificate_authority {
+            CertificateAuthority::LetsEncryptStaging => CertificateAuthority::LetsEncrypt,
+            CertificateAuthority::LetsEncrypt => CertificateAuthority::LetsEncryptStaging,
+        };
 
         update(
             &servers,
             RATHOLE_DOMAIN.to_owned(),
             "http://localhost:5200/app".to_owned(),
-            false,
+            certificate_authority,
         )
         .await
         .unwrap();
@@ -1083,14 +1088,17 @@ mod tests {
             &servers,
             RATHOLE_DOMAIN.to_owned(),
             "http://localhost:5200/app".to_owned(),
-            true,
+            other_certificate_authority,
         )
         .await
         .unwrap();
-        assert!(servers.registry.read_all().unwrap()[0].staging_certificates);
+        assert_eq!(
+            servers.registry.read_all().unwrap()[0].certificate_authority,
+            other_certificate_authority
+        );
         assert!(
             shutdown_of(&run).is_cancelled(),
-            "the certificate source is a run's, so the run is replaced"
+            "the certificate authority is a run's, so the run is replaced"
         );
         status_on(&runner, |status| {
             status.is_some_and(|status| {
@@ -1199,7 +1207,7 @@ mod tests {
         struct UpdateArgs {
             domain: String,
             launcher_url: String,
-            staging_certificates: bool,
+            certificate_authority: CertificateAuthority,
         }
         assert!(
             serde_json::from_value::<SetRunPolicyArgs>(serde_json::json!({
@@ -1211,7 +1219,7 @@ mod tests {
         assert!(serde_json::from_value::<UpdateArgs>(serde_json::json!({
             "domain": RATHOLE_DOMAIN,
             "launcherUrl": "http://localhost:5200/app",
-            "stagingCertificates": true,
+            "certificateAuthority": "letsEncryptStaging",
         }))
         .is_ok());
     }
