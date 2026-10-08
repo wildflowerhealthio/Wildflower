@@ -95,8 +95,7 @@ impl WildflowerServer {
     }
 
     /// The server's pending consents, which the host reads, approves and
-    /// denies in-process as its Owner, with no token. The host holds them
-    /// only while the server runs.
+    /// denies in-process as its Owner, with no token.
     #[must_use]
     pub fn host_owner_consents(&self) -> &HostOwnerConsents {
         &self.host_owner_consents

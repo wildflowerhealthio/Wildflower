@@ -38,9 +38,9 @@
 //! A server runs as a [`ServerUnit`] on `UnitRunner`: the host pushes each
 //! record to `UnitRunner` with a factory that builds a fresh unit for every
 //! run, and the unit reports its health and the oldest consent waiting on it
-//! ([`PendingConsent`]) as its [`ServerDetail`]. While a run is up, its
-//! gatekeeper's consents are in the host's [`RunningServerConsents`], through
-//! which the base reads, approves and denies them in-process. What the host
+//! ([`PendingConsent`]) as its [`ServerDetail`], with the
+//! [`ServerConsentDecider`] through which the base reads, approves and denies
+//! the run's consents in-process. What the host
 //! notifies about its servers is decided here too: the per-caller request
 //! notifications ([`RequestNotificationCoalescer`]) and the notifications for
 //! each stop of a server's run ([`StopNotificationCoalescer`]).
@@ -50,7 +50,9 @@
 //!    [`RelayIdentity`] and [`EnrolmentError`], and the changes to a
 //!    registered server with [`RunPolicyChoice`] and [`ServerChangeError`];
 //!    [`ServerDetail`]; [`PendingConsent`] with its [`ConsentKey`] and
-//!    [`PendingConsentTracker`]; and the [`notifications`](domain::notifications)
+//!    [`PendingConsentTracker`]; the wire shapes the consent commands answer
+//!    in ([`ConsentDetails`], [`ApprovalOutcome`], [`ConsentError`]) and take
+//!    ([`ConsentApproval`]); and the [`notifications`](domain::notifications)
 //!    the host posts: [`LocalNotification`], the request coalescer and the
 //!    stop notifications. The token is a secret: its `Debug` and `Serialize`
 //!    write a redaction marker, and only `servers.json` holds it in full.
@@ -64,10 +66,7 @@
 //!    never sent.
 //!  - `live_bindings` — [`ServerUnit`], a server bound to
 //!    `wildflower-server-rust` as a unit `UnitRunner` runs, and
-//!    [`RunningServerConsents`], its runs' consents bound to `gatekeeper-rust`,
-//!    with the wire shapes the consent commands answer in
-//!    ([`ConsentDetails`], [`ApprovalOutcome`], [`ConsentError`]) and take
-//!    ([`ConsentApproval`]).
+//!    [`ServerConsentDecider`], a run's consents bound to `gatekeeper-rust`.
 
 pub mod domain;
 
@@ -85,15 +84,13 @@ pub use domain::notifications::stop_notifications::{
 };
 pub use domain::{
     add_server, remove_server, set_run_policy, set_server_credentials, update_server,
-    CertificateAuthority, ConsentKey, EnrolmentError, EnteredRelay, ListedServer, PendingConsent,
-    PendingConsentChange, PendingConsentTracker, RegistryError, RelayIdentity, RelayKind,
-    RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
-    ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
+    ApprovalOutcome, CertificateAuthority, ConsentApproval, ConsentDetails, ConsentError,
+    ConsentKey, EnrolmentError, EnteredRelay, ListedServer, PendingConsent, PendingConsentChange,
+    PendingConsentTracker, Registration, RegistryError, RelayIdentity, RelayKind, RunPolicyChoice,
+    ServerChangeError, ServerDetail, ServerRecord, ServerStatus, ServerStatusTracker, ServerUpdate,
+    TunnelToken, SERVERS_DIR_NAME,
 };
-pub use live_bindings::running_server_consents::{
-    ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, Registration,
-    RunningServerConsents, RunningServerConsentsEntry,
-};
+pub use live_bindings::server_consent_decider::ServerConsentDecider;
 pub use live_bindings::server_unit::ServerUnit;
 pub use ports::{NewRecord, RegistryChange, RelayClient, ServerRegistry};
 pub use unit_runner::RunPolicy;

@@ -162,6 +162,7 @@ mod tests {
             detail: Some(ServerDetail {
                 health: None,
                 pending_consent,
+                consent_decider: None,
             }),
         }
     }

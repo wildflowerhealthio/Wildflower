@@ -7,7 +7,7 @@ use unit_runner::{RunContext, Unit};
 use wildflower_server_rust::{HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig};
 
 use crate::domain::ServerDetail;
-use crate::live_bindings::running_server_consents::RunningServerConsents;
+use crate::live_bindings::server_consent_decider::ServerConsentDecider;
 
 /// One run of one server: the Wildflower server `wildflower-server-rust` sets
 /// up and serves, as a unit `UnitRunner` runs.
@@ -23,25 +23,21 @@ pub struct ServerUnit {
     config: WildflowerServerConfig,
     host_ports: HostPorts,
     forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
-    running_server_consents: RunningServerConsents,
 }
 
 impl ServerUnit {
     /// A run of the server `config` describes, over the host's `host_ports`,
-    /// reporting each request its tunnel relays on `forwarded_request_tx`
-    /// and putting its consents in `running_server_consents` while it is up.
+    /// reporting each request its tunnel relays on `forwarded_request_tx`.
     #[must_use]
     pub fn new(
         config: WildflowerServerConfig,
         host_ports: HostPorts,
         forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
-        running_server_consents: RunningServerConsents,
     ) -> Self {
         Self {
             config,
             host_ports,
             forwarded_request_tx,
-            running_server_consents,
         }
     }
 }
@@ -49,10 +45,10 @@ impl ServerUnit {
 impl Unit for ServerUnit {
     type Detail = ServerDetail;
 
-    /// Set the server up, put its consents in the host's
-    /// [`RunningServerConsents`] until the run ends, announce it running, and
-    /// serve it until `UnitRunner` stops the run. Its health and the head of
-    /// its pending-consent queue go out as the run's [`ServerDetail`].
+    /// Set the server up, announce it running, and serve it until
+    /// `UnitRunner` stops the run. Its health, the head of its pending-consent
+    /// queue and the [`ServerConsentDecider`] over its gatekeeper go out as
+    /// the run's [`ServerDetail`].
     ///
     /// The run's gatekeeper publishes its queue's head on a channel of the
     /// run's own, so each server's head is its own; each head is forwarded to
@@ -73,11 +69,9 @@ impl Unit for ServerUnit {
             },
         )
         .await?;
-        let _consents_entry = self
-            .running_server_consents
-            .enter(ctx.unit_id().as_str(), server.host_owner_consents().clone());
         tokio::spawn(report_detail(
             DetailSources {
+                consent_decider: ServerConsentDecider::new(server.host_owner_consents().clone()),
                 server_health_rx,
                 pending_consent_rx,
                 host_pending_consent_tx,
@@ -91,6 +85,8 @@ impl Unit for ServerUnit {
 
 /// What a run's detail is read from.
 struct DetailSources {
+    /// The run's consent decider, the same in every detail the run sets.
+    consent_decider: ServerConsentDecider,
     /// The run's reachability monitor's health.
     server_health_rx: watch::Receiver<Option<ServerHealth>>,
     /// The head of the run's gatekeeper's pending-consent queue.
@@ -99,10 +95,13 @@ struct DetailSources {
     host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
 }
 
-/// Set the run's detail from its health and its queue's head, now and each
-/// time either changes, and forward each new head to the host's channel. The
-/// task dies with the run's runtime, and `UnitRunner` clears the detail when
-/// the run ends.
+/// The task each run spawns to report its [`ServerDetail`]: it merges the
+/// run's health, the head of its gatekeeper's pending-consent queue and its
+/// consent decider into the detail, now and each time the health or the head
+/// changes. It also forwards each new head to the host's shared
+/// `active_pending_consent_tx`, which the legacy bridge reads until #965
+/// deletes it. The task dies with the run's runtime, and `UnitRunner` clears
+/// the detail when the run ends.
 async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
     // The monitor drops its sender once it stops; the head's lives as long as
     // the run's gatekeeper.
@@ -121,6 +120,7 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
         ctx.set_detail(ServerDetail {
             health: sources.server_health_rx.borrow_and_update().clone(),
             pending_consent,
+            consent_decider: Some(sources.consent_decider.clone()),
         });
         tokio::select! {
             changed = sources.server_health_rx.changed(), if health_open => {

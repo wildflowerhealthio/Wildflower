@@ -1,8 +1,8 @@
 //! The consent commands: the base reads the consents waiting on the running
-//! servers and approves or denies them through each server's gatekeeper
-//! in-process ([`RunningServerConsents`]), with no HTTP and no token in the
-//! webview. Each gatekeeper call runs on a blocking thread, and its outcome
-//! is logged by domain.
+//! servers and approves or denies them through each run's gatekeeper
+//! in-process (the [`ServerConsentDecider`] in the run's detail), with no HTTP
+//! and no token in the webview. Each gatekeeper call runs on a blocking
+//! thread, and its outcome is logged by domain.
 //!
 //! A server that isn't running answers [`ConsentError::ServerNotRunning`];
 //! every failure answers as `{kind, message}`. A payload Tauri can't decode
@@ -13,9 +13,10 @@ use chrono::Utc;
 use gatekeeper_rust::domain::gatekeeper_error::GatekeeperError;
 use servers_rust::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, PendingConsent,
-    RunningServerConsents,
+    ServerConsentDecider, ServerDetail,
 };
 use tauri_plugin_log::log;
+use tauri_unit_runner::UnitStatuses;
 
 use crate::ServersState;
 
@@ -42,7 +43,7 @@ pub async fn server_consent_get(
     domain: String,
     consent: ConsentKey,
 ) -> Result<ConsentDetails, ConsentError> {
-    read(servers.server_units.consents(), domain, consent).await
+    read(&servers.server_units.statuses(), domain, consent).await
 }
 
 /// Approve a consent waiting on the server `domain` as the host's Owner.
@@ -59,7 +60,7 @@ pub async fn server_consent_approve(
     domain: String,
     approval: ConsentApproval,
 ) -> Result<ApprovalOutcome, ConsentError> {
-    approve(servers.server_units.consents(), domain, approval).await
+    approve(&servers.server_units.statuses(), domain, approval).await
 }
 
 /// Deny the consent `consent` waiting on the server `domain`. Invoked as
@@ -75,17 +76,19 @@ pub async fn server_consent_deny(
     domain: String,
     consent: ConsentKey,
 ) -> Result<(), ConsentError> {
-    deny(servers.server_units.consents(), domain, consent).await
+    deny(&servers.server_units.statuses(), domain, consent).await
 }
 
-/// Run `operation` on the server consents on a blocking thread: each is a
-/// synchronous gatekeeper transaction.
-async fn on_consents<T: Send + 'static>(
-    consents: &RunningServerConsents,
-    operation: impl FnOnce(&RunningServerConsents) -> Result<T, ConsentError> + Send + 'static,
+/// Run `operation` on a blocking thread, on the decider of the server
+/// `domain`'s run as `statuses` hold it: each is a synchronous gatekeeper
+/// transaction.
+async fn on_decider<T: Send + 'static>(
+    statuses: &UnitStatuses<ServerDetail>,
+    domain: &str,
+    operation: impl FnOnce(&ServerConsentDecider) -> Result<T, ConsentError> + Send + 'static,
 ) -> Result<T, ConsentError> {
-    let consents = consents.clone();
-    tokio::task::spawn_blocking(move || operation(&consents))
+    let decider = ServerConsentDecider::of_running_server(statuses, domain)?;
+    tokio::task::spawn_blocking(move || operation(&decider))
         .await
         .map_err(|error| {
             ConsentError::Gatekeeper(GatekeeperError::infrastructure(
@@ -96,26 +99,22 @@ async fn on_consents<T: Send + 'static>(
 }
 
 async fn read(
-    consents: &RunningServerConsents,
+    statuses: &UnitStatuses<ServerDetail>,
     domain: String,
     consent: ConsentKey,
 ) -> Result<ConsentDetails, ConsentError> {
-    let read_domain = domain.clone();
-    on_consents(consents, move |consents| {
-        consents.read(&read_domain, &consent)
-    })
-    .await
-    .inspect_err(|error| log::warn!("[servers] reading a consent on {domain} failed: {error}"))
+    on_decider(statuses, &domain, move |decider| decider.read(&consent))
+        .await
+        .inspect_err(|error| log::warn!("[servers] reading a consent on {domain} failed: {error}"))
 }
 
 async fn approve(
-    consents: &RunningServerConsents,
+    statuses: &UnitStatuses<ServerDetail>,
     domain: String,
     approval: ConsentApproval,
 ) -> Result<ApprovalOutcome, ConsentError> {
-    let approved_domain = domain.clone();
-    let result = on_consents(consents, move |consents| {
-        consents.approve(&approved_domain, approval, Utc::now())
+    let result = on_decider(statuses, &domain, move |decider| {
+        decider.approve(approval, Utc::now())
     })
     .await;
     match &result {
@@ -126,15 +125,11 @@ async fn approve(
 }
 
 async fn deny(
-    consents: &RunningServerConsents,
+    statuses: &UnitStatuses<ServerDetail>,
     domain: String,
     consent: ConsentKey,
 ) -> Result<(), ConsentError> {
-    let denied_domain = domain.clone();
-    let result = on_consents(consents, move |consents| {
-        consents.deny(&denied_domain, &consent)
-    })
-    .await;
+    let result = on_decider(statuses, &domain, move |decider| decider.deny(&consent)).await;
     match &result {
         Ok(()) => log::info!("[servers] denied a consent on {domain}"),
         Err(error) => log::warn!("[servers] denying a consent on {domain} failed: {error}"),
@@ -155,6 +150,7 @@ mod tests {
         NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
     };
     use shared_structures_rust::owner_ui::OwnerUiBase;
+    use tauri_unit_runner::{RunState, UnitId, UnitStatus};
     use tokio::sync::watch;
     use url::Url;
 
@@ -237,27 +233,31 @@ mod tests {
             .unwrap();
     }
 
-    fn running(
-        gatekeeper: &TestGatekeeper,
-    ) -> (
-        RunningServerConsents,
-        servers_rust::RunningServerConsentsEntry,
-    ) {
-        let running_server_consents = RunningServerConsents::new();
-        let entry = running_server_consents.enter(DOMAIN, gatekeeper.consents.clone());
-        (running_server_consents, entry)
+    /// The servers' statuses with the server's run up over `gatekeeper`.
+    fn running(gatekeeper: &TestGatekeeper) -> UnitStatuses<ServerDetail> {
+        let detail = ServerDetail {
+            health: None,
+            pending_consent: None,
+            consent_decider: Some(ServerConsentDecider::new(gatekeeper.consents.clone())),
+        };
+        let status = UnitStatus {
+            run_state: RunState::Running,
+            running_since: None,
+            detail: Some(detail),
+        };
+        [(UnitId::new(DOMAIN), status)].into()
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_device_request_is_read_and_approved_through_the_commands() {
         let gatekeeper = test_gatekeeper();
         park(&gatekeeper, "device-1", GrantType::DeviceCode);
-        let (consents, _entry) = running(&gatekeeper);
+        let statuses = running(&gatekeeper);
         let key = ConsentKey::Device {
             user_code: "CODE-device-1".to_owned(),
         };
 
-        let details = read(&consents, DOMAIN.to_owned(), key.clone())
+        let details = read(&statuses, DOMAIN.to_owned(), key.clone())
             .await
             .unwrap();
         assert!(
@@ -265,7 +265,7 @@ mod tests {
             "{details:?}"
         );
         let outcome = approve(
-            &consents,
+            &statuses,
             DOMAIN.to_owned(),
             ConsentApproval::Device {
                 user_code: "CODE-device-1".to_owned(),
@@ -286,7 +286,7 @@ mod tests {
             RequestStatus::Approved
         );
         assert_eq!(
-            read(&consents, DOMAIN.to_owned(), key).await,
+            read(&statuses, DOMAIN.to_owned(), key).await,
             Err(ConsentError::NotPending)
         );
     }
@@ -295,12 +295,12 @@ mod tests {
     async fn an_authorization_request_is_denied_through_the_commands() {
         let gatekeeper = test_gatekeeper();
         park(&gatekeeper, "req-1", GrantType::AuthorizationCode);
-        let (consents, _entry) = running(&gatekeeper);
+        let statuses = running(&gatekeeper);
         let key = ConsentKey::OAuth {
             id: "req-1".to_owned(),
         };
 
-        let denied = deny(&consents, DOMAIN.to_owned(), key.clone()).await;
+        let denied = deny(&statuses, DOMAIN.to_owned(), key.clone()).await;
 
         assert_eq!(denied, Ok(()));
         assert_eq!(
@@ -313,89 +313,31 @@ mod tests {
             RequestStatus::Denied
         );
         assert_eq!(
-            deny(&consents, DOMAIN.to_owned(), key).await,
+            deny(&statuses, DOMAIN.to_owned(), key).await,
             Err(ConsentError::NotPending)
         );
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_server_whose_run_ended_answers_server_not_running() {
-        let gatekeeper = test_gatekeeper();
-        park(&gatekeeper, "req-1", GrantType::AuthorizationCode);
-        let (consents, entry) = running(&gatekeeper);
-        drop(entry);
-
+    async fn a_server_with_no_run_up_answers_server_not_running() {
+        // No run has set the server's detail, or the run ended and
+        // `UnitRunner` cleared it.
+        let statuses: UnitStatuses<ServerDetail> =
+            [(UnitId::new(DOMAIN), UnitStatus::never_run())].into();
         let key = ConsentKey::OAuth {
             id: "req-1".to_owned(),
         };
         let not_running = ConsentError::ServerNotRunning {
             domain: DOMAIN.to_owned(),
         };
+
         assert_eq!(
-            read(&consents, DOMAIN.to_owned(), key.clone()).await,
+            read(&statuses, DOMAIN.to_owned(), key.clone()).await,
             Err(not_running.clone())
         );
         assert_eq!(
-            deny(&consents, DOMAIN.to_owned(), key).await,
+            deny(&statuses, DOMAIN.to_owned(), key).await,
             Err(not_running)
-        );
-        assert_eq!(
-            gatekeeper
-                .store
-                .authorization_request_by_id("req-1")
-                .unwrap()
-                .unwrap()
-                .status,
-            RequestStatus::Pending,
-            "nothing was decided"
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn an_ended_runs_entry_leaves_the_next_runs_consents_in_place() {
-        let ended_run = test_gatekeeper();
-        let next_run = test_gatekeeper();
-        park(&ended_run, "ended-req", GrantType::AuthorizationCode);
-        park(&next_run, "next-req", GrantType::AuthorizationCode);
-        let consents = RunningServerConsents::new();
-        let ended_entry = consents.enter(DOMAIN, ended_run.consents.clone());
-        let next_entry = consents.enter(DOMAIN, next_run.consents.clone());
-
-        // The ended run's entry drops after the next run has put its own in.
-        drop(ended_entry);
-
-        let ended_key = ConsentKey::OAuth {
-            id: "ended-req".to_owned(),
-        };
-        assert_eq!(
-            deny(&consents, DOMAIN.to_owned(), ended_key).await,
-            Err(ConsentError::NotPending),
-            "the ended run's gatekeeper is out of reach"
-        );
-        assert_eq!(
-            ended_run
-                .store
-                .authorization_request_by_id("ended-req")
-                .unwrap()
-                .unwrap()
-                .status,
-            RequestStatus::Pending,
-        );
-        let next_key = ConsentKey::OAuth {
-            id: "next-req".to_owned(),
-        };
-        assert_eq!(
-            deny(&consents, DOMAIN.to_owned(), next_key.clone()).await,
-            Ok(()),
-            "the next run's consents are still reached"
-        );
-
-        drop(next_entry);
-        assert_eq!(
-            read(&consents, DOMAIN.to_owned(), next_key).await,
-            Err(ConsentError::ServerNotRunning {
-                domain: DOMAIN.to_owned()
-            })
         );
     }
 }

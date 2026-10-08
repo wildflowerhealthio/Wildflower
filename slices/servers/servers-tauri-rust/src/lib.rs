@@ -54,7 +54,7 @@
 //!   [`server_consent_deny`], invoked with the server's `domain` and a
 //!   consent's key or approval, read a waiting consent and decide it as the
 //!   host's Owner, through the running server's gatekeeper in-process (see
-//!   [`servers_rust::RunningServerConsents`]); a server that isn't running
+//!   [`servers_rust::ServerConsentDecider`]); a server that isn't running
 //!   answers `serverNotRunning`.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri

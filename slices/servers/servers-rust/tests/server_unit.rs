@@ -4,8 +4,8 @@
 //! as the run's detail, and once its policy turns it off, stops with the
 //! detail cleared. Turned back on, the next run binds the same port, so the
 //! previous run's runtime is gone, and serves again. A consent its gatekeeper
-//! parks is the run's detail, and is read and decided through the host's
-//! `RunningServerConsents` until the run ends.
+//! parks is the run's detail, and is read and decided through the
+//! `ServerConsentDecider` the run's detail holds until the run ends.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use std::time::Duration;
 use gatekeeper_rust::{NoLoopbackConsentPrompt, PendingConsentHead};
 use servers_rust::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, RunPolicy,
-    RunningServerConsents, ServerDetail, ServerUnit,
+    ServerConsentDecider, ServerDetail, ServerUnit,
 };
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
@@ -131,7 +131,6 @@ async fn health_status(loopback_base_url: &Url) -> reqwest::StatusCode {
 struct ServerOnARunner {
     unit_runner: Arc<UnitRunner<ServerDetail>>,
     loopback_base_url: Url,
-    running_server_consents: RunningServerConsents,
     /// The host's pending-consent channel, which every run forwards its head to.
     host_pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     /// Held so gatekeeper can publish the host owner token.
@@ -154,23 +153,19 @@ fn server_on_a_runner() -> ServerOnARunner {
     };
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(16);
     let config = server_config(server_dir.path().to_owned(), loopback_base_url.clone());
-    let running_server_consents = RunningServerConsents::new();
 
     let unit_runner =
         UnitRunner::<ServerDetail>::new(tokio::runtime::Handle::current(), Arc::new(SystemClock));
-    let unit_consents = running_server_consents.clone();
     unit_runner.set_unit(UnitId::from(DOMAIN), RunPolicy::Always, move || {
         Ok(ServerUnit::new(
             config.clone(),
             host_ports.clone(),
             forwarded_request_tx.clone(),
-            unit_consents.clone(),
         ))
     });
     ServerOnARunner {
         unit_runner,
         loopback_base_url,
-        running_server_consents,
         host_pending_consent_rx,
         _host_owner_token_rx: host_owner_token_rx,
         _server_dir: server_dir,
@@ -284,12 +279,13 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
         "the run forwards its head to the host's channel"
     );
 
+    let decider = ServerConsentDecider::of_running_server(&unit_runner.statuses(), DOMAIN)
+        .expect("the run's detail holds its decider");
     let first_key = ConsentKey::Device {
         user_code: user_codes[0].clone(),
     };
     let details =
-        tokio::task::block_in_place(|| server.running_server_consents.read(DOMAIN, &first_key))
-            .expect("the first request");
+        tokio::task::block_in_place(|| decider.read(&first_key)).expect("the first request");
     let ConsentDetails::Device {
         user_code,
         client_id,
@@ -304,8 +300,7 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     assert_eq!(requested_scopes, ["system/*.cruds"]);
 
     let outcome = tokio::task::block_in_place(|| {
-        server.running_server_consents.approve(
-            DOMAIN,
+        decider.approve(
             ConsentApproval::Device {
                 user_code: user_codes[0].clone(),
                 approved_scopes: vec!["system/*.cruds".to_owned()],
@@ -329,8 +324,7 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     let second_key = ConsentKey::Device {
         user_code: user_codes[1].clone(),
     };
-    tokio::task::block_in_place(|| server.running_server_consents.deny(DOMAIN, &second_key))
-        .expect("deny the second request");
+    tokio::task::block_in_place(|| decider.deny(&second_key)).expect("deny the second request");
     wait_for(unit_runner, "reporting nothing waiting", |status| {
         status
             .detail
@@ -339,7 +333,7 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     })
     .await;
     assert_eq!(
-        tokio::task::block_in_place(|| server.running_server_consents.deny(DOMAIN, &second_key)),
+        tokio::task::block_in_place(|| decider.deny(&second_key)),
         Err(ConsentError::NotPending)
     );
 
@@ -349,8 +343,8 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     })
     .await;
     assert_eq!(
-        server.running_server_consents.read(DOMAIN, &first_key),
-        Err(ConsentError::ServerNotRunning {
+        ServerConsentDecider::of_running_server(&unit_runner.statuses(), DOMAIN).err(),
+        Some(ConsentError::ServerNotRunning {
             domain: DOMAIN.to_owned()
         }),
         "a stopped server's consents are out of reach"

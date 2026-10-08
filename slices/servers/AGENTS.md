@@ -14,11 +14,12 @@ changing how servers run or what the host notifies about them.
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher and certificate source,
   and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
-  `ServerDetail`, what its runs report; `ServerStatus`, a server's status on
+  `ServerDetail`, what its runs report, its `ServerConsentDecider` included,
+  through which the base reads and decides a running server's consents;
+  `ServerStatus`, a server's status on
   `UnitRunner` as the base receives it, and `ListedServer`; `PendingConsent`,
-  the oldest consent waiting on a server, with `PendingConsentTracker`, and
-  `RunningServerConsents`, through which the base reads and decides a running
-  server's consents; and the notification decisions: the per-caller request
+  the oldest consent waiting on a server, with `PendingConsentTracker`; and the
+  notification decisions: the per-caller request
   coalescer and the stop notification for each new stop of a server's run.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
@@ -26,16 +27,16 @@ changing how servers run or what the host notifies about them.
     (`set_run_policy` with `RunPolicyChoice`, `update_server` with
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`,
-    `PendingConsent` with `ConsentKey` and `PendingConsentTracker`, and
-    `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
+    `PendingConsent` with `ConsentKey` and `PendingConsentTracker`, the
+    consent commands' wire (`ConsentDetails`, `ConsentApproval`,
+    `ApprovalOutcome`, `ConsentError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
     `StopNotificationCoalescer` with `ServerStop` and `StopCause`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`, and
-    `RunningServerConsents`, bound to `gatekeeper-rust`'s `HostOwnerConsents`,
-    with the consent commands' wire (`ConsentDetails`, `ConsentApproval`,
-    `ApprovalOutcome`, `ConsentError`). `tests/server_unit.rs` runs the real
+    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostOwnerConsents`.
+    `tests/server_unit.rs` runs the real
     server through `UnitRunner`, its consents included.
 - **`servers-tauri-rust`** — the host side. `host_servers`, called from the
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
@@ -267,11 +268,11 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   `subscribe_stops()`'s; nothing in the slice tracks runs itself.
   A run's health goes out through `ctx.set_detail`, and `UnitRunner` clears
   it.
-- **Consents are decided in-process.** A run puts its gatekeeper's
-  `HostOwnerConsents` in the host's `RunningServerConsents` once the server is
-  set up, and the entry it holds takes them out when the run ends, so the
-  consent commands reach only a running server and answer `serverNotRunning`
-  otherwise. They call the capabilities behind `/access/devices/{userCode}`
+- **Consents are decided in-process.** A run puts a `ServerConsentDecider`
+  over its gatekeeper's `HostOwnerConsents` in every `ServerDetail` it sets,
+  and `UnitRunner` clears the detail when the run ends, so the consent
+  commands, which look the decider up in `statuses()`, reach only a running
+  server and answer `serverNotRunning` otherwise. They call the capabilities behind `/access/devices/{userCode}`
   and `/access/oauth-consents/{id}` with the host Owner's grant, on a
   blocking thread: no HTTP, and no owner bearer in the webview. An approval
   is remembered as a standing grant, as one in the Owner UI is. Errors are
