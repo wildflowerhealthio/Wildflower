@@ -549,11 +549,13 @@ const ACME_PROBLEM_PREFIX: &str = "urn:ietf:params:acme:error:";
 
 /// The error of a request to the CA's API that failed with `message`.
 ///
-/// rustls-acme's request error type isn't public, so its message is all there
-/// is to read: a refusal carries the CA's problem document, whose type says
+/// rustls-acme 0.15's request error, `HttpsRequestError`, is in a private
+/// module, so its status and body can't be matched: its message is all there
+/// is to read. A refusal carries the CA's problem document, whose type says
 /// whether it was a rate limit and whose detail, from Let's Encrypt, says
 /// `retry after <YYYY-MM-DD HH:MM:SS> UTC`. A failure with no problem document
-/// never reached the CA's ACME server.
+/// never reached the CA's ACME server. The tests read real rustls-acme errors
+/// from a CA on this machine, so a change to that message fails them.
 fn ca_request_error(message: &str) -> CertificateOrderError {
     if message.contains(RATE_LIMITED_PROBLEM) {
         CertificateOrderError::RateLimited {
@@ -1374,36 +1376,112 @@ mod tests {
         );
     }
 
+    /// A CA on this machine that answers every request with `status` and the
+    /// problem document `problem`; the directory URL to order from it.
+    async fn ca_answering(status: &str, problem: &str) -> Url {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let address = listener.local_addr().expect("address");
+        let response = format!(
+            "HTTP/1.1 {status}\r\ncontent-type: application/problem+json\r\n\
+             content-length: {}\r\nconnection: close\r\n\r\n{problem}",
+            problem.len()
+        );
+        tokio::spawn(async move {
+            while let Ok((mut connection, _)) = listener.accept().await {
+                let mut request = Vec::new();
+                let mut buffer = [0; 1024];
+                while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    match connection.read(&mut buffer).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(read) => request.extend_from_slice(&buffer[..read]),
+                    }
+                }
+                let _ = connection.write_all(response.as_bytes()).await;
+            }
+        });
+        Url::parse(&format!("http://{address}/directory")).expect("a URL")
+    }
+
+    /// The order error rustls-acme reports when it can't read the CA's
+    /// directory at `directory_url`: a real [`AcmeError`], so a change to
+    /// how rustls-acme reports a request's failure fails these tests.
+    async fn order_error_reading(directory_url: &Url) -> CertificateOrderError {
+        let client_config = Arc::new(
+            rustls::ClientConfig::builder_with_provider(Arc::new(
+                rustls::crypto::ring::default_provider(),
+            ))
+            .with_safe_default_protocol_versions()
+            .expect("protocol versions")
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth(),
+        );
+        let error = rustls_acme::acme::Directory::discover(&client_config, directory_url.as_str())
+            .await
+            .expect_err("the CA refuses");
+        order_error(&EventError::Order(OrderError::Acme(error)))
+    }
+
     /// A refusal under a rate limit is `RateLimited`, until the instant Let's
-    /// Encrypt's detail names; another ACME problem is `Other`, and a failure
-    /// with none `CaUnreachable`.
-    #[test]
-    fn a_ca_s_answer_is_read_from_its_problem_document() {
-        let rate_limited = r#"http request error: non 2xx http status: 429 "{\n  \"type\": \"urn:ietf:params:acme:error:rateLimited\",\n  \"detail\": \"too many certificates (50) already issued for \\\"relay.test\\\" in the last 168h0m0s, retry after 2026-10-09 12:34:56 UTC: see https://letsencrypt.org/docs/rate-limits/\"\n}""#;
+    /// Encrypt's detail names, read from rustls-acme's own report of the
+    /// CA's answer.
+    #[tokio::test]
+    async fn a_rate_limit_is_read_from_the_ca_s_problem_document() {
+        let rate_limited = ca_answering(
+            "429 Too Many Requests",
+            r#"{
+  "type": "urn:ietf:params:acme:error:rateLimited",
+  "detail": "too many certificates (50) already issued for \"relay.test\" in the last 168h0m0s, retry after 2026-10-09 12:34:56 UTC: see https://letsencrypt.org/docs/rate-limits/"
+}"#,
+        )
+        .await;
         assert_eq!(
-            ca_request_error(rate_limited),
+            order_error_reading(&rate_limited).await,
             CertificateOrderError::RateLimited {
                 retry_after: Some(Utc.with_ymd_and_hms(2026, 10, 9, 12, 34, 56).unwrap())
             }
         );
+
+        let undated = ca_answering(
+            "429 Too Many Requests",
+            r#"{"type": "urn:ietf:params:acme:error:rateLimited"}"#,
+        )
+        .await;
         assert_eq!(
-            ca_request_error(
-                r#"http request error: non 2xx http status: 429 "{\"type\": \"urn:ietf:params:acme:error:rateLimited\"}""#
-            ),
+            order_error_reading(&undated).await,
             CertificateOrderError::RateLimited { retry_after: None }
         );
-        let malformed = r#"http request error: non 2xx http status: 400 "{\"type\": \"urn:ietf:params:acme:error:malformed\"}""#;
-        assert_eq!(
-            ca_request_error(malformed),
-            CertificateOrderError::Other {
-                message: malformed.to_owned()
-            }
+    }
+
+    /// Another ACME problem is `Other`, with rustls-acme's report of it.
+    #[tokio::test]
+    async fn another_acme_problem_is_other() {
+        let malformed = ca_answering(
+            "400 Bad Request",
+            r#"{"type": "urn:ietf:params:acme:error:malformed"}"#,
+        )
+        .await;
+        let error = order_error_reading(&malformed).await;
+        assert!(
+            matches!(
+                &error,
+                CertificateOrderError::Other { message }
+                    if message.contains("urn:ietf:params:acme:error:malformed")
+            ),
+            "{error:?}"
         );
-        assert_eq!(
-            ca_request_error("http request error: io error: Connection refused"),
-            CertificateOrderError::CaUnreachable {
-                message: "http request error: io error: Connection refused".to_owned()
-            }
+    }
+
+    /// A CA that can't be reached at all, with no problem document, is
+    /// `CaUnreachable`.
+    #[tokio::test]
+    async fn a_ca_that_can_t_be_reached_is_unreachable() {
+        let error = order_error_reading(&unreachable_acme_directory_url()).await;
+        assert!(
+            matches!(error, CertificateOrderError::CaUnreachable { .. }),
+            "{error:?}"
         );
     }
 }
