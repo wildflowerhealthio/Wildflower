@@ -23,11 +23,12 @@ port and on the tunnel. Rust-only, no `-core`.
       `Forwarded`.
     - The **tunnel listener** serves the tunnel. The tunnel has no route on
       the server and binds no port: its rathole client hands each visitor's
-      stream over in process, on a channel `set_up` creates. Each stream is
-      prepared on a task of its own (`prepare_tunnel_connection`), at most 64
-      at once, the rest waiting on the channel: its PROXY protocol v2 header,
-      when it opens with the whole signature, is read for the visitor's
-      address, then its TLS is accepted, both under one 5 s timeout. A
+      stream over in process, on a channel `set_up` creates. Each stream runs
+      its opening handshake on a task of its own
+      (`handshake_tunnel_connection`), at most 64 at once, the rest waiting on
+      the channel: its PROXY protocol v2 header, when it opens with the whole
+      signature, is read for the visitor's address, then its TLS is accepted,
+      both under one 5 s timeout. A
       malformed or late header, a failed or late handshake, or an SNI naming
       another host closes the connection; a TLS-ALPN-01 validation handshake
       (ALPN `acme-tls/1`) is answered and closed. The tunnel router adds the forwarded-request report, the

@@ -1,9 +1,9 @@
 //! The tunnel listener: the visitor streams the tunnel's rathole client hands
 //! over in process, served by `axum::serve` through [`TunnelListener`]. Each
-//! connection is prepared for HTTP first, by [`prepare_tunnel_connection`],
-//! which reads its PROXY protocol v2 header, when it has one, for the
-//! visitor's address (see [`proxy_header`]), then accepts its TLS for the
-//! server's domain (see [`tls`]). The loopback listener never reads a PROXY
+//! connection completes its opening handshake before HTTP, in
+//! [`handshake_tunnel_connection`]: its PROXY protocol v2 header, when it has
+//! one, for the visitor's address (see [`proxy_header`]), then its TLS for
+//! the server's domain (see [`tls`]). The loopback listener never reads a PROXY
 //! header, so nobody on this machine can claim a visitor's address.
 
 mod proxy_header;
@@ -23,22 +23,23 @@ use tunnel_rust::TunnelStream;
 
 use self::tls::TunnelTlsAcceptor;
 
-/// How long a tunnel connection has to be prepared for HTTP before it is
-/// closed: to send its PROXY header, when it opens with one, and to complete
-/// its TLS handshake. The relay writes the header the moment it connects,
+/// How long a tunnel connection has to complete its opening handshake before
+/// it is closed: to send its PROXY header, when it opens with one, and to
+/// complete its TLS handshake. The relay writes the header the moment it connects,
 /// and a TLS 1.3 handshake takes one round trip, so only a stalled or hostile
 /// sender waits this long.
-const PREPARATION_TIMEOUT: Duration = Duration::from_secs(5);
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// How many tunnel connections may be prepared at once. Past this, the
+/// How many tunnel connections may be handshaking at once. Past this, the
 /// listener takes no more streams from the tunnel until one is ready or
 /// closed, so the tunnel's backlog, and then rathole's, push back on the
 /// relay.
-const MAX_PREPARING: usize = 64;
+const MAX_HANDSHAKING: usize = 64;
 
-/// A tunnel connection ready for HTTP: its TLS, over the stream with the
-/// bytes read for a PROXY header and not part of one read again first.
-pub(crate) type PreparedTunnelStream = TlsStream<proxy_header::Rewound<TunnelStream>>;
+/// A tunnel connection whose opening handshake is done, ready for HTTP: its
+/// TLS, over the stream with the bytes read for a PROXY header and not part
+/// of one read again first.
+pub(crate) type TunnelTlsStream = TlsStream<proxy_header::Rewound<TunnelStream>>;
 
 /// The visitor behind a tunnel connection: the tunnel listener's connect info.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,22 +59,22 @@ impl Connected<IncomingStream<'_, TunnelListener>> for TunnelVisitor {
 ///
 /// # Remarks
 ///
-/// axum accepts one connection at a time, so preparing a connection inside
-/// [`accept`](axum::serve::Listener::accept) would let one slow sender stall
-/// every connection behind it. Instead each handed-over stream is prepared on
-/// a task of its own, and `accept` returns whichever is ready first. A
-/// connection that can't be prepared, or that was a certificate validation
-/// and is done, is closed alone. At most [`MAX_PREPARING`] are prepared at
-/// once; the rest wait in the tunnel's backlog. Dropping the listener,
-/// which `axum::serve` does once its graceful shutdown begins, aborts the
-/// preparations still running.
+/// axum accepts one connection at a time, so running a connection's opening
+/// handshake inside [`accept`](axum::serve::Listener::accept) would let one
+/// slow sender stall every connection behind it. Instead each handed-over
+/// stream handshakes on a task of its own, and `accept` returns whichever is
+/// ready first. A connection whose handshake fails, or that was a
+/// certificate validation and is done, is closed alone. At most
+/// [`MAX_HANDSHAKING`] handshake at once; the rest wait in the tunnel's
+/// backlog. Dropping the listener, which `axum::serve` does once its graceful
+/// shutdown begins, aborts the handshakes still running.
 pub(crate) struct TunnelListener {
     /// The visitor streams the tunnel hands over.
     tunnel_stream_rx: mpsc::Receiver<TunnelStream>,
     /// The acceptor each connection's TLS handshake completes with.
     tls_acceptor: TunnelTlsAcceptor,
-    /// The handed-over streams being prepared.
-    preparing: JoinSet<anyhow::Result<Option<(PreparedTunnelStream, TunnelVisitor)>>>,
+    /// The handed-over streams whose opening handshake is running.
+    handshaking: JoinSet<anyhow::Result<Option<(TunnelTlsStream, TunnelVisitor)>>>,
 }
 
 impl TunnelListener {
@@ -86,37 +87,37 @@ impl TunnelListener {
         Self {
             tunnel_stream_rx,
             tls_acceptor,
-            preparing: JoinSet::new(),
+            handshaking: JoinSet::new(),
         }
     }
 }
 
 impl axum::serve::Listener for TunnelListener {
-    type Io = PreparedTunnelStream;
+    type Io = TunnelTlsStream;
     type Addr = TunnelVisitor;
 
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         loop {
             // A closed `tunnel_stream_rx` (the tunnel hands over no more) or an
-            // empty `preparing` disables its branch; with both, there is no
-            // connection to come. A full `preparing` leaves the streams
+            // empty `handshaking` disables its branch; with both, there is no
+            // connection to come. A full `handshaking` leaves the streams
             // waiting in `tunnel_stream_rx`.
             tokio::select! {
                 Some(tunnel_stream) = self.tunnel_stream_rx.recv(),
-                    if self.preparing.len() < MAX_PREPARING =>
+                    if self.handshaking.len() < MAX_HANDSHAKING =>
                 {
-                    self.preparing.spawn(prepare_tunnel_connection(
+                    self.handshaking.spawn(handshake_tunnel_connection(
                         tunnel_stream,
                         self.tls_acceptor.clone(),
                     ));
                 }
-                Some(prepared) = self.preparing.join_next() => match prepared {
-                    Ok(Ok(Some(prepared_connection))) => return prepared_connection,
+                Some(handshake) = self.handshaking.join_next() => match handshake {
+                    Ok(Ok(Some(connection))) => return connection,
                     // A certificate validation, answered and closed.
                     Ok(Ok(None)) => {}
                     Ok(Err(error)) => tracing::debug!("closed a tunnel connection: {error:#}"),
                     Err(join_error) => {
-                        tracing::error!("preparing a tunnel connection failed: {join_error}");
+                        tracing::error!("a tunnel connection's handshake failed: {join_error}");
                     }
                 },
                 else => std::future::pending().await,
@@ -134,23 +135,24 @@ impl axum::serve::Listener for TunnelListener {
     }
 }
 
-/// Prepare a handed-over `tunnel_stream` for HTTP, returning its TLS stream
-/// with the visitor behind it. Every step a tunnel connection takes before
-/// HTTP happens here, in order, all under one [`PREPARATION_TIMEOUT`]: reading
-/// its PROXY header, then accepting its TLS with `tls_acceptor`. Returns `None`
-/// for a certificate validation handshake, which is answered and closed.
+/// Run a handed-over `tunnel_stream`'s opening handshake, returning its TLS
+/// stream with the visitor behind it. Every step a tunnel connection takes
+/// before HTTP happens here, in order, all under one [`HANDSHAKE_TIMEOUT`]:
+/// reading its PROXY header, then accepting its TLS with `tls_acceptor`.
+/// Returns `None` for a certificate validation handshake, which is answered
+/// and closed.
 ///
 /// # Errors
 ///
 /// Returns an error, and the connection is closed, when the header is
 /// malformed (see [`read_client_address`](proxy_header::read_client_address)),
-/// the TLS handshake fails (see [`TunnelTlsAcceptor::accept`]), or the two don't
-/// finish in time.
-async fn prepare_tunnel_connection(
+/// the TLS handshake fails (see [`TunnelTlsAcceptor::accept`]), or the two
+/// don't finish in time.
+async fn handshake_tunnel_connection(
     tunnel_stream: TunnelStream,
     tls_acceptor: TunnelTlsAcceptor,
-) -> anyhow::Result<Option<(PreparedTunnelStream, TunnelVisitor)>> {
-    tokio::time::timeout(PREPARATION_TIMEOUT, async {
+) -> anyhow::Result<Option<(TunnelTlsStream, TunnelVisitor)>> {
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
         let (stream, client_address) = proxy_header::read_client_address(tunnel_stream).await?;
         let tls_stream = tls_acceptor.accept(stream).await?;
         anyhow::Ok(tls_stream.map(|tls_stream| (tls_stream, TunnelVisitor { client_address })))
@@ -308,8 +310,8 @@ mod tests {
         let (request_start, _) = accept_over_tls(&mut listener, visitor, &certificate).await;
         assert_eq!(request_start, REQUEST_START);
 
-        // Accepting again lets the stalled preparation time out.
-        let next_accept = tokio::time::timeout(PREPARATION_TIMEOUT * 2, listener.accept()).await;
+        // Accepting again lets the stalled handshake time out.
+        let next_accept = tokio::time::timeout(HANDSHAKE_TIMEOUT * 2, listener.accept()).await;
         assert!(next_accept.is_err(), "nothing else is accepted");
         assert_closed(&mut stalled_visitor, "the stalled connection is closed").await;
     }
@@ -322,27 +324,27 @@ mod tests {
         let mut stalled_visitor =
             hand_over(&tunnel_stream_tx, &proxy_header("192.0.2.1:4711")).await;
 
-        let accepted = tokio::time::timeout(PREPARATION_TIMEOUT * 2, listener.accept()).await;
+        let accepted = tokio::time::timeout(HANDSHAKE_TIMEOUT * 2, listener.accept()).await;
 
         assert!(accepted.is_err(), "nothing is accepted");
         assert_closed(&mut stalled_visitor, "the stalled connection is closed").await;
     }
 
-    /// Past [`MAX_PREPARING`] connections being prepared, the rest are left
+    /// Past [`MAX_HANDSHAKING`] connections handshaking, the rest are left
     /// in the tunnel's backlog until one of them is done.
     #[tokio::test(start_paused = true)]
     async fn connections_past_the_cap_wait_in_the_backlog() {
-        let (tunnel_stream_tx, mut listener, certificate) = listener(MAX_PREPARING + 1);
+        let (tunnel_stream_tx, mut listener, certificate) = listener(MAX_HANDSHAKING + 1);
         let mut stalled_visitors = Vec::new();
-        for _ in 0..MAX_PREPARING {
+        for _ in 0..MAX_HANDSHAKING {
             stalled_visitors.push(hand_over(&tunnel_stream_tx, &[]).await);
         }
         let visitor = hand_over(&tunnel_stream_tx, &[]).await;
 
-        let accepted = tokio::time::timeout(PREPARATION_TIMEOUT / 2, listener.accept()).await;
+        let accepted = tokio::time::timeout(HANDSHAKE_TIMEOUT / 2, listener.accept()).await;
 
         assert!(accepted.is_err(), "the stalled connections fill the cap");
-        assert_eq!(listener.preparing.len(), MAX_PREPARING);
+        assert_eq!(listener.handshaking.len(), MAX_HANDSHAKING);
         assert_eq!(listener.tunnel_stream_rx.len(), 1, "the last waits");
 
         // Once the stalled connections time out, the waiting one is taken.
@@ -350,7 +352,7 @@ mod tests {
         assert_eq!(request_start, REQUEST_START);
     }
 
-    /// Once the tunnel hands over no more streams and none is being prepared,
+    /// Once the tunnel hands over no more streams and none is handshaking,
     /// `accept` waits rather than spinning or returning.
     #[tokio::test(start_paused = true)]
     async fn accept_waits_once_the_tunnel_is_gone() {

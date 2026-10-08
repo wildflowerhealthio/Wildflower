@@ -37,8 +37,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::DeviceCertificateConfig;
 
-/// Create `key_dir`, a folder rustls-acme caches private keys in, readable by
-/// this user only, and narrow an existing one to this user.
+/// Create `dir`, readable by this user only, and narrow an existing one to
+/// this user.
 ///
 /// # Errors
 ///
@@ -46,12 +46,12 @@ use crate::DeviceCertificateConfig;
 ///
 /// # Remarks
 ///
-/// rustls-acme writes its files with the default permissions, so the folder
-/// is what keeps the keys from other users on the device.
-fn create_key_dir(key_dir: &Path) -> io::Result<()> {
-    std::fs::create_dir_all(key_dir)?;
+/// rustls-acme writes its keys with the default permissions, so the folder
+/// is what keeps them from other users on the device.
+fn create_owner_only_dir(dir: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(dir)?;
     #[cfg(unix)]
-    std::fs::set_permissions(key_dir, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
+    std::fs::set_permissions(dir, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
     Ok(())
 }
 
@@ -103,7 +103,7 @@ impl DeviceCertificate {
         config: &DeviceCertificateConfig,
     ) -> anyhow::Result<Self> {
         for key_dir in [&config.certificate_dir, &config.acme_account_dir] {
-            create_key_dir(key_dir).with_context(|| {
+            create_owner_only_dir(key_dir).with_context(|| {
                 format!("failed to create the key folder {}", key_dir.display())
             })?;
         }
@@ -433,7 +433,7 @@ mod tests {
     /// Cancelling stops the task ordering and renewing, even while it waits
     /// for a renewal years away; dropping a [`DeviceCertificate`] cancels it.
     #[tokio::test]
-    async fn cancelling_stops_ordering_and_renewing() {
+    async fn cancelling_stops_ordering_and_renewal() {
         let data_root = data_root();
         let acme_directory_url = unreachable_acme_directory_url();
         let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
@@ -445,19 +445,19 @@ mod tests {
         )
         .await;
         let cancel = CancellationToken::new();
-        let ordering_and_renewing = tokio::spawn(order_and_renew(
+        let order_and_renew_task = tokio::spawn(order_and_renew(
             acme_state(&data_root, &acme_directory_url),
             cancel.clone(),
         ));
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(
-            !ordering_and_renewing.is_finished(),
+            !order_and_renew_task.is_finished(),
             "the state is polled until cancelled"
         );
 
         cancel.cancel();
 
-        tokio::time::timeout(Duration::from_secs(5), ordering_and_renewing)
+        tokio::time::timeout(Duration::from_secs(5), order_and_renew_task)
             .await
             .expect("the task stops in time")
             .expect("the task doesn't panic");
@@ -466,8 +466,8 @@ mod tests {
             &data_root.config(&data_root.certificate_dir, &acme_directory_url),
         )
         .expect("start the certificate");
-        let device_certificate_cancel = device_certificate.cancel.clone();
+        let dropped_certificate_cancel = device_certificate.cancel.clone();
         drop(device_certificate);
-        assert!(device_certificate_cancel.is_cancelled());
+        assert!(dropped_certificate_cancel.is_cancelled());
     }
 }
