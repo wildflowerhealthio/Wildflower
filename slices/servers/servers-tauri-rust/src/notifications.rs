@@ -59,12 +59,16 @@ pub(crate) async fn post_stop_notifications<R: Runtime>(
     loop {
         match stops.recv().await {
             Ok(stopped) => {
-                if let Some(notification) = coalescer.notification_for(&stopped) {
-                    post_notification(&app, &notification);
+                if let Some(server_stop) = coalescer.record(stopped) {
+                    post_notification(&app, &server_stop.notification());
                 }
             }
             Err(RecvError::Lagged(missed)) => {
                 log::warn!("[servers] fell behind the unit runner's stops; {missed} not notified");
+                // The missed stops may have cleared a remembered failure, so
+                // forget them all: a repeat notifies once more rather than
+                // never.
+                coalescer = StopNotificationCoalescer::new();
             }
             Err(RecvError::Closed) => {
                 log::error!("[servers] the unit runner's stops closed; stop notifications stopped");
@@ -86,7 +90,7 @@ fn post_notification<R: Runtime>(app: &AppHandle<R>, notification: &LocalNotific
     };
     if let Err(error) = notifications
         .builder()
-        .id(notification.numeric_id())
+        .id(notification.hash_id_for_plugin())
         .title(&notification.title)
         .body(&notification.body)
         .show()
