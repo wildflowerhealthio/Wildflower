@@ -6,6 +6,7 @@ use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
@@ -258,6 +259,44 @@ pub trait GatekeeperTx {
         &mut self,
         code: &IssuedAuthorizationCode,
     ) -> Result<(), GatekeeperError>;
+
+    // ----- launch contexts ------------------------------------------------
+
+    /// Persist a freshly minted SMART App Launch context.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the insert fails (including a
+    /// duplicate `nonce`).
+    fn insert_launch_context(&mut self, context: &LaunchContext) -> Result<(), GatekeeperError>;
+
+    /// Stamp the launch `nonce` consumed at `now` and return it, iff it was
+    /// minted for `client_id`, is unconsumed, and is unexpired at `now`;
+    /// otherwise `None` and nothing changes. The check and the stamp are one
+    /// statement, so of two concurrent consumes of one nonce exactly one gets
+    /// the context.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the update fails or the returned
+    /// row cannot be mapped to a [`LaunchContext`].
+    fn consume_launch_context(
+        &mut self,
+        nonce: &str,
+        client_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<LaunchContext>, GatekeeperError>;
+
+    /// Delete every launch context that expired at or before `now`, returning
+    /// how many went — the opportunistic prune a mint runs.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the delete fails.
+    fn delete_launch_contexts_expired_by(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError>;
 
     // ----- retention ------------------------------------------------------
     //

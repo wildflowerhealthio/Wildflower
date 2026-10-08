@@ -134,6 +134,8 @@ mod tests {
             granted_scopes: None,
             patient: None,
             device_name: None,
+            launch: None,
+            launch_patient: None,
         }
     }
 

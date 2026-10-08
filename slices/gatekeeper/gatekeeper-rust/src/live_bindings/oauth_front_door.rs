@@ -25,6 +25,7 @@ impl FromState for LiveCodeAuthorizationStarter {
             state.store.clone(),
             publisher,
             state.first_party_client_id.clone(),
+            state.server_origin.clone(),
         )
     }
 }

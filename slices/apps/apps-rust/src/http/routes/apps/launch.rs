@@ -18,8 +18,12 @@
 //!      shortfall `403`s with the shared `InsufficientScope` JSON body naming the
 //!      missing scopes, before any side-effect. A non-SMART app needs only the
 //!      umbrella.
-//!   5. Resolve the launch target from the stored template against the public
-//!      origin.
+//!   5. Resolve the launch target from the stored template: `{origin}` is the
+//!      public origin, and `{launch}` is, for a SMART app, a launch context the
+//!      gatekeeper mints for the app's OAuth client (through the
+//!      [`LaunchContextMinter`](crate::ports::LaunchContextMinter) port) and
+//!      consumes at its `/oauth/authorize`. A non-SMART app has no client to
+//!      bind a launch to, so its `{launch}` is empty.
 //!   6. Dispatch on the request's provenance: a loopback launch `204`s after
 //!      handing the URL to the host webview; a forwarded launch answers `200` with
 //!      the URL ([`LaunchTargetBody`]) for the caller's page to navigate to — the
@@ -45,7 +49,6 @@ use shared_structures_rust::served_origin::{request_provenance, RequestProvenanc
 
 use crate::domain::{AppRegistration, AppsError, AppsStore, LaunchParams};
 use crate::http::errors::AppNotFoundBody;
-use crate::id_utils::mint_launch_nonce;
 use crate::live_bindings::state::AppsState;
 use crate::live_bindings::LiveAppLauncher;
 
@@ -111,7 +114,7 @@ pub(crate) async fn handle_launch_app(
         });
     }
 
-    let target_url = resolve_launch(&registration, &state);
+    let target_url = resolve_launch(&registration, &state)?;
 
     match &provenance {
         // The loopback caller cleared the umbrella + SMART gates above; hand the URL
@@ -129,20 +132,24 @@ pub(crate) async fn handle_launch_app(
 }
 
 /// Resolve an app to its launch URL: substitute the server's public origin for
-/// `{origin}` and a fresh nonce for `{launch}` in the stored
-/// [`AppUrl`](crate::domain::AppUrl) template. The `url` was validated at the
-/// store read (the column decode), so no parse can fail here.
+/// `{origin}` and, for `{launch}`, a launch context minted for a SMART app's
+/// OAuth client (empty for a non-SMART app, which has no client to bind it to)
+/// in the stored [`AppUrl`](crate::domain::AppUrl) template. The `url` was
+/// validated at the store read (the column decode), so no parse can fail here.
 ///
 /// Lives beside the launch handler rather than in `domain` on purpose: the
-/// resolution reads `AppsState`'s public origin, so keeping it in the HTTP layer
-/// leaves the domain free of that runtime coupling.
-fn resolve_launch(registration: &AppRegistration, state: &AppsState) -> String {
+/// resolution reads `AppsState`'s public origin and launch-context port, so
+/// keeping it in the HTTP layer leaves the domain free of that runtime coupling.
+fn resolve_launch(registration: &AppRegistration, state: &AppsState) -> Result<String, AppsError> {
     let origin = state.public_origin();
-    let launch = mint_launch_nonce();
-    registration.url.to_url_with_params(&LaunchParams {
+    let launch = match registration.client_id.as_deref() {
+        Some(client_id) => state.launch_context_minter.mint_launch_context(client_id)?,
+        None => String::new(),
+    };
+    Ok(registration.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
-    })
+    }))
 }
 
 /// Wire shape of a forwarded launch's `200`: the resolved launch URL, for the

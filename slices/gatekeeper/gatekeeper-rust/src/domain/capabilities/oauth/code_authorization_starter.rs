@@ -3,15 +3,19 @@
 //! code on the spot under a
 //! [`StandingGrantCoverage`](crate::domain::authority::StandingGrantCoverage)
 //! proof (the one path that issues a code with no human in the loop — named as
-//! an authority so it can be audited as such) or hands it to the Owner.
+//! an authority so it can be audited as such) or hands it to the Owner. A
+//! SMART App Launch's `aud` is checked against this server, and its `launch`
+//! is consumed and carried onto the parked request.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
+use shared_structures_rust::FHIR_R4_PATH;
 use url::Url;
 
+use super::LaunchContexts;
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
-use crate::domain::authority::GrantCoverage;
+use crate::domain::authority::{GrantCoverage, StandingGrantCoverage};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::capabilities::writers::{CodeAuthority, RequestApprover};
@@ -26,7 +30,8 @@ use crate::ports::PendingConsentPublisher;
 /// Lifetime of a pending authorization request waiting for Owner approval.
 pub(crate) const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
 
-/// The RFC 6749 §4.1.1 + RFC 7636 request, as presented.
+/// The RFC 6749 §4.1.1 + RFC 7636 request, as presented, with the optional
+/// SMART App Launch parameters.
 pub(crate) struct AuthorizeRequest<'a> {
     pub(crate) response_type: &'a str,
     pub(crate) code_challenge_method: &'a str,
@@ -35,6 +40,12 @@ pub(crate) struct AuthorizeRequest<'a> {
     pub(crate) code_challenge: &'a str,
     pub(crate) redirect_uri: &'a str,
     pub(crate) client_state: &'a str,
+    /// The SMART App Launch `launch` value the app was launched with, or
+    /// `None` for a plain OAuth request.
+    pub(crate) launch: Option<&'a str>,
+    /// The SMART App Launch `aud`: the FHIR server the app means to call with
+    /// the token, or `None` when the app doesn't declare one.
+    pub(crate) aud: Option<&'a str>,
 }
 
 /// The identifiers the flow mints; supplied by the caller so tests can inject
@@ -97,20 +108,26 @@ pub(crate) struct CodeAuthorizationStarter<S: GatekeeperStore> {
     store: S,
     publisher: Arc<dyn PendingConsentPublisher>,
     first_party_client_id: Arc<str>,
+    /// The server's bare origin, `https://<domain>`: an `aud` must name it or
+    /// its FHIR base.
+    server_origin: Arc<str>,
 }
 
 impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
-    /// Build the starter over the store, the popup republish port, and the
-    /// first-party `client_id` — all lifted from the state.
+    /// Build the starter over the store, the popup republish port, the
+    /// first-party `client_id`, and the server's origin — all lifted from the
+    /// state.
     pub(crate) fn new(
         store: S,
         publisher: Arc<dyn PendingConsentPublisher>,
         first_party_client_id: Arc<str>,
+        server_origin: Arc<str>,
     ) -> Self {
         CodeAuthorizationStarter {
             store,
             publisher,
             first_party_client_id,
+            server_origin,
         }
     }
 
@@ -124,6 +141,14 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
     /// registration is parked with a warning rather than rejected, never takes
     /// the fast path, and — while its redirect is untrusted — renders every
     /// failure locally rather than risk an open redirect.
+    ///
+    /// A declared `aud` must be this server's origin or its FHIR base. A
+    /// `launch` must name an unconsumed, unexpired launch context minted for
+    /// this client; it is consumed (so it never works twice) and carried onto
+    /// the parked request. Either failure is `invalid_request`, the same for
+    /// every reason a launch is refused. A request with no `launch` is plain
+    /// OAuth. When the launch binds a patient, the fast path applies only if
+    /// the standing grant names the same one; otherwise the Owner decides.
     ///
     /// # Errors
     ///
@@ -157,6 +182,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             authorize_query,
             &requested_redirect_uri,
             redirect_allowlisted,
+            &self.server_origin,
         )?;
         let requested_scopes: Vec<String> = authorize_query
             .scope
@@ -187,6 +213,33 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             &requested_scopes,
         )?;
 
+        // Consume the launch last, after every check that can refuse the
+        // request, so a refused request leaves its launch unspent.
+        let launch_context = match authorize_query.launch {
+            None => None,
+            Some(launch) => {
+                let Some(launch_context) = LaunchContexts::over(&self.store).consume(
+                    launch,
+                    authorize_query.client_id,
+                    now,
+                )?
+                else {
+                    tracing::warn!(
+                        client_id = authorize_query.client_id,
+                        "refused a launch that is unknown, consumed, expired, or for another client",
+                    );
+                    return Err(start_error(
+                        authorize_query,
+                        &requested_redirect_uri,
+                        redirect_allowlisted,
+                        OAuthErrorCode::InvalidRequest,
+                        OAuthErrorKind::InvalidLaunch,
+                    ));
+                };
+                Some(launch_context)
+            }
+        };
+
         // Park the request — every path from here on references it by id.
         let parked_request =
             PendingCodeRequest::new_code_authorization(StartCodeAuthorizationArgs {
@@ -198,32 +251,31 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
                 client_state: authorize_query.client_state.to_owned(),
                 pre_approved_scopes: coverage.pre_approved_scopes().to_vec(),
                 ttl: AUTHORIZATION_REQUEST_TTL,
+                launch_context,
             });
         self.store
             .insert_authorization_request(parked_request.request())?;
 
         if let GrantCoverage::Full(standing_grant_coverage) = coverage {
-            // The fast path: the standing grant is the authority. The insert
-            // above parked this request as pending for the width of the
-            // approval, so the popup head is recomputed afterwards rather than
-            // left on a request the consent surface now 404s for; recomputing
-            // can only publish the genuinely-pending head, never this one.
-            let issued_code = RequestApprover::over(&self.store).approve_for_code(
-                CodeAuthority::StandingGrant(&standing_grant_coverage),
-                &parked_request,
-                standing_grant_coverage.patient(),
-                ids.code,
-                now,
-            )?;
-            self.publisher.republish_active();
-            let Some(issued_code) = issued_code else {
-                return Err(AuthorizationStartError::RequestNotPending);
-            };
-            return Ok(AuthorizeNextStep::RedirectToClient {
-                redirect_uri: requested_redirect_uri,
-                code: issued_code.code,
-                client_state: authorize_query.client_state.to_owned(),
-            });
+            // The fast path: the standing grant is the authority, as long as
+            // its patient is one the launch admits. The insert above parked
+            // this request as pending for the width of the approval, so the
+            // popup head is recomputed afterwards rather than left on a
+            // request the consent surface now 404s for; recomputing can only
+            // publish the genuinely-pending head, never this one.
+            if parked_request
+                .request()
+                .admits_patient(standing_grant_coverage.patient())
+            {
+                return self.issue_under_standing_grant(
+                    &standing_grant_coverage,
+                    &parked_request,
+                    requested_redirect_uri,
+                    authorize_query.client_state,
+                    ids.code,
+                    now,
+                );
+            }
         }
 
         // This request needs a human: raise the host popup (after the fast-path
@@ -231,6 +283,36 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         self.publisher.republish_active();
         Ok(AuthorizeNextStep::AwaitOwner {
             request_id: ids.request_id,
+        })
+    }
+
+    /// The fast path's approval: issue `code` for `parked_request` under the
+    /// standing grant, recompute the popup head, and send the user-agent back
+    /// to the client with the code.
+    fn issue_under_standing_grant(
+        &self,
+        standing_grant_coverage: &StandingGrantCoverage,
+        parked_request: &PendingCodeRequest,
+        requested_redirect_uri: Url,
+        client_state: &str,
+        code: String,
+        now: DateTime<Utc>,
+    ) -> Result<AuthorizeNextStep, AuthorizationStartError> {
+        let issued_code = RequestApprover::over(&self.store).approve_for_code(
+            CodeAuthority::StandingGrant(standing_grant_coverage),
+            parked_request,
+            standing_grant_coverage.patient(),
+            code,
+            now,
+        )?;
+        self.publisher.republish_active();
+        let Some(issued_code) = issued_code else {
+            return Err(AuthorizationStartError::RequestNotPending);
+        };
+        Ok(AuthorizeNextStep::RedirectToClient {
+            redirect_uri: requested_redirect_uri,
+            code: issued_code.code,
+            client_state: client_state.to_owned(),
         })
     }
 
@@ -280,23 +362,23 @@ fn parse_redirect_uri(redirect_uri: &str) -> Result<Url, AuthorizationStartError
     Ok(parsed)
 }
 
-/// The response type and PKCE challenge — spec'd errors delivered back to the
-/// client only once the redirect is trusted, else as a local page.
+/// The response type, the PKCE challenge, and a declared `aud` — spec'd errors
+/// delivered back to the client only once the redirect is trusted, else as a
+/// local page.
 fn validate_code_params(
     authorize_query: &AuthorizeRequest<'_>,
     redirect_uri: &Url,
     redirect_trusted: bool,
+    server_origin: &str,
 ) -> Result<(), AuthorizationStartError> {
     let fail = |error: OAuthErrorCode, local: OAuthErrorKind| {
-        if redirect_trusted {
-            AuthorizationStartError::Redirectable {
-                redirect_uri: redirect_uri.clone(),
-                error,
-                client_state: authorize_query.client_state.to_owned(),
-            }
-        } else {
-            AuthorizationStartError::LocalPage(local)
-        }
+        start_error(
+            authorize_query,
+            redirect_uri,
+            redirect_trusted,
+            error,
+            local,
+        )
     };
     // Only the authorization-code grant is implemented (RFC 6749 §4.1.2.1).
     if authorize_query.response_type != "code" {
@@ -319,7 +401,46 @@ fn validate_code_params(
             OAuthErrorKind::InvalidCodeChallenge,
         ));
     }
+    // A declared SMART `aud` must name this server.
+    if let Some(aud) = authorize_query.aud {
+        if !names_this_server(aud, server_origin) {
+            return Err(fail(
+                OAuthErrorCode::InvalidRequest,
+                OAuthErrorKind::InvalidAudience,
+            ));
+        }
+    }
     Ok(())
+}
+
+/// Whether a SMART `aud` names this server: exactly its origin
+/// (`https://<domain>`) or its FHIR base (`https://<domain>/fhir-r4`), the
+/// `iss` every launch hands the app.
+fn names_this_server(aud: &str, server_origin: &str) -> bool {
+    aud == server_origin
+        || aud
+            .strip_prefix(server_origin)
+            .is_some_and(|path| path == FHIR_R4_PATH)
+}
+
+/// A refusal of `authorize_query`: back to the client as `error` once its
+/// redirect is trusted, else the `local` page (RFC 6749 §4.1.2.1).
+fn start_error(
+    authorize_query: &AuthorizeRequest<'_>,
+    redirect_uri: &Url,
+    redirect_trusted: bool,
+    error: OAuthErrorCode,
+    local: OAuthErrorKind,
+) -> AuthorizationStartError {
+    if redirect_trusted {
+        AuthorizationStartError::Redirectable {
+            redirect_uri: redirect_uri.clone(),
+            error,
+            client_state: authorize_query.client_state.to_owned(),
+        }
+    } else {
+        AuthorizationStartError::LocalPage(local)
+    }
 }
 
 #[cfg(test)]
@@ -329,12 +450,15 @@ mod tests {
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::client::ClientKind;
     use crate::domain::grant::AuthorizationCodeGrant;
+    use crate::domain::launch_context::{LaunchContext, LAUNCH_CONTEXT_TTL};
+    use crate::domain::GatekeeperTx as _;
 
     use crate::domain::test_fake::{
         client, code_grant, seed_active_signing_key, FakeGatekeeperStore, RecordingPublisher,
     };
 
     const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+    const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
     fn request<'a>(client_id: &'a str, scope: &'a str) -> AuthorizeRequest<'a> {
         AuthorizeRequest {
@@ -345,6 +469,8 @@ mod tests {
             code_challenge: CHALLENGE,
             redirect_uri: "https://example.com/cb",
             client_state: "xyz",
+            launch: None,
+            aud: None,
         }
     }
 
@@ -363,8 +489,12 @@ mod tests {
     ) {
         seed_active_signing_key(&store);
         let publisher = Arc::new(RecordingPublisher::default());
-        let code_authorization_starter =
-            CodeAuthorizationStarter::new(store, publisher.clone(), "host".into());
+        let code_authorization_starter = CodeAuthorizationStarter::new(
+            store,
+            publisher.clone(),
+            "host".into(),
+            SERVER_ORIGIN.into(),
+        );
         (code_authorization_starter, publisher)
     }
 
@@ -520,6 +650,7 @@ mod tests {
             store,
             Arc::new(RecordingPublisher::default()),
             "host".into(),
+            SERVER_ORIGIN.into(),
         );
         assert!(matches!(
             code_authorization_starter.start(&request("app", "openid"), ids(), Utc::now()),
@@ -530,5 +661,244 @@ mod tests {
             .authorization_request_by_id("req-1")
             .unwrap()
             .is_none());
+    }
+
+    /// The starter's store, for planting and reading launch contexts.
+    fn launch_contexts_of(
+        code_authorization_starter: &CodeAuthorizationStarter<FakeGatekeeperStore>,
+    ) -> LaunchContexts<'_, FakeGatekeeperStore> {
+        LaunchContexts::over(&code_authorization_starter.store)
+    }
+
+    /// A registered client "app" with no standing grant, so every valid
+    /// request parks for the Owner.
+    fn registered_app_starter() -> CodeAuthorizationStarter<FakeGatekeeperStore> {
+        let store = FakeGatekeeperStore::default();
+        store.upsert_client(&client("app", &["openid"])).unwrap();
+        starter(store).0
+    }
+
+    /// A declared `aud` is accepted when it is exactly this server's origin or
+    /// its FHIR base, and refused as `invalid_request` otherwise — back to a
+    /// trusted redirect, or as the local page while the redirect is untrusted.
+    #[test]
+    fn aud_must_name_this_server() {
+        let code_authorization_starter = registered_app_starter();
+        for accepted in [
+            "https://ruth.relay.example",
+            "https://ruth.relay.example/fhir-r4",
+        ] {
+            let authorize_query = AuthorizeRequest {
+                aud: Some(accepted),
+                ..request("app", "openid")
+            };
+            assert!(
+                matches!(
+                    code_authorization_starter.start(&authorize_query, ids(), Utc::now()),
+                    Ok(AuthorizeNextStep::AwaitOwner { .. })
+                ),
+                "{accepted} is this server",
+            );
+        }
+        for refused in [
+            "https://ruth.relay.example/",
+            "https://ruth.relay.example/fhir-r4/",
+            "https://ruth.relay.example/fhir-r5",
+            "https://ruth.relay.example.evil/fhir-r4",
+            "http://ruth.relay.example/fhir-r4",
+            "https://other.relay.example/fhir-r4",
+            "",
+        ] {
+            let authorize_query = AuthorizeRequest {
+                aud: Some(refused),
+                ..request("app", "openid")
+            };
+            assert!(
+                matches!(
+                    code_authorization_starter.start(&authorize_query, ids(), Utc::now()),
+                    Err(AuthorizationStartError::Redirectable {
+                        error: OAuthErrorCode::InvalidRequest,
+                        ..
+                    })
+                ),
+                "{refused:?} is not this server",
+            );
+            let untrusted_query = AuthorizeRequest {
+                aud: Some(refused),
+                ..request("newcomer", "openid")
+            };
+            assert!(matches!(
+                code_authorization_starter.start(&untrusted_query, ids(), Utc::now()),
+                Err(AuthorizationStartError::LocalPage(
+                    OAuthErrorKind::InvalidAudience
+                ))
+            ));
+        }
+    }
+
+    /// A valid `launch` is consumed and its context carried onto the parked
+    /// request; presenting it again is refused.
+    #[test]
+    fn a_launch_is_consumed_onto_the_parked_request_once() {
+        let code_authorization_starter = registered_app_starter();
+        let now = Utc::now();
+        launch_contexts_of(&code_authorization_starter)
+            .mint("app", "launch-1".to_owned(), now)
+            .unwrap();
+        let authorize_query = AuthorizeRequest {
+            launch: Some("launch-1"),
+            ..request("app", "openid")
+        };
+        assert!(matches!(
+            code_authorization_starter.start(&authorize_query, ids(), now),
+            Ok(AuthorizeNextStep::AwaitOwner { .. })
+        ));
+        let parked_request = code_authorization_starter
+            .store
+            .authorization_request_by_id("req-1")
+            .unwrap()
+            .expect("parked");
+        assert_eq!(parked_request.launch.as_deref(), Some("launch-1"));
+        assert_eq!(parked_request.launch_patient, None);
+
+        let replay = FreshIds {
+            request_id: "req-2".to_owned(),
+            code: "another-code".to_owned(),
+        };
+        assert!(matches!(
+            code_authorization_starter.start(&authorize_query, replay, now),
+            Err(AuthorizationStartError::Redirectable {
+                error: OAuthErrorCode::InvalidRequest,
+                ..
+            })
+        ));
+        assert!(
+            code_authorization_starter
+                .store
+                .authorization_request_by_id("req-2")
+                .unwrap()
+                .is_none(),
+            "a replayed launch parks nothing"
+        );
+    }
+
+    /// A launch minted for another client, a forged one, and an expired one are
+    /// all the same `invalid_request`; the other client's launch is left for
+    /// its own client to consume. No `launch` at all is plain OAuth.
+    #[test]
+    fn a_launch_for_another_client_forged_or_expired_is_refused() {
+        let code_authorization_starter = registered_app_starter();
+        let now = Utc::now();
+        let launch_contexts = launch_contexts_of(&code_authorization_starter);
+        launch_contexts
+            .mint("other-app", "for-other-app".to_owned(), now)
+            .unwrap();
+        launch_contexts
+            .mint("app", "expired".to_owned(), now - LAUNCH_CONTEXT_TTL)
+            .unwrap();
+        for launch in ["for-other-app", "forged", "expired"] {
+            let authorize_query = AuthorizeRequest {
+                launch: Some(launch),
+                ..request("app", "openid")
+            };
+            assert!(
+                matches!(
+                    code_authorization_starter.start(&authorize_query, ids(), now),
+                    Err(AuthorizationStartError::Redirectable {
+                        error: OAuthErrorCode::InvalidRequest,
+                        ..
+                    })
+                ),
+                "{launch} is refused",
+            );
+            let untrusted_query = AuthorizeRequest {
+                launch: Some(launch),
+                ..request("newcomer", "openid")
+            };
+            assert!(matches!(
+                code_authorization_starter.start(&untrusted_query, ids(), now),
+                Err(AuthorizationStartError::LocalPage(
+                    OAuthErrorKind::InvalidLaunch
+                ))
+            ));
+        }
+        assert!(
+            launch_contexts
+                .consume("for-other-app", "other-app", now)
+                .unwrap()
+                .is_some(),
+            "a mismatched client doesn't spend the launch"
+        );
+        assert!(matches!(
+            code_authorization_starter.start(&request("app", "openid"), ids(), now),
+            Ok(AuthorizeNextStep::AwaitOwner { .. })
+        ));
+    }
+
+    /// A request refused for another reason leaves its launch unspent.
+    #[test]
+    fn a_refused_request_leaves_its_launch_unspent() {
+        let code_authorization_starter = registered_app_starter();
+        let now = Utc::now();
+        launch_contexts_of(&code_authorization_starter)
+            .mint("app", "launch-1".to_owned(), now)
+            .unwrap();
+        let wrong_aud = AuthorizeRequest {
+            launch: Some("launch-1"),
+            aud: Some("https://other.relay.example/fhir-r4"),
+            ..request("app", "openid")
+        };
+        assert!(code_authorization_starter
+            .start(&wrong_aud, ids(), now)
+            .is_err());
+        assert!(launch_contexts_of(&code_authorization_starter)
+            .consume("launch-1", "app", now)
+            .unwrap()
+            .is_some());
+    }
+
+    /// When the launch binds a patient, a standing grant for a different
+    /// patient doesn't take the fast path: the Owner decides, and the request
+    /// carries the launch's patient.
+    #[test]
+    fn a_launch_bound_patient_the_grant_does_not_name_waits_for_the_owner() {
+        let store = FakeGatekeeperStore::default();
+        store.upsert_client(&client("app", &["openid"])).unwrap();
+        store
+            .create_authorization_code_grant(&AuthorizationCodeGrant {
+                scopes: vec!["openid".to_owned()],
+                patient: Some("pat-1".to_owned()),
+                ..code_grant("g1", "app")
+            })
+            .unwrap();
+        let now = Utc::now();
+        store
+            .with_connection(|tx| {
+                tx.insert_launch_context(&LaunchContext {
+                    patient: Some("pat-2".to_owned()),
+                    ..LaunchContext::new("launch-1".to_owned(), "app", now)
+                })
+            })
+            .unwrap();
+        let (code_authorization_starter, _) = starter(store);
+        let authorize_query = AuthorizeRequest {
+            launch: Some("launch-1"),
+            ..request("app", "openid")
+        };
+        assert_eq!(
+            code_authorization_starter
+                .start(&authorize_query, ids(), now)
+                .expect("starts"),
+            AuthorizeNextStep::AwaitOwner {
+                request_id: "req-1".to_owned()
+            }
+        );
+        let parked_request = code_authorization_starter
+            .store
+            .authorization_request_by_id("req-1")
+            .unwrap()
+            .expect("parked");
+        assert_eq!(parked_request.status, RequestStatus::Pending);
+        assert_eq!(parked_request.launch_patient.as_deref(), Some("pat-2"));
     }
 }

@@ -17,13 +17,15 @@ use persistence_rust::{DieselPool, PooledDieselConnection};
 use url::Url;
 
 use crate::db::{
-    authorization_codes, authorization_requests, clients, grants, refresh_tokens, signing_keys,
+    authorization_codes, authorization_requests, clients, grants, launch_contexts, refresh_tokens,
+    signing_keys,
 };
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
@@ -271,6 +273,28 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
         code: &IssuedAuthorizationCode,
     ) -> Result<(), GatekeeperError> {
         authorization_codes::issue_authorization_code(self.conn, code)
+    }
+
+    // ----- launch contexts ------------------------------------------------
+
+    fn insert_launch_context(&mut self, context: &LaunchContext) -> Result<(), GatekeeperError> {
+        launch_contexts::insert_launch_context(self.conn, context)
+    }
+
+    fn consume_launch_context(
+        &mut self,
+        nonce: &str,
+        client_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<LaunchContext>, GatekeeperError> {
+        launch_contexts::consume_launch_context(self.conn, nonce, client_id, now)
+    }
+
+    fn delete_launch_contexts_expired_by(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError> {
+        launch_contexts::delete_launch_contexts_expired_by(self.conn, now)
     }
 
     // ----- retention ------------------------------------------------------
@@ -985,6 +1009,7 @@ mod tests {
             "clients",
             "device_grants",
             "grants",
+            "launch_contexts",
             "refresh_token_families",
             "refresh_tokens",
             "signing_keys",

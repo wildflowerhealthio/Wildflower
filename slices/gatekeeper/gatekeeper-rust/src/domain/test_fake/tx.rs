@@ -10,6 +10,7 @@ use crate::domain::authorization_request::{AuthorizationRequest, GrantType, Requ
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
@@ -242,6 +243,42 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
         let before = requests.len();
         requests.retain(|_, r| r.expires_at >= cutoff);
         Ok(before - requests.len())
+    }
+
+    fn insert_launch_context(&mut self, context: &LaunchContext) -> Result<(), GatekeeperError> {
+        self.store
+            .launch_contexts
+            .borrow_mut()
+            .insert(context.nonce.clone(), context.clone());
+        Ok(())
+    }
+
+    fn consume_launch_context(
+        &mut self,
+        nonce: &str,
+        client_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<LaunchContext>, GatekeeperError> {
+        let mut contexts = self.store.launch_contexts.borrow_mut();
+        let Some(context) = contexts.get_mut(nonce).filter(|context| {
+            context.client_id == client_id
+                && context.consumed_at.is_none()
+                && context.expires_at > now
+        }) else {
+            return Ok(None);
+        };
+        context.consumed_at = Some(now);
+        Ok(Some(context.clone()))
+    }
+
+    fn delete_launch_contexts_expired_by(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError> {
+        let mut contexts = self.store.launch_contexts.borrow_mut();
+        let before = contexts.len();
+        contexts.retain(|_, context| context.expires_at > now);
+        Ok(before - contexts.len())
     }
 
     fn delete_authorization_codes_expired_before(

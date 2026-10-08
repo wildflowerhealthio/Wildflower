@@ -402,59 +402,108 @@ async fn authorize_treats_a_cross_grammar_scope_request_as_new() {
     );
 }
 
+/// The `/oauth/authorize` query for `test-app` with SMART App Launch params
+/// appended (each already URL-encoded).
+fn smart_launch_query(smart_params: &str) -> String {
+    format!("{}&{smart_params}", authorize_query("test-app", "read"))
+}
+
+/// A SMART App Launch round trip: a `launch` minted for the client and the FHIR
+/// base as `aud` park a pending request the Owner can approve, and the request
+/// carries the consumed launch. The same `launch` is refused the second time.
 #[tokio::test]
-async fn authorize_accepts_smart_launch_and_aud_params() {
-    // SMART App Launch forwards `launch` (the EHR-minted nonce) and `aud`
-    // (the FHIR base URL the app expects) alongside the standard authorize
-    // params. They're optional (`#[serde(default)]`) and not validated today,
-    // so a request carrying them must validate exactly like one without them:
-    // park a pending request and 302 to the wait page — never an
-    // `error=` redirect back to the client.
+async fn authorize_consumes_a_smart_launch_once() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    let launch = g
+        .launch_context_minter
+        .mint("test-app")
+        .expect("mint a launch");
+    let query = smart_launch_query(&format!(
+        "launch={launch}&aud=https%3A%2F%2Fruth.relay.example%2Ffhir-r4"
+    ));
+
+    let request_id = parked_request_id(&get_authorize(&g.router, &query).await);
+    let parked = store_handle(&db)
+        .authorization_request_by_id(&request_id)
+        .expect("query")
+        .expect("parked");
+    assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
+    assert_eq!(parked.launch_patient, None);
+    let res = approve_oauth_consent(
+        &g,
+        &host_owner_token,
+        &request_id,
+        r#"{"approvedScopes":["read"],"patient":null,"acknowledgedRegistration":true}"#.to_owned(),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let replay = get_authorize(&g.router, &query).await;
+    assert_eq!(replay.status(), StatusCode::FOUND);
+    assert_eq!(
+        location_of(&replay),
+        "https://app.example/cb?error=invalid_request&state=xyz",
+        "a consumed launch is refused"
+    );
+}
+
+/// A forged `launch`, one minted for another client, and an `aud` naming
+/// another server are each `invalid_request` back to the trusted redirect; a
+/// request with neither param is plain OAuth, as is one with just the server's
+/// origin as `aud`.
+#[tokio::test]
+async fn authorize_refuses_a_bad_smart_launch_or_aud() {
     let (g, _host_owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-    let challenge = compute_code_challenge(CODE_VERIFIER);
+    let other_clients_launch = g
+        .launch_context_minter
+        .mint("other-app")
+        .expect("mint a launch");
+    for smart_params in [
+        "launch=forged-launch".to_owned(),
+        format!("launch={other_clients_launch}"),
+        "aud=https%3A%2F%2Fapp.example%2Ffhir-r4".to_owned(),
+    ] {
+        let res = get_authorize(&g.router, &smart_launch_query(&smart_params)).await;
+        assert_eq!(res.status(), StatusCode::FOUND);
+        assert_eq!(
+            location_of(&res),
+            "https://app.example/cb?error=invalid_request&state=xyz",
+            "{smart_params} is refused"
+        );
+    }
 
-    let query = format!(
-        "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
-         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz&\
-         launch=ehr-launch-nonce-123&aud=https%3A%2F%2Fapp.example%2Ffhir-r4"
+    parked_request_id(&get_authorize(&g.router, &authorize_query("test-app", "read")).await);
+    parked_request_id(
+        &get_authorize(
+            &g.router,
+            &smart_launch_query("aud=https%3A%2F%2Fruth.relay.example"),
+        )
+        .await,
     );
-    let res = g
-        .router
-        .clone()
-        .oneshot(loopback_request(
-            Request::get(format!("/oauth/authorize?{query}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::FOUND);
-    let polling = res
-        .headers()
-        .get("location")
-        .and_then(|v| v.to_str().ok())
-        .expect("location")
-        .to_string();
-    assert!(
-        !polling.contains("error="),
-        "launch/aud must not trigger an error redirect, got {polling}"
-    );
+}
 
-    // The pending request was actually parked: polling it reports `pending`
-    // (the owner hasn't approved yet), proving the SMART params didn't divert
-    // or reject the flow.
-    let request_id = polling_request_id(&polling);
-    let res = g
-        .router
-        .clone()
-        .oneshot(loopback_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res.into_body()).await["status"], "pending");
+/// An unknown client's redirect is untrusted, so a bad `launch` or `aud`
+/// renders the local error page rather than redirecting.
+#[tokio::test]
+async fn authorize_renders_a_bad_smart_launch_locally_for_an_untrusted_redirect() {
+    let (g, _host_owner_token, _db) = spin_up();
+    for (smart_params, title) in [
+        ("launch=forged-launch", "Invalid launch"),
+        (
+            "aud=https%3A%2F%2Fapp.example%2Ffhir-r4",
+            "Invalid audience",
+        ),
+    ] {
+        let query = format!("{}&{smart_params}", authorize_query("ghost", "read"));
+        let res = get_authorize(&g.router, &query).await;
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            body_string(res.into_body()).await.contains(title),
+            "{smart_params} renders {title}"
+        );
+    }
 }
 
 #[tokio::test]

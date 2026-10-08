@@ -12,6 +12,9 @@
 //!    [`PublicKeysReader`] (the JWKS), and [`ClientScopesReader`] (the host's
 //!    per-app launch check). Each exposes exactly one operation, so a handler
 //!    holding one can do nothing else with the store;
+//!  - in-process: [`LaunchContexts`] mints the SMART App Launch contexts an app
+//!    launch hands out (for the host and the apps slice) and consumes them for
+//!    [`CodeAuthorizationStarter`];
 //!  - host-answered: [`LoopbackOwnerApprover`] puts a direct-loopback login by
 //!    the hosted owner UI to the host's native dialog and applies the Owner's
 //!    answer, with the host Owner's grant as the approving authority.
@@ -21,6 +24,7 @@ mod client_authenticator;
 mod client_scopes_reader;
 mod code_authorization_starter;
 mod device_authorizer;
+mod launch_contexts;
 mod loopback_owner_approver;
 mod public_keys_reader;
 mod token_exchanger;
@@ -35,6 +39,7 @@ pub(crate) use code_authorization_starter::{
     FreshIds,
 };
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
+pub(crate) use launch_contexts::LaunchContexts;
 pub(crate) use loopback_owner_approver::{asks_loopback_dialog, LoopbackOwnerApprover};
 pub(crate) use public_keys_reader::PublicKeysReader;
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};

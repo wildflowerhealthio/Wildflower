@@ -42,7 +42,8 @@ pub struct AppRegistration {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
     /// The launch URL template: `{origin}` is replaced with the server's public
-    /// origin at launch time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]). It
+    /// origin at launch time, `{launch}` with a fresh single-use SMART launch for
+    /// a SMART app, or nothing for a non-SMART one (see [`AppUrl`]). It
     /// is origin-independent, never a request-resolved redirect target — see
     /// `docs/Apps/Explanation.md`. Serialized as its canonical string.
     #[diesel(serialize_as = AppUrlColumn, deserialize_as = AppUrlColumn)]
