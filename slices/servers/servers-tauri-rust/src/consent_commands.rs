@@ -350,4 +350,52 @@ mod tests {
             "nothing was decided"
         );
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_ended_runs_entry_leaves_the_next_runs_consents_in_place() {
+        let ended_run = test_gatekeeper();
+        let next_run = test_gatekeeper();
+        park(&ended_run, "ended-req", GrantType::AuthorizationCode);
+        park(&next_run, "next-req", GrantType::AuthorizationCode);
+        let consents = RunningServerConsents::new();
+        let ended_entry = consents.enter(DOMAIN, ended_run.consents.clone());
+        let next_entry = consents.enter(DOMAIN, next_run.consents.clone());
+
+        // The ended run's entry drops after the next run has put its own in.
+        drop(ended_entry);
+
+        let ended_key = ConsentKey::OAuth {
+            id: "ended-req".to_owned(),
+        };
+        assert_eq!(
+            deny(&consents, DOMAIN.to_owned(), ended_key).await,
+            Err(ConsentError::NotPending),
+            "the ended run's gatekeeper is out of reach"
+        );
+        assert_eq!(
+            ended_run
+                .store
+                .authorization_request_by_id("ended-req")
+                .unwrap()
+                .unwrap()
+                .status,
+            RequestStatus::Pending,
+        );
+        let next_key = ConsentKey::OAuth {
+            id: "next-req".to_owned(),
+        };
+        assert_eq!(
+            deny(&consents, DOMAIN.to_owned(), next_key.clone()).await,
+            Ok(()),
+            "the next run's consents are still reached"
+        );
+
+        drop(next_entry);
+        assert_eq!(
+            read(&consents, DOMAIN.to_owned(), next_key).await,
+            Err(ConsentError::ServerNotRunning {
+                domain: DOMAIN.to_owned()
+            })
+        );
+    }
 }

@@ -218,10 +218,11 @@ pub struct Gatekeeper {
 ///    the `WebView` bridge listener) observe it the moment it exists;
 ///  - publishes the current head of the pending consent queue — device-code
 ///    and authorization-code requests share one FIFO slot — on
-///    `active_pending_consent_tx`. The host-side bridge task
-///    forwards this through `bridge:PendingConsentRequested` events and
-///    focuses the desktop window on transitions to `Some`. Seeding at
-///    boot means a request that was pending across an app restart still
+///    `active_pending_consent_tx`. On the Tauri host, the server's run
+///    reports it as its detail, from which the host emits the base's
+///    `pending-consent` event and brings the desktop window forward when
+///    the server gets one, and forwards it to the host's channel the
+///    bridge emits as `bridge:PendingConsentRequested`. Seeding at boot means a request that was pending across an app restart still
 ///    drives the popup (the row survived in SQLite, the in-memory
 ///    `watch` value didn't);
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,

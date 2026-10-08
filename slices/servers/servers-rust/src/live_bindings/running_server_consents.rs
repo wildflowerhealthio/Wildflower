@@ -25,10 +25,14 @@ use crate::domain::ConsentKey;
 /// [`Self::enter`] once the server is set up, and the
 /// [`RunningServerConsentsEntry`] it holds takes them out when the run ends,
 /// so a server that isn't running has none and every call on it is
-/// [`ConsentError::ServerNotRunning`]. Clones share the one map.
+/// [`ConsentError::ServerNotRunning`]. Clones share the one map. An entry
+/// takes out only its own run's consents, so a run that ends after the
+/// server's next run has put its own in leaves the next run's in place.
 ///
 /// [`Self::read`], [`Self::approve`] and [`Self::deny`] are each a
-/// synchronous gatekeeper transaction: run them on a blocking thread.
+/// synchronous gatekeeper transaction: run them on a blocking thread. A call
+/// looks the server's consents up as it starts, so one that started before
+/// the run ended finishes on that run's gatekeeper.
 #[derive(Clone, Default)]
 pub struct RunningServerConsents {
     by_domain: Arc<Mutex<HashMap<String, Arc<HostOwnerConsents>>>>,

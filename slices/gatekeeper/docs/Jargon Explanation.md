@@ -374,8 +374,8 @@ flows have no shared lookup key:
 The Rust side recomputes the head (`oldest_pending_consent_head`) after every
 transition that could move it — either flow's insert, approve, or deny — and
 publishes it on a `watch` channel. The Tauri host emits each server's head to
-its base as the `pending-consent` event, raises the window on a `None → Some`
-transition (a brand-new request, not a queue advance), and gives the base
+its base as the `pending-consent` event, raises the window when a server with
+nothing waiting gets a request (not when its queue advances), and gives the base
 commands that read and decide a request in-process through
 `HostOwnerConsents`, the same consent capabilities with the host Owner's grant
 (see the servers slice's
