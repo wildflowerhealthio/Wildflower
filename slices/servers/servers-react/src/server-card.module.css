@@ -68,9 +68,25 @@
   transition: background-color 0.6s ease;
 }
 
-/* `StatusBadge`'s pulse: a running server that answers `/health` is kept fresh. */
+/*
+ * `StatusBadge`'s pulse: a running server that answers `/health` is kept
+ * fresh. A module scopes animation names, so the keyframes live here rather
+ * than in react-tundraish's global `tundra-pulse-dot`.
+ */
+@keyframes server-card-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+
 .server-card[data-tone='success'] .server-card__dot {
-  animation: tundra-pulse-dot 1.8s ease-in-out infinite;
+  animation: server-card-pulse 1.8s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

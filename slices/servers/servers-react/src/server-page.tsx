@@ -39,7 +39,9 @@ const ServerDetails = ({
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
   const navigate = useNavigate()
-  const removeServer = useRemoveServer(runHostCommand)
+  const removeServer = useRemoveServer(runHostCommand, () => {
+    void navigate({ to: '/' })
+  })
   const [confirmingRemoval, setConfirmingRemoval] = useState(false)
   return (
     <>
@@ -77,9 +79,6 @@ const ServerDetails = ({
           removeServer.mutate(
             { domain: server.domain },
             {
-              onSuccess: () => {
-                void navigate({ to: '/' })
-              },
               onSettled: () => {
                 setConfirmingRemoval(false)
               },

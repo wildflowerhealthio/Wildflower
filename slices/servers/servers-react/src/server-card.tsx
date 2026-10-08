@@ -1,16 +1,23 @@
 import { Link } from '@tanstack/react-router'
 import { DateTime, Option } from 'effect'
 import type { ChangeEvent, JSX } from 'react'
-import type { StatusTone } from 'react-tundraish'
+import { ErrorBanner, type StatusTone } from 'react-tundraish'
 import { type ListedServer, RunPolicy, type RunPolicyChoice, ServerStatus } from 'servers-core'
 
+import { failureText } from './failure-text.ts'
+import { useSetServerRunPolicy } from './queries.ts'
+import type { RunHostCommand } from './router-context.ts'
 import styles from './server-card.module.css'
 
-/** An instant as the base shows it, in the device's locale and time zone. */
+/** How the base shows an instant, in the device's locale and time zone. */
+const INSTANT_FORMAT = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+
+/** An instant as the base shows it. */
 const formatInstant = (instant: DateTime.Utc): string =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    DateTime.toDate(instant)
-  )
+  INSTANT_FORMAT.format(DateTime.toDate(instant))
 
 /** The run-policy choices the control offers, by its option value. */
 const RUN_POLICY_CHOICES: ReadonlyArray<{
@@ -32,16 +39,6 @@ const UNTIL_VALUE = 'until'
 /** The control's value for `policy`: its own kind, or {@link UNTIL_VALUE}. */
 const runPolicyValue = (policy: RunPolicy.Type): string =>
   policy.kind === 'until' ? UNTIL_VALUE : policy.kind
-
-/** What a stored `until` says: when it ends, or that it has ended. */
-const deadlineText = (policy: RunPolicy.Type, now: DateTime.Utc): Option.Option<string> =>
-  RunPolicy.deadlineOf(policy).pipe(
-    Option.map((at) =>
-      RunPolicy.hasEndedAt(policy, now)
-        ? `Ended at ${formatInstant(at)}`
-        : `Until ${formatInstant(at)}`
-    )
-  )
 
 /** A server's status as the card shows it: the tone of its dot and field, and its words. */
 interface StatusSummary {
@@ -91,7 +88,10 @@ const RUN_POLICY_TEXT: Readonly<Record<Exclude<RunPolicy.Kind, 'until'>, string>
   always: 'Always on',
 }
 
-/** What the field says of when the server runs. */
+/**
+ * What the field says of when the server runs; for a stored `until`, the
+ * picker's own option says the same.
+ */
 const runPolicyText = (policy: RunPolicy.Type, now: DateTime.Utc): string => {
   if (policy.kind !== 'until') return RUN_POLICY_TEXT[policy.kind]
   return RunPolicy.hasEndedAt(policy, now)
@@ -122,28 +122,28 @@ const lastStopText = (stop: ServerStatus.RunStop): string =>
 /**
  * One server's card in the base's list: its domain and a status dot; a
  * run-policy field that says when it runs, outlined in its status's tone,
- * over the native picker that changes it; why its latest run stopped; and
- * Launch and Edit.
- *
- * @param onRunPolicyChange - Called with each choice the user picks.
+ * over the native picker that changes it; the host's refusal of the latest
+ * change; why its latest run stopped; and Launch and Edit.
  *
  * @remarks
- * Launch does nothing yet: launching an app from the base isn't built. Edit
- * opens the server's page, `/servers/$domain`, where it is removed.
+ * The picker is disabled while a change is pending. Launch does nothing yet:
+ * launching an app from the base isn't built. Edit opens the server's page,
+ * `/servers/$domain`, where it is removed.
  */
 const ServerCard = ({
   server,
-  onRunPolicyChange,
+  runHostCommand,
 }: {
   readonly server: ListedServer.Type
-  readonly onRunPolicyChange: (choice: RunPolicyChoice.Type) => void
+  readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
+  const setRunPolicy = useSetServerRunPolicy(runHostCommand)
   const status = statusSummary(server.status)
   const now = DateTime.unsafeNow()
   const onPick = (event: ChangeEvent<HTMLSelectElement>): void => {
     const picked = RUN_POLICY_CHOICES.find((option) => option.value === event.target.value)
     if (picked === undefined) return
-    onRunPolicyChange(picked.choice)
+    setRunPolicy.mutate({ domain: server.domain, choice: picked.choice })
   }
   return (
     <li className={styles['server-card']} data-tone={status.tone} aria-label={server.domain}>
@@ -167,16 +167,14 @@ const ServerCard = ({
           className={styles['server-card__picker']}
           aria-label={`When ${server.domain} runs`}
           value={runPolicyValue(server.runPolicy)}
+          disabled={setRunPolicy.isPending}
           onChange={onPick}
         >
-          {deadlineText(server.runPolicy, now).pipe(
-            Option.map((text) => (
-              <option key={UNTIL_VALUE} value={UNTIL_VALUE} disabled>
-                {text}
-              </option>
-            )),
-            Option.getOrNull
-          )}
+          {server.runPolicy.kind === 'until' ? (
+            <option value={UNTIL_VALUE} disabled>
+              {runPolicyText(server.runPolicy, now)}
+            </option>
+          ) : null}
           {RUN_POLICY_CHOICES.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -184,6 +182,7 @@ const ServerCard = ({
           ))}
         </select>
       </label>
+      <ErrorBanner error={setRunPolicy.error === null ? null : failureText(setRunPolicy.error)} />
       {ServerStatus.lastStopOf(server.status).pipe(
         Option.map((stop) => (
           <p key="last-stop" className={`text-body-3 ${styles['server-card__last-stop']}`}>

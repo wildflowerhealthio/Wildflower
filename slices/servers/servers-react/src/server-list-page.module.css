@@ -14,8 +14,6 @@
 .server-list-page__settings {
   padding-block: var(--space-2);
   padding-inline: var(--space-3);
-  font-size: var(--font-size-6);
-  line-height: var(--line-height-1);
 }
 
 /* One column at every width. */

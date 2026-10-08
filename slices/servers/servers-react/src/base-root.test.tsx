@@ -426,7 +426,7 @@ describe('the server list', () => {
 
     // Assert
     await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
-    expect(runPolicyOf('ruth.relay.example.com').shown).toMatch(/^Until /)
+    expect(runPolicyOf('ruth.relay.example.com').shown).toMatch(/^On until /)
   })
 
   it("should show the host's error when it can't read the servers, and read them again on retry", async () => {
@@ -659,14 +659,16 @@ describe('the server list', () => {
 
     // Assert
     await waitFor(() => {
-      expect(runPolicyOf('lab.rathole.example.com').shown).toMatch(/^Until /)
+      expect(runPolicyOf('lab.rathole.example.com').shown).toMatch(/^On until /)
     })
     expect(
       within(serverRow('lab.rathole.example.com')).getByText(/^On until \S/, { selector: 'span' })
     ).toBeDefined()
+    expect(runPolicyOf('lab.rathole.example.com').control.disabled).toBe(true)
+    expect(runPolicyOf('ruth.relay.example.com').control.disabled).toBe(false)
   })
 
-  it("should put the previous policy back, and show the host's refusal above the list, when the host refuses", async () => {
+  it("should put the previous policy back, and show the host's refusal on its card, when the host refuses", async () => {
     // Arrange
     const user = userEvent.setup()
     const host = hostWith({
@@ -685,8 +687,9 @@ describe('the server list', () => {
     // Assert
     const banner = await screen.findByRole('alert')
     expect(banner.textContent).toContain(golden.commandErrors[0].message)
-    expect(banner.closest('li')).toBeNull()
+    expect(banner.closest('li')).toBe(serverRow('lab.rathole.example.com'))
     expect(runPolicyOf('lab.rathole.example.com').shown).toBe('Off')
+    expect(runPolicyOf('lab.rathole.example.com').control.disabled).toBe(false)
   })
 })
 
