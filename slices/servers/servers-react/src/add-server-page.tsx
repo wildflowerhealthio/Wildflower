@@ -145,12 +145,9 @@ const SelfHostedRelaySettings = ({
   return (
     <>
       <p className={`text-body-3 ${styles['add-server-page__note']}`}>
-        Anyone can host a Wildflower Relay, on their own hardware or a server they rent. It's open
-        source, so you can see exactly what it does. Wildflower's official relay is safe to use:
-        everything sent through any relay, the official one included, is encrypted end to end
-        between the app and your server, so the relay can't read your records. What a relay can see
-        is which server is being reached, and when and from where. Hosting your own keeps that with
-        you, too.
+        Anyone can host a Wildflower Relay. Everything sent through any relay is encrypted end to
+        end between the app and your server. What a relay can see is which server is being reached,
+        and when and from where.
       </p>
       <TextField
         label="Wildflower Relay URL"
@@ -201,10 +198,9 @@ const RatholeRelaySettings = ({
       <a href="https://github.com/rathole-org/rathole" target="_blank" rel="noreferrer">
         rathole
       </a>
-      . You can use a rathole server you run yourself, without a Wildflower Relay. It takes more
-      setup by hand, and traffic is encrypted end to end just the same. With no Wildflower Relay to
-      ask, only the settings' format is checked here; the connection is tested when the server
-      starts.
+      . You can use a rathole server you run yourself, instead of Wildflower Relay. It takes more
+      setup by hand, and traffic is encrypted end to end just the same. Your connection to the
+      server will be tested when the server starts.
     </p>
     <RelayIdentityFields entries={entries} onChange={onChange} />
     <TextField

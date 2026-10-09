@@ -2,7 +2,7 @@
 .add-server-page__step {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
 .add-server-page__title,
