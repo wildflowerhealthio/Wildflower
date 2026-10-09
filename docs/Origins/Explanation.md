@@ -28,7 +28,7 @@ from the one router every slice's routes are composed into:
   host gets no certificate. Its router has no owner trust and no loopback-peer gate,
   so no tunnel connection is ever a local caller, whatever its peer or
   headers. Its tunnel front, outside every layer but CORS, holds each request
-  to the server's public host, the same host the SNI named (see
+  to the server's domain, the same host the SNI named (see
   [The tunnel front writes `Forwarded`](#the-tunnel-front-writes-forwarded)).
 
 ## Two origins: loopback and served
@@ -88,9 +88,9 @@ the header itself:
   host, its domain, as `https` origins (so case and a spelled-out `:443` don't
   matter). A request naming another host, or none, is answered
   `421 Misdirected Request`, before the request log sees it.
-- It writes `Forwarded: for=<visitor>;host="<public host>";proto=https`. The
+- It writes `Forwarded: for=<visitor>;host="<domain>";proto=https`. The
   `for` is the visitor's address from the PROXY header, and is left out when
-  the connection had none; the `host` is the public host, normalized.
+  the connection had none; the `host` is the domain, normalized.
 
 Every reader of the served origin (gatekeeper, emr, apps, the `404`, the
 request log) then sees a tunnel request exactly as it sees one a front
@@ -133,23 +133,23 @@ it accepts `https://<domain>` or the FHIR base `https://<domain>/fhir-r4` (the
 `iss` every launch hands the app), and refuses anything else with
 `invalid_request`. The token's `aud` claim is the server's origin either way.
 
-### HFS's `base_url` is the server's public host
+### HFS's `base_url` is the server's domain
 
 HFS is the one component that can't render URLs per request. Its `base_url`
 setting is the prefix of every URL it emits (search Bundle `self`/`next` links,
 `entry.fullUrl`, a create's `Location`), and it ignores `Forwarded`. A client
 that pages by following `next` therefore goes wherever `base_url` points.
 
-So `base_url` is `https://<public_host>/fhir-r4`, where the public host is the
-server's domain from its record, because that is how remote clients reach the
+So `base_url` is `https://<domain>/fhir-r4`, the server's domain being the
+one from its record, because that is how remote clients reach the
 FHIR server. Loopback callers get the public URLs too. Their tokens still work
 there: a token names the server's origin, not the origin it was used on, so a
 client that authorised over loopback can follow a public `next` link through
 the tunnel.
 
-The public host can't change while the server runs, so the server hands
+The domain can't change while the server runs, so the server hands
 emr-rust the public origin in its config ([`EmrConfig`]) and HFS's router is
-built once with that `base_url`; a public host that can't form an origin stops
+built once with that `base_url`; a domain that can't form an origin stops
 startup. emr-rust's own overrides (`$everything`, the SMART discovery doc) still
 render the served origin per request.
 
@@ -163,7 +163,7 @@ off the device. The launch doesn't consult the tunnel.
 
 Whether a remote app can reach the server is a question about the public
 origin, so that is where the server asks it. Each run, its reachability
-monitor GETs the server's own `/health` at `https://<public_host>/health` until
+monitor GETs the server's own `/health` at `https://<domain>/health` until
 it first answers: the request leaves the device, reaches the relay, and comes
 back down the tunnel to the tunnel listener, the same round trip an app's
 makes. An answer, even one reporting `fail`, means reachable; no answer means

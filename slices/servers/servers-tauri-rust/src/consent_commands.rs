@@ -237,6 +237,7 @@ mod tests {
     fn running(gatekeeper: &TestGatekeeper) -> UnitStatuses<ServerDetail> {
         let detail = ServerDetail {
             health: None,
+            certificate: None,
             pending_consent: None,
             consent_decider: Some(ServerConsentDecider::new(
                 gatekeeper.consent_decider.clone(),

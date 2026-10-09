@@ -18,15 +18,15 @@ use url::Url;
 use crate::http::tunnel_listener::TunnelVisitor;
 
 /// The body of the `421` a request naming another host gets.
-const MISDIRECTED_BODY: &str = "request host is not this server's public host";
+const MISDIRECTED_BODY: &str = "request host is not this server's domain";
 
 /// The tunnel front's state: the server's public origin, and the part of every
 /// `Forwarded` header it writes that names it.
 #[derive(Debug, Clone)]
 pub(crate) struct TunnelFront {
-    /// The server's public origin, `https://<public host>`.
+    /// The server's public origin, `https://<domain>`.
     public_origin: Url,
-    /// `host="<public host>";proto=https`, which every written `Forwarded`
+    /// `host="<domain>";proto=https`, which every written `Forwarded`
     /// ends with.
     forwarded_host_and_proto: HeaderValue,
 }
@@ -36,13 +36,13 @@ impl TunnelFront {
     ///
     /// # Errors
     ///
-    /// Returns an error if the public host can't be written into a header.
+    /// Returns an error if the domain can't be written into a header.
     pub(crate) fn new(public_origin: Url) -> anyhow::Result<Self> {
         let forwarded_host_and_proto = HeaderValue::from_str(&format!(
             "host=\"{}\";proto=https",
             public_origin.authority()
         ))
-        .context("the public host can't be written into a Forwarded header")?;
+        .context("the domain can't be written into a Forwarded header")?;
         Ok(Self {
             public_origin,
             forwarded_host_and_proto,
@@ -65,8 +65,8 @@ impl TunnelFront {
 }
 
 /// Write the `Forwarded` header of a request on the tunnel listener, replacing
-/// any it carried: `for=<visitor>;host="<public host>";proto=https`. A request
-/// whose host isn't the server's public host is answered `421 Misdirected
+/// any it carried: `for=<visitor>;host="<domain>";proto=https`. A request
+/// whose host isn't the server's domain is answered `421 Misdirected
 /// Request` instead.
 ///
 /// # Remarks
@@ -74,8 +74,8 @@ impl TunnelFront {
 /// Nothing on the path from the visitor vouches for a tunnel request's
 /// headers: the relay forwards bytes and the visitor writes the rest, so an
 /// inbound `Forwarded` is the visitor's own claim and is discarded. The host is
-/// trusted only once it names the public host, compared as `https` origins so
-/// case and a spelled-out `:443` don't matter, and a public host with a port
+/// trusted only once it names the domain, compared as `https` origins so
+/// case and a spelled-out `:443` don't matter, and a domain with a port
 /// needs that port. Every host the request names must: each `Host` header, and
 /// the request target's authority when it has one (an absolute-form HTTP/1.1
 /// target, or HTTP/2's `:authority`), so no reader of either sees another
@@ -140,13 +140,13 @@ mod tests {
     };
     use tower::ServiceExt;
 
-    /// The public host most cases are served at.
-    const PUBLIC_HOST: &str = "dev1.example.com";
+    /// The domain most cases are served at.
+    const DOMAIN: &str = "dev1.example.com";
 
-    /// A router behind the layer, for the server at `public_host`, whose
+    /// A router behind the layer, for the server at `domain`, whose
     /// handler answers with the `Forwarded` header it was handed, or `-` for
     /// none.
-    fn stamping_router(public_host: &str) -> Router {
+    fn stamping_router(domain: &str) -> Router {
         Router::new()
             .route(
                 "/",
@@ -158,7 +158,7 @@ mod tests {
                 }),
             )
             .layer(axum::middleware::from_fn_with_state(
-                TunnelFront::new(public_origin_url(public_host).expect("public origin"))
+                TunnelFront::new(public_origin_url(domain).expect("public origin"))
                     .expect("tunnel front"),
                 stamp_tunnel_forwarded,
             ))
@@ -188,8 +188,8 @@ mod tests {
     }
 
     /// The status and the `Forwarded` header the handler saw (`-` for none).
-    async fn send(public_host: &str, request: Request) -> (StatusCode, String) {
-        let response = stamping_router(public_host)
+    async fn send(domain: &str, request: Request) -> (StatusCode, String) {
+        let response = stamping_router(domain)
             .oneshot(request)
             .await
             .expect("oneshot");
@@ -210,8 +210,8 @@ mod tests {
     #[tokio::test]
     async fn a_tunnel_request_is_stamped_as_the_public_origin() {
         let (status, seen) = send(
-            PUBLIC_HOST,
-            tunnel_request(Some("192.0.2.1:4711"), &[("host", PUBLIC_HOST)]),
+            DOMAIN,
+            tunnel_request(Some("192.0.2.1:4711"), &[("host", DOMAIN)]),
         )
         .await;
         assert_eq!(status, StatusCode::OK);
@@ -231,8 +231,8 @@ mod tests {
     #[tokio::test]
     async fn an_ipv6_visitor_is_bracketed_and_quoted() {
         let (_, seen) = send(
-            PUBLIC_HOST,
-            tunnel_request(Some("[2001:db8::1]:4711"), &[("host", PUBLIC_HOST)]),
+            DOMAIN,
+            tunnel_request(Some("[2001:db8::1]:4711"), &[("host", DOMAIN)]),
         )
         .await;
         assert_eq!(
@@ -248,7 +248,7 @@ mod tests {
     /// Without a PROXY address there is no `for`.
     #[tokio::test]
     async fn a_tunnel_request_without_a_proxy_address_has_no_for() {
-        let (_, seen) = send(PUBLIC_HOST, tunnel_request(None, &[("host", PUBLIC_HOST)])).await;
+        let (_, seen) = send(DOMAIN, tunnel_request(None, &[("host", DOMAIN)])).await;
         assert_eq!(seen, "host=\"dev1.example.com\";proto=https");
         assert_eq!(forwarded_client_address(&forwarded_headers(&seen)), None);
     }
@@ -258,11 +258,11 @@ mod tests {
     #[tokio::test]
     async fn a_visitor_s_forwarded_headers_are_replaced() {
         let (status, seen) = send(
-            PUBLIC_HOST,
+            DOMAIN,
             tunnel_request(
                 None,
                 &[
-                    ("host", PUBLIC_HOST),
+                    ("host", DOMAIN),
                     (
                         "forwarded",
                         "for=203.0.113.9;host=evil.example.com;proto=http",
@@ -279,11 +279,11 @@ mod tests {
     }
 
     /// Hosts are compared as `https` origins: case and the default port are
-    /// spelling, a port on the public host is part of it. The stamped host is
+    /// spelling, a port on the domain is part of it. The stamped host is
     /// the public origin's, normalized.
     #[tokio::test]
-    async fn the_host_matches_the_public_host_as_an_origin() {
-        for (public_host, request_host, stamped_host) in [
+    async fn the_host_matches_the_domain_as_an_origin() {
+        for (domain, request_host, stamped_host) in [
             ("dev1.example.com", "DEV1.Example.COM", "dev1.example.com"),
             (
                 "dev1.example.com",
@@ -298,19 +298,19 @@ mod tests {
             ),
         ] {
             let (status, seen) =
-                send(public_host, tunnel_request(None, &[("host", request_host)])).await;
-            assert_eq!(status, StatusCode::OK, "{public_host} / {request_host}");
+                send(domain, tunnel_request(None, &[("host", request_host)])).await;
+            assert_eq!(status, StatusCode::OK, "{domain} / {request_host}");
             assert_eq!(
                 seen,
                 format!("host=\"{stamped_host}\";proto=https"),
-                "{public_host} / {request_host}"
+                "{domain} / {request_host}"
             );
         }
     }
 
     #[tokio::test]
-    async fn a_host_that_isn_t_the_public_host_is_misdirected() {
-        for (public_host, request_host) in [
+    async fn a_host_that_isn_t_the_domain_is_misdirected() {
+        for (domain, request_host) in [
             ("dev1.example.com", Some("dev2.example.com")),
             ("dev1.example.com", Some("dev1.example.com:8443")),
             ("dev1.example.com:8443", Some("dev1.example.com")),
@@ -322,22 +322,22 @@ mod tests {
                 .map(|host| ("host", host))
                 .into_iter()
                 .collect();
-            let (status, body) = send(public_host, tunnel_request(None, &headers)).await;
+            let (status, body) = send(domain, tunnel_request(None, &headers)).await;
             assert_eq!(
                 (status, body.as_str()),
                 (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY),
-                "{public_host} / {request_host:?}"
+                "{domain} / {request_host:?}"
             );
         }
     }
 
     /// The request target's authority counts as a host the request names:
-    /// alone (HTTP/2, no `Host`) it must be the public host, and next to a
+    /// alone (HTTP/2, no `Host`) it must be the domain, and next to a
     /// `Host` both must be.
     #[tokio::test]
-    async fn the_target_authority_must_name_the_public_host_too() {
+    async fn the_target_authority_must_name_the_domain_too() {
         let (status, seen) = send(
-            PUBLIC_HOST,
+            DOMAIN,
             tunnel_request_for("https://dev1.example.com/", None, &[]),
         )
         .await;
@@ -347,13 +347,13 @@ mod tests {
         );
         for (uri, headers) in [
             ("https://dev2.example.com/", &[][..]),
-            ("https://dev2.example.com/", &[("host", PUBLIC_HOST)][..]),
+            ("https://dev2.example.com/", &[("host", DOMAIN)][..]),
             (
                 "https://dev1.example.com/",
                 &[("host", "dev2.example.com")][..],
             ),
         ] {
-            let (status, body) = send(PUBLIC_HOST, tunnel_request_for(uri, None, headers)).await;
+            let (status, body) = send(DOMAIN, tunnel_request_for(uri, None, headers)).await;
             assert_eq!(
                 (status, body.as_str()),
                 (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY),
@@ -365,12 +365,12 @@ mod tests {
     /// A second `Host` naming another host is misdirected, whichever comes
     /// first.
     #[tokio::test]
-    async fn every_host_header_must_name_the_public_host() {
+    async fn every_host_header_must_name_the_domain() {
         for headers in [
-            [("host", PUBLIC_HOST), ("host", "dev2.example.com")],
-            [("host", "dev2.example.com"), ("host", PUBLIC_HOST)],
+            [("host", DOMAIN), ("host", "dev2.example.com")],
+            [("host", "dev2.example.com"), ("host", DOMAIN)],
         ] {
-            let (status, body) = send(PUBLIC_HOST, tunnel_request(None, &headers)).await;
+            let (status, body) = send(DOMAIN, tunnel_request(None, &headers)).await;
             assert_eq!(
                 (status, body.as_str()),
                 (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY),

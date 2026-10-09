@@ -1,7 +1,7 @@
 //! The API router's fallback: every route no slice claimed answers `404`, with a
 //! link to the hosted owner UI ([`OwnerUiBase`]) pointed back at this server's
 //! served origin and returning to the path asked for — so a browser that lands
-//! on, say, the tunnel's bare public host is told where to go.
+//! on, say, the server's bare domain is told where to go.
 //!
 //! Browsers (an `Accept` naming `text/html`) get a small HTML page with the link;
 //! everything else gets the API's usual structured error body,

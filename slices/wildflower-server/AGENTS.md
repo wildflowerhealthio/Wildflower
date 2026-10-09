@@ -10,7 +10,7 @@ port and on the tunnel. Rust-only, no `-core`.
   request log, apps, databases), gates them into one inner router, starts the
   tunnel and the reachability monitor, and binds the loopback port;
   `WildflowerServer::serve(shutdown)` serves both listeners until `shutdown` is
-  cancelled. It derives the server's public origin from its public host once
+  cancelled. It derives the server's public origin from its domain once
   and hands it to emr (HFS's `base_url`), apps (every launch's origin) and the
   tunnel front. The unmatched-route `404` is here too.
   - **Two listeners, two routers.** Each listener serves its own router,
@@ -35,8 +35,8 @@ port and on the tunnel. Rust-only, no `-core`.
       tunnel front and, outermost so even a `421` is readable cross-origin,
       CORS, and never the owner trust or the loopback-peer gate. The front drops any inbound `Forwarded`, answers
       `421` (unreported) unless every host the request names (each `Host`, and
-      the request target's authority) is the server's public host, and writes
-      `Forwarded: for=<visitor>;host="<public host>";proto=https` (no `for`
+      the request target's authority) is the server's domain, and writes
+      `Forwarded: for=<visitor>;host="<domain>";proto=https` (no `for`
       without a PROXY address), so every served-origin reader treats the
       request as forwarded, at the public origin. `WildflowerServer` holds
       the tunnel's daemon, so it dials for exactly as long as the server
@@ -53,13 +53,53 @@ port and on the tunnel. Rust-only, no `-core`.
     server keeps running; until a certificate is deployed, tunnel handshakes
     fail. Where it comes from is the host's
     `WildflowerServerConfig::device_certificate`, a `DeviceCertificateConfig`
-    built from the server's record: the CA at its `acme_directory_url`
-    (Let's Encrypt's staging or production CA). The order has no contact.
+    built from the server's record: its `certificate_authority` (Let's
+    Encrypt's staging or production CA), ordered from at the directory the
+    CA names (`CertificateAuthority::directory_url`), so the issuer a state
+    or history reports is always the CA ordered from. Tests order from
+    `CertificateAuthority::UnreachableForTests`, which only the
+    `test-support` feature has: nothing answers at its directory. The order
+    has no contact.
     Keys are files: the certificate and its key in `certificate_dir`, the
     server's own, and the account key, one per CA, in `acme_account_dir`,
     shared by the install's servers. Starting the certificate makes both
     folders readable by this user only, and a folder that can't be created
     fails `set_up`.
+  - **The certificate's state** (`domain/certificate_state.rs`) is a
+    `CertificateState`: its status (`NotIssued`, `Ordering`,
+    `NoRenewalNeeded`, `RenewalDue`, `Expired`, `OrderFailing`), its issuer,
+    the certificate `held` (`IssuedCertificate`: validity and the SHA-256
+    fingerprint of its leaf) and the last error (`CertificateOrderError`: an
+    order's, rate limited, with when to retry, a challenge that didn't reach
+    the device, the CA unreachable, or other; or `Cache`, the certificate or
+    account cache unreadable or unwritable). Only an order's error with no
+    valid certificate held makes a run `OrderFailing`: rustls-acme keeps
+    ordering through a cache fault. A run keeps
+    what it has observed of its certificate as an `ObservedCertificate`,
+    built from rustls-acme's events and the certificate read from the cache
+    entry rustls-acme last loaded or stored (`LastEntryCertCache`), derives
+    its state from that, and publishes it on
+    `ServerObservers::certificate_tx` at start, on each event, and when the
+    certificate's renewal falls due or it expires, which it checks against
+    the wall clock at least once a minute, since a suspended device's
+    monotonic clock stops. A cache entry is read as
+    rustls-acme reads it before deploying it (a PKCS #8 ECDSA key, then the
+    chain), so an entry it refuses is never a certificate held, and one it
+    refuses at start is dropped. `RenewalDue` is a third or less of the
+    lifetime left, rustls-acme's renewal point. Any server
+    without a run's state has what its cache says
+    (`cached_certificate_state`): `NotIssued`, `NoRenewalNeeded`,
+    `RenewalDue` or `Expired`, or `CacheUnreadable` with the error when the
+    cache can't be read or holds an entry that isn't a certificate; never
+    `Ordering` or `OrderFailing`. `Expired` is only ever the cache's, and
+    renews when the server starts. In a run, a cache that can't be read is a
+    `cache` error, as above.
+  - **The certificate history** (`adapters/certificate_history.rs`) is
+    `history.json` in the server's `certificate_dir`, a JSON array of
+    `CertificateHistoryEntry` (`{deployedAt, issuer, fingerprint, notBefore,
+notAfter}`). A run appends each certificate it deploys unless the history
+    records it already, replacing the file atomically;
+    `read_certificate_history` reads it.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
     (`shared_structures_rust::health_check`): `application/health+json`,
     uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two
@@ -70,7 +110,7 @@ port and on the tunnel. Rust-only, no `-core`.
     at 1 s. The route is public and unauthenticated, so the report
     carries only statuses: no output, observed values, errors or versions.
   - **Reachability** is the server's own: the reachability monitor GETs
-    `https://<public host>/health`, out to the relay and back down the
+    `https://<domain>/health`, out to the relay and back down the
     tunnel, 400 ms after start and every 400 ms until it answers, each bounded
     at 3 s, and publishes `ServerHealth` (`Unreachable { error }` while it
     doesn't, when the reason changes, then `Reachable(HealthReport)`) on the
@@ -85,10 +125,14 @@ port and on the tunnel. Rust-only, no `-core`.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig` with its `DeviceCertificateConfig`, `HostPorts`,
     `ServerObservers`); `domain/`
-    `ServerHealth` and the reachability monitor with its `HealthProbe` port;
+    `ServerHealth` and the reachability monitor with its `HealthProbe` port,
+    `CertificateAuthority`, `CertificateState` with the
+    `ObservedCertificate` a run derives it from, and
+    `CertificateHistoryEntry`;
     `adapters/` ports implemented here (apps' `AppLaunchScopes` and
     `LaunchContextMinter` from gatekeeper, the monitor's `HealthProbe` over
-    reqwest) and the device certificate over rustls-acme; `http/` the
+    reqwest), the device certificate over rustls-acme with its state, and
+    the certificate history file; `http/` the
     server's own middleware (CORS, the loopback owner trust, the
     forwarded-request report, the tunnel front), the tunnel listener with its
     PROXY header reader and its TLS acceptor, the `/health` checks and the
@@ -97,7 +141,9 @@ port and on the tunnel. Rust-only, no `-core`.
   - The `test-support` feature adds `WildflowerServer::tunnel_stream_tx`
     for `tests/serve.rs`, which hands the tunnel listener connections the way
     the tunnel does, over TLS with a self-signed certificate it puts in the
-    certificate cache. Only the crate's own dev-dependency enables it.
+    certificate cache, and `CertificateAuthority::UnreachableForTests`, the
+    CA every test that runs a server orders from. Only dev-dependencies
+    enable it: the crate's own and `servers-rust`'s.
 
 ## Layering
 
@@ -107,16 +153,18 @@ port and on the tunnel. Rust-only, no `-core`.
   `apps/wildflower-tauri` derives at build time (`tauri-shared-config.json`),
   from its platform paths (the server's folder, the FHIR SearchParameter
   bundle dir) or from the server's record (the tunnel's relay settings, the
-  public host, and the `DeviceCertificateConfig` its
-  `ServerRecord::device_certificate_config` builds: the CA's directory, the
-  server's certificate folder and the install's ACME account folder). `HostPorts` carries its native adapters as trait
+  domain, and the `DeviceCertificateConfig` its
+  `ServerRecord::device_certificate_config` builds: the CA, the server's
+  certificate folder and the install's ACME account folder). `HostPorts` carries its native adapters as trait
   objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
   senders its bridge reads. The server reads none of the host's build-time
   configuration or platform paths itself.
 - **The host watches the server through `ServerObservers`.** Host-owned
   senders: the server's `ServerHealth` through its public origin, published by
   the reachability monitor until it first answers, on a channel the host makes
-  for each run, and each forwarded request (every request through the tunnel,
+  for each run; the server's `CertificateState`, published by the device
+  certificate for as long as the server runs, on a channel the host makes for
+  each run; and each forwarded request (every request through the tunnel,
   and each one a front run on this machine relayed), on a channel the host
   shares across runs, reported by the forwarded-request layer as a
   `ForwardedRequest` record: the

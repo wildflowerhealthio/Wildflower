@@ -10,9 +10,8 @@ use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
-use url::Url;
 
-use crate::ServerHealth;
+use crate::{CertificateAuthority, CertificateState, ServerHealth};
 
 /// What the host hands [`set_up`](crate::set_up): the values it derives at
 /// build time (`tauri-shared-config.json`), from its platform paths, or from
@@ -37,25 +36,27 @@ pub struct WildflowerServerConfig {
     /// The relay connection the server's tunnel dials, from the server's
     /// record.
     pub relay_settings: tunnel_rust::RelaySettings,
-    /// The bare public host the relay serves the server at: the server's
-    /// domain, from its record. The server's public origin, which HFS's links,
-    /// app launches and the reachability monitor's `/health` use, and the
-    /// one name on its certificate.
-    pub public_host: String,
+    /// The server's domain, from its record: the bare host the relay serves
+    /// the server at. The server's public origin, which HFS's links, app
+    /// launches and the reachability monitor's `/health` use, and the one
+    /// name on its certificate.
+    pub domain: String,
     /// Where the server's certificate is ordered from and cached, from its
     /// record.
     pub device_certificate: DeviceCertificateConfig,
 }
 
-/// Where the server's certificate for its public host comes from: the ACME CA
-/// it is ordered from, and the folders it and the install's ACME account are
-/// cached in. The host builds it from the server's record.
+/// Where the server's certificate for its domain comes from: the ACME CA
+/// it is ordered from, at the CA's own directory
+/// ([`CertificateAuthority::directory_url`]), and the folders it and the
+/// install's ACME account are cached in. The host builds it from the
+/// server's record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceCertificateConfig {
-    /// The directory of the ACME CA the server's certificate is ordered
-    /// from: Let's Encrypt's staging or production CA, as the server's record
-    /// says.
-    pub acme_directory_url: Url,
+    /// The ACME CA the server's certificate is ordered from, at its
+    /// directory, as the server's record names it: the issuer its state and
+    /// history report.
+    pub certificate_authority: CertificateAuthority,
     /// The folder the server's certificates and their keys are cached in,
     /// its own: deleting the server deletes them.
     pub certificate_dir: PathBuf,
@@ -95,6 +96,11 @@ pub struct ServerObservers {
     /// answer. `None` until its first probe; the monitor stops when the server
     /// stops serving, and publishes nothing after.
     pub server_health_tx: watch::Sender<Option<ServerHealth>>,
+    /// Where the server's certificate stands, published by the run as it
+    /// starts, on each of rustls-acme's events, and when the certificate's
+    /// renewal falls due or it expires. `None` until the run's certificate
+    /// starts; the run publishes nothing after it stops.
+    pub certificate_tx: watch::Sender<Option<CertificateState>>,
     /// Each forwarded request (every request through the tunnel, and each one
     /// a front run on this machine relayed), reported by the forwarded-request
     /// layer after its response is ready (see `forwarded_request_layer`). A

@@ -18,7 +18,7 @@
 //! servers. Nothing here touches the network, and only [`remove_server`] the
 //! filesystem, to delete the server's folder.
 
-mod certificate_authority;
+mod certificate_state_wire;
 mod consent_approval;
 mod consent_details;
 mod consent_error;
@@ -36,7 +36,6 @@ mod server_status;
 
 pub mod notifications;
 
-pub use certificate_authority::CertificateAuthority;
 pub use consent_approval::{ApprovalOutcome, ConsentApproval};
 pub use consent_details::{ConsentDetails, Registration};
 pub use consent_error::ConsentError;
@@ -53,6 +52,7 @@ pub use server_changes::{remove_server, set_run_policy, update_server, ServerUpd
 pub use server_detail::ServerDetail;
 pub use server_record::{RelayKind, ServerRecord, TunnelToken, SERVERS_DIR_NAME};
 pub use server_status::{ServerStatus, ServerStatusTracker};
+pub use wildflower_server_rust::CertificateAuthority;
 
 #[cfg(test)]
 pub(crate) use server_record::tests as fixtures;

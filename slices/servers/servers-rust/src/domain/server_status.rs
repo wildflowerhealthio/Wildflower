@@ -3,8 +3,9 @@
 //! of `UnitRunner`'s statuses.
 //!
 //! The status is `UnitRunner`'s own `UnitStatus<ServerDetail>`, keyed by the
-//! server's domain; only its serialisation is the servers slice's. It is
-//! written camelCase, with each optional member left out when it is `None`:
+//! server's domain, with its certificate's state; only its serialisation is
+//! the servers slice's. It is written camelCase, with each optional member
+//! left out when it is `None`:
 //!
 //! ```json
 //! {
@@ -19,14 +20,18 @@
 //!   },
 //!   "runningSince": "<RFC 3339>",
 //!   "health": {"kind": "reachable", "status": "pass" | "warn" | "fail"}
-//!           | {"kind": "unreachable", "error": "…"}
+//!           | {"kind": "unreachable", "error": "…"},
+//!   "certificate": <the run's certificate state, or else the cache's>
 //! }
 //! ```
 //!
 //! `lastStop` is there only while the run state is `stopped`, and only once
 //! the server has run; `platformReason` only for `sessionEndedByPlatform`;
 //! `runningSince` only while `running`; `health` only while a run has
-//! reported it.
+//! reported it. `certificate` is always there, written as
+//! [`certificate_state_wire`](crate::domain::certificate_state_wire) says:
+//! the state the run reported, while it has reported one, or else what the
+//! server's certificate cache says.
 
 use std::collections::BTreeMap;
 
@@ -36,12 +41,13 @@ use shared_structures_rust::health_check::HealthStatus;
 use unit_runner::{
     PlatformStopReason, RunState, RunStop, StopReason, UnitId, UnitStatus, UnitStatuses,
 };
-use wildflower_server_rust::ServerHealth;
+use wildflower_server_rust::{CertificateState, ServerHealth};
 
+use crate::domain::certificate_state_wire::CertificateStateWire;
 use crate::domain::ServerDetail;
 
 /// One server's status on `UnitRunner`: `UnitRunner`'s [`UnitStatus`] for the
-/// unit whose id is the server's `domain`.
+/// unit whose id is the server's `domain`, with its certificate's state.
 ///
 /// `Serialize` writes the camelCase shape the [module docs](self) give.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,11 +56,27 @@ pub struct ServerStatus {
     pub domain: String,
     /// What `UnitRunner` reports for the server.
     pub unit_status: UnitStatus<ServerDetail>,
+    /// The server's certificate's state: the one its run reported
+    /// ([`Self::run_certificate`]), or, without one, what its certificate
+    /// cache says, read when the status was.
+    pub certificate: CertificateState,
+}
+
+impl ServerStatus {
+    /// The certificate state `unit_status`'s run has reported, if it has: a
+    /// status carries it in place of what the cache says. A server whose run
+    /// hasn't reported one, because it has stopped or not got that far,
+    /// needs its cache read.
+    #[must_use]
+    pub fn run_certificate(unit_status: &UnitStatus<ServerDetail>) -> Option<&CertificateState> {
+        unit_status.detail.as_ref()?.certificate.as_ref()
+    }
 }
 
 impl Serialize for ServerStatus {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        ServerStatusWire::of(&self.domain, &self.unit_status).serialize(serializer)
+        ServerStatusWire::of(&self.domain, &self.unit_status, &self.certificate)
+            .serialize(serializer)
     }
 }
 
@@ -70,11 +92,17 @@ pub(crate) struct ServerStatusWire<'a> {
     running_since: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     health: Option<ServerHealthWire<'a>>,
+    certificate: CertificateStateWire<'a>,
 }
 
 impl<'a> ServerStatusWire<'a> {
-    /// The wire shape of the server `domain`'s `unit_status`.
-    pub(crate) fn of(domain: &'a str, unit_status: &'a UnitStatus<ServerDetail>) -> Self {
+    /// The wire shape of the server `domain`'s `unit_status`, with its
+    /// `certificate`'s state.
+    pub(crate) fn of(
+        domain: &'a str,
+        unit_status: &'a UnitStatus<ServerDetail>,
+        certificate: &'a CertificateState,
+    ) -> Self {
         let (run_state, last_stop) = match &unit_status.run_state {
             RunState::Starting => (RunStateWire::Starting, None),
             RunState::Running => (RunStateWire::Running, None),
@@ -83,16 +111,16 @@ impl<'a> ServerStatusWire<'a> {
                 last_stop.as_ref().map(RunStopWire::of),
             ),
         };
+        let detail = unit_status.detail.as_ref();
         Self {
             domain,
             run_state,
             last_stop,
             running_since: unit_status.running_since,
-            health: unit_status
-                .detail
-                .as_ref()
+            health: detail
                 .and_then(|detail| detail.health.as_ref())
                 .map(ServerHealthWire::of),
+            certificate: CertificateStateWire::of(certificate),
         }
     }
 }
@@ -209,7 +237,7 @@ impl<'a> ServerHealthWire<'a> {
 
 /// Picks the servers whose status changed out of `UnitRunner`'s
 /// statuses, whose unit ids are the servers' domains, so the host sends the
-/// base one status per change.
+/// base one status per change, with the server's certificate state.
 ///
 /// A server that leaves the statuses, because it was removed, is forgotten
 /// and gets no status of its own: the base drops a server it no longer
@@ -229,15 +257,16 @@ impl ServerStatusTracker {
     }
 
     /// The statuses in `statuses` that differ from the ones last returned
-    /// for the same server, or that are new, in domain order.
-    pub fn changed_statuses(&mut self, statuses: &UnitStatuses<ServerDetail>) -> Vec<ServerStatus> {
+    /// for the same server, or that are new, in domain order, each with its
+    /// server's domain.
+    pub fn changed_statuses(
+        &mut self,
+        statuses: &UnitStatuses<ServerDetail>,
+    ) -> Vec<(String, UnitStatus<ServerDetail>)> {
         let changed = statuses
             .iter()
             .filter(|(unit_id, unit_status)| self.last_sent.get(*unit_id) != Some(*unit_status))
-            .map(|(unit_id, unit_status)| ServerStatus {
-                domain: unit_id.as_str().to_owned(),
-                unit_status: unit_status.clone(),
-            })
+            .map(|(unit_id, unit_status)| (unit_id.as_str().to_owned(), unit_status.clone()))
             .collect();
         self.last_sent.clone_from(statuses);
         changed
@@ -249,9 +278,12 @@ pub(crate) mod tests {
     use chrono::TimeZone;
     use shared_structures_rust::health_check::HealthReport;
     use unit_runner::RunPolicy;
+    use wildflower_server_rust::{
+        CertificateOrderError, CertificateState, CertificateStatus, IssuedCertificate,
+    };
 
     use super::*;
-    use crate::domain::{RegistryError, RunPolicyChoice, ServerChangeError};
+    use crate::domain::{CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError};
 
     pub(crate) const RUTH: &str = "ruth.relay.example.com";
     pub(crate) const LAB: &str = "lab.rathole.example.com";
@@ -260,13 +292,30 @@ pub(crate) mod tests {
         Utc.with_ymd_and_hms(2026, 10, 6, 17, minute, 0).unwrap()
     }
 
-    /// A run that is up, its `/health` answering `pass` through the relay.
+    /// A 90-day certificate issued on 1 October 2026.
+    pub(crate) fn issued_certificate() -> IssuedCertificate {
+        IssuedCertificate {
+            not_before: Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap(),
+            not_after: Utc.with_ymd_and_hms(2026, 12, 30, 0, 0, 0).unwrap(),
+            fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+                .to_owned(),
+        }
+    }
+
+    /// A run that is up, its `/health` answering `pass` through the relay,
+    /// with a valid certificate.
     pub(crate) fn running_and_reachable() -> UnitStatus<ServerDetail> {
         UnitStatus {
             run_state: RunState::Running,
             running_since: Some(at(0)),
             detail: Some(ServerDetail {
                 health: Some(ServerHealth::Reachable(HealthReport::pass())),
+                certificate: Some(CertificateState {
+                    status: CertificateStatus::NoRenewalNeeded,
+                    issuer: CertificateAuthority::LetsEncrypt,
+                    held: Some(issued_certificate()),
+                    last_error: None,
+                }),
                 pending_consent: None,
                 consent_decider: None,
             }),
@@ -290,18 +339,52 @@ pub(crate) mod tests {
 
     /// Every status the golden file pins, under its name there.
     pub(crate) fn golden_statuses() -> Vec<(&'static str, ServerStatus)> {
-        let status = |unit_status| ServerStatus {
+        // A status whose run reported its certificate's state carries it.
+        let status = |unit_status: UnitStatus<ServerDetail>| ServerStatus {
+            domain: RUTH.to_owned(),
+            certificate: ServerStatus::run_certificate(&unit_status)
+                .expect("the run's certificate state")
+                .clone(),
+            unit_status,
+        };
+        // Any other carries what the cache says.
+        let with_cached = |unit_status, certificate| ServerStatus {
             domain: RUTH.to_owned(),
             unit_status,
+            certificate,
         };
         vec![
             ("runningAndReachable", status(running_and_reachable())),
             (
                 "startingUnchecked",
+                with_cached(
+                    UnitStatus {
+                        run_state: RunState::Starting,
+                        running_since: None,
+                        detail: None,
+                    },
+                    cached(CertificateStatus::NoRenewalNeeded),
+                ),
+            ),
+            (
+                "startingCaUnreachable",
                 status(UnitStatus {
                     run_state: RunState::Starting,
                     running_since: None,
-                    detail: None,
+                    detail: Some(ServerDetail {
+                        health: None,
+                        certificate: Some(CertificateState {
+                            status: CertificateStatus::OrderFailing,
+                            issuer: CertificateAuthority::LetsEncrypt,
+                            held: None,
+                            last_error: Some(CertificateOrderError::CaUnreachable {
+                                message: "http request error: io error: Connection refused"
+                                    .to_owned(),
+                            }),
+                        }),
+                        pending_consent: None,
+                        consent_decider: None,
+                    }),
                 }),
             ),
             (
@@ -313,44 +396,125 @@ pub(crate) mod tests {
                         health: Some(ServerHealth::Unreachable {
                             error: "the relay answered 502".to_owned(),
                         }),
+                        certificate: Some(CertificateState {
+                            status: CertificateStatus::OrderFailing,
+                            issuer: CertificateAuthority::LetsEncrypt,
+                            held: None,
+                            last_error: Some(CertificateOrderError::RateLimited {
+                                retry_after: Some(at(59)),
+                            }),
+                        }),
                         pending_consent: None,
                         consent_decider: None,
                     }),
                 }),
             ),
-            ("neverRun", status(UnitStatus::never_run())),
-            ("stoppedWithAnError", status(stopped_with_an_error())),
+            (
+                "runningRenewalFailed",
+                status(UnitStatus {
+                    run_state: RunState::Running,
+                    running_since: Some(at(0)),
+                    detail: Some(ServerDetail {
+                        health: None,
+                        certificate: Some(CertificateState {
+                            status: CertificateStatus::RenewalDue,
+                            issuer: CertificateAuthority::LetsEncryptStaging,
+                            held: Some(issued_certificate()),
+                            last_error: Some(CertificateOrderError::ChallengeFailed {
+                                detail: Some("Connection refused".to_owned()),
+                            }),
+                        }),
+                        pending_consent: None,
+                        consent_decider: None,
+                    }),
+                }),
+            ),
+            (
+                "runningCacheFailed",
+                status(UnitStatus {
+                    run_state: RunState::Running,
+                    running_since: Some(at(0)),
+                    detail: Some(ServerDetail {
+                        health: None,
+                        certificate: Some(CertificateState {
+                            status: CertificateStatus::Ordering,
+                            issuer: CertificateAuthority::LetsEncrypt,
+                            held: None,
+                            last_error: Some(CertificateOrderError::Cache {
+                                message: "account cache store: disk full".to_owned(),
+                            }),
+                        }),
+                        pending_consent: None,
+                        consent_decider: None,
+                    }),
+                }),
+            ),
+            (
+                "neverRun",
+                with_cached(
+                    UnitStatus::never_run(),
+                    CertificateState {
+                        held: None,
+                        ..cached(CertificateStatus::NotIssued)
+                    },
+                ),
+            ),
+            (
+                "stoppedWithAnError",
+                with_cached(stopped_with_an_error(), cached(CertificateStatus::Expired)),
+            ),
             (
                 "stoppedByThePlatform",
-                status(UnitStatus {
-                    run_state: RunState::Stopped {
-                        last_stop: Some(RunStop {
-                            reason: StopReason::SessionEndedByPlatform {
-                                platform_reason: PlatformStopReason::PlatformTimeout,
-                            },
-                            error: None,
-                            stopped_at: at(9),
-                        }),
+                with_cached(
+                    UnitStatus {
+                        run_state: RunState::Stopped {
+                            last_stop: Some(RunStop {
+                                reason: StopReason::SessionEndedByPlatform {
+                                    platform_reason: PlatformStopReason::PlatformTimeout,
+                                },
+                                error: None,
+                                stopped_at: at(9),
+                            }),
+                        },
+                        running_since: None,
+                        detail: None,
                     },
-                    running_since: None,
-                    detail: None,
-                }),
+                    CertificateState::of_unreadable_cache(
+                        CertificateAuthority::LetsEncrypt,
+                        "reading the certificate cache failed: Permission denied (os error 13)"
+                            .to_owned(),
+                    ),
+                ),
             ),
             (
                 "stoppedAsItsPolicyEnded",
-                status(UnitStatus {
-                    run_state: RunState::Stopped {
-                        last_stop: Some(RunStop {
-                            reason: StopReason::PolicyInactive,
-                            error: None,
-                            stopped_at: at(42),
-                        }),
+                with_cached(
+                    UnitStatus {
+                        run_state: RunState::Stopped {
+                            last_stop: Some(RunStop {
+                                reason: StopReason::PolicyInactive,
+                                error: None,
+                                stopped_at: at(42),
+                            }),
+                        },
+                        running_since: None,
+                        detail: None,
                     },
-                    running_since: None,
-                    detail: None,
-                }),
+                    cached(CertificateStatus::RenewalDue),
+                ),
             ),
         ]
+    }
+
+    /// What a cache holding [`issued_certificate`] from Let's Encrypt says,
+    /// with `status`.
+    pub(crate) fn cached(status: CertificateStatus) -> CertificateState {
+        CertificateState {
+            status,
+            issuer: CertificateAuthority::LetsEncrypt,
+            held: Some(issued_certificate()),
+            last_error: None,
+        }
     }
 
     /// The golden wire file both this crate's tests and `servers-core`'s
@@ -471,11 +635,8 @@ pub(crate) mod tests {
             .collect()
     }
 
-    fn domains(changed: &[ServerStatus]) -> Vec<&str> {
-        changed
-            .iter()
-            .map(|status| status.domain.as_str())
-            .collect()
+    fn domains(changed: &[(String, UnitStatus<ServerDetail>)]) -> Vec<&str> {
+        changed.iter().map(|(domain, _)| domain.as_str()).collect()
     }
 
     #[test]
@@ -486,7 +647,7 @@ pub(crate) mod tests {
             (LAB, UnitStatus::never_run()),
         ]));
         assert_eq!(domains(&changed), [LAB, RUTH]);
-        assert_eq!(changed[1].unit_status, running_and_reachable());
+        assert_eq!(changed[1].1, running_and_reachable());
     }
 
     #[test]

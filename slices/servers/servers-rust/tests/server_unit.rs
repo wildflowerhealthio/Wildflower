@@ -23,7 +23,9 @@ use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
 use unit_runner::{RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus};
 use url::Url;
-use wildflower_server_rust::{DeviceCertificateConfig, HostPorts, WildflowerServerConfig};
+use wildflower_server_rust::{
+    CertificateAuthority, DeviceCertificateConfig, HostPorts, WildflowerServerConfig,
+};
 
 /// How long a run may take to come up or wind down before the test fails
 /// rather than hangs. Startup indexes the FHIR SearchParameter bundle, which
@@ -68,12 +70,11 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
             service_name: "test".to_owned(),
         },
-        public_host: DOMAIN.to_owned(),
+        domain: DOMAIN.to_owned(),
         device_certificate: DeviceCertificateConfig {
             // A CA nothing answers at: the order fails and is retried in the
             // background, which the server's lifecycle doesn't wait on.
-            acme_directory_url: Url::parse("https://127.0.0.1:9/directory")
-                .expect("the CA directory URL"),
+            certificate_authority: CertificateAuthority::UnreachableForTests,
             certificate_dir: server_dir.join("certificates"),
             acme_account_dir: server_dir.join("acme-account"),
         },
@@ -201,7 +202,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         health_status(loopback_base_url).await,
         reqwest::StatusCode::OK
     );
-    // No relay serves the public host, so the monitor finds it unreachable,
+    // No relay serves the domain, so the monitor finds it unreachable,
     // and the run reports that as its detail.
     wait_for(unit_runner, "reporting its health", |status| {
         status
