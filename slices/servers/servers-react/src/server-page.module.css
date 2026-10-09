@@ -45,6 +45,33 @@
   color: var(--color-neutral-3);
 }
 
+/* The tabstrip under the status hero; everything below a tab is its panel's. */
+.server-page__tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.server-page__tab {
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-neutral-4);
+  cursor: pointer;
+}
+
+.server-page__tab[aria-selected='true'] {
+  border-bottom-color: var(--color-neutral-1);
+  color: var(--color-neutral-1);
+}
+
+.server-page__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
 /* A form under a list: its field, its error and its buttons, stacked. */
 .server-page__form {
   display: flex;

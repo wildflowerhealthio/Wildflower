@@ -82,29 +82,31 @@ changing how servers run or what the host notifies about them.
   dot merged from its run state and health; a run-policy field
   (`RunPolicyPicker`) that says when it runs, outlined in the dot's tone, over
   a native picker that changes it at once, putting the previous policy back
-  if the host refuses (the refusal shows under the field); why its latest run
-  stopped; Launch; and Edit, which opens the server's page, kept current by
-  the `server-status` event too: its domain with Copy, its status badge, when
-  its run started and the run-policy field; its relay and tunnel name, the
+  if the host refuses (the refusal shows under the field); under it, what the
+  status says beyond plain Running or Stopped, with the host's reason a
+  running server isn't reachable; why its latest run stopped; Launch; and
+  Edit, which opens the server's page, kept current by the `server-status`
+  event too: its domain with Copy, its status badge, when its run started and
+  the run-policy field, over three tabs in component state. Status holds the
   host's last check of its connection or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
-  itself, with Refresh; a new tunnel token (`server_set_credentials`), in a
+  itself, with Refresh; its launcher, with Reset to the default launcher; and
+  its removal, said in full, behind a confirm that asks for the domain to be
+  typed. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
   password field that starts empty, a `relayIdentityChanged` refusal shown
-  as a warning that the relay may be impersonated, with no retry; its
-  launcher, with Reset to the default
-  launcher; its certificate's state (its `certificate`): the status in words,
+  as a warning that the relay may be impersonated, with no retry.
+  Certificate holds its certificate's state (its `certificate`): the status in words,
   shown as a failure only for `orderFailing` and `cacheUnreadable`, the
   certificate authority the server orders from (the record's, which Save
   launcher saves unchanged), and the one the state is for (its `issuer`) when
   that differs, the held certificate's validity and SHA-256 fingerprint, and
   the latest error, described by its kind, a rate limit's retry time saying
-  so once it has passed (one timer, set for it); and its removal, behind a
-  confirm that asks for the domain to be typed. With no servers it says what
-  a server is, beside Add server; with servers, Add server is under the
-  cards. Add server goes a step at a time, in component state rather than
+  so once it has passed (one timer, set for it). With no servers it says what
+  a server is, beside Add new server; with servers, Add new server is under
+  the cards, across the page. Add server goes a step at a time, in component state rather than
   the URL, so the token never reaches it: the relay (the Wildflower relay,
   or a custom one by base URL, with an Advanced pin or a rathole relay
-  instead); the tunnel name and masked token; Checking, while `server_add`
+  instead); the tunnel name, lowercased as typed as is a rathole relay's domain, and masked token; Checking, while `server_add`
   checks and registers, staying there on a refusal with the host's message,
   Back (every entry kept) and Retry; and the server added, its domain, a
   privacy note, and Start now or Start later (`whileOpen` or `off`), which

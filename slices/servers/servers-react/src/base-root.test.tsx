@@ -379,7 +379,7 @@ describe('the server list', () => {
     // Assert
     expect(await screen.findByText('No servers yet')).toBeDefined()
     expect(screen.getByText(/^A server keeps your health records on this device/)).toBeDefined()
-    expect(screen.getByRole('link', { name: 'Add server' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Add new server' }).getAttribute('href')).toBe(
       '/servers/new'
     )
     expect(screen.queryByRole('listitem')).toBeNull()
@@ -401,7 +401,7 @@ describe('the server list', () => {
       expect(within(card).getByRole('button', { name: 'Launch' })).toHaveProperty('disabled', false)
       expect(within(card).getByRole('link', { name: 'Edit' })).toBeDefined()
     }
-    expect(screen.getByRole('link', { name: 'Add server' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Add new server' }).getAttribute('href')).toBe(
       '/servers/new'
     )
   })
@@ -826,6 +826,11 @@ describe('the server page', () => {
     return section
   }
 
+  /** Open the server page's tab named `name`. */
+  const openTab = async (name: string): Promise<void> => {
+    await userEvent.click(await screen.findByRole('tab', { name }))
+  }
+
   /** The open confirm dialog. */
   const confirmDialog = (): HTMLDialogElement => {
     const dialog = openDialog()
@@ -849,14 +854,27 @@ describe('the server page', () => {
     // Assert
     expect(await screen.findByRole('heading', { name: 'Server' })).toBeDefined()
     expect(screen.getByRole('heading', { name: 'ruth.relay.example.com' })).toBeDefined()
-    expect(
-      screen.getByText('Self-hosted Wildflower relay at https://relay.example.com/')
-    ).toBeDefined()
-    expect(screen.getByText('ruth')).toBeDefined()
+    expect(screen.getByRole('tab', { name: 'Status', selected: true })).toBeDefined()
     expect(screen.getByLabelText('Launcher')).toHaveProperty(
       'value',
       'https://wildflowerhealth.io/app'
     )
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
+
+    // Act
+    await user.click(screen.getByRole('tab', { name: 'Relay' }))
+
+    // Assert
+    expect(
+      screen.getByText('Self-hosted Wildflower relay at https://relay.example.com/')
+    ).toBeDefined()
+    expect(screen.getByText('ruth')).toBeDefined()
+    expect(screen.queryByLabelText('Launcher')).toBeNull()
+
+    // Act
+    await user.click(screen.getByRole('tab', { name: 'Certificate' }))
+
+    // Assert
     expect(screen.getByText("Let's Encrypt")).toBeDefined()
 
     // Act
@@ -1063,6 +1081,7 @@ describe('the server page', () => {
         domain: 'ruth.relay.example.com',
         servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
       })
+      await openTab('Certificate')
 
       // Assert
       expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
@@ -1078,6 +1097,7 @@ describe('the server page', () => {
 
     // Act
     renderServerPage({ domain: 'ruth.relay.example.com' })
+    await openTab('Certificate')
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
@@ -1102,12 +1122,12 @@ describe('the server page', () => {
       storage: storageAnswered({ crashReports: false, performance: false }),
       path: '/servers/ruth.relay.example.com',
     })
-    await screen.findByRole('heading', { name: 'Certificate' })
 
     // Act
-    await user.clear(screen.getByLabelText('Launcher'))
+    await user.clear(await screen.findByLabelText('Launcher'))
     await user.type(screen.getByLabelText('Launcher'), 'https://launcher.example.com/')
     await user.click(screen.getByRole('button', { name: 'Save launcher' }))
+    await openTab('Certificate')
 
     // Assert
     expect(certificateRow('Certificate authority').textContent).toMatch(/Let's Encrypt$/)
@@ -1130,6 +1150,7 @@ describe('the server page', () => {
       domain: 'ruth.relay.example.com',
       servers: listedWithRuthStatus(golden.serverStatuses.neverRun),
     })
+    await openTab('Certificate')
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
@@ -1180,6 +1201,7 @@ describe('the server page', () => {
   ] as const)('should describe %s as the last error', async (_, status, text) => {
     // Act
     renderServerPage({ domain: 'ruth.relay.example.com', servers: listedWithRuthStatus(status) })
+    await openTab('Certificate')
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
@@ -1198,6 +1220,7 @@ describe('the server page', () => {
         domain: 'ruth.relay.example.com',
         servers: listedWithRuthStatus(golden.serverStatuses.runningUnreachable),
       })
+      await openTab('Certificate')
       expect(await screen.findByText(`${said}.`)).toBeDefined()
 
       // Act
@@ -1216,6 +1239,7 @@ describe('the server page', () => {
     // Arrange
     const events = fakeEvents()
     renderServerPage({ domain: 'ruth.relay.example.com', events })
+    await openTab('Certificate')
     await screen.findByRole('heading', { name: 'Certificate' })
 
     // Act
@@ -1238,6 +1262,7 @@ describe('the server page', () => {
       domain: 'ruth.relay.example.com',
       answers: { server_set_credentials: () => Promise.resolve(null) },
     })
+    await openTab('Relay')
     const field = await screen.findByLabelText('New tunnel token')
     expect(field).toHaveProperty('value', '')
     expect(field).toHaveProperty('type', 'password')
@@ -1268,6 +1293,7 @@ describe('the server page', () => {
       domain: 'ruth.relay.example.com',
       answers: { server_set_credentials: () => Promise.reject(refusal) },
     })
+    await openTab('Relay')
 
     // Act
     await user.type(await screen.findByLabelText('New tunnel token'), 'wrong-token')
@@ -1286,6 +1312,7 @@ describe('the server page', () => {
       domain: 'ruth.relay.example.com',
       answers: { server_set_credentials: () => Promise.reject(refusal) },
     })
+    await openTab('Relay')
 
     // Act
     await user.type(await screen.findByLabelText('New tunnel token'), 'tunnel-token-123')
@@ -1564,7 +1591,7 @@ describe('Add server', () => {
     })
 
     // Act
-    await user.click(await screen.findByRole('link', { name: 'Add server' }))
+    await user.click(await screen.findByRole('link', { name: 'Add new server' }))
 
     // Assert
     const relay = await stepTitled('Relay')

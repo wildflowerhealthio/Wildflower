@@ -10,7 +10,7 @@ import { ServerCard } from './server-card.tsx'
 import { useOnline } from './use-online.ts'
 import styles from './server-list-page.module.css'
 
-/** The body of a list with no servers: what a server is, and Add server. */
+/** The body of a list with no servers: what a server is, and Add new server. */
 const NoServers = (): JSX.Element => (
   <div className={styles['server-list-page__empty']}>
     <p className={`text-heading-4 ${styles['server-list-page__empty-title']}`}>No servers yet</p>
@@ -18,13 +18,13 @@ const NoServers = (): JSX.Element => (
       A server keeps your health records on this device, and the apps you open from the web reach
       them at its own address, through a relay.
     </p>
-    <Link to="/servers/new" className="button button-2 filled">
-      Add server
+    <Link to="/servers/new" className={`button button-3 filled ${styles['server-list-page__add']}`}>
+      Add new server
     </Link>
   </div>
 )
 
-/** The servers, a card each, and Add server under them. */
+/** The servers, a card each, and Add new server under them. */
 const ServerCards = ({
   servers,
   runHostCommand,
@@ -40,9 +40,9 @@ const ServerCards = ({
     </ul>
     <Link
       to="/servers/new"
-      className={`button button-2 outline ${styles['server-list-page__add']}`}
+      className={`button button-3 outline ${styles['server-list-page__add']}`}
     >
-      Add server
+      Add new server
     </Link>
   </>
 )
@@ -81,7 +81,7 @@ const ServerListBody = ({
 /**
  * The base's home, `/`: a card for each server on this device, kept current
  * by the host's `server-status` events, or what a server is when there are
- * none; Add server either way; and the way to the base's Host Settings.
+ * none; Add new server either way; and the way to the base's Host Settings.
  *
  * @remarks
  * When the host can't read `servers.json`, the page shows the host's error,

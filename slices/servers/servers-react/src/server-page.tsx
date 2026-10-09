@@ -389,27 +389,22 @@ const CredentialsForm = ({
 }
 
 /**
- * The server's relay and tunnel: the relay and tunnel name; the connection
- * as the host last checked it, or how the latest run stopped; while the
- * server runs, its `/health` report as the webview reads it; and the form
- * that replaces its token.
+ * The server's connection: as the host last checked it, or how the latest
+ * run stopped; and, while the server runs, its `/health` report as the
+ * webview reads it.
  */
-const RelayAndTunnel = ({
+const Connection = ({
   server,
-  runHostCommand,
   runHttpRequest,
 }: {
   readonly server: ListedServer.Type
-  readonly runHostCommand: RunHostCommand
   readonly runHttpRequest: RunHttpRequest
 }): JSX.Element => (
   <>
     <ItemList
-      title="Relay and tunnel"
+      title="Connection"
       maxLines={3}
       items={[
-        { id: 'relay', title: 'Relay', subtitle: relayText(server.relay) },
-        { id: 'tunnel-name', title: 'Tunnel name', subtitle: server.tunnelName },
         { id: 'connection', title: 'Connection', subtitle: connectionText(server.status) },
         ...lastStopItems(server.status),
       ]}
@@ -421,6 +416,26 @@ const RelayAndTunnel = ({
         runHttpRequest={runHttpRequest}
       />
     ) : null}
+  </>
+)
+
+/** The server's relay and tunnel name, and the form that replaces its token. */
+const RelayAndTunnel = ({
+  server,
+  runHostCommand,
+}: {
+  readonly server: ListedServer.Type
+  readonly runHostCommand: RunHostCommand
+}): JSX.Element => (
+  <>
+    <ItemList
+      title="Relay and tunnel"
+      maxLines={3}
+      items={[
+        { id: 'relay', title: 'Relay', subtitle: relayText(server.relay) },
+        { id: 'tunnel-name', title: 'Tunnel name', subtitle: server.tunnelName },
+      ]}
+    />
     <CredentialsForm domain={server.domain} runHostCommand={runHostCommand} />
   </>
 )
@@ -578,7 +593,7 @@ const Launcher = ({
 }
 
 /**
- * The server's removal, behind a confirm that asks for its domain to be
+ * The server's removal, said in full under its heading, behind a confirm that asks for its domain to be
  * typed; once removed, the page returns to the list.
  */
 const DangerZone = ({
@@ -599,6 +614,10 @@ const DangerZone = ({
       <h3 id={headingId} className={`text-label-3 ${styles['server-page__section-title']}`}>
         Danger zone
       </h3>
+      <p className={`text-body-3 ${styles['server-page__note']}`}>
+        Remove stops this server and deletes it from this device, with its databases and
+        certificates. Apps can no longer reach it at this address. It can't be undone.
+      </p>
       <ErrorBanner error={removeServer.error === null ? null : failureText(removeServer.error)} />
       <button
         type="button"
@@ -637,16 +656,28 @@ const DangerZone = ({
   )
 }
 
+/** The server page's tabs, by their id. */
+const TABS = [
+  { id: 'status', label: 'Status' },
+  { id: 'relay', label: 'Relay' },
+  { id: 'certificate', label: 'Certificate' },
+] as const
+
+/** The id of one of the server page's {@link TABS}. */
+type Tab = (typeof TABS)[number]['id']
+
 /**
  * A server's page, `/servers/$domain`, opened by its card's Edit: its
- * status, with when it runs; its relay and tunnel, with its connection, its
- * `/health` report while it runs, and a new tunnel token; its launcher; its
- * certificate's state; and its removal.
+ * status, with when it runs, over three tabs. Status holds its connection,
+ * its `/health` report while it runs, its launcher and its removal; Relay,
+ * its relay and tunnel, with a new tunnel token; Certificate, its
+ * certificate's state.
  *
  * @remarks
  * The server is read from the same cached list as the server list, kept
  * current by the `server-status` event while the page is open, so a domain
- * the list doesn't hold says so, with the way back.
+ * the list doesn't hold says so, with the way back. The tab shown is this
+ * component's state, opening on Status.
  */
 const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
   const runHostCommand = useRouteContext({
@@ -666,6 +697,8 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
     select: (context: RouterContext) => context.defaultLauncherUrl,
   })
   useServerStatusEvents(listenToHostEvent)
+  const tabPanelId = useId()
+  const [tab, setTab] = useState<Tab>('status')
   const servers = useQuery(serversQueryOptions(runHostCommand))
   const header = <PageHeader title="Server" subtitle={domain} backHref="/" backLabel="Servers" />
   if (servers.isPending) {
@@ -703,18 +736,49 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
     <>
       <PageHeader title="Server" backHref="/" backLabel="Servers" />
       <StatusHero server={server} runHostCommand={runHostCommand} />
-      <RelayAndTunnel
-        server={server}
-        runHostCommand={runHostCommand}
-        runHttpRequest={runHttpRequest}
-      />
-      <Launcher
-        server={server}
-        defaultLauncherUrl={defaultLauncherUrl}
-        runHostCommand={runHostCommand}
-      />
-      <CertificateList server={server} />
-      <DangerZone server={server} runHostCommand={runHostCommand} />
+      <div className={styles['server-page__tabs']} role="tablist" aria-label="Server details">
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`${tabPanelId}-${id}-tab`}
+            aria-selected={tab === id}
+            aria-controls={tabPanelId}
+            className={`text-label-2 ${styles['server-page__tab']}`}
+            onClick={() => {
+              setTab(id)
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div
+        id={tabPanelId}
+        role="tabpanel"
+        aria-labelledby={`${tabPanelId}-${tab}-tab`}
+        className={styles['server-page__panel']}
+      >
+        {Match.value(tab).pipe(
+          Match.when('status', () => (
+            <>
+              <Connection server={server} runHttpRequest={runHttpRequest} />
+              <Launcher
+                server={server}
+                defaultLauncherUrl={defaultLauncherUrl}
+                runHostCommand={runHostCommand}
+              />
+              <DangerZone server={server} runHostCommand={runHostCommand} />
+            </>
+          )),
+          Match.when('relay', () => (
+            <RelayAndTunnel server={server} runHostCommand={runHostCommand} />
+          )),
+          Match.when('certificate', () => <CertificateList server={server} />),
+          Match.exhaustive
+        )}
+      </div>
     </>
   )
 }
