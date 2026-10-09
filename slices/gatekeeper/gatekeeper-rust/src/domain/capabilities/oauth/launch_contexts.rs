@@ -38,7 +38,7 @@ impl<'a, S: GatekeeperStore> LaunchContexts<'a, S> {
         nonce: String,
         now: DateTime<Utc>,
     ) -> Result<LaunchContext, GatekeeperError> {
-        self.insert_pruning_expired(LaunchContext::for_client(nonce, client_id, None, now), now)
+        self.insert_and_prune_expired(LaunchContext::for_client(nonce, client_id, None, now), now)
     }
 
     /// Persist a fresh launch context `nonce` that any client may consume, and
@@ -53,12 +53,12 @@ impl<'a, S: GatekeeperStore> LaunchContexts<'a, S> {
         nonce: String,
         now: DateTime<Utc>,
     ) -> Result<LaunchContext, GatekeeperError> {
-        self.insert_pruning_expired(LaunchContext::for_any_client(nonce, now), now)
+        self.insert_and_prune_expired(LaunchContext::for_any_client(nonce, now), now)
     }
 
     /// Insert `launch_context`, deleting the contexts expired at `now` in the
     /// same transaction, and return it.
-    fn insert_pruning_expired(
+    fn insert_and_prune_expired(
         &self,
         launch_context: LaunchContext,
         now: DateTime<Utc>,
