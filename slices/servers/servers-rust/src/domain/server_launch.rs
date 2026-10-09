@@ -70,13 +70,17 @@ fn is_a_launch_param(param: &str) -> bool {
 /// - [`LaunchError::UntrustedCertificate`] when it is, but from a CA browsers
 ///   don't trust, such as Let's Encrypt's staging CA.
 pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchError> {
-    let domain = || status.domain.clone();
+    let domain = &status.domain;
     if status.unit_status.run_state != RunState::Running {
-        return Err(LaunchError::ServerNotRunning { domain: domain() });
+        return Err(LaunchError::ServerNotRunning {
+            domain: domain.clone(),
+        });
     }
     // A run that hasn't reported its detail yet hasn't probed its health
     // either.
-    let not_yet_probed = || LaunchError::NotYetProbed { domain: domain() };
+    let not_yet_probed = || LaunchError::NotYetProbed {
+        domain: domain.clone(),
+    };
     let detail = status
         .unit_status
         .detail
@@ -85,7 +89,7 @@ pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchE
     match detail.health.as_ref().ok_or_else(not_yet_probed)? {
         ServerHealth::Unreachable { error } => {
             return Err(LaunchError::Unreachable {
-                domain: domain(),
+                domain: domain.clone(),
                 error: error.clone(),
             })
         }
@@ -95,12 +99,14 @@ pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchE
         status.certificate.status,
         CertificateStatus::NoRenewalNeeded | CertificateStatus::RenewalDue
     ) {
-        return Err(LaunchError::NoValidCertificate { domain: domain() });
+        return Err(LaunchError::NoValidCertificate {
+            domain: domain.clone(),
+        });
     }
     let issuer = status.certificate.issuer;
     if !issuer.is_browser_trusted() {
         return Err(LaunchError::UntrustedCertificate {
-            domain: domain(),
+            domain: domain.clone(),
             issuer,
         });
     }
