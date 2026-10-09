@@ -70,9 +70,9 @@ changing how servers run or what the host notifies about them.
   `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
   `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
   `ConsentApproval`, `ApprovalOutcome`, `EnteredRelay`, `server_add`'s
-  relay, and `LaunchError` (with `statusRefusalOf`, the refusal
-  `server_launch` answers from a status, held to the host's by the golden
-  file), each a `Schema` and its `Type` with getters. A refused
+  relay, each a `Schema` and its `Type` with getters; and `LaunchError`'s
+  `statusRefusalOf`, the refusal `server_launch` answers from a status, held
+  to the host's by the golden file. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. Besides the host, `readServerHealth` reads a server's
   `/health` at its public origin, an Effect over `@effect/platform`'s
@@ -341,9 +341,10 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   `registrationNotAcknowledged` or `gatekeeper`.
 - **Launching opens the launcher with a launch for any client.**
   `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
-  once unless `ensure_launchable` passes for the server's status (its run
-  is up, its `health` `reachable`, its run's certificate `noRenewalNeeded`
-  or `renewalDue`), mints a launch through the `ServerLaunchMinter` in the
+  once unless `ensure_launchable` passes for the server's status, the one
+  the base receives (its run is up, its `health` `reachable`, its
+  `certificate`, the run's or else the cache's, `noRenewalNeeded` or
+  `renewalDue`), mints a launch through the `ServerLaunchMinter` in the
   run's detail on a blocking thread, and opens `launch_url`: the launcher
   URL with `iss=https://<domain>/fhir-r4` and `launch` in its query, any
   earlier `iss` or `launch` dropped and its other parameters kept as

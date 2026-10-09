@@ -357,6 +357,17 @@ pub(crate) mod tests {
         vec![
             ("runningAndReachable", status(running_and_reachable())),
             (
+                "runningAndReachableWithACachedCertificate",
+                with_cached(
+                    {
+                        let mut unreported = running_and_reachable();
+                        unreported.detail.as_mut().unwrap().certificate = None;
+                        unreported
+                    },
+                    cached(CertificateStatus::NoRenewalNeeded),
+                ),
+            ),
+            (
                 "startingUnchecked",
                 with_cached(
                     UnitStatus {

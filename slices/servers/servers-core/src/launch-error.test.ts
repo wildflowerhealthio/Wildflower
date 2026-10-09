@@ -83,6 +83,5 @@ describe('launchServer', () => {
       )
     )
     expect(refusal).toEqual(Option.some(error))
-    expect(Schema.decodeUnknownSync(LaunchError.Schema)(error)).toEqual(error)
   })
 })

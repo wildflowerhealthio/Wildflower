@@ -1,7 +1,7 @@
 //! The launch command: the base opens a server's launcher, an app, as a SMART
 //! EHR launch against the server. The launcher's URL comes from the server's
-//! record; the server must be launchable now
-//! ([`ensure_launchable`](servers_rust::ensure_launchable)); its run's
+//! record; the server must be launchable now, by the status the base
+//! receives ([`ensure_launchable`](servers_rust::ensure_launchable)); its run's
 //! gatekeeper mints a launch for any client on a blocking thread
 //! ([`ServerLaunchMinter`]); and the launcher opens at
 //! [`launch_url`](servers_rust::launch_url) in a native web view of its own,
@@ -11,11 +11,13 @@
 //! launchable answers at once, and the base waits for it to become so.
 //! Every failure answers as `{kind, message}`, a [`LaunchError`].
 
+use std::path::Path;
 use std::sync::Arc;
 
 use gatekeeper_rust::domain::gatekeeper_error::GatekeeperError;
 use servers_rust::{
     LaunchError, RegistryError, ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry,
+    ServerStatus,
 };
 use tauri::ipc::Channel;
 use tauri::AppHandle;
@@ -23,9 +25,10 @@ use tauri_plugin_log::log;
 use tauri_plugin_native_webview::{
     DismissalAction, NativeWebviewEvent, NativeWebviewExt, OpenRequest,
 };
-use tauri_unit_runner::UnitStatuses;
+use tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 use url::Url;
 
+use crate::server_status::certificate_state;
 use crate::ServersState;
 
 /// Open the server `domain`'s launcher as a SMART EHR launch against it, with
@@ -45,6 +48,7 @@ pub async fn server_launch(
 ) -> Result<(), LaunchError> {
     launch(
         Arc::clone(&servers.registry),
+        &servers.data_root,
         &servers.server_units.statuses(),
         domain,
         NativeWebviewLauncherWindows { app },
@@ -64,15 +68,29 @@ pub(crate) trait LauncherWindows: Send + 'static {
     fn open(&self, domain: &str, launch_url: Url) -> Result<(), LaunchError>;
 }
 
+/// Open the server `domain`'s launcher in `launcher_windows`, once the
+/// server's status in `statuses`, with its certificate state (its run's, or
+/// what its cache in `data_root` says), is launchable.
 async fn launch(
     registry: Arc<dyn ServerRegistry>,
+    data_root: &Path,
     statuses: &UnitStatuses<ServerDetail>,
     domain: String,
     launcher_windows: impl LauncherWindows,
 ) -> Result<(), LaunchError> {
     let result = async {
         let record = registered_record(registry, domain.clone()).await?;
-        let launch_minter = ServerLaunchMinter::of_launchable_server(statuses, &domain)?;
+        // A server the unit runner doesn't hold has never run.
+        let unit_status = statuses
+            .get(&UnitId::new(&domain))
+            .cloned()
+            .unwrap_or_else(UnitStatus::never_run);
+        let status = ServerStatus {
+            domain: domain.clone(),
+            certificate: certificate_state(data_root, &record, &unit_status).await,
+            unit_status,
+        };
+        let launch_minter = ServerLaunchMinter::of_launchable_server(&status)?;
         let launch = tokio::task::spawn_blocking(move || launch_minter.mint())
             .await
             .map_err(|error| {
@@ -166,7 +184,7 @@ mod tests {
         CertificateAuthority, JsonServerRegistry, RelayKind, RunPolicy, ServerRecord, TunnelToken,
     };
     use shared_structures_rust::health_check::HealthReport;
-    use tauri_unit_runner::{RunState, UnitId, UnitStatus};
+    use tauri_unit_runner::RunState;
     use wildflower_server_rust::{CertificateState, CertificateStatus, ServerHealth};
 
     use super::*;
@@ -251,11 +269,12 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_launchable_server_s_launcher_opens_at_its_launch_url() {
         let gatekeeper = test_gatekeeper();
-        let (_data_root, registry) = registry();
+        let (data_root, registry) = registry();
         let opened = OpenedLaunchers::default();
 
         launch(
             registry,
+            data_root.path(),
             &launchable(&gatekeeper),
             DOMAIN.to_owned(),
             opened.clone(),
@@ -283,12 +302,19 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_server_that_isn_t_launchable_opens_nothing() {
-        let (_data_root, registry) = registry();
+        let (data_root, registry) = registry();
         let opened = OpenedLaunchers::default();
         let not_running: UnitStatuses<ServerDetail> =
             [(UnitId::new(DOMAIN), UnitStatus::never_run())].into();
 
-        let refused = launch(registry, &not_running, DOMAIN.to_owned(), opened.clone()).await;
+        let refused = launch(
+            registry,
+            data_root.path(),
+            &not_running,
+            DOMAIN.to_owned(),
+            opened.clone(),
+        )
+        .await;
 
         assert!(
             matches!(refused, Err(LaunchError::ServerNotRunning { .. })),
@@ -300,11 +326,12 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_server_that_isn_t_registered_is_refused() {
         let gatekeeper = test_gatekeeper();
-        let (_data_root, registry) = registry();
+        let (data_root, registry) = registry();
         let opened = OpenedLaunchers::default();
 
         let refused = launch(
             registry,
+            data_root.path(),
             &launchable(&gatekeeper),
             "lab.relay.example.com".to_owned(),
             opened.clone(),

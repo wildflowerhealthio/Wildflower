@@ -9,11 +9,11 @@
 //! base's consent sheet answers.
 
 use shared_structures_rust::FHIR_R4_PATH;
-use unit_runner::{RunState, UnitStatus};
+use unit_runner::RunState;
 use url::{form_urlencoded, Url};
 use wildflower_server_rust::{CertificateStatus, ServerHealth};
 
-use crate::domain::{LaunchError, ServerDetail};
+use crate::domain::{LaunchError, ServerDetail, ServerStatus};
 
 /// The URL a server's launcher opens at: `launcher_url` with `iss`, the
 /// server's FHIR base (its `public_origin`, as
@@ -51,55 +51,49 @@ fn is_a_launch_param(param: &str) -> bool {
         .is_some_and(|(name, _)| name == "iss" || name == "launch")
 }
 
-/// The detail of the server `domain`'s run, from its `unit_status` on
-/// `UnitRunner`, once the server can be launched: its run is up, its
-/// `/health` has answered through its relay, and its run holds a valid
-/// certificate (no renewal needed, or renewal due). Nothing waits for any of
-/// them: the base waits, and asks again.
+/// The detail of the run of the server whose status is `status`, once the
+/// server can be launched: its run is up, its `/health` has answered through
+/// its relay, and its certificate is valid (no renewal needed, or renewal
+/// due). Nothing waits for any of them: the base waits, and asks again.
+///
+/// The certificate is the status's, the state the base receives: its run's,
+/// once the run has reported one, or else what its cache says. So the base,
+/// deciding from the same status, refuses what the host refuses.
 ///
 /// # Errors
 ///
-/// - [`LaunchError::ServerNotRunning`] when the server has no status, or its
-///   run isn't up;
+/// - [`LaunchError::ServerNotRunning`] when its run isn't up;
 /// - [`LaunchError::NotYetProbed`] when its `/health` hasn't been asked yet,
 ///   or its run hasn't reported a detail;
 /// - [`LaunchError::Unreachable`] when it didn't answer;
-/// - [`LaunchError::NoValidCertificate`] when the run holds no valid
-///   certificate, or hasn't reported one.
-pub fn ensure_launchable<'a>(
-    domain: &str,
-    unit_status: Option<&'a UnitStatus<ServerDetail>>,
-) -> Result<&'a ServerDetail, LaunchError> {
-    let running = unit_status
-        .filter(|unit_status| unit_status.run_state == RunState::Running)
-        .ok_or_else(|| LaunchError::ServerNotRunning {
-            domain: domain.to_owned(),
-        })?;
+/// - [`LaunchError::NoValidCertificate`] when its certificate isn't valid.
+pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchError> {
+    let domain = || status.domain.clone();
+    if status.unit_status.run_state != RunState::Running {
+        return Err(LaunchError::ServerNotRunning { domain: domain() });
+    }
     // A run that hasn't reported its detail yet hasn't probed its health
     // either.
-    let not_yet_probed = || LaunchError::NotYetProbed {
-        domain: domain.to_owned(),
-    };
-    let detail = running.detail.as_ref().ok_or_else(not_yet_probed)?;
+    let not_yet_probed = || LaunchError::NotYetProbed { domain: domain() };
+    let detail = status
+        .unit_status
+        .detail
+        .as_ref()
+        .ok_or_else(not_yet_probed)?;
     match detail.health.as_ref().ok_or_else(not_yet_probed)? {
         ServerHealth::Unreachable { error } => {
             return Err(LaunchError::Unreachable {
-                domain: domain.to_owned(),
+                domain: domain(),
                 error: error.clone(),
             })
         }
         ServerHealth::Reachable(_) => {}
     }
-    let holds_valid_certificate = detail.certificate.as_ref().is_some_and(|certificate| {
-        matches!(
-            certificate.status,
-            CertificateStatus::NoRenewalNeeded | CertificateStatus::RenewalDue
-        )
-    });
-    if !holds_valid_certificate {
-        return Err(LaunchError::NoValidCertificate {
-            domain: domain.to_owned(),
-        });
+    if !matches!(
+        status.certificate.status,
+        CertificateStatus::NoRenewalNeeded | CertificateStatus::RenewalDue
+    ) {
+        return Err(LaunchError::NoValidCertificate { domain: domain() });
     }
     Ok(detail)
 }
@@ -107,8 +101,12 @@ pub fn ensure_launchable<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::server_status::tests::{golden_statuses, running_and_reachable, RUTH};
-    use crate::domain::{golden, ServerStatus};
+    use unit_runner::UnitStatus;
+
+    use crate::domain::golden;
+    use crate::domain::server_status::tests::{
+        cached, golden_statuses, running_and_reachable, RUTH,
+    };
 
     fn launcher(url: &str) -> Url {
         Url::parse(url).unwrap()
@@ -168,21 +166,37 @@ mod tests {
         );
     }
 
+    /// The status of [`RUTH`] whose `unit_status` is given, with its run's
+    /// certificate, or, without one, a cache's valid one.
+    fn status_of(unit_status: UnitStatus<ServerDetail>) -> ServerStatus {
+        ServerStatus {
+            domain: RUTH.to_owned(),
+            certificate: ServerStatus::run_certificate(&unit_status)
+                .cloned()
+                .unwrap_or_else(|| cached(CertificateStatus::NoRenewalNeeded)),
+            unit_status,
+        }
+    }
+
+    /// The status of a running, reachable [`RUTH`] whose certificate's
+    /// status is `certificate_status`.
+    fn running_and_reachable_with(certificate_status: CertificateStatus) -> ServerStatus {
+        let mut status = status_of(running_and_reachable());
+        status.certificate.status = certificate_status;
+        status
+    }
+
     #[test]
     fn a_running_reachable_server_with_a_valid_certificate_is_launchable() {
-        let unit_status = running_and_reachable();
-        assert!(ensure_launchable(RUTH, Some(&unit_status)).is_ok());
-
-        let mut renewal_due = running_and_reachable();
-        renewal_due
-            .detail
-            .as_mut()
-            .unwrap()
-            .certificate
-            .as_mut()
-            .unwrap()
-            .status = CertificateStatus::RenewalDue;
-        assert!(ensure_launchable(RUTH, Some(&renewal_due)).is_ok());
+        for certificate_status in [
+            CertificateStatus::NoRenewalNeeded,
+            CertificateStatus::RenewalDue,
+        ] {
+            assert!(
+                ensure_launchable(&running_and_reachable_with(certificate_status)).is_ok(),
+                "{certificate_status:?}"
+            );
+        }
     }
 
     #[test]
@@ -191,9 +205,9 @@ mod tests {
             run_state: RunState::Starting,
             ..running_and_reachable()
         };
-        for unit_status in [None, Some(&starting), Some(&UnitStatus::never_run())] {
+        for unit_status in [starting, UnitStatus::never_run()] {
             assert!(matches!(
-                ensure_launchable(RUTH, unit_status),
+                ensure_launchable(&status_of(unit_status)),
                 Err(LaunchError::ServerNotRunning { .. })
             ));
         }
@@ -209,7 +223,7 @@ mod tests {
         };
         for unit_status in [not_yet_probed, without_a_detail] {
             assert!(matches!(
-                ensure_launchable(RUTH, Some(&unit_status)),
+                ensure_launchable(&status_of(unit_status)),
                 Err(LaunchError::NotYetProbed { .. })
             ));
         }
@@ -219,43 +233,43 @@ mod tests {
             error: "the relay answered 502".to_owned(),
         });
         assert!(matches!(
-            ensure_launchable(RUTH, Some(&unreachable)),
+            ensure_launchable(&status_of(unreachable)),
             Err(LaunchError::Unreachable { error, .. }) if error == "the relay answered 502"
         ));
     }
 
     #[test]
     fn a_server_without_a_valid_certificate_is_refused() {
-        let mut unreported = running_and_reachable();
-        unreported.detail.as_mut().unwrap().certificate = None;
-        assert!(matches!(
-            ensure_launchable(RUTH, Some(&unreported)),
-            Err(LaunchError::NoValidCertificate { .. })
-        ));
-        for status in [
+        for certificate_status in [
             CertificateStatus::Ordering,
             CertificateStatus::OrderFailing,
             CertificateStatus::NotIssued,
             CertificateStatus::Expired,
             CertificateStatus::CacheUnreadable,
         ] {
-            let mut without_a_valid_certificate = running_and_reachable();
-            without_a_valid_certificate
-                .detail
-                .as_mut()
-                .unwrap()
-                .certificate
-                .as_mut()
-                .unwrap()
-                .status = status;
             assert!(
                 matches!(
-                    ensure_launchable(RUTH, Some(&without_a_valid_certificate)),
+                    ensure_launchable(&running_and_reachable_with(certificate_status)),
                     Err(LaunchError::NoValidCertificate { .. })
                 ),
-                "{status:?}"
+                "{certificate_status:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_run_that_hasn_t_reported_its_certificate_is_decided_by_the_cache_s() {
+        let mut unreported = running_and_reachable();
+        unreported.detail.as_mut().unwrap().certificate = None;
+        let cached_as = |certificate_status| ServerStatus {
+            certificate: cached(certificate_status),
+            ..status_of(unreported.clone())
+        };
+        assert!(ensure_launchable(&cached_as(CertificateStatus::NoRenewalNeeded)).is_ok());
+        assert!(matches!(
+            ensure_launchable(&cached_as(CertificateStatus::Expired)),
+            Err(LaunchError::NoValidCertificate { .. })
+        ));
     }
 
     /// A running, reachable server's refusal for each certificate status, or
@@ -273,30 +287,15 @@ mod tests {
             CertificateStatus::CacheUnreadable,
             CertificateStatus::OrderFailing,
         ];
-        for status in statuses {
-            let mut unit_status = running_and_reachable();
-            let certificate = unit_status
-                .detail
-                .as_mut()
-                .unwrap()
-                .certificate
-                .as_mut()
-                .unwrap();
-            certificate.status = status;
-            let wire_status = serde_json::to_value(ServerStatus {
-                domain: RUTH.to_owned(),
-                certificate: certificate.clone(),
-                unit_status: unit_status.clone(),
-            })
-            .unwrap()["certificate"]["status"]
-                .clone();
-            let refusal = ensure_launchable(RUTH, Some(&unit_status))
-                .err()
-                .map(|error| error.kind());
+        for certificate_status in statuses {
+            let status = running_and_reachable_with(certificate_status);
+            let wire_status =
+                serde_json::to_value(&status).unwrap()["certificate"]["status"].clone();
+            let refusal = ensure_launchable(&status).err().map(|error| error.kind());
             assert_eq!(
                 serde_json::to_value(refusal).unwrap(),
                 golden["launchRefusalsByCertificateStatus"][wire_status.as_str().unwrap()],
-                "{status:?}"
+                "{certificate_status:?}"
             );
         }
         assert_eq!(
@@ -316,9 +315,7 @@ mod tests {
     fn each_golden_status_s_refusal_is_as_the_golden_file_says() {
         let golden = golden();
         for (name, status) in golden_statuses() {
-            let refusal = ensure_launchable(RUTH, Some(&status.unit_status))
-                .err()
-                .map(|error| error.kind());
+            let refusal = ensure_launchable(&status).err().map(|error| error.kind());
             assert_eq!(
                 serde_json::to_value(refusal).unwrap(),
                 golden["launchRefusals"][name],

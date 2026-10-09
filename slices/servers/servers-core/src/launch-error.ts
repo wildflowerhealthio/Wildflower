@@ -21,23 +21,6 @@ const StatusRefusalKindSchema = Schema.Literal(
 /** A decoded {@link StatusRefusalKindSchema}. */
 type StatusRefusalKind = typeof StatusRefusalKindSchema.Type
 
-/**
- * Why `server_launch` couldn't open a server's launcher, as the host refuses
- * it: `{ kind, message }`, a status refusal, the gatekeeper's failure to mint
- * the launch (`gatekeeper`), the launcher's window failing (`openingLauncher`),
- * or the registry's (`notRegistered`, `registry`).
- */
-const LaunchErrorSchema = Schema.Struct({
-  kind: Schema.Union(
-    StatusRefusalKindSchema,
-    Schema.Literal('gatekeeper', 'openingLauncher', 'notRegistered', 'registry')
-  ),
-  message: Schema.String,
-})
-
-/** A decoded {@link LaunchErrorSchema}. */
-type Type = typeof LaunchErrorSchema.Type
-
 /** The certificate statuses an app's browser accepts: a valid certificate. */
 const VALID_CERTIFICATE_STATUSES: readonly CertificateState.Status[] = [
   'noRenewalNeeded',
@@ -50,10 +33,10 @@ const VALID_CERTIFICATE_STATUSES: readonly CertificateState.Status[] = [
  * answered through its relay, and its certificate is valid.
  *
  * @remarks
- * The host decides from its run's certificate, which `status` carries once
- * the run has reported one; until then `status` carries what the cache says,
- * and the host refuses `noValidCertificate` where this says none. The golden
- * file's `launchRefusals` holds both sides to the same answers.
+ * The host decides from the same status, its certificate included: the
+ * run's, once the run has reported one, or else what the cache says. The
+ * golden file's `launchRefusals` and `launchRefusalsByCertificateStatus` hold
+ * both sides to the same answers.
  */
 const statusRefusalOf = (status: ServerStatus.Type): Option.Option<StatusRefusalKind> => {
   if (status.runState !== 'running') return Option.some('serverNotRunning')
@@ -64,5 +47,5 @@ const statusRefusalOf = (status: ServerStatus.Type): Option.Option<StatusRefusal
     : Option.some('noValidCertificate')
 }
 
-export { LaunchErrorSchema as Schema, StatusRefusalKindSchema, statusRefusalOf }
-export type { StatusRefusalKind, Type }
+export { StatusRefusalKindSchema, statusRefusalOf }
+export type { StatusRefusalKind }

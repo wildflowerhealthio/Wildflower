@@ -84,6 +84,21 @@
         }
       }
     },
+    "runningAndReachableWithACachedCertificate": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
     "startingUnchecked": {
       "domain": "ruth.relay.example.com",
       "runState": "starting",
@@ -361,6 +376,7 @@
   },
   "launchRefusals": {
     "runningAndReachable": null,
+    "runningAndReachableWithACachedCertificate": null,
     "startingUnchecked": "serverNotRunning",
     "startingCaUnreachable": "serverNotRunning",
     "runningUnreachable": "unreachable",

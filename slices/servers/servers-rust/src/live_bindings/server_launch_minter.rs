@@ -4,16 +4,14 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::{ensure_launchable, LaunchError, ServerStatus};
 use gatekeeper_rust::LaunchContextMinter;
-use unit_runner::{UnitId, UnitStatuses};
-
-use crate::domain::{ensure_launchable, LaunchError, ServerDetail};
 
 /// Mints SMART App Launch `launch` values on one run of a server, through the
 /// run's gatekeeper. Each is for any OAuth client, since a server's launcher
 /// can be any app.
 ///
-/// A run puts it in each [`ServerDetail`] it sets, and `UnitRunner` clears the
+/// A run puts it in each [`ServerDetail`](crate::ServerDetail) it sets, and `UnitRunner` clears the
 /// detail when the run ends, so [`Self::of_launchable_server`] finds one only
 /// while the server's run is up. Clones share the run's gatekeeper, and two
 /// are equal when they are the same run's.
@@ -30,21 +28,18 @@ impl ServerLaunchMinter {
         Self(Arc::new(launch_context_minter))
     }
 
-    /// The minter of the server `domain`'s run, from the servers' `statuses`,
-    /// once the server can be launched (see [`ensure_launchable`]).
+    /// The minter of the run of the server whose status is `status`, once
+    /// the server can be launched (see [`ensure_launchable`]).
     ///
     /// # Errors
     ///
     /// The [`LaunchError`] that says why the server can't be launched now.
-    pub fn of_launchable_server(
-        statuses: &UnitStatuses<ServerDetail>,
-        domain: &str,
-    ) -> Result<Self, LaunchError> {
-        ensure_launchable(domain, statuses.get(&UnitId::new(domain)))?
+    pub fn of_launchable_server(status: &ServerStatus) -> Result<Self, LaunchError> {
+        ensure_launchable(status)?
             .launch_minter
             .clone()
             .ok_or_else(|| LaunchError::ServerNotRunning {
-                domain: domain.to_owned(),
+                domain: status.domain.clone(),
             })
     }
 
