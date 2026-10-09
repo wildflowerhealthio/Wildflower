@@ -7,6 +7,8 @@
 
 import { Option } from 'effect'
 
+import { isAuthorizationResponse } from './authorization-flow.ts'
+
 /**
  * A SMART launch a page was opened to start: the FHIR server it names, and the
  * EHR's opaque launch token when it is an EHR launch.
@@ -32,14 +34,15 @@ interface ArrivingSmartLaunch {
  * no server, so it is no launch. An empty `launch` counts as absent, as it does
  * for fhirclient.
  *
- * A URL carrying `code`, `state` or `error` is a return from the authorization
- * server, never a launch, whatever else it carries: starting a launch there
- * would abandon the handshake the page is completing, or the failure it
- * reports.
+ * A URL carrying any authorization-response parameter (`code`, `state`,
+ * `error` or `error_description`; see `isAuthorizationResponse`) is a return
+ * from the authorization server, never a launch, whatever else it carries:
+ * starting a launch there would abandon the handshake the page is completing,
+ * or the failure it reports.
  */
 const arrivingSmartLaunchFrom = (search: string): Option.Option<ArrivingSmartLaunch> => {
+  if (isAuthorizationResponse(search)) return Option.none()
   const params = new URLSearchParams(search)
-  if (params.has('code') || params.has('state') || params.has('error')) return Option.none()
   const iss = params.get('iss')
   if (iss === null || iss === '') return Option.none()
   const launch = params.get('launch')

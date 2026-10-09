@@ -32,6 +32,10 @@ describe('arrivingSmartLaunchFrom', () => {
     { case: 'a lone launch', search: '?launch=xyz' },
     { case: 'an empty iss', search: '?iss=&launch=xyz' },
     { case: 'unrelated params', search: '?utm_source=email' },
+    {
+      case: 'a lone error_description beside an iss',
+      search: '?error_description=denied&iss=https%3A%2F%2Ffhir.example%2Fr4',
+    },
   ])('should find no launch in $case', ({ search }) => {
     // Act / Assert
     expect(arrivingSmartLaunchFrom(search)).toStrictEqual(Option.none())
@@ -77,14 +81,14 @@ describe('arrivingSmartLaunchFrom', () => {
 
 // Helpers
 
-/** The three params that mark a return from the authorization server, excluded from noise. */
-const CALLBACK_PARAMS = ['code', 'state', 'error']
+/** The params that mark a return from the authorization server, excluded from noise. */
+const CALLBACK_PARAMS = ['code', 'state', 'error', 'error_description']
 
 /** A query string built from `params`, leading `?` included. */
 const searchFrom = (params: Record<string, string>): string =>
   `?${new URLSearchParams(params).toString()}`
 
-/** Arbitrary query params that are never `code`, `state`, or `error`. */
+/** Arbitrary query params that are never one of {@link CALLBACK_PARAMS}. */
 const nonCallbackParams = (): fc.Arbitrary<Record<string, string>> =>
   fc.dictionary(fc.string(), fc.string()).map((dict) => {
     const copy = { ...dict }
