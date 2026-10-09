@@ -10,10 +10,18 @@ import * as fc from 'fast-check'
 import { serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import { makeBearerAuthStateStore, type BearerAuthStateStore } from 'gatekeeper-react'
 import { numRunsFor } from 'kitchen-sink/test'
+import { StrictMode } from 'react'
 import { AuthedUntil, AuthStateProvider } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import { signInEnvironment, startSignIn, type SignInProblem, type SignInStep } from '../sign-in.ts'
+import {
+  signInEnvironment,
+  startSignIn,
+  unsentEhrLaunch,
+  type SignInProblem,
+  type SignInStep,
+  type UnsentEhrLaunch,
+} from '../sign-in.ts'
 import { DEFAULT_SERVER_URL, rememberSignedInServer } from '../web-entry.ts'
 import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
 
@@ -203,9 +211,9 @@ describe('Landing', () => {
   })
 
   test('names the Local Network Access prompt for a failed boot sign-in to a loopback server', async () => {
-    // Arrange / Act — the redemption failed, so the bare landing names no
-    // server; the problem still carries the one the sign-in was to.
-    await mountLanding('/', {
+    // Arrange / Act — the redemption failed, and the boot pointed `?server=`
+    // back at the server the sign-in was to.
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', {
       secure: true,
       bootSignInProblem: {
         reason: 'Could not reach the server.',
@@ -221,13 +229,13 @@ describe('Landing', () => {
   })
 
   test('leaves the prompt out for a failed boot sign-in to a remote server', async () => {
-    // Arrange / Act — the bare landing falls back to the loopback default, but
-    // the sign-in that failed was to a hosted server, which has no such prompt.
-    await mountLanding('/', {
+    // Arrange / Act — the sign-in that failed was to a hosted server, which has
+    // no such prompt.
+    await mountLanding(`/?server=${encodeURIComponent(RUTH_SERVER_URL)}`, {
       secure: true,
       bootSignInProblem: {
         reason: 'Could not reach the server.',
-        serverUrl: 'https://ruth.wildflowerhealth.io',
+        serverUrl: RUTH_SERVER_URL,
       },
     })
 
@@ -447,6 +455,132 @@ describe('Landing', () => {
     expect(localServerButton().hasAttribute('disabled')).toBe(false)
   })
 
+  test('signs in on arrival with the EHR launch the page was opened with, once', async () => {
+    // Arrange — `main-web`'s boot read `?iss=…&launch=…` and pointed
+    // `?server=` at the server `iss` names. Under StrictMode, whose second
+    // effect run must not start a second sign-in with a single-use launch.
+    const signIn = recordingSignIn(pendingStart)
+
+    // Act
+    await mountLanding(`/?server=${encodeURIComponent(RUTH_SERVER_URL)}`, {
+      signIn: signIn.stub,
+      ehrLaunch: unsentEhrLaunch({ serverUrl: RUTH_SERVER_URL, launch: 'nonce-1' }),
+      strict: true,
+    })
+
+    // Assert
+    await waitFor(() => {
+      expect(signIn.started).toEqual([RUTH_SERVER_URL])
+    })
+    expect(signIn.launches).toEqual(['nonce-1'])
+  })
+
+  test('carries the EHR launch on the first sign-in only', async () => {
+    // Arrange — the sign-in on arrival fails, and the reader retries.
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
+    )
+    await mountLanding(`/?server=${encodeURIComponent(RUTH_SERVER_URL)}`, {
+      signIn: signIn.stub,
+      ehrLaunch: unsentEhrLaunch({ serverUrl: RUTH_SERVER_URL, launch: 'nonce-1' }),
+    })
+    const retry = await screen.findByRole('button', { name: `Sign in to ${RUTH_SERVER_URL}` })
+    await waitFor(() => {
+      expect(retry.hasAttribute('disabled')).toBe(false)
+    })
+
+    // Act
+    fireEvent.click(retry)
+
+    // Assert — the retry is a standalone launch rather than a second offer of
+    // a launch gatekeeper may already have spent.
+    await waitFor(() => {
+      expect(signIn.launches).toEqual(['nonce-1', undefined])
+    })
+  })
+
+  test('does not offer the EHR launch again when the landing mounts again', async () => {
+    // Arrange — the sign-in on arrival fails before leaving the page, and the
+    // landing is then mounted afresh, as on a route change back to it. The
+    // launch is held once per page load, by `main-web`'s boot.
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
+    )
+    const ehrLaunch = unsentEhrLaunch({ serverUrl: RUTH_SERVER_URL, launch: 'nonce-1' })
+    await mountLanding(`/?server=${encodeURIComponent(RUTH_SERVER_URL)}`, {
+      signIn: signIn.stub,
+      ehrLaunch,
+    })
+    await waitFor(() => {
+      expect(signIn.launches).toEqual(['nonce-1'])
+    })
+    cleanup()
+
+    // Act
+    await mountLanding(`/?server=${encodeURIComponent(RUTH_SERVER_URL)}`, {
+      signIn: signIn.stub,
+      ehrLaunch,
+    })
+
+    // Assert — the second landing signs in on arrival too, standalone.
+    await waitFor(() => {
+      expect(signIn.launches).toEqual(['nonce-1', undefined])
+    })
+  })
+
+  test('refuses a launch to a server this page cannot reach, and keeps it off other servers', async () => {
+    // Arrange — the published (https) page, launched against a plain-http
+    // server that is not loopback.
+    const signIn = recordingSignIn(pendingStart)
+    const insecureServerUrl = 'http://example.org'
+    await mountLanding(`/?server=${encodeURIComponent(insecureServerUrl)}`, {
+      signIn: signIn.stub,
+      ehrLaunch: unsentEhrLaunch({ serverUrl: insecureServerUrl, launch: 'nonce-1' }),
+      secure: true,
+    })
+
+    // Assert — nothing starts on arrival, and the row says why.
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole('button', { name: `Sign in to ${insecureServerUrl}` })
+          .hasAttribute('disabled')
+      ).toBe(true)
+    })
+    expect(signIn.started).toEqual([])
+
+    // Act — the reader picks the local server instead.
+    fireEvent.click(localServerButton())
+
+    // Assert — that sign-in is a standalone one.
+    await waitFor(() => {
+      expect(signIn.started).toEqual([DEFAULT_SERVER_URL])
+    })
+    expect(signIn.launches).toEqual([undefined])
+  })
+
+  test('shows a rejected launch on the landing, with its server still offered', async () => {
+    // Arrange / Act — gatekeeper refused the launch and redirected back, and
+    // `main-web`'s boot pointed `?server=` back at the server it was to.
+    const signIn = recordingSignIn(pendingStart)
+    await mountLanding(`/?server=${encodeURIComponent(RUTH_SERVER_URL)}`, {
+      signIn: signIn.stub,
+      bootSignInProblem: {
+        reason:
+          'The server refused the sign-in: The supplied launch is unknown, already used, expired, or for another app.',
+        serverUrl: RUTH_SERVER_URL,
+      },
+    })
+
+    // Assert — the reason shows beside a sign-in to that server, and nothing
+    // starts on arrival.
+    await waitFor(() => {
+      expect(screen.getByText(/The supplied launch is unknown/)).toBeDefined()
+    })
+    expect(screen.getByRole('button', { name: `Sign in to ${RUTH_SERVER_URL}` })).toBeDefined()
+    expect(signIn.started).toEqual([])
+  })
+
   test('keeps the menu disabled while the sign-in on arrival is in flight', async () => {
     // Arrange / Act — a named server, whose sign-in never settles.
     const signIn = recordingSignIn(pendingStart)
@@ -510,6 +644,9 @@ const mountLanding = async (
   options: {
     readonly store?: BearerAuthStateStore
     readonly bootSignInProblem?: SignInProblem
+    readonly ehrLaunch?: UnsentEhrLaunch
+    /** Mount under `StrictMode`, which runs each effect twice. */
+    readonly strict?: boolean
     /**
      * Router basepath, when `url` is under a subpath rather than the origin
      * root — mirrors what `main-web` passes so `/` still resolves the landing
@@ -537,6 +674,7 @@ const mountLanding = async (
     component: () => (
       <Landing
         bootSignInProblem={options.bootSignInProblem}
+        ehrLaunch={options.ehrLaunch}
         signIn={options.signIn ?? recordingSignIn(pendingStart).stub}
       />
     ),
@@ -552,16 +690,20 @@ const mountLanding = async (
     history: createMemoryHistory({ initialEntries: [url] }),
   })
 
-  render(
+  const tree = (
     <AuthStateProvider store={options.store ?? makeBearerAuthStateStore()}>
       <RouterProvider router={router} />
     </AuthStateProvider>
   )
+  render(options.strict === true ? <StrictMode>{tree}</StrictMode> : tree)
   await waitFor(() => {
     expect(router.state.status).toBe('idle')
   })
   return { pathname: () => router.state.location.pathname }
 }
+
+/** A hosted Wildflower server's origin. */
+const RUTH_SERVER_URL = 'https://ruth.wildflowerhealth.io'
 
 /** The menu's group names this page is driven through (`smart-app-react`'s presets). */
 const LOCAL_GROUP_NAME = 'Local Wildflower Server'
@@ -630,18 +772,29 @@ const discoveringStart = (
   return { start: (target) => startSignIn(target, undefined, environment), requested }
 }
 
-/** A {@link LandingSignIn} stand-in that records each target and departure. */
+/**
+ * A {@link LandingSignIn} stand-in that records each target, the EHR launch
+ * each sign-in carried, and each departure.
+ */
 const recordingSignIn = (
   start: (target: string) => Promise<SignInStep<string>>
-): { readonly stub: LandingSignIn; readonly started: string[]; readonly left: string[] } => {
+): {
+  readonly stub: LandingSignIn
+  readonly started: string[]
+  readonly launches: (string | undefined)[]
+  readonly left: string[]
+} => {
   const started: string[] = []
+  const launches: (string | undefined)[] = []
   const left: string[] = []
   return {
     started,
+    launches,
     left,
     stub: {
-      start: (target) => {
+      start: (target, launch) => {
         started.push(target)
+        launches.push(launch)
         return start(target)
       },
       leave: (authorizationUrl) => {

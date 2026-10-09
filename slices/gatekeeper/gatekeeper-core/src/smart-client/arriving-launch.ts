@@ -35,10 +35,10 @@ interface ArrivingSmartLaunch {
  * for fhirclient.
  *
  * A URL carrying any authorization-response parameter (`code`, `state`,
- * `error` or `error_description`; see `isAuthorizationResponse`) is a return
- * from the authorization server, never a launch, whatever else it carries:
- * starting a launch there would abandon the handshake the page is completing,
- * or the failure it reports.
+ * `error`, `error_description` or `error_uri`; see `isAuthorizationResponse`)
+ * is a return from the authorization server, never a launch, whatever else it
+ * carries: starting a launch there would abandon the handshake the page is
+ * completing, or the failure it reports.
  */
 const arrivingSmartLaunchFrom = (search: string): Option.Option<ArrivingSmartLaunch> => {
   if (isAuthorizationResponse(search)) return Option.none()

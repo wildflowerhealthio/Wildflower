@@ -240,6 +240,15 @@ interface RenderAppOptions {
    */
   readonly signInProblem?: { readonly reason: string; readonly serverUrl: string | undefined }
   /**
+   * The SMART EHR launch the web entry's page load was opened with, until a
+   * sign-in takes it. `main-web` reads it from the URL at boot and takes it out
+   * of the address bar; threaded into router context for the landing route to
+   * sign in with on arrival. Omitted on every other entry and on a load that
+   * carried none. `sign-in.ts`'s `UnsentEhrLaunch`, written out rather than
+   * imported, as `signInProblem` is.
+   */
+  readonly ehrLaunch?: { readonly takeFor: (serverUrl: string) => string | undefined }
+  /**
    * The directory this build is served from, as a router `basepath`, when the
    * copy is published under a subpath rather than at the origin root.
    *
@@ -297,6 +306,7 @@ const buildAppTree = ({
   readBearer,
   tokenResponseHandler,
   signInProblem,
+  ehrLaunch,
   basepath,
 }: RenderAppOptions): JSX.Element => {
   // Router isn't built until after the query runtime (its context needs the
@@ -381,6 +391,9 @@ const buildAppTree = ({
       // Threaded so the landing page can report a sign-in that failed before
       // the tree existed — see `RouterContext.signInProblem`.
       signInProblem,
+      // Threaded so the landing page can sign in with the EHR launch the page
+      // was opened with — see `RouterContext.ehrLaunch`.
+      ehrLaunch,
       // Threaded so the auth-gated routes serve only this kind of server's
       // surfaces — see `RouterContext.serverKind`.
       serverKind,

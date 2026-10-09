@@ -1,5 +1,6 @@
+import { Option } from 'effect'
 import * as fc from 'fast-check'
-import { normalizeServerUrl } from 'gatekeeper-core/smart-client'
+import { arrivingSmartLaunchFrom, normalizeServerUrl } from 'gatekeeper-core/smart-client'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -7,8 +8,10 @@ import { PENDING_AUTHORIZATION_KEY } from './sign-in.ts'
 import {
   apiServerUrl,
   DEFAULT_SERVER_URL,
+  ehrLaunchIn,
   makeWebEntryOptions,
   rememberSignedInServer,
+  searchAfterReturnLeg,
   SIGNED_IN_SERVER_KEY,
   type SignedInServerStore,
 } from './web-entry.ts'
@@ -66,6 +69,63 @@ describe('apiServerUrl', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('ehrLaunchIn', () => {
+  it('should carry the launch, for the server its iss names', () => {
+    // Arrange / Act
+    const ehrLaunch = ehrLaunchIn(
+      `?iss=${encodeURIComponent(`${RUTH_SERVER_URL}/fhir-r4`)}&launch=nonce-1`
+    )
+
+    // Assert — the same server `?server=` is set to, so the landing's sign-in
+    // on arrival is the one that carries it.
+    expect(ehrLaunch).toEqual({ serverUrl: RUTH_SERVER_URL, launch: 'nonce-1' })
+  })
+
+  it('should find none in a standalone launch, a lone launch, or an unusable iss', () => {
+    // Arrange / Act / Assert
+    expect(ehrLaunchIn(`?iss=${encodeURIComponent(RUTH_SERVER_URL)}`)).toBeUndefined()
+    expect(ehrLaunchIn('?launch=nonce-1')).toBeUndefined()
+    expect(ehrLaunchIn('?iss=javascript%3Aalert(1)&launch=nonce-1')).toBeUndefined()
+  })
+})
+
+describe('searchAfterReturnLeg', () => {
+  it('should point a failed return leg back at the server it was signing in to', () => {
+    // Arrange — gatekeeper refused the launch and redirected back.
+    const returnSearch = '?error=invalid_request&error_description=Invalid+launch&state=s'
+
+    // Act
+    const settled = searchAfterReturnLeg(returnSearch, RUTH_SERVER_URL)
+
+    // Assert
+    expect(settled).toBe(`?server=${encodeURIComponent(RUTH_SERVER_URL)}`)
+  })
+
+  it("should take out the authorization server's iss, so it never reads as a launch", () => {
+    // Arrange — a plain SMART server that names itself in its response
+    // (RFC 9207), which is not the FHIR server the sign-in was to.
+    const returnSearch = `?error=access_denied&state=s&iss=${encodeURIComponent('https://auth.example.org/realms/r')}`
+
+    // Act
+    const settled = searchAfterReturnLeg(returnSearch, RUTH_SERVER_URL)
+
+    // Assert
+    expect(settled).toBe(`?server=${encodeURIComponent(RUTH_SERVER_URL)}`)
+    expect(Option.isNone(arrivingSmartLaunchFrom(settled))).toBe(true)
+  })
+
+  it('should only take the response out when no server is known', () => {
+    // Arrange / Act
+    const settled = searchAfterReturnLeg(
+      `?code=c&state=s&iss=${encodeURIComponent(RUTH_SERVER_URL)}&tab=logs`,
+      undefined
+    )
+
+    // Assert
+    expect(settled).toBe('?tab=logs')
   })
 })
 

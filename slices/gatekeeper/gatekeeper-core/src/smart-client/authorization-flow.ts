@@ -217,9 +217,16 @@ const authorizationRedirectOutcome = (
 
 /**
  * The authorization-response parameters that mark a return leg (RFC 6749
- * §4.1.2): any one of them makes a page load a return from `/oauth/authorize`.
+ * §4.1.2, and §4.1.2.1 for the error ones): any one of them makes a page load
+ * a return from `/oauth/authorize`.
  */
-const AUTHORIZATION_RESPONSE_MARKERS = ['code', 'state', 'error', 'error_description'] as const
+const AUTHORIZATION_RESPONSE_MARKERS = [
+  'code',
+  'state',
+  'error',
+  'error_description',
+  'error_uri',
+] as const
 
 /**
  * Every authorization-response parameter, none of which may linger in the URL:

@@ -4,7 +4,10 @@
  * `main-web` signs in with the **SMART standalone launch** in
  * `gatekeeper-core/smart-client` — the same PKCE redirect flow the server-docs
  * console runs (`apps/wildflower-server-docs/src/main.ts`), against whichever
- * server `?server=` names. It is the fitting flow for this entry for the same
+ * server `?server=` names. Opened with a SMART launch instead (`?iss=`, with
+ * the EHR's `launch` when there is one, as the base opens a server's
+ * launcher), it signs in to the server `iss` names, carrying that `launch`
+ * (see {@link EhrLaunch}). It is the fitting flow for this entry for the same
  * reason it fits the console: the page is cross-origin to its API server, so it
  * holds a bearer in memory, and the
  * reader is already looking at the browser that must approve the grant. The
@@ -162,7 +165,9 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
 /**
  * Start a sign-in against `serverUrl`, yielding the authorization URL for the
  * caller to navigate to. `returnTo` (raw, from {@link returnToOnPage}) rides the
- * pending record and comes back as the redeemed session's `returnTo`. The
+ * pending record and comes back as the redeemed session's `returnTo`. `launch`
+ * is the {@link EhrLaunch}'s token when the sign-in is to the server the page
+ * was launched against; without it the sign-in is a standalone launch. The
  * pending record is written before the URL comes back, so a caller cannot leave
  * on a flow whose verifier was never saved.
  *
@@ -173,15 +178,58 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
 const startSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
-  environment: SignInEnvironment
-): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment))
+  environment: SignInEnvironment,
+  launch?: string
+): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment, launch))
+
+/**
+ * The SMART EHR launch this page load was opened with — by the base opening a
+ * server's launcher at `?iss=…&launch=…` — and the server its `iss` names, in
+ * the canonical form `?server=` holds. `main-web`'s boot reads it
+ * (`web-entry.ts`'s `ehrLaunchIn`) into an {@link UnsentEhrLaunch}, and the
+ * landing signs in to `serverUrl` with `launch` on arrival. Gatekeeper accepts
+ * a launch once and only for a few minutes, so it rides one sign-in and no
+ * more.
+ */
+interface EhrLaunch {
+  readonly serverUrl: string
+  readonly launch: string
+}
+
+/**
+ * The page load's {@link EhrLaunch} until a sign-in takes it. `main-web`'s
+ * boot makes one per page load, with {@link unsentEhrLaunch}, and the landing
+ * takes the launch from it, so the launch goes out on the first sign-in to its
+ * server and on no later one, however often the landing remounts: gatekeeper
+ * accepts a launch once.
+ */
+interface UnsentEhrLaunch {
+  /**
+   * The launch, when it is for `serverUrl` and no sign-in has taken it yet,
+   * and `undefined` otherwise. Taking it leaves nothing to take.
+   */
+  readonly takeFor: (serverUrl: string) => string | undefined
+}
+
+/** An {@link UnsentEhrLaunch} holding `ehrLaunch`. */
+const unsentEhrLaunch = (ehrLaunch: EhrLaunch): UnsentEhrLaunch => {
+  let unsent: EhrLaunch | undefined = ehrLaunch
+  return {
+    takeFor: (serverUrl) => {
+      if (unsent?.serverUrl !== serverUrl) return undefined
+      const { launch } = unsent
+      unsent = undefined
+      return launch
+    },
+  }
+}
 
 /**
  * A sign-in that failed on its way back, before the page's tree existed: why,
  * and the server it was signing in to, when this tab's pending record still
- * named one. The server is what the landing's Local Network Access hint is
- * about — not the page's fallback server, which a failed redemption leaves the
- * address bar pointing at.
+ * named one. `main-web`'s boot points `?server=` back at that server, so the
+ * landing offers it again; it is also the server the landing's Local Network
+ * Access hint is about.
  */
 interface SignInProblem {
   readonly reason: string
@@ -334,5 +382,6 @@ export {
   serverKindForSession,
   signInEnvironment,
   startSignIn,
+  unsentEhrLaunch,
 }
-export type { FinishedSignIn, SignInProblem, SignInStep }
+export type { EhrLaunch, FinishedSignIn, SignInProblem, SignInStep, UnsentEhrLaunch }

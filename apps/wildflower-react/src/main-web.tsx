@@ -7,10 +7,7 @@ import 'react-tundraish/styles'
 import 'branding-react/styles.css'
 import { basenameOf, restoreRedirectedUrl, TELEMETRY_CONSENT_COPY } from 'branding-core'
 import { Option } from 'effect'
-import {
-  isAuthorizationResponse,
-  searchWithoutAuthorizationResponse,
-} from 'gatekeeper-core/smart-client'
+import { isAuthorizationResponse, searchAfterArrivingLaunch } from 'gatekeeper-core/smart-client'
 import { sanitizeReturnTo, type TokenResponseHandler } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { addOsColorSchemeListener } from 'react-tundraish'
@@ -26,11 +23,14 @@ import {
   scheduleExpiry,
   serverKindForSession,
   signInEnvironment,
+  unsentEhrLaunch,
 } from './sign-in.ts'
 import {
   apiServerUrl,
+  ehrLaunchIn,
   makeWebEntryOptions,
   rememberSignedInServer,
+  searchAfterReturnLeg,
   underBasepath,
 } from './web-entry.ts'
 
@@ -52,7 +52,7 @@ const basepath = basenameOf(window.location.pathname)
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see
 // "The 404 redirect" in `slices/branding/AGENTS.md`. Ahead of both the
-// return-leg check and the `?server=` read in `boot`.
+// return-leg check, the SMART launch read and the `?server=` read in `boot`.
 restoreRedirectedUrl(window)
 
 /** Rewrite the query string, keeping the path this load landed on. */
@@ -80,8 +80,8 @@ const settleUrlAfterSignIn = (returnTo: string): void => {
 }
 
 /**
- * Redeem an authorization code, if this load is a return leg, and only then
- * build the app.
+ * Redeem an authorization code, if this load is a return leg, or read the SMART
+ * launch it was opened with, if it is one, and only then build the app.
  *
  * The order is the point. The flow returns to the app root and settles on the
  * return path (`/home` by default), which sits behind the `_auth` gate, and the
@@ -113,12 +113,31 @@ const bootApp = async (): Promise<JSX.Element> => {
     settleUrlAfterSignIn(sanitizeReturnTo(session.returnTo ?? null))
   } else if (isAuthorizationResponse(returnSearch)) {
     // A return leg that resolved to nothing usable: the response still has to
-    // leave the URL, or a reload would replay a code that is already spent.
-    replaceSearch(searchWithoutAuthorizationResponse(returnSearch))
+    // leave the URL, or a reload would replay a code that is already spent. A
+    // failed one points `?server=` back at its server, so the landing offers
+    // it beside the problem.
+    replaceSearch(
+      searchAfterReturnLeg(
+        returnSearch,
+        completed.tag === 'Failed' ? completed.problem.serverUrl : undefined
+      )
+    )
   }
 
+  // A load opened with a SMART launch (`?iss=`, and `launch` for an EHR
+  // launch — the base opening this server's launcher) is pointed at the server
+  // `iss` names, and the launch leaves the URL, read once: a reload must not
+  // offer gatekeeper a launch it has already spent. The landing signs in to
+  // that server on arrival, with the EHR launch. A return leg is never a
+  // launch too, so this leaves its settled URL as it is.
+  const arrivalSearch = window.location.search
+  const settledSearch = searchAfterArrivingLaunch(arrivalSearch)
+  if (settledSearch !== arrivalSearch) replaceSearch(settledSearch)
+  const arrivingEhrLaunch = ehrLaunchIn(arrivalSearch)
+
   // Resolved after the rewrites above: a redeemed sign-in has just remembered
-  // its server, and the settled URL has no `?server=` to outrank it.
+  // its server, and the settled URL has no `?server=` to outrank it; a failed
+  // return leg or a launch has just named its server in `?server=`.
   const { bearerStore, ...entryOptions } = makeWebEntryOptions(
     window,
     basepath,
@@ -164,6 +183,10 @@ const bootApp = async (): Promise<JSX.Element> => {
     // on arrival, so the kind is found again rather than remembered.
     serverKind: session === undefined ? ServerKind.Wildflower() : serverKindForSession(session),
     ...(completed.tag === 'Failed' ? { signInProblem: completed.problem } : {}),
+    // The EHR launch the landing signs in with on arrival, when this load
+    // was opened with one: held once for the page load, so a landing that
+    // mounts again cannot offer it twice.
+    ...(arrivingEhrLaunch === undefined ? {} : { ehrLaunch: unsentEhrLaunch(arrivingEhrLaunch) }),
   })
 }
 
