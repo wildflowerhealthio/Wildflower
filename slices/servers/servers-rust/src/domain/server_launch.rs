@@ -15,12 +15,16 @@ use wildflower_server_rust::{CertificateStatus, ServerHealth};
 
 use crate::domain::{LaunchError, ServerDetail};
 
-/// The URL the server `domain`'s launcher opens at: `launcher_url` with
-/// `iss=https://<domain>/fhir-r4` and the minted `launch` appended to its
-/// query. Any `iss` or `launch` the launcher URL already carries is replaced;
-/// its other query parameters and its fragment are kept.
+/// The URL a server's launcher opens at: `launcher_url` with `iss`, the
+/// server's FHIR base (its `public_origin`, as
+/// [`ServerRecord::public_origin`](crate::ServerRecord::public_origin) builds
+/// it, at [`FHIR_R4_PATH`]), and the minted `launch` appended to its query.
+/// Any `iss` or `launch` the launcher URL already carries is replaced; its
+/// other query parameters and its fragment are kept.
 #[must_use]
-pub fn launch_url(launcher_url: &Url, domain: &str, launch: &str) -> Url {
+pub fn launch_url(launcher_url: &Url, public_origin: &Url, launch: &str) -> Url {
+    let mut fhir_base = public_origin.clone();
+    fhir_base.set_path(FHIR_R4_PATH);
     let kept_query_pairs: Vec<(String, String)> = launcher_url
         .query_pairs()
         .filter(|(name, _)| name != "iss" && name != "launch")
@@ -30,7 +34,7 @@ pub fn launch_url(launcher_url: &Url, domain: &str, launch: &str) -> Url {
     url.query_pairs_mut()
         .clear()
         .extend_pairs(kept_query_pairs)
-        .append_pair("iss", &format!("https://{domain}{FHIR_R4_PATH}"))
+        .append_pair("iss", fhir_base.as_str())
         .append_pair("launch", launch);
     url
 }
@@ -98,12 +102,16 @@ mod tests {
         Url::parse(url).unwrap()
     }
 
+    fn ruth_origin() -> Url {
+        tunnel_rust::public_origin_url(RUTH).unwrap()
+    }
+
     #[test]
     fn the_launch_url_carries_the_server_s_fhir_base_and_the_launch() {
         assert_eq!(
             launch_url(
                 &launcher("https://wildflowerhealth.io/owner-ui/"),
-                RUTH,
+                &ruth_origin(),
                 "nonce-1"
             )
             .as_str(),
@@ -115,7 +123,7 @@ mod tests {
     fn the_launch_url_keeps_the_launcher_s_query_and_fragment_and_replaces_its_launch_params() {
         let url = launch_url(
             &launcher("https://launcher.example/app?theme=dark&iss=https://other.example&launch=stale#/home"),
-            RUTH,
+            &ruth_origin(),
             "nonce-1",
         );
         assert_eq!(

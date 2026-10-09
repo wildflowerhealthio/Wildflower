@@ -83,6 +83,20 @@ impl ServerRecord {
         format!("{}.{}", self.tunnel_name, self.public_settings.domain)
     }
 
+    /// The server's public origin, `https://<domain>`, as
+    /// [`tunnel_rust::public_origin_url`] builds it: the origin its run
+    /// serves, which its gatekeeper's tokens name as `iss` and `aud`.
+    ///
+    /// # Panics
+    ///
+    /// Never: the domain is a [`TunnelName`] under a relay domain, both DNS
+    /// names, so it names an origin.
+    #[must_use]
+    pub fn public_origin(&self) -> Url {
+        tunnel_rust::public_origin_url(&self.domain())
+            .expect("a tunnel name under a relay domain names an origin")
+    }
+
     /// The folder the server runs from, `<data_root>/servers/<domain>/`, which
     /// holds its databases. Only the path: nothing is created here. The
     /// domain is a tunnel name and a relay domain, both DNS labels, so it
@@ -380,6 +394,14 @@ pub(crate) mod tests {
             "ruth.relay.wildflowerhealth.io"
         );
         assert_eq!(self_hosted_record("lab").domain(), "lab.relay.example.com");
+    }
+
+    #[test]
+    fn the_public_origin_is_the_domain_over_https() {
+        assert_eq!(
+            self_hosted_record("lab").public_origin().as_str(),
+            "https://lab.relay.example.com/"
+        );
     }
 
     #[test]

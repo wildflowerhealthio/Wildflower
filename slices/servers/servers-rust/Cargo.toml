@@ -67,6 +67,11 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
 # `HostConsentDecider`, through which the base's commands read, approve and
 # deny a running server's consents in-process. Tauri-free.
 gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
+# `public_origin_url`, a server's `https://<domain>` origin, the one its run
+# serves and its gatekeeper issues tokens for, which a launch names as `iss`;
+# and, in `tests/server_unit.rs`, the relay settings a real server's config
+# names.
+tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 
 [lints]
 workspace = true
@@ -82,9 +87,6 @@ wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rus
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
 # The coalescer's property tests.
 proptest = "1"
-# The `ServerUnit` test runs the real server: the relay settings its config
-# names.
-tunnel-rust = { path = "../../tunnel/tunnel-rust" }
 # The relay's own site and signature verifier, served on a loopback port, so
 # enrolment is tested against the real relay rather than a copy of its rules.
 wildflower-relay = { path = "../../../apps/relay/server" }

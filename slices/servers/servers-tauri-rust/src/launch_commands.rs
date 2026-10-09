@@ -14,7 +14,9 @@
 use std::sync::Arc;
 
 use gatekeeper_rust::domain::gatekeeper_error::GatekeeperError;
-use servers_rust::{LaunchError, RegistryError, ServerDetail, ServerLaunchMinter, ServerRegistry};
+use servers_rust::{
+    LaunchError, RegistryError, ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry,
+};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 use tauri_plugin_log::log;
@@ -69,14 +71,15 @@ async fn launch(
     launcher_windows: impl LauncherWindows,
 ) -> Result<(), LaunchError> {
     let result = async {
-        let launcher_url = registered_launcher_url(registry, domain.clone()).await?;
+        let record = registered_record(registry, domain.clone()).await?;
         let launch_minter = ServerLaunchMinter::of_launchable_server(statuses, &domain)?;
         let launch = tokio::task::spawn_blocking(move || launch_minter.mint())
             .await
             .map_err(|error| {
                 LaunchError::Gatekeeper(GatekeeperError::infrastructure("minting a launch", error))
             })??;
-        let launch_url = servers_rust::launch_url(&launcher_url, &domain, &launch);
+        let launch_url =
+            servers_rust::launch_url(&record.launcher_url, &record.public_origin(), &launch);
         let opened_domain = domain.clone();
         tokio::task::spawn_blocking(move || launcher_windows.open(&opened_domain, launch_url))
             .await
@@ -92,13 +95,13 @@ async fn launch(
     result
 }
 
-/// The launcher URL of the server `domain`, as `servers.json` holds it, read
-/// on a blocking thread.
-async fn registered_launcher_url(
+/// The record of the server `domain`, as `servers.json` holds it, read on a
+/// blocking thread.
+async fn registered_record(
     registry: Arc<dyn ServerRegistry>,
     domain: String,
-) -> Result<Url, LaunchError> {
-    tokio::task::spawn_blocking(move || registry.read(&domain).map(|record| record.launcher_url))
+) -> Result<ServerRecord, LaunchError> {
+    tokio::task::spawn_blocking(move || registry.read(&domain))
         .await
         .map_err(|error| RegistryError::storage("reading a server's launcher", error))?
         .map_err(LaunchError::from)
