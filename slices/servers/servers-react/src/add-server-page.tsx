@@ -61,6 +61,7 @@ const NO_RELAY_ENTRIES: RelayEntries = {
 
 const NO_CREDENTIALS_ENTRIES: CredentialsEntries = { tunnelName: '', token: '' }
 
+/** The relay step's two choices, by their {@link RelayChoice}. */
 const RELAY_CHOICES = [
   { value: 'wildflowerOfficial', label: 'Wildflower relay' },
   { value: 'custom', label: 'Custom relay' },
@@ -126,13 +127,14 @@ const AdvancedRelaySettings = ({
   )
   return (
     <details
-      className={styles['add-server-page__advanced']}
       open={open}
       onToggle={(event) => {
         setOpen(event.currentTarget.open)
       }}
     >
-      <summary className="text-label-2">Advanced</summary>
+      <summary className={`text-label-2 ${styles['add-server-page__advanced-summary']}`}>
+        Advanced
+      </summary>
       <div className={styles['add-server-page__fields']}>
         <ToggleSwitch
           label="A rathole relay, with no Wildflower relay site"
@@ -306,15 +308,19 @@ const CredentialsStep = ({
 }
 
 /**
- * Step 3, while the host checks with the relay and adds the server; when it
- * refuses, its message, with Back to the tunnel step and Retry.
+ * Step 3, while the host checks what was entered and adds the server: with
+ * a Wildflower relay, asking the relay; with a rathole relay, checking its
+ * settings alone. When the host refuses, its message, with Back to the
+ * tunnel step and Retry.
  */
 const CheckingStep = ({
+  relay,
   checking,
   failure,
   onBack,
   onRetry,
 }: {
+  readonly relay: EnteredRelay.Type
   /** Whether the host is still checking. */
   readonly checking: boolean
   /** The host's refusal, once it has refused. */
@@ -326,9 +332,15 @@ const CheckingStep = ({
   return (
     <section className={styles['add-server-page__step']} aria-labelledby={headingId}>
       <StepHeading headingId={headingId} title="Checking">
-        The relay is asked for the tunnel before the server is added.
+        Nothing is saved until the check passes.
       </StepHeading>
-      {checking ? <GateCard title="Checking with the relay…" /> : null}
+      {checking ? (
+        <GateCard
+          title={
+            relay.kind === 'rathole' ? 'Checking the relay settings…' : 'Checking with the relay…'
+          }
+        />
+      ) : null}
       {failure.pipe(
         Option.map((message) => (
           <div key="failure" className={styles['add-server-page__step']}>
@@ -418,8 +430,8 @@ const DoneStep = ({
  * @remarks
  * The steps and their entries live in this component's state, never the
  * URL, so the token doesn't reach it; and once the host has saved the
- * token, it is dropped from that state too. Back from a refusal keeps every
- * entry.
+ * token, it is dropped from that state and from the mutation's (see
+ * `useAddServer`). Back from a refusal keeps every entry.
  */
 const AddServerPage = (): JSX.Element => {
   const runHostCommand = useRouteContext({
@@ -436,6 +448,7 @@ const AddServerPage = (): JSX.Element => {
       { relay, ...credentialsEntries },
       {
         onSuccess: (domain) => {
+          addServer.reset()
           setCredentialsEntries((entries) => ({ ...entries, token: '' }))
           setStep({ kind: 'done', domain })
         },
@@ -466,6 +479,7 @@ const AddServerPage = (): JSX.Element => {
     )),
     Match.when({ kind: 'checking' }, ({ relay }) => (
       <CheckingStep
+        relay={relay}
         checking={addServer.isPending}
         failure={Option.fromNullable(addServer.error).pipe(Option.map(failureText))}
         onBack={() => {

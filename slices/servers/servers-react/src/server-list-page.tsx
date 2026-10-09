@@ -81,7 +81,7 @@ const ServerListBody = ({
 /**
  * The base's home, `/`: a card for each server on this device, kept current
  * by the host's `server-status` events, or what a server is when there are
- * none; and the way to the base's Host Settings.
+ * none; Add server either way; and the way to the base's Host Settings.
  *
  * @remarks
  * When the host can't read `servers.json`, the page shows the host's error,

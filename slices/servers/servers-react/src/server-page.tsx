@@ -311,7 +311,7 @@ const HealthReportList = ({
  */
 const isRelayIdentityChange = (error: HostCommandError): boolean =>
   error instanceof HostCommandFailed &&
-  Option.exists(error.refusal, (refusal) => refusal.kind === 'relayIdentityChanged')
+  error.refusal.pipe(Option.exists((refusal) => refusal.kind === 'relayIdentityChanged'))
 
 /**
  * The warning, in place of the host's refusal, that the relay's identity has

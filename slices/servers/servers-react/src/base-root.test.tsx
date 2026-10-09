@@ -1648,7 +1648,7 @@ describe('Add server', () => {
     expect(within(relay).getByRole('button', { name: 'Continue' })).toHaveProperty('disabled', true)
   })
 
-  it('should not add a server without a tunnel name and token', async () => {
+  it('should not add a server with a blank token', async () => {
     // Arrange
     const user = userEvent.setup()
     renderAddServer()

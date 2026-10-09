@@ -155,7 +155,9 @@ const useServerStatusEvents = (listenToHostEvent: ListenToHostEvent): void => {
  * @remarks
  * Reading the list before settling puts the new server in the cache before
  * its run policy is set or its page opens, so neither starts from a list
- * without it.
+ * without it. The mutation holds the token among its variables, so it is
+ * dropped from the mutation cache as soon as nothing observes it
+ * (`gcTime: 0`); a caller resets it once the server is added.
  */
 const useAddServer = (
   runHostCommand: RunHostCommand
@@ -171,6 +173,7 @@ const useAddServer = (
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (enrolment) => runHostCommand(addServer(enrolment)),
+    gcTime: 0,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: SERVERS_QUERY_KEY, refetchType: 'all' }),
   })

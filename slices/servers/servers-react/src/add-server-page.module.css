@@ -22,7 +22,7 @@
   padding-block-start: var(--space-4);
 }
 
-.add-server-page__advanced > summary {
+.add-server-page__advanced-summary {
   cursor: pointer;
 }
 
