@@ -11,7 +11,7 @@ import {
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
-import { type Context, Effect, Layer } from 'effect'
+import { type Context, DateTime, Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import type { TauriInvoke } from 'servers-core'
@@ -20,8 +20,8 @@ import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
-import { BaseRoot } from './base-root.tsx'
-import type { ListenToHostEvent } from './router-context.ts'
+import { BaseRoot, type BaseRootProps } from './base-root.tsx'
+import { formatInstant } from './server-status-text.ts'
 
 // Starting the SDK is the collaborator whose every touch the gate controls, so
 // the module boundary is where it is stubbed; the rest stays real.
@@ -123,7 +123,7 @@ const hostWith = ({
 
 /** Host events a test emits, and the listeners the base has up. */
 interface FakeEvents {
-  readonly listen: ListenToHostEvent
+  readonly listen: BaseRootProps['listen']
   /** Deliver `payload` to every listener of `event`. */
   readonly emit: (event: string, payload: unknown) => void
 }
@@ -1007,10 +1007,7 @@ describe('the server page', () => {
   })
 
   /** `instant`, an RFC 3339 string, as the page shows its dates. */
-  const shownInstant = (instant: string): string =>
-    new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-      new Date(instant)
-    )
+  const shownInstant = (instant: string): string => formatInstant(DateTime.unsafeMake(instant))
 
   /** The row of the Certificate section titled `title`. */
   const certificateRow = (title: string): HTMLElement => {
