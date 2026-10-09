@@ -926,7 +926,8 @@ mod migration_tests {
 
     /// An install already at `0015` moves its first-party launches from
     /// `launch.html` to the app root when it upgrades, and a debug build's dev
-    /// rows with them, while a launch URL the user edited is left as it is.
+    /// rows with them, while a launch URL the user edited, production or dev,
+    /// is left as it is.
     #[test]
     fn an_install_already_at_0015_launches_first_party_apps_at_their_roots() {
         let pool = pool_migrated_through("0015");
@@ -946,6 +947,17 @@ mod migration_tests {
         )
         .execute(&mut conn)
         .expect("a dev row seeded before 0016");
+        let edited_dev =
+            "http://localhost:5192/launch.html?launch={launch}&iss=https://ehr.example/fhir";
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, client_id, requires_tunnel) \
+             VALUES ('web-trace-app-dev', (SELECT MAX(position) + 1 FROM app_registrations), \
+                     1, 'Web Trace (Dev)', ?, 'web-trace-app-dev', 0)",
+        )
+        .bind::<Text, _>(edited_dev)
+        .execute(&mut conn)
+        .expect("a dev row the user pointed elsewhere");
         drop(conn);
 
         let store = SqliteAppsStore::new(pool).expect("0016 must apply");
@@ -970,6 +982,11 @@ mod migration_tests {
         assert_eq!(
             stored_url(&store, "medications-app-dev"),
             "http://localhost:5191/?launch={launch}&iss={origin}/fhir-r4",
+        );
+        assert_eq!(
+            stored_url(&store, "web-trace-app-dev"),
+            edited_dev,
+            "a dev row off the old seed's shape stays"
         );
     }
 
