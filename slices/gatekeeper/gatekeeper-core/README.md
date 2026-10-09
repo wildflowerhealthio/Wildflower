@@ -100,7 +100,7 @@ and 90 days respectively). See the
 - `/access/requests`, `/access/requests/:id` (+ `/approve`, `/deny`) —
   gate decisions on inbound HTTP requests.
 
-## The SMART standalone-launch client
+## The SMART sign-in client
 
 [`gatekeeper-core/smart-client`](./src/smart-client/index.ts) is the browser
 side of the protocol `gatekeeper-rust` serves: a static Wildflower page points
@@ -113,7 +113,17 @@ up on the way home (`authorization-flow.ts`, `sign-in.ts`).
 `arrivingSmartLaunchFrom` (`arriving-launch.ts`) reads the SMART launch a page
 was opened with, `iss` and the EHR's `launch`, off its query string. The
 fhirclient-based SMART apps read it through `fhir-r4-react/smart`, which
-re-exports it.
+re-exports it. A page that signs in with this package turns a launch into its
+`?server=` with `searchAfterArrivingLaunch` (`server-target.ts`): `iss` and
+`launch` leave the URL, and `?server=` becomes the server `iss` names,
+`serverUrlNamedBy`, which drops a Wildflower server's `/fhir-r4` mount. That
+function is the one place the mount is stripped.
+
+A sign-in is a SMART standalone launch unless the app hands `beginSignIn` a
+non-empty `launch`: the EHR launch value it was opened with (the launching system's
+`?launch=`). That value goes into the authorization request as `launch`, beside
+the discovered `aud`, and nowhere else — the return leg does not need it, so the
+pending record does not carry it.
 
 It stays inside the `-core` layering rule by taking every impure edge — `fetch`,
 Web Crypto, `sessionStorage` — as an injected `SignInEnvironment`. That

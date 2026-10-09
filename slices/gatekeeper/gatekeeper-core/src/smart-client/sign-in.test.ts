@@ -153,6 +153,24 @@ describe('beginSignIn', () => {
     )
   })
 
+  it('sends the EHR launch it was handed, and keeps it out of the pending record', async () => {
+    // Arrange
+    const store = memoryStore()
+    const environment = testEnvironment({ store, fetch: discoveryOnly() })
+
+    // Act
+    const result = await runToEither(
+      beginSignIn(SERVER, undefined, environment, 'minted-launch-nonce')
+    )
+
+    // Assert
+    if (Either.isLeft(result)) throw new Error(result.left.reason)
+    const url = new URL(result.right)
+    expect(url.searchParams.get('launch')).toBe('minted-launch-nonce')
+    expect(url.searchParams.get('aud')).toBe(`${SERVER}/fhir-r4`)
+    expect(store.contents()).not.toContain('minted-launch-nonce')
+  })
+
   it('stashes the record under the key the caller named, and nowhere else', async () => {
     // Namespacing is what keeps two Wildflower pages on one origin from reading
     // each other's pending request.

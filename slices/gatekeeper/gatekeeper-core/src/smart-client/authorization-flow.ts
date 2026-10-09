@@ -1,7 +1,8 @@
 /**
- * The pure half of the authorization-code flow: the URL the reader is sent to,
- * the record that has to survive the redirect, what comes back, and the token
- * exchange's request and response shapes.
+ * The pure half of the authorization-code flow: the URL the reader is sent to
+ * (a standalone launch, or an EHR launch when the app hands one in), the record
+ * that has to survive the redirect, what comes back, and the token exchange's
+ * request and response shapes.
  *
  * Nothing here touches the DOM, storage or the network — `sign-in.ts` supplies
  * those — so every rule the flow depends on (state must match, a token response
@@ -118,17 +119,24 @@ interface AuthorizationRequestParameters {
   readonly codeChallenge: string
   /**
    * SMART's `aud`: the FHIR base the resulting token is meant for. Sent because
-   * a standalone launch is specified to send it: the FHIR base whose SMART
-   * configuration `beginSignIn`'s discovery found.
+   * SMART specifies it for a standalone and an EHR launch alike: the FHIR base
+   * whose SMART configuration `beginSignIn`'s discovery found.
    */
   readonly audience: string
+  /**
+   * SMART's `launch`: the EHR launch this sign-in answers, as the launching
+   * system handed it over. Absent for a standalone launch, which sends none;
+   * an empty one counts as absent, as `arrivingSmartLaunchFrom` reads it.
+   */
+  readonly launch?: string
 }
 
 /**
  * The URL to send the reader's browser to (RFC 6749 §4.1.1 + RFC 7636 §4.3).
  *
  * Parameters are appended to whatever the discovery document advertised, so an
- * `authorization_endpoint` that already carries a query keeps it.
+ * `authorization_endpoint` that already carries a query keeps it. `launch` is
+ * sent only when the request carries a non-empty one.
  */
 const authorizationRequestUrl = (
   authorizationEndpoint: string,
@@ -143,6 +151,9 @@ const authorizationRequestUrl = (
   url.searchParams.set('code_challenge', parameters.codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
   url.searchParams.set('aud', parameters.audience)
+  if (parameters.launch !== undefined && parameters.launch !== '') {
+    url.searchParams.set('launch', parameters.launch)
+  }
   return url.toString()
 }
 
@@ -204,8 +215,19 @@ const authorizationRedirectOutcome = (
   return Either.right(Option.some({ code: returned.value.code, pending: pending.value }))
 }
 
-/** The authorization-response parameters, which must not linger in the URL. */
-const AUTHORIZATION_RESPONSE_PARAMS = ['code', 'state', 'error', 'error_description'] as const
+/**
+ * The authorization-response parameters that mark a return leg (RFC 6749
+ * §4.1.2): any one of them makes a page load a return from `/oauth/authorize`.
+ */
+const AUTHORIZATION_RESPONSE_MARKERS = ['code', 'state', 'error', 'error_description'] as const
+
+/**
+ * Every authorization-response parameter, none of which may linger in the URL:
+ * the {@link AUTHORIZATION_RESPONSE_MARKERS}, and the `iss` an authorization
+ * server may add beside them to name itself (RFC 9207). `iss` alone marks no
+ * return: it is also how a SMART launch names its FHIR server.
+ */
+const AUTHORIZATION_RESPONSE_PARAMS = [...AUTHORIZATION_RESPONSE_MARKERS, 'iss'] as const
 
 /**
  * Whether `search` carries an authorization response — the marker of a return leg
@@ -217,12 +239,12 @@ const AUTHORIZATION_RESPONSE_PARAMS = ['code', 'state', 'error', 'error_descript
  */
 const isAuthorizationResponse = (search: string): boolean => {
   const params = new URLSearchParams(search)
-  return AUTHORIZATION_RESPONSE_PARAMS.some((name) => params.has(name))
+  return AUTHORIZATION_RESPONSE_MARKERS.some((name) => params.has(name))
 }
 
 /**
- * `search` with the authorization response stripped out, keeping everything else
- * (notably `?server=`).
+ * `search` with the authorization response stripped out, the authorization
+ * server's `iss` included, keeping everything else (notably `?server=`).
  *
  * The code is single-use and already redeemed by the time this is written back,
  * but leaving it in the address bar would put it in history, in a shared link

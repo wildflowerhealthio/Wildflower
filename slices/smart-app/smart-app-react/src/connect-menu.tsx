@@ -4,6 +4,7 @@ import { ErrorBanner, TextField } from 'react-tundraish'
 import {
   insecureTargetReason,
   normalizeServerUrl,
+  serverUrlNamedBy,
   startStandaloneLaunch,
   withLocalNetworkAccessHint,
 } from 'fhir-r4-react/smart'
@@ -12,7 +13,6 @@ import {
   hostedServerUrlFor,
   serverPresetGroupsFor,
   wildflowerServerUrlFor,
-  withoutFhirR4Mount,
   WILDFLOWER_DOMAIN,
   type ConnectTarget,
   type ServerPresetGroup,
@@ -316,14 +316,17 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
 
   const onFreeEntrySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const normalized = normalizeServerUrl(freeEntryUrl)
-    if (normalized === undefined) {
+    // The owner UI's `?server=` is a Wildflower server's API base, never its
+    // FHIR base, so an entry of the latter is taken back to the former.
+    const serverUrl =
+      props.target === 'wildflower'
+        ? serverUrlNamedBy(freeEntryUrl)
+        : normalizeServerUrl(freeEntryUrl)
+    if (serverUrl === undefined) {
       setFreeEntryProblem(copy.invalidFreeEntry)
       return
     }
-    // The owner UI's `?server=` is a Wildflower server's API base, never its
-    // FHIR base, so an entry of the latter is taken back to the former.
-    connectTo(props.target === 'wildflower' ? withoutFhirR4Mount(normalized) : normalized)
+    connectTo(serverUrl)
   }
 
   const presetGroup = (group: ServerPresetGroup): JSX.Element => (

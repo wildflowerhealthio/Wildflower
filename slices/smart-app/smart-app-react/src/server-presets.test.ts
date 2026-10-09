@@ -4,7 +4,6 @@ import {
   DEFAULT_SERVER_PRESET_GROUPS,
   hostedServerUrlFor,
   serverPresetGroupsFor,
-  withoutFhirR4Mount,
 } from './server-presets.ts'
 
 const LOCAL_ORIGIN = 'http://127.0.0.1:8123'
@@ -67,20 +66,5 @@ describe('hostedServerUrlFor', () => {
     'ruth:1',
   ])('rejects %j', (subdomain) => {
     expect(hostedServerUrlFor('wildflower', subdomain)).toBeUndefined()
-  })
-})
-
-describe('withoutFhirR4Mount', () => {
-  it('takes a Wildflower FHIR base back to its API base, and leaves anything else alone', () => {
-    expect(withoutFhirR4Mount('https://ruth.wildflowerhealth.io/fhir-r4')).toBe(
-      'https://ruth.wildflowerhealth.io'
-    )
-    expect(withoutFhirR4Mount('https://example.org/wildflower/fhir-r4/')).toBe(
-      'https://example.org/wildflower'
-    )
-    expect(withoutFhirR4Mount('https://example.org/fhir-r4x')).toBe('https://example.org/fhir-r4x')
-    expect(withoutFhirR4Mount('https://launch.smarthealthit.org/v/r4/fhir')).toBe(
-      'https://launch.smarthealthit.org/v/r4/fhir'
-    )
   })
 })

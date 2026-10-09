@@ -156,7 +156,8 @@ import `branding-react/styles.css` itself.
   caller's `connect` gets only the URL, a Wildflower server's API base or a
   plain SMART server's FHIR base: `gatekeeper-core`'s discovery tries
   `{url}/fhir-r4` first and the URL itself only on a 404. A free entry under
-  `wildflower` loses a trailing `/fhir-r4` (`withoutFhirR4Mount`), so the owner
+  `wildflower` loses a trailing `/fhir-r4` (`gatekeeper-core`'s
+  `serverUrlNamedBy`, through `fhir-r4-react/smart`), so the owner
   UI's `?server=` is always the API base. The
   subdomain is checked as dot-separated DNS labels before it is spliced into a
   URL, and it and the free entry are validated with `normalizeServerUrl` in

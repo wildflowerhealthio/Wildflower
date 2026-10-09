@@ -300,5 +300,6 @@ export {
   insecureTargetReason,
   smartEndpointsFrom,
   discoverSmartEndpoints,
+  WILDFLOWER_FHIR_PATH,
 }
 export type { SmartEndpoints, SmartIssuer }

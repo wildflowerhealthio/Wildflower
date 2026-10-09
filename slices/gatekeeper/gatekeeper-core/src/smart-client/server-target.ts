@@ -6,7 +6,8 @@
  * drives: the reader points it at whichever Wildflower server they actually run
  * — the loopback API of a desktop install, or the public origin of a tunnelled
  * one. That target lives in the URL (so a configured page is a shareable link)
- * and is parsed here.
+ * and is parsed here, as is the `?server=` a SMART launch's `iss` stands for
+ * on a page opened with one.
  *
  * Everything here is pure string work; the DOM/history wiring belongs to the
  * app, and so does the fallback target — a console shipped beside a desktop
@@ -14,6 +15,11 @@
  * business knowing. Hence no `DEFAULT_SERVER_URL`: an `undefined` result is
  * where an app substitutes its own.
  */
+
+import { Option } from 'effect'
+
+import { arrivingSmartLaunchFrom } from './arriving-launch.ts'
+import { WILDFLOWER_FHIR_PATH } from './smart-discovery.ts'
 
 /**
  * The query parameter carrying the API origin the request client targets.
@@ -81,4 +87,52 @@ const searchWithServerUrl = (search: string, serverUrl: string): string => {
   return query === '' ? '' : `?${query}`
 }
 
-export { normalizeServerUrl, searchWithServerUrl, SERVER_QUERY_PARAM, serverUrlFromSearch }
+/**
+ * The Wildflower server `url` names, in {@link normalizeServerUrl}'s canonical
+ * form, whether or not `url` carries the server's `/fhir-r4` mount: a
+ * Wildflower server's FHIR base less that mount (its API base, under which
+ * sign-in discovery finds the FHIR base again), and any other URL as it is.
+ * `url` is a SMART launch's `iss` or a server the reader typed in.
+ * `undefined` when `url` is not a URL a page would send requests to.
+ */
+const serverUrlNamedBy = (url: string): string | undefined => {
+  const fhirBaseUrl = normalizeServerUrl(url)
+  if (fhirBaseUrl === undefined) return undefined
+  return fhirBaseUrl.endsWith(WILDFLOWER_FHIR_PATH)
+    ? normalizeServerUrl(fhirBaseUrl.slice(0, -WILDFLOWER_FHIR_PATH.length))
+    : fhirBaseUrl
+}
+
+/** The query parameters a SMART launch arrives in. */
+const SMART_LAUNCH_PARAMS = ['iss', 'launch'] as const
+
+/**
+ * The query a page load arriving on `search` settles on. A load opened with a
+ * SMART launch ({@link arrivingSmartLaunchFrom}) has `iss` and `launch` taken
+ * out, so a reload cannot offer the server a launch it has already spent, and
+ * `?server=` set to the server `iss` names ({@link serverUrlNamedBy}),
+ * replacing any `?server=` the URL also carried: the launch is what the page
+ * was opened to do. An `iss` that names no usable server leaves `?server=` as
+ * it was. Any other load's query is `search` itself.
+ */
+const searchAfterArrivingLaunch = (search: string): string =>
+  Option.match(arrivingSmartLaunchFrom(search), {
+    onNone: () => search,
+    onSome: ({ iss }) => {
+      const params = new URLSearchParams(search)
+      for (const name of SMART_LAUNCH_PARAMS) params.delete(name)
+      const serverUrl = serverUrlNamedBy(iss)
+      if (serverUrl !== undefined) params.set(SERVER_QUERY_PARAM, serverUrl)
+      const query = params.toString()
+      return query === '' ? '' : `?${query}`
+    },
+  })
+
+export {
+  normalizeServerUrl,
+  searchAfterArrivingLaunch,
+  searchWithServerUrl,
+  SERVER_QUERY_PARAM,
+  serverUrlNamedBy,
+  serverUrlFromSearch,
+}
