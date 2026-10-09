@@ -29,9 +29,11 @@ type WaitOutcome =
 /** The host's reason a running server can't be reached, as a sentence. */
 const unreachableReason = (status: ServerStatus.Type): string =>
   ServerStatus.healthOf(status).pipe(
-    Option.flatMap((health) =>
-      health.kind === 'unreachable' ? Option.some(health.error) : Option.none()
+    Option.filter(
+      (health): health is Extract<ServerStatus.Health, { readonly kind: 'unreachable' }> =>
+        health.kind === 'unreachable'
     ),
+    Option.map((health) => health.error),
     Option.match({
       onNone: () => REFUSAL_REASON.unreachable,
       onSome: (error) => `The server can't be reached through its relay: ${error}`,
