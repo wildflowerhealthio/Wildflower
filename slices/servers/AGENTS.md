@@ -63,7 +63,7 @@ changing how servers run or what the host notifies about them.
   `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
   `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
   `ConsentApproval` and `ApprovalOutcome`, each a `Schema` and its `Type`
-  with getters, and `ListedServer.DEFAULT_LAUNCHER_URL`. A refused
+  with getters. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. Besides the host, `readServerHealth` reads a server's
   `/health` at its public origin, an Effect over `@effect/platform`'s
@@ -71,7 +71,8 @@ changing how servers run or what the host notifies about them.
   `@tauri-apps/api`.
 - **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
   mounts with `@tauri-apps/api/core`'s `invoke`, `@tauri-apps/api/event`'s
-  `listen` and the background service's start config: the base's telemetry
+  `listen`, and the background service's start config and the default
+  launcher from `tauri-shared-config.json`: the base's telemetry
   consent gate, then the background session's recovery and its router over
   `routes/`, `/` the server list, `/servers/$domain` a server's page and
   `/settings` Host Settings, for the app on this device rather than any one
@@ -87,9 +88,9 @@ changing how servers run or what the host notifies about them.
   host's last check of its connection or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
   itself, with Refresh; a new tunnel token (`server_set_credentials`), in a
-  password field that starts empty; its launcher, with Reset to default; its
-  certificate authority, read-only; and its removal, behind a confirm that
-  asks for the domain to be typed. With no servers it says what a
+  password field that starts empty; its launcher, with Reset to the default
+  launcher; its certificate authority, read-only; and its removal, behind a
+  confirm that asks for the domain to be typed. With no servers it says what a
   server is, beside Add server. Launch does nothing and Add server is disabled
   until the base launches apps and adds servers. While the
   webview is offline (`navigator.onLine`), the list says that launching needs
@@ -152,11 +153,15 @@ changing how servers run or what the host notifies about them.
   `GET /rathole` returned, or that were entered for a rathole relay.
   `RelayKind::SelfHostedWildflower` holds only the relay's `base_url`, and `RelayKind::Rathole`
   nothing.
-- **A new server launches from `ServerRecord::DEFAULT_LAUNCHER_URL`**,
-  `https://wildflowerhealth.io/app`. `servers-core`'s
-  `ListedServer.DEFAULT_LAUNCHER_URL` repeats the value, so the server page
-  offers Reset to default only while the saved launcher differs from it and
-  saves it through `server_update`; change both together.
+- **A new server launches from the app's default launcher**, the
+  `default_launcher_url` in `apps/wildflower-tauri/tauri-shared-config.json`,
+  the hosted owner UI's app section. The host reads it at compile time and
+  `add_server` gives it to each server it adds (`ServersState`, from
+  `host_servers`); the app hands the same value to `BaseRoot`
+  (`defaultLauncherUrl`), so the server page offers Reset to default only
+  while the saved launcher differs from it, and saves it through
+  `server_update`. The host stores it as the file spells it, so the two
+  compare equal.
 - **The token is a secret.** `TunnelToken`'s `Debug` and `Serialize` write
   `<redacted>`, and it has no `Deserialize`. `JsonServerRegistry`'s own file
   representation is the only place the token is written in full, and the file

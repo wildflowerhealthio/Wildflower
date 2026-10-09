@@ -37,6 +37,11 @@ interface RouterContext {
   readonly runHttpRequest: RunHttpRequest
   /** How a route hears the host's events. */
   readonly listenToHostEvent: ListenToHostEvent
+  /**
+   * The launcher the host gives a new server, from the app's
+   * `tauri-shared-config.json`, which the host reads too.
+   */
+  readonly defaultLauncherUrl: string
 }
 
 /** A {@link RunHostCommand} over `invoke`: the app's `@tauri-apps/api/core` `invoke`, or a test's fake. */

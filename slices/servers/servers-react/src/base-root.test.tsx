@@ -183,6 +183,12 @@ const BACKGROUND_SERVICE_START_CONFIG = {
   foregroundServiceType: 'specialUse',
 } as const
 
+/**
+ * The launcher the app passes as the host's default: the golden file's first
+ * server has it, its second doesn't.
+ */
+const DEFAULT_LAUNCHER_URL = 'https://wildflowerhealth.io/app'
+
 const renderBase = ({
   invoke,
   storage,
@@ -201,6 +207,7 @@ const renderBase = ({
       invoke={invoke}
       listen={events.listen}
       backgroundServiceStartConfig={BACKGROUND_SERVICE_START_CONFIG}
+      defaultLauncherUrl={DEFAULT_LAUNCHER_URL}
       telemetry={{ dsn: BASE_DSN, app: 'wildflower-tauri' }}
       httpClient={httpClient}
       history={createMemoryHistory({ initialEntries: [path] })}
@@ -1089,17 +1096,14 @@ describe('the server page', () => {
       command: 'server_update',
       args: {
         domain: 'lab.rathole.example.com',
-        launcherUrl: 'https://wildflowerhealth.io/app',
+        launcherUrl: DEFAULT_LAUNCHER_URL,
         certificateAuthority: 'letsEncryptStaging',
       },
     })
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Reset to default' })).toBeNull()
     })
-    expect(screen.getByLabelText('Launcher')).toHaveProperty(
-      'value',
-      'https://wildflowerhealth.io/app'
-    )
+    expect(screen.getByLabelText('Launcher')).toHaveProperty('value', DEFAULT_LAUNCHER_URL)
     cleanup()
 
     // Act

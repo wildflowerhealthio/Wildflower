@@ -52,8 +52,8 @@ pub struct ServerRecord {
     /// always dials.
     pub public_settings: PublicRatholeSettings,
     /// The page the base opens to launch apps against this server, with `iss`
-    /// and `launch` in its query. A new server gets
-    /// [`DEFAULT_LAUNCHER_URL`](ServerRecord::DEFAULT_LAUNCHER_URL).
+    /// and `launch` in its query. A new server gets the default launcher
+    /// [`add_server`](crate::add_server) is given.
     pub launcher_url: Url,
     /// The ACME CA this server's certificates are ordered from. A new server
     /// gets
@@ -67,10 +67,6 @@ pub struct ServerRecord {
 }
 
 impl ServerRecord {
-    /// The launcher a new server gets: the hosted owner UI's app section
-    /// (`sectionUrl('app')`).
-    pub const DEFAULT_LAUNCHER_URL: &'static str = "https://wildflowerhealth.io/app";
-
     /// The CA a new server's certificates are ordered from: Let's Encrypt's
     /// staging CA, and setting it to [`CertificateAuthority::LetsEncrypt`] is
     /// the switch to production certificates for new servers.
@@ -82,16 +78,6 @@ impl ServerRecord {
     /// certificates aren't publicly trusted.
     pub const DEFAULT_CERTIFICATE_AUTHORITY: CertificateAuthority =
         CertificateAuthority::LetsEncryptStaging;
-
-    /// [`DEFAULT_LAUNCHER_URL`](Self::DEFAULT_LAUNCHER_URL) as a [`Url`].
-    ///
-    /// # Panics
-    ///
-    /// Never: the constant is an absolute URL, which a test checks.
-    #[must_use]
-    pub fn default_launcher_url() -> Url {
-        Url::parse(Self::DEFAULT_LAUNCHER_URL).expect("DEFAULT_LAUNCHER_URL is an absolute URL")
-    }
 
     /// The server's domain, `<tunnel name>.<relay domain>`: its identity in
     /// the registry, its issuer, and the name of its data folder.
@@ -263,6 +249,12 @@ pub(crate) mod tests {
 
     pub(crate) const TOKEN: &str = "s3cret-tunnel-token";
 
+    /// The launcher the fixtures' records have, and the default launcher the
+    /// tests give [`add_server`](crate::add_server).
+    pub(crate) fn launcher_url() -> Url {
+        Url::parse("https://wildflowerhealth.io/app").unwrap()
+    }
+
     pub(crate) fn official_record(tunnel_name: &str) -> ServerRecord {
         ServerRecord {
             relay: RelayKind::WildflowerOfficial,
@@ -275,7 +267,7 @@ pub(crate) mod tests {
                 public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
                 domain: "relay.wildflowerhealth.io".to_owned(),
             },
-            launcher_url: ServerRecord::default_launcher_url(),
+            launcher_url: launcher_url(),
             certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::Off,
         }
@@ -299,14 +291,6 @@ pub(crate) mod tests {
             certificate_authority: CertificateAuthority::LetsEncryptStaging,
             run_policy: RunPolicy::Off,
         }
-    }
-
-    #[test]
-    fn the_default_launcher_is_the_hosted_owner_ui_s_app_section() {
-        assert_eq!(
-            ServerRecord::default_launcher_url().as_str(),
-            "https://wildflowerhealth.io/app"
-        );
     }
 
     #[test]

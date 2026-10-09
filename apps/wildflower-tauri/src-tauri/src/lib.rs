@@ -46,6 +46,12 @@ const OWNER_UI_BASE_URL: &str = if cfg!(debug_assertions) {
     env!("WILDFLOWER_OWNER_UI_BASE_URL")
 };
 
+// The launcher a new server gets, the hosted owner UI's app section, from the
+// same `tauri-shared-config.json` (re-emitted by `build.rs`). The TS shell
+// imports the same value from that file for the server page's Reset to default
+// (`src/main.tsx`).
+const DEFAULT_LAUNCHER_URL: &str = env!("WILDFLOWER_DEFAULT_LAUNCHER_URL");
+
 // How the unit runner starts its background session, the background-service
 // plugin's one service, from the same `tauri-shared-config.json` (re-emitted by
 // `build.rs`): the text of Android's persistent foreground-service notification
@@ -374,13 +380,18 @@ pub fn run() {
             har_recorder_tauri_rust::attach_har_recorder(app.handle(), data_root.clone());
 
             // Push every server in `servers.json`, in the same data root, to
-            // `TauriUnitRunner`, and manage the registry the commands write.
-            // Each run of a server builds its config from its record here.
+            // `TauriUnitRunner`, and manage the registry the commands write,
+            // which gives a new server `DEFAULT_LAUNCHER_URL`. Each run of a
+            // server builds its config from its record here.
+            let default_launcher_url = Url::parse(DEFAULT_LAUNCHER_URL).context(
+                "default_launcher_url (from tauri-shared-config.json) must be an absolute URL",
+            )?;
             let config_app_handle = app.handle().clone();
             let config_data_root = data_root.clone();
             servers_tauri_rust::host_servers(
                 app.handle(),
                 &data_root,
+                default_launcher_url,
                 &runner,
                 host_ports(app.handle(), publishers),
                 move |server| server_config(server, &config_data_root, &config_app_handle),
@@ -409,7 +420,7 @@ mod tests {
                 public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
                 domain: "relay.wildflowerhealth.io".to_owned(),
             },
-            launcher_url: ServerRecord::default_launcher_url(),
+            launcher_url: url::Url::parse(super::DEFAULT_LAUNCHER_URL).unwrap(),
             certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::WhileOpen,
         }
@@ -427,6 +438,17 @@ mod tests {
                 service_name: "ruth".to_owned(),
             }
         );
+    }
+
+    /// The base offers Reset to default while a server's launcher, as the host
+    /// stores it, differs from the default it imports from
+    /// `tauri-shared-config.json`, so the host must store the default exactly as
+    /// the file spells it.
+    #[test]
+    fn the_default_launcher_is_stored_as_the_shared_config_spells_it() {
+        let default_launcher_url = url::Url::parse(super::DEFAULT_LAUNCHER_URL)
+            .expect("default_launcher_url is an absolute URL");
+        assert_eq!(default_launcher_url.as_str(), super::DEFAULT_LAUNCHER_URL);
     }
 
     /// The plugin checks the type `TauriUnitRunner`'s background session starts

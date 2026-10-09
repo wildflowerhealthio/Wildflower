@@ -16,7 +16,7 @@ import {
 import {
   type CertificateAuthority,
   type HealthReport,
-  ListedServer,
+  type ListedServer,
   ServerStatus,
 } from 'servers-core'
 
@@ -327,15 +327,17 @@ const RelayAndTunnel = ({
 /**
  * The launcher the server opens apps from: a field starting at the saved
  * URL, Save once it is changed, and, while the saved URL isn't
- * `ListedServer.DEFAULT_LAUNCHER_URL`, Reset to default, which saves the
- * default at once. The certificate authority is saved unchanged, and the
+ * `defaultLauncherUrl`, the one the host gives a new server, Reset to
+ * default, which saves the default at once. The certificate authority is saved unchanged, and the
  * host's refusal shows under the field.
  */
 const Launcher = ({
   server,
+  defaultLauncherUrl,
   runHostCommand,
 }: {
   readonly server: ListedServer.Type
+  readonly defaultLauncherUrl: string
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
   const updateLauncher = useUpdateLauncher(runHostCommand)
@@ -374,14 +376,14 @@ const Launcher = ({
         >
           Save launcher
         </button>
-        {server.launcherUrl === ListedServer.DEFAULT_LAUNCHER_URL ? null : (
+        {server.launcherUrl === defaultLauncherUrl ? null : (
           <button
             type="button"
             className={`button-2 ghost ${styles['server-page__form-action']}`}
             disabled={updateLauncher.isPending}
             onClick={() => {
-              setLauncherUrl(ListedServer.DEFAULT_LAUNCHER_URL)
-              save(ListedServer.DEFAULT_LAUNCHER_URL)
+              setLauncherUrl(defaultLauncherUrl)
+              save(defaultLauncherUrl)
             }}
           >
             Reset to default
@@ -476,6 +478,10 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
     from: '__root__',
     select: (context: RouterContext) => context.listenToHostEvent,
   })
+  const defaultLauncherUrl = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.defaultLauncherUrl,
+  })
   useServerStatusEvents(listenToHostEvent)
   const servers = useQuery(serversQueryOptions(runHostCommand))
   const header = <PageHeader title="Server" subtitle={domain} backHref="/" backLabel="Servers" />
@@ -519,7 +525,11 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
         runHostCommand={runHostCommand}
         runHttpRequest={runHttpRequest}
       />
-      <Launcher server={server} runHostCommand={runHostCommand} />
+      <Launcher
+        server={server}
+        defaultLauncherUrl={defaultLauncherUrl}
+        runHostCommand={runHostCommand}
+      />
       <ItemList
         title="Certificates"
         maxLines={3}

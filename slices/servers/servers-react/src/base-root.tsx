@@ -43,6 +43,12 @@ interface BaseRootProps {
    * `tauri-shared-config.json`, which the host reads too.
    */
   readonly backgroundServiceStartConfig: BackgroundServiceStartConfig
+  /**
+   * The launcher the host gives a new server, from the app's
+   * `tauri-shared-config.json`, which the host reads too. The server page
+   * offers it as Reset to default.
+   */
+  readonly defaultLauncherUrl: string
   /** Where the base's telemetry goes once the user consents to it. */
   readonly telemetry: BaseTelemetry
   /**
@@ -86,11 +92,17 @@ function BaseRouter({
   invoke,
   listen,
   backgroundServiceStartConfig,
+  defaultLauncherUrl,
   httpClient,
   history,
 }: Pick<
   BaseRootProps,
-  'invoke' | 'listen' | 'backgroundServiceStartConfig' | 'httpClient' | 'history'
+  | 'invoke'
+  | 'listen'
+  | 'backgroundServiceStartConfig'
+  | 'defaultLauncherUrl'
+  | 'httpClient'
+  | 'history'
 >): JSX.Element {
   useBackgroundSessionRecovery(invoke, backgroundServiceStartConfig)
   const [router] = useState(() =>
@@ -116,6 +128,7 @@ function BaseRouter({
         runHostCommand: runHostCommandWith(invoke),
         runHttpRequest: runHttpRequestWith(httpClient ?? FetchHttpClient.layer),
         listenToHostEvent: listen,
+        defaultLauncherUrl,
       },
     })
   )
@@ -145,6 +158,7 @@ function BaseRoot({
   invoke,
   listen,
   backgroundServiceStartConfig,
+  defaultLauncherUrl,
   telemetry,
   httpClient,
   history,
@@ -165,6 +179,7 @@ function BaseRoot({
           invoke={invoke}
           listen={listen}
           backgroundServiceStartConfig={backgroundServiceStartConfig}
+          defaultLauncherUrl={defaultLauncherUrl}
           httpClient={httpClient}
           history={history}
         />

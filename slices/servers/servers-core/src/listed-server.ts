@@ -37,13 +37,6 @@ const ListedServerSchema = Schema.Struct({
   certificate: CertificateState.Schema,
 })
 
-/**
- * The launcher a new server gets, the hosted owner UI's app section: the
- * value of `servers-rust`'s `ServerRecord::DEFAULT_LAUNCHER_URL`, which the
- * host stores and this repeats so the base can offer it back.
- */
-const DEFAULT_LAUNCHER_URL = 'https://wildflowerhealth.io/app'
-
 /** A decoded {@link ListedServerSchema}. */
 type Type = typeof ListedServerSchema.Type
 
@@ -54,5 +47,5 @@ const withStatus = (server: Type, status: ServerStatus.Type): Type => ({
   certificate: status.certificate,
 })
 
-export { DEFAULT_LAUNCHER_URL, ListedServerSchema as Schema, RelaySchema, withStatus }
+export { ListedServerSchema as Schema, RelaySchema, withStatus }
 export type { Relay, Type }

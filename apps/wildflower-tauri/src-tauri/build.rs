@@ -10,6 +10,7 @@ struct TauriSharedConfig {
     first_party_client_id: String,
     owner_ui_base_url: String,
     owner_ui_dev_base_url: String,
+    default_launcher_url: String,
     background_service_label: String,
     background_service_foreground_type: String,
 }
@@ -64,6 +65,10 @@ fn main() {
     println!(
         "cargo:rustc-env=WILDFLOWER_OWNER_UI_DEV_BASE_URL={}",
         config.owner_ui_dev_base_url
+    );
+    println!(
+        "cargo:rustc-env=WILDFLOWER_DEFAULT_LAUNCHER_URL={}",
+        config.default_launcher_url
     );
     println!(
         "cargo:rustc-env=WILDFLOWER_BACKGROUND_SERVICE_LABEL={}",
