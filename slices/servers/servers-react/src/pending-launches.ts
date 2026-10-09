@@ -11,11 +11,10 @@ type PendingLaunch =
   | {
       readonly kind: 'waiting'
       /**
-       * When the server's latest run stopped, as its status said when the
-       * wait began, if it had run: a stop the wait sees at any other time is
-       * one since the start.
+       * When "Start and launch" was confirmed, by this device's clock, which
+       * also stamps the host's stops: a stop after it is one during the wait.
        */
-      readonly stoppedBeforeStart: Option.Option<DateTime.Utc>
+      readonly confirmedAt: DateTime.Utc
     }
   | { readonly kind: 'launching' }
   | { readonly kind: 'failed'; readonly failure: string }

@@ -1,9 +1,9 @@
 import { useRouteContext } from '@tanstack/react-router'
-import { Effect, Either, Option } from 'effect'
+import { DateTime, Effect, Either, Option } from 'effect'
 import { type JSX, useEffect, useId, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ConfirmDialog, ErrorBanner } from 'react-tundraish'
-import { LaunchError, type ListedServer, launchServer, RunPolicy, ServerStatus } from 'servers-core'
+import { LaunchError, type ListedServer, launchServer, RunPolicy } from 'servers-core'
 
 import { failureText } from './failure-text.ts'
 import { REFUSAL_REASON, waitOutcomeOf } from './launch-wait.ts'
@@ -40,7 +40,7 @@ const useDriveStartAndLaunch = (
   const { domain, status } = server
   useEffect(() => {
     if (pending?.kind !== 'waiting') return
-    const outcome = waitOutcomeOf(status, pending.stoppedBeforeStart)
+    const outcome = waitOutcomeOf(status, pending.confirmedAt)
     if (outcome.kind === 'gaveUp') {
       pendingLaunches.set(domain, Option.some({ kind: 'failed', failure: outcome.failure }))
       return
@@ -127,7 +127,7 @@ const LaunchButton = ({
   const waitingReason = pending.pipe(
     Option.flatMap((launching) => {
       if (launching.kind !== 'waiting') return Option.none()
-      const outcome = waitOutcomeOf(server.status, launching.stoppedBeforeStart)
+      const outcome = waitOutcomeOf(server.status, launching.confirmedAt)
       return outcome.kind === 'waiting' ? Option.some(outcome.reason) : Option.none()
     })
   )
@@ -148,18 +148,11 @@ const LaunchButton = ({
     }
     launch.mutate({ domain })
   }
-  const waitForStart = (): void => {
+  /** Wait for the server to start, from "Start and launch" confirmed at `confirmedAt`. */
+  const waitForStart = (confirmedAt: DateTime.Utc): void => {
     launch.reset()
     setConfirmingStart(false)
-    pendingLaunches.set(
-      domain,
-      Option.some({
-        kind: 'waiting',
-        stoppedBeforeStart: ServerStatus.lastStopOf(server.status).pipe(
-          Option.map((stop) => stop.stoppedAt)
-        ),
-      })
-    )
+    pendingLaunches.set(domain, Option.some({ kind: 'waiting', confirmedAt }))
   }
   const pendingFailure = pending.pipe(
     Option.flatMap((launching) =>
@@ -223,16 +216,19 @@ const LaunchButton = ({
         confirmLabel="Start and launch"
         pending={setRunPolicy.isPending}
         onConfirm={() => {
+          const confirmedAt = DateTime.unsafeNow()
           // The policy may have changed since the question was asked: an
           // active one already starts the server, and is left as it is.
           if (!policyIsInactive) {
-            waitForStart()
+            waitForStart(confirmedAt)
             return
           }
           setRunPolicy.mutate(
             { domain, choice: { kind: 'whileOpen' } },
             {
-              onSuccess: waitForStart,
+              onSuccess: () => {
+                waitForStart(confirmedAt)
+              },
               onError: () => {
                 setConfirmingStart(false)
               },

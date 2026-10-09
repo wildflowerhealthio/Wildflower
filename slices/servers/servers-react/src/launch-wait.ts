@@ -41,39 +41,31 @@ const unreachableReason = (status: ServerStatus.Type): string =>
   )
 
 /**
- * How the server's latest run stopped, once it has stopped since the wait
- * began: a stop at `stoppedBeforeStart` is the one before it.
+ * How the server's latest run stopped, when it stopped after the wait began
+ * at `confirmedAt`; a stop at that same instant was before it.
  */
-const stopSinceStart = (
+const stopDuringWait = (
   status: ServerStatus.Type,
-  stoppedBeforeStart: Option.Option<DateTime.Utc>
+  confirmedAt: DateTime.Utc
 ): Option.Option<ServerStatus.RunStop> =>
   ServerStatus.lastStopOf(status).pipe(
-    Option.filter(
-      (stop) =>
-        !Option.exists(stoppedBeforeStart, (stoppedAt) =>
-          DateTime.Equivalence(stoppedAt, stop.stoppedAt)
-        )
-    )
+    Option.filter((stop) => DateTime.greaterThan(stop.stoppedAt, confirmedAt))
   )
 
 /**
- * Where the wait for the server whose status is `status` stands, its latest
- * run having stopped at `stoppedBeforeStart` when the wait began.
+ * Where the wait for the server whose status is `status` stands, the wait
+ * having begun at `confirmedAt`.
  *
  * @remarks
  * The wait gives up once waiting can't help: the server's run stopped with an
- * error since the start (a server retrying after one shows that stop while it
+ * error during the wait (a server retrying after one shows that stop while it
  * waits to start again), its certificate order is failing, its certificate is
  * from a CA browsers don't trust, or it can't be reached through its relay
  * while its certificate is valid. Until its certificate is valid, an
  * unreachable server is still getting one, and the wait goes on.
  */
-const waitOutcomeOf = (
-  status: ServerStatus.Type,
-  stoppedBeforeStart: Option.Option<DateTime.Utc>
-): WaitOutcome => {
-  const stop = stopSinceStart(status, stoppedBeforeStart)
+const waitOutcomeOf = (status: ServerStatus.Type, confirmedAt: DateTime.Utc): WaitOutcome => {
+  const stop = stopDuringWait(status, confirmedAt)
   const stopError = stop.pipe(Option.flatMap((since) => since.error))
   if (Option.isSome(stopError)) {
     return { kind: 'gaveUp', failure: `The server stopped with an error: ${stopError.value}` }

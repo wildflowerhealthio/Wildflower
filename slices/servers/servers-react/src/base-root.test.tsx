@@ -772,6 +772,21 @@ describe('Launch', () => {
   const RUTH = 'ruth.relay.example.com'
   const LAB = 'lab.rathole.example.com'
 
+  /**
+   * The device's clock while these tests run, so the time "Start and launch"
+   * is confirmed: after every golden status's stop, and before the stops the
+   * tests send during a wait.
+   */
+  const NOW = '2026-10-06T17:50:00Z'
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(NOW) })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   /** The list item of the server `domain`. */
   const serverRow = (domain: string): HTMLElement => screen.getByRole('listitem', { name: domain })
 
