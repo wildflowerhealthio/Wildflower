@@ -1,5 +1,9 @@
 import { trimTrailingSlashes } from 'fhir-r4/clients'
-import { insecureTargetReason, normalizeServerUrl } from 'gatekeeper-core/smart-client'
+import {
+  insecureTargetReason,
+  normalizeServerUrl,
+  serverUrlNamedBy,
+} from 'gatekeeper-core/smart-client'
 
 import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
 
@@ -137,6 +141,12 @@ export {
    * FHIR server base exactly as the docs console canonicalises `?server=`.
    */
   normalizeServerUrl,
+  /**
+   * Re-exported from `gatekeeper-core/smart-client`, like `normalizeServerUrl`:
+   * the Wildflower server a URL names, with or without its `/fhir-r4` mount,
+   * which `connect-menu.tsx` turns the owner UI's free entry into.
+   */
+  serverUrlNamedBy,
   startStandaloneLaunch,
   type SmartSupport,
   type StandaloneLaunchConfig,

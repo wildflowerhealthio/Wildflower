@@ -178,6 +178,34 @@ describe('authorizationRequestUrl', () => {
     })
   })
 
+  it('names the EHR launch it answers only when it is given a non-empty one', () => {
+    fc.assert(
+      fc.property(
+        fc.option(fc.oneof(fc.constant(''), fc.string()), { nil: undefined }),
+        (launch) => {
+          // Act
+          const url = new URL(
+            authorizationRequestUrl('https://ruth.wildflowerhealth.io/oauth/authorize', {
+              clientId: 'wildflower-react',
+              redirectUri: 'https://wildflowerhealth.io/app/',
+              scope: 'openid launch',
+              state: 's',
+              codeChallenge: 'c',
+              audience: 'https://ruth.wildflowerhealth.io/fhir-r4',
+              launch,
+            })
+          )
+
+          // Assert
+          expect(url.searchParams.getAll('launch')).toEqual(
+            launch === undefined || launch === '' ? [] : [launch]
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   it('keeps a query the discovery document already put on the endpoint', () => {
     // Act
     const url = new URL(
@@ -330,6 +358,17 @@ describe('searchWithoutAuthorizationResponse', () => {
     )
   })
 
+  it('drops the authorization server’s own iss (RFC 9207) with the response', () => {
+    // Act
+    const search = searchWithoutAuthorizationResponse(
+      '?server=https%3A%2F%2Fruth.wildflowerhealth.io&error=access_denied&error_description=no' +
+        '&iss=https%3A%2F%2Fruth.wildflowerhealth.io'
+    )
+
+    // Assert
+    expect(search).toBe('?server=https%3A%2F%2Fruth.wildflowerhealth.io')
+  })
+
   it('reduces an emptied query to the empty string, not a bare ?', () => {
     // Act / Assert
     expect(searchWithoutAuthorizationResponse('?code=abc&state=xyz')).toBe('')
@@ -345,9 +384,12 @@ describe('isAuthorizationResponse', () => {
   })
 
   it('does not mistake an ordinary configured load for a return leg', () => {
-    // Act / Assert — `?server=` alone, or nothing, is not a return.
+    // Act / Assert — `?server=` alone, nothing, or a SMART launch's `iss` is not a return.
     expect(isAuthorizationResponse('?server=https%3A%2F%2Fruth.wildflowerhealth.io')).toBe(false)
     expect(isAuthorizationResponse('')).toBe(false)
+    expect(
+      isAuthorizationResponse('?iss=https%3A%2F%2Fruth.wildflowerhealth.io%2Ffhir-r4&launch=xyz')
+    ).toBe(false)
   })
 
   it('is true as soon as any one response parameter is present', () => {
