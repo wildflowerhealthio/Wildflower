@@ -1,9 +1,10 @@
 /**
- * The browser side of the SMART standalone launch `gatekeeper-rust` serves,
- * shared by every static Wildflower page that signs in to a reader-chosen
- * server — see "The SMART standalone-launch client" in the package README for
- * the shape of the flow, what the app supplies, and why this is not the
- * fhirclient-based launch in `slices/emr/fhir-r4-react/src/smart/*`.
+ * The browser side of the SMART sign-in `gatekeeper-rust` serves — a standalone
+ * launch, or an EHR launch when the app was opened with one — shared by every
+ * static Wildflower page that signs in to a reader-chosen server. See "The
+ * SMART sign-in client" in the package README for the shape of the flow, what
+ * the app supplies, and why this is not the fhirclient-based launch in
+ * `slices/emr/fhir-r4-react/src/smart/*`.
  */
 
 export {
@@ -37,8 +38,10 @@ export type { DigestSource, RandomBytesSource } from './pkce.ts'
 
 export {
   normalizeServerUrl,
+  searchAfterArrivingLaunch,
   searchWithServerUrl,
   SERVER_QUERY_PARAM,
+  serverUrlNamedBy,
   serverUrlFromSearch,
 } from './server-target.ts'
 

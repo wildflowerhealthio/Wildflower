@@ -1,8 +1,9 @@
 /**
  * The two halves of a sign-in, each written as one `Effect` over an injected
  * environment: {@link beginSignIn} discovers the target's OAuth endpoints and
- * builds the URL to leave for, {@link completeSignIn} picks the flow back up
- * when the browser comes back and redeems the code.
+ * builds the URL to leave for (a standalone launch, or an EHR launch when the
+ * app hands it one), {@link completeSignIn} picks the flow back up when the
+ * browser comes back and redeems the code.
  *
  * Neither navigates and neither touches the DOM — `beginSignIn` *yields* the
  * URL for the app to assign — so both are drivable from tests with a stub
@@ -126,13 +127,19 @@ interface SignInEnvironment {
  * the registered redirect URI can't carry it. `undefined` when the app has
  * nowhere particular to go.
  *
+ * `launch` is the SMART EHR launch the app was opened with, sent as the
+ * authorization request's `launch` so the server can tie the sign-in to it.
+ * Without one, or with an empty one, the request is a standalone launch. The
+ * return leg does not need it, so it stays out of the pending record.
+ *
  * The pending record is written **before** the URL is yielded, so a caller
  * cannot navigate away from a flow whose verifier was never saved.
  */
 const beginSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
-  environment: SignInEnvironment
+  environment: SignInEnvironment,
+  launch?: string
 ): Effect.Effect<string, SignInError> =>
   Effect.gen(function* () {
     const { smartServer, endpoints } = yield* discoverSmartEndpoints(serverUrl, {
@@ -171,6 +178,7 @@ const beginSignIn = (
       state,
       codeChallenge,
       audience: smartServer.fhirBaseUrl,
+      launch,
     })
   })
 
