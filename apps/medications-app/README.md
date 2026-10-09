@@ -19,16 +19,12 @@ renders `<AppRoot />` inside `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="medications"
 standalone={smartConfig} telemetry={smartAppTelemetry}>` around
-`<App />`. `SmartAppRoot` latches on mount which of three cases the URL is:
+`<App />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+latches on mount which of three cases the URL is:
 
-- **Launch** (`iss`, with or without an EHR's `launch`) — shows a loading line
-  under `BrandBar` and starts the authorize redirect, sending a failed launch
-  back to the app root as `?launchError`.
-
-It shows the telemetry consent dialog before any of the three, owns the
-single `QueryClientProvider`, and branches on whether a SMART callback is in
-the URL:
-
+- **Launch** (`iss`, with or without an EHR's `launch`, and no callback) —
+  shows a loading line under `BrandBar` and starts the authorize redirect,
+  sending a failed launch back to the app root as `?launchError`.
 - **Launched** (OAuth callback present) — renders `<BrandBar />` (a slim brand
   link back to the marketing site, with the telemetry status control at its
   end) above `<App />`.
@@ -37,12 +33,15 @@ the URL:
   the telemetry status control, `<SiteFooter>`, with nav links resolving as
   absolute URLs back to `wildflowerhealth.io`.
 
+The launched and standalone branches share the root's single
+`QueryClientProvider`.
+
 `smartAppTelemetry` in `src/config.ts` names the app's Sentry project through
 the `VITE_SENTRY_DSN_MEDICATIONS_APP` build variable (see `.env.example`).
 Nothing is reported until the visitor says yes.
 
-`AppRoot` accepts an optional `launched` prop (defaults to the live URL check)
-so both branches are testable without URL manipulation. The package exports
+`AppRoot` accepts an optional `launched` prop (defaults to the live URL checks)
+so the launched and standalone branches are testable without URL manipulation. The package exports
 `AppRoot` via the `source` condition for future aggregator-shell composition.
 
 ## The patient
