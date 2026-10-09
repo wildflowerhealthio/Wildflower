@@ -8,7 +8,7 @@ loads a published synthetic data snapshot — by default the one
 deploys to <https://wildflowerhealthio.github.io/synthetic-data/> — into the
 FHIR server it is connected to.
 
-`apps/importer-web` is the template: the same two HTML entries, relative
+`apps/importer-web` is the template: the same one HTML entry, relative
 `base`, build into the package's own `dist/`, `SmartAppRoot` shell, and a
 memory router carrying a SMART-built context, because the slice screen reads
 its authed runner from route context. Like the Importer, **this app writes.**
@@ -18,14 +18,14 @@ its authed runner from route context. Like the Importer, **this app writes.**
 - `src/main.tsx` — the `index.html` entry: imports `react-tundraish/styles`,
   completes a GitHub Pages 404 redirect (`restoreRedirectedUrl`), starts the
   OS colour-scheme listener and renders `<AppRoot />`.
-- `src/app-root.tsx` — `AppRoot`: `SmartAppRoot` (`app="syntheticData"`, the
-  standalone config and `smartAppTelemetry`) around `<App />`. The shell's telemetry consent dialog comes first: until the
-  visitor answers, neither the connect menu nor the app mounts, and nothing
-  loads. `smartAppTelemetry` names the app's own Sentry project through the
+- `src/app-root.tsx` — `AppRoot`: `SmartAppRoot` (`app="syntheticData"`,
+  `smartRegistration` and `smartAppTelemetry`) around `<App />`. The shell's
+  telemetry consent dialog comes first: until the visitor answers, no launch
+  starts, neither the connect menu nor the app mounts, and nothing loads. A
+  launch the URL carries then starts under a loading line. `smartAppTelemetry` names the app's own Sentry project through the
   `VITE_SENTRY_DSN_SYNTHETIC_DATA_APP` build variable (see `.env.example`), with
   `synthetic-data-app` as its `app` tag. A bare visit shows
   `APP_DESCRIPTIONS.syntheticData`'s landing beside the `ConnectMenu`.
-- `src/launch-main.tsx` — the `launch.html` entry: `runSmartLaunchEntry`.
 - `src/app.tsx` — `App` completes the handshake (`useSmartHandshake`; a
   failure goes back to the app root through `useLaunchFailureRedirect`) and
   builds the router context with `buildSmartRouterContext` over the plain

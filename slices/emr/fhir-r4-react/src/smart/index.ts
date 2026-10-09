@@ -1,9 +1,11 @@
 export {
   appRootRedirectUri,
+  arrivingSmartLaunchFrom,
   authorizeOpenServer,
   authorizeSmartLaunch,
   readySmartClient,
   shouldCompleteSmartLaunch,
+  type ArrivingSmartLaunch,
   type OpenServerConfig,
   type SmartLaunchConfig,
 } from './smart-launch.ts'

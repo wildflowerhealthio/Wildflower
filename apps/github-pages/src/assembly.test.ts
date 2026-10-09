@@ -5,7 +5,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { APP_DESCRIPTIONS, SECTION_PATHS, smartAppLaunchPages, SITE_ORIGIN } from 'branding-core'
+import { SECTION_PATHS } from 'branding-core'
 
 import type { SiteSection } from './assembly.ts'
 import {
@@ -65,22 +65,16 @@ describe('site layout', () => {
     expect(marketing?.requiredPaths).toContain(join(outDir, 'index.html'))
   })
 
-  it('serves the medications app from /medications-app with both SMART entries', () => {
+  it('serves the medications app from /medications-app with its one SMART entry', () => {
     const [medication] = resolveSections(repoRoot, outDir, [sectionFor('medications-app')])
     expect(medication?.to).toBe(join(outDir, 'medications-app'))
-    expect(medication?.requiredPaths).toEqual([
-      join(outDir, 'medications-app', 'index.html'),
-      join(outDir, 'medications-app', 'launch.html'),
-    ])
+    expect(medication?.requiredPaths).toEqual([join(outDir, 'medications-app', 'index.html')])
   })
 
-  it('serves the importer app from /importer-app with both SMART entries', () => {
+  it('serves the importer app from /importer-app with its one SMART entry', () => {
     const [importer] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-importer')])
     expect(importer?.to).toBe(join(outDir, 'importer-app'))
-    expect(importer?.requiredPaths).toEqual([
-      join(outDir, 'importer-app', 'index.html'),
-      join(outDir, 'importer-app', 'launch.html'),
-    ])
+    expect(importer?.requiredPaths).toEqual([join(outDir, 'importer-app', 'index.html')])
   })
 
   it('serves the Pebble settings app from /fhir-sync-pebble with its one SMART entry', () => {
@@ -103,33 +97,24 @@ describe('site layout', () => {
     expect(ohif?.requiredPaths).toEqual([join(outDir, 'ohif-viewer', 'index.html')])
   })
 
-  it('serves the web trace app from /web-trace-app with both SMART entries', () => {
+  it('serves the web trace app from /web-trace-app with its one SMART entry', () => {
     const [webTrace] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-web-trace')])
     expect(webTrace?.to).toBe(join(outDir, 'web-trace-app'))
-    expect(webTrace?.requiredPaths).toEqual([
-      join(outDir, 'web-trace-app', 'index.html'),
-      join(outDir, 'web-trace-app', 'launch.html'),
-    ])
+    expect(webTrace?.requiredPaths).toEqual([join(outDir, 'web-trace-app', 'index.html')])
   })
 
-  it('serves the health viewer from /health-viewer-app with both SMART entries', () => {
+  it('serves the health viewer from /health-viewer-app with its one SMART entry', () => {
     const [healthViewer] = resolveSections(repoRoot, outDir, [sectionFor('health-viewer-app')])
     expect(healthViewer?.from).toBe(join(repoRoot, 'apps', 'health-viewer', 'dist'))
     expect(healthViewer?.to).toBe(join(outDir, 'health-viewer-app'))
-    expect(healthViewer?.requiredPaths).toEqual([
-      join(outDir, 'health-viewer-app', 'index.html'),
-      join(outDir, 'health-viewer-app', 'launch.html'),
-    ])
+    expect(healthViewer?.requiredPaths).toEqual([join(outDir, 'health-viewer-app', 'index.html')])
   })
 
-  it('serves the lifting app from /lifting-app with both SMART entries', () => {
+  it('serves the lifting app from /lifting-app with its one SMART entry', () => {
     const [lifting] = resolveSections(repoRoot, outDir, [sectionFor('lifting-app')])
     expect(lifting?.from).toBe(join(repoRoot, 'apps', 'lifting-app', 'dist'))
     expect(lifting?.to).toBe(join(outDir, 'lifting-app'))
-    expect(lifting?.requiredPaths).toEqual([
-      join(outDir, 'lifting-app', 'index.html'),
-      join(outDir, 'lifting-app', 'launch.html'),
-    ])
+    expect(lifting?.requiredPaths).toEqual([join(outDir, 'lifting-app', 'index.html')])
   })
 
   it('serves the WatchLifts settings page from /watch-lifts with its one entry', () => {
@@ -138,14 +123,11 @@ describe('site layout', () => {
     expect(watchLifts?.requiredPaths).toEqual([join(outDir, 'watch-lifts', 'index.html')])
   })
 
-  it('serves the synthetic data loader from /synthetic-data-app with both SMART entries', () => {
+  it('serves the synthetic data loader from /synthetic-data-app with its one SMART entry', () => {
     const [loader] = resolveSections(repoRoot, outDir, [sectionFor('synthetic-data-app')])
     expect(loader?.from).toBe(join(repoRoot, 'apps', 'synthetic-data-app', 'dist'))
     expect(loader?.to).toBe(join(outDir, 'synthetic-data-app'))
-    expect(loader?.requiredPaths).toEqual([
-      join(outDir, 'synthetic-data-app', 'index.html'),
-      join(outDir, 'synthetic-data-app', 'launch.html'),
-    ])
+    expect(loader?.requiredPaths).toEqual([join(outDir, 'synthetic-data-app', 'index.html')])
   })
 
   it('serves the hosted owner UI from /app with its SPA entry', () => {
@@ -204,22 +186,6 @@ describe('site layout', () => {
     const destPaths = siteSections.map((s) => s.destPath).toSorted()
     const sectionPathValues = Object.values(SECTION_PATHS).toSorted()
     expect(destPaths).toEqual(sectionPathValues)
-  })
-
-  it("should publish exactly the SMART launch pages the app descriptions name, each in its app's section", () => {
-    // Both sides from their sources: the launch page each described SMART app
-    // names, and every section that publishes a `launch.html`. A new SMART app
-    // published with one but not described as launched from it (so missing
-    // from the owner UI's plain SMART Home), or described but not published,
-    // fails here.
-    const describedLaunchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
-      .map(({ app }) => `${SECTION_PATHS[app]}/${APP_DESCRIPTIONS[app].smartLaunchPage ?? ''}`)
-      .toSorted()
-    const publishedLaunchPages = siteSections
-      .filter((section) => section.requiredFiles.includes('launch.html'))
-      .map((section) => `${section.destPath}/launch.html`)
-      .toSorted()
-    expect(describedLaunchPages).toEqual(publishedLaunchPages)
   })
 
   it('should pin the deploy-contract paths as literal values', () => {

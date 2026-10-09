@@ -25,7 +25,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * is picked on this page, after the grant, so the token carries no patient
  * context and a `patient/` scope would reach nothing. There is no
  * `launch/patient` for the same reason, and no bare `launch`: that scope is
- * EHR-launch-only, and this app has no `launch.html`.
+ * EHR-launch-only, and no EHR launches this app.
  *
  * `clientId` depends on how this build is being served:
  *
@@ -46,7 +46,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * in `gatekeeper-rust`'s `db/clients.rs`, and the dev client in `seeding.rs`.
  * Change one, change all four.
  */
-const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'fhir-sync-pebble-dev' : 'fhir-sync-pebble',
   scope: 'openid fhirUser system/Patient.rs system/Observation.cu',
 }
@@ -68,4 +68,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'fhir-sync-pebble-web',
 }
 
-export { RETURN_TO_STORAGE_KEY, smartAppTelemetry, standaloneSmartConfig }
+export { RETURN_TO_STORAGE_KEY, smartAppTelemetry, smartRegistration }

@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
-import { smartAppTelemetry, standaloneSmartConfig } from './config.ts'
+import { smartAppTelemetry, smartRegistration } from './config.ts'
 
 /**
  * The lifting app's root: the shared `SmartAppRoot` around `App`. `App`
@@ -19,7 +19,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
   return (
     <SmartAppRoot
       app="lifting"
-      standalone={standaloneSmartConfig}
+      registration={smartRegistration}
       telemetry={smartAppTelemetry}
       launched={launched}
     >

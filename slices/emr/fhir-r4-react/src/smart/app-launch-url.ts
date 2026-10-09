@@ -108,8 +108,8 @@ const smartLauncherLaunchCode = (patient: string | undefined): string =>
  * The URL that launches the SMART app whose launch page is `launchPageUrl`
  * against `server`.
  *
- * @param launchPageUrl - The app's SMART launch page: the URL an EHR registers
- *   as its launch URL, whose fhirclient entry reads `iss` and `launch`.
+ * @param launchPageUrl - The app's SMART launch page, its root: the URL an EHR
+ *   registers as its launch URL, which reads `iss` and `launch`.
  * @param server - The server to launch against, and the patient in context.
  * @returns For a server on SMART Health IT's launcher, the EHR launch its
  *   launcher page builds: `launchPageUrl` with `iss` its
@@ -130,11 +130,11 @@ const smartLauncherLaunchCode = (patient: string | undefined): string =>
  *
  * @example
  * ```ts
- * appLaunchUrl('https://wildflowerhealth.io/medications-app/launch.html', {
+ * appLaunchUrl('https://wildflowerhealth.io/medications-app/', {
  *   fhirBaseUrl: 'https://fhir.example.org/r4',
  *   patient: undefined,
  * })
- * // → 'https://wildflowerhealth.io/medications-app/launch.html?iss=https%3A%2F%2Ffhir.example.org%2Fr4'
+ * // → 'https://wildflowerhealth.io/medications-app/?iss=https%3A%2F%2Ffhir.example.org%2Fr4'
  * ```
  */
 const appLaunchUrl = (launchPageUrl: string, server: AppLaunchServer): string => {

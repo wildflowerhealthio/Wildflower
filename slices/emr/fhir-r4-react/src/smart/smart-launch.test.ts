@@ -1,10 +1,12 @@
 import * as fc from 'fast-check'
 import type Client from 'fhirclient/lib/Client'
+import { arrivingSmartLaunchFrom as sharedArrivingSmartLaunchFrom } from 'gatekeeper-core/smart-client'
 import { numRunsFor } from 'kitchen-sink/test'
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   appRootRedirectUri,
+  arrivingSmartLaunchFrom,
   authorizeSmartLaunch,
   readySmartClient,
   shouldCompleteSmartLaunch,
@@ -182,12 +184,21 @@ describe('shouldCompleteSmartLaunch', () => {
   })
 })
 
+// `arrivingSmartLaunchFrom`'s own behaviour is covered where it lives, in
+// `gatekeeper-core/smart-client`'s `arriving-launch.test.ts`; re-exporting is
+// only worth anything if it is genuinely the same function.
+describe('arrivingSmartLaunchFrom', () => {
+  it('is the one implementation gatekeeper-core owns, not a local copy', () => {
+    expect(arrivingSmartLaunchFrom).toBe(sharedArrivingSmartLaunchFrom)
+  })
+})
+
 describe('appRootRedirectUri', () => {
-  it('should name the app root from the launch page it sits in', () => {
-    // Act / Assert — the EHR launch starts at `launch.html`, beside `index.html`
+  it('should name the app root from a launch it was opened with, dropping the launch', () => {
+    // Act / Assert — the EHR launch starts at the app root itself
     expect(
       appRootRedirectUri(
-        'https://wildflowerhealth.io/web-trace-app/launch.html?iss=https%3A%2F%2Fehr.example&launch=xyz'
+        'https://wildflowerhealth.io/web-trace-app/?iss=https%3A%2F%2Fehr.example&launch=xyz'
       )
     ).toBe('https://wildflowerhealth.io/web-trace-app/')
   })
@@ -204,16 +215,14 @@ describe('appRootRedirectUri', () => {
 
   it('should keep a dev server’s origin, over plain http off loopback too', () => {
     // Act / Assert — no scheme screen: a LAN dev server derives its own root
-    expect(appRootRedirectUri('http://127.0.0.1:5191/launch.html?iss=x')).toBe(
-      'http://127.0.0.1:5191/'
-    )
+    expect(appRootRedirectUri('http://127.0.0.1:5191/?iss=x')).toBe('http://127.0.0.1:5191/')
     expect(appRootRedirectUri('http://192.168.1.20:5191/')).toBe('http://192.168.1.20:5191/')
   })
 
   it('should give every page in one directory, whatever it carries, the same root', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom('', 'index.html', 'launch.html'),
+        fc.constantFrom('', 'index.html'),
         nonCallbackParams(),
         fc.string(),
         (page, params, fragment) => {
@@ -231,7 +240,10 @@ describe('appRootRedirectUri', () => {
 
 // Helpers
 
-/** The three params `shouldCompleteSmartLaunch` keys off, excluded from noise. */
+/**
+ * The three params that mark a return from the authorization server, which
+ * `shouldCompleteSmartLaunch` keys off, excluded from noise.
+ */
 const CALLBACK_PARAMS = ['code', 'state', 'error']
 
 /** A query string built from `params`, leading `?` included. */

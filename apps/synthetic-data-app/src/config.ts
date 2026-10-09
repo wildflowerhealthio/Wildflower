@@ -41,23 +41,13 @@ const SYNTHETIC_DATA_CLIENT_ID = import.meta.env.DEV
   : 'synthetic-data-app'
 
 /**
- * SMART registration for the EHR launch (`launch.html`). `iss` / `launch` are
- * read from the launch URL by fhirclient, so they are not set here;
- * `redirectUri` is computed at launch time from the current origin.
+ * SMART registration for every launch the app root starts: one its URL
+ * carries (`iss` / `launch`, read off the URL by fhirclient) and the
+ * standalone connect menu's, where the user picks the FHIR server. So `iss` is
+ * not set here, and `redirectUri` (the app root) is computed at launch time
+ * from the current origin.
  */
-const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
-  clientId: SYNTHETIC_DATA_CLIENT_ID,
-  scope: SYNTHETIC_DATA_SCOPE,
-}
-
-/**
- * SMART registration for the **standalone** connect flow (the `ConnectMenu` the
- * app root renders when the URL carries no OAuth callback), where the user
- * picks the FHIR server to load into. The same client and scopes as
- * {@link smartConfig}, so its redirect URI (the app root) resolves the same
- * way.
- */
-const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: SYNTHETIC_DATA_CLIENT_ID,
   scope: SYNTHETIC_DATA_SCOPE,
 }
@@ -79,10 +69,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'synthetic-data-app',
 }
 
-export {
-  PUBLISHED_SNAPSHOT_ADDRESS,
-  smartAppTelemetry,
-  smartConfig,
-  standaloneSmartConfig,
-  SYNTHETIC_DATA_SCOPE,
-}
+export { PUBLISHED_SNAPSHOT_ADDRESS, smartAppTelemetry, smartRegistration, SYNTHETIC_DATA_SCOPE }

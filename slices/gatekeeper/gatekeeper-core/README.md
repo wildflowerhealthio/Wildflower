@@ -110,6 +110,11 @@ works out where the server should send the reader back to
 (`redirect-target.ts`), leaves for `/oauth/authorize`, and picks the flow back
 up on the way home (`authorization-flow.ts`, `sign-in.ts`).
 
+`arrivingSmartLaunchFrom` (`arriving-launch.ts`) reads the SMART launch a page
+was opened with, `iss` and the EHR's `launch`, off its query string. The
+fhirclient-based SMART apps read it through `fhir-r4-react/smart`, which
+re-exports it.
+
 It stays inside the `-core` layering rule by taking every impure edge — `fetch`,
 Web Crypto, `sessionStorage` — as an injected `SignInEnvironment`. That
 environment also carries everything app-specific: the `client_id`, the requested

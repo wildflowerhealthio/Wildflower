@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
-import { smartAppTelemetry, standaloneSmartConfig } from './config.ts'
+import { smartAppTelemetry, smartRegistration } from './config.ts'
 
 /**
  * The Synthetic Data Loader's root: the shared `SmartAppRoot` around `App`.
@@ -20,7 +20,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
   return (
     <SmartAppRoot
       app="syntheticData"
-      standalone={standaloneSmartConfig}
+      registration={smartRegistration}
       telemetry={smartAppTelemetry}
       launched={launched}
     >

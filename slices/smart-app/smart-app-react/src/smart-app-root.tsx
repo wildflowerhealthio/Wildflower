@@ -1,7 +1,8 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { TELEMETRY_CONSENT_COPY, type AppSectionId } from 'branding-core'
+import { APP_DESCRIPTIONS, TELEMETRY_CONSENT_COPY, type AppSectionId } from 'branding-core'
 import { AppLandingPage, BrandBar } from 'branding-react'
-import { useEffect, useState, type JSX, type ReactNode } from 'react'
+import { Option } from 'effect'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import {
   CrashReportingBoundary,
   TelemetryConsentGate,
@@ -13,6 +14,7 @@ import { Sentry, setFhirServerHost } from 'telemetry-web'
 
 import {
   appRootRedirectUri,
+  arrivingSmartLaunchFrom,
   buildSmartQueryClient,
   isSmartHandshakeQuery,
   launchErrorFrom,
@@ -21,7 +23,9 @@ import {
   type SmartLaunchConfig,
 } from 'fhir-r4-react/smart'
 
+import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 import { ConnectMenu } from './connect-menu.tsx'
+import { LaunchPage } from './launch-page.tsx'
 
 /**
  * Where a SMART app's telemetry goes, once the visitor consents to it: the
@@ -41,25 +45,49 @@ interface SmartAppTelemetry {
   readonly app: string
 }
 
+/**
+ * Why the app root was opened, latched on mount: to start a SMART launch its
+ * URL carries, to complete the callback of one, or a plain visit.
+ */
+type RootArrival = 'launch' | 'callback' | 'visit'
+
+/** The `launch` tag telemetry carries for each {@link RootArrival}. */
+const LAUNCH_TAGS = {
+  launch: 'launching',
+  callback: 'launched',
+  visit: 'standalone',
+} as const satisfies Record<RootArrival, string>
+
 /** Props for {@link SmartAppRoot}. */
 interface SmartAppRootProps {
-  /** Which app this is: picks the `AppLanding` introduction on the standalone page. */
+  /**
+   * Which app this is: picks the `AppLanding` introduction on the standalone
+   * page, and names the app on the launch page.
+   */
   readonly app: AppSectionId
   /**
-   * The SMART registration the standalone `ConnectMenu` authorizes with. The
-   * redirect URI is this page's root and the FHIR server is the user's pick,
+   * The app's SMART registration: what a launch the page arrives with and the
+   * standalone `ConnectMenu` both authorize with. The redirect URI is this
+   * page's root and the FHIR server is the launch's `iss` or the user's pick,
    * so neither is part of it.
    */
-  readonly standalone: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>
+  readonly registration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>
   /** Where the app's telemetry goes once the visitor consents to it. */
   readonly telemetry: SmartAppTelemetry
   /**
    * Whether the URL carries a SMART callback to complete. Read once, on mount:
-   * defaults to the live URL check (`shouldCompleteSmartLaunch`); tests pass it
-   * explicitly. A later change to the prop is ignored — see the remarks on
+   * defaults to the live URL checks (`shouldCompleteSmartLaunch`, then
+   * `arrivingSmartLaunchFrom`); tests pass it explicitly, and then no launch is
+   * read. A later change to the prop is ignored — see the remarks on
    * {@link SmartAppRoot}.
    */
   readonly launched?: boolean
+  /**
+   * Replaces the page with `url` in the session history, as the launch page
+   * leaves for the app root. Defaults to `window.location.replace`; tests pass
+   * a spy, since jsdom's `location` cannot be spied on.
+   */
+  readonly replaceLocation?: (url: string) => void
   /** The app itself, rendered under `BrandBar` on the launched branch. */
   readonly children: ReactNode
 }
@@ -74,10 +102,60 @@ function ConsentStatusControl(): JSX.Element {
 }
 
 /**
- * The top-level root every first-party SMART app mounts: the telemetry consent
- * gate, then one `QueryClientProvider` around two branches in shared
- * Wildflower chrome.
+ * The launch page, and the authorize of the launch the page arrived with,
+ * once: mounted only under the consent gate, so the authorize starts once the
+ * visitor has answered. The ref holds under StrictMode's second effect run,
+ * and the launch works only once. A launch that fails before it leaves
+ * replaces the page with the app root carrying `?launchError`.
  *
+ * A page restored from the back-forward cache after leaving for the
+ * authorization server holds a launch that is already spent, so it replaces
+ * itself with the bare app root: a plain visit, with the connect menu.
+ */
+function LaunchingApp({
+  app,
+  registration,
+  replaceLocation,
+}: Pick<SmartAppRootProps, 'app' | 'registration'> & {
+  readonly replaceLocation: (url: string) => void
+}): JSX.Element {
+  const launchAuthorized = useRef(false)
+  useEffect(() => {
+    if (launchAuthorized.current) return
+    launchAuthorized.current = true
+    void authorizeFromLaunchPage(registration, window.location.href).then((failure) => {
+      if (failure !== null) replaceLocation(failure)
+    })
+  }, [registration, replaceLocation])
+
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) replaceLocation(appRootRedirectUri(window.location.href))
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return (): void => {
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [replaceLocation])
+
+  return <LaunchPage message={`Launching ${APP_DESCRIPTIONS[app].name}…`} />
+}
+
+/** Replaces the page with `url` in the session history. */
+const replaceWindowLocation = (url: string): void => {
+  window.location.replace(url)
+}
+
+/**
+ * The top-level root every first-party SMART app mounts: the telemetry consent
+ * gate, then the launch page for a launch the URL carries, or one
+ * `QueryClientProvider` around two branches in shared Wildflower chrome.
+ *
+ * - **Launch** (the URL carries `iss`, with or without an EHR's `launch`, and
+ *   no callback): {@link LaunchPage} while the root authorizes the launch with
+ *   `registration`, once, in an error boundary that reports what it catches. A
+ *   launch that fails before it leaves comes back to this root as
+ *   `?launchError`.
  * - **Launched** (the URL carries an OAuth callback): `BrandBar`, with the
  *   telemetry status control at its end, over `children` in an error
  *   boundary that reports what it catches. The children complete the
@@ -88,33 +166,46 @@ function ConsentStatusControl(): JSX.Element {
  *   `arrivalProblem`, and the telemetry status control above the footer.
  *
  * @remarks
- * **Nothing starts before the visitor answers the consent dialog.** Both
- * branches render inside `TelemetryConsentGate`, so until an answer is stored
- * the page is the dialog alone: neither the connect menu nor the app mounts,
- * and no query runs. The answer goes to `telemetry-react`'s
- * `useConsentedTelemetryStart` with `telemetry`'s DSN and the tags `app` and
- * `launch`, and the SDK starts only if a switch is on. Once it runs, the root tags events with the FHIR server's
- * host when the handshake completes, reports every failed read on its client,
+ * **Nothing starts before the visitor answers the consent dialog.** Every
+ * branch renders inside `TelemetryConsentGate`, so until an answer is stored
+ * the page is the dialog alone: no launch is authorized, neither the connect
+ * menu nor the app mounts, and no query runs. A stored answer skips the
+ * dialog, so a returning visitor's launch starts at once. A launch waits for
+ * a first visitor's answer: gatekeeper refuses one older than 5 minutes, and
+ * that failure comes back here as `?launchError` and lands on the connect
+ * menu. A ref guards the authorize, so StrictMode's second effect run cannot
+ * spend the launch twice. A page restored from the back-forward cache after
+ * leaving for the authorization server does not re-run the authorize: it
+ * replaces itself with the bare app root, a plain visit. The answer goes to
+ * `telemetry-react`'s `useConsentedTelemetryStart` with `telemetry`'s DSN and
+ * the tags `app` and `launch` (`launching`, `launched` or `standalone`), and the SDK starts only if a switch is on. Once
+ * it runs, the root tags events with the FHIR server's host when the handshake
+ * completes, reports every failed read on its client,
  * and reports the launch failure the page arrived with (a failed handshake
  * among them), once.
  *
- * The branch is latched on mount: fhirclient's `oauth2.ready()` strips
+ * The case is latched on mount: fhirclient's `oauth2.ready()` strips
  * `code`/`state` once the exchange completes, so re-reading the URL later
  * would flip a finished launch back to the connect menu. See the
  * guardrails in `slices/smart-app/AGENTS.md`.
  */
 function SmartAppRoot({
   app,
-  standalone,
+  registration,
   telemetry,
   launched,
+  replaceLocation = replaceWindowLocation,
   children,
 }: SmartAppRootProps): JSX.Element {
-  const [isLaunched] = useState(() => launched ?? shouldCompleteSmartLaunch())
+  const [arrival] = useState((): RootArrival => {
+    if (launched !== undefined) return launched ? 'callback' : 'visit'
+    if (shouldCompleteSmartLaunch()) return 'callback'
+    return Option.isSome(arrivingSmartLaunchFrom(window.location.search)) ? 'launch' : 'visit'
+  })
 
   // A failed launch lands back here carrying its reason — our own `?launchError`
   // from the launch page or the token exchange, or the authorization server's
-  // own OAuth `?error`. Latched on mount for the same reason as `isLaunched`:
+  // own OAuth `?error`. Latched on mount for the same reason as `arrival`:
   // completing a handshake rewrites the URL, and the menu's banner must not
   // vanish because of it. The menu drops it once the reader starts another
   // connect.
@@ -141,7 +232,7 @@ function SmartAppRoot({
   // answer starts Sentry.
   const { telemetryStarted, startTelemetry } = useConsentedTelemetryStart({
     dsn: telemetry.dsn,
-    tags: { app: telemetry.app, launch: isLaunched ? 'launched' : 'standalone' },
+    tags: { app: telemetry.app, launch: LAUNCH_TAGS[arrival] },
     onFirstStart: () => {
       if (launchFailure === null) return
       Sentry.captureException(launchFailure, { tags: { source: 'launch-error' } })
@@ -175,28 +266,34 @@ function SmartAppRoot({
 
   return (
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
-      <QueryClientProvider client={queryClient}>
-        {isLaunched ? (
-          <>
-            <BrandBar trailing={<ConsentStatusControl />} />
-            <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
-              {children}
-            </CrashReportingBoundary>
-          </>
-        ) : (
-          <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
-            <CrashReportingBoundary extraContext={{ app: telemetry.app }} headingLevel={2}>
-              <ConnectMenu
-                target="fhir-r4"
-                clientId={standalone.clientId}
-                scope={standalone.scope}
-                redirectUri={redirectUri}
-                arrivalProblem={launchFailure ?? undefined}
-              />
-            </CrashReportingBoundary>
-          </AppLandingPage>
-        )}
-      </QueryClientProvider>
+      {arrival === 'launch' ? (
+        <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
+          <LaunchingApp app={app} registration={registration} replaceLocation={replaceLocation} />
+        </CrashReportingBoundary>
+      ) : (
+        <QueryClientProvider client={queryClient}>
+          {arrival === 'callback' ? (
+            <>
+              <BrandBar trailing={<ConsentStatusControl />} />
+              <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
+                {children}
+              </CrashReportingBoundary>
+            </>
+          ) : (
+            <AppLandingPage app={app} aboveFooter={<ConsentStatusControl />}>
+              <CrashReportingBoundary extraContext={{ app: telemetry.app }} headingLevel={2}>
+                <ConnectMenu
+                  target="fhir-r4"
+                  clientId={registration.clientId}
+                  scope={registration.scope}
+                  redirectUri={redirectUri}
+                  arrivalProblem={launchFailure ?? undefined}
+                />
+              </CrashReportingBoundary>
+            </AppLandingPage>
+          )}
+        </QueryClientProvider>
+      )}
     </TelemetryConsentGate>
   )
 }

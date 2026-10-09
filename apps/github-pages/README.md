@@ -84,9 +84,8 @@ vp test                        # unit tests for the layout
 
 `build` is `src/assemble.ts`, which refuses to write anything if the layout
 resolves outside `dist/`, copies the sections' build outputs into `dist/`, and
-fails if a required file (a section's `index.html`, the root `CNAME`, or the
-`launch.html` SMART launch entry of the medications, Web Trace and Importer
-apps) is missing — a silently empty upstream build never gets published. Running
+fails if a required file (a section's `index.html` or the root `CNAME`) is
+missing — a silently empty upstream build never gets published. Running
 it on its own expects the
 sections to have been built already; `vp run pack` guarantees that ordering.
 
