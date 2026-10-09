@@ -110,7 +110,7 @@ import `branding-react/styles.css` itself.
   there, so it is reported once. An app keeps the plain
   `FetchHttpClient.layer`. Tests cover each branch
   directly (`smart-app-root.test.tsx`).
-- **The telemetry status control is on both branches.** It sits in
+- **The telemetry status control is on the launched and standalone branches.** It sits in
   `BrandBar`'s `trailing` slot on the launched branch and in
   `AppLandingPage`'s `aboveFooter` row on the standalone branch, and reopens
   the dialog.

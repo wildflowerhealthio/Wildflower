@@ -262,7 +262,7 @@ workspace `source` condition at bundle time.
   [`importer-react`'s `importer-screen.test.tsx`](../../slices/importer/importer-react/src/importer-screen.test.tsx).
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the Importer
   (the landing `h1` is `APP_DESCRIPTIONS.importer.name`). The chrome gate itself
-  — both branches, the latch, the `ConnectMenu` wiring, the launch-failure
+  — every branch, the latch, the `ConnectMenu` wiring, the launch-failure
   banner, the one shared `QueryClient` — is tested once, in `smart-app-react`'s
   `smart-app-root.test.tsx`.
 - `app.test.tsx` — the whole tree over a recording stub transport, through the

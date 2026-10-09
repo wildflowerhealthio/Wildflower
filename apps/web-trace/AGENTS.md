@@ -177,7 +177,7 @@ than adopting it — you get no dev tile until that app is renamed.
   [`fhir-r4-react`'s `smart-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.test.ts).
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the Web
   Trace Viewer (the landing `h1` is `APP_DESCRIPTIONS.webTrace.name`). The
-  chrome gate itself — both branches, the latch, the `ConnectMenu` wiring, the
+  chrome gate itself — every branch, the latch, the `ConnectMenu` wiring, the
   launch-failure banner, the one shared `QueryClient` — is tested once, in
   `smart-app-react`'s `smart-app-root.test.tsx`.
 - `app.test.tsx` — the whole tree over a stub transport. It asserts the URL and
