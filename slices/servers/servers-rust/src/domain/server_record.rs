@@ -68,16 +68,13 @@ pub struct ServerRecord {
 
 impl ServerRecord {
     /// The CA a new server's certificates are ordered from: Let's Encrypt's
-    /// staging CA, and setting it to [`CertificateAuthority::LetsEncrypt`] is
-    /// the switch to production certificates for new servers.
+    /// production CA, whose certificates browsers trust.
     ///
-    /// Staging, because every server's domain is under its relay's domain,
-    /// so all of a relay's servers share one registered domain, and Let's
-    /// Encrypt issues at most 50 certificates per registered domain in 7 days.
-    /// Production waits for the relay's limit increase (#899). Staging
-    /// certificates aren't publicly trusted.
+    /// Every server's domain is under its relay's domain, so all of a relay's
+    /// servers share one registered domain, and with it Let's Encrypt's limit
+    /// of 50 certificates per registered domain per week.
     pub const DEFAULT_CERTIFICATE_AUTHORITY: CertificateAuthority =
-        CertificateAuthority::LetsEncryptStaging;
+        CertificateAuthority::LetsEncrypt;
 
     /// The server's domain, `<tunnel name>.<relay domain>`: its identity in
     /// the registry, its issuer, and the name of its data folder.

@@ -16,7 +16,9 @@ changing how servers run or what the host notifies about them.
   and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
   `ServerDetail`, what its runs report (health and certificate state), its
   `ServerConsentDecider` included, through which the base reads and decides a
-  running server's consents; `ServerStatus`, a server's status on `UnitRunner`
+  running server's consents, and its `ServerLaunchMinter`, through which it
+  mints a running server's launches; launching (`ensure_launchable`,
+  `launch_url`, `LaunchError`); `ServerStatus`, a server's status on `UnitRunner`
   as the base receives it, and `ListedServer`, with the certificate state its
   run reported or its cache holds; `PendingConsent`, the oldest consent
   waiting on a server, with `PendingConsentTracker`; and the notification
@@ -31,13 +33,15 @@ changing how servers run or what the host notifies about them.
     certificate state's wire shape (`certificate_state_wire`),
     `PendingConsent` with `ConsentKey` and `PendingConsentTracker`, the
     consent commands' wire (`ConsentDetails`, `ConsentApproval`,
-    `ApprovalOutcome`, `ConsentError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
+    `ApprovalOutcome`, `ConsentError`), launching (`ensure_launchable`,
+    `launch_url`, `LaunchError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
     `StopNotificationCoalescer` with `ServerStop` and `StopCause`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
-    `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`, and
-    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`.
+    `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
+    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`;
+    and `ServerLaunchMinter`, bound to its `LaunchContextMinter`.
     `tests/server_unit.rs` runs the real
     server through `UnitRunner`, its consents included.
 - **`servers-tauri-rust`** — the host side. `host_servers`, called from the
@@ -49,7 +53,9 @@ changing how servers run or what the host notifies about them.
   `server_add`, `server_set_credentials`, `server_set_run_policy`,
   `server_update` and `server_remove`, each writing the registry and then
   pushing what it wrote; and the consent commands, `pending_consents_list`,
-  `server_consent_get`, `server_consent_approve` and `server_consent_deny`. Only glue; every decision and
+  `server_consent_get`, `server_consent_approve` and `server_consent_deny`;
+  and `server_launch`, which opens a server's launcher in a native web view
+  behind the `LauncherWindows` port. Only glue; every decision and
   its tests are in `servers-rust`, except the commands' own order of write and
   push, tested here against a real `TauriUnitRunner`.
 - **`servers-core`** — the host commands the base calls, as Effects over the
@@ -134,14 +140,13 @@ changing how servers run or what the host notifies about them.
   keyed by the domain, and each server runs from its own folder,
   `<data root>/servers/<domain>/` (`ServerRecord::server_dir`), which holds
   its databases and, in `certificates/`, its certificates and their keys.
-- **New servers get staging certificates.** A record's
+- **New servers get production certificates.** A record's
   `certificate_authority`, a `CertificateAuthority` (`LetsEncryptStaging` or
   `LetsEncrypt`, from `wildflower-server-rust`, re-exported here), is the
   ACME CA its runs order from.
-  `ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY` is `LetsEncryptStaging`,
-  because all of a relay's servers share its registered domain and its limit
-  of 50 certificates in 7 days until the limit increase (#899). Setting it to
-  `LetsEncrypt` is the switch to production.
+  `ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY` is `LetsEncrypt`. All of a
+  relay's servers share its registered domain, and with it Let's Encrypt's
+  limit of 50 certificates per registered domain per week.
 - **One ACME account per install.** Every server orders its certificates
   with the account whose key is in `<data root>/acme-account/`, one key per
   CA, created by the first order.
@@ -324,6 +329,22 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   is remembered as a standing grant, as one in the Owner UI is. Errors are
   `{kind, message}`: `serverNotRunning`, `notPending`,
   `registrationNotAcknowledged` or `gatekeeper`.
+- **Launching opens the launcher with a launch for any client.**
+  `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
+  once unless `ensure_launchable` passes for the server's status (its run
+  is up, its `health` `reachable`, its run's certificate `noRenewalNeeded`
+  or `renewalDue`), mints a launch through the `ServerLaunchMinter` in the
+  run's detail on a blocking thread, and opens `launch_url`: the launcher
+  URL with `iss=https://<domain>/fhir-r4` and `launch` in its query, any
+  earlier `iss` or `launch` replaced. The launch binds no OAuth client, so
+  any app can be a launcher. The launcher opens in a native web view of its
+  own, `launcher-<domain>` with its dots as `_`, titled with the domain; a
+  user dismissal disposes it, so it stops counting as an open window for
+  `WhileOpen`. It never changes the run policy. Errors are `{kind,
+message}`: `serverNotRunning`, `notYetProbed`, `unreachable`,
+  `noValidCertificate`, `gatekeeper`, `openingLauncher`, or the registry's
+  `notRegistered` or `registry`. The golden file pins the refusals the base
+  shows.
 - **One `pending-consent` per change.** A run's gatekeeper publishes its
   queue's head on the run's own channel; the run sets it as
   `ServerDetail::pending_consent` (and forwards it to the host's shared

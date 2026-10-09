@@ -14,6 +14,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
 # Posting the stop and request notifications.
 tauri-plugin-notification = "2"
+# Opening a server's launcher in a native web view of its own.
+tauri-plugin-native-webview = { path = "../../../plugins/tauri-plugin-native-webview" }
 # The app's `TauriUnitRunner`, which the servers are pushed to as units.
 tauri-unit-runner = { path = "../../../global/tauri-unit-runner" }
 # The registry, enrolment and the relay client adapter the commands drive;
@@ -22,7 +24,8 @@ servers-rust = { path = "../servers-rust" }
 # The config and host ports each server's run reads, and a stopped server's
 # certificate state, read from its cache.
 wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
-# The gatekeeper's failure a consent command that couldn't run answers with.
+# The gatekeeper's failure a consent or launch command that couldn't run
+# answers with.
 gatekeeper-rust = { path = "../../gatekeeper/gatekeeper-rust" }
 # `ForwardedRequest`, which the servers report and the request notifications
 # count.

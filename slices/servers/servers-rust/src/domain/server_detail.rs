@@ -5,6 +5,7 @@ use gatekeeper_rust::PendingConsentHead;
 use wildflower_server_rust::{CertificateState, ServerHealth};
 
 use crate::live_bindings::server_consent_decider::ServerConsentDecider;
+use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
 
 /// A server's own status: `UnitRunner`'s `Detail` for a
 /// [`ServerUnit`](crate::ServerUnit). `UnitRunner` reports it in the server's
@@ -27,4 +28,8 @@ pub struct ServerDetail {
     /// sets it; it is `None` only in a detail built without a server, as the
     /// domain's tests build theirs.
     pub consent_decider: Option<ServerConsentDecider>,
+    /// How the host mints the launches it opens this server's launcher with.
+    /// A run always sets it; it is `None` only in a detail built without a
+    /// server, as the domain's tests build theirs.
+    pub launch_minter: Option<ServerLaunchMinter>,
 }

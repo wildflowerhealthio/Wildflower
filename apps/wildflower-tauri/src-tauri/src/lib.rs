@@ -273,6 +273,7 @@ pub fn run() {
             servers_tauri_rust::server_set_run_policy,
             servers_tauri_rust::server_update,
             servers_tauri_rust::server_remove,
+            servers_tauri_rust::server_launch,
             // The base's consent commands, granted to the `main` webview only
             // (`allow-server-consents`).
             servers_tauri_rust::pending_consents_list,
