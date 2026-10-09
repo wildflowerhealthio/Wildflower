@@ -1736,7 +1736,7 @@ describe('Add server', () => {
     await enterCustomRelay(user, relay, { rathole: true })
 
     // Assert
-    expect(within(relay).getByText(/the connection is tested when the server starts/)).toBeDefined()
+    expect(within(relay).getByText(/will be tested when the server starts/)).toBeDefined()
     expect(within(relay).getByRole('link', { name: 'rathole' })).toHaveProperty(
       'href',
       'https://github.com/rathole-org/rathole'
