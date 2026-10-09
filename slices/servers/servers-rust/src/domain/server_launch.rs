@@ -45,7 +45,8 @@ pub fn launch_url(launcher_url: &Url, domain: &str, launch: &str) -> Url {
 ///
 /// - [`LaunchError::ServerNotRunning`] when the server has no status, or its
 ///   run isn't up;
-/// - [`LaunchError::NotYetProbed`] when its `/health` hasn't been asked yet;
+/// - [`LaunchError::NotYetProbed`] when its `/health` hasn't been asked yet,
+///   or its run hasn't reported a detail;
 /// - [`LaunchError::Unreachable`] when it didn't answer;
 /// - [`LaunchError::NoValidCertificate`] when the run holds no valid
 ///   certificate, or hasn't reported one.
@@ -53,25 +54,25 @@ pub fn ensure_launchable<'a>(
     domain: &str,
     unit_status: Option<&'a UnitStatus<ServerDetail>>,
 ) -> Result<&'a ServerDetail, LaunchError> {
-    let detail = unit_status
+    let running = unit_status
         .filter(|unit_status| unit_status.run_state == RunState::Running)
-        .and_then(|unit_status| unit_status.detail.as_ref())
         .ok_or_else(|| LaunchError::ServerNotRunning {
             domain: domain.to_owned(),
         })?;
-    match &detail.health {
-        None => {
-            return Err(LaunchError::NotYetProbed {
-                domain: domain.to_owned(),
-            })
-        }
-        Some(ServerHealth::Unreachable { error }) => {
+    // A run that hasn't reported its detail yet hasn't probed its health
+    // either.
+    let not_yet_probed = || LaunchError::NotYetProbed {
+        domain: domain.to_owned(),
+    };
+    let detail = running.detail.as_ref().ok_or_else(not_yet_probed)?;
+    match detail.health.as_ref().ok_or_else(not_yet_probed)? {
+        ServerHealth::Unreachable { error } => {
             return Err(LaunchError::Unreachable {
                 domain: domain.to_owned(),
                 error: error.clone(),
             })
         }
-        Some(ServerHealth::Reachable(_)) => {}
+        ServerHealth::Reachable(_) => {}
     }
     let holds_valid_certificate = detail.certificate.as_ref().is_some_and(|certificate| {
         matches!(
@@ -90,8 +91,8 @@ pub fn ensure_launchable<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::golden;
     use crate::domain::server_status::tests::{golden_statuses, running_and_reachable, RUTH};
+    use crate::domain::{golden, ServerStatus};
 
     fn launcher(url: &str) -> Url {
         Url::parse(url).unwrap()
@@ -169,10 +170,16 @@ mod tests {
     fn a_server_not_yet_probed_or_unreachable_is_refused() {
         let mut not_yet_probed = running_and_reachable();
         not_yet_probed.detail.as_mut().unwrap().health = None;
-        assert!(matches!(
-            ensure_launchable(RUTH, Some(&not_yet_probed)),
-            Err(LaunchError::NotYetProbed { .. })
-        ));
+        let without_a_detail = UnitStatus {
+            detail: None,
+            ..running_and_reachable()
+        };
+        for unit_status in [not_yet_probed, without_a_detail] {
+            assert!(matches!(
+                ensure_launchable(RUTH, Some(&unit_status)),
+                Err(LaunchError::NotYetProbed { .. })
+            ));
+        }
 
         let mut unreachable = running_and_reachable();
         unreachable.detail.as_mut().unwrap().health = Some(ServerHealth::Unreachable {
@@ -216,6 +223,57 @@ mod tests {
                 "{status:?}"
             );
         }
+    }
+
+    /// A running, reachable server's refusal for each certificate status, or
+    /// none for a valid certificate, is the one the golden file pins:
+    /// `servers-core` checks its own readiness against the same entries.
+    #[test]
+    fn each_certificate_status_s_refusal_is_as_the_golden_file_says() {
+        let golden = golden();
+        let statuses = [
+            CertificateStatus::NotIssued,
+            CertificateStatus::Ordering,
+            CertificateStatus::NoRenewalNeeded,
+            CertificateStatus::RenewalDue,
+            CertificateStatus::Expired,
+            CertificateStatus::CacheUnreadable,
+            CertificateStatus::OrderFailing,
+        ];
+        for status in statuses {
+            let mut unit_status = running_and_reachable();
+            let certificate = unit_status
+                .detail
+                .as_mut()
+                .unwrap()
+                .certificate
+                .as_mut()
+                .unwrap();
+            certificate.status = status;
+            let wire_status = serde_json::to_value(ServerStatus {
+                domain: RUTH.to_owned(),
+                certificate: certificate.clone(),
+                unit_status: unit_status.clone(),
+            })
+            .unwrap()["certificate"]["status"]
+                .clone();
+            let refusal = ensure_launchable(RUTH, Some(&unit_status))
+                .err()
+                .map(|error| error.kind());
+            assert_eq!(
+                serde_json::to_value(refusal).unwrap(),
+                golden["launchRefusalsByCertificateStatus"][wire_status.as_str().unwrap()],
+                "{status:?}"
+            );
+        }
+        assert_eq!(
+            golden["launchRefusalsByCertificateStatus"]
+                .as_object()
+                .unwrap()
+                .len(),
+            statuses.len(),
+            "every certificate status is checked"
+        );
     }
 
     /// Each golden status's refusal, or none for a launchable server, is the

@@ -371,6 +371,15 @@
     "stoppedByThePlatform": "serverNotRunning",
     "stoppedAsItsPolicyEnded": "serverNotRunning"
   },
+  "launchRefusalsByCertificateStatus": {
+    "notIssued": "noValidCertificate",
+    "ordering": "noValidCertificate",
+    "noRenewalNeeded": null,
+    "renewalDue": null,
+    "expired": "noValidCertificate",
+    "cacheUnreadable": "noValidCertificate",
+    "orderFailing": "noValidCertificate"
+  },
   "launchErrors": [
     { "kind": "serverNotRunning", "message": "the server ruth.relay.example.com isn't running" },
     {

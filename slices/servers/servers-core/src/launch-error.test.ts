@@ -31,16 +31,18 @@ describe('LaunchError.statusRefusalOf', () => {
     }
   )
 
-  it('should accept a certificate due for renewal, and refuse one that is not valid', () => {
-    expect(LaunchError.statusRefusalOf(runningAndReachableWithCertificate('renewalDue'))).toEqual(
-      Option.none()
-    )
-    for (const status of ['ordering', 'orderFailing']) {
-      expect(LaunchError.statusRefusalOf(runningAndReachableWithCertificate(status))).toEqual(
-        Option.some('noValidCertificate')
+  it.each(Object.entries(golden.launchRefusalsByCertificateStatus))(
+    "should refuse a running, reachable server whose certificate is %s as the host's server_launch does",
+    (certificateStatus, refusal) => {
+      // Act
+      const refused = LaunchError.statusRefusalOf(
+        runningAndReachableWithCertificate(certificateStatus)
       )
+
+      // Assert
+      expect(refused).toEqual(Option.fromNullable(refusal))
     }
-  })
+  )
 })
 
 describe('launchServer', () => {
