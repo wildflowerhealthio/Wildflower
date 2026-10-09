@@ -388,7 +388,9 @@ const RelayAndTunnel = ({
 /**
  * The server's certificate for its domain: its status, the CA it is ordered
  * from, the certificate held, with when it is valid and its fingerprint, and
- * the run's latest error since it last deployed one.
+ * the run's latest error since it last deployed one. The section shows each
+ * row in full (`maxLines={null}`): the fingerprint is compared by hand and a
+ * CA's error detail can run long.
  */
 const certificateItems = (certificate: CertificateState.Type): readonly ItemListItem[] => [
   {
@@ -425,8 +427,8 @@ const certificateItems = (certificate: CertificateState.Type): readonly ItemList
  * The launcher the server opens apps from: a field starting at the saved
  * URL, Save once it is changed, and, while the saved URL isn't
  * `defaultLauncherUrl`, the one the host gives a new server, Reset to
- * default, which saves the default at once. The certificate authority is saved unchanged, and the
- * host's refusal shows under the field.
+ * default, which saves the default at once. The certificate authority is
+ * saved unchanged, and the host's refusal shows under the field.
  */
 const Launcher = ({
   server,
@@ -627,7 +629,7 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
         defaultLauncherUrl={defaultLauncherUrl}
         runHostCommand={runHostCommand}
       />
-      <ItemList title="Certificate" maxLines={3} items={certificateItems(server.certificate)} />
+      <ItemList title="Certificate" maxLines={null} items={certificateItems(server.certificate)} />
       <DangerZone server={server} runHostCommand={runHostCommand} />
     </>
   )
