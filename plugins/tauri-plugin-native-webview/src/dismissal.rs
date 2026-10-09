@@ -14,12 +14,12 @@
 //! consumes the mark at that hide's `Hidden`.
 //!
 //! The dispose is queued off the event path, so an open of the same instance
-//! can land before it runs. Each open of an instance counts, and the queued
-//! dispose goes ahead only while no open has come since the dismissal; once it
-//! starts, an open waits for the backend's `dispose` to return, by which time
-//! the backend defers it into its own dispose→open replay (see
-//! docs/Lifecycle and Races Explanation.md § "The dispose→open \"switch-demo\"
-//! race").
+//! can land before it runs. Each open is numbered, and the queued dispose goes
+//! ahead only while no open has come since the dismissal; once it starts, an
+//! open waits for the backend's `dispose` to return, by which time the backend
+//! defers it into its own dispose→open replay (see docs/Lifecycle and Races
+//! Explanation.md § "The dispose→open \"switch-demo\" race"). A disposed
+//! instance is forgotten; its next open tracks it afresh.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
@@ -47,22 +47,29 @@ pub enum DismissalAction {
 }
 
 /// An instance whose latest open chose [`DismissalAction::Dispose`].
-#[derive(Debug, Default)]
+///
+/// Each open resets [`host_hide_in_flight`](Self::host_hide_in_flight), so a
+/// host `hide()` still in flight when the same id reopens loses its mark and
+/// its `Hidden` disposes the new open. Nothing calls `hide()` on a `Dispose`
+/// instance today.
+#[derive(Debug)]
 struct DisposingInstance {
     /// Whether a host `hide()` of it is in flight, so its `Hidden` is not a
     /// user dismissal.
     host_hide_in_flight: bool,
-    /// How many opens of it there have been, so a dispose queued by a
-    /// dismissal can tell whether an open came since.
-    opens: u64,
+    /// Its latest open, so a dispose queued by a dismissal can tell whether an
+    /// open came since.
+    latest_open: OpenNumber,
 }
 
-/// The `Dispose` instances, by id, and the ids whose queued dispose is
-/// calling the backend now.
+/// The `Dispose` instances, by id, until they are disposed or reopened with
+/// `Hide`; the ids whose queued dispose is calling the backend now; and how
+/// many `Dispose` opens there have been, which numbers the next.
 #[derive(Debug, Default)]
 struct Instances {
     disposing: HashMap<String, DisposingInstance>,
     dispose_starting: HashSet<String>,
+    dispose_opens: u64,
 }
 
 /// The instances whose latest open chose [`DismissalAction::Dispose`], with
@@ -80,10 +87,14 @@ struct Shared {
     dispose_finished: Condvar,
 }
 
-/// The open of an instance a user dismissal disposes: the count of its opens
-/// when it was dismissed.
+/// A `Dispose` open, numbered across every instance, so a forgotten
+/// instance's next open is never mistaken for an earlier one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct DismissedOpen(u64);
+struct OpenNumber(u64);
+
+/// The open of an instance a user dismissal disposes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DismissedOpen(OpenNumber);
 
 impl DisposingOnDismissal {
     fn lock(&self) -> MutexGuard<'_, Instances> {
@@ -108,9 +119,15 @@ impl DisposingOnDismissal {
             .unwrap_or_else(PoisonError::into_inner);
         match on_dismiss {
             DismissalAction::Dispose => {
-                let instance = instances.disposing.entry(id.to_owned()).or_default();
-                instance.host_hide_in_flight = false;
-                instance.opens += 1;
+                instances.dispose_opens += 1;
+                let latest_open = OpenNumber(instances.dispose_opens);
+                instances.disposing.insert(
+                    id.to_owned(),
+                    DisposingInstance {
+                        host_hide_in_flight: false,
+                        latest_open,
+                    },
+                );
             }
             DismissalAction::Hide => {
                 instances.disposing.remove(id);
@@ -153,12 +170,13 @@ impl DisposingOnDismissal {
         let mut instances = self.lock();
         let instance = instances.disposing.get_mut(id)?;
         let host_hide = std::mem::take(&mut instance.host_hide_in_flight);
-        (!host_hide).then_some(DismissedOpen(instance.opens))
+        (!host_hide).then_some(DismissedOpen(instance.latest_open))
     }
 
     /// Run the dispose a user dismissal of `dismissed` queued for `id`,
     /// through the backend's `dispose`, unless an open of `id` came since:
-    /// that open owns the instance now. Opens wait while `dispose` runs.
+    /// that open owns the instance now. Opens wait while `dispose` runs, and
+    /// find `id` forgotten once it returns.
     fn dispose_unless_reopened(
         &self,
         id: &str,
@@ -170,14 +188,18 @@ impl DisposingOnDismissal {
             let reopened = instances
                 .disposing
                 .get(id)
-                .is_none_or(|instance| DismissedOpen(instance.opens) != dismissed);
+                .is_none_or(|instance| DismissedOpen(instance.latest_open) != dismissed);
             if reopened {
                 return;
             }
             instances.dispose_starting.insert(id.to_owned());
         }
         dispose(id);
-        self.lock().dispose_starting.remove(id);
+        {
+            let mut instances = self.lock();
+            instances.dispose_starting.remove(id);
+            instances.disposing.remove(id);
+        }
         self.0.dispose_finished.notify_all();
     }
 }
@@ -468,6 +490,39 @@ mod tests {
             *second.disposed.lock().unwrap(),
             vec!["launcher-a".to_owned()]
         );
+    }
+
+    /// A disposed instance is forgotten: a `Hidden` on its lingering channel
+    /// queues nothing, and its next open tracks it afresh.
+    #[test]
+    fn a_disposed_instance_is_forgotten() {
+        let disposing_on_dismissal = DisposingOnDismissal::default();
+        let first = dispose_open(&disposing_on_dismissal, "launcher-a");
+        first.dismiss();
+        assert!(disposing_on_dismissal.lock().disposing.is_empty());
+        first.channel.send(NativeWebviewEvent::Hidden).unwrap();
+        assert!(first.queued.lock().unwrap().is_empty());
+
+        let second = dispose_open(&disposing_on_dismissal, "launcher-a");
+        second.dismiss();
+        assert_eq!(
+            *second.disposed.lock().unwrap(),
+            vec!["launcher-a".to_owned()]
+        );
+    }
+
+    /// A `Hide` open then a `Dispose` open, both before the queued dispose
+    /// runs, still count as opens since the dismissal.
+    #[test]
+    fn a_hide_then_dispose_reopen_keeps_the_instance() {
+        let open = dispose_open(&DisposingOnDismissal::default(), "launcher-a");
+        open.channel.send(NativeWebviewEvent::Hidden).unwrap();
+        open.disposing_on_dismissal
+            .record_open("launcher-a", DismissalAction::Hide);
+        open.disposing_on_dismissal
+            .record_open("launcher-a", DismissalAction::Dispose);
+        open.run_queued_disposes();
+        assert!(open.disposed.lock().unwrap().is_empty());
     }
 
     /// An open that lands while the queued dispose is calling the backend
