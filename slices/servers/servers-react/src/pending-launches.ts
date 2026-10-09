@@ -35,7 +35,7 @@ interface PendingLaunches {
 }
 
 /** A store holding no pending launch. */
-const makePendingLaunches = (): PendingLaunches => {
+const makeEmptyPendingLaunches = (): PendingLaunches => {
   const launches = new Map<string, PendingLaunch>()
   const listeners = new Set<() => void>()
   return {
@@ -65,5 +65,5 @@ const usePendingLaunch = (
     useSyncExternalStore(pendingLaunches.subscribe, () => pendingLaunches.snapshotOf(domain))
   )
 
-export { makePendingLaunches, usePendingLaunch }
+export { makeEmptyPendingLaunches, usePendingLaunch }
 export type { PendingLaunch, PendingLaunches }

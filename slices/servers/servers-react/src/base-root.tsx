@@ -17,7 +17,7 @@ import {
 } from 'telemetry-react'
 import { Sentry } from 'telemetry-web'
 
-import { makePendingLaunches } from './pending-launches.ts'
+import { makeEmptyPendingLaunches } from './pending-launches.ts'
 import { type ListenToHostEvent, runHostCommandWith, runHttpRequestWith } from './router-context.ts'
 import { buildBaseRouter } from './router.ts'
 
@@ -130,7 +130,7 @@ function BaseRouter({
         runHttpRequest: runHttpRequestWith(httpClient ?? FetchHttpClient.layer),
         listenToHostEvent: listen,
         defaultLauncherUrl,
-        pendingLaunches: makePendingLaunches(),
+        pendingLaunches: makeEmptyPendingLaunches(),
       },
     })
   )
