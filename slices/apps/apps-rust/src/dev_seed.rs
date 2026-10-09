@@ -52,12 +52,9 @@ struct DevApp {
 }
 
 /// The SMART EHR-launch URL template for a standard first-party dev app,
-/// pointed at its loopback dev server.
+/// pointed at its loopback dev server's root.
 fn dev_launch_url(port: i32) -> String {
-    format!(
-        "http://localhost:{port}/launch.html\
-         ?launch={{launch}}&iss={{origin}}/fhir-r4"
-    )
+    format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4")
 }
 
 /// The OHIF viewer's dev launch URL — `/fhir-viewer` route with the **dev**
@@ -359,7 +356,7 @@ mod tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            format!("http://localhost:{port}/launch.html?launch={{launch}}&iss={{origin}}/fhir-r4"),
+            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4"),
         );
     }
 
@@ -379,7 +376,7 @@ mod tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            format!("http://localhost:{port}/launch.html?launch={{launch}}&iss={{origin}}/fhir-r4"),
+            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4"),
         );
     }
 
@@ -399,7 +396,7 @@ mod tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            format!("http://localhost:{port}/launch.html?launch={{launch}}&iss={{origin}}/fhir-r4"),
+            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4"),
         );
     }
 
