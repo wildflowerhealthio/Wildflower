@@ -25,7 +25,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * is picked on this page, after the grant, so the token carries no patient
  * context and a `patient/` scope would reach nothing. There is no
  * `launch/patient` for the same reason, and no bare `launch`: that scope is
- * EHR-launch-only, and this app has no `launch.html`.
+ * EHR-launch-only, and no EHR launches this app.
  *
  * `clientId` depends on how this build is being served:
  *

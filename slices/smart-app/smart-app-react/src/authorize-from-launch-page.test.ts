@@ -1,9 +1,8 @@
-import { cleanup, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { launchErrorFrom, type SmartLaunchConfig } from 'fhir-r4-react/smart'
 import type * as Smart from 'fhir-r4-react/smart'
-import { authorizeFromLaunchPage, runSmartLaunchEntry } from './smart-launch-entry.ts'
+import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 
 // Stub the one call that leaves the page: fhirclient's authorize redirect.
 const { authorizeSmartLaunchMock } = vi.hoisted(() => ({
@@ -20,7 +19,7 @@ const LAUNCH = {
 }
 
 const LAUNCH_PAGE =
-  'https://wildflowerhealth.io/importer-app/launch.html?iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz'
+  'https://wildflowerhealth.io/importer-app/?iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz'
 
 beforeEach(() => {
   authorizeSmartLaunchMock.mockReset()
@@ -58,47 +57,3 @@ describe('authorizeFromLaunchPage', () => {
     expect(reported).toHaveProperty('iss', 'https://ehr.example/fhir')
   })
 })
-
-describe('runSmartLaunchEntry', () => {
-  beforeEach(() => {
-    stubMatchMedia()
-    document.body.innerHTML = '<div id="root"></div>'
-  })
-
-  afterEach(() => {
-    cleanup()
-    vi.unstubAllGlobals()
-    document.body.innerHTML = ''
-  })
-
-  it('should show the loading line under the brand bar while the authorize is in flight', async () => {
-    // Arrange — discovery never settles, as while the redirect is pending
-    authorizeSmartLaunchMock.mockReturnValue(new Promise<never>(() => undefined))
-
-    // Act
-    void runSmartLaunchEntry({ launch: LAUNCH, loadingMessage: 'Launching Importer…' })
-
-    // Assert
-    expect(await screen.findByText('Launching Importer…')).toBeDefined()
-    expect(screen.getByRole('link', { name: 'Wildflower, home' })).toBeDefined()
-    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith({
-      ...LAUNCH,
-      redirectUri: new URL('.', window.location.href).href,
-    })
-  })
-})
-
-// Helpers
-
-/**
- * jsdom ships no `matchMedia`, which the entry's OS colour-scheme listener
- * calls. Stubbed as "light, never changes".
- */
-function stubMatchMedia(): void {
-  vi.stubGlobal('matchMedia', (media: string) => ({
-    matches: false,
-    media,
-    addEventListener: (): void => undefined,
-    removeEventListener: (): void => undefined,
-  }))
-}

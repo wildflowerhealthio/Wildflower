@@ -5,7 +5,7 @@ The Synthesized Health Viewer, a SMART-on-FHIR app published to
 with a `health-viewer-app-dev` row in debug builds. See [README.md](./README.md)
 for the boot structure, the page and how to run it.
 
-`apps/medications-app` is the template: the same two HTML entries, relative
+`apps/medications-app` is the template: the same one HTML entry, relative
 `base`, build into the package's own `dist/`, `SmartAppRoot` shell, and the
 same paged-read drain (`useFetchEveryPage`) and read-status lines.
 

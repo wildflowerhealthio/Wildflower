@@ -46,23 +46,13 @@ const LIFTING_SCOPE =
 const LIFTING_CLIENT_ID = import.meta.env.DEV ? 'lifting-app-dev' : 'lifting-app'
 
 /**
- * SMART registration for the EHR launch (`launch.html`). `iss` / `launch` are
- * read from the launch URL by fhirclient, so they are not set here;
- * `redirectUri` is computed at launch time from the current origin.
+ * SMART registration for every launch the app root starts: one its URL
+ * carries (`iss` / `launch`, read off the URL by fhirclient) and the
+ * standalone connect menu's, where the user picks the FHIR server. So `iss` is
+ * not set here, and `redirectUri` (the app root) is computed at launch time
+ * from the current origin.
  */
 const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
-  clientId: LIFTING_CLIENT_ID,
-  scope: LIFTING_SCOPE,
-}
-
-/**
- * SMART registration for the **standalone** connect flow (the `ConnectMenu` the
- * app root renders when the URL carries no OAuth callback), where the user
- * picks the FHIR server rather than the EHR naming it. The same client and
- * scopes as {@link smartConfig}, so its redirect URI (the app root) resolves
- * the same way.
- */
-const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: LIFTING_CLIENT_ID,
   scope: LIFTING_SCOPE,
 }
@@ -78,4 +68,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'lifting-app',
 }
 
-export { LIFTING_SCOPE, smartAppTelemetry, smartConfig, standaloneSmartConfig }
+export { LIFTING_SCOPE, smartAppTelemetry, smartConfig }

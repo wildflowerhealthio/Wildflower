@@ -57,9 +57,9 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   `/home` the same way (`session/auth-gated-route-options.ts`).
 - **That Home launches every hosted SMART app against the server.** Its list
   is `branding-core`'s `smartAppLaunchPages`: every `APP_DESCRIPTIONS` entry
-  with a `smartLaunchPage`, under the site root `siteRootFor('app', …)` derives
-  from the page's origin and router basepath (a PR preview's own root, the
-  canonical site otherwise). Each tile is a plain link to
+  that `launchesFromUrl`, at its root under the site root
+  `siteRootFor('app', …)` derives from the page's origin and router basepath
+  (a PR preview's own root, the canonical site otherwise). Each tile is a plain link to
   `fhir-r4-react/smart`'s `appLaunchUrl`: SMART Health IT's launcher EHR launch
   (with the session's patient) for one of the launcher's FHIR bases, a
   standalone `?iss=` launch for any other. The list is static; the page calls

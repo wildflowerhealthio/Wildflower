@@ -53,8 +53,8 @@ published path segment is `fhir-sync-pebble`.
 
 ## Standalone only
 
-There is no `launch.html` and no homescreen tile — no `apps-rust` registration,
-production or dev. The page is only ever opened from the Pebble phone app, so
+No EHR launches it and there is no homescreen tile — no `apps-rust`
+registration, production or dev. The page is only ever opened from the Pebble phone app, so
 the root URL is the SMART login: `SmartAppRoot`'s standalone branch renders the
 app's `AppLanding` beside the `ConnectMenu`. The OAuth callback lands back on the
 same `index.html`, where `SmartAppRoot`'s launched branch mounts `App`.

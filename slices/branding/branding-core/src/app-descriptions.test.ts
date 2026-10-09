@@ -70,7 +70,7 @@ describe('APP_DESCRIPTIONS', () => {
 })
 
 describe('smartAppLaunchPages', () => {
-  it('should list the six first-party SMART apps, at their launch pages on the canonical site', () => {
+  it('should list the six first-party SMART apps, at their roots on the canonical site', () => {
     // Act
     const launchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
 
@@ -78,26 +78,26 @@ describe('smartAppLaunchPages', () => {
     expect(launchPages).toStrictEqual([
       {
         app: 'medications',
-        launchPageUrl: 'https://wildflowerhealth.io/medications-app/launch.html',
+        launchPageUrl: 'https://wildflowerhealth.io/medications-app/',
       },
-      { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer-app/launch.html' },
-      { app: 'webTrace', launchPageUrl: 'https://wildflowerhealth.io/web-trace-app/launch.html' },
+      { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer-app/' },
+      { app: 'webTrace', launchPageUrl: 'https://wildflowerhealth.io/web-trace-app/' },
       {
         app: 'healthViewer',
-        launchPageUrl: 'https://wildflowerhealth.io/health-viewer-app/launch.html',
+        launchPageUrl: 'https://wildflowerhealth.io/health-viewer-app/',
       },
       {
         app: 'syntheticData',
-        launchPageUrl: 'https://wildflowerhealth.io/synthetic-data-app/launch.html',
+        launchPageUrl: 'https://wildflowerhealth.io/synthetic-data-app/',
       },
-      { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting-app/launch.html' },
+      { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting-app/' },
     ])
   })
 
-  it('should list exactly the described apps with a launch page, in description order', () => {
+  it('should list exactly the described apps a URL launches, in description order', () => {
     // Arrange
     const launchedApps = DESCRIBED_APP_IDS.filter(
-      (id) => APP_DESCRIPTIONS[id].smartLaunchPage !== undefined
+      (id) => APP_DESCRIPTIONS[id].launchesFromUrl === true
     )
 
     // Act
@@ -133,9 +133,7 @@ describe('smartAppLaunchPages', () => {
 
           // Assert
           for (const { app, launchPageUrl } of launchPages) {
-            expect(launchPageUrl).toBe(
-              `${siteRoot}${SECTION_PATHS[app]}/${APP_DESCRIPTIONS[app].smartLaunchPage ?? ''}`
-            )
+            expect(launchPageUrl).toBe(`${siteRoot}${SECTION_PATHS[app]}/`)
           }
         }
       ),

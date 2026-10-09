@@ -31,30 +31,19 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * the caller's grant against that client's scopes, and `/authorize` matches the
  * redirect against that client's registered URIs.
  *
- * `iss` / `launch` are read from the launch URL by fhirclient, so they are not
- * set here; `redirectUri` is computed at launch time from the current origin.
+ * The app root authorizes with it for every launch it starts: one its URL
+ * carries (`iss` / `launch`, read off the URL by fhirclient) and the standalone
+ * connect menu's, where the user picks the FHIR server. So `iss` is not set
+ * here, and `redirectUri` (the app root) is computed at launch time from the
+ * current origin.
+ *
+ * The bare `launch` scope is formally EHR-context-only per the SMART App
+ * Launch IG (a standalone launch has no EHR context to launch into); sandboxes
+ * such as SmartHealthIT tolerate it, and it is kept on the standalone connect
+ * deliberately per the app's scope set. If a server rejects the authorize
+ * request over it, dropping `launch` is the first thing to try.
  */
 const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
-  clientId: import.meta.env.DEV ? 'web-trace-app-dev' : 'web-trace-app',
-  scope: 'launch openid fhirUser system/DocumentReference.read',
-}
-
-/**
- * SMART registration for the **standalone** connect flow (the `ConnectMenu` the
- * app root renders when the URL carries no OAuth callback), where the user picks
- * the FHIR server rather than the EHR naming it. Same `clientId` selection as
- * {@link smartConfig} — the standalone
- * launch runs through the same registered client, so its redirect URI (the app
- * root) still resolves.
- *
- * The scopes match {@link smartConfig}'s read-only set. Note the bare `launch`
- * scope is formally EHR-context-only per the SMART App Launch IG (a standalone
- * launch has no EHR context to launch into); sandboxes such as SmartHealthIT
- * tolerate it, and it is kept here deliberately per the app's scope set. If a
- * server rejects the authorize request over it, dropping `launch` is the first
- * thing to try.
- */
-const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'web-trace-app-dev' : 'web-trace-app',
   scope: 'launch openid fhirUser system/DocumentReference.read',
 }
@@ -69,4 +58,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'web-trace',
 }
 
-export { smartAppTelemetry, smartConfig, standaloneSmartConfig }
+export { smartAppTelemetry, smartConfig }

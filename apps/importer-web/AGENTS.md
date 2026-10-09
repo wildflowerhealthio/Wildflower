@@ -14,7 +14,7 @@ one adapter the anonymizer's `serverSource` slot asks of a host (it passes
 carry `{ fileName, bytes }`, so the adapter is the identity). The unselected
 screen is unmounted, not hidden.
 
-`apps/web-trace` is the template for this shape (two HTML entries, a relative
+`apps/web-trace` is the template for this shape (one HTML entry, a relative
 `base`, a build into the package's own `dist/`, a memory
 router carrying a SMART-built context, and a standalone `ConnectMenu` beside the
 EHR launch). **One thing is deliberately different: this app writes.** Everything
@@ -61,16 +61,18 @@ package growing a second, prop-threaded way in.
 
 The app is reachable two ways, both wired here:
 
-- **EHR launch** — the homescreen tile (the `importer-app` row) opens
-  `launch.html`, which starts the SMART authorize redirect against the FHIR base
-  the host names (`iss={origin}/fhir-r4`). `index.html` is the redirect target.
+- **EHR launch** — the homescreen tile (the `importer-app` row) opens the app
+  root with `iss={origin}/fhir-r4` and a `launch`, and `SmartAppRoot` starts the
+  SMART authorize redirect against that FHIR base at once. The app root is the
+  redirect target too.
 - **Standalone launch** — a visitor lands on the published `index.html` directly.
   With no OAuth callback in the URL, `app-root.tsx`'s `AppRoot` (the shared
   `SmartAppRoot` from `smart-app-react`) renders `SiteHeader` +
   `AppLanding` beside `ConnectMenu` (also `smart-app-react`) + `SiteFooter` in
   shared Wildflower chrome, where the user picks the FHIR server to import into.
-  `shouldCompleteSmartLaunch()` is the gate between the two; the EHR-launched
-  branch renders `BrandBar` + `App` instead.
+  `arrivingSmartLaunchFrom` and `shouldCompleteSmartLaunch()` tell the
+  launch, the callback and the bare visit apart; the callback's branch renders
+  `BrandBar` + `App` instead.
 
 Both run through the one registered client (`importer-app`, or `importer-app-dev`
 in a vite dev build), whose redirect URI is the app root — so the same handshake
@@ -78,7 +80,7 @@ completion path serves both.
 
 ## Scopes: this app writes, and the two sides must match exactly
 
-`src/config.ts` requests (in both `smartConfig` and `standaloneSmartConfig`):
+`src/config.ts` requests (in `smartConfig`, for either launch):
 
 ```text
 launch openid fhirUser system/DocumentReference.cruds
@@ -190,8 +192,9 @@ registered client cannot launch:
 
 - `slices/apps/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
   `importer-app` registration and its launch URL
-  (`https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4`),
-  `requires_tunnel = 1` (like `medications-app` / `web-trace-app`).
+  (`https://wildflowerhealth.io/importer-app/?launch={launch}&iss={origin}/fhir-r4`
+  since `0016_launch_first_party_apps_at_root`), `requires_tunnel = 1` (like
+  `medications-app` / `web-trace-app`).
 - `slices/gatekeeper/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
   — the `importer-app` OAuth client. Its one registered redirect is
   `https://wildflowerhealth.io/importer-app/`, the page it launches from.
@@ -217,18 +220,20 @@ into it. The marketing site links there from its "collection of apps" section
 
 ## Boot and chrome
 
-Both entries run on `smart-app-react`, the chrome every first-party SMART app
+The entry runs on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
 `main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
 JS entry), completes a GitHub Pages 404 redirect, calls `addOsColorSchemeListener()`, and
-renders `<AppRoot />`. `launch-main.tsx` imports the same module and makes one
-`runSmartLaunchEntry` call. `AppRoot` (exported from `app-root.tsx` and from the
+renders `<AppRoot />`. `AppRoot` (exported from `app-root.tsx` and from the
 package's `"."` export as a `source`-only seam) is
-`<SmartAppRoot app="importer" standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>`
-around `<App />`; `SmartAppRoot` holds both branches behind the telemetry
+`<SmartAppRoot app="importer" standalone={smartConfig} telemetry={smartAppTelemetry}>`
+around `<App />`; `SmartAppRoot` holds every branch behind the telemetry
 consent dialog and owns the `QueryClientProvider` and the chrome gate:
 
+- **launch** (`arrivingSmartLaunchFrom`) → the launch page (`BrandBar` over
+  `Launching Importer…`), once the visitor has answered, while it starts the
+  authorize redirect.
 - **launched** (`shouldCompleteSmartLaunch()` or the prop) → `<BrandBar />`
   (with the telemetry status control at its end) + `<App />`.
 - **not launched** → `<SiteHeader nav={fromApp} />` + `<main>` wrapping the

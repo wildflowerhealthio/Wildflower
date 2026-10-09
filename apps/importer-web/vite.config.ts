@@ -24,11 +24,11 @@ const eventsShim = createRequire(import.meta.url).resolve('events/')
 
 /**
  * A SMART-on-FHIR app built as a static bundle into this package's default
- * `dist/`, which `apps/github-pages` publishes. Two HTML entries:
- * `launch.html` (the EHR launch endpoint — kicks off the OAuth2 authorize
- * redirect) and `index.html` (the app root — the OAuth redirect target that
- * completes the handshake and renders the app when a callback is in the URL, and
- * the standalone connect menu otherwise). A relative `base` so the built assets
+ * `dist/`, which `apps/github-pages` publishes. One HTML entry, `index.html`:
+ * the app root, which starts a SMART launch its URL carries (an EHR's `iss` and
+ * `launch`, or a lone `iss`), completes the handshake and renders the app when
+ * a callback is in the URL, and shows the standalone connect menu otherwise.
+ * A relative `base` so the built assets
  * resolve from whatever origin / path the app is served at — on the GitHub
  * Pages site that is the `/importer-app` subpath `apps/github-pages` stages this
  * build into.
@@ -56,7 +56,7 @@ export default defineConfig({
   },
   worker: { format: 'es' },
   // The homescreen's "Importer (Dev)" tile launches this port's
-  // `/launch.html`, so the dev server must hold exactly it. Run with
+  // root, so the dev server must hold exactly it. Run with
   // `vp run -F wildflower-importer dev`.
   server: devAppServer('importer-app-dev'),
   build: {
@@ -66,7 +66,6 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         main: './index.html',
-        launch: './launch.html',
       },
     },
   },

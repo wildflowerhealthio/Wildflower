@@ -48,13 +48,16 @@ vi.mock('telemetry-web', async (importOriginal) => {
 
 // fhirclient's `oauth2.ready()` is the token exchange the app's handshake runs;
 // by default it resolves to a client connected to `FHIR_SERVER_URL`, and the
-// spy counts how often the single-use code would have been posted.
+// spy counts how often the single-use code would have been posted. Its
+// `oauth2.authorize()` is the redirect a launch the page arrives with starts;
+// the spy counts how often the single-use launch would have been spent.
 const FHIR_SERVER_URL = 'https://fhir.example:8443/r4'
-const { tokenExchangeMock } = vi.hoisted(() => ({
+const { tokenExchangeMock, authorizeMock } = vi.hoisted(() => ({
   tokenExchangeMock: vi.fn(() => Promise.resolve(clientConnectedTo(FHIR_SERVER_URL))),
+  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<void>>(),
 }))
 vi.mock('fhirclient', () => ({
-  default: { oauth2: { ready: tokenExchangeMock } },
+  default: { oauth2: { ready: tokenExchangeMock, authorize: authorizeMock } },
 }))
 
 // The stubbed connect menu throws this from render when it is set, as a
@@ -99,6 +102,9 @@ const TELEMETRY: SmartAppTelemetry = {
 const MARKETING_ORIGIN = 'https://wildflowerhealth.io/'
 
 const STATUS_CONTROL_NAME = /change telemetry settings/
+
+/** An EHR launch, as the desktop base opens a server's launcher with it. */
+const EHR_LAUNCH = '?iss=https%3A%2F%2Fruth.wildflowerhealth.io%2Ffhir-r4&launch=xyz'
 
 /** A launch the launch page could not start, as it lands in `?launchError=`. */
 const FAILED_LAUNCH = encodeLaunchError({
@@ -316,6 +322,120 @@ describe('SmartAppRoot', () => {
     // Assert
     expect(arrivalProblem()).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('SmartAppRoot on a launch', () => {
+  beforeEach(() => {
+    // Discovery never settles, as while the authorize redirect is pending
+    authorizeMock.mockReturnValue(new Promise<never>(() => undefined))
+  })
+
+  // The tests below run as a returning visitor, whose stored answer skips the
+  // dialog, unless they say otherwise.
+  describe('with a stored consent answer', () => {
+    beforeEach(() => {
+      storeConsent({ crashReports: false, performance: false })
+    })
+
+    it.each([
+      { case: 'an EHR launch', search: EHR_LAUNCH },
+      { case: 'a lone iss', search: '?iss=https%3A%2F%2Ffhir.example%2Fr4' },
+    ])('should authorize $case once, from the app root, under StrictMode', async ({ search }) => {
+      // Arrange
+      setUrl(`/importer-app/${search}`)
+
+      // Act
+      renderShell({})
+
+      // Assert — the registration, with this root as the redirect; fhirclient
+      // reads `iss` and `launch` off the URL itself
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+      expect(authorizeMock).toHaveBeenCalledWith({
+        ...STANDALONE,
+        redirectUri: `${window.location.origin}/importer-app/`,
+      })
+    })
+
+    it('should show the launch page, naming the app, with no dialog', async () => {
+      // Arrange
+      setUrl(`/${EHR_LAUNCH}`)
+
+      // Act
+      renderShell({ app: 'importer' })
+
+      // Assert — the launch page alone: no dialog, no app, no connect menu
+      expect(screen.getByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeDefined()
+      expect(screen.getByRole('link', { name: 'Wildflower, home' })).toBeDefined()
+      expect(openDialog()).toBeNull()
+      expect(screen.queryByTestId('app')).toBeNull()
+      expect(screen.queryByTestId('connect-menu-stub')).toBeNull()
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('should not authorize again on a later render', async () => {
+      // Arrange
+      setUrl(`/${EHR_LAUNCH}`)
+      const { rerender } = render(<Shell />)
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+
+      // Act
+      rerender(<Shell />)
+
+      // Assert
+      expect(authorizeMock).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+      { case: 'a callback', search: `${EHR_LAUNCH}&code=abc&state=xyz`, expectApp: true },
+      {
+        case: 'an OAuth error return',
+        search: `${EHR_LAUNCH}&error=access_denied`,
+        expectApp: false,
+      },
+      { case: 'a lone launch', search: '?launch=xyz', expectApp: false },
+    ])('should not start a launch on $case', ({ search, expectApp }) => {
+      // Arrange
+      setUrl(`/${search}`)
+
+      // Act
+      renderShell({})
+
+      // Assert — the callback or the landing, and no authorize
+      expect(screen.queryByTestId('app') !== null).toBe(expectApp)
+      expect(screen.queryByTestId('connect-menu-stub') !== null).toBe(!expectApp)
+      expect(authorizeMock).not.toHaveBeenCalled()
+    })
+  })
+
+  it('should not authorize before the visitor answers, and authorize once after', async () => {
+    // Arrange — a first visit: no stored answer, under StrictMode
+    setUrl(`/${EHR_LAUNCH}`)
+    renderShell({ app: 'importer' })
+
+    // Assert — the dialog alone, and the launch not yet spent
+    expect(openDialog()).not.toBeNull()
+    expect(screen.queryByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeNull()
+    expect(authorizeMock).not.toHaveBeenCalled()
+
+    // Act
+    answerDialog({ crashReports: true, performance: false })
+
+    // Assert — telemetry tagged for the launch, then one authorize
+    await waitFor(() => {
+      expect(authorizeMock).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.getByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeDefined()
+    expect(initConsentedTelemetryMock.mock.calls[0]?.[0].tags).toStrictEqual({
+      app: TELEMETRY.app,
+      launch: 'launching',
+    })
   })
 })
 

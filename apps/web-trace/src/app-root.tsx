@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
-import { smartAppTelemetry, standaloneSmartConfig } from './config.ts'
+import { smartAppTelemetry, smartConfig } from './config.ts'
 
 /**
  * The Web Trace Viewer's root: the shared `SmartAppRoot` around `App`. `App`
@@ -20,7 +20,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
   return (
     <SmartAppRoot
       app="webTrace"
-      standalone={standaloneSmartConfig}
+      standalone={smartConfig}
       telemetry={smartAppTelemetry}
       launched={launched}
     >

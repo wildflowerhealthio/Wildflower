@@ -119,7 +119,7 @@ const launcherFhirBaseArb = fc
     }/fhir${trailingSlash ? '/' : ''}`,
   }))
 
-/** A hosted app's SMART launch page, on the published site or a PR preview. */
+/** A hosted app's root, its SMART launch page, on the published site or a PR preview. */
 const launchPageUrlArb = fc
   .tuple(
     fc.constantFrom(
@@ -128,7 +128,7 @@ const launchPageUrlArb = fc
     ),
     fc.constantFrom('medications-app', 'importer-app', 'web-trace-app', 'health-viewer-app')
   )
-  .map(([siteRoot, section]) => `${siteRoot}${section}/launch.html`)
+  .map(([siteRoot, section]) => `${siteRoot}${section}/`)
 
 /** A FHIR base on any host but the launcher's. */
 const otherFhirBaseArb = fc
@@ -270,7 +270,7 @@ describe('appLaunchUrl', () => {
 
     // Act
     const launchUrl = new URL(
-      appLaunchUrl('https://wildflowerhealth.io/medications-app/launch.html', {
+      appLaunchUrl('https://wildflowerhealth.io/medications-app/', {
         fhirBaseUrl,
         patient,
       })
@@ -288,7 +288,7 @@ describe('appLaunchUrl', () => {
 
   it('should throw for a FHIR base that is not a URL', () => {
     expect(() =>
-      appLaunchUrl('https://wildflowerhealth.io/medications-app/launch.html', {
+      appLaunchUrl('https://wildflowerhealth.io/medications-app/', {
         fhirBaseUrl: 'not a url',
         patient: undefined,
       })

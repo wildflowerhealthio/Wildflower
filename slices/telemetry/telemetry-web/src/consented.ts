@@ -16,14 +16,15 @@ import { type InitSentryWebOptions, Sentry } from './sentry.ts'
  * @remarks
  * `app` names the app (its Sentry project is chosen by its DSN, so this
  * separates apps that share one); `launch` is where in a SMART app the visitor
- * is: `standalone` on the connect page, `launched` in the app a completed SMART
- * launch opened. An EHR launch and a standalone one return to the same
+ * is: `launching` on the launch page that authorizes a launch the URL
+ * carries, `standalone` on the connect page, `launched` in the app a completed
+ * SMART launch opened. An EHR launch and a standalone one return to the same
  * redirect target with the same callback, so the tag does not tell them apart.
  * Further string tags ride along under their own names.
  */
 interface TelemetryTags {
   readonly app: string
-  readonly launch?: 'standalone' | 'launched'
+  readonly launch?: 'launching' | 'standalone' | 'launched'
   readonly [tag: string]: string | undefined
 }
 

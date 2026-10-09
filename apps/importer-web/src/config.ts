@@ -74,31 +74,19 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * this same set — widen that copy in step too, or `/authorize` fails only under
  * `vp run -F wildflower-importer dev`.
  *
- * `iss` / `launch` are read from the launch URL by fhirclient, so they are not
- * set here; `redirectUri` is computed at launch time from the current origin.
- */
-const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
-  clientId: import.meta.env.DEV ? 'importer-app-dev' : 'importer-app',
-  scope:
-    'launch openid fhirUser system/DocumentReference.cruds system/Patient.cruds system/Observation.cruds system/Practitioner.cruds system/DiagnosticReport.cruds system/Medication.cruds system/MedicationRequest.cruds system/MedicationDispense.cruds system/ServiceRequest.cruds system/ImagingStudy.cruds',
-}
-
-/**
- * SMART registration for the **standalone** connect flow (the `ConnectMenu` the
- * app root renders when the URL carries no OAuth callback), where the user picks
- * the FHIR server rather than the EHR naming it. Same `clientId` selection as
- * {@link smartConfig} — the standalone launch runs through the same registered
- * client, so its redirect URI (the app root) still resolves.
+ * The app root authorizes with it for every launch it starts: one its URL
+ * carries (`iss` / `launch`, read off the URL by fhirclient) and the standalone
+ * connect menu's, where the user picks the FHIR server. So `iss` is not set
+ * here, and `redirectUri` (the app root) is computed at launch time from the
+ * current origin.
  *
- * The scopes match {@link smartConfig}'s write-carrying set: a standalone import
- * writes to the server the user chose, exactly as an EHR launch writes to the one
- * it was handed. Note the bare `launch` scope is formally EHR-context-only per
- * the SMART App Launch IG (a standalone launch has no EHR context to launch
- * into); sandboxes such as SmartHealthIT tolerate it, and it is kept here
+ * The bare `launch` scope is formally EHR-context-only per the SMART App
+ * Launch IG (a standalone launch has no EHR context to launch into); sandboxes
+ * such as SmartHealthIT tolerate it, and it is kept on the standalone connect
  * deliberately per the app's scope set. If a server rejects the authorize
  * request over it, dropping `launch` is the first thing to try.
  */
-const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'importer-app-dev' : 'importer-app',
   scope:
     'launch openid fhirUser system/DocumentReference.cruds system/Patient.cruds system/Observation.cruds system/Practitioner.cruds system/DiagnosticReport.cruds system/Medication.cruds system/MedicationRequest.cruds system/MedicationDispense.cruds system/ServiceRequest.cruds system/ImagingStudy.cruds',
@@ -114,4 +102,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'importer-web',
 }
 
-export { smartAppTelemetry, smartConfig, standaloneSmartConfig }
+export { smartAppTelemetry, smartConfig }

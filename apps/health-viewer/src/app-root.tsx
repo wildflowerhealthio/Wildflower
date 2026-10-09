@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
-import { smartAppTelemetry, standaloneSmartConfig } from './config.ts'
+import { smartAppTelemetry, smartConfig } from './config.ts'
 
 /**
  * The Synthesized Health Viewer's root: the shared `SmartAppRoot` around `App`.
@@ -19,7 +19,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
   return (
     <SmartAppRoot
       app="healthViewer"
-      standalone={standaloneSmartConfig}
+      standalone={smartConfig}
       telemetry={smartAppTelemetry}
       launched={launched}
     >
