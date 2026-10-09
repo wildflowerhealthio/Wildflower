@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-  "apps/relay/server",
+  "apps/relay/relay-server",
   "apps/wildflower-tauri/src-tauri",
   "global/tauri-unit-runner",
   "global/unit-runner",

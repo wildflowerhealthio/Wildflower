@@ -89,7 +89,7 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net"
 proptest = "1"
 # The relay's own site and signature verifier, served on a loopback port, so
 # enrolment is tested against the real relay rather than a copy of its rules.
-wildflower-relay = { path = "../../../apps/relay/server" }
+wildflower-relay = { path = "../../../apps/relay/relay-server" }
 # A self-signed certificate for that site, and the rustls types to serve it,
 # as the relay's own tests do.
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }

@@ -63,7 +63,7 @@ export default defineConfig({
       'apps/lifting-app/vite.config.ts',
       'apps/medications-app/vite.config.ts',
       'apps/ohif-viewer/vite.config.ts',
-      'apps/relay/admin-web/vite.config.ts',
+      'apps/relay/*/vite.config.ts',
       'apps/synthetic-data-app/vite.config.ts',
       'apps/watch-lifts/pkjs/vite.config.ts',
       'apps/watch-lifts/test/vite.config.ts',

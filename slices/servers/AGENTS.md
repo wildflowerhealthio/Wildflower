@@ -520,5 +520,5 @@ lastError?: {kind, …}}`.
 - `slices/tunnel/rathole-settings-rust` — `PublicRatholeSettings`, the
   `GET /rathole` response a record keeps as `public_settings`,
   `TunnelHost`, the `GET /me` response, and `TunnelName`.
-- `apps/relay/server` — the relay whose `GET /rathole` and `GET /me`
+- `apps/relay/relay-server` — the relay whose `GET /rathole` and `GET /me`
   enrolment calls; its crate docs give the signing rules.

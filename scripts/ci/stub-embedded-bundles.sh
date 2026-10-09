@@ -12,7 +12,7 @@
 #            gate, compiled out on desktop targets.
 #   relay-admin-web
 #            wildflower-relay embeds the admin UI's build
-#            (apps/relay/admin-web, `vp build`) with `include_dir!`. A bare
+#            (apps/relay/relay-admin-web, `vp build`) with `include_dir!`. A bare
 #            index.html stands in; the relay's own tests serve a build they
 #            define themselves.
 #
@@ -42,11 +42,11 @@ stub_sniffer() {
 }
 
 stub_relay_admin_web() {
-  local out=apps/relay/admin-web/dist/index.html
+  local out=apps/relay/relay-admin-web/dist/index.html
   mkdir -p "$(dirname "$out")"
   {
     echo '<!doctype html>'
-    echo '<!-- CI stub: the real page is the build of apps/relay/admin-web. -->'
+    echo '<!-- CI stub: the real page is the build of apps/relay/relay-admin-web. -->'
     echo '<title>Relay admin</title>'
   } > "$out"
   echo "stub-embedded-bundles: wrote $out"
