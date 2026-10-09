@@ -10,13 +10,15 @@ slice is where the two meet, so neither has to know about the other.
 
 - **`smart-app-react`** — the only package. There is no `-core`: everything
   here is UI or DOM boot code.
-  - `SmartAppRoot({ app, registration, telemetry, launched?, children })` —
-    the app root, and the app's one page: it starts a SMART launch its URL
+  - `SmartAppRoot({ app, registration, telemetry, launched?, replaceLocation?, children })`
+    — the app root, and the app's one page: it starts a SMART launch its URL
     carries, completes the callback, and shows the landing on a plain visit.
-    `registration` is the app's SMART registration (`clientId` and `scope`), for a launch the URL carries and for the
-    connect menu alike. `telemetry` (`SmartAppTelemetry`: `dsn`, `app`) names
-    where the app reports once the visitor consents: its own Sentry project's
-    DSN and the id its events are tagged with.
+    `registration` is the app's SMART registration (`clientId` and `scope`),
+    for a launch the URL carries and for the connect menu alike. `telemetry`
+    (`SmartAppTelemetry`: `dsn`, `app`) names where the app reports once the
+    visitor consents: its own Sentry project's DSN and the id its events are
+    tagged with. `replaceLocation` replaces the page in the session history
+    when it leaves for the app root, and defaults to `window.location.replace`.
   - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
     standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
     base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
@@ -90,8 +92,12 @@ import `branding-react/styles.css` itself.
   failure lands on the connect menu. A ref guards the authorize, as
   `ConnectMenu`'s `autoConnect` is guarded, so StrictMode's second effect run
   cannot spend the launch twice. A page restored from the back-forward cache
-  after leaving for the authorization server shows the launch page again and
-  does not re-run the authorize.
+  after leaving for the authorization server does not re-run the authorize:
+  it replaces itself with the bare app root (`appRootRedirectUri`), a plain
+  visit with the connect menu. A launch that fails before it leaves replaces
+  the page with the app root carrying `?launchError`. Both navigations go
+  through `SmartAppRoot`'s `replaceLocation` prop, which defaults to
+  `window.location.replace` and lets the tests observe them.
 - **The consent dialog comes first, and nothing starts telemetry before a
   yes.** `SmartAppRoot` renders every branch inside
   `telemetry-react`'s `TelemetryConsentGate`, so until the visitor has

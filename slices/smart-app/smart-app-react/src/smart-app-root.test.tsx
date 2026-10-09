@@ -6,13 +6,14 @@ import {
   TELEMETRY_CONSENT_COPY,
   type AppSectionId,
 } from 'branding-core'
+import { Option } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 import { StrictMode, type JSX } from 'react'
 import { type TelemetryConsent, writeConsent } from 'telemetry-core'
 import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { encodeLaunchError, useSmartHandshake } from 'fhir-r4-react/smart'
+import { decodeLaunchError, encodeLaunchError, useSmartHandshake } from 'fhir-r4-react/smart'
 
 import type * as AuthorizeFromLaunchPage from './authorize-from-launch-page.ts'
 import type { ConnectMenuProps } from './connect-menu.tsx'
@@ -412,6 +413,56 @@ describe('SmartAppRoot on a launch', () => {
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
     })
 
+    it('should send a launch that fails to start to the app root as ?launchError, once', async () => {
+      // Arrange — discovery fails, as for an unreachable iss
+      authorizeMock.mockRejectedValue(new Error('Failed to fetch'))
+      const replaceLocation = vi.fn<(url: string) => void>()
+      setUrl(`/importer-app/${EHR_LAUNCH}`)
+
+      // Act
+      renderShell({ replaceLocation })
+
+      // Assert — one navigation, to the bare app root carrying the failure
+      await waitFor(() => {
+        expect(replaceLocation).toHaveBeenCalledTimes(1)
+      })
+      const target = new URL(replaceLocation.mock.calls[0]?.[0] ?? '')
+      expect(`${target.origin}${target.pathname}`).toBe(`${window.location.origin}/importer-app/`)
+      expect([...target.searchParams.keys()]).toStrictEqual(['launchError'])
+      expect(decodeLaunchError(target.searchParams.get('launchError') ?? '')).toStrictEqual(
+        Option.some({
+          error: 'AuthorizeFailed',
+          message: 'Failed to fetch',
+          iss: 'https://ruth.wildflowerhealth.io/fhir-r4',
+        })
+      )
+    })
+
+    it('should leave for the bare app root when restored from the back-forward cache', async () => {
+      // Arrange — the launch has left for the authorization server
+      const replaceLocation = vi.fn<(url: string) => void>()
+      setUrl(`/importer-app/${EHR_LAUNCH}`)
+      renderShell({ replaceLocation })
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+
+      // Act — an ordinary `pageshow` (a fresh load) is not a restore
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }))
+
+      // Assert
+      expect(replaceLocation).not.toHaveBeenCalled()
+
+      // Act — Back from the authorization server restores the page
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+
+      // Assert — a plain visit to the app root, and the spent launch not reused
+      expect(replaceLocation.mock.calls).toStrictEqual([
+        [`${window.location.origin}/importer-app/`],
+      ])
+      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+    })
+
     it.each([
       { case: 'a callback', search: `${EHR_LAUNCH}&code=abc&state=xyz`, expectApp: true },
       {
@@ -780,15 +831,23 @@ function Shell({
 function renderShell({
   app = 'medications',
   launched,
+  replaceLocation,
   children = <div data-testid="app" />,
 }: {
   readonly app?: AppSectionId
   readonly launched?: boolean
+  readonly replaceLocation?: (url: string) => void
   readonly children?: JSX.Element
 }): void {
   render(
     <StrictMode>
-      <SmartAppRoot app={app} registration={REGISTRATION} telemetry={TELEMETRY} launched={launched}>
+      <SmartAppRoot
+        app={app}
+        registration={REGISTRATION}
+        telemetry={TELEMETRY}
+        launched={launched}
+        replaceLocation={replaceLocation}
+      >
         {children}
       </SmartAppRoot>
     </StrictMode>

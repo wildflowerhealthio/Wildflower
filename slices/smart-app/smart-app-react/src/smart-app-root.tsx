@@ -82,6 +82,12 @@ interface SmartAppRootProps {
    * {@link SmartAppRoot}.
    */
   readonly launched?: boolean
+  /**
+   * Replaces the page with `url` in the session history, as the launch page
+   * leaves for the app root. Defaults to `window.location.replace`; tests pass
+   * a spy, since jsdom's `location` cannot be spied on.
+   */
+  readonly replaceLocation?: (url: string) => void
   /** The app itself, rendered under `BrandBar` on the launched branch. */
   readonly children: ReactNode
 }
@@ -99,21 +105,45 @@ function ConsentStatusControl(): JSX.Element {
  * The launch page, and the authorize of the launch the page arrived with,
  * once: mounted only under the consent gate, so the authorize starts once the
  * visitor has answered. The ref holds under StrictMode's second effect run,
- * and the launch works only once.
+ * and the launch works only once. A launch that fails before it leaves
+ * replaces the page with the app root carrying `?launchError`.
+ *
+ * A page restored from the back-forward cache after leaving for the
+ * authorization server holds a launch that is already spent, so it replaces
+ * itself with the bare app root: a plain visit, with the connect menu.
  */
 function LaunchingApp({
   app,
   registration,
-}: Pick<SmartAppRootProps, 'app' | 'registration'>): JSX.Element {
+  replaceLocation,
+}: Pick<SmartAppRootProps, 'app' | 'registration'> & {
+  readonly replaceLocation: (url: string) => void
+}): JSX.Element {
   const launchAuthorized = useRef(false)
   useEffect(() => {
     if (launchAuthorized.current) return
     launchAuthorized.current = true
     void authorizeFromLaunchPage(registration, window.location.href).then((failure) => {
-      if (failure !== null) window.location.replace(failure)
+      if (failure !== null) replaceLocation(failure)
     })
-  }, [registration])
+  }, [registration, replaceLocation])
+
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) replaceLocation(appRootRedirectUri(window.location.href))
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return (): void => {
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [replaceLocation])
+
   return <LaunchPage message={`Launching ${APP_DESCRIPTIONS[app].name}…`} />
+}
+
+/** Replaces the page with `url` in the session history. */
+const replaceWindowLocation = (url: string): void => {
+  window.location.replace(url)
 }
 
 /**
@@ -145,8 +175,8 @@ function LaunchingApp({
  * that failure comes back here as `?launchError` and lands on the connect
  * menu. A ref guards the authorize, so StrictMode's second effect run cannot
  * spend the launch twice. A page restored from the back-forward cache after
- * leaving for the authorization server shows the launch page again, and does
- * not re-run the authorize. The answer goes to
+ * leaving for the authorization server does not re-run the authorize: it
+ * replaces itself with the bare app root, a plain visit. The answer goes to
  * `telemetry-react`'s `useConsentedTelemetryStart` with `telemetry`'s DSN and
  * the tags `app` and `launch` (`launching`, `launched` or `standalone`), and the SDK starts only if a switch is on. Once
  * it runs, the root tags events with the FHIR server's host when the handshake
@@ -164,6 +194,7 @@ function SmartAppRoot({
   registration,
   telemetry,
   launched,
+  replaceLocation = replaceWindowLocation,
   children,
 }: SmartAppRootProps): JSX.Element {
   const [arrival] = useState((): RootArrival => {
@@ -237,7 +268,7 @@ function SmartAppRoot({
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
       {arrival === 'launch' ? (
         <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
-          <LaunchingApp app={app} registration={registration} />
+          <LaunchingApp app={app} registration={registration} replaceLocation={replaceLocation} />
         </CrashReportingBoundary>
       ) : (
         <QueryClientProvider client={queryClient}>
