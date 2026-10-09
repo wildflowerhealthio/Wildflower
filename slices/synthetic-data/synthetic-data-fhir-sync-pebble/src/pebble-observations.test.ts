@@ -1,7 +1,7 @@
 import { DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { Observation } from 'fhir-r4/resources'
-import type { WatchSync } from 'fhir-sync-pebble-core'
+import type { WatchSync } from 'fhir-sync-pebble-core-js'
 import { numRunsFor } from 'kitchen-sink/test'
 import { asOfArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'

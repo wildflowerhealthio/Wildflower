@@ -46,12 +46,12 @@ jobs:
           fi
 
       - name: Check C formatting
-        run: vp run -F watch-lifts -F fhir-sync-pebble fmt:c:check
+        run: vp run -F watch-lifts -F fhir-sync-pebble-watchapp fmt:c:check
 
       # The C builds with the host `cc` under ASan and UBSan; no SDK needed.
       # watch-lifts-test and watch-lifts-pkjs cover watch-lifts' C and
       # PebbleKit JS; fhir-sync-pebble-test and fhir-sync-pebble-pkjs cover
-      # fhir-sync-pebble's; pebble-pkjs and pebble-configuration, the shared
+      # fhir-sync-pebble-watchapp's; pebble-pkjs and pebble-configuration, the shared
       # PebbleKit JS tooling and hand-off.
       - name: Run host-side tests
         run: vp run -F watch-lifts-test -F watch-lifts-pkjs -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs -F pebble-pkjs -F pebble-configuration test
@@ -102,7 +102,7 @@ jobs:
       - name: Build fhir-sync-pebble
         id: build-fhir-sync-pebble
         if: ${{ !cancelled() && steps.sdk.outcome == 'success' }}
-        working-directory: apps/fhir-sync-pebble
+        working-directory: apps/fhir-sync-pebble/fhir-sync-pebble-watchapp
         run: pebble build
 
       - name: Upload fhir-sync-pebble .pbw
@@ -110,5 +110,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fhir-sync-pebble
-          path: apps/fhir-sync-pebble/build/fhir-sync-pebble.pbw
+          path: apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/build/fhir-sync-pebble-watchapp.pbw
           if-no-files-found: error

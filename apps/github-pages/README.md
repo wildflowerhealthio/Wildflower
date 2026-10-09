@@ -4,20 +4,20 @@ Assembles everything published at <https://wildflowerhealth.io> into a single
 static artifact. It owns no UI of its own: each section is built by the package
 that owns it, and this package places those outputs at their public URLs.
 
-| URL                       | Source package                                           |
-| ------------------------- | -------------------------------------------------------- |
-| `/`                       | `marketing-website` (`apps/marketing-website`)           |
-| `/medications-app`        | `medications-app` (`apps/medications-app`)               |
-| `/importer-app`           | `wildflower-importer` (`apps/importer-web`)              |
-| `/wildflower-server-docs` | `wildflower-server-docs` (`apps/wildflower-server-docs`) |
-| `/web-trace-app`          | `wildflower-web-trace` (`apps/web-trace`)                |
-| `/ohif-viewer`            | `ohif-viewer` (`apps/ohif-viewer`)                       |
-| `/fhir-sync-pebble`       | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble-web`)     |
-| `/health-viewer-app`      | `health-viewer-app` (`apps/health-viewer`)               |
-| `/synthetic-data-app`     | `synthetic-data-app` (`apps/synthetic-data-app`)         |
-| `/lifting-app`            | `lifting-app` (`apps/lifting-app`)                       |
-| `/watch-lifts`            | `watch-lifts-web` (`apps/watch-lifts-web`)               |
-| `/app`                    | `wildflower-react` (`apps/wildflower-react`, `dist-web`) |
+| URL                       | Source package                                                        |
+| ------------------------- | --------------------------------------------------------------------- |
+| `/`                       | `marketing-website` (`apps/marketing-website`)                        |
+| `/medications-app`        | `medications-app` (`apps/medications-app`)                            |
+| `/importer-app`           | `wildflower-importer` (`apps/importer-web`)                           |
+| `/wildflower-server-docs` | `wildflower-server-docs` (`apps/wildflower-server-docs`)              |
+| `/web-trace-app`          | `wildflower-web-trace` (`apps/web-trace`)                             |
+| `/ohif-viewer`            | `ohif-viewer` (`apps/ohif-viewer`)                                    |
+| `/fhir-sync-pebble`       | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble/fhir-sync-pebble-web`) |
+| `/health-viewer-app`      | `health-viewer-app` (`apps/health-viewer`)                            |
+| `/synthetic-data-app`     | `synthetic-data-app` (`apps/synthetic-data-app`)                      |
+| `/lifting-app`            | `lifting-app` (`apps/lifting-app`)                                    |
+| `/watch-lifts`            | `watch-lifts-web` (`apps/watch-lifts-web`)                            |
+| `/app`                    | `wildflower-react` (`apps/wildflower-react`, `dist-web`)              |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 

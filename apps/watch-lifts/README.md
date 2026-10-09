@@ -28,7 +28,7 @@ The weights are set on the phone, on the page at
 every exercise, in whole pounds from 0 to 999, built from
 [`apps/watch-lifts-web`](../watch-lifts-web/AGENTS.md). It follows
 developer.repebble.com's "App Configuration (Static)", as
-`apps/fhir-sync-pebble` does:
+`apps/fhir-sync-pebble/fhir-sync-pebble-watchapp` does:
 
 - `showConfiguration`: the PebbleKit JS (`pkjs/src/index.ts`) opens the page
   with the current weights in its `weights` query parameter
@@ -80,7 +80,7 @@ sends the phone nothing.
   and fails on what ES5 lacks (see
   [`pebble-pkjs`](../../global/pebble/pebble-pkjs/README.md)).
 - **The app needs a `.bss`** after the GOT, or the firmware silently refuses
-  to start it (see `apps/fhir-sync-pebble`'s AGENTS.md). This app's
+  to start it (see `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp`'s AGENTS.md). This app's
   zero-initialized globals, `s_weights` among them, give it one;
   `arm-none-eabi-readelf -S build/emery/pebble-app.elf` should list `.bss`
   last.
@@ -90,7 +90,7 @@ sends the phone nothing.
 The C the tests reach is built with the host `cc` under AddressSanitizer and
 UBSan by the `watch-lifts-test` package in `test/`, with no Pebble SDK needed.
 The build is `kitchen-sink/test`'s `buildHostCDriver`, which
-`apps/fhir-sync-pebble` shares:
+`apps/fhir-sync-pebble/fhir-sync-pebble-watchapp` shares:
 
 - `reps-text.test.ts` drives the reps and weight text (`reps-text.c`) through
   `reps-text-driver.c`.
@@ -133,7 +133,7 @@ sideload. The pebble-tool and SDK versions it builds with are pinned in
 
 ## Releases
 
-This app and `apps/fhir-sync-pebble` ship with the Tauri app's releases, not on
+This app and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp` ship with the Tauri app's releases, not on
 their own. **Tauri Release — Prepare** (`.github/workflows/tauri-release-prepare.yml`)
 writes the release version into both apps' `package.json` `version`, so don't
 bump it by hand. `pebble build` accepts only `MAJOR.MINOR.PATCH` with major and

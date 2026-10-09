@@ -1,5 +1,5 @@
 import { DateTime } from 'effect'
-import { HealthActivity, type MinuteHistory, WatchSync } from 'fhir-sync-pebble-core'
+import { HealthActivity, type MinuteHistory, WatchSync } from 'fhir-sync-pebble-core-js'
 import * as Seeding from 'synthetic-data-fundamentals/seeding'
 import { StoryDay } from 'synthetic-data-fundamentals/story'
 
@@ -10,7 +10,7 @@ import type { Physiology, Span } from './physiology.ts'
 /**
  * The FHIR Sync for Pebble generator: a physiology, as recorded by one watch,
  * as the Observations the phone writes when the watch syncs it — decoded,
- * collected and written by `fhir-sync-pebble-core`'s own `HealthActivity` and
+ * collected and written by `fhir-sync-pebble-core-js`'s own `HealthActivity` and
  * `WatchSync`, so they are exactly what the app writes.
  *
  * @remarks

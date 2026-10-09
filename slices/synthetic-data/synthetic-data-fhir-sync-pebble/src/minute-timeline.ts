@@ -1,4 +1,4 @@
-import type { MinuteHistory } from 'fhir-sync-pebble-core'
+import type { MinuteHistory } from 'fhir-sync-pebble-core-js'
 
 import type { Night, Physiology, PhysiologyDay, Span } from './physiology.ts'
 

@@ -54,7 +54,7 @@ Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/lifting-app`,
 `apps/importer-web`, `apps/web-trace` and `apps/synthetic-data-app` mount
 `SmartAppRoot`, which an EHR launches at the app root; the first three speak
 the read-status lines, as does `synthetic-data-react`'s screen, and pick the
-patient with the patient choice; `apps/fhir-sync-pebble-web` mounts
+patient with the patient choice; `apps/fhir-sync-pebble/fhir-sync-pebble-web` mounts
 `SmartAppRoot` too, but is only ever opened standalone;
 `apps/wildflower-react`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.

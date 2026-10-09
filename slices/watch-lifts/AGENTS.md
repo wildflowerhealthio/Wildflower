@@ -52,5 +52,5 @@ generic over the settings.
 
 - [Architecture / slice layering](../AGENTS.md)
 - [apps/watch-lifts README](../../apps/watch-lifts/README.md) — the watchapp, the settings hand-off and the wire
-- [slices/fhir-sync-pebble](../fhir-sync-pebble/AGENTS.md) — the same pattern, with a SMART sign-in
+- [apps/fhir-sync-pebble](../../apps/fhir-sync-pebble/AGENTS.md) — the same pattern, with a SMART sign-in
 - [Property Testing Reference](../../docs/Testing/Property%20Testing%20Reference.md)

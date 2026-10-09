@@ -3,7 +3,7 @@
 The **FHIR Sync for Pebble generator**: a `Physiology` — what a wrist-worn
 watch measures, day by day — as the Observations the FHIR Sync for Pebble
 phone app writes when the watch syncs it. Every Observation is built by
-`fhir-sync-pebble-core`'s own code (`HealthActivity.decodeMessage`,
+`fhir-sync-pebble-core-js`'s own code (`HealthActivity.decodeMessage`,
 `MinuteHistory`, `WatchSync.toObservations`), so it is exactly what the app
 writes. No DOM, no `fs`, no React.
 
@@ -41,7 +41,7 @@ and the sleep stretches it must render as.
 ## Layering
 
 Depends on `synthetic-data-fundamentals` (`StoryDay` from `/story`, `Seeding`
-from `/seeding`) and `fhir-sync-pebble-core` (its PebbleKit JS half:
+from `/seeding`) and `fhir-sync-pebble-core-js` (its PebbleKit JS half:
 `HealthActivity`, `MinuteHistory`, `WatchDevice`, `WatchSync`). The tests also
 use `fhir-r4` to decode every Observation, as a dev dependency only. Never
 imports a `-react`, `-node` or `-tauri` package.
@@ -73,5 +73,5 @@ imports a `-react`, `-node` or `-tauri` package.
 ## References
 
 - [slices/synthetic-data/AGENTS.md](../AGENTS.md) — the slice and its packages.
-- [fhir-sync-pebble AGENTS.md](../../fhir-sync-pebble/AGENTS.md) — the app's
+- [fhir-sync-pebble AGENTS.md](../../../apps/fhir-sync-pebble/AGENTS.md) — the app's
   core and what a sync writes.

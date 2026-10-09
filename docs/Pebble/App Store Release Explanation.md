@@ -1,6 +1,6 @@
 # App Store Release Explanation
 
-How Tauri Release — Publish gets `apps/watch-lifts` and `apps/fhir-sync-pebble`
+How Tauri Release — Publish gets `apps/watch-lifts` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp`
 into the Pebble app store, why every release arrives there unpublished, and the
 one secret it needs. The build that produces the `.pbw`s is described in the
 [watch-lifts README](../../apps/watch-lifts/README.md#releases).
@@ -121,7 +121,7 @@ then re-run the failed jobs.
 for the description, category, icons and screenshots a new listing needs.
 Remember that pebble-tool 5.0.40 publishes that first release at once, whatever
 `--is-published` says. It asks for an 80×80 `iconSmall` and a 144×144
-`iconLarge`; `apps/fhir-sync-pebble/appstore/` has a 144×144
+`iconLarge`; `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/appstore/` has a 144×144
 `appstore_large.png`, but its `appstore_small.png` is 48×48. Once the listing
 exists, every later release comes through CI.
 

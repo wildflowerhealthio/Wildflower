@@ -243,13 +243,13 @@ describe('layout reconciliation with the packages it assembles', () => {
    * Five of the first-party SMART apps and the WatchLifts settings page: each
    * builds into its own package's default `dist/` and the site copies it from
    * there. `appDir` is the folder
-   * under `apps/`, which differs from the package name for two of them.
+   * under `apps/`, which differs from the package name for three of them.
    */
   const firstPartyApps = [
     { packageName: 'medications-app', appDir: 'medications-app' },
     { packageName: 'wildflower-web-trace', appDir: 'web-trace' },
     { packageName: 'wildflower-importer', appDir: 'importer-web' },
-    { packageName: 'fhir-sync-pebble-web', appDir: 'fhir-sync-pebble-web' },
+    { packageName: 'fhir-sync-pebble-web', appDir: 'fhir-sync-pebble/fhir-sync-pebble-web' },
     { packageName: 'watch-lifts-web', appDir: 'watch-lifts-web' },
     { packageName: 'lifting-app', appDir: 'lifting-app' },
   ] as const

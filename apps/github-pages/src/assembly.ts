@@ -77,9 +77,9 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: 'fhir-sync-pebble-web',
-    // The package lives in `apps/fhir-sync-pebble-web`; its published path is
-    // `/${SECTION_PATHS.fhirSyncPebble}`.
-    sourceDir: 'apps/fhir-sync-pebble-web/dist',
+    // The package lives in `apps/fhir-sync-pebble/fhir-sync-pebble-web`; its
+    // published path is `/${SECTION_PATHS.fhirSyncPebble}`.
+    sourceDir: 'apps/fhir-sync-pebble/fhir-sync-pebble-web/dist',
     destPath: SECTION_PATHS.fhirSyncPebble,
     // One entry: the app is launched standalone only (from the Pebble phone
     // app), so `index.html` is both the connect menu and the OAuth redirect

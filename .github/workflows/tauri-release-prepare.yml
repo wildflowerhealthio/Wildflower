@@ -122,7 +122,7 @@ jobs:
 
       - name: Bump Pebble app versions
         id: pebble
-        # `apps/watch-lifts` and `apps/fhir-sync-pebble` ship on the same
+        # `apps/watch-lifts` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp` ship on the same
         # release: Publish builds their .pbws from the tag. `pebble build`
         # takes MAJOR.MINOR.PATCH only, with MAJOR and MINOR in 0-255, and
         # fails on a prerelease suffix (`1.2.3-beta.1` is four dot-separated
@@ -139,8 +139,7 @@ jobs:
             echo "::error::Pebble apps need a major and minor version in 0-255; $version has $major.$minor."
             exit 1
           fi
-          for app in watch-lifts fhir-sync-pebble; do
-            manifest="apps/$app/package.json"
+          for manifest in apps/watch-lifts/package.json apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json; do
             tmp="$(mktemp)"
             jq --arg v "$pebble_version" '.version = $v' "$manifest" > "$tmp"
             mv "$tmp" "$manifest"
@@ -264,7 +263,7 @@ jobs:
             Cargo.lock \
             apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist \
             apps/watch-lifts/package.json \
-            apps/fhir-sync-pebble/package.json \
+            apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json \
             apps/marketing-website/public/versions.json \
             apps/wildflower-tauri/CHANGELOG.md
           if git diff --cached --quiet; then
@@ -298,7 +297,7 @@ jobs:
             printf -- '- `apps/wildflower-tauri/src-tauri/tauri.conf.json`\n'
             printf -- '- `apps/wildflower-tauri/src-tauri/Cargo.toml` (+ `Cargo.lock`)\n'
             printf -- '- `apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist`\n'
-            printf -- '- `apps/watch-lifts/package.json` and `apps/fhir-sync-pebble/package.json` (Pebble version `%s`)\n' "$pebble_version"
+            printf -- '- `apps/watch-lifts/package.json` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json` (Pebble version `%s`)\n' "$pebble_version"
             printf -- '- `apps/marketing-website/public/versions.json`\n'
             printf -- '- `apps/wildflower-tauri/CHANGELOG.md` (prepended with the section below)\n\n'
             printf '## Changes since previous release\n\n'

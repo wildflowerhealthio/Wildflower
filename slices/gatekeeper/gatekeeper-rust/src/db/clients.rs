@@ -559,7 +559,7 @@ mod tests {
         // are `system/`, with no `launch`: the page picks the patient after the
         // grant.
         // This vector must stay element-for-element equal to the `scope` string
-        // in `apps/fhir-sync-pebble-web/src/config.ts` — nothing spans the
+        // in `apps/fhir-sync-pebble/fhir-sync-pebble-web/src/config.ts` — nothing spans the
         // TS/Rust boundary to check it.
         let pebble = store.client_by_id("fhir-sync-pebble").unwrap().unwrap();
         assert_eq!(

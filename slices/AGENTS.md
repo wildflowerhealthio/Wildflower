@@ -19,7 +19,7 @@ slices/<name>/
 
 Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `wildflower-server`).
 
-Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `request-log`, `scopes`, `servers`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `request-log`, `scopes`, `servers`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
 
 `http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
 
@@ -36,13 +36,12 @@ catalogue, range presets and the URL codec a shared link round-trips through —
 all pure functions, property-tested without a DOM. `health-viewer-react` draws
 the fundamentals' series with Observable Plot, importing no domain package.
 
-`fhir-sync-pebble` holds what the Pebble watchapp's settings page decides — see
-[fhir-sync-pebble/AGENTS.md](./fhir-sync-pebble/AGENTS.md). Its
-`fhir-sync-pebble-core` is the patients the page lists, the settings the watch
-receives, the allow-listed
-`return_to` they are handed back through, and the store that keeps it across
-the SMART login, as pure functions; `apps/fhir-sync-pebble-web` is the page
-that runs them.
+FHIR Sync for Pebble is not a slice: the watchapp, its settings page and their
+pure core live together in `apps/fhir-sync-pebble` — see
+[apps/fhir-sync-pebble/AGENTS.md](../apps/fhir-sync-pebble/AGENTS.md). Its
+`fhir-sync-pebble-core-js` is the patients the page lists, the settings the
+watch receives, and the phone's decoding of the watch's data, as pure
+functions.
 
 `watch-lifts` holds what the WatchLifts Pebble watchapp's settings page edits
 — see [watch-lifts/AGENTS.md](./watch-lifts/AGENTS.md). Its `watch-lifts-core`

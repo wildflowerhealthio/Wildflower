@@ -1,4 +1,4 @@
-import { WatchDevice } from 'fhir-sync-pebble-core'
+import { WatchDevice } from 'fhir-sync-pebble-core-js'
 import * as Seeding from 'synthetic-data-fundamentals/seeding'
 
 /**

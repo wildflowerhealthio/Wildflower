@@ -331,7 +331,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             "FHIR Sync for Pebble (Dev)",
             // Mirrors the production `fhir-sync-pebble` client (migration
             // `0017_seed_fhir_sync_pebble_client`, widened by `0018`, the `scope` in
-            // `apps/fhir-sync-pebble-web/src/config.ts`). Standalone-only, so
+            // `apps/fhir-sync-pebble/fhir-sync-pebble-web/src/config.ts`). Standalone-only, so
             // there is no `apps_rust::dev_seed` row; the loopback root carries
             // the `ConnectMenu`'s redirect.
             [

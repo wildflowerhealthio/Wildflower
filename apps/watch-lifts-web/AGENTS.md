@@ -5,7 +5,7 @@ watchapp: a table of every person's weight at every exercise, and a save that
 sends them to the watch. It is served from the published GitHub Pages site
 (`/watch-lifts`). The Pebble phone app opens it; there is no sign-in.
 
-`apps/fhir-sync-pebble-web` is the template for the shape (a relative `base`,
+`apps/fhir-sync-pebble/fhir-sync-pebble-web` is the template for the shape (a relative `base`,
 one `index.html` entry, a build into the package's own `dist/`). What differs:
 no SMART, no router, no TanStack Query, and no `ReturnTargetStore`, because
 nothing navigates away before the save.
@@ -67,7 +67,7 @@ jsdom.
 - [apps/watch-lifts README](../watch-lifts/README.md) — the watchapp and the
   settings hand-off
 - [slices/watch-lifts AGENTS.md](../../slices/watch-lifts/AGENTS.md) — the core
-- [apps/fhir-sync-pebble-web AGENTS.md](../fhir-sync-pebble-web/AGENTS.md) —
+- [apps/fhir-sync-pebble/fhir-sync-pebble-web AGENTS.md](../fhir-sync-pebble/fhir-sync-pebble-web/AGENTS.md) —
   the template app
 - [apps/github-pages README](../github-pages/README.md) — how the site is
   assembled
