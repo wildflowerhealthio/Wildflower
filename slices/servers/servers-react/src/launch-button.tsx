@@ -46,9 +46,9 @@ type LaunchPhase = 'idle' | 'confirmingStart' | 'starting'
  * - Offline, it is disabled: the launcher is a web page.
  * - For a server that isn't running and whose run policy is `off` or an
  *   `until` that has ended, it asks "Start server and launch?". Confirming
- *   sets the policy to `whileOpen`, then it shows "Starting…", with Cancel,
- *   until the server's status (kept current by `server-status` events) is
- *   launchable, and launches it once.
+ *   sets the policy to `whileOpen` (unless it has become active meanwhile),
+ *   then it shows "Starting…", with Cancel, until the server's status (kept
+ *   current by `server-status` events) is launchable, and launches it once.
  * - For a server that isn't running while its policy still wants it running
  *   (starting, or waiting to start again), it is disabled and says so:
  *   launching never changes an active policy or extends an `until`.
@@ -103,11 +103,18 @@ const LaunchButton = ({
     return policyIsInactive ? Option.none() : Option.some(notRunningReason(server))
   })()
   const onLaunch = (): void => {
+    // A new attempt clears the previous one's failure.
+    setRunPolicy.reset()
     if (refusal === 'serverNotRunning') {
       setPhase('confirmingStart')
       return
     }
     launch.mutate({ domain })
+  }
+  const waitForStart = (): void => {
+    launch.reset()
+    launchedForStart.current = false
+    setPhase('starting')
   }
   const error = launch.error ?? setRunPolicy.error
   return (
@@ -163,13 +170,16 @@ const LaunchButton = ({
         confirmLabel="Start and launch"
         pending={setRunPolicy.isPending}
         onConfirm={() => {
+          // The policy may have changed since the question was asked: an
+          // active one already starts the server, and is left as it is.
+          if (!policyIsInactive) {
+            waitForStart()
+            return
+          }
           setRunPolicy.mutate(
             { domain, choice: { kind: 'whileOpen' } },
             {
-              onSuccess: () => {
-                launchedForStart.current = false
-                setPhase('starting')
-              },
+              onSuccess: waitForStart,
               onError: () => {
                 setPhase('idle')
               },

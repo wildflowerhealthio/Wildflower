@@ -991,6 +991,93 @@ describe('Launch', () => {
     expect(within(openDialogOrThrow()).getByText('Start server and launch?')).toBeDefined()
   })
 
+  it('should be disabled for a stopped server whose until has not ended, without changing the policy', async () => {
+    // Arrange
+    const { host } = renderLaunching({
+      servers: listedWithLab({ runPolicy: { kind: 'until', at: '2099-01-01T00:00:00Z' } }),
+    })
+    await screen.findByRole('listitem', { name: LAB })
+
+    // Assert
+    expect(
+      within(serverRow(LAB)).getByText("The server isn't running yet. It starts again on its own.")
+    ).toBeDefined()
+    expect(launchOn(LAB).disabled).toBe(true)
+    expect(host.seen.map(({ command }) => command)).not.toContain('server_set_run_policy')
+  })
+
+  it('should change nothing when the question to start is cancelled', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host } = renderLaunching({})
+    await screen.findByRole('listitem', { name: LAB })
+    await user.click(launchOn(LAB))
+
+    // Act
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Cancel' }))
+
+    // Assert
+    expect(openDialog()).toBeNull()
+    expect(launchOn(LAB).disabled).toBe(false)
+    expect(host.seen.map(({ command }) => command)).not.toContain('server_set_run_policy')
+    expect(launchesSeen(host)).toEqual([])
+  })
+
+  it("should show the host's refusal to start the server, and launch nothing", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.reject(golden.launchErrors[4]),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await screen.findByRole('listitem', { name: LAB })
+    await user.click(launchOn(LAB))
+
+    // Act
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Start and launch' }))
+
+    // Assert
+    const banner = await within(serverRow(LAB)).findByRole('alert')
+    expect(banner.textContent).toContain(golden.launchErrors[4].message)
+    expect(openDialog()).toBeNull()
+    expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+    expect(launchesSeen(host)).toEqual([])
+
+    // Act
+    await user.click(launchOn(LAB))
+
+    // Assert
+    expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+  })
+
+  it('should leave a policy that became active while asking as it is, and wait for the start', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'always' }),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await screen.findByRole('listitem', { name: LAB })
+    await user.click(launchOn(LAB))
+    await user.selectOptions(within(serverRow(LAB)).getByRole('combobox'), 'Always')
+    await waitFor(() => {
+      expect(host.seen.filter(({ command }) => command === 'server_set_run_policy')).toHaveLength(1)
+    })
+
+    // Act
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Start and launch' }))
+
+    // Assert
+    expect(await within(serverRow(LAB)).findByRole('button', { name: 'Starting…' })).toBeDefined()
+    expect(host.seen.filter(({ command }) => command === 'server_set_run_policy')).toEqual([
+      { command: 'server_set_run_policy', args: { domain: LAB, choice: { kind: 'always' } } },
+    ])
+  })
+
   it('should launch nothing once the wait for a started server is cancelled', async () => {
     // Arrange
     const user = userEvent.setup()
