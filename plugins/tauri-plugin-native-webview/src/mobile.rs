@@ -24,7 +24,9 @@
 //! [docs/Lifecycle and Races Explanation.md](../docs/Lifecycle%20and%20Races%20Explanation.md).
 
 use serde::de::DeserializeOwned;
-use tauri::{plugin::PluginApi, AppHandle, Runtime};
+use tauri::{plugin::PluginApi, AppHandle, Manager, Runtime};
+
+use crate::dismissal::{event_channel_for, DisposingOnDismissal};
 
 use crate::models::{
     DisposeResponse, EvaluateJsRequest, EvaluateJsResponse, HideResponse, IdOnly, OpenRequest,
@@ -78,6 +80,12 @@ impl<R: Runtime> NativeWebview<R> {
     /// straight to `WebView.loadUrl` and still resolves `opened: true`.
     pub fn open_url(&self, id: &str, payload: OpenRequest) -> crate::Result<()> {
         crate::url_scheme::parse_target(&payload.url)?;
+        // The native side sends its events through the channel that applies
+        // the request's dismissal action (see [`crate::dismissal`]).
+        let payload = OpenRequest {
+            native_webview_event_channel: event_channel_for(self.0.app(), id, &payload),
+            ..payload
+        };
         self.0
             .run_mobile_plugin::<OpenResponse>("openUrl", WithId { id, inner: payload })
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
@@ -129,11 +137,25 @@ impl<R: Runtime> NativeWebview<R> {
     /// command — removed from view but kept alive and running. Emits
     /// [`NativeWebviewEvent::Hidden`](crate::NativeWebviewEvent::Hidden) on that
     /// instance's channel once hidden. See [`HideResponse`](crate::HideResponse).
+    ///
+    /// The `Hidden` is a host hide, so an instance opened with
+    /// [`DismissalAction::Dispose`](crate::DismissalAction::Dispose) stays
+    /// alive: the hide is marked in flight first, and its `Hidden` consumes the
+    /// mark — Android sends it before resolving, iOS from the dismiss animation's
+    /// completion after. A hide that found nothing visible
+    /// (`requestCausedHide: false`), or failed, sends no `Hidden`, so
+    /// `DisposingOnDismissal::host_hide` clears its mark (see
+    /// [`crate::dismissal`]).
     pub fn hide(&self, id: &str) -> crate::Result<()> {
         self.0
-            .run_mobile_plugin::<HideResponse>("hide", IdOnly { id })
-            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
-        Ok(())
+            .app()
+            .state::<DisposingOnDismissal>()
+            .host_hide(id, || {
+                self.0
+                    .run_mobile_plugin::<HideResponse>("hide", IdOnly { id })
+                    .map(|hide_response| hide_response.request_caused_hide)
+                    .map_err(|error| crate::Error::PluginInvoke(error.to_string()))
+            })
     }
 
     /// Dispose instance `id`'s native webview by invoking the Swift/Kotlin

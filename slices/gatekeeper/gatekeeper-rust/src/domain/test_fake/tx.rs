@@ -261,7 +261,7 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
     ) -> Result<Option<LaunchContext>, GatekeeperError> {
         let mut contexts = self.store.launch_contexts.borrow_mut();
         let Some(context) = contexts.get_mut(nonce).filter(|context| {
-            context.client_id == client_id
+            context.admits_client(client_id)
                 && context.consumed_at.is_none()
                 && context.expires_at > now
         }) else {

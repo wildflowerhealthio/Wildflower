@@ -448,6 +448,33 @@ async fn authorize_consumes_a_smart_launch_once() {
     );
 }
 
+/// A launch minted for any client is consumed by the first client to present
+/// it at `/oauth/authorize`; a replay is refused.
+#[tokio::test]
+async fn authorize_consumes_a_launch_for_any_client_once() {
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    let launch = g
+        .launch_context_minter
+        .mint_for_any_client()
+        .expect("mint a launch");
+    let query = smart_launch_query(&format!("launch={launch}"));
+
+    let request_id = parked_request_id(&get_authorize(&g.router, &query).await);
+    let parked = store_handle(&db)
+        .authorization_request_by_id(&request_id)
+        .expect("query")
+        .expect("parked");
+    assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
+
+    let replay = get_authorize(&g.router, &query).await;
+    assert_eq!(
+        location_of(&replay),
+        "https://app.example/cb?error=invalid_request&state=xyz",
+        "a consumed launch is refused"
+    );
+}
+
 /// A forged `launch`, one minted for another client, and an `aud` naming
 /// another server are each `invalid_request` back to the trusted redirect; a
 /// request with neither param is plain OAuth, as is one with just the server's

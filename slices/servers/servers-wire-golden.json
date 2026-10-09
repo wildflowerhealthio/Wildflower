@@ -84,6 +84,36 @@
         }
       }
     },
+    "runningAndReachableOnStaging": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncryptStaging",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "runningAndReachableWithACachedCertificate": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
     "startingUnchecked": {
       "domain": "ruth.relay.example.com",
       "runState": "starting",
@@ -358,5 +388,52 @@
       "kind": "relayIdentityChanged",
       "message": "WARNING: the relay's identity has changed. It now presents publicKey \"Ny0NYH8cmCUs1ZpKr9ezG2UKq1z8f9UWRUXvJ7Ql1yI=\", not the \"24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=\" it had when this server was added. The relay may have been re-keyed, or someone may be impersonating it. Nothing was changed."
     }
-  }
+  },
+  "launchRefusals": {
+    "runningAndReachable": null,
+    "runningAndReachableOnStaging": "untrustedCertificate",
+    "runningAndReachableWithACachedCertificate": null,
+    "startingUnchecked": "serverNotRunning",
+    "startingCaUnreachable": "serverNotRunning",
+    "runningUnreachable": "unreachable",
+    "runningRenewalFailed": "notYetProbed",
+    "runningCacheFailed": "notYetProbed",
+    "neverRun": "serverNotRunning",
+    "stoppedWithAnError": "serverNotRunning",
+    "stoppedByThePlatform": "serverNotRunning",
+    "stoppedAsItsPolicyEnded": "serverNotRunning"
+  },
+  "launchRefusalsByCertificateStatus": {
+    "notIssued": "noValidCertificate",
+    "ordering": "noValidCertificate",
+    "noRenewalNeeded": null,
+    "renewalDue": null,
+    "expired": "noValidCertificate",
+    "cacheUnreadable": "noValidCertificate",
+    "orderFailing": "noValidCertificate"
+  },
+  "launchErrors": [
+    { "kind": "serverNotRunning", "message": "the server ruth.relay.example.com isn't running" },
+    {
+      "kind": "notYetProbed",
+      "message": "the server ruth.relay.example.com hasn't been reached through its relay yet"
+    },
+    {
+      "kind": "unreachable",
+      "message": "the server ruth.relay.example.com can't be reached through its relay: the relay answered 502"
+    },
+    {
+      "kind": "noValidCertificate",
+      "message": "the server ruth.relay.example.com has no valid certificate"
+    },
+    {
+      "kind": "notRegistered",
+      "message": "no server with the domain ruth.relay.example.com is registered"
+    },
+    {
+      "kind": "untrustedCertificate",
+      "message": "the server ruth.relay.example.com's certificate is from Let's Encrypt's staging CA, which browsers don't trust"
+    }
+  ],
+  "browserTrustedCertificateAuthorities": { "letsEncrypt": true, "letsEncryptStaging": false }
 }

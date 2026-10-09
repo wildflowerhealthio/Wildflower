@@ -874,10 +874,12 @@ mod tests {
         let now = Utc::now();
         store
             .with_connection(|tx| {
-                tx.insert_launch_context(&LaunchContext {
-                    patient: Some("pat-2".to_owned()),
-                    ..LaunchContext::new("launch-1".to_owned(), "app", now)
-                })
+                tx.insert_launch_context(&LaunchContext::for_client(
+                    "launch-1".to_owned(),
+                    "app",
+                    Some("pat-2".to_owned()),
+                    now,
+                ))
             })
             .unwrap();
         let (code_authorization_starter, _) = starter(store);

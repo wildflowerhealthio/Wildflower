@@ -1,6 +1,7 @@
 //! Tauri host glue for the servers slice: the install's servers on the unit
 //! runner, the notifications about them, the `server-status` and
-//! `pending-consent` events, and the base's commands. Every decision lives in [`servers_rust`], which needs no
+//! `pending-consent` events, and the base's commands, launching a server's
+//! launcher included. Every decision lives in [`servers_rust`], which needs no
 //! webview to be tested; this crate is only the glue.
 //!
 //! [`host_servers`], called once from the app's `setup()`:
@@ -57,6 +58,12 @@
 //!   host's Owner, through the running server's gatekeeper in-process (see
 //!   [`servers_rust::ServerConsentDecider`]); a server that isn't running
 //!   answers `serverNotRunning`.
+//! - [`server_launch`], invoked as `invoke('server_launch', { domain })`,
+//!   opens the server's launcher in a native web view of its own, at its
+//!   launcher URL with `iss` and a `launch` its running gatekeeper minted for
+//!   any client (see [`servers_rust::ServerLaunchMinter`]); a server that
+//!   isn't running, reachable through its relay and holding a valid
+//!   certificate answers why at once. It never changes the run policy.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
@@ -75,14 +82,18 @@
 //! to the `main` webview only, through its app-defined
 //! `allow-server-enrolment` (`server_add`, `server_set_credentials`),
 //! `allow-server-consents` (the consent commands) and
-//! `allow-server-management` (the rest) permissions.
+//! `allow-server-management` (the rest, `server_launch` included)
+//! permissions.
 
 mod commands;
 mod consent_commands;
+mod launch_commands;
 mod notifications;
 mod pending_consents;
 mod server_status;
 mod server_units;
+#[cfg(test)]
+mod test_gatekeeper;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -102,6 +113,7 @@ pub use commands::{
 pub use consent_commands::{
     pending_consents_list, server_consent_approve, server_consent_deny, server_consent_get,
 };
+pub use launch_commands::server_launch;
 pub use pending_consents::PENDING_CONSENT_EVENT;
 pub use server_status::SERVER_STATUS_EVENT;
 pub use server_units::{ServerConfigBuilder, ServerUnits};

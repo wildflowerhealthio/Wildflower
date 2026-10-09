@@ -983,6 +983,52 @@ mod tests {
         );
     }
 
+    /// An install already at `0023`, holding a launch context, is moved by
+    /// `0024` onto a nullable `client_id`: the row survives intact, a launch for
+    /// any client (NULL client) can then be stored, and the table refuses a
+    /// patient on a launch with no client.
+    #[test]
+    fn an_install_already_at_0023_keeps_its_launches_and_admits_any_client() {
+        use diesel::connection::SimpleConnection as _;
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0023"),
+        )
+        .expect("migrate to 0023");
+        conn.batch_execute(
+            "INSERT INTO launch_contexts (nonce, client_id, patient, created_at, expires_at) \
+             VALUES ('bound', 'app', 'pat-1', '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z')",
+        )
+        .expect("a launch at 0023");
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0024");
+
+        let kept: Vec<Name> = diesel::sql_query(
+            "SELECT client_id || ':' || patient AS name FROM launch_contexts WHERE nonce = 'bound'",
+        )
+        .load(&mut conn)
+        .expect("read the kept launch");
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].name, "app:pat-1");
+        conn.batch_execute(
+            "INSERT INTO launch_contexts (nonce, client_id, patient, created_at, expires_at) \
+             VALUES ('any', NULL, NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z')",
+        )
+        .expect("a launch for any client is stored");
+        assert!(
+            conn.batch_execute(
+                "INSERT INTO launch_contexts (nonce, client_id, patient, created_at, expires_at) \
+                 VALUES ('bad', NULL, 'pat-1', '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z')",
+            )
+            .is_err(),
+            "a patient needs a client"
+        );
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database

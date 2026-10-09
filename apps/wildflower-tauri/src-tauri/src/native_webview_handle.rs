@@ -9,6 +9,9 @@
 //! round-trip: the server already owns origin/tunnel resolution, so the host
 //! only needs the finished URL.
 //!
+//! Dismissing a popup disposes it, so a closed app stops counting as an open
+//! window for a server's `WhileOpen` run policy.
+//!
 //! The popup starts with an empty cookie jar and nothing is seeded into it: a
 //! launched app authenticates to the API with its own SMART bearer, or — for a
 //! loopback app calling the loopback API — by the host's loopback-provenance
@@ -84,7 +87,9 @@ fn open_app_in_native_webview(
     url: String,
 ) -> anyhow::Result<()> {
     use tauri::ipc::Channel;
-    use tauri_plugin_native_webview::{NativeWebviewEvent, NativeWebviewExt, OpenRequest};
+    use tauri_plugin_native_webview::{
+        DismissalAction, NativeWebviewEvent, NativeWebviewExt, OpenRequest,
+    };
 
     // `resolve_http_url` enforces http(s)-only (rejecting `file:` / `javascript:`
     // and unparseable URLs). We only need it to gate the string; the plugin
@@ -115,6 +120,8 @@ fn open_app_in_native_webview(
                 // No download story for launched apps yet; the plugin's
                 // default blocks them.
                 download_dir: None,
+                // A closed app is done with: dismissing disposes the popup.
+                on_dismiss: DismissalAction::Dispose,
             },
         )
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;

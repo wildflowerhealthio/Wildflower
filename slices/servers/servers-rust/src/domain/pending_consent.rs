@@ -164,6 +164,7 @@ mod tests {
                 certificate: None,
                 pending_consent,
                 consent_decider: None,
+                launch_minter: None,
             }),
         }
     }

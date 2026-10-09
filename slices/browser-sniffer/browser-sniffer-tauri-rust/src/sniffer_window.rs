@@ -26,7 +26,7 @@ use crate::bootstrap::SNIFFER_BOOTSTRAP;
 /// with the native webview — on desktop `patch_window_text` would race the
 /// not-yet-built chrome webview.
 pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Result<()> {
-    use tauri_plugin_native_webview::{NativeWebviewExt, OpenRequest};
+    use tauri_plugin_native_webview::{DismissalAction, NativeWebviewExt, OpenRequest};
 
     use crate::native_webview_bridge::NativeWebviewChannel;
 
@@ -64,6 +64,9 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
                 // seed any Wildflower credential into that jar.
                 cookies: vec![],
                 download_dir: sniffer_download_dir(app),
+                // A dismissed scrape keeps running in the background until the
+                // SPA disposes it.
+                on_dismiss: DismissalAction::Hide,
             },
         )
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;

@@ -1,7 +1,7 @@
 //! The [`LaunchContextMinter`] binding — the mint half of the
 //! [`LaunchContexts`] capability over the concrete `SqliteGatekeeperStore`, for
 //! in-process callers outside the gatekeeper: the apps slice's launch route and
-//! the host's launch. Consuming a launch stays inside the gatekeeper, at
+//! the base's launch. Consuming a launch stays inside the gatekeeper, at
 //! `/oauth/authorize`.
 
 use chrono::Utc;
@@ -35,6 +35,20 @@ impl LaunchContextMinter {
     pub fn mint(&self, client_id: &str) -> Result<String, GatekeeperError> {
         LaunchContexts::over(&self.store)
             .mint(client_id, generate_launch_nonce(), Utc::now())
+            .map(|launch_context| launch_context.nonce)
+    }
+
+    /// Mint a launch any OAuth client may consume and return its `launch`
+    /// value, for the base's launch of a server's launcher, which can be any
+    /// app. It binds no patient, expires five minutes from now, and works for
+    /// one `/oauth/authorize`, by whichever client presents it first.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] on a store failure.
+    pub fn mint_for_any_client(&self) -> Result<String, GatekeeperError> {
+        LaunchContexts::over(&self.store)
+            .mint_for_any_client(generate_launch_nonce(), Utc::now())
             .map(|launch_context| launch_context.nonce)
     }
 }

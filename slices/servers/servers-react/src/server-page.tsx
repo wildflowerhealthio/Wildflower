@@ -24,6 +24,7 @@ import {
 } from 'servers-core'
 
 import { failureText } from './failure-text.ts'
+import { LaunchButton } from './launch-button.tsx'
 import {
   type ServerHealthError,
   serverHealthQueryOptions,
@@ -133,9 +134,10 @@ type CopyOutcome = 'idle' | 'copied' | 'refused'
  * run-policy field; and Launch.
  *
  * @remarks
- * Launch does nothing yet: launching an app from the base isn't built. The
- * clipboard needs a focused, secure page and may still refuse; the domain is
- * on screen to copy by hand either way, and the page says so.
+ * Launch opens the server's launcher, or says why it can't (see
+ * `LaunchButton`). The clipboard needs a focused, secure page and may still
+ * refuse; the domain is on screen to copy by hand either way, and the page
+ * says so.
  */
 const StatusHero = ({
   server,
@@ -186,9 +188,7 @@ const StatusHero = ({
         ) : null}
       </div>
       <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
-      <button type="button" className="button-2 filled">
-        Launch
-      </button>
+      <LaunchButton server={server} runHostCommand={runHostCommand} />
     </section>
   )
 }

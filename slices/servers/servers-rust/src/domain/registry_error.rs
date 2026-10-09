@@ -43,6 +43,14 @@ impl RegistryError {
         }
     }
 
+    /// No server with `domain` is registered.
+    #[must_use]
+    pub fn not_registered(domain: &str) -> Self {
+        Self::NotRegistered {
+            domain: domain.to_owned(),
+        }
+    }
+
     /// Wrap a storage failure with what was being done when it happened.
     #[must_use]
     pub fn storage(

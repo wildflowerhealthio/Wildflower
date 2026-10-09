@@ -11,5 +11,13 @@ const CertificateAuthoritySchema = Schema.Literal('letsEncryptStaging', 'letsEnc
 /** A decoded {@link CertificateAuthoritySchema}. */
 type Type = typeof CertificateAuthoritySchema.Type
 
-export { CertificateAuthoritySchema as Schema }
+/**
+ * Whether browsers trust the CA's certificates: an app's browser accepts a
+ * server's certificate only from a CA they trust. Only Let's Encrypt's
+ * production CA is. The golden file's `browserTrustedCertificateAuthorities`
+ * holds this to the host's `CertificateAuthority::is_browser_trusted`.
+ */
+const isBrowserTrusted = (authority: Type): boolean => authority === 'letsEncrypt'
+
+export { CertificateAuthoritySchema as Schema, isBrowserTrusted }
 export type { Type }

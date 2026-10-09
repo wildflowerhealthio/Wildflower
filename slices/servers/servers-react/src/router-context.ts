@@ -3,6 +3,8 @@ import type { QueryClient } from '@tanstack/react-query'
 import { Cause, type Context, Effect, Exit, type Layer } from 'effect'
 import { TauriInvoke } from 'servers-core'
 
+import type { PendingLaunches } from './pending-launches.ts'
+
 /**
  * Runs one of `servers-core`'s host commands against the Tauri host,
  * resolving with its decoded answer and rejecting with its
@@ -42,6 +44,11 @@ interface RouterContext {
    * `tauri-shared-config.json`, which the host reads too.
    */
   readonly defaultLauncherUrl: string
+  /**
+   * The servers' pending start-and-launches, which every Launch of a server
+   * reads, so a wait outlives the screen it began on.
+   */
+  readonly pendingLaunches: PendingLaunches
 }
 
 /**

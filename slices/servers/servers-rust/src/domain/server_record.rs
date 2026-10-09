@@ -68,22 +68,33 @@ pub struct ServerRecord {
 
 impl ServerRecord {
     /// The CA a new server's certificates are ordered from: Let's Encrypt's
-    /// staging CA, and setting it to [`CertificateAuthority::LetsEncrypt`] is
-    /// the switch to production certificates for new servers.
+    /// production CA, whose certificates browsers trust.
     ///
-    /// Staging, because every server's domain is under its relay's domain,
-    /// so all of a relay's servers share one registered domain, and Let's
-    /// Encrypt issues at most 50 certificates per registered domain in 7 days.
-    /// Production waits for the relay's limit increase (#899). Staging
-    /// certificates aren't publicly trusted.
+    /// Every server's domain is under its relay's domain, so all of a relay's
+    /// servers share one registered domain, and with it Let's Encrypt's limit
+    /// of 50 certificates per registered domain per week.
     pub const DEFAULT_CERTIFICATE_AUTHORITY: CertificateAuthority =
-        CertificateAuthority::LetsEncryptStaging;
+        CertificateAuthority::LetsEncrypt;
 
     /// The server's domain, `<tunnel name>.<relay domain>`: its identity in
     /// the registry, its issuer, and the name of its data folder.
     #[must_use]
     pub fn domain(&self) -> String {
         format!("{}.{}", self.tunnel_name, self.public_settings.domain)
+    }
+
+    /// The server's public origin, `https://<domain>`, as
+    /// [`tunnel_rust::public_origin_url`] builds it: the origin its run
+    /// serves, which its gatekeeper's tokens name as `iss` and `aud`.
+    ///
+    /// # Panics
+    ///
+    /// Never: the domain is a [`TunnelName`] under a relay domain, both DNS
+    /// names, so it names an origin.
+    #[must_use]
+    pub fn public_origin(&self) -> Url {
+        tunnel_rust::public_origin_url(&self.domain())
+            .expect("a tunnel name under a relay domain names an origin")
     }
 
     /// The folder the server runs from, `<data_root>/servers/<domain>/`, which
@@ -383,6 +394,14 @@ pub(crate) mod tests {
             "ruth.relay.wildflowerhealth.io"
         );
         assert_eq!(self_hosted_record("lab").domain(), "lab.relay.example.com");
+    }
+
+    #[test]
+    fn the_public_origin_is_the_domain_over_https() {
+        assert_eq!(
+            self_hosted_record("lab").public_origin().as_str(),
+            "https://lab.relay.example.com/"
+        );
     }
 
     #[test]

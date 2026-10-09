@@ -103,8 +103,27 @@ const removeServer = ({
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
   invokeHostCommand('server_remove', Schema.Null, { domain })
 
+/**
+ * Open the server `domain`'s launcher, as a SMART EHR launch against it, in a
+ * window of its own: its launcher URL with `iss`, the server's FHIR base, and
+ * a `launch` its gatekeeper minted, which any app may use once. Answers once
+ * the window is open, and never changes the server's run policy.
+ *
+ * @remarks
+ * Fails with the host's refusal (see `HostCommandFailed.refusal`), a
+ * `LaunchError`: at once, before anything is minted, when the server isn't
+ * running, reachable through its relay and holding a valid certificate.
+ */
+const launchServer = ({
+  domain,
+}: {
+  readonly domain: string
+}): Effect.Effect<null, HostCommandError, TauriInvoke> =>
+  invokeHostCommand('server_launch', Schema.Null, { domain })
+
 export {
   addServer,
+  launchServer,
   listServers,
   removeServer,
   setServerCredentials,
