@@ -1,6 +1,6 @@
 //! The reachability monitor's [`HealthProbe`] over `reqwest`.
 //!
-//! [`ReqwestHealthProbe`] GETs `https://{public host}/health` and decodes the
+//! [`ReqwestHealthProbe`] GETs `https://{domain}/health` and decodes the
 //! server's `application/health+json` report (see
 //! [`shared_structures_rust::health_check`]). The draft answers `200` for
 //! `pass`/`warn` and `503` for `fail`, so both carry a report; any other

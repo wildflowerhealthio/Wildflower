@@ -12,10 +12,11 @@ publish.workspace = true
 # the Tauri host hands in its native adapters as trait objects — so it compiles
 # and tests without GTK.
 [features]
-# Test support for this crate's own integration tests:
-# `WildflowerServer::tunnel_stream_tx`, which hands the tunnel listener a
-# visitor's connection the way the tunnel does. Only the dev-dependency on this
-# crate below enables it.
+# Test support: `WildflowerServer::tunnel_stream_tx`, which hands the tunnel
+# listener a visitor's connection the way the tunnel does, for this crate's
+# own integration tests; and `CertificateAuthority::UnreachableForTests`, a CA
+# nothing answers at, for every test that runs a server. Only dev-dependencies
+# enable it: this crate's own below, and `servers-rust`'s.
 test-support = []
 
 [dependencies]
@@ -24,10 +25,11 @@ axum.workspace = true
 serde.workspace = true
 tower-http.workspace = true
 # `net` binds the loopback listener; `sync` carries the host's owner-token,
-# pending-consent and server-health `watch` channels and the tunnel's visitor
-# streams; `time` and `macros` pace and bound the reachability monitor's probes
-# and the `/health` checks, and bound a tunnel connection's PROXY header, which
-# `io-util` reads.
+# pending-consent, server-health and certificate `watch` channels and the
+# tunnel's visitor streams; `time` and `macros` pace and bound the reachability
+# monitor's probes and the `/health` checks, wait for a certificate's renewal
+# and expiry, and bound a tunnel connection's PROXY header, which `io-util`
+# reads.
 tokio = { workspace = true, features = ["net", "rt", "sync", "time", "macros", "io-util"] }
 # The PROXY protocol v2 header ahead of a tunnel connection (see
 # `src/http/tunnel_listener/proxy_header.rs`).
@@ -52,6 +54,16 @@ rustls = { version = "0.23", default-features = false, features = [
 tokio-rustls = { version = "0.26", default-features = false }
 # `StreamExt::next` on rustls-acme's state stream.
 futures-util = { version = "0.3", default-features = false }
+# A certificate's validity, read from its leaf (see
+# `src/adapters/acme_certificate.rs`); the version rustls-acme already builds.
+x509-parser = "0.18"
+# A certificate's SHA-256 fingerprint. Already in the tree.
+sha2 = "0.10"
+# A cache entry's PEM sections, split as rustls-acme splits them (see
+# `src/adapters/acme_certificate.rs`); the version rustls-acme already builds.
+pem = "3"
+# The certificate history file (see `src/adapters/certificate_history.rs`).
+serde_json.workspace = true
 tracing = "0.1"
 # Typed loopback base URL handed to the slices' configs and the 404 fallback.
 url = "2"
@@ -64,8 +76,9 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 # The monitor's `HealthProbe` port and `HealthCheckService` are `#[async_trait]`s.
 async-trait = "0.1"
-# Each `/health` check's `time`.
-chrono = { workspace = true, features = ["clock"] }
+# Each `/health` check's `time`, a certificate's validity and its history's
+# dates, written RFC 3339 (`serde`).
+chrono = { workspace = true, features = ["clock", "serde"] }
 # The `server` `/health` check's `SELECT 1` on the shared diesel pool.
 diesel.workspace = true
 apps-rust = { path = "../../apps/apps-rust" }
@@ -101,7 +114,6 @@ wildflower-server-rust = { path = ".", features = ["test-support"] }
 rathole-settings-rust = { path = "../../tunnel/rathole-settings-rust", features = [
   "proxy-header",
 ] }
-serde_json.workspace = true
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
 # The self-signed certificates the tests put in the certificate cache.

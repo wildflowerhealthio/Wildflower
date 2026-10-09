@@ -127,7 +127,7 @@ impl ServerRecord {
     #[must_use]
     pub fn device_certificate_config(&self, data_root: &Path) -> DeviceCertificateConfig {
         DeviceCertificateConfig {
-            acme_directory_url: self.certificate_authority.directory_url(),
+            certificate_authority: self.certificate_authority,
             certificate_dir: self.certificate_dir(data_root),
             acme_account_dir: data_root.join(ACME_ACCOUNT_DIR_NAME),
         }
@@ -422,8 +422,7 @@ pub(crate) mod tests {
         assert_eq!(
             official_record("ruth").device_certificate_config(data_root),
             DeviceCertificateConfig {
-                acme_directory_url: Url::parse("https://acme-v02.api.letsencrypt.org/directory")
-                    .unwrap(),
+                certificate_authority: CertificateAuthority::LetsEncrypt,
                 certificate_dir: PathBuf::from(
                     "/data/root/servers/ruth.relay.wildflowerhealth.io/certificates"
                 ),
@@ -433,10 +432,7 @@ pub(crate) mod tests {
         assert_eq!(
             self_hosted_record("lab").device_certificate_config(data_root),
             DeviceCertificateConfig {
-                acme_directory_url: Url::parse(
-                    "https://acme-staging-v02.api.letsencrypt.org/directory"
-                )
-                .unwrap(),
+                certificate_authority: CertificateAuthority::LetsEncryptStaging,
                 certificate_dir: PathBuf::from(
                     "/data/root/servers/lab.relay.example.com/certificates"
                 ),

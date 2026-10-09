@@ -3,7 +3,7 @@
 //!  - [`domain`] — the [`RelayClient`](domain::RelayClient) trait and its
 //!    [`RelaySettings`], the [`TunnelDaemon`] that dials the relay and re-dials
 //!    with backoff, the [`HealthStatus`] it publishes, and the rule for a
-//!    public host ([`public_origin_url`]).
+//!    server's domain ([`public_origin_url`]).
 //!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
 //!    dials the Wildflower relay and hands each visitor's stream over in
 //!    process.
@@ -26,7 +26,7 @@ mod relay_clients;
 use std::sync::Arc;
 
 pub use config::TunnelConfig;
-pub use domain::{public_origin_url, InvalidPublicHost, RelaySettings, TunnelDaemon, TunnelStream};
+pub use domain::{public_origin_url, InvalidDomain, RelaySettings, TunnelDaemon, TunnelStream};
 use relay_clients::RatholeRelayClient;
 pub use shared_structures_rust::health_check::HealthStatus;
 

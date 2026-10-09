@@ -22,6 +22,7 @@ export {
   type BackgroundServiceStartConfig,
 } from './background-session-recovery.ts'
 export * as CertificateAuthority from './certificate-authority.ts'
+export * as CertificateState from './certificate-state.ts'
 export * as ListedServer from './listed-server.ts'
 export {
   NotificationPermission,

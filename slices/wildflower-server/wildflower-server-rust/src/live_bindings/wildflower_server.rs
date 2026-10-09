@@ -161,7 +161,7 @@ impl WildflowerServer {
 ///
 /// # Errors
 ///
-/// Returns an error if the server's public host doesn't name an origin, the
+/// Returns an error if the server's domain doesn't name an origin, the
 /// server's folder or a certificate key folder can't be created, a scheduled
 /// database deletion can't be applied, a database or store can't be opened,
 /// the loopback port can't be bound, or a slice's setup fails.
@@ -187,15 +187,15 @@ pub async fn set_up(
         host_owner_scopes,
         first_party_client_id,
         relay_settings,
-        public_host,
+        domain,
         device_certificate,
     } = config;
 
     // The server's public origin, from its domain: what HFS's links and every app
     // launch name, and every token's `iss` and `aud`. It doesn't change while the
     // server runs.
-    let public_origin = tunnel_rust::public_origin_url(&public_host)
-        .context("the server's public host doesn't name an origin")?;
+    let public_origin = tunnel_rust::public_origin_url(&domain)
+        .context("the server's domain doesn't name an origin")?;
 
     // The server's folder holds its databases, and a server added since the
     // last start has none yet.
@@ -356,9 +356,12 @@ pub async fn set_up(
     // runs. A failed order is retried by rustls-acme, and the server keeps
     // running meanwhile: its tunnel handshakes fail until a certificate is
     // deployed. Its key folders, readable by this user only, are created
-    // first; one that can't be fails the setup.
-    let device_certificate = DeviceCertificate::start(&public_host, &device_certificate)?;
-    let tunnel_tls_acceptor = TunnelTlsAcceptor::new(&public_host, device_certificate.resolver());
+    // first; one that can't be fails the setup. It publishes its state on the
+    // host's channel, and records each new certificate in the server's
+    // certificate history.
+    let device_certificate =
+        DeviceCertificate::start(&domain, &device_certificate, observers.certificate_tx)?;
+    let tunnel_tls_acceptor = TunnelTlsAcceptor::new(&domain, device_certificate.resolver());
     #[cfg(feature = "test-support")]
     let tunnel_stream_tx = tunnel_config.tunnel_stream_tx;
     // Whether a remote app can reach the server: the monitor GETs the server's
@@ -547,7 +550,7 @@ pub async fn set_up(
     // connection is a local caller, whatever its peer or headers.
     let tunnel_router = inner_router
         .layer(forwarded_request_report)
-        // Hold the request to the server's public host and write its
+        // Hold the request to the server's domain and write its
         // `Forwarded` header (see `stamp_tunnel_forwarded`), so every layer
         // and handler inside reads it as a forwarded request, served at the
         // public origin. A misdirected request's `421` is not reported.

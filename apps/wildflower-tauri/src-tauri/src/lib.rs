@@ -193,7 +193,7 @@ fn server_config(
         host_owner_scopes: host_owner_scopes(),
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
-        public_host: server.domain(),
+        domain: server.domain(),
         device_certificate: server.device_certificate_config(data_root),
     })
 }

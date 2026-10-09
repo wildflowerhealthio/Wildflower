@@ -11,7 +11,25 @@
         "domain": "ruth.relay.example.com",
         "runState": "running",
         "runningSince": "2026-10-06T17:00:00Z",
-        "health": { "kind": "reachable", "status": "pass" }
+        "health": { "kind": "reachable", "status": "pass" },
+        "certificate": {
+          "status": "noRenewalNeeded",
+          "issuer": "letsEncrypt",
+          "held": {
+            "notBefore": "2026-10-01T00:00:00Z",
+            "notAfter": "2026-12-30T00:00:00Z",
+            "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          }
+        }
+      },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
       }
     },
     {
@@ -28,6 +46,24 @@
           "reason": "endedOnItsOwn",
           "error": "the server's config couldn't be built",
           "stoppedAt": "2026-10-06T17:03:00Z"
+        },
+        "certificate": {
+          "status": "expired",
+          "issuer": "letsEncryptStaging",
+          "held": {
+            "notBefore": "2026-10-01T00:00:00Z",
+            "notAfter": "2026-12-30T00:00:00Z",
+            "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          }
+        }
+      },
+      "certificate": {
+        "status": "expired",
+        "issuer": "letsEncryptStaging",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
         }
       }
     }
@@ -37,21 +73,82 @@
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "reachable", "status": "pass" }
+      "health": { "kind": "reachable", "status": "pass" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
     },
     "startingUnchecked": {
       "domain": "ruth.relay.example.com",
-      "runState": "starting"
+      "runState": "starting",
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "startingCaUnreachable": {
+      "domain": "ruth.relay.example.com",
+      "runState": "starting",
+      "certificate": {
+        "status": "orderFailing",
+        "issuer": "letsEncrypt",
+        "lastError": {
+          "kind": "caUnreachable",
+          "message": "http request error: io error: Connection refused"
+        }
+      }
     },
     "runningUnreachable": {
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "unreachable", "error": "the relay answered 502" }
+      "health": { "kind": "unreachable", "error": "the relay answered 502" },
+      "certificate": {
+        "status": "orderFailing",
+        "issuer": "letsEncrypt",
+        "lastError": { "kind": "rateLimited", "retryAfter": "2026-10-06T17:59:00Z" }
+      }
+    },
+    "runningRenewalFailed": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "certificate": {
+        "status": "renewalDue",
+        "issuer": "letsEncryptStaging",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        },
+        "lastError": { "kind": "challengeFailed", "detail": "Connection refused" }
+      }
+    },
+    "runningCacheFailed": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "certificate": {
+        "status": "ordering",
+        "issuer": "letsEncrypt",
+        "lastError": { "kind": "cache", "message": "account cache store: disk full" }
+      }
     },
     "neverRun": {
       "domain": "ruth.relay.example.com",
-      "runState": "stopped"
+      "runState": "stopped",
+      "certificate": { "status": "notIssued", "issuer": "letsEncrypt" }
     },
     "stoppedWithAnError": {
       "domain": "ruth.relay.example.com",
@@ -60,6 +157,15 @@
         "reason": "endedOnItsOwn",
         "error": "the server's config couldn't be built",
         "stoppedAt": "2026-10-06T17:03:00Z"
+      },
+      "certificate": {
+        "status": "expired",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
       }
     },
     "stoppedByThePlatform": {
@@ -69,6 +175,14 @@
         "reason": "sessionEndedByPlatform",
         "platformReason": "platformTimeout",
         "stoppedAt": "2026-10-06T17:09:00Z"
+      },
+      "certificate": {
+        "status": "cacheUnreadable",
+        "issuer": "letsEncrypt",
+        "lastError": {
+          "kind": "cache",
+          "message": "reading the certificate cache failed: Permission denied (os error 13)"
+        }
       }
     },
     "stoppedAsItsPolicyEnded": {
@@ -77,6 +191,15 @@
       "lastStop": {
         "reason": "policyInactive",
         "stoppedAt": "2026-10-06T17:42:00Z"
+      },
+      "certificate": {
+        "status": "renewalDue",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
       }
     }
   },

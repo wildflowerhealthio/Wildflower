@@ -14,19 +14,21 @@ changing how servers run or what the host notifies about them.
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher and certificate source,
   and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
-  `ServerDetail`, what its runs report, its `ServerConsentDecider` included,
-  through which the base reads and decides a running server's consents;
-  `ServerStatus`, a server's status on
-  `UnitRunner` as the base receives it, and `ListedServer`; `PendingConsent`,
-  the oldest consent waiting on a server, with `PendingConsentTracker`; and the
-  notification decisions: the per-caller request
-  coalescer and the stop notification for each new stop of a server's run.
+  `ServerDetail`, what its runs report (health and certificate state), its
+  `ServerConsentDecider` included, through which the base reads and decides a
+  running server's consents; `ServerStatus`, a server's status on `UnitRunner`
+  as the base receives it, and `ListedServer`, with the certificate state its
+  run reported or its cache holds; `PendingConsent`, the oldest consent
+  waiting on a server, with `PendingConsentTracker`; and the notification
+  decisions: the per-caller request coalescer and the stop notification for
+  each new stop of a server's run.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `RelayIdentity`, `EnrolmentError`), server changes
     (`set_run_policy` with `RunPolicyChoice`, `update_server` with
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
-    `ServerStatus` with `ServerStatusTracker`, `ListedServer`,
+    `ServerStatus` with `ServerStatusTracker`, `ListedServer`, the
+    certificate state's wire shape (`certificate_state_wire`),
     `PendingConsent` with `ConsentKey` and `PendingConsentTracker`, the
     consent commands' wire (`ConsentDetails`, `ConsentApproval`,
     `ApprovalOutcome`, `ConsentError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
@@ -101,7 +103,8 @@ changing how servers run or what the host notifies about them.
   its databases and, in `certificates/`, its certificates and their keys.
 - **New servers get staging certificates.** A record's
   `certificate_authority`, a `CertificateAuthority` (`LetsEncryptStaging` or
-  `LetsEncrypt`), is the ACME CA its runs order from.
+  `LetsEncrypt`, from `wildflower-server-rust`, re-exported here), is the
+  ACME CA its runs order from.
   `ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY` is `LetsEncryptStaging`,
   because all of a relay's servers share its registered domain and its limit
   of 50 certificates in 7 days until the limit increase (#899). Setting it to
@@ -111,9 +114,9 @@ changing how servers run or what the host notifies about them.
   CA, created by the first order.
 - **The record is the certificate's one source.**
   `ServerRecord::device_certificate_config` builds a run's
-  `DeviceCertificateConfig`: the directory of its `certificate_authority`
-  (`CertificateAuthority::directory_url`), the server's `certificates/`
-  folder and the install's `acme-account/` folder. The host passes it through to
+  `DeviceCertificateConfig`: its `certificate_authority` and that CA's
+  directory (`CertificateAuthority::directory_url`), the server's
+  `certificates/` folder and the install's `acme-account/` folder. The host passes it through to
   `wildflower-server-rust` unchanged.
 - **The tunnel name is one DNS label.** `ServerRecord::tunnel_name` is a
   `TunnelName` from `rathole-settings-rust`, the same check the relay applies
@@ -217,8 +220,9 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   server's domain and `server_set_credentials` with nothing; a failure the
   command reaches is the `EnrolmentError` as `{"kind", "message"}`, and their
   logs name the domain, never a parameter. `servers_list` lists a server's
-  domain, relay, tunnel name, launcher, certificate authority, run policy and
-  status, never its token or the relay's dial settings.
+  domain, relay, tunnel name, launcher, certificate authority, run policy,
+  status and certificate state, never its token or the relay's dial
+  settings.
 - **The change commands answer with `{kind, message}` too.**
   `server_set_run_policy` (`{domain, choice}`) answers with the run policy
   stored, `server_update` (`{domain, launcherUrl, certificateAuthority}`) and
@@ -256,7 +260,8 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   pending consent's head included), camelCase, each optional member left out
   when absent:
   `{domain, runState, lastStop?: {reason, platformReason?, error?,
-stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
+stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
+  there. A removed server gets no event; the
   base drops a server once `servers_list` no longer lists it, and reads the
   list again after `server_remove` and for a status of a server it doesn't
   list. `servers-wire-golden.json` pins the list and the event, read by both
@@ -266,8 +271,8 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   last stopped and its health are `UnitRunner`'s `UnitStatus<ServerDetail>`,
   from `statuses()` / `subscribe()`, and each run's stop is
   `subscribe_stops()`'s; nothing in the slice tracks runs itself.
-  A run's health goes out through `ctx.set_detail`, and `UnitRunner` clears
-  it.
+  A run's health and certificate state go out through `ctx.set_detail`, and
+  `UnitRunner` clears them.
 - **Consents are decided in-process.** A run puts a `ServerConsentDecider`
   over its gatekeeper's `HostConsentDecider` in every `ServerDetail` it sets,
   and `UnitRunner` clears the detail when the run ends, so the consent
@@ -288,6 +293,29 @@ stoppedAt}, runningSince?, health?}`. A removed server gets no event; the
   server that had nothing waiting gets a consent. `pending_consents_list`
   answers with every head on start. The golden file pins the event, the
   keys, the details, the approvals, the outcomes and the errors.
+- **A certificate's state is its run's, or its cache's.** Every
+  `ServerStatus`, in the `server-status` event and in `servers_list`,
+  carries one. While a run has reported one
+  (`ServerStatus::run_certificate`), it is the run's, from its
+  `ServerDetail`: `ordering`, `noRenewalNeeded`, `renewalDue` or
+  `orderFailing`, with the last error: an order's, or a `cache` fault, which
+  never makes it `orderFailing`. With none, as for a stopped or starting
+  server, the host reads what the certificate cached in the server's
+  `certificates/` folder says
+  (`wildflower_server_rust::cached_certificate_state`) when it emits the
+  status or answers `servers_list`, only for those servers, and
+  concurrently: `notIssued`, `noRenewalNeeded`, `renewalDue` or `expired`,
+  or `cacheUnreadable` with the error, never `ordering` or `orderFailing`.
+  So a stopped server never shows its last run's `orderFailing`. A stopped
+  server's certificate lapses and renews when the server starts, so
+  `expired` is not a failure. A listed server's `certificate` is its
+  status's. The certificate state's wire
+  shape is `{status, issuer, held?: {notBefore, notAfter, fingerprint},
+lastError?: {kind, …}}`.
+- **Each new certificate is recorded once.** A run appends each certificate
+  it deploys that the history doesn't record already to `certificates/history.json`
+  (`wildflower_server_rust::read_certificate_history`), so it is deleted with
+  the server.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
   `domain/notifications/` with its tests; `servers-tauri-rust` only posts.
 - **Configuration only.** `ServerRecord::run_policy` is when the user wants

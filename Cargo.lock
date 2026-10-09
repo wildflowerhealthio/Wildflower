@@ -7368,7 +7368,6 @@ dependencies = [
  "rcgen 0.13.2",
  "reqwest 0.12.28",
  "rustls",
- "rustls-acme",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -7392,6 +7391,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "futures-util",
  "gatekeeper-rust",
  "persistence-rust",
  "rathole-settings-rust",
@@ -9499,6 +9499,7 @@ dependencies = [
  "futures-util",
  "gatekeeper-rust",
  "ohif-server-rust",
+ "pem",
  "persistence-rust",
  "ppp",
  "proptest",
@@ -9511,6 +9512,7 @@ dependencies = [
  "scopes-rust",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "shared-structures-rust",
  "tempfile",
  "token-revocation-rust",
@@ -9523,6 +9525,7 @@ dependencies = [
  "tunnel-rust",
  "url",
  "wildflower-server-rust",
+ "x509-parser",
 ]
 
 [[package]]

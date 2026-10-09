@@ -15,6 +15,12 @@ pub enum CertificateAuthority {
     LetsEncryptStaging,
     /// Let's Encrypt's production CA: publicly trusted certificates.
     LetsEncrypt,
+    /// A CA only tests order from, with the `test-support` feature: its
+    /// directory is on this machine, at a port nothing listens on, so an order
+    /// fails at once, and the state and history a test reads name it as the
+    /// issuer rather than a real CA it never reached.
+    #[cfg(feature = "test-support")]
+    UnreachableForTests,
 }
 
 impl CertificateAuthority {
@@ -22,13 +28,14 @@ impl CertificateAuthority {
     ///
     /// # Panics
     ///
-    /// Never: both directories are rustls-acme's constant URLs, which a test
-    /// parses.
+    /// Never: each directory is a constant URL, which a test parses.
     #[must_use]
     pub fn directory_url(self) -> Url {
         let directory_url = match self {
             Self::LetsEncryptStaging => rustls_acme::acme::LETS_ENCRYPT_STAGING_DIRECTORY,
             Self::LetsEncrypt => rustls_acme::acme::LETS_ENCRYPT_PRODUCTION_DIRECTORY,
+            #[cfg(feature = "test-support")]
+            Self::UnreachableForTests => "https://127.0.0.1:9/directory",
         };
         Url::parse(directory_url).expect("rustls-acme's Let's Encrypt directories are URLs")
     }
@@ -49,6 +56,12 @@ mod tests {
         assert_eq!(
             CertificateAuthority::LetsEncrypt.directory_url().as_str(),
             "https://acme-v02.api.letsencrypt.org/directory"
+        );
+        assert_eq!(
+            CertificateAuthority::UnreachableForTests
+                .directory_url()
+                .as_str(),
+            "https://127.0.0.1:9/directory"
         );
     }
 

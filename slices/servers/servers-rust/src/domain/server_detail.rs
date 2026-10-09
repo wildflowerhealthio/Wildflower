@@ -2,7 +2,7 @@
 //! run state.
 
 use gatekeeper_rust::PendingConsentHead;
-use wildflower_server_rust::ServerHealth;
+use wildflower_server_rust::{CertificateState, ServerHealth};
 
 use crate::live_bindings::server_consent_decider::ServerConsentDecider;
 
@@ -16,6 +16,10 @@ pub struct ServerDetail {
     /// (the relay and the tunnel), as the server's reachability monitor
     /// publishes it; `None` until its first probe.
     pub health: Option<ServerHealth>,
+    /// Where the server's certificate stands, as the run publishes it while
+    /// it deploys, orders and renews it; `None` until the run's certificate
+    /// starts.
+    pub certificate: Option<CertificateState>,
     /// The oldest consent waiting for the Owner's answer on this server, as
     /// its gatekeeper publishes it; `None` when nothing waits.
     pub pending_consent: Option<PendingConsentHead>,

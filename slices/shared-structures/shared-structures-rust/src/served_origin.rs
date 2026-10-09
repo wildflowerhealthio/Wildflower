@@ -14,7 +14,7 @@
 //!   `stamp_tunnel_forwarded`) writes it on every request through the tunnel,
 //!   replacing whatever the visitor sent: `for=` the visitor's address from the
 //!   connection's PROXY header (left out when there is none), `host=` the
-//!   server's public host once the request's `Host` names it, `proto=https`.
+//!   server's domain once the request's `Host` names it, `proto=https`.
 //! - **A trusted front run on this machine** (nginx) relays remote callers to
 //!   the loopback listener, as below.
 //!
