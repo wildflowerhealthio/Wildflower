@@ -112,8 +112,7 @@ struct DetailSources {
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
 /// run's health, its certificate's state, the head of its gatekeeper's
 /// pending-consent queue, its consent decider and its launch minter into the
-/// detail, now and
-/// each time the health, the certificate state or the head changes. It also
+/// detail, now and each time the health, the certificate state or the head changes. It also
 /// forwards each change of its head to the host's shared
 /// `active_pending_consent_tx`, which the legacy bridge reads until #965
 /// deletes it. The task dies with the run's runtime, and `UnitRunner` clears

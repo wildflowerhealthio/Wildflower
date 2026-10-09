@@ -272,9 +272,9 @@ pub trait GatekeeperTx {
 
     /// Stamp the launch `nonce` consumed at `now` and return it, iff it was
     /// minted for `client_id` or for any client, is unconsumed, and is
-    /// unexpired at `now`; otherwise `None` and nothing changes. The check and the stamp are one
-    /// statement, so of two concurrent consumes of one nonce exactly one gets
-    /// the context.
+    /// unexpired at `now`; otherwise `None` and nothing changes. The check and
+    /// the stamp are one statement, so of two concurrent consumes of one nonce
+    /// exactly one gets the context.
     ///
     /// # Errors
     ///

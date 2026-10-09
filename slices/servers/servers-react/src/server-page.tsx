@@ -135,8 +135,9 @@ type CopyOutcome = 'idle' | 'copied' | 'refused'
  *
  * @remarks
  * Launch opens the server's launcher, or says why it can't (see
- * `LaunchButton`). The clipboard needs a focused, secure page and may still refuse; the domain is
- * on screen to copy by hand either way, and the page says so.
+ * `LaunchButton`). The clipboard needs a focused, secure page and may still
+ * refuse; the domain is on screen to copy by hand either way, and the page
+ * says so.
  */
 const StatusHero = ({
   server,

@@ -131,8 +131,9 @@ changing how servers run or what the host notifies about them.
   confirming sets `whileOpen`, then it shows "Starting…", with Cancel, until
   the server's status is launchable, and launches it once. Launching never
   changes an active policy or extends an `until`. While the webview is
-  offline, the list says that launching needs a connection; the host commands themselves need none, so the base's query
-  client runs them offline too (`networkMode: 'always'`).
+  offline, the list says that launching needs a connection; the host
+  commands themselves need none, so the base's query client runs them
+  offline too (`networkMode: 'always'`).
   Over every screen, `ConsentSheet` asks about the consents waiting on the
   running servers, one server at a time, with where it stands in the queue ("1
   of 3"), kept current by the `pending-consent` event: the server's domain, the
@@ -349,8 +350,8 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   any app can be a launcher. The launcher opens in a native web view of its
   own, `launcher-<domain>` with its dots as `_`, titled with the domain; a
   user dismissal disposes it, so it stops counting as an open window for
-  `WhileOpen`. It never changes the run policy. Errors are `{kind,
-message}`: `serverNotRunning`, `notYetProbed`, `unreachable`,
+  `WhileOpen`. It never changes the run policy. Errors are
+  `{kind, message}`: `serverNotRunning`, `notYetProbed`, `unreachable`,
   `noValidCertificate`, `gatekeeper`, `openingLauncher`, or the registry's
   `notRegistered` or `registry`. The golden file pins the refusals the base
   shows.

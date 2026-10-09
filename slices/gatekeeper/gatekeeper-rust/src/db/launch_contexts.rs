@@ -33,10 +33,11 @@ pub(super) fn insert_launch_context(
 }
 
 /// Stamp the launch `nonce` consumed at `now` and return it, iff it was minted
-/// for `client_id` or for any client, is unconsumed, and is unexpired at `now`; otherwise `None`
-/// and nothing changes. One conditional `UPDATE … RETURNING`, so the check and
-/// the stamp are a single statement under `SQLite`'s write lock: of two racing
-/// authorizes presenting the same nonce, exactly one gets the row.
+/// for `client_id` or for any client, is unconsumed, and is unexpired at
+/// `now`; otherwise `None` and nothing changes. One conditional
+/// `UPDATE … RETURNING`, so the check and the stamp are a single statement
+/// under `SQLite`'s write lock: of two racing authorizes presenting the same
+/// nonce, exactly one gets the row.
 pub(super) fn consume_launch_context(
     conn: &mut SqliteConnection,
     nonce: &str,

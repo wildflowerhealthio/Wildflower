@@ -6,9 +6,9 @@
 //! policy turns it off, it stops with the detail cleared. Turned back on, the
 //! next run binds the same port, so the previous run's runtime is gone, and
 //! serves again. Its detail holds the run's launch minter, and an unreachable
-//! server isn't launchable. A consent its gatekeeper parks is the run's detail, and is
-//! read and decided through the `ServerConsentDecider` the run's detail holds
-//! until the run ends.
+//! server isn't launchable. A consent its gatekeeper parks is the run's
+//! detail, and is read and decided through the `ServerConsentDecider` the
+//! run's detail holds until the run ends.
 
 use std::path::PathBuf;
 use std::sync::Arc;
