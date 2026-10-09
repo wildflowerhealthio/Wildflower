@@ -33,7 +33,7 @@
  * Checkbox / radio row layout — box and label on one line with a comfortable
  * gap (the components render `.checkbox-row` / `.radio-row` wrappers that
  * tundra-css leaves unstyled, so the box and label would otherwise sit
- * flush). `.radio-group` resets the `<fieldset>` and stacks its rows.
+ * flush). `.radio-group` stacks its rows.
  */
 .checkbox-row,
 .radio-row {
@@ -47,8 +47,5 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  border: 0;
-  margin: 0;
-  padding: 0;
   min-inline-size: 0;
 }

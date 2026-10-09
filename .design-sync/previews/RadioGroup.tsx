@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { RadioGroup } from 'react-tundraish'
 
 /**
- * A named group via `legend` — the canonical use. The native `<fieldset>` the
- * group renders is named by the legend, so no outer Field/FieldGroup wrapper is
+ * A named group via `legend` — the canonical use. The `radiogroup` the group
+ * renders is named by the legend, so no outer Field/FieldGroup wrapper is
  * needed (gatekeeper oauth-consent patient picker).
  */
 export const PatientContext = () => {

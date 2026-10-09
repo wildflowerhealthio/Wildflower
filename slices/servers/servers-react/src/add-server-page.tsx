@@ -130,8 +130,9 @@ const RelayIdentityFields = ({
 )
 
 /**
- * A self-hosted Wildflower relay's settings: its URL, and under Advanced its
- * optional pin, open while either half of it is entered.
+ * A self-hosted Wildflower relay's settings, after who can host one and
+ * what any relay can see: its URL, and under Advanced its optional pin,
+ * open while either half of it is entered.
  */
 const SelfHostedRelaySettings = ({
   entries,
@@ -143,6 +144,14 @@ const SelfHostedRelaySettings = ({
   const [open, setOpen] = useState(() => entries.remoteAddr !== '' || entries.publicKey !== '')
   return (
     <>
+      <p className={`text-body-3 ${styles['add-server-page__note']}`}>
+        Anyone can host a Wildflower Relay, on their own hardware or a server they rent. It's open
+        source, so you can see exactly what it does. Wildflower's official relay is safe to use:
+        everything sent through any relay, the official one included, is encrypted end to end
+        between the app and your server, so the relay can't read your records. What a relay can see
+        is which server is being reached, and when and from where. Hosting your own keeps that with
+        you, too.
+      </p>
       <TextField
         label="Wildflower Relay URL"
         type="url"
@@ -213,8 +222,9 @@ const RatholeRelaySettings = ({
 /**
  * Step 1, the relay: the Wildflower official relay, preselected, a
  * self-hosted Wildflower relay by its URL, with an optional pin, or a
- * rathole relay by its settings; over what the relay can and can't see.
- * Continue waits for every setting the relay needs.
+ * rathole relay by its settings, either under Custom Relay Settings; over
+ * what the relay can and can't see. Continue waits for every setting the
+ * relay needs.
  */
 const RelayStep = ({
   entries,
@@ -226,6 +236,7 @@ const RelayStep = ({
   readonly onContinue: (relay: EnteredRelay.Type) => void
 }): JSX.Element => {
   const headingId = useId()
+  const customHeadingId = useId()
   const relay = enteredRelayOf(entries)
   return (
     <form
@@ -246,21 +257,24 @@ const RelayStep = ({
       </p>
       <RadioGroup
         name="relay"
-        legend="Choose a relay"
-        size={3}
+        legend="What kind of Relay are you using?"
         value={entries.choice}
         options={RELAY_CHOICES}
         onChange={(choice) => {
           onChange({ ...entries, choice })
         }}
       />
-      {Match.value(entries.choice).pipe(
-        Match.when('wildflowerOfficial', () => null),
-        Match.when('selfHostedWildflower', () => (
-          <SelfHostedRelaySettings entries={entries} onChange={onChange} />
-        )),
-        Match.when('rathole', () => <RatholeRelaySettings entries={entries} onChange={onChange} />),
-        Match.exhaustive
+      {entries.choice === 'wildflowerOfficial' ? null : (
+        <section className={styles['add-server-page__fields']} aria-labelledby={customHeadingId}>
+          <h3 id={customHeadingId} className={`text-label-3 ${styles['add-server-page__title']}`}>
+            Custom Relay Settings
+          </h3>
+          {entries.choice === 'selfHostedWildflower' ? (
+            <SelfHostedRelaySettings entries={entries} onChange={onChange} />
+          ) : (
+            <RatholeRelaySettings entries={entries} onChange={onChange} />
+          )}
+        </section>
       )}
       <div className={styles['add-server-page__actions']}>
         <button type="submit" className="button-2 filled" disabled={Option.isNone(relay)}>
@@ -331,7 +345,7 @@ const CredentialsStep = ({
         onChange={(token) => {
           onChange({ ...entries, token })
         }}
-        description="The administrator of your relay should provide this to you. It's saved on this device and never shown again."
+        description="This secret token is used to identify your device to the relay. The administrator of your relay should provide this to you. It's saved on this device and never shown again."
       />
       <div className={styles['add-server-page__actions']}>
         <button type="button" className="button-2 outline" onClick={onBack}>
