@@ -93,11 +93,12 @@ changing how servers run or what the host notifies about them.
   shown as a failure only for `orderFailing` and `cacheUnreadable`, the
   certificate authority the server orders from (the record's, which Save
   launcher saves unchanged), and the one the state is for (its `issuer`) when
-  that differs, the held certificate's validity and SHA-256
-  fingerprint, and the latest error, described by its kind; and its removal,
-  behind a confirm that asks for the domain to be typed. With no servers it
-  says what a server is, beside Add server. Launch does nothing and Add server is disabled
-  until the base launches apps and adds servers. While the
+  that differs, the held certificate's validity and SHA-256 fingerprint, and
+  the latest error, described by its kind, a rate limit's retry time saying
+  so once it has passed (one timer, set for it); and its removal, behind a
+  confirm that asks for the domain to be typed. With no servers it says what
+  a server is, beside Add server. Launch does nothing and Add server is
+  disabled until the base launches apps and adds servers. While the
   webview is offline (`navigator.onLine`), the list says that launching needs
   a connection; the host commands themselves need none, so the base's query
   client runs them offline too (`networkMode: 'always'`).

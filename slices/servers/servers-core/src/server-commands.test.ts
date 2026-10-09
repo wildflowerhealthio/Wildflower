@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import { enableBackgroundSessionRecovery } from './background-session-recovery.ts'
-import type * as CertificateState from './certificate-state.ts'
+import * as CertificateState from './certificate-state.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as ListedServer from './listed-server.ts'
 import * as RunPolicyChoice from './run-policy-choice.ts'
@@ -363,6 +363,29 @@ describe('CertificateState', () => {
     expect(challengeFailed.lastError).toEqual(
       Option.some({ kind: 'challengeFailed', detail: Option.some('Connection refused') })
     )
+  })
+
+  it('should read when to retry only from a rate limit that said when', () => {
+    // Arrange
+    const rateLimited = certificateOf(golden.serverStatuses.runningUnreachable)
+    const saidNotWhen: CertificateState.Type = {
+      ...rateLimited,
+      lastError: Option.some({ kind: 'rateLimited', retryAfter: Option.none() }),
+    }
+    const others = [
+      saidNotWhen,
+      certificateOf(golden.serverStatuses.runningRenewalFailed),
+      certificateOf(golden.serverStatuses.runningAndReachable),
+    ]
+
+    // Act
+    const retryAfter = CertificateState.retryAfterOf(rateLimited)
+
+    // Assert
+    expect(retryAfter).toEqual(Option.some(utc('2026-10-06T17:59:00Z')))
+    for (const certificate of others) {
+      expect(CertificateState.retryAfterOf(certificate)).toEqual(Option.none())
+    }
   })
 
   it("should decode a starting run's unreachable CA with its message", () => {

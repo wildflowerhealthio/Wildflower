@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { type DateTime, Option, Schema } from 'effect'
 
 import * as CertificateAuthority from './certificate-authority.ts'
 
@@ -84,5 +84,17 @@ const CertificateStateSchema = Schema.Struct({
 /** A decoded {@link CertificateStateSchema}. */
 type Type = typeof CertificateStateSchema.Type
 
-export { CertificateStateSchema as Schema, IssuedSchema, OrderErrorSchema, StatusSchema }
+/** When the CA said to retry, while the latest error is a rate limit that said when. */
+const retryAfterOf = (state: Type): Option.Option<DateTime.Utc> =>
+  state.lastError.pipe(
+    Option.flatMap((error) => (error.kind === 'rateLimited' ? error.retryAfter : Option.none()))
+  )
+
+export {
+  CertificateStateSchema as Schema,
+  IssuedSchema,
+  OrderErrorSchema,
+  retryAfterOf,
+  StatusSchema,
+}
 export type { Issued, OrderError, Status, Type }

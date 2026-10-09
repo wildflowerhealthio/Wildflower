@@ -15,7 +15,7 @@ import {
 } from 'react-tundraish'
 import {
   type CertificateAuthority,
-  type CertificateState,
+  CertificateState,
   type HealthReport,
   type ListedServer,
   ServerStatus,
@@ -39,6 +39,7 @@ import {
   PLATFORM_STOP_REASON_TEXT,
   statusSummary,
 } from './server-status-text.ts'
+import { useHasPassed } from './use-has-passed.ts'
 import styles from './server-page.module.css'
 
 /** What the Relay row says of each kind of relay. */
@@ -83,14 +84,20 @@ const CERTIFICATE_STATUS_TONE: Readonly<
   cacheUnreadable: 'danger',
 }
 
-/** What the Last error row says of a run's latest certificate error. */
-const certificateErrorText = (error: CertificateState.OrderError): string =>
+/**
+ * What the Last error row says of a run's latest certificate error;
+ * `retryHasPassed` is whether a rate limit's retry time has passed.
+ */
+const certificateErrorText = (
+  error: CertificateState.OrderError,
+  retryHasPassed: boolean
+): string =>
   Match.value(error).pipe(
     Match.when({ kind: 'rateLimited' }, ({ retryAfter }) =>
       retryAfter.pipe(
         Option.map(
           (at) =>
-            `The certificate authority's rate limit was reached; it said to retry after ${formatInstant(at)}.`
+            `The certificate authority's rate limit was reached; it said to retry after ${formatInstant(at)}${retryHasPassed ? '; that time has passed.' : '.'}`
         ),
         Option.getOrElse(() => "The certificate authority's rate limit was reached.")
       )
@@ -391,13 +398,13 @@ const RelayAndTunnel = ({
  * the certificate state is for another CA (`issuer`), as before a changed CA
  * takes effect, the CA the state is for; the certificate held, with when it
  * is valid and its fingerprint; and the run's latest error since it last
- * deployed one. The section shows each row in full (`maxLines={null}`): the
- * fingerprint is compared by hand and a CA's error detail can run long.
+ * deployed one, `retryHasPassed` saying whether a rate limit's retry time
+ * has passed.
  */
-const certificateItems = ({
-  certificateAuthority,
-  certificate,
-}: ListedServer.Type): readonly ItemListItem[] => [
+const certificateItems = (
+  { certificateAuthority, certificate }: ListedServer.Type,
+  retryHasPassed: boolean
+): readonly ItemListItem[] => [
   {
     id: 'certificate-status',
     title: 'Status',
@@ -430,7 +437,7 @@ const certificateItems = ({
     Option.map((error): ItemListItem => ({
       id: 'last-error',
       title: 'Last error',
-      subtitle: certificateErrorText(error),
+      subtitle: certificateErrorText(error, retryHasPassed),
       tone: 'danger',
     })),
     Option.toArray
@@ -450,6 +457,22 @@ const isDefaultLauncher = (launcherUrl: string, defaultLauncherUrl: string): boo
   Option.all([normalisedUrl(launcherUrl), normalisedUrl(defaultLauncherUrl)]).pipe(
     Option.exists(([launcher, defaultLauncher]) => launcher === defaultLauncher)
   )
+
+/**
+ * The server's Certificate section, rendering again when a rate limit's
+ * retry time passes. It shows each row in full (`maxLines={null}`): the
+ * fingerprint is compared by hand and a CA's error detail can run long.
+ */
+const CertificateList = ({ server }: { readonly server: ListedServer.Type }): JSX.Element => {
+  const retryHasPassed = useHasPassed(CertificateState.retryAfterOf(server.certificate))
+  return (
+    <ItemList
+      title="Certificate"
+      maxLines={null}
+      items={certificateItems(server, retryHasPassed)}
+    />
+  )
+}
 
 /**
  * The launcher the server opens apps from: a field starting at the saved
@@ -657,7 +680,7 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
         defaultLauncherUrl={defaultLauncherUrl}
         runHostCommand={runHostCommand}
       />
-      <ItemList title="Certificate" maxLines={null} items={certificateItems(server)} />
+      <CertificateList server={server} />
       <DangerZone server={server} runHostCommand={runHostCommand} />
     </>
   )

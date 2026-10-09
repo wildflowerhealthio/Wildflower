@@ -1121,13 +1121,6 @@ describe('the server page', () => {
 
   it.each([
     [
-      'a rate limit, until when the CA said',
-      golden.serverStatuses.runningUnreachable,
-      `The certificate authority's rate limit was reached; it said to retry after ${shownInstant(
-        golden.serverStatuses.runningUnreachable.certificate.lastError.retryAfter
-      )}.`,
-    ],
-    [
       'a rate limit with no retry time',
       withLastError({ kind: 'rateLimited' }),
       "The certificate authority's rate limit was reached.",
@@ -1166,6 +1159,30 @@ describe('the server page', () => {
     const lastError = certificateRow('Last error')
     expect(lastError.textContent).toContain(text)
     expect(lastError.className).toMatch(/tone-danger/)
+  })
+
+  it('should say when the CA said to retry a rate limit, and that it has passed once it has', async () => {
+    // Arrange
+    const { retryAfter } = golden.serverStatuses.runningUnreachable.certificate.lastError
+    const said = `The certificate authority's rate limit was reached; it said to retry after ${shownInstant(retryAfter)}`
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: Date.parse(retryAfter) - 60_000 })
+    try {
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses.runningUnreachable),
+      })
+      expect(await screen.findByText(`${said}.`)).toBeDefined()
+
+      // Act
+      act(() => {
+        vi.advanceTimersByTime(60_000)
+      })
+
+      // Assert
+      expect(await screen.findByText(`${said}; that time has passed.`)).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('should show the certificate state of each server-status event', async () => {
