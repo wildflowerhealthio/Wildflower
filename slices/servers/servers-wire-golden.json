@@ -302,5 +302,61 @@
       "kind": "registrationNotAcknowledged",
       "message": "the app is new or asks for more than it registered, so approving it needs that acknowledged"
     }
-  ]
+  ],
+  "enteredRelays": {
+    "wildflowerOfficial": { "kind": "wildflowerOfficial" },
+    "selfHostedWildflower": {
+      "kind": "selfHostedWildflower",
+      "baseUrl": "https://relay.example.com"
+    },
+    "selfHostedWildflowerPinned": {
+      "kind": "selfHostedWildflower",
+      "baseUrl": "https://relay.example.com",
+      "pin": {
+        "remoteAddr": "relay.example.com:2333",
+        "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM="
+      }
+    },
+    "rathole": {
+      "kind": "rathole",
+      "remoteAddr": "relay.example.com:2333",
+      "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
+      "domain": "relay.example.com"
+    }
+  },
+  "enrolmentErrors": {
+    "invalidRelaySetting": {
+      "kind": "invalidRelaySetting",
+      "message": "the entered baseUrl \"http://relay.example.com\" is not an https URL"
+    },
+    "relayUnreachable": {
+      "kind": "relayUnreachable",
+      "message": "the relay at https://relay.example.com/ couldn't be reached: connection refused"
+    },
+    "badRelayResponse": {
+      "kind": "badRelayResponse",
+      "message": "the relay's /rathole response was unusable: status 404 Not Found"
+    },
+    "pinMismatch": {
+      "kind": "pinMismatch",
+      "message": "the relay serves remoteAddr \"relay.example.com:2334\", not the pinned \"relay.example.com:2333\""
+    },
+    "invalidTunnelName": {
+      "kind": "invalidTunnelName",
+      "message": "tunnel name \"Ruth\" is not a lowercase DNS label"
+    },
+    "emptyToken": { "kind": "emptyToken", "message": "the tunnel token is empty" },
+    "signedRequestRejected": {
+      "kind": "signedRequestRejected",
+      "message": "the relay rejected the request signed as tunnel ruth: check the tunnel name and token, and that this device's clock is set correctly"
+    },
+    "alreadyRegistered": {
+      "kind": "alreadyRegistered",
+      "message": "a server with the domain ruth.relay.example.com is already registered"
+    },
+    "relayIdentityChanged": {
+      "kind": "relayIdentityChanged",
+      "message": "WARNING: the relay's identity has changed. It now presents publicKey \"Ny0NYH8cmCUs1ZpKr9ezG2UKq1z8f9UWRUXvJ7Ql1yI=\", not the \"24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=\" it had when this server was added. The relay may have been re-keyed, or someone may be impersonating it. Nothing was changed."
+    }
+  }
 }
