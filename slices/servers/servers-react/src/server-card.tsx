@@ -3,6 +3,7 @@ import { Option } from 'effect'
 import type { JSX } from 'react'
 import { type ListedServer, ServerStatus } from 'servers-core'
 
+import { LaunchButton } from './launch-button.tsx'
 import type { RunHostCommand } from './router-context.ts'
 import { RunPolicyPicker } from './run-policy-picker.tsx'
 import { lastStopText, statusNote, statusSummary } from './server-status-text.ts'
@@ -16,9 +17,9 @@ import styles from './server-card.module.css'
  * run stopped; and Launch and Edit.
  *
  * @remarks
- * The picker is disabled while a change is pending. Launch does nothing yet:
- * launching an app from the base isn't built. Edit opens the server's page,
- * `/servers/$domain`, where it is removed.
+ * The picker is disabled while a change is pending. Launch opens the
+ * server's launcher, or says why it can't (see `LaunchButton`). Edit opens
+ * the server's page, `/servers/$domain`, where it is removed.
  */
 const ServerCard = ({
   server,
@@ -59,9 +60,11 @@ const ServerCard = ({
         Option.getOrNull
       )}
       <div className={styles['server-card__actions']}>
-        <button type="button" className={`button-2 filled ${styles['server-card__action']}`}>
-          Launch
-        </button>
+        <LaunchButton
+          server={server}
+          runHostCommand={runHostCommand}
+          className={styles['server-card__action']}
+        />
         <Link
           to="/servers/$domain"
           params={{ domain: server.domain }}

@@ -62,15 +62,17 @@ changing how servers run or what the host notifies about them.
   `TauriInvoke` port (`invokeHostCommand`), each answer decoded by an Effect
   Schema: the server commands (`listServers`, `addServer`,
   `setServerCredentials`, `setServerRunPolicy`, `updateServer`,
-  `removeServer`), the background session's recovery
+  `removeServer`, `launchServer`), the background session's recovery
   (`enableBackgroundSessionRecovery`), the app's version and the notification
   permission, and the consent commands (`listPendingConsents`, `readConsent`,
   `approveConsent`, `denyConsent`); and the wire's namespaces, `ListedServer`,
   `ServerStatus` (with the `server-status` event's name and decoder),
   `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
   `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
-  `ConsentApproval`, `ApprovalOutcome` and `EnteredRelay`, `server_add`'s
-  relay, each a `Schema` and its `Type` with getters. A refused
+  `ConsentApproval`, `ApprovalOutcome`, `EnteredRelay`, `server_add`'s
+  relay, and `LaunchError` (with `statusRefusalOf`, the refusal
+  `server_launch` answers from a status, held to the host's by the golden
+  file), each a `Schema` and its `Type` with getters. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. Besides the host, `readServerHealth` reads a server's
   `/health` at its public origin, an Effect over `@effect/platform`'s
@@ -90,10 +92,10 @@ changing how servers run or what the host notifies about them.
   a native picker that changes it at once, putting the previous policy back
   if the host refuses (the refusal shows under the field); under it, what the
   status says beyond plain Running or Stopped, with the host's reason a
-  running server isn't reachable; why its latest run stopped; Launch; and
+  running server isn't reachable; why its latest run stopped; Launch (`LaunchButton`); and
   Edit, which opens the server's page, kept current by the `server-status`
-  event too: its domain with Copy, its status badge, when its run started and
-  the run-policy field, over three tabs in component state. Status holds the
+  event too: its domain with Copy, its status badge, when its run started, the
+  run-policy field and Launch, over three tabs in component state. Status holds the
   host's last check of its connection or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
   itself, with Refresh; its launcher, with Reset to the default launcher; and
@@ -120,9 +122,16 @@ changing how servers run or what the host notifies about them.
   Back (every entry kept) and Retry; and the server added, its domain, a
   privacy note, and Start now or Start later (`whileOpen` or `off`), which
   opens its page. The token is dropped from state once the host saves it.
-  Launch does nothing until the base launches apps. While the
-  webview is offline (`navigator.onLine`), the list says that launching needs
-  a connection; the host commands themselves need none, so the base's query
+  Launch opens the server's launcher through `server_launch`. It
+  is disabled, saying why, while the webview is offline (`navigator.onLine`),
+  for a running server the host would refuse (not yet reached, unreachable,
+  no valid certificate), and for a server that isn't running while its run
+  policy still wants it running. For a server that isn't running whose
+  policy is `off` or an ended `until`, it asks "Start server and launch?";
+  confirming sets `whileOpen`, then it shows "Starting…", with Cancel, until
+  the server's status is launchable, and launches it once. Launching never
+  changes an active policy or extends an `until`. While the webview is
+  offline, the list says that launching needs a connection; the host commands themselves need none, so the base's query
   client runs them offline too (`networkMode: 'always'`).
   Over every screen, `ConsentSheet` asks about the consents waiting on the
   running servers, one server at a time, with where it stands in the queue ("1
