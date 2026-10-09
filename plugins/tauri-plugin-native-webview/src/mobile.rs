@@ -142,23 +142,20 @@ impl<R: Runtime> NativeWebview<R> {
     /// [`DismissalAction::Dispose`](crate::DismissalAction::Dispose) stays
     /// alive: the hide is marked in flight first, and its `Hidden` consumes the
     /// mark — Android sends it before resolving, iOS from the dismiss animation's
-    /// completion after. A hide that found nothing visible, or failed, sends no
-    /// `Hidden`, so its mark is cleared here (see [`crate::dismissal`]).
+    /// completion after. A hide that found nothing visible
+    /// (`requestCausedHide: false`), or failed, sends no `Hidden`, so
+    /// `DisposingOnDismissal::host_hide` clears its mark (see
+    /// [`crate::dismissal`]).
     pub fn hide(&self, id: &str) -> crate::Result<()> {
-        let disposing_on_dismissal = self.0.app().state::<DisposingOnDismissal>();
-        disposing_on_dismissal.begin_host_hide(id);
-        let hide_response = self
-            .0
-            .run_mobile_plugin::<HideResponse>("hide", IdOnly { id })
-            .map_err(|error| crate::Error::PluginInvoke(error.to_string()));
-        if !hide_response
-            .as_ref()
-            .is_ok_and(|hide_response| hide_response.request_caused_hide)
-        {
-            disposing_on_dismissal.cancel_host_hide(id);
-        }
-        hide_response?;
-        Ok(())
+        self.0
+            .app()
+            .state::<DisposingOnDismissal>()
+            .host_hide(id, || {
+                self.0
+                    .run_mobile_plugin::<HideResponse>("hide", IdOnly { id })
+                    .map(|hide_response| hide_response.request_caused_hide)
+                    .map_err(|error| crate::Error::PluginInvoke(error.to_string()))
+            })
     }
 
     /// Dispose instance `id`'s native webview by invoking the Swift/Kotlin

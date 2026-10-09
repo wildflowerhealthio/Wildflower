@@ -221,24 +221,23 @@ impl<R: Runtime> NativeWebview<R> {
     ///
     /// The `Hidden` is a host hide, so an instance opened with
     /// [`DismissalAction::Dispose`](crate::DismissalAction::Dispose) stays
-    /// alive: the hide is marked in flight before it is emitted, and the mark
-    /// cleared if nothing consumed it (see [`crate::dismissal`]).
+    /// alive: the hide runs through
+    /// [`DisposingOnDismissal::host_hide`](crate::dismissal), which marks it in
+    /// flight before the `Hidden` is sent, and clears the mark when none was.
     pub fn hide(&self, id: &str) -> crate::Result<()> {
         let Some(window) = self.0.get_window(&window_label(id)) else {
             return Ok(());
         };
-        let disposing_on_dismissal = self.0.state::<DisposingOnDismissal>();
-        disposing_on_dismissal.begin_host_hide(id);
-        let hidden = window.hide();
-        if hidden.is_ok() {
-            if let Some(instance) = instance_state(&self.0, id) {
-                if let Ok(channel) = instance.current_channel.lock() {
-                    let _ = channel.send(NativeWebviewEvent::Hidden);
-                }
-            }
-        }
-        disposing_on_dismissal.cancel_host_hide(id);
-        Ok(hidden?)
+        self.0.state::<DisposingOnDismissal>().host_hide(id, || {
+            window.hide()?;
+            let sent_hidden = instance_state(&self.0, id).is_some_and(|instance| {
+                instance
+                    .current_channel
+                    .lock()
+                    .is_ok_and(|channel| channel.send(NativeWebviewEvent::Hidden).is_ok())
+            });
+            Ok(sent_hidden)
+        })
     }
 
     /// Dispose instance `id`'s native webview window — tear it down and free its
