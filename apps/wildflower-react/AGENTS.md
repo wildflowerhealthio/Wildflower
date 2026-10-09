@@ -7,7 +7,8 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
 
 - **`main-web`** (`src/main-web.tsx`) — the build published at `/app/`,
   cross-origin to the server `?server=` names. Signs in by SMART redirect and
-  holds its bearer in page memory (`web-entry.ts`, `sign-in.ts`).
+  holds its bearer in page memory (`web-entry.ts`, `sign-in.ts`), including
+  when opened with a SMART launch, as the base opens a server's launcher.
 - **`main-tauri`** — the wiring for a webview the host authenticates. No app
   mounts it: the Tauri host's webview mounts the servers base
   (`slices/servers/servers-react`) instead.
@@ -44,6 +45,29 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   banner `<RootShell>` renders above every route and the Settings row for
   `/settings/server`; `main-web` passes `platformBanner: null`, since no host
   runs a server for it.
+- **`main-web` takes a SMART launch at its root, with its own sign-in.**
+  Like everything `bootApp` does, the launch waits for the consent answer, as
+  it does in the SMART apps. `bootApp` reads `?iss=` (and the EHR's `launch`)
+  with `gatekeeper-core/smart-client`'s `searchAfterArrivingLaunch`, over
+  `arrivingSmartLaunchFrom`, the reader the SMART apps share: it takes both
+  out of the URL and points `?server=` at the server `iss` names
+  (`serverUrlNamedBy`), over any `?server=` already there. The landing then
+  signs in to that server on arrival, as it does for any `?server=`, through
+  `ConnectMenu`'s `autoConnect`, so the insecure-target refusal and the
+  one-sign-in-at-a-time guard apply. Boot holds the launch once per page load
+  (`ehrLaunchIn`, then `sign-in.ts`'s `unsentEhrLaunch`, as
+  `RouterContext.ehrLaunch`), and the first sign-in to its server takes it, so
+  no other sign-in carries it, even from a landing that mounts again:
+  gatekeeper accepts a launch once. It is not fhirclient's launch,
+  as in the SMART apps, because fhirclient keeps its token in
+  `sessionStorage`, and the owner's bearer stays in page memory. A sign-in
+  that fails on its return leg (a rejected launch among them) points
+  `?server=` back at its server (`searchAfterReturnLeg`), so the landing
+  shows the problem beside a "Sign in to …" for it. Every return leg loses
+  the authorization response, the authorization server's RFC 9207 `iss`
+  included (`searchWithoutAuthorizationResponse`), so that `iss` never reads
+  as a launch. Tests: `web-entry.test.ts`,
+  `sign-in.test.ts`, `routes/index.test.tsx`.
 - **A plain SMART server gets only Home.** `main-web` can sign in to a SMART
   on FHIR server that is not a Wildflower server (discovery found its
   configuration at the URL itself, not under `/fhir-r4`). `sign-in.ts`'s

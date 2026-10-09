@@ -6,20 +6,22 @@ import '@scalar/api-reference/style.css'
 import './styles.css'
 
 import {
+  arrivingSmartLaunchFrom,
   beginSignIn,
   browserSignInEnvironment,
   completeSignIn,
   insecureTargetReason,
   isAuthorizationResponse,
   redirectUriForPage,
-  searchWithoutAuthorizationResponse,
   searchWithServerUrl,
+  serverUrlNamedBy,
   standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
   type SignInError,
 } from 'gatekeeper-core/smart-client'
 
+import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
 import { consoleConfiguration } from './configuration.ts'
 import { serverUrlFromSearch } from './server-target.ts'
 import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from './smart-client.ts'
@@ -29,6 +31,8 @@ import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from '.
  * the six committed slice snapshots, targeted at whichever running server the
  * `?server=` parameter names (see `server-target.ts`), optionally signed in to
  * that server as the `wildflower-server-docs` SMART client (see `sign-in.ts`).
+ * Opened with a SMART launch (`?iss=`, with the EHR's `launch` when there is
+ * one), it targets the server `iss` names and signs in to it straight away.
  *
  * DOM and history wiring only — the `?server=` parsing, the spec transforms, the
  * Scalar configuration and both halves of the OAuth flow are pure or injectable
@@ -52,8 +56,8 @@ const requireElement = <T extends Element>(
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see
 // "The 404 redirect" in `slices/branding/AGENTS.md`.
-// Ahead of the `?server=` read and the OAuth-callback check below, both of
-// which parse `window.location.search`.
+// Ahead of the SMART launch read, the `?server=` read and the OAuth-callback
+// check below, all of which parse `window.location.search`.
 restoreRedirectedUrl(window)
 
 const referenceContainer = requireElement('#reference', HTMLElement)
@@ -243,6 +247,23 @@ serverForm.addEventListener('submit', (event) => {
   applyServerUrl(serverInput.value)
 })
 
+/**
+ * Leave for `serverUrl`'s authorization endpoint to sign in: an EHR launch
+ * when `launch` is the one the console was opened with, a standalone launch
+ * otherwise.
+ */
+const startSigningIn = (serverUrl: string, launch?: string): void => {
+  signInButton.disabled = true
+  showStatus(`Asking ${serverUrl} how to sign in…`)
+  // The console is one page, so there is nowhere in particular to return to.
+  runSignInEffect(
+    beginSignIn(serverUrl, undefined, signInEnvironment, launch),
+    (authorizationUrl) => {
+      window.location.assign(authorizationUrl)
+    }
+  )
+}
+
 signInButton.addEventListener('click', () => {
   const serverUrl = serverUrlFromSearch(window.location.search)
   if (session !== undefined) {
@@ -253,32 +274,32 @@ signInButton.addEventListener('click', () => {
     showStatus('Signed out. The access token is gone from this tab.')
     return
   }
-  signInButton.disabled = true
-  showStatus(`Asking ${serverUrl} how to sign in…`)
-  // The console is one page, so there is nowhere in particular to return to.
-  runSignInEffect(beginSignIn(serverUrl, undefined, signInEnvironment), (authorizationUrl) => {
-    window.location.assign(authorizationUrl)
-  })
+  startSigningIn(serverUrl)
 })
 
-/**
- * Strip the authorization response from the address bar once it has been read.
- * The code is single-use and already redeemed by then, but leaving it in the URL
- * would put it in history and in anything the reader copies out of the bar.
- */
-const clearAuthorizationResponseFromUrl = (): void => {
-  const search = searchWithoutAuthorizationResponse(window.location.search)
-  window.history.replaceState(
-    null,
-    '',
-    `${window.location.pathname}${search}${window.location.hash}`
-  )
-}
+resetAuthControlsOnBackForwardRestore(window, () => {
+  renderAuthControls(serverUrlFromSearch(window.location.search))
+})
 
 const returnSearch = window.location.search
 const returningFromAuthorization = isAuthorizationResponse(returnSearch)
+const arrivingLaunch = arrivingSmartLaunchFrom(returnSearch)
 
-const initialServerUrl = serverUrlFromSearch(returnSearch)
+// Settle the address bar before the target is read. A load opened with a SMART
+// launch (`?iss=`, and `launch` for an EHR launch) targets the server `iss`
+// names; a return leg sheds its authorization response, success or failure
+// alike. Safe to do synchronously: `completeSignIn` below redeems the code from
+// the captured `returnSearch`, not from the live URL.
+const settledSearch = searchSettledFrom(returnSearch)
+if (settledSearch !== returnSearch) {
+  window.history.replaceState(
+    null,
+    '',
+    `${window.location.pathname}${settledSearch}${window.location.hash}`
+  )
+}
+
+const initialServerUrl = serverUrlFromSearch(window.location.search)
 serverInput.value = initialServerUrl
 renderAuthControls(initialServerUrl)
 
@@ -308,10 +329,15 @@ runSignInEffect(
   }
 )
 
-// Scrub the authorization response from the address bar on every return leg,
-// success or failure alike: `completeSignIn` has already captured `returnSearch`,
-// so the single-use code/state (or error) no longer needs to sit in the URL,
-// where a reload, the referrer or a copied link would carry it on. Safe to do
-// synchronously — the token exchange redeems the code from the captured string,
-// not from the live URL.
-if (returningFromAuthorization) clearAuthorizationResponseFromUrl()
+// Sign in to the server a launch named straight away, with no click: the
+// EHR's launch works once and only for a few minutes. Not when `iss` named no
+// usable server (the console stays on the target it would have had without
+// the launch), nor when this page cannot reach the server, which the status
+// line already says.
+if (
+  Option.isSome(arrivingLaunch) &&
+  serverUrlNamedBy(arrivingLaunch.value.iss) !== undefined &&
+  insecureTargetReason(initialServerUrl, { pageIsSecure }) === undefined
+) {
+  startSigningIn(initialServerUrl, arrivingLaunch.value.launch)
+}
