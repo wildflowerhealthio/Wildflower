@@ -53,48 +53,70 @@ const stopDuringWait = (
   )
 
 /**
- * Where the wait for the server whose status is `status` stands, the wait
- * having begun at `confirmedAt`.
- *
- * @remarks
- * The wait gives up once waiting can't help: the server's run stopped with an
- * error during the wait (a server retrying after one shows that stop while it
- * waits to start again), its certificate order is failing, its certificate is
- * from a CA browsers don't trust, or it can't be reached through its relay
- * while its certificate is valid. Until its certificate is valid, an
- * unreachable server is still getting one, and the wait goes on.
+ * Why waiting for the server whose status is `status`, since `confirmedAt`,
+ * can't help: its run stopped with an error during the wait (a server
+ * retrying after one shows that stop while it waits to start again), its
+ * certificate order is failing, its certificate is from a CA browsers don't
+ * trust, or it can't be reached through its relay while its certificate is
+ * valid; none while waiting still can.
  */
-const waitOutcomeOf = (status: ServerStatus.Type, confirmedAt: DateTime.Utc): WaitOutcome => {
-  const stop = stopDuringWait(status, confirmedAt)
-  const stopError = stop.pipe(Option.flatMap((since) => since.error))
+const failureOf = (status: ServerStatus.Type, confirmedAt: DateTime.Utc): Option.Option<string> => {
+  const stopError = stopDuringWait(status, confirmedAt).pipe(Option.flatMap((stop) => stop.error))
   if (Option.isSome(stopError)) {
-    return { kind: 'gaveUp', failure: `The server stopped with an error: ${stopError.value}` }
+    return Option.some(`The server stopped with an error: ${stopError.value}`)
   }
   if (status.certificate.status === 'orderFailing') {
-    return { kind: 'gaveUp', failure: "Ordering the server's certificate is failing." }
+    return Option.some("Ordering the server's certificate is failing.")
   }
-  const refusal = LaunchError.statusRefusalOf(status)
-  if (Option.isNone(refusal)) return { kind: 'launchable' }
-  const refused = refusal.value
-  if (refused === 'untrustedCertificate') {
-    return { kind: 'gaveUp', failure: REFUSAL_REASON.untrustedCertificate }
-  }
-  if (refused === 'unreachable') {
-    // Until its certificate is valid, the server is still getting one.
-    return Option.isNone(LaunchError.certificateRefusalOf(status.certificate))
-      ? { kind: 'gaveUp', failure: unreachableReason(status) }
-      : { kind: 'waiting', reason: unreachableReason(status) }
-  }
-  if (refused !== 'serverNotRunning') return { kind: 'waiting', reason: REFUSAL_REASON[refused] }
-  if (status.runState === 'starting') return { kind: 'waiting', reason: 'The server is starting.' }
-  return {
-    kind: 'waiting',
-    reason: stop.pipe(
-      Option.map(lastStopText),
-      Option.getOrElse(() => "The server hasn't started yet.")
-    ),
-  }
+  const refusal = Option.getOrNull(LaunchError.statusRefusalOf(status))
+  if (refusal === 'untrustedCertificate') return Option.some(REFUSAL_REASON.untrustedCertificate)
+  if (refusal !== 'unreachable') return Option.none()
+  // Until its certificate is valid, an unreachable server is still getting
+  // one.
+  return Option.match(LaunchError.certificateRefusalOf(status.certificate), {
+    onNone: () => Option.some(unreachableReason(status)),
+    onSome: () => Option.none(),
+  })
 }
+
+/**
+ * Why the server whose status is `status` can't be launched yet, its wait
+ * having begun at `confirmedAt`: the host's refusal, or, until its run is up,
+ * that it is starting or how its run stopped during the wait; none once it
+ * can be launched.
+ */
+const waitingReasonOf = (
+  status: ServerStatus.Type,
+  confirmedAt: DateTime.Utc
+): Option.Option<string> =>
+  LaunchError.statusRefusalOf(status).pipe(
+    Option.map((refusal) => {
+      if (refusal === 'unreachable') return unreachableReason(status)
+      if (refusal !== 'serverNotRunning') return REFUSAL_REASON[refusal]
+      if (status.runState === 'starting') return 'The server is starting.'
+      return stopDuringWait(status, confirmedAt).pipe(
+        Option.map(lastStopText),
+        Option.getOrElse(() => "The server hasn't started yet.")
+      )
+    })
+  )
+
+/**
+ * Where the wait for the server whose status is `status`, begun at
+ * `confirmedAt`, stands: it gives up once waiting can't help (`failureOf`),
+ * waits while the server can't be launched yet (`waitingReasonOf`), and is
+ * otherwise launchable.
+ */
+const waitOutcomeOf = (status: ServerStatus.Type, confirmedAt: DateTime.Utc): WaitOutcome =>
+  failureOf(status, confirmedAt).pipe(
+    Option.map((failure): WaitOutcome => ({ kind: 'gaveUp', failure })),
+    Option.orElse(() =>
+      waitingReasonOf(status, confirmedAt).pipe(
+        Option.map((reason): WaitOutcome => ({ kind: 'waiting', reason }))
+      )
+    ),
+    Option.getOrElse((): WaitOutcome => ({ kind: 'launchable' }))
+  )
 
 export { REFUSAL_REASON, waitOutcomeOf }
 export type { WaitOutcome }
