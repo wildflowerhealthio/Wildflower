@@ -11,18 +11,24 @@ and neither sends `ServerServiceStatus` nor listens for `RestartServer`.
 
 ## Package roles
 
-- **[`background-server-service-core`](./background-server-service-core/AGENTS.md)**
+- **`background-server-service-rust`** — the serde mirror of the wire
+  (`bridge.rs`), with its golden tests. No `tauri` dependency. The only
+  package left in this slice.
+
+The two TS packages moved to `apps/launcher/`, beside the launcher that mounts
+them:
+
+- **[`wildflower-server-core-js`](../../apps/launcher/wildflower-server-core-js/AGENTS.md)**
   — `BackgroundServerServiceBridge`: the `ServerServiceStatus` and
   `RestartServer` schemas, the contract the Rust mirror is pinned to. Pure.
-- **[`background-server-service-react`](./background-server-service-react/AGENTS.md)**
+- **[`wildflower-server-react`](../../apps/launcher/wildflower-server-react/AGENTS.md)**
   — the page side: the status store and the boot-stable handler that fills it,
   `ServerStatusBanner`, the `/settings/server` page, and the `RestartServer`
   sender.
-- **`background-server-service-rust`** — the serde mirror of the wire
-  (`bridge.rs`), with its golden tests. No `tauri` dependency.
 
 `bridge-wire-golden.json`, at the slice root, holds the exact wire strings and
-stop reasons both `-rust`'s golden tests and `-core`'s `bridge.test.ts` read.
+stop reasons both `-rust`'s golden tests and `wildflower-server-core-js`'s
+`bridge.test.ts` read.
 
 ## Wire (`BackgroundServerServiceBridge`)
 
@@ -50,10 +56,10 @@ Exact strings:
   state machine: a store holds the last `ServerServiceStatus`, and the banner
   and page derive everything from it.
 - **A wire change edits `bridge-wire-golden.json`, the TS schema and the serde
-  mirror together.** The TS schema in `-core` is the contract. Each side's
-  tests read the shared file, `-rust`'s serializing to it and `-core`'s
-  decoding and re-encoding it byte for byte, so neither side can rename,
-  reorder or re-case a field alone.
+  mirror together.** The TS schema in `wildflower-server-core-js` is the
+  contract. Each side's tests read the shared file, `-rust`'s serializing to it
+  and `wildflower-server-core-js`'s decoding and re-encoding it byte for byte,
+  so neither side can rename, reorder or re-case a field alone.
 
 ## References
 

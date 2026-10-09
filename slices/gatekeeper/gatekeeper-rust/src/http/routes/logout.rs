@@ -1,5 +1,5 @@
 //! `POST /access/logout` — ends the caller's session by revoking the presented
-//! access token and redirecting to the hosted owner UI.
+//! access token and redirecting to the hosted launcher.
 //!
 //! **Self-service, authN-only:** logout is a caller ending *their own* session,
 //! not an admin resource operation, so it takes no scope — the `/access` mount's
@@ -19,7 +19,7 @@ use axum::routing::post;
 use axum::Router;
 use scope_capabilities_rust::Authenticated;
 
-use crate::http::extractors::OwnerUiPages;
+use crate::http::extractors::LauncherPages;
 use crate::http::state::GatekeeperState;
 use crate::live_bindings::LiveSessionEnder;
 
@@ -27,11 +27,11 @@ pub fn router() -> Router<Arc<GatekeeperState>> {
     Router::new().route("/logout", post(handle_logout))
 }
 
-async fn handle_logout(session: Authenticated<LiveSessionEnder>, pages: OwnerUiPages) -> Response {
+async fn handle_logout(session: Authenticated<LiveSessionEnder>, pages: LauncherPages) -> Response {
     // Revoke the presented session token so a leaked copy can't outlive the
     // logout. Best-effort by design: a store hiccup must never fail the logout.
     session.end();
-    // `303 See Other` → the hosted owner UI's root (this server serves no UI of
+    // `303 See Other` → the hosted launcher's root (this server serves no UI of
     // its own); `303` downgrades a `POST` logout to a `GET`.
     Redirect::to(pages.root_url()).into_response()
 }

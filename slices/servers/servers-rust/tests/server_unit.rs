@@ -19,7 +19,7 @@ use servers_rust::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, LaunchError,
     RunPolicy, ServerConsentDecider, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
 };
-use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::launcher::LauncherBase;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
 use unit_runner::{RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus};
@@ -57,7 +57,8 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             env!("CARGO_MANIFEST_DIR"),
             "/../../emr/emr-rust/assets"
         )),
-        owner_ui_base: OwnerUiBase::parse("https://owner-ui.test/app/").expect("owner UI base"),
+        launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
+            .expect("launcher base"),
         host_owner_scopes: gatekeeper_rust::WILDFLOWER_WIDEST_SCOPES
             .iter()
             .map(ToString::to_string)

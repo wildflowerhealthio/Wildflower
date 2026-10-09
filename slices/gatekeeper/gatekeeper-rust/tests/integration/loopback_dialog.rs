@@ -1,5 +1,5 @@
 //! The host's loopback dialog, end to end: a direct-loopback `/authorize` by the
-//! hosted owner UI (`wildflower-react`) is parked as usual — the browser is sent
+//! hosted launcher (`launcher-web`) is parked as usual — the browser is sent
 //! to the wait page — and the dialog, played here by a scripted fake,
 //! decides it in the background. Only that login asks; a forwarded request or
 //! another client never does.
@@ -11,7 +11,7 @@
 //! `spin_up_with_loopback_prompt`), where the decision's writes wait on
 //! `busy_timeout` instead of failing when they overlap other work.
 //!
-//! An answer that arrives after the Owner UI decided changes nothing, so it
+//! An answer that arrives after the launcher decided changes nothing, so it
 //! leaves no event to wait on here; that ordering is pinned by the approver's
 //! unit tests and the store's pending-only deny.
 
@@ -25,10 +25,10 @@ use gatekeeper_rust::{
 
 use crate::common::*;
 
-/// The hosted owner UI's `client_id` — the one client the dialog is for.
-const HOSTED_UI: &str = "wildflower-react";
+/// The hosted launcher's `client_id` — the one client the dialog is for.
+const HOSTED_UI: &str = "03a513940b52f8c2649a5366d1a26d19";
 
-/// The owner scope set the hosted owner UI requests, URL-encoded.
+/// The owner scope set the hosted launcher requests, URL-encoded.
 const OWNER_SCOPES_QUERY: &str = "system%2F*.cruds%20wildflower%2F*.cruds%20wildflower%2Flaunch";
 
 /// How long a test waits for a background step before failing — a guard
@@ -200,7 +200,7 @@ async fn an_approved_loopback_login_is_issued_a_redeemable_code_and_no_grant() {
     assert_eq!(shown[0].request_id, request_id);
     assert_eq!(shown[0].client_id, HOSTED_UI);
     assert_eq!(shown[0].redirect_origin, "https://app.example");
-    // `wildflower-react` is seeded with its published redirect only, so this
+    // `launcher-web` is seeded with its published redirect only, so this
     // origin is new to a known app.
     assert_eq!(
         shown[0].registration_notice,
@@ -307,7 +307,7 @@ async fn a_rejected_loopback_login_is_denied() {
 }
 
 /// A tunnel-relayed login and another client's login are never put to the
-/// dialog: both stay pending for the Owner UI. A login that does ask goes
+/// dialog: both stay pending for the launcher. A login that does ask goes
 /// first and is held on screen while the other two arrive, so by the time it is
 /// answered and decided the dialog has had every chance to be shown them too.
 #[tokio::test]

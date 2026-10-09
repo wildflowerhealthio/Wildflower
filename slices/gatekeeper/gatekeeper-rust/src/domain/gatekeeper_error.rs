@@ -54,7 +54,7 @@ pub enum GatekeeperError {
     /// The Owner approved an authorization-code consent whose client is new to
     /// this gatekeeper (or whose redirect / scopes step outside its
     /// registration) without acknowledging that warning — the consent approve
-    /// surface's **409**. Semantic and client-facing: the Owner UI must show the
+    /// surface's **409**. Semantic and client-facing: the launcher must show the
     /// registration warning and send
     /// `acknowledgedRegistration: true`. Nothing is written when it is raised.
     RegistrationNotAcknowledged { id: String },

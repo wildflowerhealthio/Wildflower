@@ -85,7 +85,7 @@ const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
 
 /**
  * The telemetry consent dialog's copy for Wildflower Host, the desktop and
- * mobile app whose webview runs the owner UI (`apps/wildflower-tauri`).
+ * mobile app whose webview runs the launcher (`apps/wildflower-tauri`).
  *
  * @remarks
  * The same dialog as {@link TELEMETRY_CONSENT_COPY}, worded for one app that

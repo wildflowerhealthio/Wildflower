@@ -41,7 +41,7 @@ pub(crate) struct ApprovalContext<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ApprovalMemory {
     /// Record (or widen) the standing grant, so a later request inside it takes
-    /// the `/authorize` fast path. The Owner UI's consent prompt.
+    /// the `/authorize` fast path. The launcher's consent prompt.
     RememberAsStandingGrant,
     /// Record no grant: the next request from the client asks the Owner again.
     /// The host's loopback dialog, which prompts on every login. A client

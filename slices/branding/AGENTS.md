@@ -21,7 +21,7 @@ the homepage and absolute from an app.
   SMART launch from `?iss=` (and `&launch=`); `smartAppLaunchPages` lists
   the entries that set it, with the root's URL under a site root, and
   `siteRootFor` finds the root a section's copy is published under (a PR
-  preview's `/staging/pr-<n>/`, or the canonical site). The owner UI's Home on
+  preview's `/staging/pr-<n>/`, or the canonical site). The launcher's Home on
   a plain SMART server lists its apps from these. Beside it, `TELEMETRY_CONSENT_COPY` is the telemetry consent
   dialog's words and the copy version a visitor's answer is stored with
   (`telemetry-react` renders it; raising the version asks everyone again), and
@@ -41,7 +41,7 @@ GitHub Pages serves one `404.html` for every path it has no file for.
 `apps/github-pages/404.html` probes ancestor directories for an `index.html`,
 redirects to the deepest one that answers, and passes the requested path along,
 site-absolute, as `?redirect=<path>` (an app-relative route named like the
-app's own directory, `/app` below `/app/`, would read as the app root).
+app's own directory, `/launcher` below `/launcher/`, would read as the app root).
 `restoreRedirectedUrl(window)` is the other half: each
 first-party SPA entry (`apps/medications-app`, `apps/importer-web`,
 `apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/lifting/lifting-web`, `apps/watch-lifts/watch-lifts-web`, `apps/web-trace`, `apps/wildflower-server-docs`) calls it as its first statement,
@@ -55,9 +55,9 @@ must stay in step — `spa-redirect.ts` is the reference.
 
 A dev server has no `404.html`, and Vite's SPA fallback serves `index.html` at
 the deep path itself, so an entry that takes its basename from the path it
-loaded at (`apps/wildflower-react`'s `main-web`) would boot under the wrong
+loaded at (`apps/launcher/launcher-web`'s `main-web`) would boot under the wrong
 basename. `redirectedUrl` is the redirect `404.html` performs, for a server
-that knows the basename; `apps/wildflower-react`'s dev-server plugin
+that knows the basename; `apps/launcher/launcher-web`'s dev-server plugin
 (`src/dev-server/deep-link-redirect.ts`) applies it so a dev deep link takes
 the same `?redirect=` detour as the published site.
 
@@ -66,7 +66,7 @@ the same `?redirect=` detour as the published site.
 A SMART app visited without a launch (`apps/medications-app`,
 `apps/importer-web`, `apps/fhir-sync-pebble/fhir-sync-pebble-web` and `apps/web-trace`, all
 through `smart-app-react`'s `SmartAppRoot`) renders `AppLandingPage`. So does
-the hosted owner UI's landing (`apps/wildflower-react`'s `routes/index.tsx`,
+the hosted launcher's landing (`apps/launcher/launcher-web`'s `routes/index.tsx`,
 `app="app"`), whose connect menu also carries its "Sign in to …" row for a
 server already chosen. `AppLandingPage` is the one page shell: `SiteHeader`
 (links resolved `fromApp`), then `AppLanding` inside `main`, then
@@ -131,7 +131,7 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   rows (`built`, `infrastructure`, `dev-tools`) and the apps' landing pages
   render the same entries; editing the copy in one component would fork the
   story. The server-docs row is not a SMART app with a landing page, so its
-  copy stays inline on the homepage. The owner UI's entry (`app`) and the
+  copy stays inline on the homepage. The launcher's entry (`app`) and the
   Synthetic Data Loader's (`syntheticData`) are the reverse: each has a
   landing page but no homepage row, so it is described but left out of
   `APP_SECTION_IDS`, the homepage's list.

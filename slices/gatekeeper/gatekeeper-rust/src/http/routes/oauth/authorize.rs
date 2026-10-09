@@ -158,7 +158,7 @@ pub struct AuthorizeParams {
 ///    wait page at `/oauth/authorize/{id}/wait`, served by this gatekeeper on
 ///    the origin the browser used, which polls `GET /oauth/authorize/{id}` (a
 ///    custom extension, not part of any RFC) until the Owner decides — in the
-///    popup, in a signed-in owner UI, or in the host's native dialog. RFC 6749
+///    popup, in a signed-in launcher, or in the host's native dialog. RFC 6749
 ///    leaves the owner-interaction mechanism unspecified, so the wait page is
 ///    spec-legal; likewise §4.1 explicitly allows skipping consent on a
 ///    previously established authorization decision, which is what the grant
@@ -223,8 +223,8 @@ pub(super) async fn handle_authorize_request(
             &client_state,
         )),
         // Otherwise this gatekeeper's wait page, which waits for whichever
-        // surface — the host popup, a signed-in owner UI's consent list, or (for
-        // the hosted owner UI over direct loopback) the host's native dialog —
+        // surface — the host popup, a signed-in launcher's consent list, or (for
+        // the hosted launcher over direct loopback) the host's native dialog —
         // decides first.
         AuthorizeNextStep::AwaitOwner { request_id } => {
             let is_direct_loopback = matches!(

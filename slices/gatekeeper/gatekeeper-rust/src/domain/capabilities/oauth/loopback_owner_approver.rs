@@ -1,12 +1,12 @@
 //! [`LoopbackOwnerApprover`] — the host's native loopback dialog as a second
 //! approver of a parked `/authorize` request.
 //!
-//! When the hosted owner UI (`wildflower-react`, served from a public origin)
+//! When the hosted launcher (`launcher-web`, served from a public origin)
 //! logs in against this server over **direct loopback**, the person at the
 //! keyboard is the Owner, so rather than send them to the in-app consent page
 //! the host raises a native dialog (the
 //! [`LoopbackConsentPrompt`] port). The request is parked exactly as any other
-//! (the browser still polls for it, and it still appears in the Owner UI); the
+//! (the browser still polls for it, and it still appears in the launcher); the
 //! dialog's answer is applied through the same code-flow approval the Owner
 //! UI's consent prompt uses, with two differences:
 //!
@@ -41,20 +41,20 @@ use crate::ports::{
     LoopbackRegistrationNotice, PendingConsentPublisher,
 };
 
-/// The `client_id` the hosted owner UI presents — the one client whose
+/// The `client_id` the hosted launcher presents — the one client whose
 /// direct-loopback logins raise the host's dialog.
-pub(crate) const HOSTED_OWNER_UI_CLIENT_ID: &str = "wildflower-react";
+pub(crate) const HOSTED_LAUNCHER_CLIENT_ID: &str = "03a513940b52f8c2649a5366d1a26d19";
 
 /// Whether a parked `/authorize` request is put to the host's loopback dialog:
 /// only a **direct-loopback** request (no `Forwarded` header — a caller
-/// through the tunnel or a front is remote, whoever sits at the machine) presenting the hosted owner
-/// UI's `client_id`. Every other request is decided in the Owner UI alone.
+/// through the tunnel or a front is remote, whoever sits at the machine) presenting the hosted
+/// launcher's `client_id`. Every other request is decided in the launcher alone.
 ///
 /// The `client_id` is only a claim — any local process can present it. What
 /// makes the dialog safe is that it names the redirect origin to the Owner, who
 /// is at the machine; the same trade-off as trusting a client on first use.
 pub(crate) fn asks_loopback_dialog(is_direct_loopback: bool, client_id: &str) -> bool {
-    is_direct_loopback && client_id == HOSTED_OWNER_UI_CLIENT_ID
+    is_direct_loopback && client_id == HOSTED_LAUNCHER_CLIENT_ID
 }
 
 /// What applying the dialog's answer did.
@@ -65,9 +65,9 @@ pub(crate) enum LoopbackDecision {
     /// Denied — the Owner rejected it, or nothing requested was within the host
     /// owner grant.
     Denied,
-    /// The host showed no dialog; the request is still the Owner UI's to decide.
-    LeftForOwnerUi,
-    /// The request was no longer pending (the Owner UI decided it first, or it
+    /// The host showed no dialog; the request is still the launcher's to decide.
+    LeftForLauncher,
+    /// The request was no longer pending (the launcher decided it first, or it
     /// expired), so the answer changed nothing.
     AlreadyDecided,
 }
@@ -132,6 +132,9 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
         Ok(Some(LoopbackConsentRequest {
             request_id: request.id.clone(),
             client_id: request.client_id.clone(),
+            client_name: maybe_existing_client
+                .as_ref()
+                .map(|client| client.name.clone()),
             redirect_origin: requested_redirect_uri.origin().ascii_serialization(),
             registration_notice: registration_notice(&registration_verdict),
             requested_scopes: request.requested_scopes.clone(),
@@ -165,7 +168,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
         now: DateTime<Utc>,
     ) -> Result<LoopbackDecision, GatekeeperError> {
         let outcome = match answer {
-            LoopbackConsentAnswer::Abstain => return Ok(LoopbackDecision::LeftForOwnerUi),
+            LoopbackConsentAnswer::Abstain => return Ok(LoopbackDecision::LeftForLauncher),
             LoopbackConsentAnswer::Reject => {
                 deny_oauth_consent(&self.store, self.publisher.as_ref(), request_id)
                     .map(|()| LoopbackDecision::Denied)
@@ -309,11 +312,11 @@ mod tests {
         }
     }
 
-    /// A pending `wildflower-react` login for `scopes`, redirecting to the
+    /// A pending `launcher-web` login for `scopes`, redirecting to the
     /// fixtures' `https://example.com/cb`.
     fn hosted_ui_request(id: &str, scopes: &[&str]) -> AuthorizationRequest {
         AuthorizationRequest {
-            client_id: HOSTED_OWNER_UI_CLIENT_ID.to_owned(),
+            client_id: HOSTED_LAUNCHER_CLIENT_ID.to_owned(),
             requested_scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
             ..code_request(
                 id,
@@ -363,18 +366,31 @@ mod tests {
             .status
     }
 
-    /// The trigger: only the hosted owner UI's `client_id`, only over direct
+    /// The trigger: only the hosted launcher's `client_id`, only over direct
     /// loopback. Flipping either guard alone withholds the dialog — most
     /// critically, a request through the tunnel or a front never reaches it.
     #[test]
     fn only_a_direct_loopback_hosted_ui_login_asks_the_dialog() {
-        assert!(asks_loopback_dialog(true, "wildflower-react"));
-        assert!(!asks_loopback_dialog(false, "wildflower-react"));
+        assert!(asks_loopback_dialog(
+            true,
+            "03a513940b52f8c2649a5366d1a26d19"
+        ));
+        assert!(!asks_loopback_dialog(
+            false,
+            "03a513940b52f8c2649a5366d1a26d19"
+        ));
         assert!(!asks_loopback_dialog(true, crate::FIRST_PARTY_CLIENT_ID));
         assert!(!asks_loopback_dialog(true, "some-smart-app"));
         assert!(!asks_loopback_dialog(true, ""));
-        assert!(!asks_loopback_dialog(true, "wildflower-react "));
-        assert!(!asks_loopback_dialog(true, "Wildflower-React"));
+        assert!(!asks_loopback_dialog(
+            true,
+            "03a513940b52f8c2649a5366d1a26d19 "
+        ));
+        assert!(!asks_loopback_dialog(
+            true,
+            "03A513940B52F8C2649A5366D1A26D19"
+        ));
+        assert!(!asks_loopback_dialog(true, "wildflower-react"));
     }
 
     proptest! {
@@ -388,7 +404,7 @@ mod tests {
             let asks = asks_loopback_dialog(is_direct_loopback, &client_id);
             prop_assert_eq!(
                 asks,
-                is_direct_loopback && client_id == HOSTED_OWNER_UI_CLIENT_ID
+                is_direct_loopback && client_id == HOSTED_LAUNCHER_CLIENT_ID
             );
         }
     }
@@ -431,7 +447,8 @@ mod tests {
             approver.consent_request("req-1").unwrap().expect("pending"),
             LoopbackConsentRequest {
                 request_id: "req-1".to_owned(),
-                client_id: HOSTED_OWNER_UI_CLIENT_ID.to_owned(),
+                client_id: HOSTED_LAUNCHER_CLIENT_ID.to_owned(),
+                client_name: None,
                 redirect_origin: "https://example.com".to_owned(),
                 registration_notice: LoopbackRegistrationNotice::NewApp,
                 requested_scopes: vec!["wildflower/*.cruds".to_owned()],
@@ -478,7 +495,7 @@ mod tests {
         );
         let registered = approver
             .store
-            .client_by_id(HOSTED_OWNER_UI_CLIENT_ID)
+            .client_by_id(HOSTED_LAUNCHER_CLIENT_ID)
             .unwrap()
             .expect("client registered");
         assert_eq!(
@@ -488,7 +505,7 @@ mod tests {
         assert!(approver
             .store
             .grant_by_client_and_redirect(
-                HOSTED_OWNER_UI_CLIENT_ID,
+                HOSTED_LAUNCHER_CLIENT_ID,
                 &Url::parse("https://example.com/cb").unwrap(),
             )
             .unwrap()
@@ -502,7 +519,7 @@ mod tests {
         let request = hosted_ui_request("req-1", &["wildflower/*.cruds"]);
         let store = store_with(&request);
         store
-            .upsert_client(&client(HOSTED_OWNER_UI_CLIENT_ID, &["wildflower/*.cruds"]))
+            .upsert_client(&client(HOSTED_LAUNCHER_CLIENT_ID, &["wildflower/*.cruds"]))
             .unwrap();
         let approver = approver(store, LoopbackConsentAnswer::Approve);
 
@@ -513,7 +530,7 @@ mod tests {
         assert!(approver
             .store
             .grant_by_client_and_redirect(
-                HOSTED_OWNER_UI_CLIENT_ID,
+                HOSTED_LAUNCHER_CLIENT_ID,
                 &Url::parse("https://example.com/cb").unwrap(),
             )
             .unwrap()
@@ -546,28 +563,28 @@ mod tests {
         assert_eq!(status_of(&approver), RequestStatus::Denied);
         assert!(approver
             .store
-            .client_by_id(HOSTED_OWNER_UI_CLIENT_ID)
+            .client_by_id(HOSTED_LAUNCHER_CLIENT_ID)
             .unwrap()
             .is_none());
     }
 
     /// A host without a dialog abstains: the request stays pending for the
-    /// Owner UI.
+    /// launcher.
     #[test]
-    fn abstain_leaves_the_request_for_the_owner_ui() {
+    fn abstain_leaves_the_request_for_the_launcher() {
         let request = hosted_ui_request("req-1", &["wildflower/*.cruds"]);
         let approver = approver(store_with(&request), LoopbackConsentAnswer::Abstain);
         assert_eq!(
             decide(&approver, LoopbackConsentAnswer::Abstain),
-            LoopbackDecision::LeftForOwnerUi
+            LoopbackDecision::LeftForLauncher
         );
         assert_eq!(status_of(&approver), RequestStatus::Pending);
     }
 
-    /// Whichever surface decides first wins: once the Owner UI has decided
+    /// Whichever surface decides first wins: once the launcher has decided
     /// (either way), neither dialog answer changes the request or issues a code.
     #[test]
-    fn an_answer_after_the_owner_ui_decided_changes_nothing() {
+    fn an_answer_after_the_launcher_decided_changes_nothing() {
         for (prior, settled) in [
             (LoopbackConsentAnswer::Reject, RequestStatus::Denied),
             (LoopbackConsentAnswer::Approve, RequestStatus::Approved),

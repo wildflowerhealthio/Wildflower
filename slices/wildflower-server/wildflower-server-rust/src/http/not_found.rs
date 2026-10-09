@@ -1,5 +1,5 @@
 //! The API router's fallback: every route no slice claimed answers `404`, with a
-//! link to the hosted owner UI ([`OwnerUiBase`]) pointed back at this server's
+//! link to the hosted launcher ([`LauncherBase`]) pointed back at this server's
 //! served origin and returning to the path asked for — so a browser that lands
 //! on, say, the server's bare domain is told where to go.
 //!
@@ -8,7 +8,7 @@
 //! `{ "error": "RouteNotFound", … }` — the shape each slice's `*NotFound`
 //! responses take (`error` tag, camelCase fields).
 //!
-//! The owner UI's entry routes ([`APP_ENTRY_PATHS`]) are the exception: a browser
+//! The launcher's entry routes ([`APP_ENTRY_PATHS`]) are the exception: a browser
 //! `GET` of one is plainly someone opening the app, so it is sent straight there
 //! with a `303` rather than shown a page to click through.
 
@@ -17,19 +17,19 @@ use std::sync::Arc;
 use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use serde::Serialize;
-use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::launcher::LauncherBase;
 use shared_structures_rust::served_origin::served_base_url_for;
 use url::Url;
 
-/// Owner-UI routes a browser opening this server most likely wants: the root and
+/// Launcher routes a browser opening this server most likely wants: the root and
 /// the home screen. A browser `GET` of one redirects to the same route on the
-/// hosted owner UI, pointed at this server.
+/// hosted launcher, pointed at this server.
 const APP_ENTRY_PATHS: [&str; 2] = ["/", "/home"];
 
-/// What the fallback needs to point a lost browser at the hosted owner UI.
+/// What the fallback needs to point a lost browser at the hosted launcher.
 pub(crate) struct NotFoundConfig {
-    /// The hosted owner UI the link opens.
-    pub(crate) owner_ui_base: OwnerUiBase,
+    /// The hosted launcher the link opens.
+    pub(crate) launcher_base: LauncherBase,
     /// The loopback base URL, the served origin of an unforwarded request (see
     /// [`served_base_url_for`]).
     pub(crate) loopback_base_url: Url,
@@ -41,7 +41,7 @@ struct RouteNotFoundBody {
     error: &'static str,
     /// The origin-relative path (query included) that matched nothing.
     path: String,
-    /// The hosted owner UI, pointed at this server and returning to `path`.
+    /// The hosted launcher, pointed at this server and returning to `path`.
     /// Absent only when the request's served origin can't be resolved (a
     /// malformed `Forwarded` header), where no link back to it can be built.
     #[serde(rename = "openInApp", skip_serializing_if = "Option::is_none")]
@@ -56,7 +56,7 @@ pub(crate) fn fallback(
     move |method, headers, uri| std::future::ready(respond(&config, &method, &headers, &uri))
 }
 
-/// The response for an unmatched `uri`: a redirect into the owner UI for a
+/// The response for an unmatched `uri`: a redirect into the launcher for a
 /// browser opening one of its [`APP_ENTRY_PATHS`], else the `404`, as HTML or
 /// JSON per the `Accept` header.
 fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &Uri) -> Response {
@@ -68,7 +68,7 @@ fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &
         (method == Method::GET || method == Method::HEAD) && accepts_html(headers);
     if let Some(origin) = served_origin.as_deref() {
         if is_browser_navigation && APP_ENTRY_PATHS.contains(&uri.path()) {
-            let target = config.owner_ui_base.route_url(uri.path(), origin, &[]);
+            let target = config.launcher_base.route_url(uri.path(), origin, &[]);
             return Redirect::to(target.as_str()).into_response();
         }
     }
@@ -78,7 +78,7 @@ fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &
         .map_or_else(|| uri.path().to_owned(), |pq| pq.as_str().to_owned());
     let open_in_app = served_origin
         .as_deref()
-        .map(|origin| config.owner_ui_base.open_url(origin, &path).to_string());
+        .map(|origin| config.launcher_base.open_url(origin, &path).to_string());
 
     if accepts_html(headers) {
         (
@@ -170,12 +170,13 @@ mod tests {
     use super::{escape_html, respond, NotFoundConfig};
     use axum::body::to_bytes;
     use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
-    use shared_structures_rust::owner_ui::OwnerUiBase;
+    use shared_structures_rust::launcher::LauncherBase;
     use url::Url;
 
     fn config() -> NotFoundConfig {
         NotFoundConfig {
-            owner_ui_base: OwnerUiBase::parse("https://owner-ui.test/app/").expect("valid base"),
+            launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
+                .expect("valid base"),
             loopback_base_url: Url::parse("http://127.0.0.1:8080/").expect("valid loopback"),
         }
     }
@@ -207,7 +208,7 @@ mod tests {
             serde_json::json!({
                 "error": "RouteNotFound",
                 "path": "/settings/requests?tab=a",
-                "openInApp": "https://owner-ui.test/app/\
+                "openInApp": "https://launcher.test/launcher/\
                     ?server=http%3A%2F%2F127.0.0.1%3A8080\
                     &returnTo=%2Fsettings%2Frequests%3Ftab%3Da",
             })
@@ -231,7 +232,7 @@ mod tests {
             .is_some_and(|v| v.starts_with("text/html")));
         let html = body_text(response).await;
         assert!(html.contains(
-            "href=\"https://owner-ui.test/app/?server=http%3A%2F%2F127.0.0.1%3A8080&amp;returnTo=%2Fsettings%2Frequests\""
+            "href=\"https://launcher.test/launcher/?server=http%3A%2F%2F127.0.0.1%3A8080&amp;returnTo=%2Fsettings%2Frequests\""
         ));
     }
 
@@ -251,7 +252,7 @@ mod tests {
             serde_json::from_str(&body_text(response).await).expect("json");
         assert_eq!(
             body["openInApp"],
-            "https://owner-ui.test/app/?server=https%3A%2F%2Fabc.tunnel.example&returnTo=%2F"
+            "https://launcher.test/launcher/?server=https%3A%2F%2Fabc.tunnel.example&returnTo=%2F"
         );
     }
 
@@ -288,11 +289,11 @@ mod tests {
         for (path, expected) in [
             (
                 "/",
-                "https://owner-ui.test/app/?server=http%3A%2F%2F127.0.0.1%3A8080",
+                "https://launcher.test/launcher/?server=http%3A%2F%2F127.0.0.1%3A8080",
             ),
             (
                 "/home",
-                "https://owner-ui.test/app/home?server=http%3A%2F%2F127.0.0.1%3A8080",
+                "https://launcher.test/launcher/home?server=http%3A%2F%2F127.0.0.1%3A8080",
             ),
         ] {
             let uri: Uri = path.parse().expect("uri");
@@ -324,7 +325,7 @@ mod tests {
         );
         assert_eq!(
             location(&response),
-            "https://owner-ui.test/app/home?server=https%3A%2F%2Fabc.tunnel.example"
+            "https://launcher.test/launcher/home?server=https%3A%2F%2Fabc.tunnel.example"
         );
     }
 

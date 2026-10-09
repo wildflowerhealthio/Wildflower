@@ -144,7 +144,7 @@ second copy of this bundle inside the popup; and it generates `state` with
 `Math.random`. The flow above is a few hundred lines of dependency-free code in
 `gatekeeper-core/smart-client` (`smart-discovery.ts`, `pkce.ts`,
 `authorization-flow.ts`, `sign-in.ts`), all unit-tested there and shared with the
-hosted owner UI, and it puts one token into all six documents through Scalar's
+hosted launcher, and it puts one token into all six documents through Scalar's
 `authentication` configuration block. This console supplies the app-specific
 half — client id, scopes and the `sessionStorage` key the pending record is
 namespaced under — from `src/smart-client.ts`, and derives its redirect URI.

@@ -68,7 +68,7 @@ const smartLauncherEhrIssuer = (fhirBaseUrl: string): string | undefined => {
  * @remarks
  * The options are the launcher page's own defaults (`DEFAULT_LAUNCH_PARAMS`)
  * but for three: `launch_type` is `patient-portal`, an app opened from the
- * patient's own portal, which the owner UI is to its reader; `patient` is the
+ * patient's own portal, which the launcher is to its reader; `patient` is the
  * session's; and `skip_login` is set whenever a patient is, since the reader
  * has signed in as that patient already. `skip_auth` stays off, so the launcher
  * still asks the reader to authorize the app.

@@ -11,7 +11,7 @@ import { BaseRoot } from 'servers-react'
 import {
   background_service_foreground_type as backgroundServiceForegroundType,
   background_service_label as backgroundServiceLabel,
-  owner_ui_base_url as ownerUiBaseUrl,
+  launcher_base_url as launcherBaseUrl,
 } from '../tauri-shared-config.json'
 
 addOsColorSchemeListener()
@@ -31,7 +31,7 @@ if (rootElement === null) throw new Error('index.html has no #root element')
 
 // The base: its own telemetry consent dialog first, then its screens, which
 // reach the host only through Tauri commands and events. The launcher the host
-// gives a new server is the published owner UI, `owner_ui_base_url` from the
+// gives a new server is the published launcher, `launcher_base_url` from the
 // same `tauri-shared-config.json` in every build, which the server page offers
 // as Reset to default.
 createRoot(rootElement).render(
@@ -40,7 +40,7 @@ createRoot(rootElement).render(
       invoke={invoke}
       listen={listen}
       backgroundServiceStartConfig={backgroundServiceStartConfig}
-      defaultLauncherUrl={ownerUiBaseUrl}
+      defaultLauncherUrl={launcherBaseUrl}
       telemetry={{
         dsn: import.meta.env.VITE_SENTRY_DSN_WILDFLOWER_TAURI ?? '',
         app: 'wildflower-tauri',

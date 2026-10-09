@@ -15,6 +15,7 @@
     "fhir-sync-pebble-web": "workspace:*",
     "health-viewer-app": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "launcher-web": "workspace:*",
     "lifting-web": "workspace:*",
     "marketing-website": "workspace:*",
     "medications-app": "workspace:*",
@@ -25,7 +26,6 @@
     "vite-plus": "catalog:",
     "watch-lifts-web": "workspace:*",
     "wildflower-importer": "workspace:*",
-    "wildflower-react": "workspace:*",
     "wildflower-server-docs": "workspace:*",
     "wildflower-web-trace": "workspace:*"
   }

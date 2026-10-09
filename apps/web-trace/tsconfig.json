@@ -9,7 +9,7 @@
 
     "moduleResolution": "bundler",
     // Resolve workspace packages through their `source` export, the same
-    // condition `vite.config.base.ts` sets — as `apps/wildflower-react` does.
+    // condition `vite.config.base.ts` sets — as `apps/launcher/launcher-web` does.
     // Without it `tsc` reads each package's rolled-up `dist/*.d.ts`, where an
     // inlined `QueryClient` declaration is a *different* type from the one
     // `@tanstack/react-query` exports, and threading a router context from a

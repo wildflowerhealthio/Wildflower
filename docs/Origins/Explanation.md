@@ -192,8 +192,8 @@ posture.
 
 A direct-loopback caller is the one caller the host can put a question to in
 person: nothing relayed it, so whoever started it is at this machine. The
-desktop host uses that for one login. When the hosted owner UI
-(`wildflower-react`, served from `https://wildflowerhealth.io/app/`) signs in to
+desktop host uses that for one login. When the hosted launcher
+(`launcher-web`, served from `https://wildflowerhealth.io/launcher/`) signs in to
 the server on the same machine, gatekeeper parks the `/oauth/authorize` request
 as usual and also asks the host to show a native Approve / Reject dialog. The
 dialog names the app, the origin the login returns to, and whether the app or
@@ -204,7 +204,7 @@ for how the answer is applied.
 "Direct loopback" is the same test as everywhere else in this doc: the request
 carries **no** `Forwarded` header. A request through the tunnel, or relayed by
 a front, never raises the dialog, whatever its `client_id`. It is decided in
-the Owner UI alone, because the person who started it is remote.
+the launcher alone, because the person who started it is remote.
 
 The hosted page is on a public origin and calls a private-network address, so
 Chrome's Local Network Access check sends a preflight carrying

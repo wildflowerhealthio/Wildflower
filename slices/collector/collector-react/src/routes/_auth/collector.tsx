@@ -9,7 +9,7 @@ import { pageLayoutStyles } from 'react-tundraish'
  * `pageLayoutStyles['page']` wrapper here means the individual pages render
  * just their content via `<Outlet />` and no longer repeat the wrapper.
  *
- * The slice's own `__root.tsx` is not used in `apps/wildflower-react`; the
+ * The slice's own `__root.tsx` is not used in `apps/launcher/launcher-web`; the
  * app's virtual-route config mounts this slice's `_auth/` directory under the
  * app's `_auth` layout, so this layout takes effect both standalone and in
  * the composed app tree.

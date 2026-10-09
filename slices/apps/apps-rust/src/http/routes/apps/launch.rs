@@ -27,7 +27,7 @@
 //!   6. Dispatch on the request's provenance: a loopback launch `204`s after
 //!      handing the URL to the host webview; a forwarded launch answers `200` with
 //!      the URL ([`LaunchTargetBody`]) for the caller's page to navigate to — the
-//!      caller is the hosted owner UI's `fetch`, which would follow a redirect
+//!      caller is the hosted launcher's `fetch`, which would follow a redirect
 //!      invisibly rather than move the tab. No launch sets a cookie: an app
 //!      authenticates to the API with its own bearer (SMART) or, on the device,
 //!      by loopback provenance — see `docs/Apps/Explanation.md`.
@@ -52,7 +52,7 @@ use crate::http::errors::AppNotFoundBody;
 use crate::live_bindings::state::AppsState;
 use crate::live_bindings::LiveAppLauncher;
 
-/// `POST /apps/{id}` — launch an app (`404` if no app has this id). Every owner UI
+/// `POST /apps/{id}` — launch an app (`404` if no app has this id). Every launcher
 /// drives this through the typed client so the owner bearer rides along.
 /// Scope-gated on the `wildflower/launch` umbrella through
 /// [`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant

@@ -1,7 +1,7 @@
 //! Serde mirror of `BackgroundServerServiceBridge`: the server service's status
 //! snapshot (host → web) and the restart request (web → host).
 //!
-//! The TS schema in `background-server-service-core` is the contract the web
+//! The TS schema in `wildflower-server-core-js` is the contract the web
 //! side decodes against; the golden tests below pin this side's exact bytes to
 //! the wire strings in `slices/background-server-service/bridge-wire-golden.json`,
 //! which the TS side's `bridge.test.ts` decodes and re-encodes too. See the
@@ -112,7 +112,7 @@ mod tests {
     use proptest::prelude::*;
     use serde_json::Value;
 
-    /// The wire strings shared with `background-server-service-core`'s
+    /// The wire strings shared with `wildflower-server-core-js`'s
     /// `bridge.test.ts`, so neither side can change a field alone.
     const GOLDEN: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),

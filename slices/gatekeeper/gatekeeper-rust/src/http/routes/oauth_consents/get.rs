@@ -12,7 +12,7 @@ use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
 use crate::live_bindings::LiveConsentReader;
 
-/// Body returned to the Owner UI when it loads an authorization-code consent
+/// Body returned to the launcher when it loads an authorization-code consent
 /// prompt — describes the client, scopes, and any pre-approved subset. Local to
 /// this one route (its only reader); the shapes two consent surfaces share live
 /// in [`crate::http::wire_representations`].
@@ -76,7 +76,7 @@ impl From<ClientRegistrationVerdict> for ClientRegistrationBody {
 }
 
 /// `GET /oauth-consents/{id}` — load a pending authorization-code consent
-/// prompt for the Owner UI to render (scope `wildflower/AuthorizationRequest.r`).
+/// prompt for the launcher to render (scope `wildflower/AuthorizationRequest.r`).
 pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     get(handle_get_oauth_consent)
 }

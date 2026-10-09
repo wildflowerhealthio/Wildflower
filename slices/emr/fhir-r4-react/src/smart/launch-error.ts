@@ -15,7 +15,7 @@ const OptionalText = Schema.optionalToOptional(Schema.NullOr(Schema.String), Sch
  *
  * @remarks
  * The wire is the same URL-safe-base64 JSON that the Tauri arm's launch
- * middleware uses (`slices/apps/apps-react/src/routes/_auth/home/-launch-error.ts`),
+ * middleware uses (`apps/launcher/apps-react/src/routes/_auth/home/-launch-error.ts`),
  * so a reader of either arm's `?launchError` decodes the same way. `error` is
  * the tag; the remaining fields are the diagnostics a launch failure can offer,
  * all optional because a failure rarely knows all of them.

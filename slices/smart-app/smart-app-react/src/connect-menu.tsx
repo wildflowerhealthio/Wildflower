@@ -51,7 +51,7 @@ interface FhirR4ConnectMenuProps {
 }
 
 /**
- * Props for a {@link ConnectMenu} that signs the Wildflower owner UI in to a
+ * Props for a {@link ConnectMenu} that signs the Wildflower launcher in to a
  * server. The menu picks the server, from the wildflower target's
  * `serverPresetGroupsFor` groups and its entries; the caller runs the sign-in.
  */
@@ -122,7 +122,7 @@ type ConnectState =
   | { readonly kind: 'launching'; readonly from: ConnectOrigin }
   | { readonly kind: 'error'; readonly message: string; readonly from: ConnectOrigin }
 
-/** The words that differ between a SMART app's menu and the owner UI's. */
+/** The words that differ between a SMART app's menu and the launcher's. */
 const MENU_COPY = {
   'fhir-r4': {
     heading: 'Launch with a FHIR server',
@@ -316,7 +316,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
 
   const onFreeEntrySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    // The owner UI's `?server=` is a Wildflower server's API base, never its
+    // The launcher's `?server=` is a Wildflower server's API base, never its
     // FHIR base, so an entry of the latter is taken back to the former.
     const serverUrl =
       props.target === 'wildflower'

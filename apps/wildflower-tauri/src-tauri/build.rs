@@ -8,10 +8,17 @@ struct TauriSharedConfig {
     loopback_port: u16,
     local_granted_scopes: String,
     first_party_client_id: String,
-    owner_ui_base_url: String,
-    owner_ui_dev_base_url: String,
+    launcher_base_url: String,
     background_service_label: String,
     background_service_foreground_type: String,
+}
+
+/// The one key of `slices/apps/dev-app-ports.json` the host reads: the port the
+/// launcher's dev server binds, which a debug build links its launcher pages to.
+#[derive(serde::Deserialize)]
+struct DevAppPorts {
+    #[serde(rename = "launcher-dev")]
+    launcher_dev: u16,
 }
 
 fn main() {
@@ -58,12 +65,28 @@ fn main() {
         config.first_party_client_id
     );
     println!(
-        "cargo:rustc-env=WILDFLOWER_OWNER_UI_BASE_URL={}",
-        config.owner_ui_base_url
+        "cargo:rustc-env=WILDFLOWER_LAUNCHER_BASE_URL={}",
+        config.launcher_base_url
     );
+    // The debug launcher address is the launcher's dev server, whose port the
+    // shared dev-port file pins (the launcher's `vite.config.web.ts` binds it).
+    let dev_ports_path = Path::new(&manifest_dir).join("../../../slices/apps/dev-app-ports.json");
+    println!("cargo:rerun-if-changed={}", dev_ports_path.display());
+    let dev_ports_raw = std::fs::read_to_string(&dev_ports_path).unwrap_or_else(|error| {
+        panic!(
+            "failed to read dev app ports at {}: {error}",
+            dev_ports_path.display()
+        )
+    });
+    let dev_ports: DevAppPorts = serde_json::from_str(&dev_ports_raw).unwrap_or_else(|error| {
+        panic!(
+            "failed to parse dev app ports at {}: {error}",
+            dev_ports_path.display()
+        )
+    });
     println!(
-        "cargo:rustc-env=WILDFLOWER_OWNER_UI_DEV_BASE_URL={}",
-        config.owner_ui_dev_base_url
+        "cargo:rustc-env=WILDFLOWER_LAUNCHER_DEV_BASE_URL=http://localhost:{}/",
+        dev_ports.launcher_dev
     );
     println!(
         "cargo:rustc-env=WILDFLOWER_BACKGROUND_SERVICE_LABEL={}",

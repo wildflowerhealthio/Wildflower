@@ -141,16 +141,17 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'wildflower-react',
-    // The hosted, cross-origin copy of the owner UI (#694): its `web` build
+    packageName: 'launcher-web',
+    // The hosted, cross-origin copy of the launcher (#694): its `web` build
     // (`vite.config.web.ts`, `base: './'`, `outDir: 'dist-web'`, input
     // `index.html`) holds the in-memory bearer, the `?server=` picker, and the
     // `?redirect=` consumption the Pages 404.html hands back. The section places
-    // that build at `/app/`.
-    sourceDir: 'apps/wildflower-react/dist-web',
-    destPath: SECTION_PATHS.app,
+    // that build at `/launcher/`.
+    sourceDir: 'apps/launcher/launcher-web/dist-web',
+    destPath: SECTION_PATHS.launcher,
     // A single SPA entry; the router derives its basepath from the page's base,
-    // so the same build serves `/app/` and a preview's `/staging/pr-<n>/app/`.
+    // so the same build serves `/launcher/` and a preview's
+    // `/staging/pr-<n>/launcher/`.
     requiredFiles: ['index.html'],
   },
 ]

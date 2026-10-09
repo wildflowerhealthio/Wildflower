@@ -141,8 +141,8 @@ const initConsentedTelemetry = ({
  *
  * @remarks
  * Suspended, so importing or composing it starts nothing, and re-read each
- * time a runtime builds it: an app that provides it per request (the owner
- * UI's `runAuthed`) traces from the first request after a yes turns
+ * time a runtime builds it: an app that provides it per request (the
+ * launcher's `runAuthed`) traces from the first request after a yes turns
  * performance on, and stops with the first after it is turned off. Until an
  * answer registers the provider it is `Layer.empty`. It never initializes
  * anything itself.

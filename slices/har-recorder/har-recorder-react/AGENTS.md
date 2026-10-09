@@ -16,7 +16,7 @@ package is the React shell that drives it and the two bridges it straddles.
 - `src/har-recorder-sender-context.ts` / `-provider.tsx` / `src/use-har-recorder-sender.ts`
   — the `SaveHar` sender, fed by the app's `HarRecorderSenderForwarder`.
 - `src/routes/_auth/har-recorder/index.tsx` — the page. Mounted into
-  `apps/wildflower-react` by that app's `routes.config.ts`; `src/routes/__root.tsx`
+  `apps/launcher/launcher-web` by that app's `routes.config.ts`; `src/routes/__root.tsx`
   exists only so the slice's own route generator has an anchor.
 
 ## Two bridges, one page

@@ -1,4 +1,4 @@
-//! [`AuthorizationStatusReader`] — `GET /oauth/authorize/{id}`, the Owner UI's
+//! [`AuthorizationStatusReader`] — `GET /oauth/authorize/{id}`, the launcher's
 //! polling view of an authorization request as it moves from pending toward
 //! approval or denial. Public (the request id is the secret); its only power
 //! is this one read.

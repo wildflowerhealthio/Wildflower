@@ -14,10 +14,10 @@ pub const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
 /// only ones its bearer gates accept.
 pub const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
-/// The hosted owner UI the gatekeeper's browser-facing pages resolve on in
+/// The hosted launcher the gatekeeper's browser-facing pages resolve on in
 /// these tests — deliberately not the production address, so an assertion
 /// can't pass by accident against a hard-coded one.
-pub const OWNER_UI_BASE: &str = "https://owner-ui.test/app/";
+pub const LAUNCHER_BASE: &str = "https://launcher.test/launcher/";
 pub use chrono::{Duration, Utc};
 pub use gatekeeper_rust::crypto_util::base64;
 pub use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
@@ -33,7 +33,7 @@ pub use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
 pub use gatekeeper_rust::{GatekeeperStore, PendingConsentHead, SqliteGatekeeperStore};
 pub use persistence_rust::{Connection, DieselPool};
 pub use serde_json::Value;
-pub use shared_structures_rust::owner_ui::OwnerUiBase;
+pub use shared_structures_rust::launcher::LauncherBase;
 pub use tower::ServiceExt;
 pub use url::Url;
 
@@ -70,7 +70,7 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
 }
 
 /// [`spin_up`] with the host's loopback dialog played by `loopback_prompt` — for
-/// the tests that drive a direct-loopback `wildflower-react` login through it.
+/// the tests that drive a direct-loopback `launcher-web` login through it.
 ///
 /// Runs on a temporary **file-backed** database, like the app's, rather than
 /// the shared-cache in-memory one: the dialog's decision writes from a blocking
@@ -96,7 +96,7 @@ fn spin_up_on(
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
         host_owner_scopes: gatekeeper_rust::default_local_granted_scopes(),
         first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
-        owner_ui_base: OwnerUiBase::parse(OWNER_UI_BASE).expect("OWNER_UI_BASE is a valid URL"),
+        launcher_base: LauncherBase::parse(LAUNCHER_BASE).expect("LAUNCHER_BASE is a valid URL"),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
     let (pending_consent_tx, pending_consent_rx) =

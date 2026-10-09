@@ -78,7 +78,7 @@ the row is created or widened only when the Owner approves — see
   as follows:
   - any UTC time disables the client now, stamped with the server's own
     now whatever time was sent. A disable can be neither scheduled nor
-    backdated. The owner UI sends its current time.
+    backdated. The launcher sends its current time.
   - `null` re-enables the client.
   - a client that already has a `disabledAt` keeps it. The update is
     idempotent, and a repeated disable doesn't move the time.
@@ -314,10 +314,10 @@ client. Flow:
    POSTs `/oauth/device_authorization` with `client_id`, the built `scope`, and
    the chosen `device_name`. Server creates a `flow='device_code'`
    `AuthorizationRequest` and returns `{ device_code, user_code, verification_uri, ... }`.
-   The verification URIs point at the hosted owner UI
-   (`https://wildflowerhealth.io/app/gatekeeper/devices?server=<origin>`,
-   the host's `owner_ui_base_url`), not at the server itself — the host
-   serves no UI of its own. A copy of the owner UI that starts a pairing
+   The verification URIs point at the hosted launcher
+   (`https://wildflowerhealth.io/launcher/gatekeeper/devices?server=<origin>`,
+   the host's `launcher_base_url`), not at the server itself — the host
+   serves no UI of its own. A copy of the launcher that starts a pairing
    itself (`NeedsAuthMessage`) shows its **own** device-entry page instead,
    keeping the query the server built (`GatekeeperPaths.deviceEntryUrlOn`),
    so a pairing started on a PR preview or a dev server is approved there.
@@ -402,7 +402,7 @@ request).
 The page `/oauth/authorize` parks a browser on while the Owner decides:
 `/oauth/authorize/{id}/wait`, served by the gatekeeper itself on whichever
 origin the browser reached it at (loopback, a tunnel, a forwarded front). The
-`Location` is relative to `/oauth/authorize`, so no owner UI address is
+`Location` is relative to `/oauth/authorize`, so no launcher address is
 involved. The page is static HTML, CSS and JS
 (`gatekeeper-rust/src/http/routes/oauth/wait_page/`). It polls
 `GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
@@ -410,7 +410,7 @@ redirect the status carries, which the gatekeeper built from the client's
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
 address a sign-in ever leaves the gatekeeper for, and no request parameter can
 name a different one. The page takes no decision itself: the Owner answers in
-the host popup, a signed-in owner UI, or the
+the host popup, a signed-in launcher, or the
 [loopback owner dialog](#loopback-owner-dialog).
 
 It interpolates nothing (the script reads the request id from its own path),
@@ -422,13 +422,13 @@ tokens under the same names.
 
 A native Approve / Reject dialog the desktop host raises for one kind of login:
 a **direct-loopback** `/oauth/authorize` (no `Forwarded` header) whose
-`client_id` is `wildflower-react`, the hosted owner UI signing in to the server
+`client_id` is `03a513940b52f8c2649a5366d1a26d19` (the hosted launcher) signing in to the server
 on the same machine. The person at the keyboard is the Owner, so the host asks
 them in place rather than sending them to the in-app consent page.
 
 The request is parked and queued exactly as any other code request: the browser
 is still sent to the [wait page](#wait-page), and the request still appears in
-the Owner UI. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
+the launcher. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
 `LoopbackConsentPrompt` port). Whichever surface decides first wins, because a
 deny, like an approve, only changes a request that is still `pending`.
 
@@ -441,7 +441,7 @@ deny, like an approve, only changes a request that is still `pending`.
 - **Reject**, closing the dialog, or leaving it unanswered until the request
   expires denies it (the wait page carries `access_denied` back to the client).
 - A host with no native dialog wires `NoLoopbackConsentPrompt`, which
-  **abstains**, leaving the request to the Owner UI.
+  **abstains**, leaving the request to the launcher.
 
 Forwarded (tunnel) requests and every other `client_id` never reach the dialog.
 Anyone on loopback can present the `client_id`. The dialog names the redirect
@@ -628,10 +628,10 @@ Unless an existing [grant](#grant) pre-approves every requested scope, the
 request is parked for the Owner: the browser lands on the
 [wait page](#wait-page), and the request joins the
 [pending-consent queue](#pending-consent-queue) so the host app raises its
-popup and a signed-in owner UI lists it. Whichever surface decides it, the wait
+popup and a signed-in launcher lists it. Whichever surface decides it, the wait
 page redirects the client once its poll observes the outcome. The browser that
 started the flow is usually not signed in — a SMART app launched from another
-device, one reaching the tunnel origin, or the owner UI signing in to begin
+device, one reaching the tunnel origin, or the launcher signing in to begin
 with — so it waits rather than decides.
 
 ### Device authorization flow / `grant_type=urn:ietf:params:oauth:grant-type:device_code`

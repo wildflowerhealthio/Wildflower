@@ -16,7 +16,7 @@ type RequestLogClientRequirements = HttpClient.HttpClient | RequestLogHttpApiCli
  * sets no `Authorization` header — the host app's `HttpClient` layer decides
  * how requests authenticate. This builder re-exposes that layer under a
  * `buildXClientLayer()` name matching the other slices. Leaves `HttpClient`
- * unprovided: the host app supplies one (the owner UI's API transport) shared
+ * unprovided: the host app supplies one (the launcher's API transport) shared
  * across every slice's client layer via the composed `runtimeLayer`.
  */
 const buildRequestLogClientLayer = (): Layer.Layer<

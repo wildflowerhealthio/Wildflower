@@ -183,7 +183,7 @@ pub async fn set_up(
     let WildflowerServerConfig {
         runtime,
         search_parameter_data_dir,
-        owner_ui_base,
+        launcher_base,
         host_owner_scopes,
         first_party_client_id,
         relay_settings,
@@ -235,7 +235,7 @@ pub async fn set_up(
         server_origin: public_origin.clone(),
         host_owner_scopes,
         first_party_client_id,
-        owner_ui_base: owner_ui_base.clone(),
+        launcher_base: launcher_base.clone(),
     };
 
     // One shared SQLite database for all persistence-rust-backed slices; each
@@ -488,9 +488,9 @@ pub async fn set_up(
         .merge(gated_apps)
         .merge(gated_databases)
         // No slice claimed the route: `404`, pointing a browser at the hosted
-        // owner UI (the server serves no UI of its own). See `not_found.rs`.
+        // launcher (the server serves no UI of its own). See `not_found.rs`.
         .fallback(not_found::fallback(Arc::new(not_found::NotFoundConfig {
-            owner_ui_base,
+            launcher_base,
             loopback_base_url: loopback_base_url.clone(),
         })));
 

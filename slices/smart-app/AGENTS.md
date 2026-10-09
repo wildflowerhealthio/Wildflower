@@ -22,7 +22,7 @@ slice is where the two meet, so neither has to know about the other.
   - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
     standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
     base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
-    owner UI's own sign-in (`connect`) the picked URL (a Wildflower server's
+    launcher's own sign-in (`connect`) the picked URL (a Wildflower server's
     API base, or the demo server's FHIR base), and also runs the
     page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
     (`autoConnect`). Either target shows the problem the page arrived with
@@ -56,7 +56,7 @@ Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/lifting/lifting-w
 the read-status lines, as does `synthetic-data-react`'s screen, and pick the
 patient with the patient choice; `apps/fhir-sync-pebble/fhir-sync-pebble-web` mounts
 `SmartAppRoot` too, but is only ever opened standalone;
-`apps/wildflower-react`'s landing uses only `ConnectMenu`, with
+`apps/launcher/launcher-web`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.
 
 ## Booting an app
@@ -72,7 +72,7 @@ An app has one entry, `index.html`, and it is a few lines:
   (typed in `env.d.ts`, named in `.env.example`), with the app's id as
   `smartAppTelemetry`.
 
-The app root is the URL an EHR, the desktop base and the owner UI's plain
+The app root is the URL an EHR, the desktop base and the launcher's plain
 SMART Home launch the app at (`?iss=…&launch=…`, or a lone `?iss=` for a
 standalone launch against that server), so there is no separate launch page.
 
@@ -104,7 +104,7 @@ import `branding-react/styles.css` itself.
   answered the page is the dialog alone: no launch is authorized, the connect
   menu does not mount, the app does not mount, and no query runs. The answer goes to `telemetry-react`'s
   `useConsentedTelemetryStart`, which starts Sentry only when a switch is on;
-  the owner UI's web entry starts through the same hook, so the start logic
+  the launcher's web entry starts through the same hook, so the start logic
   lives there, not here. The FHIR host tag waits for Sentry to run; the launch
   failure the page arrived with is reported once, from the hook's
   `onFirstStart`. The `CrashReportingBoundary`s (`telemetry-react`) around
@@ -157,8 +157,8 @@ import `branding-react/styles.css` itself.
   plain SMART server's FHIR base: `gatekeeper-core`'s discovery tries
   `{url}/fhir-r4` first and the URL itself only on a 404. A free entry under
   `wildflower` loses a trailing `/fhir-r4` (`gatekeeper-core`'s
-  `serverUrlNamedBy`, through `fhir-r4-react/smart`), so the owner
-  UI's `?server=` is always the API base. The
+  `serverUrlNamedBy`, through `fhir-r4-react/smart`), so the
+  launcher's `?server=` is always the API base. The
   subdomain is checked as dot-separated DNS labels before it is spliced into a
   URL, and it and the free entry are validated with `normalizeServerUrl` in
   plain `type="text"` inputs, never `type="url"` — HTML5 constraint validation
@@ -188,7 +188,7 @@ import `branding-react/styles.css` itself.
   through the same `connect` and the same `launching` state. There is one busy
   flag, one problem at a time, and one `pageshow` reset, so Back from the
   authorization server leaves nothing disabled. The page's `arrivalProblem`
-  (the latched launch error, or the owner UI's boot redemption failure) shows
+  (the latched launch error, or the launcher's boot redemption failure) shows
   at the top until any connect starts; a connect's own problem shows beside
   where it started, at the top for the chosen server and at the bottom for a
   pick. A page keeps only the policy (which server, whether to sign in on

@@ -52,7 +52,7 @@ tauri-unit-runner = { path = "../../../global/tauri-unit-runner" }
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
 tauri-plugin-native-webview = { path = "../../../plugins/tauri-plugin-native-webview" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
-# `ServerRuntimeConfig` and `OwnerUiBase` for the server config, and the bridge
+# `ServerRuntimeConfig` and `LauncherBase` for the server config, and the bridge
 # envelope the host's listeners decode.
 shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust" }
 # Provides `resolve_http_url`, the http(s)-only validator the apps launch flow

@@ -23,7 +23,7 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'syntheticData',
   'lifting',
   'watchLifts',
-  'app'
+  'launcher'
 )
 
 describe('SECTION_PATHS', () => {
@@ -40,7 +40,7 @@ describe('SECTION_PATHS', () => {
       syntheticData: 'synthetic-data-app',
       lifting: 'lifting',
       watchLifts: 'watch-lifts',
-      app: 'app',
+      launcher: 'launcher',
     })
   })
 })
@@ -53,7 +53,7 @@ describe('sectionUrl', () => {
   it('should return absolute URLs for non-marketing sections', () => {
     expect(sectionUrl('medications')).toBe('https://wildflowerhealth.io/medications-app')
     expect(sectionUrl('serverDocs')).toBe('https://wildflowerhealth.io/wildflower-server-docs')
-    expect(sectionUrl('app')).toBe('https://wildflowerhealth.io/app')
+    expect(sectionUrl('launcher')).toBe('https://wildflowerhealth.io/launcher')
   })
 
   it('should always start with SITE_ORIGIN/', () => {
@@ -145,10 +145,10 @@ describe('siteRootFor', () => {
     )
   })
 
-  it("should resolve a PR preview's owner UI to that preview's root", () => {
-    expect(siteRootFor('app', 'https://wildflowerhealthio.github.io/staging/pr-7/app/')).toBe(
-      'https://wildflowerhealthio.github.io/staging/pr-7/'
-    )
+  it("should resolve a PR preview's launcher to that preview's root", () => {
+    expect(
+      siteRootFor('launcher', 'https://wildflowerhealthio.github.io/staging/pr-7/launcher/')
+    ).toBe('https://wildflowerhealthio.github.io/staging/pr-7/')
   })
 
   it('should fall back to the canonical site for a URL that does not end in the section path', () => {

@@ -16,7 +16,7 @@
 //!    launch hands out (for the host and the apps slice) and consumes them for
 //!    [`CodeAuthorizationStarter`];
 //!  - host-answered: [`LoopbackOwnerApprover`] puts a direct-loopback login by
-//!    the hosted owner UI to the host's native dialog and applies the Owner's
+//!    the hosted launcher to the host's native dialog and applies the Owner's
 //!    answer, with the host Owner's grant as the approving authority.
 
 mod authorization_status_reader;

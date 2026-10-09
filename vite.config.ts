@@ -35,7 +35,7 @@ export default defineConfig({
   // turning every newly-added cross-package export into a runtime
   // `is not a function` error until somebody re-runs `vp pack`. Per-
   // package vite configs that test against workspace deps need BOTH —
-  // see `slices/apps/apps-core/vite.config.ts` and
+  // see `apps/launcher/apps-core-js/vite.config.ts` and
   // `slices/shared-structures/shared-structures-core/vite.config.ts`.
   resolve: {
     conditions: ['source'],
@@ -72,7 +72,7 @@ export default defineConfig({
       'apps/watch-lifts/watch-lifts-web/vite.config.ts',
       'apps/web-trace/vite.config.ts',
       'apps/marketing-website/vite.config.ts',
-      'apps/wildflower-react/vite.config.ts',
+      'apps/launcher/*/vite.config.ts',
       'apps/wildflower-server-docs/vite.config.ts',
       'global/effect-messaging/effect-messaging-core/vite.config.ts',
       'global/effect-messaging/effect-messaging-react/vite.config.ts',

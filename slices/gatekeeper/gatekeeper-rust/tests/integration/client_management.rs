@@ -58,7 +58,7 @@ async fn patch_client(
         .expect("oneshot")
 }
 
-/// Disable `client_id` as of `at`, sent as the UTC string the owner UI sends.
+/// Disable `client_id` as of `at`, sent as the UTC string the launcher sends.
 async fn disable_client(
     g: &Gatekeeper,
     token: &str,

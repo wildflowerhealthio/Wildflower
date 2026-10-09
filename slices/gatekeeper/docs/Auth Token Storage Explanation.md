@@ -1,6 +1,6 @@
 # Auth Token Storage Explanation
 
-Why the owner UI's two entries hold their auth state in different stores, and
+Why the launcher's two entries hold their auth state in different stores, and
 why neither store is a cookie.
 
 The server authenticates by the `Authorization: Bearer` header alone: it issues
@@ -50,13 +50,13 @@ routing, so an authed loader that fired on first paint would `401` before the
 token was minted.
 
 The gate is therefore a **`beforeLoad`** on the pathless `_auth` /
-`/settings` layouts and the `/fhir-home` route (`apps/wildflower-react`'s
+`/settings` layouts and the `/fhir-home` route (`apps/launcher/launcher-web`'s
 `session/auth-gated-route-options.ts`),
 which `await`s `context.awaitAuthReady(href)`. Because `beforeLoad` resolves
 before the route's `loader` and children render, every authed loader beneath
 the gate runs once auth is ready; the slice loaders are plain
 `ensureQueryData` with no `isTokenReady` reader. A bounded **boot-race retry**
-(`unauthorizedRetrySchedule` in `apps/wildflower-react/src/retry-policy.ts`)
+(`unauthorizedRetrySchedule` in `apps/launcher/launcher-web/src/retry-policy.ts`)
 covers the residual window between gate-pass and the host's owner token being
 live, and latches off once any authed request succeeds so a genuine expiry
 redirects to sign-in without delay.

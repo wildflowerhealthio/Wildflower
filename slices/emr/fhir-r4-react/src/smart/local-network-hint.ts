@@ -2,7 +2,7 @@
  * The sentence a page adds after a connection failure's reason when the server
  * it connected to is a loopback address and the page itself is secure: any
  * page on the published site (`smart-app-react`'s `ConnectMenu`, the hosted
- * owner UI's own sign-in) reaching a server on the reader's own machine.
+ * launcher's own sign-in) reaching a server on the reader's own machine.
  *
  * A hosted `https://` page fetching a `http://127.0.0.1` server is exactly the
  * case Chrome guards with its **Local Network Access** prompt (formerly Private

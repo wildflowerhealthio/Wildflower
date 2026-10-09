@@ -18,8 +18,8 @@ type CollectorClientRequirements = HttpClient.HttpClient | CollectorHttpApiClien
  * matching the other slices (e.g. `gatekeeper-react`'s
  * `buildGatekeeperClientLayer`).
  *
- * Leaves `HttpClient` unprovided: the host app supplies one (the owner
- * UI's API transport) shared across every slice's client layer via the
+ * Leaves `HttpClient` unprovided: the host app supplies one (the
+ * launcher's API transport) shared across every slice's client layer via the
  * composed `runtimeLayer`.
  */
 const buildCollectorClientLayer = (): Layer.Layer<

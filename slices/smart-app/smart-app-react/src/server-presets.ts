@@ -2,7 +2,7 @@ import { normalizeServerUrl } from 'fhir-r4-react/smart'
 
 /**
  * What a connect menu connects: a SMART app launching against a FHIR R4 base
- * (`fhir-r4`), or the Wildflower owner UI signing in to a Wildflower server's
+ * (`fhir-r4`), or the Wildflower launcher signing in to a Wildflower server's
  * origin (`wildflower`). The same server is addressed differently by each, so
  * every URL on the menu is built for one of them.
  */
@@ -36,7 +36,7 @@ interface ServerPresetGroup {
 
 /**
  * The URL a `target` connects to for the Wildflower server at `origin`: its
- * FHIR R4 base for a SMART app, the origin itself for the owner UI.
+ * FHIR R4 base for a SMART app, the origin itself for the launcher.
  */
 const wildflowerServerUrlFor = (target: ConnectTarget, origin: string): string =>
   target === 'fhir-r4' ? `${origin}/fhir-r4` : origin
@@ -84,7 +84,7 @@ const SMART_HEALTH_IT_PRESETS: readonly ServerPreset[] = [
 ]
 
 /**
- * What the owner UI can expect of the demo server: it signs in there as at any
+ * What the launcher can expect of the demo server: it signs in there as at any
  * SMART server, but none of the Wildflower-only API is there.
  */
 const SMART_HEALTH_IT_WILDFLOWER_NOTICE =
@@ -116,7 +116,7 @@ const serverPresetGroupsFor = (
       address: localOrigin,
       presets: [
         {
-          // The owner UI signs in rather than launching an app.
+          // The launcher signs in rather than launching an app.
           label: target === 'fhir-r4' ? 'Launch' : 'Connect',
           url: wildflowerServerUrlFor(target, localOrigin),
         },

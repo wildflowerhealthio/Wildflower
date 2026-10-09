@@ -103,10 +103,13 @@ watches the server through host-owned observer channels.
 `background-server-service` is the server-status wire, kept for the web app
 to read a server's status over a future websocket — see
 [background-server-service/AGENTS.md](./background-server-service/AGENTS.md).
-`background-server-service-core` is the wire's TS schema,
-`background-server-service-rust` its serde mirror with golden tests, and
-`background-server-service-react` the banner and `/settings/server` page that
-render a status snapshot. Nothing sends or answers the wire today.
+`background-server-service-rust` is its serde mirror with golden tests. The
+TS side lives with the launcher in `apps/launcher`, not in this slice:
+[`wildflower-server-core-js`](../apps/launcher/wildflower-server-core-js/AGENTS.md)
+is the wire's TS schema, and
+[`wildflower-server-react`](../apps/launcher/wildflower-server-react/AGENTS.md)
+the banner and `/settings/server` page that render a status snapshot. Nothing
+sends or answers the wire today.
 
 `servers` is the install's list of servers — see
 [servers/AGENTS.md](./servers/AGENTS.md). `servers-rust` holds a
@@ -131,7 +134,7 @@ status to the base as the `server-status` event, posts the notifications,
 and holds the base's commands (list, add, re-enter credentials, set the run
 policy, update, remove), which write the registry and then push. See the
 [Server Runs Explanation](./servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in
-place of the owner UI, is `servers-react`'s `BaseRoot`: its own telemetry
+place of the launcher, is `servers-react`'s `BaseRoot`: its own telemetry
 consent, then the server list and Host Settings, which reach the host
 only through `servers-core`'s Tauri commands (plain `invoke`, answers
 decoded by Effect Schema) and the `server-status` event, never the
@@ -147,7 +150,7 @@ effect-messaging bridge.
 - **Platform adapters depend on `-core`, never the reverse**
 - **Compose `HttpApi` groups across slices via the phantom-id bridge pattern** — see [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md)
 - **Don't use `topLevel: true` on multiple `HttpApiGroup`s under the same `HttpApi`** — name collision in the generated client. See [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md).
-- **In a `<name>-react` route file, annotate `useRouteContext`'s `select`.** A slice type-checks both standalone (`vp run --filter <slice> check`) and mounted under `apps/wildflower-react`. Standalone there is no registered Router, so `RegisteredRouter` falls back to `AnyRouter` and a bare `Route.useRouteContext()` / `useRouteContext()` widens to `any` (`no-unsafe-assignment` under oxlint). Fix without a cast: give the slice its own structural `RouterContext` (`BaseRouterContext.RouterContextWith<…>`, re-declared per slice — never imported from the app), and read context through an annotated select, e.g. `useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })`. `Route.useParams()` needs no annotation (params come from the route's own path). See `slices/collector/collector-react/src/queries/use-run-authed.ts` for the pattern.
+- **In a `<name>-react` route file, annotate `useRouteContext`'s `select`.** A slice type-checks both standalone (`vp run --filter <slice> check`) and mounted under `apps/launcher/launcher-web`. Standalone there is no registered Router, so `RegisteredRouter` falls back to `AnyRouter` and a bare `Route.useRouteContext()` / `useRouteContext()` widens to `any` (`no-unsafe-assignment` under oxlint). Fix without a cast: give the slice its own structural `RouterContext` (`BaseRouterContext.RouterContextWith<…>`, re-declared per slice — never imported from the app), and read context through an annotated select, e.g. `useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })`. `Route.useParams()` needs no annotation (params come from the route's own path). See `slices/collector/collector-react/src/queries/use-run-authed.ts` for the pattern.
 
 ## References
 

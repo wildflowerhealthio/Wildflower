@@ -13,14 +13,14 @@ import { SECTION_PATHS, SITE_ORIGIN, siteRootFor } from './site.ts'
 
 /**
  * Every described app: the homepage's SMART apps, and the Synthetic Data Loader
- * and the owner UI, which have a landing page but no homepage row.
+ * and the launcher, which have a landing page but no homepage row.
  */
-const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'syntheticData', 'app']
+const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'syntheticData', 'launcher']
 
 const appSectionIdArb = fc.constantFrom<AppSectionId>(...DESCRIBED_APP_IDS)
 
 describe('APP_SECTION_IDS', () => {
-  it('should list every described app but the data loader and the owner UI exactly once, and nothing else', () => {
+  it('should list every described app but the data loader and the launcher exactly once, and nothing else', () => {
     expect(DESCRIBED_APP_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
   })
 
@@ -110,9 +110,9 @@ describe('smartAppLaunchPages', () => {
     )
   })
 
-  it('should leave out the owner UI and FHIR Sync for Pebble, which no URL launches', () => {
+  it('should leave out the launcher and FHIR Sync for Pebble, which no URL launches', () => {
     const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
-    expect(listedApps).not.toContain('app')
+    expect(listedApps).not.toContain('launcher')
     expect(listedApps).not.toContain('fhirSyncPebble')
   })
 
@@ -120,13 +120,13 @@ describe('smartAppLaunchPages', () => {
     fc.assert(
       fc.property(
         fc.constantFrom(
-          'https://wildflowerhealth.io/app/',
-          'https://wildflowerhealthio.github.io/staging/pr-7/app/',
+          'https://wildflowerhealth.io/launcher/',
+          'https://wildflowerhealthio.github.io/staging/pr-7/launcher/',
           'http://localhost:5173/'
         ),
-        (ownerUiBaseUrl) => {
+        (launcherBaseUrl) => {
           // Arrange
-          const siteRoot = siteRootFor('app', ownerUiBaseUrl)
+          const siteRoot = siteRootFor('launcher', launcherBaseUrl)
 
           // Act
           const launchPages = smartAppLaunchPages(siteRoot)

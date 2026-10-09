@@ -3,7 +3,7 @@ import type { SettingsItem } from 'shared-structures-react'
 /**
  * Menu entries the unified `/settings` screen renders for the request log.
  *
- * `apps/wildflower-react/src/routes/settings/index.tsx` concatenates this with
+ * `apps/launcher/launcher-web/src/routes/settings/index.tsx` concatenates this with
  * every other slice's `*SettingsItemsFragment` and feeds the result to
  * `<ItemList>`. The `href` mirrors the slice's `routes/settings/requests` page.
  */

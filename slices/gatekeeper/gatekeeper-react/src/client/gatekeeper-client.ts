@@ -18,8 +18,8 @@ type GatekeeperClientRequirements = HttpClient.HttpClient | GatekeeperHttpApiCli
  * matching the other slices (e.g. `databases-react`'s
  * `buildDatabasesClientLayer`).
  *
- * Leaves `HttpClient` unprovided: the host app supplies one (the owner
- * UI's API transport) shared across every slice's client layer via the
+ * Leaves `HttpClient` unprovided: the host app supplies one (the
+ * launcher's API transport) shared across every slice's client layer via the
  * composed `runtimeLayer`.
  */
 const buildGatekeeperClientLayer = (): Layer.Layer<

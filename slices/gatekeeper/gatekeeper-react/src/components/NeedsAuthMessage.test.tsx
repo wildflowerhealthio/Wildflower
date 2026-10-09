@@ -64,9 +64,9 @@ const scopesHolder: { current: string | undefined } = { current: undefined }
 // fallback; a set value proves the device-login request forwards the injected id.
 const clientIdHolder: { current: string | undefined } = { current: undefined }
 
-// Stands in for the external root of the owner UI copy the screen is mounted in —
-// a PR preview, so it differs from the owner UI the server's URIs name.
-const EXTERNAL_ROOT = 'https://wildflowerhealthio.github.io/staging/pr-7/app/'
+// Stands in for the external root of the launcher copy the screen is mounted in —
+// a PR preview, so it differs from the launcher the server's URIs name.
+const EXTERNAL_ROOT = 'https://wildflowerhealthio.github.io/staging/pr-7/launcher/'
 
 vi.mock('../router-context.ts', () => ({
   useGatekeeperRuntimeLayer: (): Layer.Layer<GatekeeperHttpApiClient> => layerHolder.current,
@@ -106,11 +106,11 @@ afterEach(() => {
 const DEVICE_AUTH_RESPONSE = {
   user_code: 'WDJB-MJHT',
   device_code: 'dev-1',
-  // On the owner UI the server is configured with, pointed back at itself.
+  // On the launcher the server is configured with, pointed back at itself.
   verification_uri:
-    'https://wildflowerhealth.io/app/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io',
+    'https://wildflowerhealth.io/launcher/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io',
   verification_uri_complete:
-    'https://wildflowerhealth.io/app/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT',
+    'https://wildflowerhealth.io/launcher/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT',
   interval: 5,
 }
 
@@ -192,7 +192,7 @@ describe('<NeedsAuthMessage> device flow', () => {
   })
 
   test('links the pairing to this copy’s own device-entry page, keeping the server’s query', async () => {
-    // The server builds its URIs on the owner UI it is configured with; a pairing
+    // The server builds its URIs on the launcher it is configured with; a pairing
     // started on this copy is approved on this copy.
     layerHolder.current = makeClientLayer({
       DeviceAuthorization: () => Effect.succeed(DEVICE_AUTH_RESPONSE),

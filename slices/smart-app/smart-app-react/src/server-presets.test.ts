@@ -9,7 +9,7 @@ import {
 const LOCAL_ORIGIN = 'http://127.0.0.1:8123'
 
 describe('serverPresetGroupsFor', () => {
-  it('launches a SMART app against the local server’s FHIR R4 base, and signs the owner UI in to its origin', () => {
+  it('launches a SMART app against the local server’s FHIR R4 base, and signs the launcher in to its origin', () => {
     const [fhirLocal] = serverPresetGroupsFor('fhir-r4', LOCAL_ORIGIN)
     const [wildflowerLocal] = serverPresetGroupsFor('wildflower', LOCAL_ORIGIN)
 
@@ -19,7 +19,7 @@ describe('serverPresetGroupsFor', () => {
     expect(wildflowerLocal?.presets.map((preset) => preset.url)).toEqual([LOCAL_ORIGIN])
   })
 
-  it('launches the demo server at the same URLs for both targets, with a notice only for the owner UI', () => {
+  it('launches the demo server at the same URLs for both targets, with a notice only for the launcher', () => {
     const fhirDemo = serverPresetGroupsFor('fhir-r4', LOCAL_ORIGIN)[1]
     const wildflowerDemo = serverPresetGroupsFor('wildflower', LOCAL_ORIGIN)[1]
 
@@ -41,7 +41,7 @@ describe('serverPresetGroupsFor', () => {
 })
 
 describe('hostedServerUrlFor', () => {
-  it('builds a hosted server’s FHIR R4 base for a SMART app and its origin for the owner UI', () => {
+  it('builds a hosted server’s FHIR R4 base for a SMART app and its origin for the launcher', () => {
     expect(hostedServerUrlFor('fhir-r4', 'ruth')).toBe('https://ruth.wildflowerhealth.io/fhir-r4')
     expect(hostedServerUrlFor('wildflower', 'ruth')).toBe('https://ruth.wildflowerhealth.io')
   })

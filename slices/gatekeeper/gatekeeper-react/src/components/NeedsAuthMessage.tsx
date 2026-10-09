@@ -1,6 +1,6 @@
 /* oxlint-disable react/only-export-components ---
   Neither export changes often; sanitizeReturnTo is a pure helper reused by
-  the wildflower-react web entry's return leg (and this screen's own tests) */
+  the launcher-web web entry's return leg (and this screen's own tests) */
 import { Duration, Effect, Either, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
@@ -241,8 +241,8 @@ const NeedsAuthMessage = (): JSX.Element => {
   // can't drift — the config is the shared source). Used as the device-login
   // request's `client_id` below.
   const firstPartyClientId = useGatekeeperFirstPartyClientId() ?? FIRST_PARTY_CLIENT_ID
-  // This owner UI as another device reaches it. The pairing link points at its
-  // device-entry page rather than the one on the server's configured owner UI,
+  // This launcher as another device reaches it. The pairing link points at its
+  // device-entry page rather than the one on the server's configured launcher,
   // so a pairing started on a PR preview or a dev server is approved there too.
   const externalRoot = useGatekeeperExternalRoot()
 

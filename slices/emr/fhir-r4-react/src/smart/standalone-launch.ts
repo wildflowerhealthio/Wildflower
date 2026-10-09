@@ -144,7 +144,7 @@ export {
   /**
    * Re-exported from `gatekeeper-core/smart-client`, like `normalizeServerUrl`:
    * the Wildflower server a URL names, with or without its `/fhir-r4` mount,
-   * which `connect-menu.tsx` turns the owner UI's free entry into.
+   * which `connect-menu.tsx` turns the launcher's free entry into.
    */
   serverUrlNamedBy,
   startStandaloneLaunch,

@@ -1,14 +1,14 @@
 //! [`LoopbackConsentPrompt`] — the seam through which `/authorize` asks the
 //! host to put a login in front of the Owner at the machine, as a native OS
-//! dialog, when the hosted owner UI (`wildflower-react`) logs in over direct
+//! dialog, when the hosted launcher (`launcher-web`) logs in over direct
 //! loopback.
 //!
 //! The dialog is one more approver of the parked request, not a replacement for
-//! the Owner UI: `/authorize` still sends the browser to the wait page, and
+//! the launcher: `/authorize` still sends the browser to the wait page, and
 //! whichever surface decides first wins. The host implements the seam (the
 //! Tauri app with `tauri-plugin-dialog`); a host with no native dialog (and the
 //! tests) wires [`NoLoopbackConsentPrompt`], which abstains, leaving the request
-//! for the Owner UI exactly as if the seam did not exist.
+//! for the launcher exactly as if the seam did not exist.
 
 use chrono::{DateTime, Utc};
 
@@ -19,6 +19,9 @@ pub struct LoopbackConsentRequest {
     pub request_id: String,
     /// The OAuth `client_id` the login presented.
     pub client_id: String,
+    /// The registered name of the client under `client_id` — what the dialog
+    /// calls the app — or `None` when no client is registered under it yet.
+    pub client_name: Option<String>,
     /// The origin of the presented `redirect_uri` — where the browser lands
     /// with the code, and so the one fact that tells the Owner which page is
     /// asking (any local process can present the `client_id`).
@@ -65,7 +68,7 @@ pub enum LoopbackConsentAnswer {
     /// (`access_denied`).
     Reject,
     /// No dialog was shown (the host has none, or one is already on screen):
-    /// the request stays pending for the Owner UI to decide.
+    /// the request stays pending for the launcher to decide.
     Abstain,
 }
 
@@ -79,7 +82,7 @@ pub trait LoopbackConsentPrompt: Send + Sync {
 
 /// A [`LoopbackConsentPrompt`] with no dialog: it always
 /// [abstains](LoopbackConsentAnswer::Abstain), so every loopback login is
-/// decided in the Owner UI. The default for a host without native dialogs and
+/// decided in the launcher. The default for a host without native dialogs and
 /// for tests that don't exercise the dialog.
 #[derive(Debug, Clone, Copy)]
 pub struct NoLoopbackConsentPrompt;

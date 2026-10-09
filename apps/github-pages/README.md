@@ -17,7 +17,7 @@ that owns it, and this package places those outputs at their public URLs.
 | `/synthetic-data-app`     | `synthetic-data-app` (`apps/synthetic-data-app`)                      |
 | `/lifting`                | `lifting-web` (`apps/lifting/lifting-web`)                            |
 | `/watch-lifts`            | `watch-lifts-web` (`apps/watch-lifts/watch-lifts-web`)                |
-| `/app`                    | `wildflower-react` (`apps/wildflower-react`, `dist-web`)              |
+| `/launcher`               | `launcher-web` (`apps/launcher/launcher-web`, `dist-web`)             |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 
@@ -35,7 +35,7 @@ root by `assemble.ts`, not by any section — probes ancestor directories for an
 `index.html`, redirects to the deepest one that answers, and hands the requested
 path over, site-absolute, as `?redirect=<path>` alongside whatever query the
 link carried. Site-absolute because an app-relative route named like the app's
-own directory (`/app` below `/app/`) would read as the app root.
+own directory (`/launcher` below `/launcher/`) would read as the app root.
 
 When no ancestor answers, the page shows a plain "Page not found" message instead
 of redirecting. In production the site root always answers, so this only happens
@@ -62,7 +62,7 @@ workspace `devDependency` of this package, so the workspace's own build ordering
 package's build stages them. Doing that here keeps each app's own build config
 untouched: every section builds into its own package — the medications app, the
 Web Trace app, the Importer, FHIR Sync for Pebble, the lifting app and the
-server-docs console into their default `dist/`, the owner UI into `dist-web/` — and this package only copies
+server-docs console into their default `dist/`, the launcher into `dist-web/` — and this package only copies
 from there. The OHIF viewer's `dist/` is a downloaded prebuilt bundle (or a stub
 page while none is pinned) rather than a Vite build, and is copied verbatim too.
 

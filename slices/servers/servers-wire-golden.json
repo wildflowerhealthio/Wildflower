@@ -4,7 +4,7 @@
       "domain": "ruth.relay.example.com",
       "relay": { "kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com/" },
       "tunnelName": "ruth",
-      "launcherUrl": "https://wildflowerhealth.io/app",
+      "launcherUrl": "https://wildflowerhealth.io/launcher",
       "certificateAuthority": "letsEncrypt",
       "runPolicy": { "kind": "until", "at": "2026-10-06T17:42:00Z" },
       "status": {

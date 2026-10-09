@@ -14,7 +14,7 @@ use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::ConsentResult;
 use crate::live_bindings::LiveConsentDecider;
 
-/// Body posted by the Owner UI to approve an authorization-code consent prompt.
+/// Body posted by the launcher to approve an authorization-code consent prompt.
 ///
 /// Its own shape rather than the device flow's
 /// [`ApproveBody`](crate::http::wire_representations::ApproveBody): only this

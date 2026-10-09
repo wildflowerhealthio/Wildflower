@@ -263,7 +263,7 @@ pub(crate) mod tests {
     /// The launcher the fixtures' records have, and the default launcher the
     /// tests give [`add_server`](crate::add_server).
     pub(crate) fn launcher_url() -> Url {
-        Url::parse("https://wildflowerhealth.io/app").unwrap()
+        Url::parse("https://wildflowerhealth.io/launcher").unwrap()
     }
 
     pub(crate) fn official_record(tunnel_name: &str) -> ServerRecord {

@@ -4,7 +4,7 @@ How to opt a slice into the unified `/settings` surface introduced in issue [#47
 
 ## Goal
 
-You want a slice's owner-facing screens to live under `/settings/<slice>/…` and show up as a row on the aggregated `/settings` landing in `apps/wildflower-react`. The pattern composes at compile time — no runtime registry — so the only contract is two named exports from the slice's `*-react` package.
+You want a slice's owner-facing screens to live under `/settings/<slice>/…` and show up as a row on the aggregated `/settings` landing in `apps/launcher/launcher-web`. The pattern composes at compile time — no runtime registry — so the only contract is two named exports from the slice's `*-react` package.
 
 ## Steps
 
@@ -54,9 +54,9 @@ Re-export from the slice's `src/index.ts`. Add `shared-structures-react` to the 
 
 `SettingsItem` is the `href`-required branch of `ItemListItem` (from `react-tundraish`) — items pass straight to `<ItemList>` with no transformation. Optional fields (`subtitle`, `badge`, `disabled`, `actions`) work as in `ItemListItem`.
 
-### 3. Wire the slice into `apps/wildflower-react`
+### 3. Wire the slice into `apps/launcher/launcher-web`
 
-In `apps/wildflower-react/src/routes.tsx`:
+In `apps/launcher/launcher-web/src/routes.tsx`:
 
 ```tsx
 import { exampleSettingsRoutesFragment } from 'example-react'
@@ -68,7 +68,7 @@ import { exampleSettingsRoutesFragment } from 'example-react'
 </Route>
 ```
 
-In `apps/wildflower-react/src/screens/settings-screen.tsx`, spread the new items fragment alongside the others. Fragment-declaration order is canonical in v1 — there is no sorting layer.
+In `apps/launcher/launcher-web/src/screens/settings-screen.tsx`, spread the new items fragment alongside the others. Fragment-declaration order is canonical in v1 — there is no sorting layer.
 
 ```tsx
 import { exampleSettingsItemsFragment } from 'example-react'
@@ -80,7 +80,7 @@ const settingsItems: readonly SettingsItem[] = [
 ]
 ```
 
-Add the slice's package to `apps/wildflower-react`'s `dependencies` if it isn't already.
+Add the slice's package to `apps/launcher/launcher-web`'s `dependencies` if it isn't already.
 
 ### 4. Update internal navigations
 
@@ -102,7 +102,7 @@ If the slice was at `/<slice>` before, the move is a **clean rename** — no red
 
 ## Variations
 
-- **Slice has externally-published URLs** (OAuth callbacks, redirect targets, RFC 8628 device flows): keep those routes at their original prefix; only the owner-facing landings move under `/settings/<slice>/`. Moving a published route would change the URL other parties already hold — for the device flow that URL is the `verification_uri`, which `gatekeeper-rust`'s `domain/page_paths.rs` builds on the hosted owner UI from the same route `gatekeeper-core/page-paths.ts` names for the React router, so moving it would also touch Rust.
+- **Slice has externally-published URLs** (OAuth callbacks, redirect targets, RFC 8628 device flows): keep those routes at their original prefix; only the owner-facing landings move under `/settings/<slice>/`. Moving a published route would change the URL other parties already hold — for the device flow that URL is the `verification_uri`, which `gatekeeper-rust`'s `domain/page_paths.rs` builds on the hosted launcher from the same route `gatekeeper-core/page-paths.ts` names for the React router, so moving it would also touch Rust.
 - **A flow needs both a published URL and an owner-facing entry — use an inside-`/settings` twin, don't move it.** Lift the inner content out of the route into a **header-less, parameterized** component (`onSubmit`/`onDone`), then render it from **two** routes: the public one (no back link) and an owner-facing `/settings/…` twin (with a `backHref`). Same inner content, different chrome — the published URL and the Rust side stay untouched. Gatekeeper's device-authorization flow is canonical: the inner forms live in `gatekeeper-react/src/screens/device/` and `screens/pending-consent/`, and are rendered from both `routes/_open/gatekeeper/devices.tsx` (published, headerless) and `routes/settings/gatekeeper/devices.tsx` (owner-facing, back link to the access page). Name the consent twin `devices_.$userCode.tsx` (trailing `_`) so it sits as a **sibling** of the entry route rather than nesting under the headerless `devices.tsx` — the same trick as `requests.tsx` / `requests_.$id.tsx`.
 - **Slice has multiple top-level items**: nothing forbids it. `<name>SettingsItemsFragment` is a `readonly SettingsItem[]`; declare as many entries as you need. Each should link into the slice's settings routes.
 - **Slice has no `*-react` package today**: the pattern is `-react`-scoped. Add a `-react` package first, then opt in.

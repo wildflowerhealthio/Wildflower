@@ -5,7 +5,7 @@ name: Deploy GitHub Pages
 # API console at /wildflower-server-docs, the Web Trace app at /web-trace-app, the
 # Importer at /importer-app, FHIR Sync for Pebble at /fhir-sync-pebble, the
 # lifting app at /lifting, the WatchLifts settings page at /watch-lifts,
-# the prebuilt OHIF viewer at /ohif-viewer and the owner UI at /app)
+# the prebuilt OHIF viewer at /ohif-viewer and the launcher at /app)
 # and publishes it to GitHub Pages.
 # Runs on every push to main and on manual dispatch: the assembled apps
 # depend on much of the workspace, so a path filter would only ever be wrong
@@ -73,7 +73,7 @@ jobs:
           VITE_SENTRY_DSN_LIFTING_APP: ${{ vars.VITE_SENTRY_DSN_LIFTING_APP }}
           VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB: ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
           VITE_SENTRY_DSN_SYNTHETIC_DATA_APP: ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_APP }}
-          VITE_SENTRY_DSN_WILDFLOWER_REACT: ${{ vars.VITE_SENTRY_DSN_WILDFLOWER_REACT }}
+          VITE_SENTRY_DSN_LAUNCHER_WEB: ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
           VITE_SENTRY_ENVIRONMENT: production
           VITE_SENTRY_RELEASE: ${{ github.sha }}
 
@@ -94,7 +94,7 @@ jobs:
             ${{ vars.VITE_SENTRY_DSN_HEALTH_VIEWER }}
             ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
             ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_APP }}
-            ${{ vars.VITE_SENTRY_DSN_WILDFLOWER_REACT }}
+            ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

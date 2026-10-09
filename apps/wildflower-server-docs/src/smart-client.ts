@@ -15,7 +15,7 @@
  * page is served, by `gatekeeper-core/smart-client`'s `redirectUriForPage`.
  *
  * Neither are the **requested scopes**: they are the standalone-launch
- * vocabulary `STANDALONE_LAUNCH_SCOPES` shares with the `wildflower-react`
+ * vocabulary `STANDALONE_LAUNCH_SCOPES` shares with the `launcher-web`
  * page. The two seeded rows register identical `allowed_scopes` (`db/clients.rs`
  * has a test that fails if they drift), so the browser side is one list too.
  */
@@ -34,7 +34,7 @@ const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/wildflower-server-d
  * The `sessionStorage` key this console's pending-authorization record lives at,
  * namespaced because the console shares both the flow in
  * `gatekeeper-core/smart-client` and the `wildflowerhealth.io` origin with the
- * hosted owner UI.
+ * hosted launcher.
  */
 const PENDING_AUTHORIZATION_KEY = 'wildflower-server-docs.pending-authorization'
 

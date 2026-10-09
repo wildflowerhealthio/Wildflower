@@ -10,7 +10,7 @@ use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
 use crate::live_bindings::LiveConsentReader;
 
-/// Body returned to the Owner UI when it loads a pending device-code consent
+/// Body returned to the launcher when it loads a pending device-code consent
 /// prompt — describes the requesting client, the device's chosen name, its
 /// requested scopes, and the client's full allowed-scope set (the *expansion
 /// envelope* the approver may grant up to, since device consent is expandable).
@@ -27,7 +27,7 @@ pub(crate) struct DeviceConsent {
 }
 
 /// `GET /devices/{userCode}` — load a pending device-code consent prompt for
-/// the Owner UI to render (scope `wildflower/AuthorizationRequest.r`).
+/// the launcher to render (scope `wildflower/AuthorizationRequest.r`).
 pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     get(handle_get_device_consent)
 }

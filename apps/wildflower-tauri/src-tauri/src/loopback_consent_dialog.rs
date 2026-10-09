@@ -1,6 +1,6 @@
 //! The Tauri host's [`gatekeeper_rust::LoopbackConsentPrompt`]: a native
-//! Approve / Reject dialog for a direct-loopback login by the hosted owner UI
-//! (`wildflower-react` on its public origin, pointed at this machine's server).
+//! Approve / Reject dialog for a direct-loopback login by the hosted launcher
+//! (`launcher-web` on its public origin, pointed at this machine's server).
 //!
 //! Gatekeeper decides *when* to ask — only a non-forwarded `/authorize` for that
 //! `client_id` — and applies the answer; this adapter only shows the question.
@@ -19,7 +19,7 @@ pub struct TauriLoopbackConsentPrompt {
     /// request for all of them is summarised as full owner access.
     host_owner_scopes: Vec<String>,
     /// Whether a dialog is on screen. At most one is shown at a time: any
-    /// loopback caller can hit `/authorize` with the hosted owner UI's
+    /// loopback caller can hit `/authorize` with the hosted launcher's
     /// `client_id`, and each dialog holds a blocking worker until dismissed
     /// (even past its request's expiry), so an unbounded stream of them would
     /// stack dialogs and drain the shared blocking pool.
@@ -59,7 +59,7 @@ impl Drop for DialogSlot<'_> {
 impl LoopbackConsentPrompt for TauriLoopbackConsentPrompt {
     /// Blocks on the native dialog (gatekeeper calls this on a blocking worker,
     /// never the async runtime). Closing the dialog is a reject. While another
-    /// dialog is still on screen it abstains, leaving the login to the Owner UI.
+    /// dialog is still on screen it abstains, leaving the login to the launcher.
     fn ask(&self, request: &LoopbackConsentRequest) -> LoopbackConsentAnswer {
         let Some(_slot) = DialogSlot::claim(&self.showing) else {
             return LoopbackConsentAnswer::Abstain;
@@ -83,16 +83,18 @@ impl LoopbackConsentPrompt for TauriLoopbackConsentPrompt {
     }
 }
 
-/// The dialog body: which app is asking, the origin the login returns to (the
-/// fact that tells the Owner which page this is — any local process can claim
-/// the `client_id`), whether the app or address is new, and what it would get.
+/// The dialog body: which app is asking — its registered name, or the
+/// presented `client_id` for an app not registered yet — the origin the login
+/// returns to (the fact that tells the Owner which page this is — any local
+/// process can claim the `client_id`), whether the app or address is new, and
+/// what it would get.
 fn dialog_message(request: &LoopbackConsentRequest, host_owner_scopes: &[String]) -> String {
     format!(
-        "\"{client_id}\" at {origin} wants to sign in to this Wildflower.\n\n\
+        "\"{app}\" at {origin} wants to sign in to this Wildflower.\n\n\
          {notice}.\n\
          It is asking for {scopes}.\n\n\
          Approve only if you just started this sign-in.",
-        client_id = request.client_id,
+        app = request.client_name.as_deref().unwrap_or(&request.client_id),
         origin = request.redirect_origin,
         notice = capitalized(request.registration_notice.describe()),
         scopes = scope_summary(&request.requested_scopes, host_owner_scopes),
@@ -132,7 +134,8 @@ mod tests {
     fn request(scopes: &[&str], notice: LoopbackRegistrationNotice) -> LoopbackConsentRequest {
         LoopbackConsentRequest {
             request_id: "req-1".to_owned(),
-            client_id: "wildflower-react".to_owned(),
+            client_id: "03a513940b52f8c2649a5366d1a26d19".to_owned(),
+            client_name: Some("Wildflower Launcher".to_owned()),
             redirect_origin: "https://wildflowerhealth.io".to_owned(),
             registration_notice: notice,
             requested_scopes: owned(scopes),
@@ -157,9 +160,25 @@ mod tests {
             ),
             &held,
         );
-        assert!(message.contains("\"wildflower-react\" at https://wildflowerhealth.io"));
+        assert!(message.contains("\"Wildflower Launcher\" at https://wildflowerhealth.io"));
         assert!(message.contains("New address for a known app."));
         assert!(message.contains("full owner access to this device's data"));
+    }
+
+    /// An app with no registered client yet is named by the `client_id` it
+    /// presented, the only name the request has.
+    #[test]
+    fn the_message_names_an_unregistered_app_by_its_client_id() {
+        let message = dialog_message(
+            &LoopbackConsentRequest {
+                client_name: None,
+                ..request(&["openid"], LoopbackRegistrationNotice::NewApp)
+            },
+            &[],
+        );
+        assert!(
+            message.contains("\"03a513940b52f8c2649a5366d1a26d19\" at https://wildflowerhealth.io")
+        );
     }
 
     /// Only one dialog slot can be held at a time, and dropping the holder

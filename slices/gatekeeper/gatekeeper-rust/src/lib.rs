@@ -248,7 +248,7 @@ pub struct Gatekeeper {
 /// adapter, so the auth gate and the FHIR server read one denylist/epoch store.
 ///
 /// `loopback_consent_prompt` is the host's native dialog for a direct-loopback
-/// login by the hosted owner UI (see [`LoopbackConsentPrompt`]); a host without
+/// login by the hosted launcher (see [`LoopbackConsentPrompt`]); a host without
 /// one passes [`NoLoopbackConsentPrompt`].
 ///
 /// # Errors
@@ -267,7 +267,7 @@ pub fn setup_gatekeeper(
     // The host owner token is minted from `host_owner_scopes` (the live app sources
     // these from `tauri-shared-config.json`), but the `/access/*` owner gate
     // still checks coverage of every `WILDFLOWER_WIDEST_SCOPES` entry. The JSON
-    // must keep covering WIDEST or the Owner UI silently 401s, so fail loudly at
+    // must keep covering WIDEST or the launcher silently 401s, so fail loudly at
     // boot rather than at first `/access/*` call.
     let host_owner: Vec<Scope> = config
         .host_owner_scopes
@@ -307,7 +307,7 @@ pub fn setup_gatekeeper(
         loopback_base_url: config.loopback_base_url.clone(),
         server_origin: server_origin.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
-        owner_ui_base: config.owner_ui_base.clone(),
+        launcher_base: config.launcher_base.clone(),
         active_pending_consent_tx,
         loopback_consent_prompt,
         host_owner_grant: Grant::parse(config.host_owner_scopes.iter().map(String::as_str)),

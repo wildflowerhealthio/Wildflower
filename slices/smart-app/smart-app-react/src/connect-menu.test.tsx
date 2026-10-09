@@ -29,7 +29,7 @@ const PROPS = {
 
 const LOCAL_ORIGIN = 'http://127.0.0.1:8123'
 
-// The owner UI's sign-in, which the menu hands every pick to. Default: the page
+// The launcher's sign-in, which the menu hands every pick to. Default: the page
 // is leaving for the authorization server, so there is nothing to show.
 const connectMock = vi.fn<(url: string) => Promise<string | undefined>>()
 
@@ -689,7 +689,7 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
   })
 
   it('refuses a Wildflower sign-in to it, saying why, on the published site', async () => {
-    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/app/'))
+    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/launcher/'))
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
@@ -705,7 +705,7 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
   })
 
   it('still connects to a loopback server, which the browser allows', async () => {
-    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/app/'))
+    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/launcher/'))
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 

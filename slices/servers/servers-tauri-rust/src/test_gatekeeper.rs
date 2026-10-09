@@ -7,7 +7,7 @@ use gatekeeper_rust::{
     setup_gatekeeper, GatekeeperConfig, HostConsentDecider, LaunchContextMinter,
     NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
 };
-use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::launcher::LauncherBase;
 use tokio::sync::watch;
 use url::Url;
 
@@ -56,7 +56,7 @@ pub(crate) fn test_gatekeeper() -> TestGatekeeper {
             server_origin: Url::parse(&format!("https://{DOMAIN}")).unwrap(),
             host_owner_scopes: gatekeeper_rust::default_local_granted_scopes(),
             first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
-            owner_ui_base: OwnerUiBase::parse("https://owner-ui.test/app/").unwrap(),
+            launcher_base: LauncherBase::parse("https://launcher.test/launcher/").unwrap(),
         },
         &owner_token_tx,
         pending_consent_tx,

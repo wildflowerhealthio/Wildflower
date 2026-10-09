@@ -15,7 +15,7 @@ use crate::http::extractors::Live;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::live_bindings::LiveAuthorizationStatusReader;
 
-/// Polling response for the Owner UI watching an authorization request as it
+/// Polling response for the launcher watching an authorization request as it
 /// moves from `Pending` toward approval or denial.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "lowercase")]

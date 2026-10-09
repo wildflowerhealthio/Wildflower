@@ -84,7 +84,7 @@ impl<S: GatekeeperStore> GrantsReader<S> {
         GrantsReader { store }
     }
 
-    /// Every standing client grant, for the Owner UI's list.
+    /// Every standing client grant, for the launcher's list.
     pub(crate) fn list(&self) -> Result<Vec<Grant>, GatekeeperError> {
         self.store.all_grants()
     }

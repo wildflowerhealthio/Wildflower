@@ -75,10 +75,10 @@ async fn a_cookie_carried_token_is_not_a_credential() {
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// `POST /access/logout` with a bearer redirects to the hosted owner UI and
+/// `POST /access/logout` with a bearer redirects to the hosted launcher and
 /// sets no cookies.
 #[tokio::test]
-async fn logout_redirects_to_the_owner_ui_without_cookies() {
+async fn logout_redirects_to_the_launcher_without_cookies() {
     let (g, host_owner_token, _db) = spin_up();
     let res = g
         .router
@@ -96,8 +96,8 @@ async fn logout_redirects_to_the_owner_ui_without_cookies() {
         res.headers()
             .get(axum::http::header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some(OWNER_UI_BASE),
-        "logout must redirect to the hosted owner UI"
+        Some(LAUNCHER_BASE),
+        "logout must redirect to the hosted launcher"
     );
     assert!(
         set_cookie_values(&res).is_empty(),

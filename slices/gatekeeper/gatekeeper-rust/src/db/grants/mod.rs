@@ -12,7 +12,7 @@
 //!  - [`device`] — the `device_grants` `table!` + its keyed lookup, insert, and
 //!    update (the durable device-code pairing per `device_name`);
 //!  - [`general`] — the cross-kind pieces: the `grants` VIEW + its `Grant` decoder,
-//!    the two Owner-UI reads, and the two id-keyed deletes a revoke composes.
+//!    the two launcher reads, and the two id-keyed deletes a revoke composes.
 //!    Concrete-typed inserts live with their kind (the store never inspects a
 //!    polymorphic value to pick a table).
 

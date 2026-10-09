@@ -34,7 +34,7 @@ use rustls_acme::caches::DirCache;
 use rustls_acme::CertCache;
 use serde_json::Value;
 use shared_structures_rust::health_check::{ComponentType, HealthReport, HealthStatus};
-use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::launcher::LauncherBase;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
@@ -96,7 +96,8 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             env!("CARGO_MANIFEST_DIR"),
             "/../../emr/emr-rust/assets"
         )),
-        owner_ui_base: OwnerUiBase::parse("https://owner-ui.test/app/").expect("owner UI base"),
+        launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
+            .expect("launcher base"),
         // The owner-defining scopes gatekeeper requires the host owner token to cover.
         host_owner_scopes: gatekeeper_rust::WILDFLOWER_WIDEST_SCOPES
             .iter()

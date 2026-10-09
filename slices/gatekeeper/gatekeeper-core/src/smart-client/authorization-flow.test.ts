@@ -186,8 +186,8 @@ describe('authorizationRequestUrl', () => {
           // Act
           const url = new URL(
             authorizationRequestUrl('https://ruth.wildflowerhealth.io/oauth/authorize', {
-              clientId: 'wildflower-react',
-              redirectUri: 'https://wildflowerhealth.io/app/',
+              clientId: '03a513940b52f8c2649a5366d1a26d19',
+              redirectUri: 'https://wildflowerhealth.io/launcher/',
               scope: 'openid launch',
               state: 's',
               codeChallenge: 'c',

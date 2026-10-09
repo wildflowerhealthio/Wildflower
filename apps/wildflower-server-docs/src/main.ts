@@ -91,7 +91,7 @@ const redirectUri = redirectUriForPage(window.location.href) ?? REGISTERED_REDIR
 
 /**
  * The impure edges the sign-in flow runs against in the browser, wired by
- * `gatekeeper-core/smart-client` so this console and the `wildflower-react`
+ * `gatekeeper-core/smart-client` so this console and the `launcher-web`
  * page share one reading of `window` rather than a copy each.
  */
 const signInEnvironment: SignInEnvironment = browserSignInEnvironment(window, {

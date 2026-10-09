@@ -1,6 +1,6 @@
 //! The serde mirror of `BackgroundServerServiceBridge`, the server-status wire
 //! between the host and the web app, pinned by golden tests to the wire
-//! strings `background-server-service-core`'s tests read too. See the slice's
+//! strings `wildflower-server-core-js`'s tests read too. See the slice's
 //! [AGENTS.md](../../AGENTS.md).
 //!
 //! The wire is kept for the web app's server status over a future websocket;

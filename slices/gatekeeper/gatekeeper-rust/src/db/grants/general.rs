@@ -1,6 +1,6 @@
 //! Cross-kind grant queries — the pieces that span both concrete tables. The
 //! `grants` SQL VIEW (`UNION ALL` of `authorization_code_grants` / `device_grants`
-//! — shared columns + kind tag + NULLable payload columns) backs the two Owner-UI
+//! — shared columns + kind tag + NULLable payload columns) backs the two launcher
 //! reads ([`all_grants`], [`grant_by_id`]); the two id-keyed deletes
 //! ([`delete_authorization_code_grant`], [`delete_device_grant`]) are the halves
 //! the `revoke_grant` action composes with
@@ -94,7 +94,7 @@ impl TryFrom<GrantViewRow> for Grant {
     }
 }
 
-/// All grants in `granted_at` order — backs the Owner UI's access index
+/// All grants in `granted_at` order — backs the launcher's access index
 /// (Approved Apps + Authorized Devices). Reads the cross-kind `grants`
 /// view.
 pub(crate) fn all_grants(conn: &mut SqliteConnection) -> Result<Vec<Grant>, GatekeeperError> {

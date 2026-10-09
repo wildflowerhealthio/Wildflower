@@ -81,7 +81,7 @@ and 90 days respectively). See the
   page" in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
   `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`
-  on the hosted owner UI, carrying `?server=`).
+  on the hosted launcher, carrying `?server=`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.
@@ -189,7 +189,7 @@ an unregistered redirect for it outright (the local `RedirectUriNotAllowed`
 page), and `ensure_first_party_client` seeds it from code with no redirect URIs
 at all. A browser page running this flow therefore cannot authorize as
 `wildflower-host`; it needs a client row of its own, the way
-`wildflower-server-docs` and `wildflower-react` have one.
+`wildflower-server-docs` and `launcher-web` have one.
 
 ### Returning to a route instead of a directory
 
@@ -204,24 +204,24 @@ outbound-equals-callback property `redirectUriForPage` gets from the directory.
 
 `basePath` is the slash-suffixed directory the build is served from
 (`branding-core`'s `basenameOf(location.pathname)`), defaulting to `/` — so a
-root-served copy is unchanged. A copy under `/app/` (or a PR preview's
-`/staging/pr-<n>/app/`) passes that directory, so the route returns under it —
-the hosted owner UI's `/` route returns to `/app/`, the registered value, rather
+root-served copy is unchanged. A copy under `/launcher/` (or a PR preview's
+`/staging/pr-<n>/launcher/`) passes that directory, so the route returns under it —
+the hosted launcher's `/` route returns to `/launcher/`, the registered value, rather
 than to `<origin>/` off the app. The
-caller derives `basePath` at the served root on both legs — the hosted owner UI
+caller derives `basePath` at the served root on both legs — the hosted launcher
 can, because its sign-in is reachable only from that root.
 
 `route` is resolved against the origin first, so a spelling that escapes it —
 `//evil.test/home`, or the `/\evil.test` that `URL` folds into it — yields
 `undefined` rather than a URI pointing elsewhere, before its path is re-rooted
-under `basePath`. The hosted owner UI (`apps/wildflower-react`'s
+under `basePath`. The hosted launcher (`apps/launcher/launcher-web`'s
 `main-web`) is the caller; the server-docs console still uses the directory form.
 
 `insecureTargetReason` in `smart-discovery.ts` states the same scheme rule about
 the _target_ that `usableEndpointUrl` enforces about the discovered endpoints, so
 a page can explain up front that a secure page cannot reach a plaintext server
 instead of surfacing it as a discovery failure. Its wording names no kind of
-page, since the server-docs console, the hosted owner UI and every SMART app's
+page, since the server-docs console, the hosted launcher and every SMART app's
 connect menu (through `fhir-r4-react/smart`'s re-export) show it, and offers
 all three ways out: an https address, the page opened over http from the
 server itself, or a server on this computer. Loopback is
@@ -246,7 +246,7 @@ SPA's file-based route tree in [`gatekeeper-react`](../gatekeeper-react/src/rout
 mirrors them, and a drift test in
 [`gatekeeper-react/src/routes.test.tsx`](../gatekeeper-react/src/routes.test.tsx)
 enforces consistency. Serving the SPA itself is the host app's static-asset
-concern (see [`apps/wildflower-react`](../../../apps/wildflower-react)), not
+concern (see [`apps/launcher/launcher-web`](../../../apps/launcher/launcher-web)), not
 part of the gatekeeper-core contract.
 
 Error pages are rendered inline by core via `internal/error-pages.ts` and are

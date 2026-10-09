@@ -1,5 +1,5 @@
 //! Request/response wire shapes shared across the gatekeeper's route trees —
-//! the JSON bodies the OAuth surface and the Owner UI post and read. Routes and
+//! the JSON bodies the OAuth surface and the launcher post and read. Routes and
 //! loaders import their DTOs from here instead of a sibling `internal.rs`, so a
 //! shape shared by two surfaces (e.g. [`ConsentResult`] across both consent
 //! flows) has one home and the trees can't drift.
@@ -80,7 +80,7 @@ impl OAuthError {
     }
 }
 
-/// Body posted by the Owner UI to approve a **device-code** consent prompt: the
+/// Body posted by the launcher to approve a **device-code** consent prompt: the
 /// scopes the Owner ticked, plus an optional patient context to bind to the
 /// grant. The device flow sends no `patient` today, so it deserializes to
 /// `None`; the field is kept in anticipation of device-flow patient selection.
@@ -103,7 +103,7 @@ pub(crate) struct ApproveBody {
     pub(crate) device_name: Option<String>,
 }
 
-/// Result the Owner UI sees after approving or denying a consent prompt.
+/// Result the launcher sees after approving or denying a consent prompt.
 ///
 /// A code-flow approval carries the client callback URL (`code` + `state`
 /// appended to the client's `redirect_uri`) so the approving surface can
@@ -122,7 +122,7 @@ pub(crate) enum ConsentResult {
 }
 
 /// Render the domain consent action's [`ConsentOutcome`](crate::domain::capabilities::ConsentOutcome)
-/// onto the Owner-UI wire result, so an approve/deny handler is
+/// onto the launcher wire result, so an approve/deny handler is
 /// `Ok(Json(outcome.into()))`.
 impl From<crate::domain::capabilities::ConsentOutcome> for ConsentResult {
     fn from(outcome: crate::domain::capabilities::ConsentOutcome) -> Self {

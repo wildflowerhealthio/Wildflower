@@ -436,7 +436,7 @@ mod tests {
                   "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
                   "domain": "relay.wildflowerhealth.io"
                 }},
-                "launcherUrl": "https://wildflowerhealth.io/app",
+                "launcherUrl": "https://wildflowerhealth.io/launcher",
                 "certificateAuthority": "letsEncrypt",
                 "runPolicy": {{"kind": "off"}}
               }}]
@@ -461,7 +461,7 @@ mod tests {
                   "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
                   "domain": "relay.wildflowerhealth.io"
                 }},
-                "launcherUrl": "https://wildflowerhealth.io/app",
+                "launcherUrl": "https://wildflowerhealth.io/launcher",
                 "stagingCertificates": {staging_certificates},
                 "runPolicy": {{"kind": "off"}}
               }}]

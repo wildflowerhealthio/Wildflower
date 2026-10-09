@@ -10,7 +10,7 @@ use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
 use crate::domain::capabilities::oauth::DeviceAuthorizationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::http::extractors::{Live, OwnerUiPages};
+use crate::http::extractors::{LauncherPages, Live};
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::live_bindings::LiveDeviceAuthorizer;
 
@@ -61,7 +61,7 @@ impl IntoResponse for DeviceAuthorizationResponse {
 )]
 pub(super) async fn handle_device_authorization_request(
     authorizer: Live<LiveDeviceAuthorizer>,
-    pages: OwnerUiPages,
+    pages: LauncherPages,
     headers: HeaderMap,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Response {
@@ -74,11 +74,11 @@ pub(super) async fn handle_device_authorization_request(
 }
 
 /// Parse the request, hand it to the [`LiveDeviceAuthorizer`], and frame the
-/// RFC 8628 §3.2 response with the hosted owner UI's verification pages, surfacing every
+/// RFC 8628 §3.2 response with the hosted launcher's verification pages, surfacing every
 /// failure as a [`TokenError`].
 fn device_authorization(
     authorizer: &LiveDeviceAuthorizer,
-    pages: &OwnerUiPages,
+    pages: &LauncherPages,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {

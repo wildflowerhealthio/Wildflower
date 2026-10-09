@@ -555,12 +555,12 @@ async fn device_authorization_happy_path() {
         serde_json::json!({
             "device_code": device_code,
             "user_code": user_code,
-            // On the hosted owner UI, pointed back at this (loopback) server.
+            // On the hosted launcher, pointed back at this (loopback) server.
             "verification_uri": format!(
-                "{OWNER_UI_BASE}gatekeeper/devices?server=http%3A%2F%2F127.0.0.1"
+                "{LAUNCHER_BASE}gatekeeper/devices?server=http%3A%2F%2F127.0.0.1"
             ),
             "verification_uri_complete": format!(
-                "{OWNER_UI_BASE}gatekeeper/devices?server=http%3A%2F%2F127.0.0.1&user_code={user_code}"
+                "{LAUNCHER_BASE}gatekeeper/devices?server=http%3A%2F%2F127.0.0.1&user_code={user_code}"
             ),
             "expires_in": 300,
             "interval": 5,

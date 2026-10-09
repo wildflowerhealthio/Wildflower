@@ -156,20 +156,20 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
   **resource** scopes (its FHIR / Wildflower data access; the OIDC and SMART
   launch-context scopes are the app's own OAuth concern, so the owner isn't required
   to hold them). A shortfall on the per-app check returns the shared
-  `InsufficientScope` JSON body, which the owner UI's typed client decodes into
+  `InsufficientScope` JSON body, which the launcher's typed client decodes into
   the home banner — keeping the missing scopes structured so the banner names them
   (and a future "request permissions" action can read them).
 - Both the loopback and the forwarded launch ride the same bearer gate: every
-  owner UI launches through the typed client with its bearer. A loopback launch
+  launcher launches through the typed client with its bearer. A loopback launch
   `204`s after the host opens the app in a native popup. A forwarded launch (the
-  hosted owner UI reaching the server through its tunnel) answers `200 { url }`,
+  hosted launcher reaching the server through its tunnel) answers `200 { url }`,
   and the page navigates the tab there — a redirect would be followed invisibly by
-  `fetch` rather than moving the tab. A home tile is a real link to the owner
-  UI's launch route (`/home/launch/{id}`): a plain click launches in place, and
+  `fetch` rather than moving the tab. A home tile is a real link to the
+  launcher's launch route (`/home/launch/{id}`): a plain click launches in place, and
   a ctrl/cmd/shift or middle click opens the new tab inside the click (so no
   popup blocker stops it) and launches into it on this page's session. A tab
   the browser opens by itself from the link has no session. The signed-in
-  owner UI's URLs don't name a server, so that tab lands on the server picker.
+  launcher's URLs don't name a server, so that tab lands on the server picker.
 
 ### No launch sets a cookie
 

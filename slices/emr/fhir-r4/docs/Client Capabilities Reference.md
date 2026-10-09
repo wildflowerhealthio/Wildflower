@@ -14,7 +14,7 @@ The `HttpApi` definition and the schemas here are hand-synchronized with what HF
 
 `FhirResourcesApi` carries no `/fhir-r4` prefix. The typed client emits **base-relative** paths (`/Patient`, `/DocumentReference/{id}`), so it can be pointed at any FHIR server — Wildflower's host, a SMART sandbox, an arbitrary open R4 base. Naming the base is the **consumer's** job:
 
-- **Host app wiring** (`apps/wildflower-react`'s `router-context.ts`) re-applies `FhirResourcesApiPrefix` (`/fhir-r4`, still exported here) by wrapping the FHIR slice's `HttpClient` with `prependApiBaseUrl(httpClientLayer, FhirResourcesApiPrefix)`, so the host webview's reads still resolve to `{origin}/fhir-r4/…`.
+- **Host app wiring** (`apps/launcher/launcher-web`'s `router-context.ts`) re-applies `FhirResourcesApiPrefix` (`/fhir-r4`, still exported here) by wrapping the FHIR slice's `HttpClient` with `prependApiBaseUrl(httpClientLayer, FhirResourcesApiPrefix)`, so the host webview's reads still resolve to `{origin}/fhir-r4/…`.
 - **OpenAPI generation** (`http-api-definition/openapi-drift.test.ts`) re-applies the same prefix to every `spec.paths` key after `OpenApi.fromApi`, so the committed `emr-rust/openapi/fhir-r4.openapi.json` — the source of the FHIR R4 group in the published [server-docs console](../../../../apps/wildflower-server-docs/README.md) — shows the mounted `/fhir-r4/…` paths.
 - **SMART apps** (`fhir-r4-react/smart`'s `smartHttpClientLayer`) prepend the `iss`/picked server URL verbatim.
 

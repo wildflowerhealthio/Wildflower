@@ -204,9 +204,9 @@ changing how servers run or what the host notifies about them.
   `GET /rathole` returned, or that were entered for a rathole relay.
   `RelayKind::SelfHostedWildflower` holds only the relay's `base_url`, and `RelayKind::Rathole`
   nothing.
-- **A new server launches from the hosted owner UI**, the release
-  `owner_ui_base_url` in `apps/wildflower-tauri/tauri-shared-config.json`, in
-  every build: a debug build's own owner UI links go to the dev server, but
+- **A new server launches from the hosted launcher**, the release
+  `launcher_base_url` in `apps/wildflower-tauri/tauri-shared-config.json`, in
+  every build: a debug build's own launcher links go to the dev server, but
   its new servers still launch from the published UI. The host reads it at
   compile time and `add_server` gives it to each server it adds
   (`ServersState`, from `host_servers`); the app hands the same value to
@@ -350,7 +350,7 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   server and answer `serverNotRunning` otherwise. They call the capabilities behind `/access/devices/{userCode}`
   and `/access/oauth-consents/{id}` with the host Owner's grant, on a
   blocking thread: no HTTP, and no owner bearer in the webview. An approval
-  is remembered as a standing grant, as one in the Owner UI is. Errors are
+  is remembered as a standing grant, as one in the launcher is. Errors are
   `{kind, message}`: `serverNotRunning`, `notPending`,
   `registrationNotAcknowledged` or `gatekeeper`.
 - **Launching opens the launcher with a launch for any client.**

@@ -5,7 +5,7 @@
 //! and `/access/oauth-consents/*` routes acquire through `Scoped<…>`, built
 //! here with the host Owner's grant (the scopes the host owner token carries)
 //! as the approver's, as the loopback dialog's approver is. An approval is
-//! remembered as a standing grant, as one made in the Owner UI is.
+//! remembered as a standing grant, as one made in the launcher is.
 
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ use crate::ports::PendingConsentPublisher;
 
 /// Lets the host read and approve or deny this server's waiting consents as
 /// its Owner, in-process, without HTTP or a token: the in-process twin of the
-/// Owner UI's `/access/devices/*` and `/access/oauth-consents/*` routes.
+/// launcher's `/access/devices/*` and `/access/oauth-consents/*` routes.
 ///
 /// Whoever holds one decides with the host Owner's authority and no token,
 /// so only the host gets one: it is built from the [`GatekeeperState`]

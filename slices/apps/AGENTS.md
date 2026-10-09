@@ -2,6 +2,13 @@
 
 App registry and the HTTP API for launching FHIR apps.
 
+This slice is the server side: `apps-rust` and `dev-app-ports.json`. Its
+TypeScript packages, used only by the launcher, live beside it in
+`apps/launcher/`: [`apps-core-js`](../../apps/launcher/apps-core-js) (the
+`HttpApi` definition and clients, held to `apps-rust/openapi/apps.openapi.json`
+by its drift test) and [`apps-react`](../../apps/launcher/apps-react) (the
+homescreen and the `/settings/apps` pages the launcher mounts).
+
 ## Traps
 
 - **Storage is the one `app_registrations` table**: one row per app holding the global id, the catalogue fields, the launch `url` template, and the homescreen placement `position`/`on_homescreen`. See [Apps Explanation](../../docs/Apps/Explanation.md) §"Data model".

@@ -2,7 +2,7 @@
  * The scope ceiling every Wildflower standalone-launch page asks for.
  *
  * Both seeded public clients — `wildflower-server-docs` (migration 0007) and
- * `wildflower-react` (migration 0012) — register the *same* `allowed_scopes`,
+ * `launcher-web`'s launcher client (migration 0012, rekeyed by 0026) — register the *same* `allowed_scopes`,
  * and `db/clients.rs` has a test that fails if one migration gains a scope the
  * other lacks. The browser side is the same story, so the list lives here once
  * rather than in a copy per app: a page that requests a scope its row does not

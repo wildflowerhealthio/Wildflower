@@ -213,7 +213,7 @@
         "tags": [
           "Launch"
         ],
-        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). Every owner UI\ndrives this through the typed client so the owner bearer rides along.\nScope-gated on the `wildflower/launch` umbrella through\n[`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant\nto cover its OAuth client's scopes (checked here). See the module docs for the\nresolve-then-dispatch flow and the auth posture.",
+        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). Every launcher\ndrives this through the typed client so the owner bearer rides along.\nScope-gated on the `wildflower/launch` umbrella through\n[`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant\nto cover its OAuth client's scopes (checked here). See the module docs for the\nresolve-then-dispatch flow and the auth posture.",
         "operationId": "handle_launch_app",
         "parameters": [
           {

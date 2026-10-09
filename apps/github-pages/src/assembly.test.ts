@@ -130,10 +130,10 @@ describe('site layout', () => {
     expect(loader?.requiredPaths).toEqual([join(outDir, 'synthetic-data-app', 'index.html')])
   })
 
-  it('serves the hosted owner UI from /app with its SPA entry', () => {
-    const [app] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-react')])
-    expect(app?.to).toBe(join(outDir, 'app'))
-    expect(app?.requiredPaths).toEqual([join(outDir, 'app', 'index.html')])
+  it('serves the hosted launcher from /launcher with its SPA entry', () => {
+    const [launcher] = resolveSections(repoRoot, outDir, [sectionFor('launcher-web')])
+    expect(launcher?.to).toBe(join(outDir, 'launcher'))
+    expect(launcher?.requiredPaths).toEqual([join(outDir, 'launcher', 'index.html')])
   })
 
   it('resolves every destination inside the output directory', () => {
@@ -193,10 +193,10 @@ describe('site layout', () => {
     expect(destPaths).toEqual(
       [
         '',
-        'app',
         'fhir-sync-pebble',
         'health-viewer-app',
         'importer-app',
+        'launcher',
         'lifting',
         'medications-app',
         'ohif-viewer',
@@ -314,16 +314,16 @@ describe('layout reconciliation with the packages it assembles', () => {
     expect(sectionFor('wildflower-server-docs').sourceDir).toBe('apps/wildflower-server-docs/dist')
   })
 
-  it('reads the hosted owner UI source dir from the wildflower-react web vite config', () => {
+  it('reads the hosted launcher source dir from the launcher-web web vite config', () => {
     // Pin the section to the `outDir` the app's hosted (`web`) build declares,
     // so this fails rather than silently publishing a stale copy if that build
     // ever moves its output.
-    const configPath = join(repoRoot, 'apps', 'wildflower-react', 'vite.config.web.ts')
-    const config = readFileSync(configPath, 'utf8')
+    const appDir = join(repoRoot, 'apps', 'launcher', 'launcher-web')
+    const config = readFileSync(join(appDir, 'vite.config.web.ts'), 'utf8')
     const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
     expect(declared).toBeDefined()
-    const expected = resolve(join(repoRoot, 'apps', 'wildflower-react'), declared ?? '')
-    expect(join(repoRoot, sectionFor('wildflower-react').sourceDir)).toBe(expected)
+    const expected = resolve(appDir, declared ?? '')
+    expect(join(repoRoot, sectionFor('launcher-web').sourceDir)).toBe(expected)
   })
 
   it('reads the OHIF viewer from the dist its build script writes', () => {

@@ -23,7 +23,7 @@ type FhirR4ResourcesClientRequirements = HttpClient.HttpClient | FhirR4Resources
  * `/fhir-r4/Patient`) — `FhirResourcesApi` no longer bakes in Wildflower's mount
  * prefix, so the client can address any FHIR server. Naming the base is the
  * **provider's** job, not this layer's: the host app re-applies `/fhir-r4` when
- * it wires this layer's `HttpClient` (`apps/wildflower-react`'s
+ * it wires this layer's `HttpClient` (`apps/launcher/launcher-web`'s
  * `router-context.ts`), and a SMART app prepends the `iss` verbatim
  * (`fhir-r4-react/smart`'s `smartHttpClientLayer`).
  *

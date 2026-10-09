@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 
-use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::launcher::LauncherBase;
 use token_revocation_rust::RevocationStore;
 
 use crate::db::SqliteGatekeeperStore;
@@ -48,7 +48,7 @@ pub struct GatekeeperState {
     /// [`crate::setup_gatekeeper`]. Handlers don't read it directly: it is only
     /// the loopback fallback passed to
     /// [`served_base_url_for`](shared_structures_rust::served_origin::served_base_url_for), which resolves
-    /// each request's served base URL for the owner UI links it renders. See
+    /// each request's served base URL for the launcher links it renders. See
     /// `docs/Origins/Explanation.md`.
     pub(crate) loopback_base_url: url::Url,
     /// The server's bare origin (`https://<domain>`), reduced once from
@@ -67,10 +67,10 @@ pub struct GatekeeperState {
     /// shared rather than reallocated when the state is cloned before the `Arc`
     /// wrap.
     pub(crate) first_party_client_id: Arc<str>,
-    /// The hosted owner UI [`page_paths`](crate::domain::page_paths) resolves the
+    /// The hosted launcher [`page_paths`](crate::domain::page_paths) resolves the
     /// browser-facing pages on, pinned from
     /// [`GatekeeperConfig`](crate::GatekeeperConfig) at [`crate::setup_gatekeeper`].
-    pub(crate) owner_ui_base: OwnerUiBase,
+    pub(crate) launcher_base: LauncherBase,
     /// Watch sender publishing the [`PendingConsentHead`] the host webview
     /// surfaces in its popup. Handlers whose write may change the head call the
     /// [`PendingConsentPublisher::republish_active`](crate::ports::PendingConsentPublisher::republish_active)
@@ -78,10 +78,10 @@ pub struct GatekeeperState {
     pub(crate) active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     /// The host's native loopback dialog (see
     /// [`LoopbackConsentPrompt`](crate::ports::LoopbackConsentPrompt)):
-    /// `/authorize` puts a direct-loopback login by the hosted owner UI to it. A
+    /// `/authorize` puts a direct-loopback login by the hosted launcher to it. A
     /// host with no native dialog (and tests) wires
     /// [`NoLoopbackConsentPrompt`](crate::ports::NoLoopbackConsentPrompt), which
-    /// abstains, leaving every such login to the Owner UI.
+    /// abstains, leaving every such login to the launcher.
     pub(crate) loopback_consent_prompt: Arc<dyn crate::ports::LoopbackConsentPrompt>,
     /// The host Owner's grant, parsed from
     /// [`GatekeeperConfig::host_owner_scopes`](crate::GatekeeperConfig::host_owner_scopes)

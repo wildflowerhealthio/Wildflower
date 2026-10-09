@@ -132,7 +132,7 @@ async fn oauth_consent_prompt_carries_client_display_name() {
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let challenge = compute_code_challenge(CODE_VERIFIER);
 
-    // /authorize parks a pending request the Owner UI would then load.
+    // /authorize parks a pending request the launcher would then load.
     let query = format!(
         "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
          code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"

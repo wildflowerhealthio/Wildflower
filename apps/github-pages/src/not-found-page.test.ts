@@ -7,39 +7,42 @@ import { describe, expect, it } from 'vite-plus/test'
 
 describe('404.html redirect', () => {
   it('should hand a deep link to its app root with the full path in ?redirect=', async () => {
-    // Arrange — a deep link into the `/app/` section.
-    const site = pagesSite(['/app/'])
+    // Arrange — a deep link into the `/launcher/` section.
+    const site = pagesSite(['/launcher/'])
 
     // Act
-    const landed = await followNotFound(site, 'https://example.test/app/gatekeeper/devices?x=1')
+    const landed = await followNotFound(
+      site,
+      'https://example.test/launcher/gatekeeper/devices?x=1'
+    )
 
     // Assert
     expect(landed).toEqual({
       _tag: 'Redirected',
-      to: '/app/?x=1&redirect=%2Fapp%2Fgatekeeper%2Fdevices',
+      to: '/launcher/?x=1&redirect=%2Flauncher%2Fgatekeeper%2Fdevices',
     })
   })
 
   it('should hand a PR preview deep link to that preview app root', async () => {
     // Arrange — the staging site: previews under `/staging/pr-<n>/`, nothing at the root.
-    const site = pagesSite(['/staging/pr-745/', '/staging/pr-745/app/'])
+    const site = pagesSite(['/staging/pr-745/', '/staging/pr-745/launcher/'])
 
     // Act
     const landed = await followNotFound(
       site,
-      'https://example.test/staging/pr-745/app/gatekeeper/devices/ABCD?server=s'
+      'https://example.test/staging/pr-745/launcher/gatekeeper/devices/ABCD?server=s'
     )
 
     // Assert
-    expect(restoreAt(landed)).toBe('/staging/pr-745/app/gatekeeper/devices/ABCD?server=s')
+    expect(restoreAt(landed)).toBe('/staging/pr-745/launcher/gatekeeper/devices/ABCD?server=s')
   })
 
   it('should show a not-found page when a closed preview has no ancestor to redirect to', async () => {
     // Arrange — PR 9's preview is gone; only PR 745's is served.
-    const site = pagesSite(['/staging/pr-745/', '/staging/pr-745/app/'])
+    const site = pagesSite(['/staging/pr-745/', '/staging/pr-745/launcher/'])
 
     // Act
-    const landed = await followNotFound(site, 'https://example.test/staging/pr-9/app/devices')
+    const landed = await followNotFound(site, 'https://example.test/staging/pr-9/launcher/devices')
 
     // Assert
     expect(landed).toEqual({ _tag: 'NotFound', title: 'Page not found' })
@@ -68,10 +71,13 @@ describe('404.html redirect', () => {
   })
 
   it('should keep a route named like the app directory', async () => {
-    // App-relative, `?redirect=/app` would read as the app root itself.
-    const landed = await followNotFound(pagesSite(['/app/']), 'https://example.test/app/app')
+    // App-relative, `?redirect=/launcher` would read as the app root itself.
+    const landed = await followNotFound(
+      pagesSite(['/launcher/']),
+      'https://example.test/launcher/launcher'
+    )
 
-    expect(restoreAt(landed)).toBe('/app/app')
+    expect(restoreAt(landed)).toBe('/launcher/launcher')
   })
 
   it('should always land the app exactly where the browser asked to go', async () => {
@@ -96,7 +102,7 @@ describe('404.html redirect', () => {
 /** URL path segments: no separators, no dots, not empty. */
 const segment = fc.stringMatching(/^[A-Za-z0-9_-]{1,12}$/)
 
-/** An app directory, slash-suffixed: `/`, `/app/`, `/staging/pr-7/app/`, … */
+/** An app directory, slash-suffixed: `/`, `/launcher/`, `/staging/pr-7/launcher/`, … */
 const appDirArb = fc
   .array(segment, { maxLength: 3 })
   .map((segments) => (segments.length === 0 ? '/' : `/${segments.join('/')}/`))

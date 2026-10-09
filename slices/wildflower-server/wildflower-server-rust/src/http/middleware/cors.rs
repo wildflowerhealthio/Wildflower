@@ -11,8 +11,8 @@ use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 /// excludes `Authorization`, the one header the bearer clients need. Credentials
 /// stay off because the server authenticates by `Authorization: Bearer` alone —
 /// no ambient credential (cookie, HTTP auth) exists for a cross-origin page to
-/// ride. A page on a public origin — the hosted owner UI at
-/// `wildflowerhealth.io/app/` — fetching this loopback server makes Chrome send
+/// ride. A page on a public origin — the hosted launcher at
+/// `wildflowerhealth.io/launcher/` — fetching this loopback server makes Chrome send
 /// `Access-Control-Request-Private-Network: true`, and it blocks the request
 /// unless the preflight answers `Access-Control-Allow-Private-Network: true`.
 pub(crate) fn api_cors_layer() -> CorsLayer {
@@ -30,7 +30,7 @@ mod tests {
 
     /// A preflight from a public origin asking to reach this private-network
     /// server is answered with `Access-Control-Allow-Private-Network: true`;
-    /// without it, Chrome blocks the hosted owner UI from calling loopback.
+    /// without it, Chrome blocks the hosted launcher from calling loopback.
     #[tokio::test]
     async fn a_private_network_preflight_is_allowed() {
         let router = axum::Router::new()

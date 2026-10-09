@@ -135,12 +135,12 @@ mod tests {
     fn the_launch_url_carries_the_server_s_fhir_base_and_the_launch() {
         assert_eq!(
             launch_url(
-                &launcher("https://wildflowerhealth.io/owner-ui/"),
+                &launcher("https://wildflowerhealth.io/launcher/"),
                 &ruth_origin(),
                 "nonce-1"
             )
             .as_str(),
-            "https://wildflowerhealth.io/owner-ui/?iss=https%3A%2F%2Fruth.relay.example.com%2Ffhir-r4&launch=nonce-1"
+            "https://wildflowerhealth.io/launcher/?iss=https%3A%2F%2Fruth.relay.example.com%2Ffhir-r4&launch=nonce-1"
         );
     }
 

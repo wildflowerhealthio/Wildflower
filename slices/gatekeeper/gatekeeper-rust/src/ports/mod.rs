@@ -14,7 +14,7 @@
 //!    bulk-revoke a subject, and answer whether a token is revoked; the seams
 //!    the revoking capabilities, logout, and the token verifier go through;
 //!  - [`LoopbackConsentPrompt`] — ask the Owner at the machine, in a native
-//!    dialog, to approve a direct-loopback login by the hosted owner UI (public,
+//!    dialog, to approve a direct-loopback login by the hosted launcher (public,
 //!    since the host implements it with its dialog plugin).
 
 mod loopback_consent;

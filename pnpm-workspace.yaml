@@ -8,6 +8,9 @@ packages:
   # FHIR Sync for Pebble: the watchapp, its settings page and the core both
   # build on.
   - apps/fhir-sync-pebble/*
+  # The launcher: the web app that manages a Wildflower server, and the
+  # packages it is built from.
+  - apps/launcher/*
   # Lifting: the app and the core and screens it is built from.
   - apps/lifting/*
   # The relay's admin UI and the packages it is built from. Their sibling

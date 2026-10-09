@@ -65,7 +65,7 @@ const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test
  * issue it.
  *
  * The transport is a parameter rather than baked in — the same shape as
- * `apps/wildflower-react`'s `prependApiBaseUrl` — so what goes on the wire can
+ * `apps/launcher/launcher-web`'s `prependApiBaseUrl` — so what goes on the wire can
  * be asserted against a stub instead of a real `fetch`.
  *
  * @param session - The FHIR base and bearer token from the SMART handshake

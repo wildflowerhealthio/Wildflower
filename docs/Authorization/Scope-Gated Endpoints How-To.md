@@ -218,7 +218,7 @@ there.
 Nothing further is needed per slice — the web app already turns a `403` into a
 user-facing surface — but it helps to know what the contract buys:
 
-- `wildflower-react/src/router-context.ts` recognises both 403 shapes: a
+- `apps/launcher/launcher-web/src/router-context.ts` recognises both 403 shapes: a
   **declared** one decodes to `{ error: 'InsufficientScope', missingScopes }`; an
   **undeclared** one arrives as a bare `403` `ResponseError` with no decoded body.
   Either way TanStack Query skips its retries (the token's scopes don't change
@@ -334,7 +334,7 @@ lets a guard test assert `domain/` never imports `crate::http`.
   store-agnostic. The router state itself lives at the crate root
   (`crate::live_bindings::state`), not under `http/`, for the same reason
   (`domain/` builds capabilities from it).
-- Owner-UI read models the `GET` handlers return live in `domain/` too (beside the
+- Launcher read models the `GET` handlers return live in `domain/` too (beside the
   capability that produces them), since they're pure data.
 
 ## Worked examples

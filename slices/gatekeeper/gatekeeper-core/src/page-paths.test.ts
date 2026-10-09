@@ -7,9 +7,9 @@ test('deviceEntryUrlOn moves the server’s device-entry page onto the given cop
   fc.assert(
     fc.property(
       fc.constantFrom(
-        'https://wildflowerhealthio.github.io/staging/pr-7/app/',
+        'https://wildflowerhealthio.github.io/staging/pr-7/launcher/',
         'http://localhost:5200/',
-        'https://wildflowerhealth.io/app/'
+        'https://wildflowerhealth.io/launcher/'
       ),
       fc.webUrl({ withQueryParameters: true }),
       (servedRoot, verificationUri) => {

@@ -455,7 +455,7 @@ pub trait GatekeeperTx {
     // ----- grants --------------------------------------------------------
 
     /// All grants in `granted_at` order — the cross-kind read off the `grants`
-    /// view backing the Owner UI's access index.
+    /// view backing the launcher's access index.
     ///
     /// # Errors
     ///

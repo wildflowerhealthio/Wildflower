@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use gatekeeper_rust::{LoopbackConsentPrompt, PendingConsentHead};
-use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::launcher::LauncherBase;
 use shared_structures_rust::request_caller::ForwardedRequest;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
@@ -25,8 +25,8 @@ pub struct WildflowerServerConfig {
     /// (see
     /// [`EmrConfig::search_parameter_data_dir`](emr_rust::EmrConfig::search_parameter_data_dir)).
     pub search_parameter_data_dir: PathBuf,
-    /// The hosted owner UI every browser-facing link points at.
-    pub owner_ui_base: OwnerUiBase,
+    /// The hosted launcher every browser-facing link points at.
+    pub launcher_base: LauncherBase,
     /// The scopes gatekeeper seeds the first-party client with and mints the host
     /// owner token under (see
     /// [`GatekeeperConfig::host_owner_scopes`](gatekeeper_rust::GatekeeperConfig::host_owner_scopes)).

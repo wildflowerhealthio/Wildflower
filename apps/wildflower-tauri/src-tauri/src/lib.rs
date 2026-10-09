@@ -4,7 +4,7 @@ mod native_webview_handle;
 
 use anyhow::Context;
 use servers_rust::{ServerDetail, ServerRecord};
-use shared_structures_rust::owner_ui::OwnerUiBase;
+use shared_structures_rust::launcher::LauncherBase;
 use shared_structures_rust::ServerRuntimeConfig;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,23 +36,23 @@ const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 // the id gatekeeper seeds the first-party client and mints the owner token under.
 const FIRST_PARTY_CLIENT_ID: &str = env!("WILDFLOWER_FIRST_PARTY_CLIENT_ID");
 
-// The hosted owner UI (see `shared_structures_rust::owner_ui`), sourced from the
+// The hosted launcher (see `shared_structures_rust::launcher`), sourced from the
 // same `tauri-shared-config.json` (re-emitted by `build.rs`). Debug builds use
 // the local `main-web` dev server, so a dev host's links open the UI being
 // worked on rather than the published one.
-const OWNER_UI_BASE_URL: &str = if cfg!(debug_assertions) {
-    env!("WILDFLOWER_OWNER_UI_DEV_BASE_URL")
+const LAUNCHER_BASE_URL: &str = if cfg!(debug_assertions) {
+    env!("WILDFLOWER_LAUNCHER_DEV_BASE_URL")
 } else {
-    env!("WILDFLOWER_OWNER_UI_BASE_URL")
+    env!("WILDFLOWER_LAUNCHER_BASE_URL")
 };
 
-// The launcher a new server gets: the hosted owner UI, the release
-// `owner_ui_base_url` from the same `tauri-shared-config.json` (re-emitted by
+// The launcher a new server gets: the hosted launcher, the release
+// `launcher_base_url` from the same `tauri-shared-config.json` (re-emitted by
 // `build.rs`), in every build, so a server added on a debug build still
 // launches from the published UI rather than the local dev server. The TS
 // shell imports the same value from that file for the server page's Reset to
 // default (`src/main.tsx`).
-const DEFAULT_LAUNCHER_URL: &str = env!("WILDFLOWER_OWNER_UI_BASE_URL");
+const DEFAULT_LAUNCHER_URL: &str = env!("WILDFLOWER_LAUNCHER_BASE_URL");
 
 // How the unit runner starts its background session, the background-service
 // plugin's one service, from the same `tauri-shared-config.json` (re-emitted by
@@ -123,8 +123,8 @@ fn server_config(
     data_root: &Path,
     #[cfg_attr(target_os = "android", allow(unused_variables))] app_handle: &tauri::AppHandle,
 ) -> anyhow::Result<WildflowerServerConfig> {
-    let owner_ui_base = OwnerUiBase::parse(OWNER_UI_BASE_URL)
-        .context("owner_ui_base_url (from tauri-shared-config.json) must be an absolute URL")?;
+    let launcher_base = LauncherBase::parse(LAUNCHER_BASE_URL)
+        .context("launcher_base_url (from tauri-shared-config.json) must be an absolute URL")?;
     // Hostname/port come from the shared `tauri-shared-config.json` (see
     // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`).
     let loopback_base_url = Url::parse(&format!("http://{LOOPBACK_HOSTNAME}:{LOOPBACK_PORT}"))
@@ -197,7 +197,7 @@ fn server_config(
     Ok(WildflowerServerConfig {
         runtime,
         search_parameter_data_dir,
-        owner_ui_base,
+        launcher_base,
         host_owner_scopes: host_owner_scopes(),
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
@@ -217,7 +217,7 @@ fn server_config(
 fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublishers) -> HostPorts {
     HostPorts {
         // The native Approve / Reject dialog gatekeeper raises when the hosted
-        // owner UI logs in over direct loopback (see `loopback_consent_dialog`).
+        // launcher logs in over direct loopback (see `loopback_consent_dialog`).
         loopback_consent_prompt: Arc::new(
             loopback_consent_dialog::TauriLoopbackConsentPrompt::new(
                 app_handle.clone(),
@@ -387,7 +387,7 @@ pub fn run() {
             // which gives a new server `DEFAULT_LAUNCHER_URL`. Each run of a
             // server builds its config from its record here.
             let default_launcher_url = Url::parse(DEFAULT_LAUNCHER_URL).context(
-                "owner_ui_base_url (from tauri-shared-config.json) must be an absolute URL",
+                "launcher_base_url (from tauri-shared-config.json) must be an absolute URL",
             )?;
             let config_app_handle = app.handle().clone();
             let config_data_root = data_root.clone();
@@ -447,7 +447,7 @@ mod tests {
     /// one that isn't an absolute URL would stop the app starting.
     #[test]
     fn the_default_launcher_is_an_absolute_url() {
-        url::Url::parse(super::DEFAULT_LAUNCHER_URL).expect("owner_ui_base_url is an absolute URL");
+        url::Url::parse(super::DEFAULT_LAUNCHER_URL).expect("launcher_base_url is an absolute URL");
     }
 
     /// The plugin checks the type `TauriUnitRunner`'s background session starts

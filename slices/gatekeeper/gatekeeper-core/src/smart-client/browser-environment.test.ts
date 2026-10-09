@@ -9,8 +9,8 @@ import {
 } from './browser-environment.ts'
 
 const REGISTRATION: ClientRegistration = {
-  clientId: 'wildflower-react',
-  pendingKey: 'wildflower-react.pending-authorization',
+  clientId: '03a513940b52f8c2649a5366d1a26d19',
+  pendingKey: 'launcher-web.pending-authorization',
   scope: 'openid profile',
   redirectUri: 'https://wildflowerhealth.io/home',
 }

@@ -52,7 +52,7 @@ configuration only, never whether a server is up:
         "publicKey": "<the relay's noise key>",
         "domain": "relay.wildflowerhealth.io"
       },
-      "launcherUrl": "https://wildflowerhealth.io/app",
+      "launcherUrl": "https://wildflowerhealth.io/launcher",
       "certificateAuthority": "letsEncrypt",
       "runPolicy": { "kind": "whileOpen" }
     }

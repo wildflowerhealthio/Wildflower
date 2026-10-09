@@ -187,7 +187,7 @@ const BACKGROUND_SERVICE_START_CONFIG = {
  * The launcher the app passes as the host's default: the golden file's first
  * server has it, its second doesn't.
  */
-const DEFAULT_LAUNCHER_URL = 'https://wildflowerhealth.io/app'
+const DEFAULT_LAUNCHER_URL = 'https://wildflowerhealth.io/launcher'
 
 const renderBase = ({
   invoke,
@@ -1564,7 +1564,7 @@ describe('the server page', () => {
     expect(screen.getByRole('tab', { name: 'Status', selected: true })).toBeDefined()
     expect(screen.getByLabelText('Launcher')).toHaveProperty(
       'value',
-      'https://wildflowerhealth.io/app'
+      'https://wildflowerhealth.io/launcher'
     )
     expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
 
@@ -2099,8 +2099,8 @@ describe('the server page', () => {
   })
 
   it.each([
-    ['the default with its host in another case', 'https://WildflowerHealth.IO/app', false],
-    ['the default with its default port', 'https://wildflowerhealth.io:443/app', false],
+    ['the default with its host in another case', 'https://WildflowerHealth.IO/launcher', false],
+    ['the default with its default port', 'https://wildflowerhealth.io:443/launcher', false],
     ['a launcher that is not a URL', 'not a url', true],
   ] as const)(
     'should compare a launcher with the default as URLs: %s',

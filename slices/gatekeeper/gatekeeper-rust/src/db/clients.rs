@@ -307,7 +307,7 @@ mod tests {
             "medications-app",
             "web-trace-app",
             "wildflower-server-docs",
-            "wildflower-react",
+            "03a513940b52f8c2649a5366d1a26d19",
             "importer-app",
             "ohif-viewer",
             "fhir-sync-pebble",
@@ -467,17 +467,22 @@ mod tests {
                 "the console's allowed scopes must cover {requested}",
             );
         }
-        // The web owner UI (`apps/wildflower-react`'s `main-web` build) is a
+        // The launcher (`apps/launcher/launcher-web`'s `main-web` build) is a
         // standalone-launch client for the same reason the console is — it drives
         // every slice surface — so `0012` registers it against the console's
-        // vocabulary rather than a set of its own. Compared against `docs` rather
-        // than a second literal copy: a scope added to one migration and not the
-        // other fails here instead of drifting quietly.
-        let web_client = store.client_by_id("wildflower-react").unwrap().unwrap();
+        // vocabulary rather than a set of its own (re-keyed to a random id and
+        // renamed by `0026`). Compared against `docs` rather than a second literal
+        // copy: a scope added to one migration and not the other fails here
+        // instead of drifting quietly.
+        let web_client = store
+            .client_by_id("03a513940b52f8c2649a5366d1a26d19")
+            .unwrap()
+            .unwrap();
+        assert_eq!(web_client.name, "Wildflower Launcher");
         assert_eq!(web_client.allowed_scopes, docs.allowed_scopes);
         assert_eq!(web_client.allowed_grant_types, docs.allowed_grant_types);
         // One absolute entry, and it is the app ROOT (`0013` replaced 0012's
-        // `/home`): the web UI is a SPA on browser history, so
+        // `/home`; `0026` moved it to `/launcher/`): the web UI is a SPA on browser history, so
         // `redirectUriForRoute` derives the served root per origin (the
         // directory form would vary by whichever section the reader signed in
         // from), and the reader's destination rides the client's pending record.
@@ -485,7 +490,7 @@ mod tests {
         // consent prompt, so this single entry is the published address only.
         assert_eq!(
             web_client.redirect_uris,
-            vec![url::Url::parse("https://wildflowerhealth.io/app/")
+            vec![url::Url::parse("https://wildflowerhealth.io/launcher/")
                 .expect("a valid absolute redirect")],
         );
 

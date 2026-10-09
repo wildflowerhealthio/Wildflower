@@ -3,7 +3,7 @@ import { SECTION_PATHS, type SectionId } from './site.ts'
 
 /**
  * The site sections with a standalone app landing page: the SMART on FHIR apps,
- * and the hosted Wildflower owner UI (`app`).
+ * and the hosted Wildflower launcher (`app`).
  */
 type AppSectionId = Extract<
   SectionId,
@@ -14,19 +14,19 @@ type AppSectionId = Extract<
   | 'healthViewer'
   | 'syntheticData'
   | 'lifting'
-  | 'app'
+  | 'launcher'
 >
 
 /**
  * The app sections the marketing homepage has a launcher row for: all but the
- * owner UI and the Synthetic Data Loader, which have no homepage row.
+ * hosted launcher app and the Synthetic Data Loader, which have no homepage row.
  */
-type HomepageAppSectionId = Exclude<AppSectionId, 'app' | 'syntheticData'>
+type HomepageAppSectionId = Exclude<AppSectionId, 'launcher' | 'syntheticData'>
 
 /**
  * The six SMART app sections with a homepage row, grouped by the homepage
  * section the row sits in: the patient-facing apps (`built`), then the Importer
- * (`try`), then the Web Trace Viewer (`developers`). The owner UI (`app`) and
+ * (`try`), then the Web Trace Viewer (`developers`). The launcher and
  * the Synthetic Data Loader have a landing page but no homepage row, so they
  * are not among them.
  */
@@ -88,9 +88,9 @@ interface AppDescription {
    * reads `iss` there, and `launch` too for an EHR launch, so `?iss=` alone is a
    * standalone launch against that server. The root is then the URL an EHR
    * registers as the app's launch URL, and what a plain SMART server's Home in
-   * the owner UI links each app through ({@link smartAppLaunchPages}).
+   * the launcher links each app through ({@link smartAppLaunchPages}).
    *
-   * Absent for an app no URL launches: the owner UI is not a SMART app, and FHIR
+   * Absent for an app no URL launches: the launcher is not a SMART app, and FHIR
    * Sync for Pebble starts only from the Pebble phone app, whose watch hand-off
    * it needs, with its own connect menu as the sign-in.
    */
@@ -289,7 +289,7 @@ const APP_DESCRIPTIONS: {
     },
     launchesFromUrl: true,
   },
-  app: {
+  launcher: {
     name: 'Wildflower',
     tagline: 'Manages the devices, apps and health data on your own Wildflower server.',
     paragraphs: [

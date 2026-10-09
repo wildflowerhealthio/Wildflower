@@ -54,12 +54,12 @@ pub(crate) fn consent_decider_scopes() -> Vec<Scope> {
 }
 
 // ---------------------------------------------------------------------------
-// Read models the Owner UI renders — the shapes the `GET` consent handlers
+// Read models the launcher renders — the shapes the `GET` consent handlers
 // return, and `HostConsentDecider` hands the host. Pure domain data (no axum),
 // produced by `ConsentReader`.
 // ---------------------------------------------------------------------------
 
-/// A consent prompt loaded for the Owner UI or the host to render — the data a
+/// A consent prompt loaded for the launcher or the host to render — the data a
 /// `GET` authorization-code consent handler needs, with the client's display
 /// name and its [registration verdict](ClientRegistrationVerdict) already
 /// resolved.
@@ -74,7 +74,7 @@ pub struct OAuthConsentView {
     pub registration_verdict: ClientRegistrationVerdict,
 }
 
-/// A device-code consent prompt loaded for the Owner UI or the host — adds the
+/// A device-code consent prompt loaded for the launcher or the host — adds the
 /// client's full `allowed_scopes` (the expansion envelope the approver may
 /// grant up to).
 pub struct DeviceConsentView {
@@ -145,7 +145,7 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         ConsentReader { store }
     }
 
-    /// Load a pending authorization-code consent prompt for the Owner UI, with
+    /// Load a pending authorization-code consent prompt for the launcher, with
     /// the client's display name and its registration verdict resolved against
     /// the current row.
     pub(crate) fn oauth_consent(&self, id: &str) -> Result<OAuthConsentView, GatekeeperError> {
@@ -172,7 +172,7 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         })
     }
 
-    /// Load a pending device-code consent prompt for the Owner UI, with the
+    /// Load a pending device-code consent prompt for the launcher, with the
     /// client's name and expansion envelope resolved.
     pub(crate) fn device_consent(
         &self,
