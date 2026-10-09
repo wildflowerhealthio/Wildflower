@@ -59,12 +59,21 @@ The target lives in the URL:
   caller; the snapshots themselves carry no security metadata because the host
   applies the gate as a layer.
 - The target doubles as the SMART `iss` for signing in — see below.
+- Opened with a SMART launch instead (`?iss=<FHIR base>`, with the EHR's
+  `launch` when there is one), the console targets the server `iss` names: the
+  FHIR base less a Wildflower server's `/fhir-r4` mount, over any `?server=`
+  the link also carried. `iss` and `launch` are taken out of the URL and the
+  target written in as `?server=` before anything reads it, and the console
+  signs in straight away (see "Opened with a launch" below).
 
 The document transforms and the Scalar configuration are pure functions in
 `src/spec.ts` and `src/configuration.ts`, unit-tested beside them; the `?server=`
 parsing itself lives in `gatekeeper-core/smart-client` (every static Wildflower
 page that targets a reader-chosen server needs it), and `src/server-target.ts`
 holds only this console's fallback — the desktop host's loopback origin.
+`src/arrival.ts` holds how a load settles what it arrived with: the query it
+leaves in the address bar after a launch or a return leg, and the sign-in
+controls it resets when the back-forward cache restores it.
 `src/main.ts` is the DOM and history wiring.
 
 The configuration also turns off two Scalar defaults that would otherwise reach
@@ -104,7 +113,16 @@ in by hand.
    console checks the `state` against what it stashed, redeems the code at the
    `token_endpoint` with the PKCE verifier (no client secret — a static page
    keeps none), and prefills every source's bearer field with the access token.
-   The `code` and `state` are stripped from the address bar immediately.
+   The authorization response is stripped from the address bar immediately,
+   on a failed return as on a successful one: `code`, `state`, `error`,
+   `error_description`, and the `iss` an authorization server may add to name
+   itself (RFC 9207), all through `gatekeeper-core/smart-client`'s
+   `searchWithoutAuthorizationResponse`.
+
+Back from the authorization server can restore the console from the
+back-forward cache as it left, its **Sign in** button disabled and the status
+line asking the server how to sign in. On that restore (`pageshow` with
+`persisted`) the button and status line start over.
 
 The client is registered by
 `slices/gatekeeper/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`;
@@ -130,6 +148,17 @@ hosted owner UI, and it puts one token into all six documents through Scalar's
 `authentication` configuration block. This console supplies the app-specific
 half — client id, scopes and the `sessionStorage` key the pending record is
 namespaced under — from `src/smart-client.ts`, and derives its redirect URI.
+
+### Opened with a launch
+
+A link carrying a SMART launch (`gatekeeper-core/smart-client`'s
+`arrivingSmartLaunchFrom` reads it, as every Wildflower page a launch can open
+does) starts the sign-in on load, with no click: an EHR's `launch` works once
+and only for a few minutes. The authorization request carries that `launch`,
+making it an EHR launch; a lone `iss` is a standalone launch against the
+server it names. A target this page cannot reach (plain http off loopback,
+from the https console) is not signed in to, and the status line says why. A
+reload finds no launch left to spend, since it is gone from the URL.
 
 ### Where the token lives
 

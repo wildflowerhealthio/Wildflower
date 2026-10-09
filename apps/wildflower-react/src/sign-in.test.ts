@@ -35,6 +35,7 @@ import {
   serverKindForSession,
   signInEnvironment,
   startSignIn,
+  unsentEhrLaunch,
 } from './sign-in.ts'
 
 describe('signInEnvironment', () => {
@@ -134,6 +135,26 @@ describe('startSignIn', () => {
     expect(authorize.searchParams.get('code_challenge_method')).toBe('S256')
   })
 
+  it('sends the EHR launch it is given, and none for a standalone launch', async () => {
+    // Arrange
+    const page = pageAt('http://127.0.0.1:5173/', {
+      protocol: 'http:',
+      fetch: discoveryOnly(),
+    })
+
+    // Act
+    const launched = await startSignIn(SERVER_URL, undefined, signInEnvironment(page), 'nonce-1')
+    const standalone = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
+
+    // Assert
+    expect(launched.tag === 'Ok' && new URL(launched.value).searchParams.get('launch')).toBe(
+      'nonce-1'
+    )
+    expect(standalone.tag === 'Ok' && new URL(standalone.value).searchParams.has('launch')).toBe(
+      false
+    )
+  })
+
   it('writes the pending record before it yields, under this app’s key', async () => {
     // A caller navigates the moment it has the URL, so a record written after
     // would be a flow whose verifier never survived the redirect.
@@ -166,6 +187,18 @@ describe('startSignIn', () => {
     expect(started.tag).toBe('Failed')
     if (started.tag !== 'Failed') return
     expect(started.reason.length).toBeGreaterThan(0)
+  })
+})
+
+describe('unsentEhrLaunch', () => {
+  it('gives the launch to the first sign-in to its server, and to no other', () => {
+    // Arrange
+    const held = unsentEhrLaunch({ serverUrl: SERVER_URL, launch: 'nonce-1' })
+
+    // Act / Assert — another server takes nothing and leaves it held
+    expect(held.takeFor('https://other.example')).toBeUndefined()
+    expect(held.takeFor(SERVER_URL)).toBe('nonce-1')
+    expect(held.takeFor(SERVER_URL)).toBeUndefined()
   })
 })
 

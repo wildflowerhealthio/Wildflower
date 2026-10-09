@@ -4,8 +4,10 @@
  * The parsing itself belongs to every static Wildflower page that targets a
  * server the reader chooses, so it lives in
  * `gatekeeper-core/smart-client` (`normalizeServerUrl`, `searchWithServerUrl`,
- * `serverUrlFromSearch`). What stays here is the one thing that is this
- * console's alone: the target it assumes when the URL names none.
+ * `serverUrlFromSearch`), and so does turning the `iss` of a SMART launch the
+ * console is opened with into a `?server=` (`searchAfterArrivingLaunch`). What
+ * stays here is the one thing that is this console's alone: the target it
+ * assumes when the URL names none.
  */
 
 import { serverUrlFromSearch as parseServerUrl } from 'gatekeeper-core/smart-client'

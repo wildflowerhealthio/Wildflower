@@ -362,6 +362,7 @@ describe('searchWithoutAuthorizationResponse', () => {
     // Act
     const search = searchWithoutAuthorizationResponse(
       '?server=https%3A%2F%2Fruth.wildflowerhealth.io&error=access_denied&error_description=no' +
+        '&error_uri=https%3A%2F%2Fruth.wildflowerhealth.io%2Fdocs' +
         '&iss=https%3A%2F%2Fruth.wildflowerhealth.io'
     )
 
@@ -381,6 +382,7 @@ describe('isAuthorizationResponse', () => {
     expect(isAuthorizationResponse('?code=abc&state=xyz')).toBe(true)
     expect(isAuthorizationResponse('?state=xyz')).toBe(true)
     expect(isAuthorizationResponse('?error=access_denied')).toBe(true)
+    expect(isAuthorizationResponse('?error_uri=https%3A%2F%2Fruth.wildflowerhealth.io')).toBe(true)
   })
 
   it('does not mistake an ordinary configured load for a return leg', () => {
@@ -396,7 +398,7 @@ describe('isAuthorizationResponse', () => {
     fc.assert(
       fc.property(
         fc.dictionary(fc.string({ minLength: 1 }), fc.string()),
-        fc.constantFrom('code', 'state', 'error', 'error_description'),
+        fc.constantFrom('code', 'state', 'error', 'error_description', 'error_uri'),
         fc.string(),
         (extras, name, value) => {
           // Arrange
@@ -412,7 +414,7 @@ describe('isAuthorizationResponse', () => {
   })
 
   it('is false for a query carrying no response parameter', () => {
-    const RESPONSE_NAMES = new Set(['code', 'state', 'error', 'error_description'])
+    const RESPONSE_NAMES = new Set(['code', 'state', 'error', 'error_description', 'error_uri'])
     fc.assert(
       fc.property(
         fc.dictionary(

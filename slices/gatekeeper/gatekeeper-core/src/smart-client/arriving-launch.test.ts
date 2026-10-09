@@ -36,6 +36,10 @@ describe('arrivingSmartLaunchFrom', () => {
       case: 'a lone error_description beside an iss',
       search: '?error_description=denied&iss=https%3A%2F%2Ffhir.example%2Fr4',
     },
+    {
+      case: 'a lone error_uri beside an iss',
+      search: '?error_uri=https%3A%2F%2Ffhir.example%2Ferr&iss=https%3A%2F%2Ffhir.example%2Fr4',
+    },
   ])('should find no launch in $case', ({ search }) => {
     // Act / Assert
     expect(arrivingSmartLaunchFrom(search)).toStrictEqual(Option.none())
@@ -82,7 +86,7 @@ describe('arrivingSmartLaunchFrom', () => {
 // Helpers
 
 /** The params that mark a return from the authorization server, excluded from noise. */
-const CALLBACK_PARAMS = ['code', 'state', 'error', 'error_description']
+const CALLBACK_PARAMS = ['code', 'state', 'error', 'error_description', 'error_uri']
 
 /** A query string built from `params`, leading `?` included. */
 const searchFrom = (params: Record<string, string>): string =>

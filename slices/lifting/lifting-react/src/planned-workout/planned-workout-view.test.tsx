@@ -260,14 +260,23 @@ const exerciseHeadings = (): readonly (string | null)[] =>
 
 /** The card of the named exercise. */
 const exerciseCard = (exerciseName: string): HTMLElement => {
-  const card = screen.getByRole('heading', { level: 3, name: exerciseName }).closest('li')
+  const card = screen
+    .getByRole('heading', { level: 3, name: accessibleNameOf(exerciseName) })
+    .closest('li')
   if (card === null) throw new Error(`no card for ${exerciseName}`)
   return card
 }
 
 /** The set buttons' group of the named exercise. */
 const setGroup = (exerciseName: string): HTMLElement =>
-  screen.getByRole('group', { name: `${exerciseName} sets` })
+  screen.getByRole('group', { name: accessibleNameOf(`${exerciseName} sets`) })
+
+/**
+ * `text` as an accessible name: the browser collapses each run of whitespace
+ * to one space and trims the ends, so a generated name like `!  !` is named
+ * `! !`.
+ */
+const accessibleNameOf = (text: string): string => text.replace(/\s+/g, ' ').trim()
 
 /** The submit action. */
 const submitButton = (): HTMLElement => screen.getByRole('button', { name: 'Submit workout' })

@@ -1,4 +1,12 @@
-import { normalizeServerUrl, serverUrlFromSearch } from 'gatekeeper-core/smart-client'
+import { Option } from 'effect'
+import {
+  arrivingSmartLaunchFrom,
+  normalizeServerUrl,
+  searchWithoutAuthorizationResponse,
+  searchWithServerUrl,
+  serverUrlFromSearch,
+  serverUrlNamedBy,
+} from 'gatekeeper-core/smart-client'
 import {
   gatekeeperLogoutSettingsItem,
   makeAwaitLandingAuthReady,
@@ -18,6 +26,7 @@ import {
 
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
+import type { EhrLaunch } from './sign-in.ts'
 
 /**
  * The API origin assumed when the URL carries no usable `?server=`: the loopback
@@ -70,6 +79,42 @@ const chosenServerUrl = (search: string, store: SignedInServerStore): string | u
  */
 const apiServerUrl = (search: string, store: SignedInServerStore): string =>
   chosenServerUrl(search, store) ?? DEFAULT_SERVER_URL
+
+/**
+ * The {@link EhrLaunch} a page load arriving on `search` was opened with: the
+ * SMART launch's `launch`, for the server its `iss` names. `undefined` when the
+ * load carries no launch, when it is a standalone one (`iss` alone, a sign-in
+ * to that server like any `?server=` one), and when `iss` names no usable
+ * server.
+ */
+const ehrLaunchIn = (search: string): EhrLaunch | undefined =>
+  Option.getOrUndefined(
+    Option.flatMap(arrivingSmartLaunchFrom(search), ({ iss, launch }) => {
+      const serverUrl = serverUrlNamedBy(iss)
+      return serverUrl === undefined || launch === undefined
+        ? Option.none()
+        : Option.some({ serverUrl, launch })
+    })
+  )
+
+/**
+ * The query a return leg settles on: the authorization response taken out
+ * (`searchWithoutAuthorizationResponse`, which takes the authorization
+ * server's RFC 9207 `iss` with it, so it never reads as a SMART launch) and,
+ * when the sign-in failed and its pending record named the server it was to,
+ * `?server=` pointed back at that server. The registered redirect carries no
+ * query, so without it the landing would no longer offer the server the
+ * reader was signing in to.
+ */
+const searchAfterReturnLeg = (
+  returnSearch: string,
+  failedServerUrl: string | undefined
+): string => {
+  const withoutResponse = searchWithoutAuthorizationResponse(returnSearch)
+  return failedServerUrl === undefined
+    ? withoutResponse
+    : searchWithServerUrl(withoutResponse, failedServerUrl)
+}
 
 /**
  * Prefix a root-absolute in-app route with the served `basepath`, so a raw
@@ -180,8 +225,10 @@ export {
   apiServerUrl,
   chosenServerUrl,
   DEFAULT_SERVER_URL,
+  ehrLaunchIn,
   makeWebEntryOptions,
   rememberSignedInServer,
+  searchAfterReturnLeg,
   SIGNED_IN_SERVER_KEY,
   underBasepath,
 }

@@ -14,6 +14,7 @@ import {
   startSignIn,
   type SignInProblem,
   type SignInStep,
+  type UnsentEhrLaunch,
 } from '../sign-in.ts'
 import { apiServerUrl, chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
 
@@ -42,8 +43,9 @@ const rememberServer = (serverUrl: string): void => {
  *
  * - **`main-web` + unauthed**: renders the landing page (the owner UI's
  *   introduction beside the server picker), which signs in by SMART standalone
- *   launch — see `../sign-in.ts` for the flow and why this entry uses it
- *   rather than the device-code screen.
+ *   launch, or with the EHR launch the page was opened with — see
+ *   `../sign-in.ts` for the flow and why this entry uses it rather than the
+ *   device-code screen.
  * - **`main-web` + authed**: redirects to `/home`, whose gate sends a plain
  *   SMART server's session on to `/fhir-home`.
  * - **`main-tauri`**: redirects to `/home` unconditionally. The host webview
@@ -60,21 +62,27 @@ const Route = createFileRoute('/')({
 })
 
 /**
- * Reads the one piece of router context the landing page needs and hands it
- * down, so {@link Landing} itself takes plain props and mounts in a test
- * under a bare router — the arrangement `settings/index.tsx` uses.
+ * Reads the router context the landing page needs and hands it down, so
+ * {@link Landing} itself takes plain props and mounts in a test under a bare
+ * router — the arrangement `settings/index.tsx` uses.
  */
 function LandingRoute(): JSX.Element {
   const bootProblem = Route.useRouteContext({
     select: (context: RouterContext) => context.signInProblem,
   })
-  return <Landing bootSignInProblem={bootProblem} />
+  const ehrLaunch = Route.useRouteContext({
+    select: (context: RouterContext) => context.ehrLaunch,
+  })
+  return <Landing bootSignInProblem={bootProblem} ehrLaunch={ehrLaunch} />
 }
 
 /** How the landing page starts a sign-in and leaves for it — injected by tests. */
 interface LandingSignIn {
-  /** Begin a SMART sign-in against `target`, yielding the authorization URL. */
-  readonly start: (target: string) => Promise<SignInStep<string>>
+  /**
+   * Begin a SMART sign-in against `target`, yielding the authorization URL: an
+   * EHR launch when `launch` is given, a standalone launch otherwise.
+   */
+  readonly start: (target: string, launch: string | undefined) => Promise<SignInStep<string>>
   /** Leave for the authorization server at `authorizationUrl`. */
   readonly leave: (authorizationUrl: string) => void
 }
@@ -87,11 +95,12 @@ interface LandingSignIn {
  * registered redirect URI drops it.
  */
 const browserSignIn: LandingSignIn = {
-  start: (target) =>
+  start: (target, launch) =>
     startSignIn(
       target,
       returnToOnPage(window.location.href),
-      signInEnvironment(window, basenameOf(window.location.pathname))
+      signInEnvironment(window, basenameOf(window.location.pathname)),
+      launch
     ),
   leave: (authorizationUrl) => {
     window.location.assign(authorizationUrl)
@@ -101,7 +110,8 @@ const browserSignIn: LandingSignIn = {
 /**
  * Whether the landing should start signing in as soon as it opens, rather than
  * wait for a click: the page already has a usable server (named by the URL, as
- * in a server's own link into the app or the auth gate's bounce, or remembered
+ * in a server's own link into the app, the auth gate's bounce or a SMART
+ * launch's `iss`, which `main-web`'s boot turns into `?server=`, or remembered
  * from this tab's last sign-in, as after a reload or an expiry), that server is
  * reachable from this page, and no sign-in has just failed — retrying one on
  * arrival would loop the reader through the authorization server.
@@ -119,13 +129,22 @@ const shouldSignInOnArrival = (arrival: {
  * The web entry's landing page, in the shared Wildflower chrome: the owner
  * UI's `APP_DESCRIPTIONS` introduction beside the `ConnectMenu`, where picking
  * a server signs in to it. Opened already naming a server, it signs in straight
- * away (see {@link shouldSignInOnArrival}).
+ * away (see {@link shouldSignInOnArrival}). `main-web`'s boot points the page at
+ * the server a SMART launch's `iss` names, so a launch signs in on arrival the
+ * same way, carrying `ehrLaunch`.
  *
  * @param bootSignInProblem - Why a sign-in failed on the *previous* page load,
  *   before this tree existed, and the server it was to. `main-web` redeems the
  *   authorization code ahead of mounting the router, so that failure has to be
  *   carried in rather than raised here. The menu shows it until a fresh
  *   attempt starts.
+ * @param ehrLaunch - The SMART EHR launch the page load was opened with, until
+ *   a sign-in takes it. The first sign-in to its server takes it, and no other
+ *   carries it: gatekeeper spends a launch on the authorization request, so a
+ *   second attempt (a retry, a landing mounted again, or Back from the
+ *   authorization server) signs in without it rather than offering a spent
+ *   one. `main-web` makes it once per page load, so mounting the landing again
+ *   does not bring it back.
  * @param signIn - How to start a sign-in and leave for it; the browser's own by
  *   default.
  *
@@ -140,9 +159,11 @@ const shouldSignInOnArrival = (arrival: {
  */
 function Landing({
   bootSignInProblem,
+  ehrLaunch,
   signIn = browserSignIn,
 }: {
   readonly bootSignInProblem?: SignInProblem
+  readonly ehrLaunch?: UnsentEhrLaunch
   readonly signIn?: LandingSignIn
 }): JSX.Element {
   const navigate = useNavigate()
@@ -204,10 +225,13 @@ function Landing({
    * The problem goes back bare: the menu adds the Local Network Access hint
    * when it applies, and has already refused a plain-http server this https
    * page could not reach.
+   *
+   * The first sign-in to the `ehrLaunch` server carries its launch (the sign-in
+   * on arrival, unless the server was blocked), making it an EHR launch.
    */
   const connect = (targetUrl: string): Promise<string | undefined> => {
     rememberServer(targetUrl)
-    return signIn.start(targetUrl).then((started) => {
+    return signIn.start(targetUrl, ehrLaunch?.takeFor(targetUrl)).then((started) => {
       if (started.tag === 'Failed') return started.reason
       signIn.leave(started.value)
       return undefined
@@ -221,9 +245,10 @@ function Landing({
         localOrigin={DEFAULT_SERVER_URL}
         connect={connect}
         // The boot failure was about the server that sign-in was to, which
-        // a failed redemption leaves the address bar no longer naming, so
-        // its Local Network Access hint is for that server; the menu adds
-        // it to the problems of the sign-ins it runs itself.
+        // `main-web`'s boot points `?server=` back at, so it is the chosen
+        // server below and its Local Network Access hint is for that
+        // server; the menu adds the hint to the problems of the sign-ins it
+        // runs itself.
         arrivalProblem={
           bootSignInProblem === undefined ? undefined : arrivalProblemFor(bootSignInProblem)
         }

@@ -9,7 +9,7 @@ import type { BaseRouterContext } from 'shared-structures-react'
 
 import type { ReactTransport } from './bridges/transport-context.ts'
 import type { ServerKind } from './session/server-kind.ts'
-import type { SignInProblem } from './sign-in.ts'
+import type { SignInProblem, UnsentEhrLaunch } from './sign-in.ts'
 
 /**
  * The router context threaded through every route in `apps/wildflower-react`:
@@ -86,6 +86,15 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    * instead. Omitted on every other entry and on an ordinary load.
    */
   readonly signInProblem?: SignInProblem
+  /**
+   * The SMART EHR launch the web entry's page load was opened with, until a
+   * sign-in takes it. `main-web` takes it out of the URL before it mounts the
+   * router and holds it here, once per page load, so the landing route signs
+   * in to its server with it on arrival, and a landing that mounts again does
+   * not offer it a second time. Omitted on every other entry and on a load
+   * that carried none.
+   */
+  readonly ehrLaunch?: UnsentEhrLaunch
   /**
    * Which kind of server this tree was built for. The auth-gated routes read
    * it to send a reader to the routes that kind serves
