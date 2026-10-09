@@ -1,32 +1,21 @@
-import { Option } from 'effect'
-import { type JSX, useEffect, useId, useRef, useState } from 'react'
+import { useRouteContext } from '@tanstack/react-router'
+import { Effect, Either, Option } from 'effect'
+import { type JSX, useEffect, useId, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ConfirmDialog, ErrorBanner } from 'react-tundraish'
-import { LaunchError, type ListedServer, RunPolicy } from 'servers-core'
+import { LaunchError, type ListedServer, launchServer, RunPolicy, ServerStatus } from 'servers-core'
 
 import { failureText } from './failure-text.ts'
+import { REFUSAL_REASON, waitOutcomeOf } from './launch-wait.ts'
+import { type PendingLaunches, usePendingLaunch } from './pending-launches.ts'
 import { useLaunchServer, useSetServerRunPolicy } from './queries.ts'
-import type { RunHostCommand } from './router-context.ts'
+import type { RouterContext, RunHostCommand } from './router-context.ts'
 import { useHasPassed } from './use-has-passed.ts'
 import { useOnline } from './use-online.ts'
 import styles from './launch-button.module.css'
 
 /** Why Launch is disabled while the webview is offline. */
 const OFFLINE_REASON = 'Apps open from the web, so launching needs a connection.'
-
-/**
- * Why Launch is disabled for a server the host would refuse to launch, for
- * each refusal but `serverNotRunning`, which {@link notRunningReason} words.
- */
-const REFUSAL_REASON: Readonly<
-  Record<Exclude<LaunchError.StatusRefusalKind, 'serverNotRunning'>, string>
-> = {
-  notYetProbed: "The server hasn't been reached through its relay yet.",
-  unreachable: "The server can't be reached through its relay.",
-  noValidCertificate: 'The server has no valid certificate yet.',
-  untrustedCertificate:
-    "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
-}
 
 /** Why Launch is disabled for a server that isn't running while its policy wants it running. */
 const notRunningReason = (server: ListedServer.Type): string =>
@@ -35,10 +24,52 @@ const notRunningReason = (server: ListedServer.Type): string =>
     : "The server isn't running yet. It starts again on its own."
 
 /**
- * Where a launch stands: nothing under way, asking whether to start the
- * server, or waiting for the started server to become launchable.
+ * While the server `server`'s start-and-launch is waiting, launch it once its
+ * status is launchable and the webview is online, or end the wait with the
+ * failure once waiting can't help (see `waitOutcomeOf`). The launch's outcome
+ * ends it too, unless it was cancelled meanwhile.
  */
-type LaunchPhase = 'idle' | 'confirmingStart' | 'starting'
+const useDriveStartAndLaunch = (
+  server: ListedServer.Type,
+  online: boolean,
+  pendingLaunches: PendingLaunches,
+  runHostCommand: RunHostCommand
+): void => {
+  // The store's own object, which changes only when the launch does.
+  const pending = Option.getOrUndefined(usePendingLaunch(pendingLaunches, server.domain))
+  const { domain, status } = server
+  useEffect(() => {
+    if (pending?.kind !== 'waiting') return
+    const outcome = waitOutcomeOf(status, pending.stoppedBeforeStart)
+    if (outcome.kind === 'gaveUp') {
+      pendingLaunches.set(domain, Option.some({ kind: 'failed', failure: outcome.failure }))
+      return
+    }
+    if (outcome.kind !== 'launchable' || !online) return
+    pendingLaunches.set(domain, Option.some({ kind: 'launching' }))
+    const settle = (failure: Option.Option<string>): void => {
+      // A wait cancelled while it launched stays cancelled.
+      if (pendingLaunches.snapshotOf(domain)?.kind !== 'launching') return
+      pendingLaunches.set(
+        domain,
+        Option.map(failure, (text) => ({ kind: 'failed', failure: text }))
+      )
+    }
+    void runHostCommand(Effect.either(launchServer({ domain }))).then(
+      (launched) => {
+        settle(
+          Either.match(launched, {
+            onLeft: (error) => Option.some(failureText(error)),
+            onRight: () => Option.none(),
+          })
+        )
+      },
+      (defect: unknown) => {
+        settle(Option.some(`Launching failed: ${String(defect)}`))
+      }
+    )
+  }, [pending, status, online, domain, pendingLaunches, runHostCommand])
+}
 
 /**
  * A server's Launch: opens its launcher through `server_launch`, or says why
@@ -49,8 +80,12 @@ type LaunchPhase = 'idle' | 'confirmingStart' | 'starting'
  * - For a server that isn't running and whose run policy is `off` or an
  *   `until` that has ended, it asks "Start server and launch?". Confirming
  *   sets the policy to `whileOpen` (unless it has become active meanwhile),
- *   then it shows "Starting…", with Cancel, until the server's status (kept
- *   current by `server-status` events) is launchable, and launches it once.
+ *   then it shows "Starting…", with Cancel, over why the server can't be
+ *   launched yet, until the server's status (kept current by `server-status`
+ *   events) is launchable, and launches it once. The wait gives up, showing
+ *   why, once waiting can't help (see `waitOutcomeOf`), and Launch is back.
+ *   The wait is in the router context's `pendingLaunches`, so it carries on
+ *   when Edit opens the server's page, whose Launch shows it too.
  * - For a server that isn't running while its policy still wants it running
  *   (starting, or waiting to start again), it is disabled and says so:
  *   launching never changes an active policy or extends an `until`.
@@ -74,61 +109,76 @@ const LaunchButton = ({
 }): JSX.Element => {
   const reasonId = useId()
   const online = useOnline()
+  const pendingLaunches = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.pendingLaunches,
+  })
   const launch = useLaunchServer(runHostCommand)
   const setRunPolicy = useSetServerRunPolicy(runHostCommand)
-  const [phase, setPhase] = useState<LaunchPhase>('idle')
+  const [confirmingStart, setConfirmingStart] = useState(false)
+  const pending = usePendingLaunch(pendingLaunches, server.domain)
+  useDriveStartAndLaunch(server, online, pendingLaunches, runHostCommand)
   const policyHasEnded = useHasPassed(RunPolicy.deadlineOf(server.runPolicy))
   const policyIsInactive = server.runPolicy.kind === 'off' || policyHasEnded
   const refusal = Option.getOrNull(LaunchError.statusRefusalOf(server.status))
   const { domain } = server
-  const { mutate: launchServer } = launch
 
-  // A started server is launched once, as soon as its status is launchable;
-  // the wait ends when that launch settles.
-  const launchedForStart = useRef(false)
-  useEffect(() => {
-    if (phase !== 'starting' || refusal !== null || !online || launchedForStart.current) return
-    launchedForStart.current = true
-    launchServer(
-      { domain },
-      {
-        onSettled: () => {
-          setPhase('idle')
-        },
-      }
-    )
-  }, [phase, refusal, online, domain, launchServer])
-
+  const starting = Option.exists(pending, ({ kind }) => kind !== 'failed')
+  const waitingReason = pending.pipe(
+    Option.flatMap((launching) => {
+      if (launching.kind !== 'waiting') return Option.none()
+      const outcome = waitOutcomeOf(server.status, launching.stoppedBeforeStart)
+      return outcome.kind === 'waiting' ? Option.some(outcome.reason) : Option.none()
+    })
+  )
   const reason = ((): Option.Option<string> => {
     if (!online) return Option.some(OFFLINE_REASON)
-    if (phase === 'starting' || refusal === null) return Option.none()
+    if (starting) return waitingReason
+    if (refusal === null) return Option.none()
     if (refusal !== 'serverNotRunning') return Option.some(REFUSAL_REASON[refusal])
     return policyIsInactive ? Option.none() : Option.some(notRunningReason(server))
   })()
   const onLaunch = (): void => {
     // A new attempt clears the previous one's failure.
     setRunPolicy.reset()
+    pendingLaunches.set(domain, Option.none())
     if (refusal === 'serverNotRunning') {
-      setPhase('confirmingStart')
+      setConfirmingStart(true)
       return
     }
     launch.mutate({ domain })
   }
   const waitForStart = (): void => {
     launch.reset()
-    launchedForStart.current = false
-    setPhase('starting')
+    setConfirmingStart(false)
+    pendingLaunches.set(
+      domain,
+      Option.some({
+        kind: 'waiting',
+        stoppedBeforeStart: ServerStatus.lastStopOf(server.status).pipe(
+          Option.map((stop) => stop.stoppedAt)
+        ),
+      })
+    )
   }
-  const error = launch.error ?? setRunPolicy.error
+  const pendingFailure = pending.pipe(
+    Option.flatMap((launching) =>
+      launching.kind === 'failed' ? Option.some(launching.failure) : Option.none()
+    )
+  )
+  const mutationError = launch.error ?? setRunPolicy.error
+  const error =
+    mutationError === null ? Option.getOrNull(pendingFailure) : failureText(mutationError)
   return (
     <div className={cn(styles['launch-button'], className)}>
       <div className={styles['launch-button__buttons']}>
-        {phase === 'starting' ? (
+        {starting ? (
           <>
             <button
               type="button"
               className={`button-2 filled ${styles['launch-button__launch']}`}
               disabled
+              aria-describedby={reason.pipe(Option.as(reasonId), Option.getOrUndefined)}
             >
               Starting…
             </button>
@@ -136,7 +186,7 @@ const LaunchButton = ({
               type="button"
               className="button-2 outline"
               onClick={() => {
-                setPhase('idle')
+                pendingLaunches.set(domain, Option.none())
               }}
             >
               Cancel
@@ -166,9 +216,9 @@ const LaunchButton = ({
         )),
         Option.getOrNull
       )}
-      <ErrorBanner error={error === null ? null : failureText(error)} />
+      <ErrorBanner error={error} />
       <ConfirmDialog
-        open={phase === 'confirmingStart'}
+        open={confirmingStart}
         title="Start server and launch?"
         confirmLabel="Start and launch"
         pending={setRunPolicy.isPending}
@@ -184,16 +234,13 @@ const LaunchButton = ({
             {
               onSuccess: waitForStart,
               onError: () => {
-                setPhase('idle')
+                setConfirmingStart(false)
               },
             }
           )
         }}
         onCancel={() => {
-          // The dialog reports its own closing as a cancel too, as when a
-          // confirmed start moves on to `starting`: only a pending question
-          // is cancelled.
-          setPhase((current) => (current === 'confirmingStart' ? 'idle' : current))
+          setConfirmingStart(false)
         }}
       >
         {domain} isn't running. Starting it runs it while Wildflower is open; it launches once it

@@ -1120,6 +1120,202 @@ describe('Launch', () => {
     expect(launchesSeen(host)).toEqual([])
   })
 
+  /** Confirm Start and launch on the server `domain`'s card, and wait for Starting…. */
+  const startAndLaunch = async (
+    user: ReturnType<typeof userEvent.setup>,
+    domain: string
+  ): Promise<void> => {
+    await screen.findByRole('listitem', { name: domain })
+    await user.click(launchOn(domain))
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Start and launch' }))
+    await within(serverRow(domain)).findByRole('button', { name: 'Starting…' })
+  }
+
+  /** Lab's status, as the golden `name` status of ruth's. */
+  const labStatus = (
+    name: keyof typeof golden.serverStatuses,
+    changes: Readonly<Record<string, unknown>> = {}
+  ): Readonly<Record<string, unknown>> => ({
+    ...golden.serverStatuses[name],
+    domain: LAB,
+    ...changes,
+  })
+
+  it.each([
+    ['starting', labStatus('startingUnchecked'), 'The server is starting.'],
+    [
+      'running, not yet reached',
+      labStatus('runningRenewalFailed'),
+      "The server hasn't been reached through its relay yet.",
+    ],
+    [
+      'running, unreachable, still getting a certificate',
+      labStatus('runningUnreachable', {
+        certificate: golden.serverStatuses.runningCacheFailed.certificate,
+      }),
+      "The server can't be reached through its relay: the relay answered 502",
+    ],
+    [
+      'running, reachable, still getting a certificate',
+      labStatus('runningAndReachable', {
+        certificate: golden.serverStatuses.runningCacheFailed.certificate,
+      }),
+      'The server has no valid certificate yet.',
+    ],
+    [
+      'stopped with the error it had before the start',
+      labStatus('stoppedWithAnError'),
+      "The server hasn't started yet.",
+    ],
+    [
+      'stopped to start again',
+      labStatus('stoppedAsItsPolicyEnded', {
+        lastStop: { reason: 'stoppedForRestart', stoppedAt: '2026-10-06T18:00:00Z' },
+      }),
+      'It stopped to start again.',
+    ],
+  ] as const)(
+    "should say why a started server that is %s isn't launched yet, under Starting…",
+    async (_state, status, reason) => {
+      // Arrange
+      const user = userEvent.setup()
+      const { host, events } = renderLaunching({
+        answers: {
+          server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+          server_launch: () => Promise.resolve(null),
+        },
+      })
+      await startAndLaunch(user, LAB)
+
+      // Act
+      events.emit('server-status', status)
+
+      // Assert
+      const starting = await within(serverRow(LAB)).findByRole('button', { name: 'Starting…' })
+      await waitFor(() => {
+        expect(starting.getAttribute('aria-describedby')).not.toBeNull()
+      })
+      const describedBy = document.getElementById(starting.getAttribute('aria-describedby') ?? '')
+      expect(describedBy?.textContent).toBe(reason)
+      expect(within(serverRow(LAB)).getByRole('button', { name: 'Cancel' })).toBeDefined()
+      expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+      expect(launchesSeen(host)).toEqual([])
+    }
+  )
+
+  it.each([
+    [
+      'its run stops with an error',
+      labStatus('stoppedWithAnError', {
+        lastStop: {
+          reason: 'endedOnItsOwn',
+          error: 'the address is in use',
+          stoppedAt: '2026-10-06T18:00:00Z',
+        },
+      }),
+      'The server stopped with an error: the address is in use',
+    ],
+    [
+      'its certificate order is failing',
+      labStatus('startingCaUnreachable'),
+      "Ordering the server's certificate is failing.",
+    ],
+    [
+      'it is unreachable with a valid certificate',
+      labStatus('runningUnreachable', {
+        certificate: golden.serverStatuses.runningAndReachable.certificate,
+      }),
+      "The server can't be reached through its relay: the relay answered 502",
+    ],
+    [
+      "its certificate is one browsers don't trust",
+      labStatus('runningAndReachableOnStaging'),
+      "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
+    ],
+  ] as const)('should stop waiting, saying why, once %s', async (_cause, status, failure) => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host, events } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await startAndLaunch(user, LAB)
+
+    // Act
+    events.emit('server-status', status)
+
+    // Assert
+    const banner = await within(serverRow(LAB)).findByRole('alert')
+    expect(banner.textContent).toContain(failure)
+    expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+    expect(within(serverRow(LAB)).getByRole('button', { name: 'Launch' })).toBeDefined()
+    events.emit('server-status', launchableStatus(LAB))
+    await waitFor(() => {
+      expect(launchOn(LAB).disabled).toBe(false)
+    })
+    expect(launchesSeen(host)).toEqual([])
+  })
+
+  it("should show the host's refusal of a started server's launch, and Launch again", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host, events } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+        server_launch: () => Promise.reject(golden.launchErrors[3]),
+      },
+    })
+    await startAndLaunch(user, LAB)
+
+    // Act
+    events.emit('server-status', launchableStatus(LAB))
+
+    // Assert
+    const banner = await within(serverRow(LAB)).findByRole('alert')
+    expect(banner.textContent).toContain(golden.launchErrors[3].message)
+    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
+    expect(launchOn(LAB).disabled).toBe(false)
+
+    // Act
+    await user.click(launchOn(LAB))
+
+    // Assert
+    await waitFor(() => {
+      expect(launchesSeen(host)).toHaveLength(2)
+    })
+  })
+
+  it("should keep waiting on the server's page once Edit opens it, and launch from there", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host, events } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await startAndLaunch(user, LAB)
+
+    // Act
+    await user.click(within(serverRow(LAB)).getByRole('link', { name: 'Edit' }))
+
+    // Assert
+    const hero = await screen.findByRole('region', { name: 'Status' })
+    expect(within(hero).getByRole('button', { name: 'Starting…' })).toBeDefined()
+    expect(launchesSeen(host)).toEqual([])
+
+    // Act
+    events.emit('server-status', launchableStatus(LAB))
+
+    // Assert
+    await waitFor(() => {
+      expect(within(hero).queryByRole('button', { name: 'Starting…' })).toBeNull()
+    })
+    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
+  })
+
   it("should launch from the server page's status", async () => {
     // Arrange
     const user = userEvent.setup()

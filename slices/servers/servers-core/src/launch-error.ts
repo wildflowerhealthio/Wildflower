@@ -31,10 +31,26 @@ const VALID_CERTIFICATE_STATUSES: readonly CertificateState.Status[] = [
 ]
 
 /**
+ * Why a running, reachable server whose certificate's state is `certificate`
+ * can't be launched, as `server_launch` refuses it; none when the certificate
+ * is valid and from a CA browsers trust.
+ */
+const certificateRefusalOf = (
+  certificate: CertificateState.Type
+): Option.Option<Extract<StatusRefusalKind, 'noValidCertificate' | 'untrustedCertificate'>> => {
+  if (!VALID_CERTIFICATE_STATUSES.includes(certificate.status)) {
+    return Option.some('noValidCertificate')
+  }
+  return CertificateAuthority.isBrowserTrusted(certificate.issuer)
+    ? Option.none()
+    : Option.some('untrustedCertificate')
+}
+
+/**
  * Why the server whose status is `status` can't be launched now, as
  * `server_launch` refuses it; none once it can: its run is up, its `/health`
  * answered through its relay, and its certificate is valid and from a CA
- * browsers trust.
+ * browsers trust ({@link certificateRefusalOf}).
  *
  * @remarks
  * The host decides from the same status, its certificate included: the
@@ -46,13 +62,8 @@ const statusRefusalOf = (status: ServerStatus.Type): Option.Option<StatusRefusal
   if (status.runState !== 'running') return Option.some('serverNotRunning')
   if (Option.isNone(status.health)) return Option.some('notYetProbed')
   if (status.health.value.kind === 'unreachable') return Option.some('unreachable')
-  if (!VALID_CERTIFICATE_STATUSES.includes(status.certificate.status)) {
-    return Option.some('noValidCertificate')
-  }
-  return CertificateAuthority.isBrowserTrusted(status.certificate.issuer)
-    ? Option.none()
-    : Option.some('untrustedCertificate')
+  return certificateRefusalOf(status.certificate)
 }
 
-export { StatusRefusalKindSchema, statusRefusalOf }
+export { certificateRefusalOf, StatusRefusalKindSchema, statusRefusalOf }
 export type { StatusRefusalKind }

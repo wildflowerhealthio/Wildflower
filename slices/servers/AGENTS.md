@@ -71,8 +71,9 @@ changing how servers run or what the host notifies about them.
   `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
   `ConsentApproval`, `ApprovalOutcome`, `EnteredRelay`, `server_add`'s
   relay, each a `Schema` and its `Type` with getters; and `LaunchError`'s
-  `statusRefusalOf`, the refusal `server_launch` answers from a status, held
-  to the host's by the golden file. A refused
+  `statusRefusalOf`, the refusal `server_launch` answers from a status, with
+  `certificateRefusalOf`, its certificate's part, held to the host's by the
+  golden file. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. Besides the host, `readServerHealth` reads a server's
   `/health` at its public origin, an Effect over `@effect/platform`'s
@@ -128,9 +129,18 @@ changing how servers run or what the host notifies about them.
   no valid certificate, a certificate browsers don't trust), and for a server that isn't running while its run
   policy still wants it running. For a server that isn't running whose
   policy is `off` or an ended `until`, it asks "Start server and launch?";
-  confirming sets `whileOpen`, then it shows "Starting…", with Cancel, until
-  the server's status is launchable, and launches it once. Launching never
-  changes an active policy or extends an `until`. While the webview is
+  confirming sets `whileOpen`, then it shows "Starting…", with Cancel, over
+  why the server can't be launched yet (starting, not yet reached,
+  unreachable with the host's reason, no valid certificate, or how its run
+  stopped since), until the server's status is launchable, and launches it
+  once. The wait gives up, showing why, with Launch back, once waiting can't
+  help: the server's run stopped with an error since the start, its
+  certificate order is failing, its certificate is one browsers don't trust,
+  or it is unreachable while its certificate is valid. The wait is the
+  router context's `pendingLaunches`, a store keyed by domain, rather than
+  the button's own state, so it carries on when Edit opens the server's
+  page, whose Launch shows the same wait. Launching never changes an active
+  policy or extends an `until`. While the webview is
   offline, the list says that launching needs a connection; the host
   commands themselves need none, so the base's query client runs them
   offline too (`networkMode: 'always'`).
