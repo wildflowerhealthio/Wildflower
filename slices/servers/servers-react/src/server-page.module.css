@@ -1,3 +1,84 @@
+/* The status hero: a card, as the list's server card is. */
+.server-page__hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+  padding: var(--space-7) var(--space-9);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+  background: var(--card-color-background);
+  box-shadow: var(--card-box-shadow);
+}
+
+.server-page__domain-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+/*
+ * A domain is a machine string, so it is set in mono; it wraps anywhere
+ * rather than being cut short, as this is where it is read and copied whole.
+ */
+.server-page__domain {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-3);
+  color: var(--color-neutral-1);
+}
+
+.server-page__status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.server-page__note {
+  margin: 0;
+  color: var(--color-neutral-3);
+}
+
+/* A form under a list: its field, its error and its buttons, stacked. */
+.server-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.server-page__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.server-page__form-action {
+  align-self: flex-start;
+}
+
+.server-page__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The eyebrow an `ItemList`'s title is, for a section that isn't a list. */
+.server-page__section-title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+}
+
 .server-page__remove {
   align-self: flex-start;
 }

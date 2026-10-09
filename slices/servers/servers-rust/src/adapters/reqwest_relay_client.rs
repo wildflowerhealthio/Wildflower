@@ -171,6 +171,7 @@ mod tests {
     use wildflower_relay::{Secret, ServedTunnels, Site, Tunnel, Verifier};
 
     use super::*;
+    use crate::domain::fixtures::launcher_url;
     use crate::domain::{add_server, EnteredRelay, RegistryError};
     use crate::{JsonServerRegistry, ServerRecord, ServerRegistry};
 
@@ -419,6 +420,7 @@ mod tests {
             relay.relay(),
             ruth(),
             TunnelToken::new(TOKEN),
+            launcher_url(),
             |relay_base| Ok(relay.client_at(relay_base)),
             chrono::Utc::now(),
         )
@@ -427,7 +429,7 @@ mod tests {
 
         assert_eq!(record.domain(), format!("ruth.{RELAY_DOMAIN}"));
         assert_eq!(record.public_settings, served_settings());
-        assert_eq!(record.launcher_url, ServerRecord::default_launcher_url());
+        assert_eq!(record.launcher_url, launcher_url());
         assert_eq!(
             record.certificate_authority,
             ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY
@@ -439,6 +441,7 @@ mod tests {
                 relay.relay(),
                 ruth(),
                 TunnelToken::new(TOKEN),
+                launcher_url(),
                 |relay_base| Ok(relay.client_at(relay_base)),
                 chrono::Utc::now(),
             )
@@ -474,6 +477,7 @@ mod tests {
                     },
                     ruth(),
                     TunnelToken::new(token),
+                    launcher_url(),
                     |relay_base| Ok(relay.client_at(relay_base)),
                     chrono::Utc::now(),
                 )

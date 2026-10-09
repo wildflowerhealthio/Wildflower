@@ -54,8 +54,8 @@ changing how servers run or what the host notifies about them.
   push, tested here against a real `TauriUnitRunner`.
 - **`servers-core`** — the host commands the base calls, as Effects over the
   `TauriInvoke` port (`invokeHostCommand`), each answer decoded by an Effect
-  Schema: the server commands (`listServers`, `setServerRunPolicy`,
-  `updateServer`, `removeServer`), the background session's recovery
+  Schema: the server commands (`listServers`, `setServerCredentials`,
+  `setServerRunPolicy`, `updateServer`, `removeServer`), the background session's recovery
   (`enableBackgroundSessionRecovery`), the app's version and the notification
   permission, and the consent commands (`listPendingConsents`, `readConsent`,
   `approveConsent`, `denyConsent`); and the wire's namespaces, `ListedServer`,
@@ -65,23 +65,40 @@ changing how servers run or what the host notifies about them.
   `ConsentApproval` and `ApprovalOutcome`, each a `Schema` and its `Type`
   with getters. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
-  `{kind, message}`. No DOM, no React, no `@tauri-apps/api`.
+  `{kind, message}`. Besides the host, `readServerHealth` reads a server's
+  `/health` at its public origin, an Effect over `@effect/platform`'s
+  `HttpClient` decoded as a `HealthReport`. No DOM, no React, no
+  `@tauri-apps/api`.
 - **`servers-react`** — `BaseRoot`, which `apps/wildflower-tauri/src/main.tsx`
   mounts with `@tauri-apps/api/core`'s `invoke`, `@tauri-apps/api/event`'s
-  `listen` and the background service's start config: the base's telemetry
+  `listen`, and the background service's start config and the default
+  launcher from `tauri-shared-config.json`: the base's telemetry
   consent gate, then the background session's recovery and its router over
   `routes/`, `/` the server list, `/servers/$domain` a server's page and
   `/settings` Host Settings, for the app on this device rather than any one
   server (Notifications, Telemetry, About). The server list is a card per
   server, kept current by the `server-status` event: its domain and a status
-  dot merged from its run state and health; a run-policy field that says when
-  it runs, outlined in the dot's tone, over a native picker that changes it at
-  once, putting the previous policy back if the host refuses (the refusal
-  shows above the list); why its latest run stopped; Launch; and Edit, which
-  opens the server's page: its relay, tunnel name, launcher and certificates,
-  read-only, and its removal behind a confirm. With no servers it says what a
-  server is, beside Add server. Launch does nothing and Add server is disabled
-  until the base launches apps and adds servers. While the
+  dot merged from its run state and health; a run-policy field
+  (`RunPolicyPicker`) that says when it runs, outlined in the dot's tone, over
+  a native picker that changes it at once, putting the previous policy back
+  if the host refuses (the refusal shows under the field); why its latest run
+  stopped; Launch; and Edit, which opens the server's page, kept current by
+  the `server-status` event too: its domain with Copy, its status badge, when
+  its run started and the run-policy field; its relay and tunnel name, the
+  host's last check of its connection or how its latest run stopped, and
+  while it runs its `/health` report with each check, read by the webview
+  itself, with Refresh; a new tunnel token (`server_set_credentials`), in a
+  password field that starts empty; its launcher, with Reset to the default
+  launcher; its certificate's state (its `certificate`): the status in words,
+  shown as a failure only for `orderFailing` and `cacheUnreadable`, the
+  certificate authority the server orders from (the record's, which Save
+  launcher saves unchanged), and the one the state is for (its `issuer`) when
+  that differs, the held certificate's validity and SHA-256 fingerprint, and
+  the latest error, described by its kind, a rate limit's retry time saying
+  so once it has passed (one timer, set for it); and its removal, behind a
+  confirm that asks for the domain to be typed. With no servers it says what
+  a server is, beside Add server. Launch does nothing and Add server is
+  disabled until the base launches apps and adds servers. While the
   webview is offline (`navigator.onLine`), the list says that launching needs
   a connection; the host commands themselves need none, so the base's query
   client runs them offline too (`networkMode: 'always'`).
@@ -142,8 +159,15 @@ changing how servers run or what the host notifies about them.
   `GET /rathole` returned, or that were entered for a rathole relay.
   `RelayKind::SelfHostedWildflower` holds only the relay's `base_url`, and `RelayKind::Rathole`
   nothing.
-- **A new server launches from `ServerRecord::DEFAULT_LAUNCHER_URL`**,
-  `https://wildflowerhealth.io/app`.
+- **A new server launches from the hosted owner UI**, the release
+  `owner_ui_base_url` in `apps/wildflower-tauri/tauri-shared-config.json`, in
+  every build: a debug build's own owner UI links go to the dev server, but
+  its new servers still launch from the published UI. The host reads it at
+  compile time and `add_server` gives it to each server it adds
+  (`ServersState`, from `host_servers`); the app hands the same value to
+  `BaseRoot` (`defaultLauncherUrl`), so the server page offers Reset to
+  default only while the saved launcher differs from it, compared as parsed
+  URLs, and saves it through `server_update`.
 - **The token is a secret.** `TunnelToken`'s `Debug` and `Serialize` write
   `<redacted>`, and it has no `Deserialize`. `JsonServerRegistry`'s own file
   representation is the only place the token is written in full, and the file
@@ -388,6 +412,17 @@ lastError?: {kind, …}}`.
   `apps/wildflower-tauri/src-tauri/capabilities/default.json`; the server
   commands through the app-defined `allow-server-enrolment`,
   `allow-server-consents` and `allow-server-management` permissions.
+- **The server page reads `/health` itself.** While a server runs, its page
+  reads `https://<domain>/health` with `servers-core`'s `readServerHealth`,
+  through the router context's `runHttpRequest` (`FetchHttpClient.layer` in
+  the app; a stub layer `BaseRoot` takes as `httpClient` in tests). It is
+  public and its tunnel listener answers with CORS outermost, so an answer
+  shows the whole path, webview to relay to tunnel to server, working. `200`
+  and `503` both carry the report; any other status is an error the page
+  shows. It is read once per run, keyed by the server's domain and
+  `runningSince`, so a new run reads it again; nothing polls, and Refresh
+  reads it on request. The host's own `health` in `server-status` stays the
+  status the card and badge show.
 - **The base enables the background session's recovery.** Once its consent is
   answered, `BaseRoot` calls the background-service plugin's
   `configure_recovery` with the start config the app passes, read from

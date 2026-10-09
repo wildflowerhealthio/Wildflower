@@ -1,11 +1,9 @@
 /*
- * The card's status tone, set by `data-tone` on the card: the dot's colour
- * and the run-policy field's border. A neutral (stopped) card keeps the
- * input's own border.
+ * The card's status tone, set by `data-tone` on the card: the dot's colour.
+ * Its run-policy field takes the same tone from `RunPolicyPicker`.
  */
 .server-card {
   --server-card-dot: var(--color-neutral-5);
-  --server-card-field-border: var(--element-color-border);
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
@@ -19,22 +17,18 @@
 
 .server-card[data-tone='info'] {
   --server-card-dot: var(--color-blue-5);
-  --server-card-field-border: var(--color-blue-7);
 }
 
 .server-card[data-tone='success'] {
   --server-card-dot: var(--color-success);
-  --server-card-field-border: var(--color-success-border);
 }
 
 .server-card[data-tone='warning'] {
   --server-card-dot: var(--color-warning);
-  --server-card-field-border: var(--color-warning-border);
 }
 
 .server-card[data-tone='danger'] {
   --server-card-dot: var(--color-red-5);
-  --server-card-field-border: var(--color-red-7);
 }
 
 .server-card__title {
@@ -93,68 +87,6 @@
   .server-card[data-tone='success'] .server-card__dot {
     animation: none;
   }
-}
-
-/*
- * The run-policy field reads as the card's status line; the native picker
- * stretched invisibly over it opens the platform's own menu, wheel or sheet.
- */
-.server-card__run-policy {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: var(--space-12);
-  padding-inline: var(--space-5) var(--space-6);
-  border: var(--element-border-width) solid var(--server-card-field-border);
-  border-radius: var(--radius-2);
-  background: var(--input-color-background);
-  color: var(--color-neutral-1);
-  cursor: pointer;
-  transition: border-color 0.6s ease;
-}
-
-.server-card__run-policy:hover {
-  border-color: var(--color-neutral-5);
-}
-
-.server-card__run-policy:focus-within {
-  outline: var(--element-border-width) solid var(--color-accent);
-  outline-offset: var(--space-1);
-}
-
-.server-card__run-policy-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--font-size-2);
-  font-weight: var(--font-weight-3);
-  line-height: var(--line-height-3);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.server-card__chevron {
-  flex: none;
-  width: var(--space-3);
-  height: var(--space-3);
-  margin: calc(-1 * var(--space-2)) 0 0 var(--space-2);
-  border-right: var(--space-1) solid currentColor;
-  border-bottom: var(--space-1) solid currentColor;
-  transform: rotate(45deg);
-}
-
-/* 16px keeps iOS from zooming in when the picker takes focus. */
-.server-card__picker {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  font-size: var(--font-size-4);
-  cursor: pointer;
 }
 
 .server-card__last-stop {

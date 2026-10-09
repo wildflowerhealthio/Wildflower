@@ -1,6 +1,7 @@
 import { Option, Schema } from 'effect'
 
 import * as CertificateState from './certificate-state.ts'
+import * as HealthReport from './health-report.ts'
 
 /** Why a server's run stopped: `UnitRunner`'s stop reason. */
 const StopReasonSchema = Schema.Literal(
@@ -54,7 +55,7 @@ type RunStop = typeof RunStopSchema.Type
 const HealthSchema = Schema.Union(
   Schema.Struct({
     kind: Schema.Literal('reachable'),
-    status: Schema.Literal('pass', 'warn', 'fail'),
+    status: HealthReport.StatusSchema,
   }),
   Schema.Struct({ kind: Schema.Literal('unreachable'), error: Schema.String })
 )

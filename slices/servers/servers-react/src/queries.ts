@@ -1,3 +1,4 @@
+import type { HttpClientError } from '@effect/platform'
 import {
   type QueryClient,
   queryOptions,
@@ -6,24 +7,29 @@ import {
   type UseMutationResult,
   type UseQueryOptions,
 } from '@tanstack/react-query'
-import { DateTime, Effect, Either, Option, Schema } from 'effect'
+import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
 import { useEffect } from 'react'
 import {
+  type CertificateAuthority,
+  type HealthReport,
   type HostCommandError,
   ListedServer,
   listServers,
   type NotificationPermission,
   readAppVersion,
   readNotificationPermission,
+  readServerHealth,
   removeServer,
   requestNotificationPermission,
   RunPolicy,
   RunPolicyChoice,
   ServerStatus,
+  setServerCredentials,
   setServerRunPolicy,
+  updateServer,
 } from 'servers-core'
 
-import type { ListenToHostEvent, RunHostCommand } from './router-context.ts'
+import type { ListenToHostEvent, RunHostCommand, RunHttpRequest } from './router-context.ts'
 
 const NOTIFICATION_PERMISSION_QUERY_KEY = ['servers', 'notification-permission'] as const
 
@@ -218,6 +224,50 @@ const useSetServerRunPolicy = (
 }
 
 /**
+ * Replaces the token a server's tunnel signs in to its relay with.
+ *
+ * @remarks
+ * Nothing is written to the cache: the host starts the server's run again
+ * with the new token, and its status comes as `server-status` events.
+ */
+const useSetServerCredentials = (
+  runHostCommand: RunHostCommand
+): UseMutationResult<null, HostCommandError, { readonly domain: string; readonly token: string }> =>
+  useMutation({
+    mutationFn: (credentials) => runHostCommand(setServerCredentials(credentials)),
+  })
+
+/** `servers` with the server `domain`'s launcher set to `launcherUrl`. */
+const withLauncherUrl =
+  (domain: string, launcherUrl: string) =>
+  (servers: readonly ListedServer.Type[]): readonly ListedServer.Type[] =>
+    servers.map((server) => (server.domain === domain ? { ...server, launcherUrl } : server))
+
+/**
+ * Sets the launcher a server opens apps from, keeping the ACME CA it is
+ * given, and once the host has stored it, writes it into the cached server
+ * list.
+ */
+const useUpdateLauncher = (
+  runHostCommand: RunHostCommand
+): UseMutationResult<
+  null,
+  HostCommandError,
+  {
+    readonly domain: string
+    readonly launcherUrl: string
+    readonly certificateAuthority: CertificateAuthority.Type
+  }
+> => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (update) => runHostCommand(updateServer(update)),
+    onSuccess: (_answer, { domain, launcherUrl }) =>
+      updateCachedServers(queryClient, withLauncherUrl(domain, launcherUrl)),
+  })
+}
+
+/**
  * Removes a server, then reads the server list again, whether or not it was
  * removed.
  *
@@ -239,6 +289,41 @@ const useRemoveServer = (
     onSettled: () => queryClient.invalidateQueries({ queryKey: SERVERS_QUERY_KEY }),
   })
 }
+
+/** Either way reading a server's `/health` can fail. */
+type ServerHealthError = HttpClientError.HttpClientError | ParseResult.ParseError
+
+/** The key of a server's `/health` report, read during the run that started at `runningSince`. */
+const serverHealthQueryKey = (
+  domain: string,
+  runningSince: DateTime.Utc
+): readonly ['servers', 'health', string, string] =>
+  ['servers', 'health', domain, DateTime.formatIso(runningSince)] as const
+
+/**
+ * The server `domain`'s `/health` report, read by the webview through the
+ * relay and the tunnel, once for the run that started at `runningSince`.
+ *
+ * @remarks
+ * A new run is a new key, so it is read afresh; nothing polls, and a
+ * failure isn't retried: the page reads it again on request. The caller
+ * enables it only while the server runs.
+ */
+const serverHealthQueryOptions = (
+  runHttpRequest: RunHttpRequest,
+  domain: string,
+  runningSince: DateTime.Utc
+): UseQueryOptions<
+  HealthReport.Type,
+  ServerHealthError,
+  HealthReport.Type,
+  ReturnType<typeof serverHealthQueryKey>
+> =>
+  queryOptions({
+    queryKey: serverHealthQueryKey(domain, runningSince),
+    queryFn: () => runHttpRequest(readServerHealth(domain)),
+    retry: false,
+  })
 
 /** Whether the OS lets the app post notifications, read without asking. */
 const notificationPermissionQueryOptions = (
@@ -283,9 +368,13 @@ const useRequestNotificationPermission = (
 export {
   appVersionQueryOptions,
   notificationPermissionQueryOptions,
+  serverHealthQueryOptions,
   serversQueryOptions,
   useRemoveServer,
   useRequestNotificationPermission,
   useServerStatusEvents,
+  useSetServerCredentials,
   useSetServerRunPolicy,
+  useUpdateLauncher,
 }
+export type { ServerHealthError }

@@ -215,6 +215,7 @@ async fn add<S: RelayClient>(
             relay,
             tunnel_name,
             token,
+            servers.default_launcher_url.clone(),
             relay_client,
             chrono::Utc::now(),
         )
@@ -521,6 +522,7 @@ mod tests {
         let servers = ServersState::new(
             Arc::new(JsonServerRegistry::in_data_root(data_root.path())),
             data_root.path().to_path_buf(),
+            Url::parse("https://launcher.example.com/app").unwrap(),
             server_units,
         );
         (data_root, servers)
@@ -655,6 +657,10 @@ mod tests {
         let registered = servers.registry.read_all().unwrap();
         assert_eq!(registered.len(), 1);
         assert_eq!(registered[0].token.expose(), TOKEN);
+        assert_eq!(
+            registered[0].launcher_url, servers.default_launcher_url,
+            "a new server gets the app's default launcher"
+        );
     }
 
     /// The server a command wrote is set on `TauriUnitRunner`, under its
