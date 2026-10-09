@@ -31,8 +31,8 @@
 //!   or with the error `servers.json` couldn't be read with.
 //! - [`server_add`], invoked as
 //!   `invoke('server_add', { relay, tunnelName, token })`, enrols a tunnel at
-//!   a relay and registers the server (see [`servers_rust::add_server`]),
-//!   answering with the server's domain.
+//!   a relay and registers the server with the app's default launcher (see
+//!   [`servers_rust::add_server`]), answering with the server's domain.
 //! - [`server_set_credentials`], invoked as
 //!   `invoke('server_set_credentials', { domain, token })`, replaces a
 //!   registered server's token, checked with its relay the same way, or
@@ -92,6 +92,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_log::log;
 use tauri_unit_runner::TauriUnitRunner;
 use tokio::sync::{mpsc, Mutex};
+use url::Url;
 use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
 
 pub use commands::{
@@ -115,12 +116,15 @@ pub(crate) const BASE_WEBVIEW_LABEL: &str = "main";
 pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
 
 /// What the servers commands work through: the install's registry and the
-/// data root its servers' folders are in, `TauriUnitRunner`'s server units,
-/// and the lock that orders each registry write with its push.
+/// data root its servers' folders are in, the launcher a new server gets,
+/// `TauriUnitRunner`'s server units, and the lock that orders each registry
+/// write with its push.
 pub struct ServersState {
     pub(crate) registry: Arc<dyn ServerRegistry>,
     /// The directory holding `servers.json` and each server's folder.
     pub(crate) data_root: PathBuf,
+    /// The launcher [`server_add`] gives a new server.
+    pub(crate) default_launcher_url: Url,
     pub(crate) server_units: ServerUnits,
     /// Held by a command from before its registry write until after it has
     /// pushed the result, so pushes reach `TauriUnitRunner` in the order the
@@ -130,16 +134,19 @@ pub struct ServersState {
 
 impl ServersState {
     /// The commands' state over `registry`, whose servers' folders are in
-    /// `data_root`, pushing to `server_units`.
+    /// `data_root`, giving a new server `default_launcher_url` and pushing to
+    /// `server_units`.
     #[must_use]
     pub fn new(
         registry: Arc<dyn ServerRegistry>,
         data_root: PathBuf,
+        default_launcher_url: Url,
         server_units: ServerUnits,
     ) -> Self {
         Self {
             registry,
             data_root,
+            default_launcher_url,
             server_units,
             registry_writes: Mutex::new(()),
         }
@@ -151,13 +158,15 @@ impl ServersState {
 /// [crate docs](crate).
 ///
 /// `data_root` is the directory the host already resolved and created in
-/// `setup()`, holding `servers.json`. Each run of a server reads the config
+/// `setup()`, holding `servers.json`. `default_launcher_url` is the launcher
+/// [`server_add`] gives a new server. Each run of a server reads the config
 /// `server_config` builds from its record, and uses the host's `host_ports`,
 /// which every run of every server shares. Call once per app lifecycle, from
 /// `setup()`.
 pub fn host_servers(
     app: &AppHandle,
     data_root: &Path,
+    default_launcher_url: Url,
     runner: &TauriUnitRunner<ServerDetail>,
     host_ports: HostPorts,
     server_config: impl Fn(&ServerRecord) -> anyhow::Result<WildflowerServerConfig>
@@ -209,6 +218,7 @@ pub fn host_servers(
     app.manage(ServersState::new(
         registry,
         data_root.to_path_buf(),
+        default_launcher_url,
         server_units,
     ));
 }

@@ -106,6 +106,7 @@ mod tests {
     use wildflower_server_rust::CertificateStatus;
 
     use super::*;
+    use crate::domain::fixtures::launcher_url;
     use crate::domain::server_status::tests::{
         golden, issued_certificate, running_and_reachable, stopped_with_an_error, LAB, RUTH,
     };
@@ -147,7 +148,7 @@ mod tests {
                 public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
                 domain: relay_domain.to_owned(),
             },
-            launcher_url: ServerRecord::default_launcher_url(),
+            launcher_url: launcher_url(),
             certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::Off,
         }

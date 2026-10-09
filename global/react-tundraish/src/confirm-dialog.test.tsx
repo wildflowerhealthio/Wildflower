@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
+import { useState, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ConfirmDialog } from './confirm-dialog.tsx'
@@ -120,6 +121,86 @@ describe('ConfirmDialog', () => {
       { numRuns: numRunsFor({ base: 50 }) }
     )
   })
+
+  it('should hold confirm until exactly the confirm text is typed', () => {
+    // Arrange
+    const onConfirm = vi.fn()
+    renderConfirm({ confirmText: 'ruth.relay.example.com', onConfirm })
+    const confirm = screen.getByRole('button', { name: 'Revoke' })
+    const field = screen.getByLabelText('Type ruth.relay.example.com to confirm')
+
+    // Assert
+    expect(confirm).toHaveProperty('disabled', true)
+
+    // Act
+    fireEvent.change(field, { target: { value: 'RUTH.relay.example.com' } })
+    fireEvent.click(confirm)
+
+    // Assert
+    expect(confirm).toHaveProperty('disabled', true)
+    expect(onConfirm).not.toHaveBeenCalled()
+
+    // Act
+    fireEvent.change(field, { target: { value: 'ruth.relay.example.com' } })
+    fireEvent.click(confirm)
+
+    // Assert
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('should hold confirm while pending even once the confirm text is typed', () => {
+    // Arrange
+    renderConfirm({ confirmText: 'lab', pending: true })
+
+    // Act
+    fireEvent.change(screen.getByLabelText('Type lab to confirm'), { target: { value: 'lab' } })
+
+    // Assert
+    expect(screen.getByRole('button', { name: 'Revoke' })).toHaveProperty('disabled', true)
+  })
+
+  it('should enable confirm for typed text exactly when it equals the confirm text', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }), fc.string(), (confirmText, typed) => {
+        // Arrange
+        renderConfirm({ confirmText })
+
+        // Act
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: typed } })
+
+        // Assert
+        expect(screen.getByRole('button', { name: 'Revoke' })).toHaveProperty(
+          'disabled',
+          typed !== confirmText
+        )
+        cleanup()
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('should ask for the confirm text again each time it opens', () => {
+    // Arrange
+    render(<ReopenableConfirm confirmText="lab" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    fireEvent.change(screen.getByLabelText('Type lab to confirm'), { target: { value: 'lab' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+
+    // Assert
+    expect(screen.getByLabelText('Type lab to confirm')).toHaveProperty('value', '')
+    expect(screen.getByRole('button', { name: 'Revoke' })).toHaveProperty('disabled', true)
+  })
+
+  it('should ask for no text without a confirm text', () => {
+    // Arrange + Act
+    renderConfirm({})
+
+    // Assert
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
 })
 
 // Helpers
@@ -137,6 +218,7 @@ const restoreOrDelete = (
 
 interface ConfirmOverrides {
   readonly confirmLabel?: string
+  readonly confirmText?: string
   readonly destructive?: boolean
   readonly pending?: boolean
   readonly onConfirm?: () => void
@@ -146,6 +228,7 @@ interface ConfirmOverrides {
 /** An open "Revoke Access" confirm; each test overrides only what it checks. */
 const renderConfirm = ({
   confirmLabel = 'Revoke',
+  confirmText,
   destructive = true,
   pending = false,
   onConfirm = vi.fn(),
@@ -158,10 +241,41 @@ const renderConfirm = ({
       confirmLabel={confirmLabel}
       destructive={destructive}
       pending={pending}
+      confirmText={confirmText}
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
       Revoke access for &quot;SMART Growth Chart&quot;?
     </ConfirmDialog>
+  )
+}
+
+/** A confirm its own Open button opens and its Cancel closes, as a caller owns `open`. */
+const ReopenableConfirm = ({ confirmText }: { readonly confirmText: string }): JSX.Element => {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true)
+        }}
+      >
+        Open
+      </button>
+      <ConfirmDialog
+        open={open}
+        title="Revoke Access"
+        confirmLabel="Revoke"
+        pending={false}
+        confirmText={confirmText}
+        onConfirm={vi.fn()}
+        onCancel={() => {
+          setOpen(false)
+        }}
+      >
+        Revoke access?
+      </ConfirmDialog>
+    </>
   )
 }

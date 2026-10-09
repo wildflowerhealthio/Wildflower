@@ -1,3 +1,4 @@
+import { HttpClient, HttpClientError, HttpClientResponse } from '@effect/platform'
 import { createMemoryHistory } from '@tanstack/react-router'
 import {
   act,
@@ -10,7 +11,7 @@ import {
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
-import type { Context } from 'effect'
+import { type Context, DateTime, Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import type { TauriInvoke } from 'servers-core'
@@ -19,8 +20,8 @@ import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
-import { BaseRoot } from './base-root.tsx'
-import type { ListenToHostEvent } from './router-context.ts'
+import { BaseRoot, type BaseRootProps } from './base-root.tsx'
+import { formatInstant } from './server-status-text.ts'
 
 // Starting the SDK is the collaborator whose every touch the gate controls, so
 // the module boundary is where it is stubbed; the rest stays real.
@@ -122,7 +123,7 @@ const hostWith = ({
 
 /** Host events a test emits, and the listeners the base has up. */
 interface FakeEvents {
-  readonly listen: ListenToHostEvent
+  readonly listen: BaseRootProps['listen']
   /** Deliver `payload` to every listener of `event`. */
   readonly emit: (event: string, payload: unknown) => void
 }
@@ -148,28 +149,67 @@ const fakeEvents = (): FakeEvents => {
   }
 }
 
+/** A stub HTTP client answering the base's `/health` reads, and the URLs it was asked for. */
+interface FakeHealth {
+  readonly layer: Layer.Layer<HttpClient.HttpClient>
+  readonly urls: readonly string[]
+}
+
+/**
+ * A client answering every request with `answer`'s response; an `answer`
+ * that throws is a request that never reached a server, failing as
+ * `FetchHttpClient` fails one.
+ */
+const fakeHealth = (answer: () => Response): FakeHealth => {
+  const urls: string[] = []
+  return {
+    urls,
+    layer: Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        urls.push(request.url)
+        return Effect.try({
+          try: () => HttpClientResponse.fromWeb(request, answer()),
+          catch: (cause) =>
+            new HttpClientError.RequestError({ request, reason: 'Transport', cause }),
+        })
+      })
+    ),
+  }
+}
+
 const BACKGROUND_SERVICE_START_CONFIG = {
   serviceLabel: 'Wildflower server is running',
   foregroundServiceType: 'specialUse',
 } as const
+
+/**
+ * The launcher the app passes as the host's default: the golden file's first
+ * server has it, its second doesn't.
+ */
+const DEFAULT_LAUNCHER_URL = 'https://wildflowerhealth.io/app'
 
 const renderBase = ({
   invoke,
   storage,
   path = '/',
   events = fakeEvents(),
+  httpClient = fakeHealth(() => Response.json({ status: 'pass' })).layer,
 }: {
   readonly invoke: Context.Tag.Service<TauriInvoke>
   readonly storage: ConsentStorage
   readonly path?: string
   readonly events?: FakeEvents
+  readonly httpClient?: Layer.Layer<HttpClient.HttpClient>
 }): RenderResult =>
   render(
     <BaseRoot
       invoke={invoke}
       listen={events.listen}
       backgroundServiceStartConfig={BACKGROUND_SERVICE_START_CONFIG}
+      defaultLauncherUrl={DEFAULT_LAUNCHER_URL}
       telemetry={{ dsn: BASE_DSN, app: 'wildflower-tauri' }}
+      httpClient={httpClient}
       history={createMemoryHistory({ initialEntries: [path] })}
       storage={storage}
     />
@@ -695,12 +735,75 @@ describe('the server list', () => {
 })
 
 describe('the server page', () => {
-  const renderServerPage = (host: FakeHost, domain: string): void => {
+  /** A `/health` check object as a server serves it. */
+  const healthCheck = (status: string): Readonly<Record<string, string>> => ({
+    componentType: 'system',
+    status,
+    time: '2026-10-06T17:01:00Z',
+  })
+
+  /** A passing `/health` report, with a check for each of the server's components. */
+  const passingReport = {
+    status: 'pass',
+    checks: {
+      server: [healthCheck('pass')],
+      connectivity: [healthCheck('pass')],
+      'fhir-r4': [healthCheck('pass')],
+    },
+  }
+
+  /**
+   * `golden.listedServers` with ruth's status set to `status`, and its
+   * certificate to the status's, as `servers_list` lists it.
+   */
+  const listedWithRuthStatus = (status: { readonly certificate: unknown }): readonly unknown[] => [
+    { ...golden.listedServers[0], status, certificate: status.certificate },
+    golden.listedServers[1],
+  ]
+
+  /**
+   * Render the page of the server `domain` on a host listing `servers`, with
+   * `/health` answered by `health`.
+   */
+  const renderServerPage = ({
+    domain,
+    servers = golden.listedServers,
+    answers = {},
+    health = fakeHealth(() => Response.json(passingReport)),
+    events = fakeEvents(),
+  }: {
+    readonly domain: string
+    readonly servers?: readonly unknown[]
+    readonly answers?: Readonly<Record<string, () => Promise<unknown>>>
+    readonly health?: FakeHealth
+    readonly events?: FakeEvents
+  }): FakeHost => {
+    const host = hostWith({ servers: () => Promise.resolve(servers), answers })
     renderBase({
       invoke: host.invoke,
       storage: storageAnswered({ crashReports: false, performance: false }),
       path: `/servers/${domain}`,
+      events,
+      httpClient: health.layer,
     })
+    return host
+  }
+
+  /** The page's status hero. */
+  const hero = (): Promise<HTMLElement> => screen.findByRole('region', { name: 'Status' })
+
+  /** The section of the list or form titled `title`. */
+  const sectionTitled = (title: string): HTMLElement => {
+    const section = screen.getByRole('heading', { name: title }).closest('section')
+    if (section === null) throw new Error(`no ${title} section`)
+    return section
+  }
+
+  /** The open confirm dialog. */
+  const confirmDialog = (): HTMLDialogElement => {
+    const dialog = openDialog()
+    if (dialog === null) throw new Error('no confirm dialog')
+    return dialog
   }
 
   it("should open from a card's Edit, show the server's details, and go back to the list", async () => {
@@ -709,6 +812,7 @@ describe('the server page', () => {
     renderBase({
       invoke: hostWith({ servers: () => Promise.resolve(golden.listedServers) }).invoke,
       storage: storageAnswered({ crashReports: false, performance: false }),
+      httpClient: fakeHealth(() => Response.json(passingReport)).layer,
     })
     const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
 
@@ -717,12 +821,15 @@ describe('the server page', () => {
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Server' })).toBeDefined()
-    expect(screen.getByText('ruth.relay.example.com')).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'ruth.relay.example.com' })).toBeDefined()
     expect(
       screen.getByText('Self-hosted Wildflower relay at https://relay.example.com/')
     ).toBeDefined()
     expect(screen.getByText('ruth')).toBeDefined()
-    expect(screen.getByText('https://wildflowerhealth.io/app')).toBeDefined()
+    expect(screen.getByLabelText('Launcher')).toHaveProperty(
+      'value',
+      'https://wildflowerhealth.io/app'
+    )
     expect(screen.getByText("Let's Encrypt")).toBeDefined()
 
     // Act
@@ -734,17 +841,500 @@ describe('the server page', () => {
 
   it('should say so for a domain the device has no server at', async () => {
     // Act
-    renderServerPage(
-      hostWith({ servers: () => Promise.resolve(golden.listedServers) }),
-      'gone.relay.example.com'
-    )
+    renderServerPage({ domain: 'gone.relay.example.com' })
 
     // Assert
     expect(await screen.findByText('This device has no server at this address.')).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
   })
 
-  it('should remove the server only once the user confirms, then return to the list', async () => {
+  it.each([
+    ['startingUnchecked', 'Starting', false],
+    ['runningAndReachable', 'Running', true],
+    ['runningUnreachable', 'Running, not reachable yet', true],
+    ['stoppedWithAnError', 'Stopped', false],
+  ] as const)(
+    'should show a %s status in the hero as "%s", with its start only while running',
+    async (statusName, label, running) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
+      })
+
+      // Assert
+      const status = within(await hero()).getByRole('status')
+      expect(status.textContent).toMatch(new RegExp(`${label}$`))
+      expect(within(await hero()).queryByText(/^Since /) !== null).toBe(running)
+      expect(within(await hero()).getByRole('combobox', { name: /runs$/ })).toBeDefined()
+    }
+  )
+
+  it('should copy the domain, and say so when the clipboard refuses', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderServerPage({ domain: 'ruth.relay.example.com' })
+    const copy = within(await hero()).getByRole('button', { name: 'Copy' })
+
+    // Act
+    await user.click(copy)
+
+    // Assert
+    expect(await navigator.clipboard.readText()).toBe('ruth.relay.example.com')
+    expect(within(await hero()).getByRole('button', { name: 'Copied' })).toBeDefined()
+
+    // Act
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('not allowed'))
+    await user.click(within(await hero()).getByRole('button', { name: 'Copied' }))
+
+    // Assert
+    expect(
+      await screen.findByText('The clipboard refused. Select the domain to copy it by hand.')
+    ).toBeDefined()
+  })
+
+  it("should list each check of a passing /health, read from the server's public origin", async () => {
+    // Arrange
+    const health = fakeHealth(() => Response.json(passingReport))
+
+    // Act
+    renderServerPage({ domain: 'ruth.relay.example.com', health })
+
+    // Assert
+    expect(await screen.findByText('Its /health answers pass.')).toBeDefined()
+    const checks = sectionTitled('Health checks')
+    for (const key of ['server', 'connectivity', 'fhir-r4']) {
+      expect(within(checks).getByText(key)).toBeDefined()
+    }
+    expect(health.urls).toEqual(['https://ruth.relay.example.com/health'])
+  })
+
+  it('should list the checks of a failing /health from its 503', async () => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      health: fakeHealth(() =>
+        Response.json(
+          {
+            status: 'fail',
+            checks: { server: [healthCheck('pass')], connectivity: [healthCheck('fail')] },
+          },
+          { status: 503 }
+        )
+      ),
+    })
+
+    // Assert
+    expect(await screen.findByText('Its /health answers fail.')).toBeDefined()
+    const connectivity = within(sectionTitled('Health checks')).getByText('connectivity')
+    expect(connectivity.closest('li')?.textContent).toContain('fail')
+  })
+
+  it.each([
+    ['a 404', () => new Response('not found', { status: 404 }), /^Couldn't read it: .*404/],
+    [
+      'a network error',
+      () => {
+        throw new TypeError('Failed to fetch')
+      },
+      /^Couldn't read it: Transport error/,
+    ],
+  ] as const)('should say why /health could not be read after %s', async (_, answer, shown) => {
+    // Act
+    renderServerPage({ domain: 'ruth.relay.example.com', health: fakeHealth(answer) })
+
+    // Assert
+    expect(await screen.findByText(shown)).toBeDefined()
+  })
+
+  it('should read /health again on Refresh', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const health = fakeHealth(() => Response.json(passingReport))
+    renderServerPage({ domain: 'ruth.relay.example.com', health })
+    await screen.findByText('Its /health answers pass.')
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(health.urls).toHaveLength(2)
+    })
+  })
+
+  it('should read no /health while the server is stopped', async () => {
+    // Arrange
+    const health = fakeHealth(() => Response.json(passingReport))
+
+    // Act
+    renderServerPage({ domain: 'lab.rathole.example.com', health })
+
+    // Assert
+    expect(
+      await screen.findByText("It stopped with an error: the server's config couldn't be built")
+    ).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Health checks' })).toBeNull()
+    expect(health.urls).toEqual([])
+  })
+
+  it('should read /health again for a new run, and stay current with server-status events', async () => {
+    // Arrange
+    const events = fakeEvents()
+    const health = fakeHealth(() => Response.json(passingReport))
+    renderServerPage({ domain: 'ruth.relay.example.com', health, events })
+    await screen.findByText('Its /health answers pass.')
+
+    // Act
+    events.emit('server-status', golden.serverStatuses.stoppedByThePlatform)
+
+    // Assert
+    expect(await screen.findByText('The system ended its time in the background.')).toBeDefined()
+    expect(screen.getByText("The system's time limit for background work ran out.")).toBeDefined()
+    expect(within(await hero()).getByRole('status').textContent).toMatch(/Stopped$/)
+    expect(screen.queryByRole('heading', { name: 'Health checks' })).toBeNull()
+
+    // Act
+    events.emit('server-status', {
+      ...golden.serverStatuses.runningAndReachable,
+      runningSince: '2026-10-06T18:00:00Z',
+    })
+
+    // Assert
+    expect(await screen.findByText('Its /health answers pass.')).toBeDefined()
+    expect(health.urls).toHaveLength(2)
+    expect(within(await hero()).getByRole('status').textContent).toMatch(/Running$/)
+  })
+
+  /** `instant`, an RFC 3339 string, as the page shows its dates. */
+  const shownInstant = (instant: string): string => formatInstant(DateTime.unsafeMake(instant))
+
+  /** The row of the Certificate section titled `title`. */
+  const certificateRow = (title: string): HTMLElement => {
+    const row = within(sectionTitled('Certificate')).getByText(title).closest('li')
+    if (row === null) throw new Error(`no ${title} row`)
+    return row
+  }
+
+  it.each([
+    ['neverRun', 'None yet. The server orders one when it runs.', false],
+    ['runningCacheFailed', 'Ordering one from the certificate authority.', false],
+    ['runningAndReachable', 'Valid.', false],
+    [
+      'runningRenewalFailed',
+      'Valid, and due for renewal, which the server makes while it runs.',
+      false,
+    ],
+    ['stoppedWithAnError', 'Expired. The server renews it when it starts.', false],
+    ['startingCaUnreachable', 'No valid certificate: ordering one is failing.', true],
+    ['stoppedByThePlatform', "The certificate stored on this device couldn't be read.", true],
+  ] as const)(
+    'should show the certificate of a %s status as "%s", as a failure only when it is one',
+    async (statusName, text, failure) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
+      })
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
+      const status = certificateRow('Status')
+      expect(status.textContent).toContain(text)
+      expect(/tone-danger/.test(status.className)).toBe(failure)
+    }
+  )
+
+  it("should show the server's certificate authority, the held certificate's validity and fingerprint, and no error when there is none", async () => {
+    // Arrange
+    const { held } = golden.listedServers[0].certificate
+
+    // Act
+    renderServerPage({ domain: 'ruth.relay.example.com' })
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
+    expect(certificateRow('Certificate authority').textContent).toMatch(/Let's Encrypt$/)
+    expect(within(sectionTitled('Certificate')).queryByText('State shown for')).toBeNull()
+    expect(certificateRow('Valid from').textContent).toContain(shownInstant(held.notBefore))
+    expect(certificateRow('Valid until').textContent).toContain(shownInstant(held.notAfter))
+    expect(certificateRow('SHA-256 fingerprint').textContent).toContain(held.fingerprint)
+    expect(within(sectionTitled('Certificate')).queryByText('Last error')).toBeNull()
+  })
+
+  it("should show the server's certificate authority, and the one the state is for when it differs", async () => {
+    // Arrange
+    const host = hostWith({
+      servers: () =>
+        Promise.resolve(listedWithRuthStatus(golden.serverStatuses.runningRenewalFailed)),
+      answers: { server_update: () => Promise.resolve(null) },
+    })
+    const user = userEvent.setup()
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: '/servers/ruth.relay.example.com',
+    })
+    await screen.findByRole('heading', { name: 'Certificate' })
+
+    // Act
+    await user.clear(screen.getByLabelText('Launcher'))
+    await user.type(screen.getByLabelText('Launcher'), 'https://launcher.example.com/')
+    await user.click(screen.getByRole('button', { name: 'Save launcher' }))
+
+    // Assert
+    expect(certificateRow('Certificate authority').textContent).toMatch(/Let's Encrypt$/)
+    expect(certificateRow('State shown for').textContent).toMatch(
+      /Let's Encrypt staging, which browsers don't trust$/
+    )
+    expect(host.seen).toContainEqual({
+      command: 'server_update',
+      args: {
+        domain: 'ruth.relay.example.com',
+        launcherUrl: 'https://launcher.example.com/',
+        certificateAuthority: 'letsEncrypt',
+      },
+    })
+  })
+
+  it('should show the issuer, and no validity or fingerprint, while no certificate is held', async () => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      servers: listedWithRuthStatus(golden.serverStatuses.neverRun),
+    })
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
+    expect(certificateRow('Certificate authority').textContent).toMatch(/Let's Encrypt$/)
+    const certificate = within(sectionTitled('Certificate'))
+    expect(certificate.queryByText('Valid from')).toBeNull()
+    expect(certificate.queryByText('Valid until')).toBeNull()
+    expect(certificate.queryByText('SHA-256 fingerprint')).toBeNull()
+  })
+
+  /** `golden.serverStatuses.startingCaUnreachable` with its certificate's `lastError` set to `lastError`. */
+  const withLastError = (lastError: unknown): { readonly certificate: unknown } => ({
+    ...golden.serverStatuses.startingCaUnreachable,
+    certificate: { ...golden.serverStatuses.startingCaUnreachable.certificate, lastError },
+  })
+
+  it.each([
+    [
+      'a rate limit with no retry time',
+      withLastError({ kind: 'rateLimited' }),
+      "The certificate authority's rate limit was reached.",
+    ],
+    [
+      'a failed challenge, with its detail',
+      golden.serverStatuses.runningRenewalFailed,
+      "The certificate authority couldn't validate this server's domain: Connection refused",
+    ],
+    [
+      'a failed challenge with no detail',
+      withLastError({ kind: 'challengeFailed' }),
+      "The certificate authority couldn't validate this server's domain.",
+    ],
+    [
+      'an unreachable CA',
+      golden.serverStatuses.startingCaUnreachable,
+      "The certificate authority couldn't be reached: http request error: io error: Connection refused",
+    ],
+    [
+      'another order failure',
+      withLastError({ kind: 'other', message: 'the order was invalid' }),
+      'Ordering failed: the order was invalid',
+    ],
+    [
+      'a cache fault',
+      golden.serverStatuses.runningCacheFailed,
+      "The certificates on this device couldn't be read or written: account cache store: disk full",
+    ],
+  ] as const)('should describe %s as the last error', async (_, status, text) => {
+    // Act
+    renderServerPage({ domain: 'ruth.relay.example.com', servers: listedWithRuthStatus(status) })
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
+    const lastError = certificateRow('Last error')
+    expect(lastError.textContent).toContain(text)
+    expect(lastError.className).toMatch(/tone-danger/)
+  })
+
+  it('should say when the CA said to retry a rate limit, and that it has passed once it has', async () => {
+    // Arrange
+    const { retryAfter } = golden.serverStatuses.runningUnreachable.certificate.lastError
+    const said = `The certificate authority's rate limit was reached; it said to retry after ${shownInstant(retryAfter)}`
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: Date.parse(retryAfter) - 60_000 })
+    try {
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses.runningUnreachable),
+      })
+      expect(await screen.findByText(`${said}.`)).toBeDefined()
+
+      // Act
+      act(() => {
+        vi.advanceTimersByTime(60_000)
+      })
+
+      // Assert
+      expect(await screen.findByText(`${said}; that time has passed.`)).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('should show the certificate state of each server-status event', async () => {
+    // Arrange
+    const events = fakeEvents()
+    renderServerPage({ domain: 'ruth.relay.example.com', events })
+    await screen.findByRole('heading', { name: 'Certificate' })
+
+    // Act
+    events.emit('server-status', golden.serverStatuses.stoppedByThePlatform)
+
+    // Assert
+    expect(
+      await screen.findByText("The certificate stored on this device couldn't be read.")
+    ).toBeDefined()
+    expect(certificateRow('Last error').textContent).toContain(
+      'reading the certificate cache failed: Permission denied (os error 13)'
+    )
+    expect(within(sectionTitled('Certificate')).queryByText('SHA-256 fingerprint')).toBeNull()
+  })
+
+  it('should send a new token, clear it once accepted, and never show it', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderServerPage({
+      domain: 'ruth.relay.example.com',
+      answers: { server_set_credentials: () => Promise.resolve(null) },
+    })
+    const field = await screen.findByLabelText('New tunnel token')
+    expect(field).toHaveProperty('value', '')
+    expect(field).toHaveProperty('type', 'password')
+
+    // Act
+    await user.type(field, 'tunnel-token-123')
+    await user.click(screen.getByRole('button', { name: 'Save token' }))
+
+    // Assert
+    expect(host.seen).toContainEqual({
+      command: 'server_set_credentials',
+      args: { domain: 'ruth.relay.example.com', token: 'tunnel-token-123' },
+    })
+    await waitFor(() => {
+      expect(field).toHaveProperty('value', '')
+    })
+    expect(document.body.textContent).not.toContain('tunnel-token-123')
+  })
+
+  it("should show the host's refusal of a new token, without the token", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const refusal = {
+      kind: 'signedRequestRejected',
+      message: "the relay didn't accept the tunnel name and token",
+    }
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      answers: { server_set_credentials: () => Promise.reject(refusal) },
+    })
+
+    // Act
+    await user.type(await screen.findByLabelText('New tunnel token'), 'wrong-token')
+    await user.click(screen.getByRole('button', { name: 'Save token' }))
+
+    // Assert
+    expect((await screen.findByRole('alert')).textContent).toContain(refusal.message)
+    expect(document.body.textContent).not.toContain('wrong-token')
+  })
+
+  it('should save an edited launcher with the certificate authority unchanged', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderServerPage({
+      domain: 'lab.rathole.example.com',
+      answers: { server_update: () => Promise.resolve(null) },
+    })
+    const field = await screen.findByLabelText('Launcher')
+    const save = screen.getByRole('button', { name: 'Save launcher' })
+    expect(save).toHaveProperty('disabled', true)
+
+    // Act
+    await user.clear(field)
+    await user.type(field, 'https://launcher.example.com/app')
+    await user.click(save)
+
+    // Assert
+    expect(host.seen).toContainEqual({
+      command: 'server_update',
+      args: {
+        domain: 'lab.rathole.example.com',
+        launcherUrl: 'https://launcher.example.com/app',
+        certificateAuthority: 'letsEncryptStaging',
+      },
+    })
+    await waitFor(() => {
+      expect(save).toHaveProperty('disabled', true)
+    })
+  })
+
+  it('should reset the launcher to the default at once, and offer no reset when it is the default', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderServerPage({
+      domain: 'lab.rathole.example.com',
+      answers: { server_update: () => Promise.resolve(null) },
+    })
+
+    // Act
+    await user.click(await screen.findByRole('button', { name: 'Reset to default' }))
+
+    // Assert
+    expect(host.seen).toContainEqual({
+      command: 'server_update',
+      args: {
+        domain: 'lab.rathole.example.com',
+        launcherUrl: DEFAULT_LAUNCHER_URL,
+        certificateAuthority: 'letsEncryptStaging',
+      },
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Reset to default' })).toBeNull()
+    })
+    expect(screen.getByLabelText('Launcher')).toHaveProperty('value', DEFAULT_LAUNCHER_URL)
+    cleanup()
+
+    // Act
+    renderServerPage({ domain: 'ruth.relay.example.com' })
+
+    // Assert
+    expect(await screen.findByLabelText('Launcher')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Reset to default' })).toBeNull()
+  })
+
+  it.each([
+    ['the default with its host in another case', 'https://WildflowerHealth.IO/app', false],
+    ['the default with its default port', 'https://wildflowerhealth.io:443/app', false],
+    ['a launcher that is not a URL', 'not a url', true],
+  ] as const)(
+    'should compare a launcher with the default as URLs: %s',
+    async (_, launcherUrl, offersReset) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: [{ ...golden.listedServers[0], launcherUrl }, golden.listedServers[1]],
+      })
+
+      // Assert
+      expect(await screen.findByLabelText('Launcher')).toHaveProperty('value', launcherUrl)
+      expect(screen.queryByRole('button', { name: 'Reset to default' }) !== null).toBe(offersReset)
+    }
+  )
+
+  it('should remove the server only once its domain is typed and confirmed, then return to the list', async () => {
     // Arrange
     const user = userEvent.setup()
     let listed: readonly unknown[] = golden.listedServers
@@ -757,21 +1347,34 @@ describe('the server page', () => {
         },
       },
     })
-    renderServerPage(host, 'lab.rathole.example.com')
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: '/servers/lab.rathole.example.com',
+      httpClient: fakeHealth(() => Response.json(passingReport)).layer,
+    })
     const remove = await screen.findByRole('button', { name: 'Remove' })
 
     // Act
     await user.click(remove)
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(within(confirmDialog()).getByRole('button', { name: 'Cancel' }))
 
     // Assert
     expect(host.seen.map(({ command }) => command)).not.toContain('server_remove')
 
     // Act
     await user.click(remove)
-    const dialog = openDialog()
-    if (dialog === null) throw new Error('no confirm dialog')
-    await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    const confirm = within(confirmDialog()).getByRole('button', { name: 'Remove' })
+
+    // Assert
+    expect(confirm).toHaveProperty('disabled', true)
+
+    // Act
+    await user.type(
+      within(confirmDialog()).getByLabelText('Type lab.rathole.example.com to confirm'),
+      'lab.rathole.example.com'
+    )
+    await user.click(confirm)
 
     // Assert
     expect(host.seen).toContainEqual({
@@ -785,17 +1388,18 @@ describe('the server page', () => {
   it("should show the host's refusal, and stay on the page, when the host can't remove the server", async () => {
     // Arrange
     const user = userEvent.setup()
-    const host = hostWith({
-      servers: () => Promise.resolve(golden.listedServers),
+    renderServerPage({
+      domain: 'lab.rathole.example.com',
       answers: { server_remove: () => Promise.reject(golden.commandErrors[2]) },
     })
-    renderServerPage(host, 'lab.rathole.example.com')
     await user.click(await screen.findByRole('button', { name: 'Remove' }))
-    const dialog = openDialog()
-    if (dialog === null) throw new Error('no confirm dialog')
+    await user.type(
+      within(confirmDialog()).getByLabelText('Type lab.rathole.example.com to confirm'),
+      'lab.rathole.example.com'
+    )
 
     // Act
-    await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    await user.click(within(confirmDialog()).getByRole('button', { name: 'Remove' }))
 
     // Assert
     expect((await screen.findByRole('alert')).textContent).toContain(

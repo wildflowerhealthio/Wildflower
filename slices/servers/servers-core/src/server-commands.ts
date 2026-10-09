@@ -48,6 +48,25 @@ const updateServer = ({
   invokeHostCommand('server_update', Schema.Null, { domain, launcherUrl, certificateAuthority })
 
 /**
+ * Replace the token the server `domain`'s tunnel signs in to its relay with,
+ * once the relay accepts it; the host then starts the server's run again
+ * with it.
+ *
+ * @remarks
+ * A Wildflower relay must still present the identity the server was added
+ * with, and accept the token on a signed `GET /me`; a rathole server's token
+ * is replaced without a request. The answer never carries the token.
+ */
+const setServerCredentials = ({
+  domain,
+  token,
+}: {
+  readonly domain: string
+  readonly token: string
+}): Effect.Effect<null, HostCommandError, TauriInvoke> =>
+  invokeHostCommand('server_set_credentials', Schema.Null, { domain, token })
+
+/**
  * Stop the server `domain` and delete it, with its folder, databases and
  * certificates.
  */
@@ -58,4 +77,4 @@ const removeServer = ({
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
   invokeHostCommand('server_remove', Schema.Null, { domain })
 
-export { listServers, removeServer, setServerRunPolicy, updateServer }
+export { listServers, removeServer, setServerCredentials, setServerRunPolicy, updateServer }

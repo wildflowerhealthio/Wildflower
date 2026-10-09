@@ -3,12 +3,18 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import { enableBackgroundSessionRecovery } from './background-session-recovery.ts'
-import type * as CertificateState from './certificate-state.ts'
+import * as CertificateState from './certificate-state.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as ListedServer from './listed-server.ts'
 import * as RunPolicyChoice from './run-policy-choice.ts'
 import * as RunPolicy from './run-policy.ts'
-import { listServers, removeServer, setServerRunPolicy, updateServer } from './server-commands.ts'
+import {
+  listServers,
+  removeServer,
+  setServerCredentials,
+  setServerRunPolicy,
+  updateServer,
+} from './server-commands.ts'
 import * as ServerStatus from './server-status.ts'
 
 /** One invoke the fake host saw. */
@@ -219,6 +225,10 @@ describe('the server commands', () => {
         }),
         () => Promise.resolve(null)
       ),
+      runAgainstHostAnswering(
+        setServerCredentials({ domain: 'ruth.relay.example.com', token: 'tunnel-token' }),
+        () => Promise.resolve(null)
+      ),
       runAgainstHostAnswering(removeServer({ domain: 'ruth.relay.example.com' }), () =>
         Promise.resolve(null)
       ),
@@ -247,6 +257,12 @@ describe('the server commands', () => {
             launcherUrl: 'http://localhost:5200/app',
             certificateAuthority: 'letsEncryptStaging',
           },
+        },
+      ],
+      [
+        {
+          command: 'server_set_credentials',
+          args: { domain: 'ruth.relay.example.com', token: 'tunnel-token' },
         },
       ],
       [{ command: 'server_remove', args: { domain: 'ruth.relay.example.com' } }],
@@ -347,6 +363,29 @@ describe('CertificateState', () => {
     expect(challengeFailed.lastError).toEqual(
       Option.some({ kind: 'challengeFailed', detail: Option.some('Connection refused') })
     )
+  })
+
+  it('should read when to retry only from a rate limit that said when', () => {
+    // Arrange
+    const rateLimited = certificateOf(golden.serverStatuses.runningUnreachable)
+    const saidNotWhen: CertificateState.Type = {
+      ...rateLimited,
+      lastError: Option.some({ kind: 'rateLimited', retryAfter: Option.none() }),
+    }
+    const others = [
+      saidNotWhen,
+      certificateOf(golden.serverStatuses.runningRenewalFailed),
+      certificateOf(golden.serverStatuses.runningAndReachable),
+    ]
+
+    // Act
+    const retryAfter = CertificateState.retryAfterOf(rateLimited)
+
+    // Assert
+    expect(retryAfter).toEqual(Option.some(utc('2026-10-06T17:59:00Z')))
+    for (const certificate of others) {
+      expect(CertificateState.retryAfterOf(certificate)).toEqual(Option.none())
+    }
   })
 
   it("should decode a starting run's unreachable CA with its message", () => {

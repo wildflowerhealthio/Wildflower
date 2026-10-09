@@ -2,7 +2,7 @@
   "name": "servers-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The base's pure core: the Tauri commands it calls, as Effects over a `TauriInvoke` port, with Effect Schema decoders for their answers. No DOM, no React, no `@tauri-apps/api`.",
+  "description": "The base's pure core: the Tauri commands it calls, as Effects over a `TauriInvoke` port, with Effect Schema decoders for their answers; and a server's `/health` report, read over `@effect/platform`'s `HttpClient`. No DOM, no React, no `@tauri-apps/api`.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -27,6 +27,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
@@ -37,6 +38,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@effect/platform": "catalog:",
     "effect": "catalog:"
   }
 }

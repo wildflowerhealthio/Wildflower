@@ -1,0 +1,80 @@
+/*
+ * The run-policy field reads as the server's status line; the native picker
+ * stretched invisibly over it opens the platform's own menu, wheel or sheet.
+ * Its border takes the server's status tone, set by `data-tone` on the field;
+ * a neutral (stopped) server's keeps the input's own border.
+ */
+.run-policy-picker {
+  --run-policy-picker-border: var(--element-color-border);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--space-12);
+  padding-inline: var(--space-5) var(--space-6);
+  border: var(--element-border-width) solid var(--run-policy-picker-border);
+  border-radius: var(--radius-2);
+  background: var(--input-color-background);
+  color: var(--color-neutral-1);
+  cursor: pointer;
+  transition: border-color 0.6s ease;
+}
+
+.run-policy-picker:hover {
+  border-color: var(--color-neutral-5);
+}
+
+.run-policy-picker:focus-within {
+  outline: var(--element-border-width) solid var(--color-accent);
+  outline-offset: var(--space-1);
+}
+
+.run-policy-picker__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.run-policy-picker__chevron {
+  flex: none;
+  width: var(--space-3);
+  height: var(--space-3);
+  margin: calc(-1 * var(--space-2)) 0 0 var(--space-2);
+  border-right: var(--space-1) solid currentColor;
+  border-bottom: var(--space-1) solid currentColor;
+  transform: rotate(45deg);
+}
+
+/* 16px keeps iOS from zooming in when the picker takes focus. */
+.run-policy-picker__select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: var(--font-size-4);
+  cursor: pointer;
+}
+
+.run-policy-picker[data-tone='info'] {
+  --run-policy-picker-border: var(--color-blue-7);
+}
+
+.run-policy-picker[data-tone='success'] {
+  --run-policy-picker-border: var(--color-success-border);
+}
+
+.run-policy-picker[data-tone='warning'] {
+  --run-policy-picker-border: var(--color-warning-border);
+}
+
+.run-policy-picker[data-tone='danger'] {
+  --run-policy-picker-border: var(--color-red-7);
+}
