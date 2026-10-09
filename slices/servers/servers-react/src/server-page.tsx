@@ -386,13 +386,18 @@ const RelayAndTunnel = ({
 )
 
 /**
- * The server's certificate for its domain: its status, the CA it is ordered
- * from, the certificate held, with when it is valid and its fingerprint, and
- * the run's latest error since it last deployed one. The section shows each
- * row in full (`maxLines={null}`): the fingerprint is compared by hand and a
- * CA's error detail can run long.
+ * The server's certificate for its domain: its status; the CA the server
+ * orders from, its record's, which Save launcher saves unchanged, and, when
+ * the certificate state is for another CA (`issuer`), as before a changed CA
+ * takes effect, the CA the state is for; the certificate held, with when it
+ * is valid and its fingerprint; and the run's latest error since it last
+ * deployed one. The section shows each row in full (`maxLines={null}`): the
+ * fingerprint is compared by hand and a CA's error detail can run long.
  */
-const certificateItems = (certificate: CertificateState.Type): readonly ItemListItem[] => [
+const certificateItems = ({
+  certificateAuthority,
+  certificate,
+}: ListedServer.Type): readonly ItemListItem[] => [
   {
     id: 'certificate-status',
     title: 'Status',
@@ -402,8 +407,17 @@ const certificateItems = (certificate: CertificateState.Type): readonly ItemList
   {
     id: 'certificate-authority',
     title: 'Certificate authority',
-    subtitle: CERTIFICATE_AUTHORITY_TEXT[certificate.issuer],
+    subtitle: CERTIFICATE_AUTHORITY_TEXT[certificateAuthority],
   },
+  ...(certificate.issuer === certificateAuthority
+    ? []
+    : [
+        {
+          id: 'certificate-issuer',
+          title: 'State shown for',
+          subtitle: CERTIFICATE_AUTHORITY_TEXT[certificate.issuer],
+        },
+      ]),
   ...certificate.held.pipe(
     Option.map((held): readonly ItemListItem[] => [
       { id: 'valid-from', title: 'Valid from', subtitle: formatInstant(held.notBefore) },
@@ -643,7 +657,7 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
         defaultLauncherUrl={defaultLauncherUrl}
         runHostCommand={runHostCommand}
       />
-      <ItemList title="Certificate" maxLines={null} items={certificateItems(server.certificate)} />
+      <ItemList title="Certificate" maxLines={null} items={certificateItems(server)} />
       <DangerZone server={server} runHostCommand={runHostCommand} />
     </>
   )

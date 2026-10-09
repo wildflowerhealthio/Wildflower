@@ -1048,7 +1048,7 @@ describe('the server page', () => {
     }
   )
 
-  it("should show the held certificate's issuer, validity and fingerprint, and no error when there is none", async () => {
+  it("should show the server's certificate authority, the held certificate's validity and fingerprint, and no error when there is none", async () => {
     // Arrange
     const { held } = golden.listedServers[0].certificate
 
@@ -1057,11 +1057,47 @@ describe('the server page', () => {
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
-    expect(certificateRow('Certificate authority').textContent).toContain("Let's Encrypt")
+    expect(certificateRow('Certificate authority').textContent).toMatch(/Let's Encrypt$/)
+    expect(within(sectionTitled('Certificate')).queryByText('State shown for')).toBeNull()
     expect(certificateRow('Valid from').textContent).toContain(shownInstant(held.notBefore))
     expect(certificateRow('Valid until').textContent).toContain(shownInstant(held.notAfter))
     expect(certificateRow('SHA-256 fingerprint').textContent).toContain(held.fingerprint)
     expect(within(sectionTitled('Certificate')).queryByText('Last error')).toBeNull()
+  })
+
+  it("should show the server's certificate authority, and the one the state is for when it differs", async () => {
+    // Arrange
+    const host = hostWith({
+      servers: () =>
+        Promise.resolve(listedWithRuthStatus(golden.serverStatuses.runningRenewalFailed)),
+      answers: { server_update: () => Promise.resolve(null) },
+    })
+    const user = userEvent.setup()
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: '/servers/ruth.relay.example.com',
+    })
+    await screen.findByRole('heading', { name: 'Certificate' })
+
+    // Act
+    await user.clear(screen.getByLabelText('Launcher'))
+    await user.type(screen.getByLabelText('Launcher'), 'https://launcher.example.com/')
+    await user.click(screen.getByRole('button', { name: 'Save launcher' }))
+
+    // Assert
+    expect(certificateRow('Certificate authority').textContent).toMatch(/Let's Encrypt$/)
+    expect(certificateRow('State shown for').textContent).toMatch(
+      /Let's Encrypt staging, which browsers don't trust$/
+    )
+    expect(host.seen).toContainEqual({
+      command: 'server_update',
+      args: {
+        domain: 'ruth.relay.example.com',
+        launcherUrl: 'https://launcher.example.com/',
+        certificateAuthority: 'letsEncrypt',
+      },
+    })
   })
 
   it('should show the issuer, and no validity or fingerprint, while no certificate is held', async () => {
@@ -1073,7 +1109,7 @@ describe('the server page', () => {
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
-    expect(certificateRow('Certificate authority').textContent).toContain("Let's Encrypt")
+    expect(certificateRow('Certificate authority').textContent).toMatch(/Let's Encrypt$/)
     const certificate = within(sectionTitled('Certificate'))
     expect(certificate.queryByText('Valid from')).toBeNull()
     expect(certificate.queryByText('Valid until')).toBeNull()
