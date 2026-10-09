@@ -38,7 +38,7 @@ describe('SECTION_PATHS', () => {
       fhirSyncPebble: 'fhir-sync-pebble',
       healthViewer: 'health-viewer-app',
       syntheticData: 'synthetic-data-app',
-      lifting: 'lifting-app',
+      lifting: 'lifting',
       watchLifts: 'watch-lifts',
       app: 'app',
     })

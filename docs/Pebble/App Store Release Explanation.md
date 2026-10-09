@@ -1,9 +1,9 @@
 # App Store Release Explanation
 
-How Tauri Release — Publish gets `apps/watch-lifts` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp`
+How Tauri Release — Publish gets `apps/watch-lifts/watch-lifts-watchapp` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp`
 into the Pebble app store, why every release arrives there unpublished, and the
 one secret it needs. The build that produces the `.pbw`s is described in the
-[watch-lifts README](../../apps/watch-lifts/README.md#releases).
+[watch-lifts README](../../apps/watch-lifts/watch-lifts-watchapp/README.md#releases).
 
 ## What the job does
 
@@ -135,7 +135,7 @@ don't want.
 
 ## See Also
 
-- [watch-lifts README](../../apps/watch-lifts/README.md#releases) — where the
+- [watch-lifts README](../../apps/watch-lifts/watch-lifts-watchapp/README.md#releases) — where the
   apps' version comes from and the `.pbw`s on the GitHub Release
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the
   Pebble SDK install the build job uses

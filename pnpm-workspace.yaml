@@ -1,18 +1,22 @@
 packages:
   - apps/*
   # The watch apps' host-side tests and PebbleKit JS builds; see
-  # apps/watch-lifts/test/vite.config.ts for why they aren't part of the watch
+  # apps/watch-lifts/watch-lifts-watchapp/test/vite.config.ts for why they aren't part of the watch
   # app packages themselves.
   - apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/pkjs
   - apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/test
   # FHIR Sync for Pebble: the watchapp, its settings page and the core both
   # build on.
   - apps/fhir-sync-pebble/*
+  # Lifting: the app and the core and screens it is built from.
+  - apps/lifting/*
   # The relay's admin UI and the packages it is built from. Their sibling
   # apps/relay/relay-server is the Rust crate.
   - apps/relay/*
-  - apps/watch-lifts/pkjs
-  - apps/watch-lifts/test
+  - apps/watch-lifts/watch-lifts-watchapp/pkjs
+  - apps/watch-lifts/watch-lifts-watchapp/test
+  # WatchLifts: the watchapp, its settings page and the core both build on.
+  - apps/watch-lifts/*
   - global/*
   - global/effect-messaging/*
   - global/pebble/*

@@ -834,8 +834,12 @@ mod tests {
         );
         assert_eq!(allowed_scopes_of(&mut conn, "lifting-app"), LIFTING_AT_0019);
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0020");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0020"),
+        )
+        .expect("upgrade through 0020");
         assert_eq!(
             allowed_scopes_of(&mut conn, "medications-app"),
             r#"["launch","openid","fhirUser","system/MedicationRequest.rs","system/Medication.rs","system/Patient.rs"]"#,
@@ -913,8 +917,12 @@ mod tests {
         .expect("plant an interleaved path entry");
         let docs_at_0020 = redirect_uris_of(&mut conn, "wildflower-server-docs");
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0021");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0021"),
+        )
+        .expect("upgrade through 0021");
 
         for (client_id, after) in [
             (
@@ -1026,6 +1034,73 @@ mod tests {
             )
             .is_err(),
             "a patient needs a client"
+        );
+    }
+
+    /// An install already at `0024` re-keys Lifting's clients when `0025` runs:
+    /// the production client and a debug build's dev client take their random
+    /// ids, the production redirect moves to `/lifting/`, what was issued to
+    /// them (here a launch) follows, and reverting `0025` restores `0019`'s ids.
+    #[test]
+    fn an_install_already_at_0024_rekeys_the_lifting_clients() {
+        use diesel::connection::SimpleConnection as _;
+        const LIFTING: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
+        const LIFTING_DEV: &str = "8467e680a05f1e92e22864e923144e5a";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0024"),
+        )
+        .expect("migrate to 0024");
+        conn.batch_execute(
+            "INSERT INTO clients \
+             (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+              secret_hash, registered_at, disabled_at) \
+             VALUES ('lifting-app-dev', 'Lifting (Dev)', 'public', \
+                     '[\"http://localhost:5199/\"]', '[\"launch\"]', \
+                     '[\"authorization_code\"]', NULL, '2024-01-01 00:00:00+00:00', NULL); \
+             INSERT INTO launch_contexts (nonce, client_id, patient, created_at, expires_at) \
+             VALUES ('issued', 'lifting-app', 'pat-1', \
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z')",
+        )
+        .expect("a dev client and a launch at 0024");
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0025");
+
+        assert!(column_for_client(&mut conn, "client_id", "lifting-app").is_empty());
+        assert!(column_for_client(&mut conn, "client_id", "lifting-app-dev").is_empty());
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", LIFTING)[0].name,
+            r#"["https://wildflowerhealth.io/lifting/"]"#,
+        );
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", LIFTING_DEV)[0].name,
+            r#"["http://localhost:5199/"]"#,
+        );
+        let launch: Vec<Name> = diesel::sql_query(
+            "SELECT client_id AS name FROM launch_contexts WHERE nonce = 'issued'",
+        )
+        .load(&mut conn)
+        .expect("read the launch");
+        assert_eq!(launch[0].name, LIFTING);
+
+        let migration_0025 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0025"))
+            .expect("0025 is embedded");
+        migration_0025.revert(&mut conn).expect("revert 0025");
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", "lifting-app")[0].name,
+            r#"["https://wildflowerhealth.io/lifting-app/"]"#,
+        );
+        assert_eq!(
+            column_for_client(&mut conn, "client_id", "lifting-app-dev").len(),
+            1
         );
     }
 

@@ -109,10 +109,10 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'lifting-app',
-    // The package lives in `apps/lifting-app`; its published path is
+    packageName: 'lifting-web',
+    // The package lives in `apps/lifting/lifting-web`; its published path is
     // `/${SECTION_PATHS.lifting}`.
-    sourceDir: 'apps/lifting-app/dist',
+    sourceDir: 'apps/lifting/lifting-web/dist',
     destPath: SECTION_PATHS.lifting,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare
@@ -121,9 +121,9 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: 'watch-lifts-web',
-    // The package lives in `apps/watch-lifts-web`; its published path is
-    // `/${SECTION_PATHS.watchLifts}`.
-    sourceDir: 'apps/watch-lifts-web/dist',
+    // The package lives in `apps/watch-lifts/watch-lifts-web`; its published
+    // path is `/${SECTION_PATHS.watchLifts}`.
+    sourceDir: 'apps/watch-lifts/watch-lifts-web/dist',
     destPath: SECTION_PATHS.watchLifts,
     // One entry: the WatchLifts watchapp's settings page, opened from the
     // Pebble phone app with the weights in its query. Not a SMART app.

@@ -311,7 +311,7 @@ mod tests {
             "importer-app",
             "ohif-viewer",
             "fhir-sync-pebble",
-            "lifting-app",
+            "bdf9fc5cb5a28c6683b49896b0ef8a75",
             "health-viewer-app",
         ] {
             let client = store
@@ -578,19 +578,23 @@ mod tests {
                 "system/Observation.cu".to_string(),
             ],
         );
-        // `lifting-app` (Lifting) carries its published-site redirect, seeded by
-        // `0019`, and its scopes carry writes: the training plan
+        // Lifting's client (seeded by `0019` as `lifting-app`, re-keyed to a
+        // random id by `0025`) carries its published-site redirect, and its
+        // scopes carry writes: the training plan
         // definition's `PlanDefinition`, a `ServiceRequest` per exercise, and
         // each workout's `Procedure` and per-set `Observation`s. There is no
         // `launch/patient`: the app picks the lifter itself (`0020`).
         // This vector must stay element-for-element equal to `LIFTING_SCOPE` in
-        // `apps/lifting-app/src/config.ts`; `seeding.rs`'s
+        // `apps/lifting/lifting-web/src/config.ts`; `seeding.rs`'s
         // `seeds_the_lifting_dev_client_with_the_apps_own_scopes` reads that
         // file and pins this client to it.
-        let lifting = store.client_by_id("lifting-app").unwrap().unwrap();
+        let lifting = store
+            .client_by_id("bdf9fc5cb5a28c6683b49896b0ef8a75")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             lifting.redirect_uris,
-            vec![url::Url::parse("https://wildflowerhealth.io/lifting-app/")
+            vec![url::Url::parse("https://wildflowerhealth.io/lifting/")
                 .expect("a valid absolute redirect")],
         );
         assert_eq!(

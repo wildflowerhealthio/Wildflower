@@ -57,6 +57,6 @@ runs rarely enough that it installs cold.
 
 - [TypeScript CI Build Cache Explanation](../TypeScript/CI%20Build%20Cache%20Explanation.md)
   — the `vp run pack` cache and why `main` warms it
-- [apps/watch-lifts README](../../apps/watch-lifts/README.md#ci) — what the
+- [apps/watch-lifts/watch-lifts-watchapp README](../../apps/watch-lifts/watch-lifts-watchapp/README.md#ci) — what the
   Pebble workflow checks and the `.pbw` artifacts it uploads
 - [AGENTS.md](../../AGENTS.md) — the CI gate list this workflow belongs to

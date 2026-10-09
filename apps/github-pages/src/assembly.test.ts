@@ -110,11 +110,11 @@ describe('site layout', () => {
     expect(healthViewer?.requiredPaths).toEqual([join(outDir, 'health-viewer-app', 'index.html')])
   })
 
-  it('serves the lifting app from /lifting-app with its one SMART entry', () => {
-    const [lifting] = resolveSections(repoRoot, outDir, [sectionFor('lifting-app')])
-    expect(lifting?.from).toBe(join(repoRoot, 'apps', 'lifting-app', 'dist'))
-    expect(lifting?.to).toBe(join(outDir, 'lifting-app'))
-    expect(lifting?.requiredPaths).toEqual([join(outDir, 'lifting-app', 'index.html')])
+  it('serves the lifting app from /lifting with its one SMART entry', () => {
+    const [lifting] = resolveSections(repoRoot, outDir, [sectionFor('lifting-web')])
+    expect(lifting?.from).toBe(join(repoRoot, 'apps', 'lifting', 'lifting-web', 'dist'))
+    expect(lifting?.to).toBe(join(outDir, 'lifting'))
+    expect(lifting?.requiredPaths).toEqual([join(outDir, 'lifting', 'index.html')])
   })
 
   it('serves the WatchLifts settings page from /watch-lifts with its one entry', () => {
@@ -197,7 +197,7 @@ describe('site layout', () => {
         'fhir-sync-pebble',
         'health-viewer-app',
         'importer-app',
-        'lifting-app',
+        'lifting',
         'medications-app',
         'ohif-viewer',
         'synthetic-data-app',
@@ -243,15 +243,15 @@ describe('layout reconciliation with the packages it assembles', () => {
    * Five of the first-party SMART apps and the WatchLifts settings page: each
    * builds into its own package's default `dist/` and the site copies it from
    * there. `appDir` is the folder
-   * under `apps/`, which differs from the package name for three of them.
+   * under `apps/`, which differs from the package name for five of them.
    */
   const firstPartyApps = [
     { packageName: 'medications-app', appDir: 'medications-app' },
     { packageName: 'wildflower-web-trace', appDir: 'web-trace' },
     { packageName: 'wildflower-importer', appDir: 'importer-web' },
     { packageName: 'fhir-sync-pebble-web', appDir: 'fhir-sync-pebble/fhir-sync-pebble-web' },
-    { packageName: 'watch-lifts-web', appDir: 'watch-lifts-web' },
-    { packageName: 'lifting-app', appDir: 'lifting-app' },
+    { packageName: 'watch-lifts-web', appDir: 'watch-lifts/watch-lifts-web' },
+    { packageName: 'lifting-web', appDir: 'lifting/lifting-web' },
   ] as const
 
   it.each(firstPartyApps)(

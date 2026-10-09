@@ -4,7 +4,7 @@ name: Deploy GitHub Pages
 # marketing site at /, the medications app at /medications-app, the server-docs
 # API console at /wildflower-server-docs, the Web Trace app at /web-trace-app, the
 # Importer at /importer-app, FHIR Sync for Pebble at /fhir-sync-pebble, the
-# lifting app at /lifting-app, the WatchLifts settings page at /watch-lifts,
+# lifting app at /lifting, the WatchLifts settings page at /watch-lifts,
 # the prebuilt OHIF viewer at /ohif-viewer and the owner UI at /app)
 # and publishes it to GitHub Pages.
 # Runs on every push to main and on manual dispatch: the assembled apps

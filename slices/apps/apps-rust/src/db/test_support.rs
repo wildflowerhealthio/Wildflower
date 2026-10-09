@@ -14,7 +14,7 @@ pub(crate) const SEEDED_IDS: [&str; 10] = [
     "web-server-docs",
     "importer-app",
     "ohif-viewer",
-    "lifting-app",
+    "lifting",
     "health-viewer-app",
 ];
 

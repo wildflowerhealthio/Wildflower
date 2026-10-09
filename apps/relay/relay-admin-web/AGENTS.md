@@ -7,7 +7,7 @@ origin as the admin API it calls, so there is no CORS and no sign-in on the
 relay: the page signs each request with the admin key. Everything it shows
 is [`relay-react`](../AGENTS.md)'s `RelayAdminScreen`.
 
-`apps/watch-lifts-web` is the template for the shape (one `index.html`
+`apps/watch-lifts/watch-lifts-web` is the template for the shape (one `index.html`
 entry, a build into the package's own `dist/`). What differs: the page is
 served at the site root (`base: '/'`), and nothing is inlined, because of
 the relay's Content Security Policy (below).

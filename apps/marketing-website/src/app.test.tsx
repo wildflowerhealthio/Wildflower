@@ -66,7 +66,7 @@ describe('App', () => {
     expect(hrefs).toStrictEqual([
       './medications-app',
       './health-viewer-app',
-      './lifting-app',
+      './lifting',
       './importer-app',
       './web-trace-app',
       './wildflower-server-docs',
@@ -122,7 +122,7 @@ describe('App', () => {
       screen.getByRole('link', { name: /Open the Synthesized Health Viewer/ }).getAttribute('href')
     ).toBe('./health-viewer-app')
     expect(screen.getByRole('link', { name: /Open Lifting/ }).getAttribute('href')).toBe(
-      './lifting-app'
+      './lifting'
     )
   })
 

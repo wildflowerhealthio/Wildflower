@@ -715,7 +715,7 @@ mod tests {
             ("web-server-docs", true),
             ("importer-app", true),
             ("ohif-viewer", true),
-            ("lifting-app", true),
+            ("lifting", true),
             ("health-viewer-app", true),
         ];
         let (status, body) = send(&st, put_json("/home-screen", home_screen_body(&ordered))).await;
@@ -738,7 +738,7 @@ mod tests {
                 "web-server-docs",
                 "importer-app",
                 "ohif-viewer",
-                "lifting-app",
+                "lifting",
                 "health-viewer-app",
             ],
         );

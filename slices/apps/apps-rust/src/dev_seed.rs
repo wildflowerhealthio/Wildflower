@@ -35,11 +35,19 @@ use persistence_rust::DieselPool;
 
 use crate::db::SqliteAppsStore;
 
-/// One debug-only row: an app id, its display fields, and the launch URL pointing
-/// at the local dev server.
+/// The Lifting dev tile's OAuth client: a random id (`openssl rand -hex 16`),
+/// not the tile id. gatekeeper-rust's `seed_dev_app_clients` registers it, and
+/// `apps/lifting/lifting-web/src/config.ts` launches as it under the dev server.
+const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
+
+/// One debug-only row: an app id, its display fields, its OAuth client, and the
+/// launch URL pointing at the local dev server.
 struct DevApp {
-    /// The row id — also its `client_id` and its dev gatekeeper client id.
+    /// The row id.
     id: &'static str,
+    /// The row's `client_id`: its dev gatekeeper client, which
+    /// `seed_dev_app_clients` registers under the same id.
+    client_id: &'static str,
     /// Homescreen title, suffixed "(Dev)" so it can't be confused with the
     /// production tile sitting next to it.
     name: &'static str,
@@ -93,8 +101,8 @@ struct DevAppPorts {
     health_viewer_app_dev: i32,
     #[serde(rename = "synthetic-data-app-dev")]
     synthetic_data_app_dev: i32,
-    #[serde(rename = "lifting-app-dev")]
-    lifting_app_dev: i32,
+    #[serde(rename = "lifting-dev")]
+    lifting_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -111,51 +119,59 @@ fn dev_apps() -> [DevApp; 8] {
     [
         DevApp {
             id: "medications-app-dev",
+            client_id: "medications-app-dev",
             name: "Medications (Dev)",
             subtitle: "Local vite dev server for apps/medications-app",
             url: dev_launch_url(ports.medications_app_dev),
         },
         DevApp {
             id: "web-trace-app-dev",
+            client_id: "web-trace-app-dev",
             name: "Web Trace (Dev)",
             subtitle: "Local vite dev server for apps/web-trace",
             url: dev_launch_url(ports.web_trace_app_dev),
         },
         DevApp {
             id: "web-server-docs-dev",
+            client_id: "web-server-docs-dev",
             name: "Server Docs (Dev)",
             subtitle: "Local vite dev server for apps/wildflower-server-docs",
             url: dev_launch_url(ports.web_server_docs_dev),
         },
         DevApp {
             id: "importer-app-dev",
+            client_id: "importer-app-dev",
             name: "Importer (Dev)",
             subtitle: "Local vite dev server for apps/importer-web",
             url: dev_launch_url(ports.importer_app_dev),
         },
         DevApp {
             id: "ohif-viewer-dev",
+            client_id: "ohif-viewer-dev",
             name: "Imaging (Dev)",
             subtitle: "Local preview server for apps/ohif-viewer",
             url: ohif_viewer_dev_url(ports.ohif_viewer_dev),
         },
         DevApp {
             id: "health-viewer-app-dev",
+            client_id: "health-viewer-app-dev",
             name: "Health Viewer (Dev)",
             subtitle: "Local vite dev server for apps/health-viewer",
             url: dev_launch_url(ports.health_viewer_app_dev),
         },
         DevApp {
             id: "synthetic-data-app-dev",
+            client_id: "synthetic-data-app-dev",
             name: "Synthetic Data (Dev)",
             subtitle: "Local vite dev server for apps/synthetic-data-app",
             url: dev_launch_url(ports.synthetic_data_app_dev),
         },
         DevApp {
-            id: "lifting-app-dev",
+            id: "lifting-dev",
+            client_id: LIFTING_DEV_CLIENT_ID,
             name: "Lifting (Dev)",
-            subtitle: "Local vite dev server for apps/lifting-app",
-            url: dev_launch_url(ports.lifting_app_dev),
+            subtitle: "Local vite dev server for apps/lifting/lifting-web",
+            url: dev_launch_url(ports.lifting_dev),
         },
     ]
 }
@@ -264,7 +280,7 @@ fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     .bind::<Text, _>(app.name)
     .bind::<Text, _>(app.subtitle)
     .bind::<Text, _>(app.url.as_str())
-    .bind::<Text, _>(app.id)
+    .bind::<Text, _>(app.client_id)
     .bind::<Text, _>(app.id)
     .execute(conn)
     .context("insert dev registration")?;
@@ -285,7 +301,7 @@ fn reconcile(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     )
     .bind::<Text, _>(app.name)
     .bind::<Text, _>(app.subtitle)
-    .bind::<Text, _>(app.id)
+    .bind::<Text, _>(app.client_id)
     .bind::<Text, _>(app.id)
     .bind::<Text, _>(app.url.as_str())
     .execute(conn)
@@ -316,7 +332,7 @@ mod tests {
             let registration = dev_row(&store, app.id);
             assert_eq!(registration.url.to_string(), app.url);
             assert_eq!(registration.name, app.name);
-            assert_eq!(registration.client_id.as_deref(), Some(app.id));
+            assert_eq!(registration.client_id.as_deref(), Some(app.client_id));
             assert!(registration.on_homescreen);
             assert!(!registration.requires_tunnel);
         }
@@ -387,12 +403,16 @@ mod tests {
         let store = SqliteAppsStore::new(pool).unwrap();
 
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
-        let port = ports.lifting_app_dev;
-        let registration = dev_row(&store, "lifting-app-dev");
+        let port = ports.lifting_dev;
+        let registration = dev_row(&store, "lifting-dev");
         assert_eq!(registration.name, "Lifting (Dev)");
         assert_eq!(
             registration.subtitle.as_deref(),
-            Some("Local vite dev server for apps/lifting-app"),
+            Some("Local vite dev server for apps/lifting/lifting-web"),
+        );
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some(LIFTING_DEV_CLIENT_ID)
         );
         assert_eq!(
             registration.url.to_string(),
@@ -406,16 +426,16 @@ mod tests {
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
-        for id in [
-            "medications-app",
-            "web-trace-app",
-            "importer-app",
-            "ohif-viewer",
-            "lifting-app",
-            "health-viewer-app",
+        for (id, client_id) in [
+            ("medications-app", "medications-app"),
+            ("web-trace-app", "web-trace-app"),
+            ("importer-app", "importer-app"),
+            ("ohif-viewer", "ohif-viewer"),
+            ("lifting", "bdf9fc5cb5a28c6683b49896b0ef8a75"),
+            ("health-viewer-app", "health-viewer-app"),
         ] {
             let registration = store.find_app(id).unwrap().expect("migrated row");
-            assert_eq!(registration.client_id.as_deref(), Some(id));
+            assert_eq!(registration.client_id.as_deref(), Some(client_id));
             assert!(
                 registration
                     .url

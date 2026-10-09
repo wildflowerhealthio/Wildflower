@@ -102,12 +102,11 @@ jobs:
             # change runs nothing else: ci-typescript.yml runs the same
             # host-side tests, but only when TS/JS changes.
             pebble:
+              # Each app's folder holds its watchapp and the core its
+              # PebbleKit JS bundles into the .pbw, which the host-side tests
+              # check the watch's bytes against.
               - 'apps/watch-lifts/**'
-              # FHIR Sync's core sits in the same folder as its watchapp.
               - 'apps/fhir-sync-pebble/**'
-              # Each app's PebbleKit JS bundles its core into the .pbw, and
-              # the host-side tests check the watch's bytes against it.
-              - 'slices/watch-lifts/**'
               # The PebbleKit JS build tooling and the App Configuration
               # hand-off both apps' PebbleKit JS and settings pages build on.
               - 'global/pebble/**'

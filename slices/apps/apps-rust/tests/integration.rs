@@ -140,7 +140,7 @@ async fn fresh_install_lists_the_default_set() {
             "web-server-docs",
             "importer-app",
             "ohif-viewer",
-            "lifting-app",
+            "lifting",
             "health-viewer-app",
         ],
     );
@@ -283,9 +283,9 @@ async fn seeded_app_is_fully_editable() {
 async fn home_screen_reorders_and_disables_an_app() {
     let apps = spin_up();
     let router = apps.router.clone();
-    // Move lifting-app to the front and disable it; keep the rest in order.
+    // Move lifting to the front and disable it; keep the rest in order.
     let body = serde_json::json!([
-        { "id": "lifting-app", "onHomescreen": false },
+        { "id": "lifting", "onHomescreen": false },
         { "id": "growth-chart", "onHomescreen": true },
         { "id": "medication-viewer", "onHomescreen": true },
         { "id": "precise-hbr", "onHomescreen": true },
@@ -311,7 +311,7 @@ async fn home_screen_reorders_and_disables_an_app() {
     assert_eq!(
         ids,
         vec![
-            "lifting-app",
+            "lifting",
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
@@ -323,7 +323,7 @@ async fn home_screen_reorders_and_disables_an_app() {
             "health-viewer-app",
         ],
     );
-    let lifting = arr.iter().find(|v| v["id"] == "lifting-app").unwrap();
+    let lifting = arr.iter().find(|v| v["id"] == "lifting").unwrap();
     assert_eq!(lifting["onHomescreen"], false);
 }
 

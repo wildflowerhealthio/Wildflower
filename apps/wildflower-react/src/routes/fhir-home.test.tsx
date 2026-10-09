@@ -109,7 +109,7 @@ describe('FhirServerHome', () => {
       `${PREVIEW_SITE_ROOT}web-trace-app/`,
       `${PREVIEW_SITE_ROOT}health-viewer-app/`,
       `${PREVIEW_SITE_ROOT}synthetic-data-app/`,
-      `${PREVIEW_SITE_ROOT}lifting-app/`,
+      `${PREVIEW_SITE_ROOT}lifting/`,
     ])
   })
 

@@ -15,8 +15,8 @@ that owns it, and this package places those outputs at their public URLs.
 | `/fhir-sync-pebble`       | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble/fhir-sync-pebble-web`) |
 | `/health-viewer-app`      | `health-viewer-app` (`apps/health-viewer`)                            |
 | `/synthetic-data-app`     | `synthetic-data-app` (`apps/synthetic-data-app`)                      |
-| `/lifting-app`            | `lifting-app` (`apps/lifting-app`)                                    |
-| `/watch-lifts`            | `watch-lifts-web` (`apps/watch-lifts-web`)                            |
+| `/lifting`                | `lifting-web` (`apps/lifting/lifting-web`)                            |
+| `/watch-lifts`            | `watch-lifts-web` (`apps/watch-lifts/watch-lifts-web`)                |
 | `/app`                    | `wildflower-react` (`apps/wildflower-react`, `dist-web`)              |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.

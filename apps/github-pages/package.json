@@ -15,7 +15,7 @@
     "fhir-sync-pebble-web": "workspace:*",
     "health-viewer-app": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "lifting-app": "workspace:*",
+    "lifting-web": "workspace:*",
     "marketing-website": "workspace:*",
     "medications-app": "workspace:*",
     "ohif-viewer": "workspace:*",

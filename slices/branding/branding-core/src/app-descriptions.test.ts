@@ -90,7 +90,7 @@ describe('smartAppLaunchPages', () => {
         app: 'syntheticData',
         launchPageUrl: 'https://wildflowerhealth.io/synthetic-data-app/',
       },
-      { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting-app/' },
+      { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting/' },
     ])
   })
 

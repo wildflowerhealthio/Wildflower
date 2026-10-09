@@ -46,10 +46,10 @@ jobs:
           fi
 
       - name: Check C formatting
-        run: vp run -F watch-lifts -F fhir-sync-pebble-watchapp fmt:c:check
+        run: vp run -F watch-lifts-watchapp -F fhir-sync-pebble-watchapp fmt:c:check
 
       # The C builds with the host `cc` under ASan and UBSan; no SDK needed.
-      # watch-lifts-test and watch-lifts-pkjs cover watch-lifts' C and
+      # watch-lifts-test and watch-lifts-pkjs cover watch-lifts-watchapp's C and
       # PebbleKit JS; fhir-sync-pebble-test and fhir-sync-pebble-pkjs cover
       # fhir-sync-pebble-watchapp's; pebble-pkjs and pebble-configuration, the shared
       # PebbleKit JS tooling and hand-off.
@@ -88,7 +88,7 @@ jobs:
       # app's failure doesn't hide the other's, but not without an SDK.
       - name: Build watch-lifts
         id: build-watch-lifts
-        working-directory: apps/watch-lifts
+        working-directory: apps/watch-lifts/watch-lifts-watchapp
         run: pebble build
 
       - name: Upload watch-lifts .pbw
@@ -96,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: watch-lifts
-          path: apps/watch-lifts/build/watch-lifts.pbw
+          path: apps/watch-lifts/watch-lifts-watchapp/build/watch-lifts-watchapp.pbw
           if-no-files-found: error
 
       - name: Build fhir-sync-pebble

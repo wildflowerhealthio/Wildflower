@@ -672,6 +672,13 @@ mod migration_tests {
         url: String,
     }
 
+    /// A registration's stored `position`, read before the store is opened.
+    #[derive(QueryableByName)]
+    struct Position {
+        #[diesel(sql_type = diesel::sql_types::BigInt)]
+        position: i64,
+    }
+
     /// The stored launch template of a seeded app, read through the port.
     fn stored_url(store: &SqliteAppsStore, id: &str) -> String {
         store
@@ -802,17 +809,20 @@ mod migration_tests {
     }
 
     /// Lifting ships as a first-party app (apps migration `0010`), launched at
-    /// its published Pages copy's root (`0016`) — a SMART EHR launch.
+    /// its published Pages copy's root (`0016`) — a SMART EHR launch — under
+    /// its folder's name and a random client id (`0017`).
     #[test]
-    fn lifting_app_launches_at_its_root() {
+    fn lifting_launches_at_its_root() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
         let registration = store
-            .find_app("lifting-app")
+            .find_app("lifting")
             .unwrap()
-            .expect("lifting-app must exist");
-        // A first-party app's client_id equals its id.
-        assert_eq!(registration.client_id.as_deref(), Some("lifting-app"));
+            .expect("lifting must exist");
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some("bdf9fc5cb5a28c6683b49896b0ef8a75")
+        );
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
@@ -820,8 +830,61 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/lifting-app/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}/fhir-r4",
         );
+    }
+
+    /// An install at `0016` re-keys Lifting in place when `0017` runs: the tile,
+    /// its dev tile and their clients take the new ids, the user's placement
+    /// stays, and a launch URL the user edited is left as it is.
+    #[test]
+    fn an_install_already_at_0016_rekeys_lifting_in_place() {
+        let pool = pool_migrated_through("0016");
+        let mut conn = pool.get().unwrap();
+        sql_query("UPDATE app_registrations SET on_homescreen = 0 WHERE id = 'lifting-app'")
+            .execute(&mut conn)
+            .expect("the user hides Lifting");
+        let before = sql_query("SELECT position FROM app_registrations WHERE id = 'lifting-app'")
+            .get_result::<Position>(&mut conn)
+            .unwrap();
+        let edited_dev = "http://localhost:5199/?launch={launch}&iss=https://ehr.example/fhir";
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, client_id, requires_tunnel) \
+             VALUES ('lifting-app-dev', (SELECT MAX(position) + 1 FROM app_registrations), \
+                     1, 'Lifting (Dev)', ?, 'lifting-app-dev', 0)",
+        )
+        .bind::<Text, _>(edited_dev)
+        .execute(&mut conn)
+        .expect("a dev row seeded before 0017");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0017 must apply");
+        assert!(store.find_app("lifting-app").unwrap().is_none());
+        assert!(store.find_app("lifting-app-dev").unwrap().is_none());
+        let lifting = store
+            .find_app("lifting")
+            .unwrap()
+            .expect("lifting re-keyed");
+        assert_eq!(
+            lifting.client_id.as_deref(),
+            Some("bdf9fc5cb5a28c6683b49896b0ef8a75")
+        );
+        assert!(!lifting.on_homescreen, "the user's placement stays");
+        assert_eq!(lifting.position, before.position);
+        assert_eq!(
+            stored_url(&store, "lifting"),
+            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}/fhir-r4",
+        );
+        let dev = store
+            .find_app("lifting-dev")
+            .unwrap()
+            .expect("dev re-keyed");
+        assert_eq!(
+            dev.client_id.as_deref(),
+            Some("8467e680a05f1e92e22864e923144e5a")
+        );
+        assert_eq!(stored_url(&store, "lifting-dev"), edited_dev);
     }
 
     /// An install already at `0009` gains Lifting when it upgrades — at the
@@ -838,9 +901,9 @@ mod migration_tests {
             .unwrap()
             .expect("the user's app survives");
         let lifting = store
-            .find_app("lifting-app")
+            .find_app("lifting")
             .unwrap()
-            .expect("0010 must seed lifting-app on an upgraded install");
+            .expect("0010 must seed Lifting on an upgraded install");
         assert_eq!(
             lifting.position,
             user_app.position + 1,
@@ -975,7 +1038,7 @@ mod migration_tests {
             );
         }
         assert_eq!(
-            stored_url(&store, "lifting-app"),
+            stored_url(&store, "lifting"),
             edited,
             "the user's edit stays"
         );

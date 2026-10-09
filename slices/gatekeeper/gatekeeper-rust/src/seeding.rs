@@ -126,9 +126,15 @@ struct DevAppPorts {
     health_viewer_app_dev: u16,
     #[serde(rename = "synthetic-data-app-dev")]
     synthetic_data_app_dev: u16,
-    #[serde(rename = "lifting-app-dev")]
-    lifting_app_dev: u16,
+    #[serde(rename = "lifting-dev")]
+    lifting_dev: u16,
 }
+
+/// The `lifting-dev` tile's OAuth client: a random id (`openssl rand -hex 16`),
+/// not the tile id. `apps_rust::dev_seed` points the tile at it, and
+/// `apps/lifting/lifting-web/src/config.ts` launches as it under the dev server.
+#[cfg(debug_assertions)]
+const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
 
 /// The `health-viewer-app-dev` client's scopes: exactly the scope string in
 /// `apps/health-viewer/src/config.ts`, which requests the same set for an EHR
@@ -184,11 +190,12 @@ const MEDICATIONS_DEV_SCOPES: &[&str] = &[
     "system/Patient.rs",
 ];
 
-/// The `lifting-app-dev` client's scopes: exactly `LIFTING_SCOPE` in
-/// `apps/lifting-app/src/config.ts`, which requests the same set for an EHR
-/// launch and a standalone connect, and the same set the production
-/// `lifting-app` client allows (gatekeeper migrations
-/// `0019_seed_lifting_app_client` and `0020_first_party_apps_pick_the_patient`).
+/// The Lifting dev client's scopes: exactly `LIFTING_SCOPE` in
+/// `apps/lifting/lifting-web/src/config.ts`, which requests the same set for an
+/// EHR launch and a standalone connect, and the same set the production Lifting
+/// client allows (gatekeeper migrations `0019_seed_lifting_app_client` and
+/// `0020_first_party_apps_pick_the_patient`, re-keyed by
+/// `0025_rekey_lifting_app_clients`).
 /// A test below reads that file and pins all three together. Writes are
 /// `.crus`: every write is an update-as-create to a client-minted id, and the
 /// app never deletes.
@@ -218,9 +225,9 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// onward), whose clients register the published-site redirect URI. A debug
 /// build also gets an `<app>-dev` row (`apps_rust::dev_seed`) whose launch
 /// URL points at the app's local vite dev server on the port
-/// `dev-app-ports.json` pins, and that row needs its own client whose id equals
-/// the dev app id and whose absolute `http://localhost:{port}` redirect is what
-/// the authorize flow matches. They are separate clients rather than extra
+/// `dev-app-ports.json` pins, and that row needs its own client — named after
+/// the dev app id, or for Lifting a random id — whose absolute
+/// `http://localhost:{port}` redirect is what the authorize flow matches. They are separate clients rather than extra
 /// redirect entries on the production ones because adding a plaintext loopback
 /// redirect there would register it on a client that a public website uses.
 ///
@@ -363,12 +370,12 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
-            "lifting-app-dev",
+            LIFTING_DEV_CLIENT_ID,
             "Lifting (Dev)",
-            // `apps/lifting-app/src/config.ts`'s `LIFTING_SCOPE` — see
+            // `apps/lifting/lifting-web/src/config.ts`'s `LIFTING_SCOPE` — see
             // [`LIFTING_DEV_SCOPES`].
             LIFTING_DEV_SCOPES,
-            ports.lifting_app_dev,
+            ports.lifting_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
     ];
@@ -563,27 +570,36 @@ mod tests {
     }
 
     /// The Lifting dev client is seeded on its dev server's loopback root with
-    /// exactly the scopes the app requests, and the production `lifting-app`
-    /// client (gatekeeper migrations `0019` and `0020`) allows the same set. The app's
-    /// `LIFTING_SCOPE` is read out of `config.ts` itself, the one place it is
-    /// written, so neither client can drift from it unnoticed.
+    /// exactly the scopes the app requests, and the production Lifting client
+    /// (gatekeeper migrations `0019`, `0020` and `0025`) allows the same set. The
+    /// app's `LIFTING_SCOPE` and both client ids are read out of `config.ts`
+    /// itself, the one place the app writes them, so neither client can drift
+    /// from it unnoticed.
     #[test]
     fn seeds_the_lifting_dev_client_with_the_apps_own_scopes() {
         const LIFTING_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../apps/lifting-app/src/config.ts"
+            "/../../../apps/lifting/lifting-web/src/config.ts"
         ));
+        /// The production client `0025_rekey_lifting_app_clients` re-keys to.
+        const LIFTING_CLIENT_ID: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
         let scope_string = format!("'{}'", LIFTING_DEV_SCOPES.join(" "));
         assert!(
             LIFTING_CONFIG_TS.contains(&scope_string),
-            "apps/lifting-app/src/config.ts must request exactly {scope_string}",
+            "apps/lifting/lifting-web/src/config.ts must request exactly {scope_string}",
         );
+        for client_id in [LIFTING_DEV_CLIENT_ID, LIFTING_CLIENT_ID] {
+            assert!(
+                LIFTING_CONFIG_TS.contains(&format!("'{client_id}'")),
+                "apps/lifting/lifting-web/src/config.ts must launch as {client_id}",
+            );
+        }
 
         let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
         let client = store
-            .client_by_id("lifting-app-dev")
+            .client_by_id(LIFTING_DEV_CLIENT_ID)
             .expect("query client")
             .expect("lifting dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
@@ -592,15 +608,15 @@ mod tests {
         assert_eq!(
             client.redirect_uris,
             vec![
-                url::Url::parse(&format!("http://localhost:{}/", ports.lifting_app_dev))
+                url::Url::parse(&format!("http://localhost:{}/", ports.lifting_dev))
                     .expect("a valid absolute redirect")
             ],
         );
 
         let production = store
-            .client_by_id("lifting-app")
+            .client_by_id(LIFTING_CLIENT_ID)
             .expect("query client")
-            .expect("migration 0019 seeds the lifting-app client");
+            .expect("migration 0025 re-keys the Lifting client");
         assert_eq!(production.allowed_scopes, LIFTING_DEV_SCOPES);
     }
 

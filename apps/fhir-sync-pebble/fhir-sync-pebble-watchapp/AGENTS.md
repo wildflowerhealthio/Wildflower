@@ -6,7 +6,7 @@ where the user signs in to a FHIR server and confirms the patient. Sync Now
 sends every checked data type: Health Activity from HealthService's
 activities, the other five from its minute history.
 
-`apps/watch-lifts` is the template for the shape: this `package.json` is the
+`apps/watch-lifts/watch-lifts-watchapp` is the template for the shape: this `package.json` is the
 Pebble manifest, and host-side tests live in a separate `test/` package. The
 PebbleKit JS is TypeScript in a third, `pkjs/`, for the same reason: the
 manifest can't list the dependencies its build needs. What the phone decodes
@@ -251,7 +251,7 @@ includes it):
 
 - `menu-text.test.ts` compiles `menu-text.c` with `kitchen-sink/test`'s
   `buildHostCDriver` (host `cc`, C99, ASan + UBSan) and drives it through
-  `menu-text-driver.c`, as `watch-lifts` does for its reps text.
+  `menu-text-driver.c`, as `watch-lifts-watchapp` does for its reps text.
 - `minute-wire.test.ts` packs minutes with `minute-wire.c` through
   `minute-wire-driver.c`, then decodes the bytes with the core's
   `MinuteHistory`, so the two ends of the byte layout are tested together.
@@ -322,12 +322,12 @@ version `ci-pebble.yml` pins: other releases format differently.
 ## CI
 
 `.github/workflows/ci-pebble.yml`, on pull requests touching this app, its core,
-`global/pebble` or `apps/watch-lifts`, runs `fmt:c:check` and both test
+`global/pebble` or `apps/watch-lifts/watch-lifts-watchapp`, runs `fmt:c:check` and both test
 packages above, with `global/pebble`'s, in its
 **Lint + Test** job, and `pebble build` in its **Build** job, which uploads
 `fhir-sync-pebble-watchapp.pbw` (`pebble build` names it after this folder)
-as a workflow artifact. See [`apps/watch-lifts`'s
-README](../../watch-lifts/README.md#ci).
+as a workflow artifact. See [`apps/watch-lifts/watch-lifts-watchapp`'s
+README](../../watch-lifts/watch-lifts-watchapp/README.md#ci).
 
 ## Releases
 
@@ -336,5 +336,5 @@ Prepare writes it, less any prerelease suffix, and Publish attaches
 `fhir-sync-pebble-<version>.pbw` to the GitHub Release. Don't bump it by hand.
 For a non-prerelease Publish also uploads it to the app's Pebble app store
 listing as an unpublished release; it never creates the listing, and never
-publishes. See [`apps/watch-lifts`'s README](../../watch-lifts/README.md#releases)
+publishes. See [`apps/watch-lifts/watch-lifts-watchapp`'s README](../../watch-lifts/watch-lifts-watchapp/README.md#releases)
 and the [App Store Release Explanation](../../../docs/Pebble/App%20Store%20Release%20Explanation.md).

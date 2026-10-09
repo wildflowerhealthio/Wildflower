@@ -50,7 +50,7 @@ slice is where the two meet, so neither has to know about the other.
       line under an app's title: `Name · born YYYY-MM-DD` (one `fetchPatient`
       read) or "All patients", and a "Change patient" link.
 
-Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/lifting-app`,
+Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/lifting/lifting-web`,
 `apps/importer-web`, `apps/web-trace` and `apps/synthetic-data-app` mount
 `SmartAppRoot`, which an EHR launches at the app root; the first three speak
 the read-status lines, as does `synthetic-data-react`'s screen, and pick the
