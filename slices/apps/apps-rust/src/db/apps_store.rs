@@ -1351,7 +1351,7 @@ mod migration_tests {
             ("relative-path", "/my/app"),
             ("kept-https", "https://example.com/launch?iss={origin}"),
             ("origin-template", "{origin}/x?launch={launch}"),
-            ("kept-http", "http://localhost:5199/"),
+            ("kept-http", "http://localhost:5199/launch.html"),
         ] {
             sql_query(
                 "INSERT INTO app_registrations \
