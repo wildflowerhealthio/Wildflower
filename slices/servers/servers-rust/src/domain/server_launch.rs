@@ -10,7 +10,7 @@
 
 use shared_structures_rust::FHIR_R4_PATH;
 use unit_runner::{RunState, UnitStatus};
-use url::Url;
+use url::{form_urlencoded, Url};
 use wildflower_server_rust::{CertificateStatus, ServerHealth};
 
 use crate::domain::{LaunchError, ServerDetail};
@@ -19,24 +19,36 @@ use crate::domain::{LaunchError, ServerDetail};
 /// server's FHIR base (its `public_origin`, as
 /// [`ServerRecord::public_origin`](crate::ServerRecord::public_origin) builds
 /// it, at [`FHIR_R4_PATH`]), and the minted `launch` appended to its query.
-/// Any `iss` or `launch` the launcher URL already carries is replaced; its
-/// other query parameters and its fragment are kept.
+/// Any `iss` or `launch` the launcher URL already carries is dropped; its
+/// other query parameters are kept as they are written, byte for byte, and so
+/// is its fragment.
 #[must_use]
 pub fn launch_url(launcher_url: &Url, public_origin: &Url, launch: &str) -> Url {
     let mut fhir_base = public_origin.clone();
     fhir_base.set_path(FHIR_R4_PATH);
-    let kept_query_pairs: Vec<(String, String)> = launcher_url
-        .query_pairs()
-        .filter(|(name, _)| name != "iss" && name != "launch")
-        .map(|(name, value)| (name.into_owned(), value.into_owned()))
-        .collect();
-    let mut url = launcher_url.clone();
-    url.query_pairs_mut()
-        .clear()
-        .extend_pairs(kept_query_pairs)
+    let launch_params = form_urlencoded::Serializer::new(String::new())
         .append_pair("iss", fhir_base.as_str())
-        .append_pair("launch", launch);
+        .append_pair("launch", launch)
+        .finish();
+    let query = launcher_url
+        .query()
+        .into_iter()
+        .flat_map(|query| query.split('&'))
+        .filter(|param| !param.is_empty() && !is_a_launch_param(param))
+        .chain([launch_params.as_str()])
+        .collect::<Vec<_>>()
+        .join("&");
+    let mut url = launcher_url.clone();
+    url.set_query(Some(&query));
     url
+}
+
+/// Whether the query parameter `param`, one `name[=value]` of a query, is
+/// named `iss` or `launch` once its name is decoded.
+fn is_a_launch_param(param: &str) -> bool {
+    form_urlencoded::parse(param.as_bytes())
+        .next()
+        .is_some_and(|(name, _)| name == "iss" || name == "launch")
 }
 
 /// The detail of the server `domain`'s run, from its `unit_status` on
@@ -141,6 +153,19 @@ mod tests {
         );
         assert_eq!(url.fragment(), Some("/home"));
         assert_eq!(url.path(), "/app");
+    }
+
+    #[test]
+    fn the_launch_url_keeps_the_launcher_s_other_params_as_they_are_written() {
+        let url = launch_url(
+            &launcher("https://launcher.example/app?a=b%20c&flag&iss=old&%6Caunch=encoded"),
+            &ruth_origin(),
+            "nonce-1",
+        );
+        assert_eq!(
+            url.query(),
+            Some("a=b%20c&flag&iss=https%3A%2F%2Fruth.relay.example.com%2Ffhir-r4&launch=nonce-1")
+        );
     }
 
     #[test]

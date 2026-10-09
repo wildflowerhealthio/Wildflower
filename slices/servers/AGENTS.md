@@ -346,7 +346,8 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   or `renewalDue`), mints a launch through the `ServerLaunchMinter` in the
   run's detail on a blocking thread, and opens `launch_url`: the launcher
   URL with `iss=https://<domain>/fhir-r4` and `launch` in its query, any
-  earlier `iss` or `launch` replaced. The launch binds no OAuth client, so
+  earlier `iss` or `launch` dropped and its other parameters kept as
+  written. The launch binds no OAuth client, so
   any app can be a launcher. The launcher opens in a native web view of its
   own, `launcher-<domain>` with its dots as `_`, titled with the domain; a
   user dismissal disposes it, so it stops counting as an open window for
